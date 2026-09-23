@@ -27,16 +27,24 @@
 `40eac3c` · Apache-2.0 · 119M · **Rust** · 收 PR · 有 clean-room 声明
 
 1. **许可**：Apache-2.0。有 CONTRIBUTING / SECURITY。
-2. **分层**：`codex-rs/` 下按 crate 拆：`core` `cli` `protocol` `app-server` `sandboxing` **`bwrap`** `rollout-trace` `external-agent-migration` `code-mode-runtime` `arg0` `history` …。**Rust workspace，边界由 crate 强制。**
+2. **分层**：`codex-rs/` 下按 crate 拆：`core` `cli` `protocol` `app-server` `sandboxing` **`bwrap`** **`mxc-sandbox`** **`windows-sandbox-rs`** **`windows-sandbox-service`** `seatbelt` `landlock` `rollout-trace` `external-agent-migration` `code-mode-runtime` …。**Rust workspace，边界由 crate 强制。**
 3. **Loop**：`core/src/session/` 以 turn 为单位，逐关注点分文件（`context_window.rs` `daemon_recovery.rs` `guardian_checkpoint.rs` `input_queue.rs` `mcp*.rs` …）。
 4. **工具**：`codex-rs/core/src/tools` + **`codex-rs/prompts/templates/`**（提示词模板独立目录，含 `permissions/sandbox_mode`）。
 5. **会话**：**rollout 模型**。`core/src/session/daemon_recovery.rs` 注释："持久化快照前必须 flush rollout"；`guardian_checkpoint.rs` 管检查点；`thread_rollout_truncation` 管截断。
 6. **扩展**：`app-server` + MCP（`session/mcp*.rs` 有 prewarm/refresh/runtime）。
 7. **多端**：`app-server` 对外；`cli` 自带 `debug_sandbox.rs` 可独立调试沙箱。
-8. **安全（本层最强）**：`codex-rs/sandboxing/` + `core/src/sandboxing/` + **`codex-rs/bwrap/`（Linux bubblewrap）**；`cli/src/doctor/` 是个完整的自检体系：`network.rs`（**网络策略独立**）、`sandbox.rs`、`security.rs`、`disk.rs`、`git.rs`。
-9. **可复用 vs 只学**：**代码基本抄不动**（Rust 且深绑 bubblewrap/Landlock/Seatbelt）。要学的是**纪律**：网络与进程隔离是两个独立维度、沙箱要可独立调试（doctor）、快照前 flush。
+8. **安全（本层最强，且全平台）**：`codex-rs/sandboxing/src/` 下**五个后端**：`bwrap.rs`+`landlock.rs`(Linux)、`seatbelt.rs`(macOS)、**`windows.rs`+`windows_mxc.rs`(Windows)**。
+   **Windows 是两个后端**，`WindowsSandboxLevel = { Disabled(默认), RestrictedToken, Elevated }`：
+   - 非提权 `RestrictedToken` → crate `codex-rs/windows-sandbox-rs`（**65 个 .rs**），含 `acl.rs`、**`deny_read_acl.rs`/`deny_read_walker.rs`（递归 ACL 拒绝读）**、`allow.rs`(`AllowDenyPaths`)、`cap.rs`(**`CapSids`** 能力 SID)、`app_package.rs`(**AppContainer**)、`conpty/`、`audit.rs`、**`dpapi.rs`（用 `CryptProtectData` 加密凭据）**
+   - 提权 `Elevated` → crate `codex-rs/mxc-sandbox` + `windows-sandbox-service`（PSEC 原语，需提权）
+   `cli/src/doctor/` 是完整自检体系：`network.rs`（**网络策略独立**）、`sandbox.rs`、`security.rs`、`disk.rs`、`git.rs`、`windows_dev_drive.rs`。
+9. **可复用 vs 只学**：**Rust 代码抄不动，但 Windows 部分的设计思路可直接借鉴**（见下）。
+   **对 Windows 目标尤其重要**：`RestrictedToken` 后端**不需要提权**，用 ACL + 能力 SID 实现拒绝读，
+   这正是 Windows 本地 agent 的可行路径——比容器轻，比"只限工作目录"强。
+   `WindowsSandboxFilesystemOverrides { read_roots_override, write_roots_override, additional_deny_read_paths, additional_deny_write_paths }` 是可借的**策略形状**。
+   要学纪律：网络与进程隔离是两个独立维度、沙箱要能独立调试(doctor)、快照前 flush。
    可复用（Apache-2.0，需登记 NOTICE）：`prompts/templates/permissions/sandbox_mode` 的策略文案结构。
-10. **评分**：内核 4 · 沙箱参考 **5** · UI 参考 2 · 多端参考 3
+10. **评分**：内核 4 · 沙箱参考 **5（Windows 场景同样是 5）** · UI 参考 2 · 多端参考 3
 
 ---
 

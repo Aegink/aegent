@@ -26,6 +26,7 @@ pi-mono|lue-labs/pi-mono|supplement
 mini-agent|MiniMax-AI/Mini-Agent|supplement
 mini-swe-agent|SWE-agent/mini-swe-agent|supplement
 agentscope|modelscope/agentscope|supplement
+cc-switch|farion1231/cc-switch|supplement
 claude-official|anthropics/claude-code|refs
 "
 
