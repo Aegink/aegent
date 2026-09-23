@@ -200,11 +200,20 @@ S3、S5、S7 是**最容易做假**的三个，各自对应 §5 中的具体机�
 | J1 | 流式响应 | P0 | R1-1 | `message_update` 增量到达 |
 | J2 | 单厂商可用 | P0 | R1-10 | 至少一家跑通 |
 | J3 | 不透明配置 + 仅校验语法 | P0 | R12-1 | 不为每个厂商建模；配置存字符串 |
-| J4 | 多厂商 | P1 | R2-17 | 厂商适配独立成模块 |
-| J5 | 运行时换模 | P1 | — | **cc-switch 无此能力，需自研** |
-| J6 | 故障转移队列 | P1 | R12-2 | 队列语义非开关，按后端分区 |
-| J7 | 健康检查 + 保留期清理 | P1 | R12-3 | 检查日志带保留期，不无限增长 |
-| J8 | OAuth | P2 | R5-3 | 独立成模块，不侵入内核 |
+| **J4** | **模型身份 = `{provider, modelId}` 二元组** | **P0** | R14-1 | 同名模型跨厂商可区分；不用裸 model 名做 key |
+| J5 | 多厂商 | P1 | R2-17 | 厂商适配独立成模块 |
+| **J6** | **运行时换模（会话级）** | **P1** | R14-1..9 | 见 R14 综合设计；换模后新 turn 生效 |
+| **J7** | **在途操作模型捕获（configured vs captured）** | **P1** | R14-1 | 运行中换模，在途 turn 仍用启动时捕获的模型 |
+| **J8** | **换模事务性 + 回滚目标** | **P1** | R14-2 | 切换失败可回滚到 `prev_model_id` |
+| **J9** | **换模进事件流（可审计可回放）** | **P1** | R14-3 | 换模是 `config_update` 事件，非静默改状态 |
+| **J10** | **会话级选择 vs 全局默认分离** | **P1** | R14-4 | 两者分开存；不一致时显式报错而非静默 |
+| **J11** | **换模状态机** | **P1** | R14-2 | 覆盖 pending / deferred / preference / incompatible 四态 |
+| **J12** | 模型选择器（去重 + 每厂商上限 + discovery 兜底） | P1 | R14-6 | 端点无 `/models` 路由时，声明的模型仍可用 |
+| **J13** | 鉴权刷新不得改变模型身份 | P1 | R14-7 | 刷新 token/header 后断言模型身份未变 |
+| **J14** | **历史回放不得静默覆盖用户模型选择** | **P1** | R14-8 | 重连/回放后模型仍是用户选的那个 |
+| J15 | 故障转移队列 | P1 | R12-2 | 队列语义非开关，按后端分区 |
+| J16 | 健康检查 + 保留期清理 | P1 | R12-3 | 检查日志带保留期，不无限增长 |
+| J17 | OAuth | P2 | R5-3 | 独立成模块，不侵入内核 |
 
 ### K. Surfaces
 
@@ -254,10 +263,33 @@ S3、S5、S7 是**最容易做假**的三个，各自对应 §5 中的具体机�
 
 | 优先级 | 数量 |
 | --- | --- |
-| P0 | 34 |
-| P1 | 39 |
-| P2 | 15 |
-| **总计** | **88** |
+| P0 | **41** |
+| P1 | **53** |
+| P2 | **11** |
+| **总计** | **105** |
+
+**分层小计**
+
+| 层 | P0 | P1 | P2 | 小计 |
+| --- | --- | --- | --- | --- |
+| A. Loop | 5 | 1 | 0 | 6 |
+| B. Tools | 6 | 3 | 0 | 9 |
+| C. Policy | 7 | 2 | 0 | 9 |
+| D. Sandbox | 6 | 3 | 0 | 9 |
+| E. Session | 5 | 3 | 2 | 10 |
+| F. Context | 4 | 2 | 0 | 6 |
+| G. Planning | 0 | 5 | 0 | 5 |
+| H. Subagents | 0 | 4 | 0 | 4 |
+| I. 扩展 | 0 | 4 | 2 | 6 |
+| J. Models | 4 | 12 | 1 | 17 |
+| K. Surfaces | 1 | 5 | 2 | 8 |
+| L. Observability | 3 | 1 | 2 | 6 |
+| M. 长任务 | 0 | 4 | 1 | 5 |
+| N. 多端同步 | 0 | 4 | 1 | 5 |
+| **合计** | **41** | **53** | **11** | **105** |
+
+> 数量由脚本按行统计得出。`J. Models` 因新增运行时换模综合设计（R14），
+> 从 8 项增至 **17 项**，是全表增幅最大的一层。
 
 ---
 
@@ -454,6 +486,34 @@ S3、S5、S7 是**最容易做假**的三个，各自对应 §5 中的具体机�
 | R12-6 | SQLite（`rusqlite`）做配置存储 + DAO 分层 | `src-tauri/src/database/` | E2 | 🟡 |
 | R12-7 | **边界**：它是配置管理器，不是 provider 抽象层；`failover` 是"切换配置"非"运行时路由" | 全部 | J5（**需自研**） | — |
 
+### R14 · 运行时换模 —— **跨仓综合**（你指出其他仓有，实测确认）
+
+> **修正**：早前 J5 写"cc-switch 无此能力，需自研"，**只查了 cc-switch 就下结论，是错的**。
+> 实测 8 个仓**全部有**运行时换模实现。下表是综合后的设计，不是某一家。
+
+| # | 综合要点 | 来源仓与证据路径 | 喂给 | 复用性 |
+| --- | --- | --- | --- | --- |
+| R14-1 | **`ModelIdentity = {provider, modelId}` 二元组**；`configuredModel`（lane 当前配置）与 `capturedModel`（在途操作启动时捕获）**分离** | pi `packages/agent/src/harness/agent-harness.ts:142,154,160`；`setModel()` 在 `agent-harness.ts:574` 与 `runtime/lane.ts:1653` | J4 J6 J7 | 🟢 |
+| R14-2 | **换模是带回滚的事务**：`DeferredModelSwitch{model_id, effort, prev_model_id}`，`prev_model_id` 即失败回滚目标；另有 `model_switch_pending`/`user_model_preference`/`model_incompatible` | grok `crates/codegen/xai-grok-pager/src/app/agent.rs:647-655,746-749` | J8 J11 | 🟡 |
+| R14-3 | **换模是事件**：`config_update` 且按作用域分 —— lane 级可切 `model`/`thinkingLevel`/`activeTools`，另有 global 级 | pi `agent-harness.ts:375-410` | J9 | 🟢 |
+| R14-4 | **会话级选择与全局默认分开存**，且不一致时**显式报错**而非静默 | DSH `packages/api/session-controller/src/commands.ts` 的 `SessionSelectModelRequest/Value`、`selectModel()`、`agentDefaultModel.saveSelection()`、错误码 `session/model-unavailable` | J10 | 🟡 |
+| R14-5 | **每会话持久化 + 恢复投影**：`SessionModelRecordPayload` / `SessionRestoreProjection`；**auth type 是模型记录的一部分** | qwen `packages/cli/src/acp-integration/session-model-persistence.ts` | J6 J10 | 🟡 |
+| R14-6 | **选择器要工程化**：按 `provider:model` 去重、**每厂商上限 200**（客户端单下拉框渲染）、`custom:<name>` slug 保证 choice id 可回环、**discovery 失败时声明的模型仍存活**（有些端点无 `/models` 路由） | hermes `acp_adapter/model_catalog.py`（`ACP_MAX_MODELS_PER_PROVIDER`、`_named_custom_provider_catalogs`） | J12 | 🟢 |
+| R14-7 | **刷新鉴权头不得改变模型身份** —— 有硬守卫 | zcode `packages/adapters/src/model/runner.ts:353`：`throw new Error("Runtime header refresh changed the bound model identity.")` | J13 | 🟡 |
+| R14-8 | **历史回放会静默覆盖用户模型选择** —— grok 专门加了防护：`ReconnectState::user_selected_model` 抑制 replay 的静默回退 | grok `agent.rs:746` 注释 | J14 | 🟡 |
+| R14-9 | **模型切换经 ACP 是标准能力**：`SessionModelState{available_models, current_model_id}`、`ModelInfo` | hermes `acp_adapter/model_catalog.py:238` 用 `from acp.schema import ModelInfo, SessionModelState`；grok 用 `acp::ModelId` | J6 K4 | 🟢 |
+| R14-10 | **模型子系统值得独立成层**：50+ 文件覆盖重试/失败分类/限流/离峰重试/失败策略 | zcode `apps/zcode-cli/packages/adapters/src/model/`（`retry-budget.ts`、`failure-classifier.ts`、`offpeak-retry.ts`、`workflow-model-failure-policy.ts`） | J15 J16 | 🟡 |
+| R14-11 | 换模命令 `provider-manager` 对话框；provider 与 model 同在 app state | kimi `apps/kimi-code/src/tui/commands/provider.ts` | J6 K1 | 🟡 |
+
+**综合后的默认设计（三条最该抄的）**
+
+1. **`{provider, modelId}` + configured/captured 分离**（R14-1）—— 这是**多端并发（Q6）与换模的交叉点**。
+   没有 captured，运行中换模会污染在途 turn；有了它，换模对在途操作**无感**。
+2. **换模是事件**（R14-3）—— 换模进事件流，天然满足 L2（可审计）与 L4（可回放），
+   不需要为"记录换模历史"另做设计。
+3. **会话级与全局默认分离且不一致要报错**（R14-4）—— 这正是 R10-5/R10-6 里 PiDeck 踩的坑
+   （多后端默认值互相串味、分支不落盘），DSH 给出了正确解法。
+
 ### R13 · 补充仓（**尚未细读，不作优点断言**）
 
 | 仓 | 已知事实 | 状态 |
@@ -510,5 +570,5 @@ S3、S5、S7 是**最容易做假**的三个，各自对应 §5 中的具体机�
 | 多端并发写状态错乱 | P0 不开放多端写；N3 做前先定互斥粒度 |
 | 提示注入绕过策略（S7） | 策略在**工具执行前**求值（C9），注入文本一律当数据 |
 | 抄了形状没抄纪律 | 纪律写成不变量 + 单测（`04-module-map.md` §不变量） |
-| 88 项功能铺得过宽 | P0 仅 34 项；**P0 跑通前不写任何 UI** |
+| 105 项功能铺得过宽 | P0 仅 41 项；**P0 跑通前不写任何 UI** |
 | 上游演进导致报告过时 | 每轮开工前 `bash tools/snapshot.sh` + `git diff oss/SOURCES.lock` |
