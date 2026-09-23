@@ -1,0 +1,22 @@
+# 行尾统一：避免 Windows 上多轮修改产生假 diff
+# 上游系统 core.autocrlf=true，若不锁定，脚本每次 checkout 都可能变行尾
+* text=auto eol=lf
+
+# 我方脚本明确 LF（bash 执行）
+*.sh   text eol=lf
+*.bash text eol=lf
+
+# Windows 专用脚本必须 CRLF
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# 二进制，不做任何转换
+*.png binary
+*.jpg binary
+*.ico binary
+*.pdf binary
+*.exe binary
+
+# 锁文件：diff 无意义，标为生成物
+oss/SOURCES.lock linguist-generated=true
