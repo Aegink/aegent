@@ -1,0 +1,36 @@
+==============================================================
+REPO: agentscope
+URL : https://github.com/modelscope/agentscope.git
+LIC : LICENSE ->                                   Apache License                            Version 2.0, J
+SIZE: 27M
+LEAK: 未在文档中命中泄露关键词
+CLEAN-ROOM: 无明确声明
+SOURCEMAP: 无
+==============================================================
+REPO: codex
+URL : https://github.com/openai/codex.git
+LIC : LICENSE ->                                  Apache License                            Version 2.0, Ja
+SIZE: 119M
+LEAK: 未在文档中命中泄露关键词
+CLEAN-ROOM: 有声明
+SOURCEMAP: 无
+==============================================================
+REPO: deepseek-harness
+URL : https://github.com/deepseek-ai/deepseek-harness.git
+LIC : LICENSE -> MIT License  Copyright (c) 2026 DeepSeek 
+SIZE: 162M
+LEAK: 未在文档中命中泄露关键词
+CLEAN-ROOM: 有声明
+SOURCEMAP: 无
+==============================================================
+REPO: grok-build
+URL : https://github.com/xai-org/grok-build.git
+LIC : LICENSE -> Copyright 2023-2026 SpaceXAI   
+SIZE: 103M
+LEAK: 未在文档中命中泄露关键词
+CLEAN-ROOM: 无明确声明
+SOURCEMAP: 无
+==============================================================
+REPO: hermes-agent
+URL : https://github.com/NousResearch/hermes-agent.git
+LIC : LICENSE -> MIT License  Copyright (c) 2025 Nous Research 

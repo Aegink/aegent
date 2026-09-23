@@ -19,10 +19,13 @@ aegent/
 │       ├── 00-inventory.md
 │       └── ...
 ├── tools/                 可重跑脚本（被跟踪）
-│   ├── clone-all.sh       幂等克隆全部上游
+│   ├── clone-all.sh       幂等克隆全部上游（已存在则跳过）
 │   ├── snapshot.sh        刷新 oss/SOURCES.lock
-│   └── license-audit.sh   许可与来源合规检查
-├── notes/                 随手笔记、草稿（被跟踪）
+│   ├── license-detect.sh  精确识别根许可（被其他脚本 source）
+│   ├── license-audit.sh   合规扫描：许可 / 泄露迹象 / sourcemap
+│   └── inventory.sh       生成 docs/research/00-inventory.md
+├── notes/                 踩坑记录与草稿（被跟踪）
+│   └── 01-workspace-gotchas.md
 └── src/                   我方内核代码（待建）
 ```
 

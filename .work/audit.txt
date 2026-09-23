@@ -1,0 +1,150 @@
+==============================================================
+REPO: agentscope
+URL : https://github.com/modelscope/agentscope.git
+LIC : LICENSE ->                                   Apache License                            Version 2.0, J
+SIZE: 27M
+LEAK: 未在文档中命中泄露关键词
+CLEAN-ROOM: 无明确声明
+SOURCEMAP: 无
+==============================================================
+REPO: codex
+URL : https://github.com/openai/codex.git
+LIC : LICENSE ->                                  Apache License                            Version 2.0, Ja
+SIZE: 119M
+LEAK: 未在文档中命中泄露关键词
+CLEAN-ROOM: 有声明
+SOURCEMAP: 无
+==============================================================
+REPO: deepseek-harness
+URL : https://github.com/deepseek-ai/deepseek-harness.git
+LIC : LICENSE -> MIT License  Copyright (c) 2026 DeepSeek 
+SIZE: 162M
+WARN: 泄露关键词命中 ->
+        oss/deepseek-harness/.agents/notes/archived/architecture/2026-07-24-dsh-commander-argument-adapter.md
+        oss/deepseek-harness/.agents/notes/archived/architecture/2026-07-30-settings-write-path-integrity.md
+        oss/deepseek-harness/.agents/notes/archived/bug-fix/2026-07-28-themed-scrollbars-and-reserved-gutter.md
+CLEAN-ROOM: 有声明
+SOURCEMAP: 无
+==============================================================
+REPO: grok-build
+URL : https://github.com/xai-org/grok-build.git
+LIC : LICENSE -> Copyright 2023-2026 SpaceXAI   
+SIZE: 103M
+LEAK: 未在文档中命中泄露关键词
+CLEAN-ROOM: 无明确声明
+SOURCEMAP: 无
+==============================================================
+REPO: hermes-agent
+URL : https://github.com/NousResearch/hermes-agent.git
+LIC : LICENSE -> MIT License  Copyright (c) 2025 Nous Research 
+SIZE: 285M
+WARN: 泄露关键词命中 ->
+        oss/hermes-agent/apps/desktop/scripts/profile-typing-lag.md
+        oss/hermes-agent/COMPAT_MANIFEST.md
+        oss/hermes-agent/gateway/AGENTS.md
+CLEAN-ROOM: 无明确声明
+SOURCEMAP: 无
+==============================================================
+REPO: kimi-code
+URL : https://github.com/MoonshotAI/kimi-code.git
+LIC : LICENSE -> MIT License  Copyright (c) 2026 Moonshot AI 
+SIZE: 101M
+LEAK: 未在文档中命中泄露关键词
+CLEAN-ROOM: 无明确声明
+SOURCEMAP: 无
+==============================================================
+REPO: mini-agent
+URL : https://github.com/MiniMax-AI/Mini-Agent.git
+LIC : LICENSE -> MIT License  Copyright (c) 2025 MiniMax 
+SIZE: 16M
+LEAK: 未在文档中命中泄露关键词
+CLEAN-ROOM: 无明确声明
+SOURCEMAP: 无
+==============================================================
+REPO: mini-swe-agent
+URL : https://github.com/SWE-agent/mini-swe-agent.git
+LIC : LICENSE.md -> MIT License  Copyright (c) 2025 Kilian A. Lieret and Carlos E. Jimenez 
+SIZE: 2.9M
+LEAK: 未在文档中命中泄露关键词
+CLEAN-ROOM: 有声明
+SOURCEMAP: 无
+==============================================================
+REPO: opencode
+URL : https://github.com/anomalyco/opencode.git
+LIC : LICENSE -> MIT License  Copyright (c) 2025 opencode 
+SIZE: 219M
+WARN: 泄露关键词命中 ->
+        oss/opencode/packages/opencode/specs/effect/todo.md
+CLEAN-ROOM: 无明确声明
+SOURCEMAP: 无
+==============================================================
+REPO: pi-desktop
+URL : https://github.com/vastsa/PI-Desktop.git
+LIC : LICENSE ->                    GNU LESSER GENERAL PUBLIC LICENSE                        Version 3, 29 
+SIZE: 78M
+WARN: 泄露关键词命中 ->
+        oss/pi-desktop/docs/adr/0132-attribute-cross-display-window-moves-to-the-user.md
+        oss/pi-desktop/docs/adr/0217-host-stdout-sender-must-not-outlive-serve.md
+        oss/pi-desktop/docs/adr/0276-official-plugin-channel-and-backup-channels.md
+CLEAN-ROOM: 无明确声明
+SOURCEMAP: 无
+==============================================================
+REPO: pi-mono
+URL : https://github.com/lue-labs/pi-mono.git
+LIC : LICENSE -> MIT License  Copyright (c) 2025 Mario Zechner 
+SIZE: 41M
+WARN: 泄露关键词命中 ->
+        oss/pi-mono/docs/research/pi-memory-transcript-investigation-2026-08-17.md
+        oss/pi-mono/docs/specs/bg-job-orphan-reaping.md
+        oss/pi-mono/packages/agent/docs/harness.md
+CLEAN-ROOM: 有声明
+SOURCEMAP: 无
+==============================================================
+REPO: pi
+URL : https://github.com/earendil-works/pi.git
+LIC : LICENSE -> MIT License  Copyright (c) 2025 Mario Zechner 
+SIZE: 37M
+WARN: 泄露关键词命中 ->
+        oss/pi/packages/agent/docs/harness.md
+        oss/pi/packages/agent/docs/pico/pico-v3.md
+        oss/pi/packages/agent/docs/tool-durability.md
+CLEAN-ROOM: 有声明
+SOURCEMAP: 无
+==============================================================
+REPO: pideck
+URL : https://github.com/ayuayue/PiDeck.git
+LIC : LICENSE -> MIT License  Copyright (c) 2026 PiDeck contributors 
+SIZE: 54M
+WARN: 泄露关键词命中 ->
+        oss/pideck/CHANGELOG.md
+CLEAN-ROOM: 有声明
+SOURCEMAP: 无
+==============================================================
+REPO: qwen-code
+URL : https://github.com/QwenLM/qwen-code.git
+LIC : LICENSE ->                                   Apache License                            Version 2.0, J
+SIZE: 279M
+WARN: 泄露关键词命中 ->
+        oss/qwen-code/.github/scripts/ecs-runner/README.md
+        oss/qwen-code/.qwen/e2e-tests/2026-08-04-secondary-artifact-workspace-ownership.md
+        oss/qwen-code/CHANGELOG.md
+CLEAN-ROOM: 有声明
+SOURCEMAP: 无
+==============================================================
+REPO: zcode
+URL : https://github.com/zai-org/ZCode.git
+LIC : LICENSE ->                                   Apache License                            Version 2.0, J
+SIZE: 122M
+WARN: 泄露关键词命中 ->
+        oss/zcode/.agents/skills/agent-browser/SKILL.md
+CLEAN-ROOM: 无明确声明
+SOURCEMAP: 无
+==============================================================
+REPO: claude-official
+URL : https://github.com/anthropics/claude-code.git
+LIC : LICENSE.md -> © Anthropic PBC. All rights reserved. Use is subject to Anthropic's [Commercial Terms of 
+SIZE: 28M
+WARN: 泄露关键词命中 ->
+        refs/claude-official/CHANGELOG.md
+CLEAN-ROOM: 无明确声明
+SOURCEMAP: 无

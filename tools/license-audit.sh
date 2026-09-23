@@ -9,7 +9,11 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 # 泄露/可疑关键词。命中即打标，需人工判断，不自动删除。
-LEAK_PAT='leaked|leak of|sourcemap.*claude|claude-code.*deobfusc|deobfuscated|反混淆|逆向.*claude'
+# 必须与 claude/anthropic 同现才算嫌疑，否则 'leaked loop variables' 之类的
+# 普通技术用语会大面积误报（实测 8 个仓命中，逐条查证全是误报）。
+LEAK_PAT='(claude|anthropic)[^
+]{0,60}(leaked|leak|sourcemap|deobfusc|de-obfusc|reverse.engineer|反混淆|逆向)|(leaked|sourcemap|deobfusc|de-obfusc|反混淆|逆向)[^
+]{0,60}(claude|anthropic)'
 CLEAN_PAT='clean.?room|未使用.*泄露|no leaked|without.*leaked'
 
 for base in oss refs; do
