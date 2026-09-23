@@ -1,45 +1,43 @@
 #!/usr/bin/env bash
-# 生成 oss/SOURCES.lock：记录每个上游副本的 URL、当前 commit SHA、克隆日期、LICENSE 标识
-# 调研报告必须引用这里的 SHA —— 上游随时会变，没有 SHA 的结论无法复现。
+# 生成 oss/SOURCES.lock —— 记录每个上游副本的 URL / commit SHA / 许可 / 克隆日
+# 调研报告的每条结论都应对应到这里的 commit；上游随时会变，没有 SHA 就无法复现。
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+source "$ROOT/tools/license-detect.sh"
 OUT="oss/SOURCES.lock"
 TODAY="$(date +%Y-%m-%d)"
 
 {
-  echo "# 上游参考仓库快照 —— 由 tools/snapshot.sh 生成，请勿手改"
-  echo "# 生成日期: $TODAY"
-  echo "#"
-  echo "# 用途: 调研报告中每个结论都应能对应到这里的 commit，保证可复现。"
-  echo "# 刷新: bash tools/snapshot.sh"
-  echo
-  printf '%-20s %-38s %-12s %-14s %s\n' "DIR" "REPO" "COMMIT" "DATE" "LICENSE"
-  printf '%-20s %-38s %-12s %-14s %s\n' "---" "----" "------" "----" "-------"
+echo "# 上游参考仓库快照"
+echo
+echo "> 由 \`tools/snapshot.sh\` 于 $TODAY 生成，**请勿手改**。刷新：\`bash tools/snapshot.sh\`"
+echo ">"
+echo "> 调研报告中引用代码或行为时，必须能对应到下表 commit，否则结论不可复现。"
+echo
+echo "| 目录 | 仓库 | Commit | 上游提交日 | 许可 | 体积 |"
+echo "|------|------|--------|-----------|------|------|"
 
-  for base in oss refs; do
-    [ -d "$base" ] || continue
-    for d in "$base"/*/; do
-      [ -d "$d/.git" ] || continue
-      name="$(basename "$d")"
-      url="$(git -C "$d" remote get-url origin 2>/dev/null \
-             | sed -e 's#^https://github.com/##' -e 's#\.git$##')"
-      sha="$(git -C "$d" rev-parse --short HEAD 2>/dev/null)"
-      date="$(git -C "$d" log -1 --format=%cs 2>/dev/null)"
-
-      lic="none"
-      for f in LICENSE LICENSE.md LICENSE.txt COPYING COPYING.txt LICENSE-MIT LICENSE-APACHE; do
-        if [ -f "$d/$f" ]; then
-          # 抓第一行有实质内容的文字作为标识
-          head_line="$(grep -m1 -E 'MIT|Apache|GPL|BSD|MPL|ISC|Unlicense|proprietary|Proprietary|All rights reserved|copyright' "$d/$f" 2>/dev/null | head -1 | tr -d '\r' | cut -c1-40)"
-          lic="${f}${head_line:+ | $head_line}"
-          break
-        fi
-      done
-      printf '%-20s %-38s %-12s %-14s %s\n' "$name" "$url" "$sha" "$date" "$lic"
-    done
+for base in oss refs; do
+  [ -d "$base" ] || continue
+  for d in "$base"/*/; do
+    [ -d "$d/.git" ] || continue
+    n="$(basename "$d")"
+    url="$(git -C "$d" remote get-url origin 2>/dev/null | sed -e 's#^https://github.com/##' -e 's#\.git$##')"
+    sha="$(git -C "$d" rev-parse --short HEAD 2>/dev/null)"
+    udate="$(git -C "$d" log -1 --format=%cs 2>/dev/null)"
+    sz="$(du -sh "$d" 2>/dev/null | cut -f1)"
+    echo "| $n | $url | \`$sha\` | $udate | $(detect_license "$d") | $sz |"
   done
+done
+
+echo
+echo "## 许可分级（决定能否摘代码）"
+echo
+echo "- **MIT / Apache-2.0 / BSD** → 可参考实现，摘代码须保留版权头并登记 \`THIRD_PARTY.md\`"
+echo "- **LGPL** → 可链接调用；若修改库本身并分发，须回馈修改"
+echo "- **GPL / AGPL** → 只学行为，**不摘代码**（传染性）"
+echo "- **PROPRIETARY / NO-LICENSE** → 只读行为与文档，**不摘代码**"
 } > "$OUT"
 
-echo "已写入 $OUT"
-column -t -s' ' "$OUT" 2>/dev/null | tail -30 || tail -30 "$OUT"
+echo "已写入 $OUT"; echo; grep -v '^>' "$OUT" | grep -v '^$'
