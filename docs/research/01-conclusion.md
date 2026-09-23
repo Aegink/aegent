@@ -29,7 +29,13 @@
 
 它们这么选是因为假设**单用户 + 本地终端 + 用户自己盯着**。
 而你的拓扑里 **Web 和 IM 端的请求不是盯着终端的人发的**——一条被转发的 IM 消息就能触发执行。
-**这个假设对你不成立，所以沙箱必须自建，且必须在 P0。** 能抄的只有 Codex（`codex-rs/sandboxing/` + `bwrap`）和 DSH（`packages/sandbox/`）。
+**这个假设对你不成立，所以沙箱必须自建，且必须在 P0。** 能抄的只有 Codex 和 DSH（`packages/sandbox/`）。
+
+> **修正（2026-09-23 二次核实）**：初版称"Codex 沙箱深绑 bubblewrap/Landlock，抄不进来"，
+> **对 Windows 是错的**。Codex 有五个后端，含两个 Windows 后端：
+> `WindowsSandboxLevel = { Disabled(默认), RestrictedToken, Elevated }`。
+> 非提权后端 `codex-rs/windows-sandbox-rs`（65 个 .rs：ACL 递归拒绝读 + 能力 SID + AppContainer + DPAPI）。
+> **这是 Windows 目标下最该细读的实现。**
 
 ### 2. 权限系统有一份可直接复用的正确形状（OpenCode）
 

@@ -64,11 +64,11 @@
 | **Pi** | **不做**。`SECURITY.md`：信任边界 = 本地用户账号，"由用户自行负责监视，或用容器/虚拟机关起来"。沙箱只是 `coding-agent/examples/extensions/sandbox`。 |
 | **OpenCode** | **不做**。`SECURITY.md` 明写 *No Sandbox*："权限系统是 **UX feature**……**不提供安全隔离**"。 |
 | **DSH** | **有真沙箱包且可插后端**：`packages/sandbox/sandbox` + `packages/sandbox/sandbox-local`。 |
-| **Codex** | **本层最强参考**。`codex-rs/sandboxing/` + `core/src/sandboxing/`；`codex-rs/bwrap/`（Linux bubblewrap）；`cli/src/debug_sandbox.rs`（**可独立调试**）；`cli/src/doctor/network.rs`（**网络策略有独立诊断**）。 |
+| **Codex** | **本层最强参考，全平台五后端**。`codex-rs/sandboxing/src/`：`bwrap.rs` `landlock.rs`(Linux) `seatbelt.rs`(macOS) **`windows.rs` `windows_mxc.rs`(Windows)**。Windows 分两档 `WindowsSandboxLevel={Disabled(默认),RestrictedToken,Elevated}`：非提权后端 `codex-rs/windows-sandbox-rs`(65 个 .rs：ACL 递归拒绝读 / `CapSids` / AppContainer / DPAPI)；提权后端 `mxc-sandbox`+`windows-sandbox-service`。`cli/src/doctor/network.rs`（**网络策略独立诊断**）。 |
 | **Qwen Code** | `packages/core/src/sandbox` + `scripts/sandbox-prototype`（**原型阶段**）。 |
 | **Grok Build** | — |
 | **PI-Desktop** | — （host 在 Rust `crates/host-core`） |
-| **自研选型** | **学 Codex**（进程级沙箱 + 网络策略独立 + 可调试的 doctor），**学 DSH 的可插后端**（local 先跑通，容器后补）。**不要指望从 Pi/OpenCode 抄沙箱——它们明确没有。** |
+| **自研选型** | **学 Codex，Windows 场景尤其**：抄 `RestrictedToken` 非提权路线（ACL + 能力 SID，**不需提权**）+ `WindowsSandboxFilesystemOverrides` 的策略形状 + 网络策略独立 + 可调试 doctor。**学 DSH 的可插后端**（local 先跑通，容器后补）。**不要指望从 Pi/OpenCode 抄沙箱——它们明确没有。** |
 
 ---
 
