@@ -40,6 +40,9 @@ credentials.json
 secrets.*
 serviceAccount*.json
 
+# ---- 脚本临时输出（可重跑再生，不入库）----
+.work/
+
 # ---- 日志 / 运行时数据 ----
 logs/
 *.log
