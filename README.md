@@ -7,6 +7,7 @@
 
 ```
 aegent/
+├── AGENTS.md              仓库级开发规范（优先级高于本文件）
 ├── README.md              本文件：结构说明与工作流
 ├── THIRD_PARTY.md         第三方许可清单（引用了谁的代码、什么许可、版权头）
 ├── oss/                   上游参考仓库克隆（gitignored，各自带 .git）
@@ -15,9 +16,14 @@ aegent/
 ├── refs/                  官方公开文档摘录（gitignored）
 │   └── claude-official/   anthropics/claude-code 公开仓
 ├── docs/
-│   └── research/          调研报告（被跟踪，按轮次编号）
-│       ├── 00-inventory.md
-│       └── ...
+│   ├── requirements.md    需求文档（v0.1 待评审，含 7 项阻塞决策）
+│   └── research/          调研报告（tag research/v1）
+│       ├── 00-inventory.md   本机仓库盘点
+│       ├── 01-conclusion.md  结论 + 排除清单 + 验证命令
+│       ├── 02-comparison.md  A–N × 10 仓对比总表
+│       ├── 03-conflicts.md   9 处冲突与决策
+│       ├── 04-module-map.md  P0 17 文件 + 接口草稿
+│       └── cards/            仓库卡片
 ├── tools/                 可重跑脚本（被跟踪）
 │   ├── clone-all.sh       幂等克隆全部上游（已存在则跳过）
 │   ├── snapshot.sh        刷新 oss/SOURCES.lock
