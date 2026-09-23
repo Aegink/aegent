@@ -13,6 +13,7 @@
 | [`cards/pi.md`](cards/pi.md) | 仓库卡片 · pi（内核候选） |
 | [`cards/opencode.md`](cards/opencode.md) | 仓库卡片 · opencode |
 | [`cards/batch-2.md`](cards/batch-2.md) | 仓库卡片 · DSH / codex / kimi / qwen / grok / hermes / pi-desktop / pideck / zcode |
+| [`cards/cc-switch.md`](cards/cc-switch.md) | 仓库卡片 · cc-switch（J 层多厂商配置参考，含 Tauri/Electron 尺寸实测） |
 
 ## 复现方式
 

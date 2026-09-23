@@ -82,7 +82,7 @@ OpenCode 的会话存储**此刻正处于 JSON 文件树 → drizzle/SQL 的迁�
 
 **无仓库需要排除。**
 
-`tools/license-audit.sh` 扫描 16 个仓（`oss/` 15 + `refs/` 1），2026-09-23：
+`tools/license-audit.sh` 扫描 **17** 个仓（`oss/` 16 + `refs/` 1；含后续加入的 `cc-switch`），2026-09-23：
 
 | 检查项 | 结果 |
 | --- | --- |
@@ -172,5 +172,5 @@ ls oss/qwen-code/packages/cli/src/acp-integration/
 ls oss/grok-build/crates/codegen/xai-acp-lib/src/
 
 # 10. 复跑合规扫描，确认结论可重现
-bash tools/license-audit.sh | grep -c "未在文档中命中泄露关键词"   # 期望 16
+bash tools/license-audit.sh | grep -c "未在文档中命中泄露关键词"   # 期望 17
 ```
