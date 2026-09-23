@@ -146,8 +146,36 @@
 | **Pi** | 独立 `packages/ai`；扩展示例含 `custom-provider-anthropic`、`custom-provider-gitlab-duo`（**厂商适配可外挂**）。 |
 | **OpenCode** | 独立 `packages/llm/`。 |
 | **Kimi Code** | `packages/oauth`（**OAuth 独立成包**）+ `packages/klient` + `packages/kap-server`。 |
-| **ZCode** | `contracts/src/model/index.ts`（模型有契约层）。 |
-| **自研选型** | 厂商适配独立成包（Pi/OpenCode 一致）+ **OAuth 独立成包**（学 Kimi）。 |
+| **ZCode** | `contracts/src/model/index.ts`（模型有契约层）；**`packages/adapters/src/model/` 是 50+ 文件的独立子系统**（`retry-budget.ts`、`failure-classifier.ts`、`offpeak-retry.ts`、`workflow-model-failure-policy.ts`）。`runner.ts:353` 有硬守卫：`throw new Error("Runtime header refresh changed the bound model identity.")` |
+| **自研选型** | 厂商适配独立成包（Pi/OpenCode 一致）+ **OAuth 独立成包**（学 Kimi）+ **运行时换模综合八仓**（见下） |
+
+### J-补 · 运行时换模（跨仓实测，2026-09-23 补充）
+
+早前本表未列此项，是**漏查**。实测 8 个仓全部有运行时换模：
+
+| 仓 | 做法 | 独到之处 |
+| --- | --- | --- |
+| **pi** | lane 上 `setModel()`；`config_update` 事件 | **`configuredModel` 与 `capturedModel` 分离** —— 运行中换模，在途 turn 仍用启动时捕获的模型。`ModelIdentity={provider,modelId}` 二元组。`activeTools` 也可一起切 |
+| **grok** | 换模状态机 | **`DeferredModelSwitch{model_id, effort, prev_model_id}` 带失败回滚目标**；四态 `model_switch_pending`/`deferred_model_switch`/`user_model_preference`/`model_incompatible`；`effort` 随模型一起切 |
+| **DSH** | session command | `SessionSelectModelRequest/Value`；**会话级选择与全局默认分开存**，不一致时显式报错（`session/model-unavailable`） |
+| **qwen** | 会话级持久化 | `SessionModelRecordPayload` + `SessionRestoreProjection`；**auth type 是模型记录的一部分** |
+| **hermes** | ACP 模型选择器 | **每厂商上限 200**（客户端单下拉框渲染）；`custom:<name>` slug 保证 choice id 可回环；**discovery 失败时声明的模型仍存活**（有些端点无 `/models` 路由） |
+| **zcode** | 独立模型子系统 | **刷新鉴权头不得改变模型身份**（硬守卫） |
+| **kimi** | `/provider` 命令 | provider 与 model 同在 app state |
+| **ACP 协议** | 标准 schema | `SessionModelState{available_models, current_model_id}`、`ModelInfo` —— 换模经 ACP 是标准能力 |
+| **cc-switch** | **无运行时换模** | 它是配置管理器，`failover` 是「切换写进目标文件的配置」，不是运行时路由。**唯一没有的一家** |
+
+**综合结论（三条最该抄）**
+
+1. **`{provider, modelId}` + configured/captured 分离**（pi）—— **多端并发与换模的交叉点**。
+   没有 captured，运行中换模会污染在途 turn；有了它，换模对在途操作**无感**。
+2. **换模是事件**（pi 的 `config_update`）—— 天然满足可审计与可回放，不必另做「换模历史」设计。
+3. **会话级与全局默认分离且不一致要报错**（DSH）—— 正是 PiDeck 踩过的坑
+   （多后端默认值串味、分支不落盘）的正确解法。
+
+**一个细节坑（grok，值得单独记）**：历史回放会**静默覆盖**用户的模型选择，
+grok 专门用 `ReconnectState::user_selected_model` 抑制 replay 的静默回退。
+多端重连场景必然遇到。
 
 ---
 
