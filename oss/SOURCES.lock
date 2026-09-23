@@ -1,0 +1,31 @@
+# 上游参考仓库快照
+
+> 由 `tools/snapshot.sh` 于 2026-09-23 生成，**请勿手改**。刷新：`bash tools/snapshot.sh`
+>
+> 调研报告中引用代码或行为时，必须能对应到下表 commit，否则结论不可复现。
+
+| 目录 | 仓库 | Commit | 上游提交日 | 许可 | 体积 |
+|------|------|--------|-----------|------|------|
+| agentscope | modelscope/agentscope | `083cbd1` | 2026-09-23 | Apache-2.0 [LICENSE] | 27M |
+| codex | openai/codex | `40eac3c` | 2026-09-23 | Apache-2.0 [LICENSE] | 119M |
+| deepseek-harness | deepseek-ai/deepseek-harness | `0010283` | 2026-09-22 | MIT [LICENSE] | 162M |
+| grok-build | xai-org/grok-build | `07e35a3` | 2026-09-22 | Apache-2.0 [LICENSE] | 103M |
+| hermes-agent | NousResearch/hermes-agent | `54c5530` | 2026-09-23 | MIT [LICENSE] | 285M |
+| kimi-code | MoonshotAI/kimi-code | `32000d0` | 2026-09-23 | MIT [LICENSE] | 101M |
+| mini-agent | MiniMax-AI/Mini-Agent | `d76a4f6` | 2026-02-14 | MIT [LICENSE] | 16M |
+| mini-swe-agent | SWE-agent/mini-swe-agent | `04d809c` | 2026-09-03 | MIT [LICENSE.md] | 2.9M |
+| opencode | anomalyco/opencode | `18ef3cc` | 2026-09-23 | MIT [LICENSE] | 219M |
+| pi-desktop | vastsa/PI-Desktop | `a634b68` | 2026-09-23 | LGPL (Version 3) [LICENSE] | 78M |
+| pi-mono | lue-labs/pi-mono | `8ca1d23` | 2026-09-22 | MIT [LICENSE] | 41M |
+| pi | earendil-works/pi | `b313731` | 2026-09-23 | MIT [LICENSE] | 37M |
+| pideck | ayuayue/PiDeck | `d1bd0c9` | 2026-09-23 | MIT [LICENSE] | 54M |
+| qwen-code | QwenLM/qwen-code | `40ef07a` | 2026-09-23 | Apache-2.0 [LICENSE] | 279M |
+| zcode | zai-org/ZCode | `872ad96` | 2026-09-21 | Apache-2.0 [LICENSE] | 122M |
+| claude-official | anthropics/claude-code | `56f3653` | 2026-09-22 | PROPRIETARY (保留所有权利，不可复制) [LICENSE.md] | 28M |
+
+## 许可分级（决定能否摘代码）
+
+- **MIT / Apache-2.0 / BSD** → 可参考实现，摘代码须保留版权头并登记 `THIRD_PARTY.md`
+- **LGPL** → 可链接调用；若修改库本身并分发，须回馈修改
+- **GPL / AGPL** → 只学行为，**不摘代码**（传染性）
+- **PROPRIETARY / NO-LICENSE** → 只读行为与文档，**不摘代码**
