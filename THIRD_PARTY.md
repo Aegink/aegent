@@ -66,8 +66,30 @@ for details" 正好指回那份专有许可：
 
 ## 排除清单（禁止阅读/引用）
 
-| 仓库 | 排除原因 | 日期 |
-|------|---------|------|
-| *(由 `tools/license-audit.sh` 扫描后填写)* | | |
+**2026-09-23 扫描结果：无仓库需要排除。**
 
-排除标准：泄露镜像 / 无许可证 / README 自述源自 leaked Claude Code 且含专有源码。
+16 个仓（`oss/` 15 + `refs/` 1）全部通过：
+
+| 检查项 | 结果 |
+|--------|------|
+| 泄露镜像 / 自述源自 leaked Claude Code | 0 命中 |
+| 缺少 LICENSE 文件 | 0（16/16 有许可文件） |
+| 专有 sourcemap（非 node_modules） | 0 |
+| 明确 clean-room 声明 | 7 个：codex、deepseek-harness、mini-swe-agent、pi、pi-mono、pideck、qwen-code |
+
+初版检测正则含裸词 `leaked`，曾命中 8 个仓十余处。**逐条查证全是普通技术用语**，
+与泄露源码无关，例如：
+
+- `deepseek-harness`：`a leaked --config/-p/--resume`（CLI 参数在子命令间串味）
+- `hermes-agent/compat`：`leaked loop variables`；`gateway/AGENTS.md`：`a leaked allowlist`
+- `pi/packages/agent/docs/harness.md`：`values leaked by outcome/terminal cleanup`
+- `zcode/.agents/skills/agent-browser/SKILL.md`：`avoid leaked processes`
+- `claude-official/CHANGELOG.md`：`leaked agent worktree registrations`
+
+正则已收紧为**必须与 `claude`/`anthropic` 同现**，复扫 16 仓 0 命中。
+
+> 注意：`claude-official` 无 clean-room 声明且为专有许可 —— 这是**正常**的，
+> 它是 Anthropic 官方仓而非第三方复刻品，但约束仍是「只读行为，不摘代码」。
+
+排除标准（供后续新增仓库时复用）：泄露镜像 / 无许可证 /
+README 自述源自 leaked Claude Code 且含专有源码。

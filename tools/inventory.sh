@@ -4,6 +4,7 @@
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+source "$ROOT/tools/license-detect.sh"
 OUT="docs/research/00-inventory.md"
 TODAY="$(date +%Y-%m-%d)"
 
@@ -26,15 +27,9 @@ for base in oss refs; do
     url="$(git -C "$d" remote get-url origin 2>/dev/null | sed -e 's#^https://github.com/##' -e 's#\.git$##')"
     sha="$(git -C "$d" rev-parse --short HEAD 2>/dev/null)"
     sz="$(du -sh "$d" 2>/dev/null | cut -f1)"
-    lic="—"
-    for f in LICENSE LICENSE.md LICENSE.txt COPYING; do
-      if [ -f "$d/$f" ]; then
-        lic="$(grep -m1 -oE 'MIT|Apache License|Apache-2\.0|GNU (AFFERO )?GENERAL PUBLIC LICENSE|BSD|Mozilla Public License|ISC|The Unlicense|Business Source' "$d/$f" | head -1)"
-        lic="${lic:-自定义/见文件}"
-        break
-      fi
-    done
-    echo "| $n | $url | $sha | $lic | $sz |"
+    # 与 SOURCES.lock 用同一套判定，避免两份文档许可标注不一致
+    lic="$(detect_license "$d")"
+    echo "| $n | $url | \`$sha\` | $lic | $sz |"
   done
 done
 echo

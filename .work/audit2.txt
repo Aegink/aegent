@@ -34,3 +34,95 @@ SOURCEMAP: 无
 REPO: hermes-agent
 URL : https://github.com/NousResearch/hermes-agent.git
 LIC : LICENSE -> MIT License  Copyright (c) 2025 Nous Research 
+SIZE: 285M
+LEAK: 未在文档中命中泄露关键词
+CLEAN-ROOM: 无明确声明
+SOURCEMAP: 无
+==============================================================
+REPO: kimi-code
+URL : https://github.com/MoonshotAI/kimi-code.git
+LIC : LICENSE -> MIT License  Copyright (c) 2026 Moonshot AI 
+SIZE: 101M
+LEAK: 未在文档中命中泄露关键词
+CLEAN-ROOM: 无明确声明
+SOURCEMAP: 无
+==============================================================
+REPO: mini-agent
+URL : https://github.com/MiniMax-AI/Mini-Agent.git
+LIC : LICENSE -> MIT License  Copyright (c) 2025 MiniMax 
+SIZE: 16M
+LEAK: 未在文档中命中泄露关键词
+CLEAN-ROOM: 无明确声明
+SOURCEMAP: 无
+==============================================================
+REPO: mini-swe-agent
+URL : https://github.com/SWE-agent/mini-swe-agent.git
+LIC : LICENSE.md -> MIT License  Copyright (c) 2025 Kilian A. Lieret and Carlos E. Jimenez 
+SIZE: 2.9M
+LEAK: 未在文档中命中泄露关键词
+CLEAN-ROOM: 有声明
+SOURCEMAP: 无
+==============================================================
+REPO: opencode
+URL : https://github.com/anomalyco/opencode.git
+LIC : LICENSE -> MIT License  Copyright (c) 2025 opencode 
+SIZE: 219M
+LEAK: 未在文档中命中泄露关键词
+CLEAN-ROOM: 无明确声明
+SOURCEMAP: 无
+==============================================================
+REPO: pi-desktop
+URL : https://github.com/vastsa/PI-Desktop.git
+LIC : LICENSE ->                    GNU LESSER GENERAL PUBLIC LICENSE                        Version 3, 29 
+SIZE: 78M
+LEAK: 未在文档中命中泄露关键词
+CLEAN-ROOM: 无明确声明
+SOURCEMAP: 无
+==============================================================
+REPO: pi-mono
+URL : https://github.com/lue-labs/pi-mono.git
+LIC : LICENSE -> MIT License  Copyright (c) 2025 Mario Zechner 
+SIZE: 41M
+LEAK: 未在文档中命中泄露关键词
+CLEAN-ROOM: 有声明
+SOURCEMAP: 无
+==============================================================
+REPO: pi
+URL : https://github.com/earendil-works/pi.git
+LIC : LICENSE -> MIT License  Copyright (c) 2025 Mario Zechner 
+SIZE: 37M
+LEAK: 未在文档中命中泄露关键词
+CLEAN-ROOM: 有声明
+SOURCEMAP: 无
+==============================================================
+REPO: pideck
+URL : https://github.com/ayuayue/PiDeck.git
+LIC : LICENSE -> MIT License  Copyright (c) 2026 PiDeck contributors 
+SIZE: 54M
+LEAK: 未在文档中命中泄露关键词
+CLEAN-ROOM: 有声明
+SOURCEMAP: 无
+==============================================================
+REPO: qwen-code
+URL : https://github.com/QwenLM/qwen-code.git
+LIC : LICENSE ->                                   Apache License                            Version 2.0, J
+SIZE: 279M
+LEAK: 未在文档中命中泄露关键词
+CLEAN-ROOM: 有声明
+SOURCEMAP: 无
+==============================================================
+REPO: zcode
+URL : https://github.com/zai-org/ZCode.git
+LIC : LICENSE ->                                   Apache License                            Version 2.0, J
+SIZE: 122M
+LEAK: 未在文档中命中泄露关键词
+CLEAN-ROOM: 无明确声明
+SOURCEMAP: 无
+==============================================================
+REPO: claude-official
+URL : https://github.com/anthropics/claude-code.git
+LIC : LICENSE.md -> © Anthropic PBC. All rights reserved. Use is subject to Anthropic's [Commercial Terms of 
+SIZE: 28M
+LEAK: 未在文档中命中泄露关键词
+CLEAN-ROOM: 无明确声明
+SOURCEMAP: 无
