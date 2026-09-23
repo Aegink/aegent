@@ -94,6 +94,8 @@ S3、S5、S7 是**最容易做假**的三个，各自对应 §5 中的具体机�
 | A4 | 溢出检测（先于压缩） | P0 | R2-4 | 构造超长上下文，断言先触发 overflow 而非直接压 |
 | A5 | 重试策略 | P1 | R2-5 | 模拟 429/5xx，断言按策略重试且事件留记录 |
 | A6 | turn 与 agent 两级生命周期 | P0 | R1-1 | 一个 turn = 一次 assistant 回复 + 其工具调用 |
+| **A7** | **取消 / 中断当前 turn** | **P0** | R15-1 | 中断后事件流有明确终止记录，不留悬挂 turn |
+| **A8** | **取消可把未发出的 prompt 退回输入框** | P1 | R15-1 | 响应到达前取消，prompt 回到输入框而非丢失 |
 
 ### B. Tools
 
@@ -103,11 +105,13 @@ S3、S5、S7 是**最容易做假**的三个，各自对应 §5 中的具体机�
 | B2 | 工具描述与代码分离（`descriptions/*.txt`） | P0 | R2-2 | 改描述不触碰 `.ts`，diff 仅 `.txt` |
 | B3 | 内置工具 `read` `write` `edit` `bash` `glob` `grep` | P0 | R1-6 | 六个均有单测；P0 可先做 read/bash/write |
 | B4 | 文件写串行化队列 | P0 | R1-5 | 并发写同一文件，断言无交错、无丢写 |
-| B5 | 工具输出截断 | P0 | — | 超长输出被截断且有明确标记，非静默丢弃 |
+| B5 | 工具输出截断 | P0 | R15-2 | 超长输出被截断且有明确标记，非静默丢弃 |
 | B6 | 并行执行可配 | P1 | R1-4 | 切 sequential/parallel，行为可观测 |
 | B7 | 工具进度流式上报 | P1 | R1-1 | `tool_execution_update` 事件按序到达 |
 | B8 | 扩展工具 `apply_patch` `lsp` `webfetch` `todo` `question` | P1 | R2-1 | 各工具独立单测 |
 | B9 | 工具调用 ID 全程可追 | P0 | R1-1 | 事件流中 toolCallId 可从 start 追到 end |
+| **B10** | **超限输出落盘 + 告知模型完整输出位置** | **P0** | R15-2 | 截断时写临时文件，并把路径告诉模型，模型可再读 |
+| **B11** | 输出上限：50KB（约 10k token）或 2000 行，先到先算 | P0 | R15-2 | 断言超限被截断且上限可配 |
 
 ### C. Policy / Permissions
 
@@ -122,6 +126,8 @@ S3、S5、S7 是**最容易做假**的三个，各自对应 §5 中的具体机�
 | C7 | 工作区边界 | P0 | R4-8 | S4：越界写被拒且报错明确 |
 | C8 | 权限预设成套切换 | P1 | R3-4 | 切换预设后规则集整体生效 |
 | C9 | 策略求值在**工具执行前** | P0 | — | S7：注入文本不能改变求值时机 |
+| **C10** | **危险命令模式库**（`rm -rf` / `sudo` / `chmod 777`） | **P0** | R15-3 | 内置模式可扩展；命中即升为 ask |
+| **C11** | **项目信任**：未信任项目降权 | P1 | R15-4 | 首次打开陌生项目时限制写与执行，用户显式信任后放开 |
 
 ### D. Sandbox
 
@@ -136,6 +142,9 @@ S3、S5、S7 是**最容易做假**的三个，各自对应 §5 中的具体机�
 | D7 | 沙箱自检 `doctor` | P1 | R4-4 | 可独立运行，报告沙箱可用性与网络策略 |
 | D8 | **API Key 用 DPAPI 加密** | P0 | R4-3 | 配置文件内无明文 key |
 | D9 | 日志脱敏 | P0 | — | 断言日志不含 key / 用户原文 |
+| **D10** | **Windows ACL 沙箱（DSH 路线，独立于 Codex）** | P1 | R15-5 | 与 D6 二选一或互补；DSH 有 `sandbox-windows-acl` |
+| **D11** | **PowerShell 作为一等 shell** | P1 | R15-6 | Windows 下 `pwsh` 与 `bash` 都有 local/sandbox 两态 |
+| **D12** | SSH 远程执行后端 | P2 | R15-7 | 可在远端跑命令；`fs-ssh`/`sandbox-ssh`/`subprocess-ssh` 三层 |
 
 ### E. Session
 
@@ -151,6 +160,7 @@ S3、S5、S7 是**最容易做假**的三个，各自对应 §5 中的具体机�
 | E8 | 导出 / 索引 / 兼容三分 | P1 | R5-2 | 迁移时三者不互相污染 |
 | E9 | 会话可被其他会话引用 | P2 | R3-7 | — |
 | E10 | 快照前必须 flush | P0 | R4-2 | S5：杀进程重启，无"快照说做了/事件说没做" |
+| **E11** | **代码状态检查点**（与事件点对齐） | **P0** | R15-8 | **S1 的真正要求**：revert 不只回到对话，还要回到**当时的代码状态** |
 
 ### F. Context
 
@@ -162,6 +172,8 @@ S3、S5、S7 是**最容易做假**的三个，各自对应 §5 中的具体机�
 | F4 | `overflow` 与 `compaction` 分离 | P0 | R2-4 | 先判溢出再决定压缩 |
 | F5 | 摘要 / 标题生成 | P1 | R6-1 | 长会话有可读标题 |
 | F6 | 提示缓存优化 | P1 | — | 命中率可观测，token 省 ≥ 30%（§6.2） |
+| **F7** | 时间上下文（当前时间注入） | P1 | R15-9 | 模型知道"现在"；长会话中时间不漂移 |
+| **F8** | 工具结果裁剪器 | P1 | R15-10 | 历史中的冗余工具结果可被裁剪，且不破坏因果链 |
 
 ### G. Planning
 
@@ -172,6 +184,7 @@ S3、S5、S7 是**最容易做假**的三个，各自对应 §5 中的具体机�
 | G3 | goal 跨轮驱动 | P1 | R3-1 | goal 跨多个 turn 保持，不因单轮结束丢失 |
 | G4 | 计划落盘 | P1 | R3-1 | 重启后计划仍在 |
 | G5 | 审批过期策略 | P1 | — | 悬置审批有超时，不留永久挂起 |
+| **G6** | goal 截止时间调度 | P1 | R15-11 | goal 有 deadline；到期行为可定义（放弃/上报/续期） |
 
 ### H. Subagents
 
@@ -181,6 +194,8 @@ S3、S5、S7 是**最容易做假**的三个，各自对应 §5 中的具体机�
 | H2 | **结算栅栏** | P1 | R3-2 | 子代理产出原子并入父会话，父会话读不到半成品 |
 | H3 | 权限降级 | P1 | R3-2 | 子代理不得拥有高于父会话的权限 |
 | H4 | 子代理隔离上下文 | P1 | R2-15 | 子代理上下文不污染父会话 |
+| **H5** | **权限降级算法：只继承 deny 与 external_directory，不继承授权** | **P1** | R15-12 | 子代理默认禁用 `task`（不可再分子代理）与 `todowrite` |
+| **H6** | 子代理执行后端可插 | P2 | R15-13 | 可跑在本进程/独立进程/ACP/其他 CLI |
 
 ### I. MCP / Skills / Hooks / Plugins
 
@@ -192,6 +207,8 @@ S3、S5、S7 是**最容易做假**的三个，各自对应 §5 中的具体机�
 | I4 | 进程外插件（websocket） | P2 | R9-2 | 不可信插件隔离在独立进程 |
 | I5 | 插件 SDK | P2 | R10-3 | 第三方可写插件而不碰内核 |
 | I6 | 权限双轨：内核内可信 / 进程外不可信 | P1 | R1-11 + R9-2 | 按信任级分轨，不混为一谈 |
+| **I7** | **hook 协议可兼容既有生态** | P2 | R15-14 | DSH 同时提供 `hooks-claude-code` 与 `hooks-codex` |
+| **I8** | 人格 / agent 预设 | P2 | R15-15 | codex 有 `templates/personalities`；可按会话选预设 |
 
 ### J. Models
 
@@ -214,6 +231,10 @@ S3、S5、S7 是**最容易做假**的三个，各自对应 §5 中的具体机�
 | J15 | 故障转移队列 | P1 | R12-2 | 队列语义非开关，按后端分区 |
 | J16 | 健康检查 + 保留期清理 | P1 | R12-3 | 检查日志带保留期，不无限增长 |
 | J17 | OAuth | P2 | R5-3 | 独立成模块，不侵入内核 |
+| **J18** | **限流追踪与配额** | P1 | R15-25 | 按 provider 追踪用量；接近配额时提前告知 |
+| **J19** | **熔断器** | P1 | R15-26 | 连续失败后熔断该 provider，避免无效重试风暴 |
+| **J20** | **turn 准入控制** | P1 | R15-27 | 并发 turn 有准入闸门，超限排队而非无限并发 |
+| J21 | 成本核算 | P2 | R15-28 | token → 成本可算；按会话/按轮可查 |
 
 ### K. Surfaces
 
@@ -248,6 +269,8 @@ S3、S5、S7 是**最容易做假**的三个，各自对应 §5 中的具体机�
 | M3 | 崩溃续跑 | P1 | R4-2 | S5：重启后不重复已完成副作用 |
 | M4 | 空闲回收 | P2 | R6-2 | 空闲会话被回收，不常驻内存 |
 | M5 | goal 持久化 | P1 | R3-1 | 跨重启仍在 |
+| **M6** | **工具调用超时策略** | **P1** | R15-16 | 每工具可配超时；超时是可观测事件（`TOOL_TIMEOUT`）而非静默失败 |
+| **M7** | 统一 deadline 库 | P2 | R15-16 | 超时逻辑集中，不在各工具里重复实现 |
 
 ### N. 多端同步
 
@@ -259,37 +282,88 @@ S3、S5、S7 是**最容易做假**的三个，各自对应 §5 中的具体机�
 | N4 | 事件序号 / epoch | P1 | R2-9 | 乱序到达可检测 |
 | N5 | 推送 | P2 | — | 状态变更可推送到端 |
 
+### O. 测试与诊断（新增层）
+
+> 原 A–N 无此位置，但"内核可脱离 UI 单测"（§8）和"不变量+单测"（§11）都需要它落地。
+
+| ID | 功能 | 优先级 | 参考 | 验收要点 |
+| --- | --- | --- | --- | --- |
+| **O1** | **假 provider 驱动 loop** | **P0** | R3-9 | 不联网即可跑完整 loop 单测 |
+| O2 | LLM 回放测试（cassette 模式） | P1 | R15-17 | 录制真实响应后可离线重放，测试确定性；DSH `llm-replay`、opencode `http-recorder/cassette.ts` |
+| **O3** | **不变量检查服务** | P1 | R15-18 | 5 条不变量（见 `04-module-map.md`）可自动断言，防回归 |
+| O4 | 沙箱自检 doctor（见 D7） | P1 | R4-4 | — |
+| O5 | 运行时诊断报告 | P2 | R4-4 | 一键导出环境/配置/沙箱可用性 |
+
+### P. 多模态与附件（新增层）
+
+| ID | 功能 | 优先级 | 参考 | 验收要点 |
+| --- | --- | --- | --- | --- |
+| P1 | 附件上传 | P1 | R15-19 | 图片/文件可随消息附上；本地与远端存储可插 |
+| P2 | 图片从上下文卸载 | P1 | R15-20 | 长会话中图片可移出上下文并可回取，防 token 膨胀 |
+| P3 | 附件限额 | P1 | R15-29 | 类型/大小/数量上限可配；超限明确报错 |
+| P4 | 语音转文字 | P2 | R15-21 | DSH 有 `api-speech-to-text`；非必需 |
+
+### Q. 会话数据运维（新增层）
+
+> 原 E 层只管会话**运行时**，"会话文件本身的版本与运维"无处安放。
+
+| ID | 功能 | 优先级 | 参考 | 验收要点 |
+| --- | --- | --- | --- | --- |
+| **Q1** | **会话格式版本迁移链** | **P1** | R15-22 | `v0→v1→v2→v3` 单向链式迁移，**而非 OpenCode 式的两套并存** |
+| Q2 | 会话查询（含工具化） | P2 | R15-23 | agent 可查询历史会话；查询走 SQL 而非全量加载 |
+| Q3 | 落盘文件生命周期管理 | P1 | R15-24 | 截断产生的临时文件有清理策略，不无限堆积 |
+| Q4 | 旧数据清理 | P2 | R6-2 | 与 M4 idle 回收配合 |
+
+### S. 调度与集成（新增层）
+
+> 定时任务、webhook、浏览器/计算机使用 —— 都是"agent 被外部触发"或"agent 操作外部"，与 N 层（多端同步）方向相反。
+
+| ID | 功能 | 优先级 | 参考 | 验收要点 |
+| --- | --- | --- | --- | --- |
+| S1 | 定时任务 | P2 | R15-30 | 可按 cron/星期定义；与 M 层 job 复用调度器 |
+| S2 | webhook 触发会话 | P2 | R15-31 | fire-and-forget 型会话（如 GitHub 事件）；DSH 有 `webhook-github` |
+| S3 | 浏览器使用 | P2 | R15-32 | qwen 有独立 `packages/browser-use`；需单独沙箱与网络策略 |
+| S4 | 计算机使用 | P2 | R15-33 | 屏幕/输入控制；风险最高，需最强审批 |
+| S5 | 反馈上报 | P2 | R15-34 | 用户可对消息/命令反馈；codex 有 `feedback_doctor_report` |
+
 ### 合计
 
 | 优先级 | 数量 |
 | --- | --- |
-| P0 | **41** |
-| P1 | **53** |
-| P2 | **11** |
-| **总计** | **105** |
+| P0 | **47** |
+| P1 | **73** |
+| P2 | **26** |
+| **总计** | **146** |
 
-**分层小计**
+**分层小计**（由 `tools/count-features.sh` 按行统计）
 
 | 层 | P0 | P1 | P2 | 小计 |
 | --- | --- | --- | --- | --- |
-| A. Loop | 5 | 1 | 0 | 6 |
-| B. Tools | 6 | 3 | 0 | 9 |
-| C. Policy | 7 | 2 | 0 | 9 |
-| D. Sandbox | 6 | 3 | 0 | 9 |
-| E. Session | 5 | 3 | 2 | 10 |
-| F. Context | 4 | 2 | 0 | 6 |
-| G. Planning | 0 | 5 | 0 | 5 |
-| H. Subagents | 0 | 4 | 0 | 4 |
-| I. 扩展 | 0 | 4 | 2 | 6 |
-| J. Models | 4 | 12 | 1 | 17 |
+| A. Loop | 6 | 2 | 0 | 8 |
+| B. Tools | 8 | 3 | 0 | 11 |
+| C. Policy | 8 | 3 | 0 | 11 |
+| D. Sandbox | 6 | 5 | 1 | 12 |
+| E. Session | 6 | 3 | 2 | 11 |
+| F. Context | 4 | 4 | 0 | 8 |
+| G. Planning | 0 | 6 | 0 | 6 |
+| H. Subagents | 0 | 5 | 1 | 6 |
+| I. 扩展 | 0 | 4 | 4 | 8 |
+| J. Models | 4 | 15 | 2 | 21 |
 | K. Surfaces | 1 | 5 | 2 | 8 |
 | L. Observability | 3 | 1 | 2 | 6 |
-| M. 长任务 | 0 | 4 | 1 | 5 |
+| M. 长任务 | 0 | 5 | 2 | 7 |
 | N. 多端同步 | 0 | 4 | 1 | 5 |
-| **合计** | **41** | **53** | **11** | **105** |
+| **O. 测试与诊断**（新增层） | 1 | 3 | 1 | 5 |
+| **P. 多模态与附件**（新增层） | 0 | 3 | 1 | 4 |
+| **Q. 会话数据运维**（新增层） | 0 | 2 | 2 | 4 |
+| **S. 调度与集成**（新增层） | 0 | 0 | 5 | 5 |
+| **合计** | **47** | **73** | **26** | **146** |
 
-> 数量由脚本按行统计得出。`J. Models` 因新增运行时换模综合设计（R14），
-> 从 8 项增至 **17 项**，是全表增幅最大的一层。
+> **层数从 14 增至 18。** 新增 O/P/Q/S 四层，原因是原 A–N 无法容纳
+> "测试与诊断""多模态附件""会话数据运维""外部触发与集成"这四类关注点。
+>
+> **数量变化轨迹**：88（初版估算）→ 105（脚本统计）→ **146**（第二轮全仓系统扫描后）。
+> 后两次增长都源于**漏查**，不是需求变更 —— 见 §11 风险表。
 
 ---
 
@@ -514,6 +588,48 @@ S3、S5、S7 是**最容易做假**的三个，各自对应 §5 中的具体机�
 3. **会话级与全局默认分离且不一致要报错**（R14-4）—— 这正是 R10-5/R10-6 里 PiDeck 踩的坑
    （多后端默认值互相串味、分支不落盘），DSH 给出了正确解法。
 
+### R15 · 系统性补漏（第二轮全仓扫描所得）
+
+> 第一轮按记忆挑维度，漏了下面这些。第二轮改为**先枚举关注点再全仓扫**，
+> 并把 DSH 的包结构当作"关注点地图"，才找出来。**每条都标来源仓与证据路径。**
+
+| # | 优点 | 来源与证据路径 | 喂给 | 复用性 |
+| --- | --- | --- | --- | --- |
+| R15-1 | **取消当前 turn；响应到达前取消可把 prompt 退回输入框** | grok `xai-grok-pager/src/app/agent.rs`（`do_cancel_turn`、`in_flight_prompt`）；pi 用 `AbortSignal` | A7 A8 | 🟡 |
+| R15-2 | **输出截断参数与落盘指引**：上限 **50KB（约 10k token）或 2000 行，先到先算**；**截断时写临时文件并把路径告诉模型** | pi `coding-agent/examples/extensions/truncated-tool.ts` | B5 B10 B11 Q3 | 🟢 |
+| R15-3 | **危险命令模式库**：`rm -rf`、`sudo`、`chmod/chown 777` | pi `examples/extensions/permission-gate.ts` | C10 | 🟢 |
+| R15-4 | **项目信任**：`project_trust` 事件；未信任项目降权 | pi `examples/extensions/project-trust.ts` | C11 | 🟢 |
+| R15-5 | **Windows ACL 沙箱（独立于 Codex 的另一实现）** | DSH `packages/sandbox/sandbox-windows-acl` | D10 | 🟡 |
+| R15-6 | **PowerShell 作为一等 shell**，local/sandbox 两态分开 | DSH `packages/shell/{pwsh-local,pwsh-sandbox}`；ADR `2026-08-11-pwsh-persistent-pty` | D11 | 🟡 |
+| R15-7 | **SSH 远程执行三层**：`fs-ssh` / `sandbox-ssh` / `subprocess-ssh` | DSH `packages/ssh` + `docs/subsystems/ssh.md` | D12 | 🟡 |
+| R15-8 | **代码状态检查点**：每 turn 打 git stash，`/fork` 时可恢复代码到对应历史点 | pi `examples/extensions/git-checkpoint.ts` | **E11** | 🟢 |
+| R15-9 | **当前时间提醒**注入 context | codex `core/src/context/current_time_reminder.rs` | F7 | 🟢 |
+| R15-10 | **工具结果裁剪器**独立成模块（含专门目录） | opencode `tool/truncate.ts` + `tool/truncation-dir.ts`；kimi `agent/toolResultTruncation/` | F8 | 🟡 |
+| R15-11 | **goal 截止时间调度器** | kimi `agent-core-v2/src/features/goal/goalDeadlineScheduler.ts` | G6 | 🟡 |
+| R15-12 | **子代理权限降级算法**：只继承父会话的 **`deny` 与 `external_directory`** 规则，**不继承授权**；子代理默认禁用 `task`（不可再分子代理）与 `todowrite` | opencode `packages/opencode/src/agent/subagent-permissions.ts` 的 `deriveSubagentSessionPermission` | **H5** | 🟢 |
+| R15-13 | **子代理执行后端可插**（五种：ACP / CC / Codex / DSH-SDK / 进程内 fork） | DSH `packages/subagent/subagent-*` | H6 | 🟡 |
+| R15-14 | **hook 协议可兼容既有生态**（同时提供 CC 与 Codex 两套） | DSH `packages/hooks/{hook-protocol,hooks-claude-code,hooks-codex}` | I7 | 🟡 |
+| R15-15 | **人格 / 预设模板**独立成目录 | codex `core/templates/personalities` + `Personality.ts`；hermes `hermes_cli/personality.py` | I8 | 🟢 |
+| R15-16 | **工具调用超时策略**独立成包，超时是**可观测事件**（`TOOL_TIMEOUT`）非静默失败 | DSH `packages/guard/timeout-policy` + 两份 ADR | M6 M7 | 🟡 |
+| R15-17 | **LLM 回放测试**（cassette 模式） | DSH `packages/test-support/llm-replay`；opencode `packages/http-recorder/src/cassette.ts` | O2 | 🟡 |
+| R15-18 | **不变量检查服务**（包自己拥有不变量） | DSH ADR `package-owned-invariant-service`；grok `.../scroll_matrix/invariants.rs` | O3 | 🟡 |
+| R15-19 | **附件**：类型化协议 + 存储抽象 | codex `.../ThreadAttachment.ts`；kimi `packages/transcript/src/model/attachment.ts` | P1 | 🟡 |
+| R15-20 | **图片从上下文卸载且可回取** | DSH ADR `durable-image-offload`、`image-offload-events` | P2 | 🟡 |
+| R15-21 | 语音转文字 | DSH `packages/experimental/api-speech-to-text` | P4 | 🟡 |
+| R15-22 | **会话格式单向迁移链**：`v0→v1→v2→v3` 逐版本迁移，**而非两套格式并存** | DSH `packages/session/session-format*` + ADR `released-session-format-migrations` | **Q1** | 🟡 |
+| R15-23 | **会话查询服务**（含工具化，agent 可查历史） | DSH `packages/session-query/{session-query,session-query-sqlite,tool-session-query}` | Q2 | 🟡 |
+| R15-24 | **落盘文件的生命周期策略**（不是随手写临时文件） | DSH `packages/spill/*`；codex `hooks/src/output_spill.rs`；hermes `tools/spill_safety.py` | Q3 B10 | 🟡 |
+| R15-25 | **限流追踪与配额** | hermes `agent/{rate_limit_credits,rate_limit_tracker}.py`；opencode `console/core/src/quota.ts` | J18 | 🟡 |
+| R15-26 | **熔断器**（连续失败后熔断，避免重试风暴） | grok `crates/common/xai-circuit-breaker/src/retry_policy.rs` | J19 | 🟢 |
+| R15-27 | **turn 准入控制**（并发 turn 有闸门） | codex `app-server/src/turn_admission.rs` | J20 | 🟡 |
+| R15-28 | **成本核算** | hermes `agent/{aux_accounting,billing_usage,billing_links}.py`；opencode `console/core/src/{billing.ts,schema/billing.sql.ts}` | J21 | 🟡 |
+| R15-29 | **附件限额**独立模块（类型/大小/数量上限） | pi-desktop `packages/shared/src/attachment-limits.ts` | P3 | 🔴 LGPL |
+| R15-30 | **定时任务**（按星期等定义） | codex `.../ScheduledTaskWeekday.ts`；kimi `apps/vis/server/src/lib/cron-store.ts` | S1 | 🟡 |
+| R15-31 | **webhook 触发会话**（fire-and-forget 型，如 GitHub 事件） | DSH `packages/webhook/{webhook,webhook-github}`；qwen `channels/base/src/ChannelWebhookTask.ts` | S2 | 🟡 |
+| R15-32 | **浏览器使用独立成包** | qwen `packages/browser-use`（含 NOTICE）；codex `browser_use_config.rs` | S3 | 🟢 |
+| R15-33 | **计算机使用** | codex `computer_use_config.rs`；hermes `computer-use-panel.tsx` | S4 | 🟡 |
+| R15-34 | **反馈机制**（含 doctor 报告随反馈一起报） | codex `request_processors/{feedback_processor,feedback_doctor_report}.rs`；grok `xai-grok-feedback` crate | S5 | 🟡 |
+
 ### R13 · 补充仓（**尚未细读，不作优点断言**）
 
 | 仓 | 已知事实 | 状态 |
@@ -570,5 +686,6 @@ S3、S5、S7 是**最容易做假**的三个，各自对应 §5 中的具体机�
 | 多端并发写状态错乱 | P0 不开放多端写；N3 做前先定互斥粒度 |
 | 提示注入绕过策略（S7） | 策略在**工具执行前**求值（C9），注入文本一律当数据 |
 | 抄了形状没抄纪律 | 纪律写成不变量 + 单测（`04-module-map.md` §不变量） |
-| 105 项功能铺得过宽 | P0 仅 41 项；**P0 跑通前不写任何 UI** |
+| **146 项功能铺得过宽** | P0 仅 **47** 项；**P0 跑通前不写任何 UI** |
 | 上游演进导致报告过时 | 每轮开工前 `bash tools/snapshot.sh` + `git diff oss/SOURCES.lock` |
+| **需求清单仍可能不全** | 前两版分别漏了运行时换模（只查一个仓就下结论）与 41 项功能（按记忆挑维度）。**缓解**：用 `tools/count-features.sh` 统计而非手工数；用 `tools/sweep.sh` 按关注点全仓扫而非凭印象；把 DSH 的包结构当"关注点地图"逐项核对 |

@@ -118,7 +118,7 @@
 
 | 项目 | 隔离 / 权限降级 / 结果汇总 |
 | --- | --- |
-| **Pi** | 内核外（`packages/agent/docs/` 有 subagent 相关设计稿，未成独立包）。 |
+| **Pi** | **有实际实现**：`packages/coding-agent/examples/extensions/subagent/` —— 每次调用**另起一个 pi 进程**以获得隔离上下文。三种模式：单发 / 并行 / 链式（`{previous}` 串联）。常量 `MAX_PARALLEL_TASKS=8`、`MAX_CONCURRENCY=4`、`PER_TASK_OUTPUT_CAP=50KB`。**早前本表写「未成独立包」是错的，已修正。** |
 | **OpenCode** | `tool/task.ts` + `task.txt` —— **子代理即一个工具**。 |
 | **DSH** | `.agents/notes/archived/architecture/2026-07-05-subagent-provider-lifecycle-events.md`（**有生命周期事件的架构决策记录**）；CLI 测试内有 `subagent-settlement-fence.ts`（**结算栅栏**概念）。 |
 | **PI-Desktop** | `packages/agent-runtime/src/subagent.ts` + `subagent-loop-context`；`resources/extensions/pi-deck-subagents.ts`（PiDeck 侧）。 |
