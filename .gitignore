@@ -1,3 +1,10 @@
+# ============================================================
+# 上游第三方仓库副本 —— 不纳入我方版本控制
+# 每个克隆自带 .git，我方只跟踪 oss/SOURCES.lock 记录其 URL + commit
+# ============================================================
+oss/
+refs/
+
 # ---- 依赖 / 构建产物 ----
 node_modules/
 dist/
@@ -18,7 +25,6 @@ env/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-dist/
 
 # ---- 环境变量 / 密钥（务必不要提交）----
 .env
@@ -57,5 +63,5 @@ temp/
 Thumbs.db
 desktop.ini
 
-# ---- 本地 Claude / 工具产物 ----
+# ---- 本地工具配置 ----
 .claude/settings.local.json
