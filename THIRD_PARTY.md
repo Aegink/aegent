@@ -20,14 +20,14 @@
 ## 引用清单
 
 | # | 上游仓库 | Commit | 许可证 | 引用文件 | 我方位置 | 是否修改 | 日期 |
-|---|---------|--------|--------|---------|---------|---------|------|
+| --- | --- | --- | --- | --- | --- | --- | --- |
 | — | *(暂无)* | | | | | | |
 
 ## 许可分级实况（2026-09-23 实测）
 
 ### 可参考实现（MIT / Apache-2.0）
 | 仓库 | 许可 |
-|------|------|
+| --- | --- |
 | earendil-works/pi | MIT |
 | anomalyco/opencode | MIT |
 | deepseek-ai/deepseek-harness | MIT |
@@ -46,7 +46,7 @@
 ### ⚠️ 受限：需谨慎处理
 
 | 仓库 | 许可 | 约束 |
-|------|------|------|
+| --- | --- | --- |
 | vastsa/PI-Desktop | **LGPL-3.0** | 可链接调用；若修改库本体并分发须回馈。**不要**把其代码整段复制进 `src/` |
 | anthropics/claude-code | **PROPRIETARY** | `© Anthropic PBC. All rights reserved. Use is subject to Anthropic's Commercial Terms of Service`。**只能读官方文档与公开产品行为，一行代码都不能摘** |
 
@@ -57,7 +57,7 @@
 for details" 正好指回那份专有许可：
 
 | 路径 | README 声明 | 冲突点 |
-|------|-----------|--------|
+| --- | --- | --- |
 | `plugins/hookify/README.md` | "MIT License" | 仓根 LICENSE.md 为专有 |
 | `plugins/plugin-dev/README.md` | "MIT License - See repository for details" | "details" 指向专有许可 |
 
@@ -71,7 +71,7 @@ for details" 正好指回那份专有许可：
 16 个仓（`oss/` 15 + `refs/` 1）全部通过：
 
 | 检查项 | 结果 |
-|--------|------|
+| --- | --- |
 | 泄露镜像 / 自述源自 leaked Claude Code | 0 命中 |
 | 缺少 LICENSE 文件 | 0（16/16 有许可文件） |
 | 专有 sourcemap（非 node_modules） | 0 |

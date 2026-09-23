@@ -11,7 +11,7 @@
 你原来的假设大体成立，但有两处需要修正：
 
 | 你的假设 | 实测结果 |
-|---|---|
+| --- | --- |
 | Kernel 用 Pi agent-core | **成立**。`packages/agent` 分层最干净，内核/host/ui 彻底分离 |
 | Policy/Sandbox 学 Codex + PI-Desktop，自写 | **成立，且理由比你想的更强**——见下 |
 | 长任务学 DSH goal/compact/job | **成立**。`packages/{goal,jobs,compaction}` 三套齐全 |
@@ -59,7 +59,7 @@ OpenCode 的会话存储**此刻正处于 JSON 文件树 → drizzle/SQL 的迁�
 ## 建议的选型（与你的原方案差异已标注）
 
 | 层 | 主学 | 与原方案的差异 |
-|---|---|---|
+| --- | --- | --- |
 | Kernel | Pi | 一致 |
 | Tools | OpenCode（`.txt` 分离）+ Pi（写队列） | 补充 |
 | Policy | **OpenCode** `evaluate` | 原方案说自写——现建议直接抄形状 |
@@ -85,7 +85,7 @@ OpenCode 的会话存储**此刻正处于 JSON 文件树 → drizzle/SQL 的迁�
 `tools/license-audit.sh` 扫描 16 个仓（`oss/` 15 + `refs/` 1），2026-09-23：
 
 | 检查项 | 结果 |
-|---|---|
+| --- | --- |
 | 泄露镜像 / 自述源自 leaked Claude Code | **0 命中** |
 | 缺少 LICENSE 文件 | 0（16/16 有） |
 | 专有 sourcemap | 0 |
@@ -98,7 +98,7 @@ OpenCode 的会话存储**此刻正处于 JSON 文件树 → drizzle/SQL 的迁�
 ## 但有两条许可约束必须遵守
 
 | 仓库 | 许可 | 约束 |
-|---|---|---|
+| --- | --- | --- |
 | `vastsa/PI-Desktop` | **LGPL-3.0** | 可链接调用；**不可整段抄入 `src/`**（若修改其库本体并分发须回馈） |
 | `anthropics/claude-code` | **PROPRIETARY** | `© Anthropic PBC. All rights reserved.` + 商业条款。**只读行为，一行代码都不能摘** |
 
@@ -114,7 +114,7 @@ OpenCode 的会话存储**此刻正处于 JSON 文件树 → drizzle/SQL 的迁�
 理由统一：**你要的是形状，不是代码**。fork 会让你背上同步上游的成本，而收益只是几个可以照着重写的抽象。
 
 | 仓库 | 为什么只要 star |
-|---|---|
+| --- | --- |
 | `earendil-works/pi` | 抄 `AgentEvent`/`AgentTurnDecision`/`ForkCurrentStatePlan` 三个类型形状即可，实现要按你的沙箱前提重写 |
 | `anomalyco/opencode` | 抄 `evaluate` 的 11 行 + `Deferred/Map` 审批模型。整仓 219M，40+ 包，绝大部分是端壳，与内核无关 |
 | `openai/codex` | 仍是 Rust，**代码**抄不进来；但 Windows 沙箱的**设计路线**必须细读（`RestrictedToken` 非提权后端，ACL + 能力 SID）。另要学**网络策略独立**与 **flush-before-snapshot** 纪律 |

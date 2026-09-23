@@ -145,7 +145,7 @@ PI-Desktop 之所以把插件放进程外，是因为它要装别人写的插件
 ## 一句话总结选型
 
 | 层 | 主学 | 不要学的 |
-|---|---|---|
+| --- | --- | --- |
 | Kernel/Loop | Pi（显式决策）、OpenCode（状态拆分） | — |
 | Tools | OpenCode（.txt 分离）、Pi（写队列） | — |
 | Policy | **OpenCode（evaluate 三点）** | Pi（它没有） |

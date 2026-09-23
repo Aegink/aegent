@@ -10,7 +10,7 @@
 ## A. Agent Loop
 
 | 项目 | 何时调模型 / 停止条件 / steer |
-|---|---|
+| --- | --- |
 | **Pi** | 显式状态机。`agent_start → turn_start → [message_*, tool_execution_*] → turn_end → agent_end`；停止靠 `AgentTurnDecision = {action:"continue" \| "end"}`，而非"无 toolCall 即停"的隐式约定；`QueueMode = "all" \| "one-at-a-time"` 控注入节奏。`packages/agent/src/agent-loop.ts`, `types.ts` |
 | **OpenCode** | `session/processor.ts` + `llm.ts` 驱动；`session/run-state.ts`、`status.ts` 独立管运行态；`core/session/run-coordinator.ts` 协调；`retry.ts`、`overflow.ts` 各自成文件。`packages/opencode/src/session/` |
 | **DSH** | 三入口共用同一 program：`runTui(config,resume)` / `runHeadless(task)` / `runWeb(host,port,dev,workspaceRoot)`，模式在 CLI 适配层解析后交各自 runner。`packages/boot/app-boot/src/index.ts` |
@@ -28,7 +28,7 @@
 ## B. Tools
 
 | 项目 | 最小工具集 / schema / 并行 / 截断 |
-|---|---|
+| --- | --- |
 | **Pi** | `harness/tools/`：`bash` `edit` `edit-diff` `read` `write` `image` `file-mutation-queue` `path-utils` `tool-context`。**`ToolExecutionMode="sequential"\|"parallel"` 是配置项**；`file-mutation-queue` 串行化文件写。 |
 | **OpenCode** | 18 个：`read` `write` `edit` `apply_patch` `glob` `grep` `shell` `task` `todo` `webfetch` `lsp` `skill` `question` `plan` `code-mode` `mcp-websearch` `invalid` `external-directory`。**每个工具旁挂同名 `.txt` 存描述**（`plan-enter.txt`/`plan-exit.txt`）→ 提示词与代码分离。 |
 | **DSH** | `packages/core/tools`；**工具即包**（`tool-goal`、`tool-jobs`），可独立发布。 |
@@ -44,7 +44,7 @@
 ## C. Policy / Permissions
 
 | 项目 | allow/ask/deny / 工作区边界 / HITL |
-|---|---|
+| --- | --- |
 | **Pi** | **无内置审批门**。靠 `BeforeToolCallContext` / `AfterToolCallResult` 钩子把决策权交宿主。`packages/agent/src/types.ts` |
 | **OpenCode** | **本层最强参考**。`packages/opencode/src/permission/index.ts`：<br>`rulesets.flat().findLast(r => Wildcard.match(permission, r.permission) && Wildcard.match(pattern, r.pattern)) ?? { action:"ask", permission, pattern:"*" }`<br>① **`findLast` 后匹配优先**（覆盖式，非累积）② **默认落 `ask` 不是 `allow`** ③ **双维度通配**：`permission="bash"` × `pattern="git *"` ④ 审批以 `Deferred` 挂 `pending: Map`，接口 `ask`/`reply`/`list`。 |
 | **DSH** | `packages/guard`（策略）+ `packages/interaction/permission-presets`（**权限预设成套可切换**）。 |
@@ -60,7 +60,7 @@
 ## D. Sandbox
 
 | 项目 | 进程/容器/微VM / 网络 / FS |
-|---|---|
+| --- | --- |
 | **Pi** | **不做**。`SECURITY.md`：信任边界 = 本地用户账号，"由用户自行负责监视，或用容器/虚拟机关起来"。沙箱只是 `coding-agent/examples/extensions/sandbox`。 |
 | **OpenCode** | **不做**。`SECURITY.md` 明写 *No Sandbox*："权限系统是 **UX feature**……**不提供安全隔离**"。 |
 | **DSH** | **有真沙箱包且可插后端**：`packages/sandbox/sandbox` + `packages/sandbox/sandbox-local`。 |
@@ -75,7 +75,7 @@
 ## E. Session
 
 | 项目 | 线性 vs 树 vs 事件源 / fork-rewind / 持久化格式 |
-|---|---|
+| --- | --- |
 | **Pi** | **事件源 + 两种 fork**。`harness/session/`：`commit.ts`（`CommittedListAppendWrite` / `CommittedValueSetWrite`）、`mutation-line.ts`、`values.ts`、`jsonl/`。<br>`fork-policy.ts`：`ForkCurrentStatePlan = {scope:"branch"} \| {scope:"tree"}` —— **线性分支与树都支持**，沿父链回溯，`position:"before"\|"after"` 定切点。后端可换 sqlite。 |
 | **OpenCode** | **迁移中，两套并存**。(a) 旧：JSON 文件树 `storage/session/message/<sid>/<mid>.json`、`part/<sid>/<mid>/<pid>/*.json`、`session_diff/`；(b) 新：`core/src/session/store.ts` 用 **drizzle ORM + SQL 表**。事件源在 `core/src/session/{event.ts, projector.ts, history.ts, context-epoch.ts}`（**事件 + 投影器**）。回退在 `session/revert.ts`。 |
 | **DSH** | `packages/session` + `packages/core/session` + `packages/api/session-controller` + `packages/context/session-reference`（**会话可被其他会话引用**）。 |
@@ -91,7 +91,7 @@
 ## F. Context
 
 | 项目 | 系统提示 / AGENTS.md / compaction / cache |
-|---|---|
+| --- | --- |
 | **Pi** | `harness/{system-prompt.ts, prompt-templates.ts, context.ts, messages.ts}` + `harness/compaction/`（独立目录）。 |
 | **OpenCode** | `session/{compaction.ts, overflow.ts, summary.ts, reminders.ts, instruction.ts, system.ts}` + `session/prompt/`。**`overflow` 与 `compaction` 分开**（先判溢出再决定压缩）。 |
 | **DSH** | `packages/compaction` + `packages/context` + `packages/context/session-reference`。 |
@@ -105,7 +105,7 @@
 ## G. Planning
 
 | 项目 | Plan/Goal / 审批过期 / 计划落盘 |
-|---|---|
+| --- | --- |
 | **Pi** | — |
 | **OpenCode** | **本层最完整**。`tool/plan.ts` + `plan-enter.txt` / `plan-exit.txt`（**进出计划模式的提示词独立成文**）；另有 `session/todo.ts` + `tool/todo.ts`。 |
 | **DSH** | **Goal 单独成体系**：`packages/goal/{goal, goal-round-driver, command-goal, tool-goal}` —— `goal-round-driver` 即**跨轮驱动**。 |
@@ -117,7 +117,7 @@
 ## H. Subagents
 
 | 项目 | 隔离 / 权限降级 / 结果汇总 |
-|---|---|
+| --- | --- |
 | **Pi** | 内核外（`packages/agent/docs/` 有 subagent 相关设计稿，未成独立包）。 |
 | **OpenCode** | `tool/task.ts` + `task.txt` —— **子代理即一个工具**。 |
 | **DSH** | `.agents/notes/archived/architecture/2026-07-05-subagent-provider-lifecycle-events.md`（**有生命周期事件的架构决策记录**）；CLI 测试内有 `subagent-settlement-fence.ts`（**结算栅栏**概念）。 |
@@ -129,7 +129,7 @@
 ## I. MCP / Skills / Hooks / Plugins
 
 | 项目 | 机制 |
-|---|---|
+| --- | --- |
 | **Pi** | `harness/hooks.ts` + `harness/skills.ts` + `coding-agent/examples/extensions/`（`sandbox`、`custom-provider-anthropic`、`gondolin`）。**hooks 与 skills 是内核概念**。 |
 | **OpenCode** | `packages/plugin/` + `@opencode-ai/plugin` 的 `ToolDefinition`（**插件可注册工具**）+ MCP + `AGENTS.md`；`tool/skill.ts`、`tool/mcp-websearch.ts`。 |
 | **DSH** | `packages/hooks` + `packages/extensions` + `packages/acp`。 |
@@ -142,7 +142,7 @@
 ## J. Models
 
 | 项目 | 多厂商 / 中途换模 / OAuth vs API Key |
-|---|---|
+| --- | --- |
 | **Pi** | 独立 `packages/ai`；扩展示例含 `custom-provider-anthropic`、`custom-provider-gitlab-duo`（**厂商适配可外挂**）。 |
 | **OpenCode** | 独立 `packages/llm/`。 |
 | **Kimi Code** | `packages/oauth`（**OAuth 独立成包**）+ `packages/klient` + `packages/kap-server`。 |
@@ -154,7 +154,7 @@
 ## K. Surfaces
 
 | 项目 | TUI / Web / Desktop / IDE ACP / IM |
-|---|---|
+| --- | --- |
 | **Pi** | `packages/{tui, server, protocol, client}` + `coding-agent`。 |
 | **OpenCode** | **端最全**：`tui` `app` `web` `desktop` `console` `enterprise` + **`slack/`（IM）** + `session-ui`。 |
 | **DSH** | `apps/cli` 三入口（`runTui`/`runHeadless`/`runWeb`）+ `packages/acp`。 |
@@ -170,7 +170,7 @@
 ## L. Observability
 
 | 项目 | 轨迹 / token / 审计 |
-|---|---|
+| --- | --- |
 | **Pi** | `packages/telemetry` + `harness/telemetry.ts`。 |
 | **OpenCode** | `packages/stats` + `session/summary.ts` + `packages/http-recorder/`（**HTTP 级录制**）。 |
 | **Codex** | `codex-rs/rollout-trace/`（**rollout trace + reducer**）、`external-agent-migration/`（从别的 agent 导入轨迹）。 |
@@ -183,7 +183,7 @@
 ## M. 长任务
 
 | 项目 | goal 跨轮 / 后台 job / 崩溃续跑 |
-|---|---|
+| --- | --- |
 | **DSH** | **三层齐全**：`packages/goal/goal-round-driver`（跨轮）+ `packages/jobs/{jobs, jobs-local, tool-jobs}`（后台 job + 本地后端）+ `.agents/notes/.../job-registry-seam.md`（**job 注册表接缝有决策记录**）。 |
 | **Codex** | `session/daemon_recovery.rs`（**daemon 级恢复**）+ `guardian_checkpoint.rs` + `cli/src/doctor/`。 |
 | **Qwen Code** | **设计文档齐全**：`docs/design/session-crash-recovery.md`、`docs/design/session-idle-reaper.md`（**空闲回收**）。 |
@@ -195,7 +195,7 @@
 ## N. 多端同步
 
 | 项目 | session id / 推送 / 审批如何回到同一运行时 |
-|---|---|
+| --- | --- |
 | **OpenCode** | **本层最强**：审批 `Deferred` 挂 `pending: Map`，`ask`/`reply`/`list` 三接口 —— **审批天然可跨端异步回转**（发起端 suspend，任意端 reply 唤醒）。 |
 | **PI-Desktop** | `electron/main/ipc/remote-host-ipc.ts` + `bootstrap/remote-hosts.ts`（远程 host 注册）+ `plugin-websocket.ts`。 |
 | **DSH** | `packages/acp` + `packages/api/session-controller` + `packages/identity`（**身份独立成包**）。 |

@@ -14,7 +14,7 @@ P0 不包含：Web/IM 端、子代理、goal、插件进程外隔离、ACP。
 ## P0 模块清单
 
 | # | 我方模块 | 上游优点出处 | 优先级 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 1 | `src/kernel/events.ts` | Pi `AgentEvent` 联合体形状 | **P0** |
 | 2 | `src/kernel/loop.ts` | Pi `AgentTurnDecision` 显式停止 | **P0** |
 | 3 | `src/kernel/run-state.ts` | OpenCode `session/run-state.ts` 独立运行态 | **P0** |
@@ -40,7 +40,7 @@ P0 不包含：Web/IM 端、子代理、goal、插件进程外隔离、ACP。
 ## P1 模块（P0 跑通后）
 
 | # | 我方模块 | 上游优点出处 | 优先级 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 18 | `src/session/fork.ts` | Pi `ForkCurrentStatePlan`（**一套抽象支持分支+树**） | P1 |
 | 19 | `src/session/transcript.ts` | Kimi `packages/transcript` 独立包 | P1 |
 | 20 | `src/session/export.ts` | Kimi `sessionExport` / `sessionIndex` 三分 | P1 |
@@ -62,7 +62,7 @@ P0 不包含：Web/IM 端、子代理、goal、插件进程外隔离、ACP。
 ## P2 模块
 
 | # | 我方模块 | 上游优点出处 | 优先级 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 33 | `src/surfaces/web/` | PI-Desktop `electron/main/bootstrap/remote-hosts.ts` | P2 |
 | 34 | `src/surfaces/im/feishu.ts` | PiDeck `src/main/feishu/FeishuBridge.ts` | P2 |
 | 35 | `src/surfaces/im/slack.ts` | OpenCode `packages/slack/` | P2 |

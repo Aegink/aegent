@@ -7,6 +7,7 @@
 | 目录 | 仓库 | Commit | 上游提交日 | 许可 | 体积 |
 |------|------|--------|-----------|------|------|
 | agentscope | modelscope/agentscope | `083cbd1` | 2026-09-23 | Apache-2.0 [LICENSE] | 27M |
+| cc-switch | farion1231/cc-switch | `f2537fd` | 2026-09-23 | MIT [LICENSE] | 79M |
 | codex | openai/codex | `40eac3c` | 2026-09-23 | Apache-2.0 [LICENSE] | 119M |
 | deepseek-harness | deepseek-ai/deepseek-harness | `0010283` | 2026-09-22 | MIT [LICENSE] | 162M |
 | grok-build | xai-org/grok-build | `07e35a3` | 2026-09-22 | Apache-2.0 [LICENSE] | 103M |

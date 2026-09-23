@@ -8,6 +8,7 @@
 | 目录 | 仓库 | Commit | 许可 | 体积 |
 |------|------|--------|------|------|
 | agentscope | modelscope/agentscope | `083cbd1` | Apache-2.0 [LICENSE] | 27M |
+| cc-switch | farion1231/cc-switch | `f2537fd` | MIT [LICENSE] | 79M |
 | codex | openai/codex | `40eac3c` | Apache-2.0 [LICENSE] | 119M |
 | deepseek-harness | deepseek-ai/deepseek-harness | `0010283` | MIT [LICENSE] | 162M |
 | grok-build | xai-org/grok-build | `07e35a3` | Apache-2.0 [LICENSE] | 103M |
@@ -36,6 +37,17 @@
 - 收集 PR: 有 CONTRIBUTING.md
 - 语言栈: Python
 - 多端/扩展信号: 无
+
+### cc-switch
+
+- 仓库: `farion1231/cc-switch`
+- Commit: `f2537fdf6b709082b52886d52ce6914bae690699`
+- 最近提交日: 2026-09-23
+- 体积: 79M
+- 顶层条目: `CHANGELOG.md CODE_OF_CONDUCT.md CONTRIBUTING.md LICENSE README.md README_DE.md README_JA.md README_ZH.md SECURITY.md SUPPORT.md assets components.json deplink.html docs flatpak package.json pnpm-lock.yaml pnpm-workspace.yaml postcss.config.cjs rust-toolchain.toml scripts session-manager.md src src-tauri tailwind.config.cjs `
+- 收集 PR: 有 CONTRIBUTING.md
+- 语言栈: Node/TS
+- 多端/扩展信号: MCP
 
 ### codex
 
