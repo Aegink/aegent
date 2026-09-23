@@ -117,7 +117,7 @@ OpenCode 的会话存储**此刻正处于 JSON 文件树 → drizzle/SQL 的迁�
 |---|---|
 | `earendil-works/pi` | 抄 `AgentEvent`/`AgentTurnDecision`/`ForkCurrentStatePlan` 三个类型形状即可，实现要按你的沙箱前提重写 |
 | `anomalyco/opencode` | 抄 `evaluate` 的 11 行 + `Deferred/Map` 审批模型。整仓 219M，40+ 包，绝大部分是端壳，与内核无关 |
-| `openai/codex` | 沙箱是 Rust 且深绑 bubblewrap/Landlock，抄不进来；要学的是**网络策略独立**与 **flush-before-snapshot** 这类纪律 |
+| `openai/codex` | 仍是 Rust，**代码**抄不进来；但 Windows 沙箱的**设计路线**必须细读（`RestrictedToken` 非提权后端，ACL + 能力 SID）。另要学**网络策略独立**与 **flush-before-snapshot** 纪律 |
 | `deepseek-ai/deepseek-harness` | goal/jobs 的设计值得学，但它是按"关注点即包"重组织的，直接搬会带来 30+ 个包的依赖面 |
 | `MoonshotAI/kimi-code` | 学 `transcript` 独立包 + index/export/legacy 三分；其 legacy 兼容层不该继承 |
 | `QwenLM/qwen-code` | **只读它的 `docs/design/*.md`**（crash-recovery / idle-reaper / recap），代码组织是反面例子 |
@@ -156,9 +156,10 @@ grep -n "ForkCurrentStatePlan" -A3 oss/pi/packages/agent/src/harness/session/for
 # 5. 验证 Pi 与 OpenCode 明确不做沙箱（本报告最关键论据）
 grep -A4 -i "trust boundary\|No Sandbox" oss/pi/SECURITY.md oss/opencode/SECURITY.md
 
-# 6. 验证 Codex 沙箱确为真实实现且网络策略独立
-ls oss/codex/codex-rs/bwrap/src/ oss/codex/codex-rs/core/src/sandboxing/
-ls oss/codex/codex-rs/cli/src/doctor/
+# 6. 验证 Codex 沙箱为全平台五后端（Windows 是重点）
+ls oss/codex/codex-rs/sandboxing/src/            # bwrap/landlock/seatbelt/windows/windows_mxc
+ls oss/codex/codex-rs/windows-sandbox-rs/src/   # 65 个 .rs：acl/cap/app_package/dpapi
+grep -A5 "enum WindowsSandboxLevel" oss/codex/codex-rs/protocol/src/config_types.rs
 
 # 7. 验证 DSH 长任务三件套齐全
 ls oss/deepseek-harness/packages/goal/ oss/deepseek-harness/packages/jobs/
