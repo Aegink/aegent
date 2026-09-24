@@ -215,19 +215,19 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | A1 | 显式停止条件 `TurnDecision` | P0 | [pi·types.ts:143](../oss/pi/packages/agent/src/types.ts#L143) | 单测覆盖 continue/end 两条路径，不依赖"无 toolCall 即停" |
 | A2 | steer / follow-up 注入，节奏可配 | P0 | [pi·types.ts:55](../oss/pi/packages/agent/src/types.ts#L55) | 注入后事件顺序正确，不丢不重 |
 | A3 | 运行态独立于 loop | P0 | [opencode·run-state.ts](../oss/opencode/packages/opencode/src/session/run-state.ts) | loop 崩溃后可从 run-state 判定会话状态 |
-| A4 | 溢出检测（先于压缩） | P0 | [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | 构造超长上下文，断言先触发 overflow 而非直接压 |
+| A4 | 溢出检测（先于压缩） | P0 | [codex·compact.rs:315](../oss/codex/codex-rs/core/src/compact.rs#L315) | 构造超长上下文，断言先触发 overflow 而非直接压 |
 | A5 | 重试策略 | P1 | [kimi·retry.ts](../oss/kimi-code/packages/agent-core-v2/src/human/llm/requester/retry.ts) | 模拟 429/5xx，断言按策略重试且事件留记录 |
 | A6 | turn 与 agent 两级生命周期 | P0 | [pi·types.ts:485](../oss/pi/packages/agent/src/types.ts#L485) | 一个 turn = 一次 assistant 回复 + 其工具调用 |
 | A7 | 取消 / 中断当前 turn | P0 | [dsh·explicit-turn-cancellation.md](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-07-16-explicit-turn-cancellation.md) | 中断后事件流有明确终止记录，不留悬挂 turn |
 | A8 | 取消可把未发出的 prompt 退回输入框 | P1 | [grok·agent.rs](../oss/grok-build/crates/codegen/xai-grok-pager/src/app/agent.rs) | 响应到达前取消，prompt 回到输入框而非丢失 |
 | A9 | turn 只能入队，协议不提供 per-prompt 完成语义 | P0 | [dsh·followup-enqueue.md](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-07-30-followup-enqueue-and-owned-runs.md) | 有 steer/注入时"这条 prompt 的结果"无法定义；**不设 `session.finished`** |
 | A10 | steering 需带目标 turn 的准入 | P1 | [pi-desktop·active-turn-steering.md](../oss/pi-desktop/docs/adr/active-turn-steering.md) | `agent/steer` 带 `expectedTurnId`；保持当前配置与同一持久 turn |
-| A11 | 已启动的工具先跑完，下一次模型请求才消费 steer 输入 | P1 | 同上 | 断言 steer 不打断在途工具 |
+| A11| 已启动的工具先跑完，下一次模型请求才消费 steer 输入 | P1| [pi-desktop·active-turn-steering.md](../oss/pi-desktop/docs/adr/active-turn-steering.md) | 断言 steer 不打断在途工具 |
 | A12 | 用户输入携带**关联 id**，关联该输入之后、下一次输入之前的所有事件 | P1 | [claude-official·claude-code.d.ts:588](../refs/claude-official/mods/types/claude-code.d.ts#L588) | 仍**不提供 per-prompt 完成语义**（与 A9 一致） |
 | A13 | 入队闸门三态：放行 / 拦截（带理由）/ **改写消息** | P1 | [kimi·machine.ts:57](../oss/kimi-code/packages/agent-core-v2/src/human/agent/machine.ts#L57) | `PromptGateVerdict = boolean \| {block, message?}` |
 | A14 | 循环有两个**显式护栏参数**：`abortTimeoutMs` 与 `maxStepsPerTurn` | P1 | [kimi·engine.ts:303](../oss/kimi-code/packages/agent-core-v2/src/agent/loop/machine/engine.ts#L303) | 两个上限都可配且可观测 |
 | A15 | **不同来源的输入在不同边界排空**（guide / queue / runtime commands 各一个点） | P1 | [zcode·turn-loop.ts](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts) | 三类输入各有排空点，不混在一个队列里 |
-| A16 | 输入排空后**重置相关的启发式计数** | P2 | 同上 | 排空即复位，不留上一轮的计数污染 |
+| A16| 输入排空后**重置相关的启发式计数** | P2| [zcode·turn-loop.ts](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts) | 排空即复位，不留上一轮的计数污染 |
 | A17 | 协作式取消在**每个 await 点后**检查，不只循环头 | P1 | [zcode·turn-loop.ts](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts) | `throwIfTurnAborted` 在每个 await 之后 |
 
 ### B. Tools（21 项）
@@ -244,7 +244,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | B8 | 扩展工具 `apply_patch` `lsp` `webfetch` `todo` `question` | P1 | [opencode·tool/](../oss/opencode/packages/opencode/src/tool) | 各工具独立单测 |
 | B9 | 工具调用 ID 全程可追 | P0 | [pi·types.ts:485](../oss/pi/packages/agent/src/types.ts#L485) | 事件流中 toolCallId 可从 start 追到 end |
 | B10 | 超限输出落盘 + 告知模型完整输出位置（**Q13：落盘时就打"属于哪个会话 / 何时可删"标记**） | P0 | [pi·truncated-tool.ts](../oss/pi/packages/coding-agent/examples/extensions/truncated-tool.ts) | 写临时文件 + 路径告知模型；**标记策略在 P0**，实际清理仍 Q3(P1) |
-| B11 | 输出上限：50KB（约 10k token）或 2000 行，先到先算 | P0 | 同上 | 断言超限被截断且上限可配 |
+| B11| 输出上限：50KB（约 10k token）或 2000 行，先到先算 | P0| [pi·truncated-tool.ts](../oss/pi/packages/coding-agent/examples/extensions/truncated-tool.ts) | 断言超限被截断且上限可配 |
 | B12 | 声明式输出契约：执行期类型值 ≠ 会话格式，需显式投影 | P0 | [dsh·canonical-tool-output.md](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-07-20-canonical-tool-output-contract.md) | 工具只返回契约描述的值；持久化值由显式投影产生 |
 | B13 | 重试预算：同路径 3 次，按 prompt × path 双作用域 | P1 | [pi-desktop·ADR 0207](../oss/pi-desktop/docs/adr/0207-three-mutation-recovery-failures.md) | 第 3 次带 `terminate`；可恢复错误码每码一次宽限；成功即清空该路径历史 |
 | B14 | 凡设工作量上限处要**两个轴：数量 + 时间**；时间轴须在长循环**内部**检查 | P0 | [kimi·budget.ts](../oss/kimi-code/packages/tree-sitter-bash/src/budget.ts) | `tick()` 计数+查截止；字符级循环用 `progress()` 只查截止 |
@@ -262,58 +262,58 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | --- | --- | --- | --- | --- |
 | C1 | 三维求值 `allow` / `ask` / `deny` | P0 | [opencode·permission/](../oss/opencode/packages/opencode/src/permission) | 三种动作各有单测 |
 | C2 | **前匹配胜（first-match-wins）**；规则集降为**链中的一环**，不再是权威 | P0 | [kimi·permissionRules](../oss/kimi-code/packages/agent-core-v2/src/agent/permissionRules) | 宽规则在前则窄规则永不生效 —— **与 OpenCode 的 `findLast` 相反**，必须有测试钉住 |
-| C3 | **默认落 `ask`（非 allow）** | P0 | 同上 | 无匹配规则时危险操作必须询问 |
-| C4 | 双维度通配 `permission` × `pattern` | P0 | 同上 | 能表达"只允许 `git status`" |
-| C5 | 待审批 `Deferred` + `pending: Map` | P0 | 同上 | 发起端 suspend，`reply` 可唤醒 |
-| C6 | 审批跨端回转 | P1 | 同上 | 场景③：桌面发起 → 飞书 reply → 桌面继续 |
+| C3| **默认落 `ask`（非 allow）** | P0| [opencode·permission/](../oss/opencode/packages/opencode/src/permission) | 无匹配规则时危险操作必须询问 |
+| C4| 双维度通配 `permission` × `pattern` | P0| [opencode·permission/](../oss/opencode/packages/opencode/src/permission) | 能表达"只允许 `git status`" |
+| C5| 待审批 `Deferred` + `pending: Map` | P0| [opencode·permission/](../oss/opencode/packages/opencode/src/permission) | 发起端 suspend，`reply` 可唤醒 |
+| C6| 审批跨端回转 | P1| [opencode·permission/](../oss/opencode/packages/opencode/src/permission) | 场景③：桌面发起 → 飞书 reply → 桌面继续 |
 | C7 | 工作区边界 | P0 | [codex·sandboxing/windows.rs](../oss/codex/codex-rs/sandboxing/src/windows.rs) | 场景④：越界写被拒且报错明确 |
 | C8 | 权限预设成套切换 | P1 | [dsh·permission-presets](../oss/deepseek-harness/packages/interaction/permission-presets/src/index.ts) | 切换预设后规则集整体生效 |
-| C9 | 策略求值在**工具执行前** | P0 | — | 场景⑦：注入文本不能改变求值时机 |
+| C9| 策略求值在**工具执行前** | P0| **自研**（无上游参考） | 场景⑦：注入文本不能改变求值时机 |
 | C10 | **危险命令模式库**（`rm -rf` / `sudo` / `chmod 777`） | P0 | [pi·permission-gate.ts](../oss/pi/packages/coding-agent/examples/extensions/permission-gate.ts) | 内置模式可扩展；命中即升为 ask |
 | C11 | **项目信任**：未信任项目降权 | P1 | [pi·project-trust.ts](../oss/pi/packages/coding-agent/examples/extensions/project-trust.ts) | 首次打开陌生项目时限制写与执行，用户显式信任后放开 |
 | C12 | **编辑前必须先读；写入必须基于已读版本** | P1 | [dsh·file-context-as-event-gate.md](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-06-26-file-context-as-event-gate.md) | 未读先编辑被拒；基于旧版本的写入被拒 |
-| C13 | **策略层不可 in-path 强制** | P1 | 同上 | 不想要该策略的部署能**整体丢弃它**，工具仍可用 |
+| C13| **策略层不可 in-path 强制** | P1| [dsh·file-context-as-event-gate.md](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-06-26-file-context-as-event-gate.md) | 不想要该策略的部署能**整体丢弃它**，工具仍可用 |
 | C14 | **持久化事件不含 stack / signal / error 对象 / 自由文本 / 后端私有细节** | P0 | [dsh·explicit-turn-cancellation.md](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-07-16-explicit-turn-cancellation.md) | 断言事件 JSON 中无运行时对象；终态只记粗粒度结果 |
 | C15 | **插件不得新增 session 事件类型**（扩展面 = 工具/hooks/skills） | P0 | [dsh·rejected/typed-event-schemas.md](../oss/deepseek-harness/.agents/notes/rejected/architecture/2026-06-16-typed-event-schemas.md) | 断言插件 API 无 `registerEventType` 之类入口 |
-| C16 | 内核新增事件类型必须同步更新 `assertNever` 穷尽检查 | P0 | 同上 | 漏更新则编译失败（**这是特性不是负担**） |
+| C16| 内核新增事件类型必须同步更新 `assertNever` 穷尽检查 | P0| [dsh·rejected/typed-event-schemas.md](../oss/deepseek-harness/.agents/notes/rejected/architecture/2026-06-16-typed-event-schemas.md) | 漏更新则编译失败（**这是特性不是负担**） |
 | C17 | 若需插件事件，只开**一个泛型逃生舱类型**，不改词汇表机制 | P1 | [pi·session/types.ts:52](../oss/pi/packages/agent/src/harness/session/types.ts#L52) | `{type:"plugin", namespace, payload}` 形状 |
 | C18 | 权限裁决结果带 **`rule`（规则原文，如 `Bash(git push:*)`）+ `reason`** | P0 | [claude-official·claude-code.d.ts](../refs/claude-official/mods/types/claude-code.d.ts) | 裁决可解释；UI 能显示"因为哪条规则" |
-| C19 | **策略 dry-run**：可跑完整判定链而不执行工具 | P1 | 同上 | "runs the same chain and executes nothing" |
+| C19| **策略 dry-run**：可跑完整判定链而不执行工具 | P1| [claude-official·claude-code.d.ts](../refs/claude-official/mods/types/claude-code.d.ts) | "runs the same chain and executes nothing" |
 | C20 | **链上的策略模块**：每个策略一个模块，首个非 undefined 者胜（**链是权威，见 C58**） | P0 | [kimi·permissionPolicyService.ts](../oss/kimi-code/packages/agent-core-v2/src/agent/permissionPolicy/permissionPolicyService.ts) | 顺序集中在一处可审 |
 | C21 | **参数匹配委托给工具自身**，策略引擎只把 `argPattern` 交下去 | P0 | [kimi·matchesRule.ts](../oss/kimi-code/packages/agent-core-v2/src/agent/permissionRules/matchesRule.ts) | 工具自己解释自己的参数匹配 |
-| C22 | **规则作用域**（project / user / turn-override / session-runtime） | P1 | kimi·`permissionRules` | 会话批准不混进用户配置 |
+| C22| **规则作用域**（project / user / turn-override / session-runtime） | P1| [kimi·permissionRules](../oss/kimi-code/packages/agent-core-v2/src/agent/permissionRules) | 会话批准不混进用户配置 |
 | C23 | **策略自检**：报告永不匹配的模式（通配符用错、MCP 名不完整、未知工具名） | P1 | [kimi·evaluate.ts:85](../oss/kimi-code/packages/agent-core-v2/src/agent/toolPolicy/evaluate.ts#L85) | `findInactiveToolPatterns` 可单测 |
-| C24 | 审批响应带 **scope（记住本会话）/ feedback / 选项标签**，非二值 | P1 | kimi·`ApprovalResponse` | 审批可"记住"且可带反馈 |
+| C24| 审批响应带 **scope（记住本会话）/ feedback / 选项标签**，非二值 | P1| [kimi·approval.ts](../oss/kimi-code/packages/agent-core-v2/src/agent/interaction/approval.ts) | 审批可"记住"且可带反馈 |
 | C25 | **工具激活与工具批准分离**（工作区/档案/全局/会话四层按 AND 合成） | P1 | [kimi·evaluate.ts:43](../oss/kimi-code/packages/agent-core-v2/src/agent/toolPolicy/evaluate.ts#L43) | 四层纯 AND |
-| C26 | 规则语法采用 **`Tool(args)` 文本形式** | P1 | 两家独立实现（kimi + claude-official） | 配置可读、可复制粘贴 |
+| C26| 规则语法采用 **`Tool(args)` 文本形式** | P1| [kimi·permissionRules](../oss/kimi-code/packages/agent-core-v2/src/agent/permissionRules) | 配置可读、可复制粘贴 |
 | C27 | **Shell 语义分析（Q19 定 B 档）**：把 shell 命令翻译成"虚拟工具操作"，使 Read/Write/WebFetch 规则能管住 shell 等价物 | P0 | [qwen·shell-semantics.ts](../oss/qwen-code/packages/core/src/permissions/shell-semantics.ts) | **堵住"用 Bash 绕过文件规则"这个真实漏洞** |
-| C28 | **分析结果携带不确定性字段**（`cwdUnknown` / `pathMayDependOnCwd`），消费方按保守处理 | P0 | 同上 | 不确定即按危险处理 |
-| C29 | **任何"用模式匹配做保护"的设计必须附"静态分析做不到"的清单** | P0 | 同上 | 承诺强度可审计 |
+| C28| **分析结果携带不确定性字段**（`cwdUnknown` / `pathMayDependOnCwd`），消费方按保守处理 | P0| [qwen·shell-semantics.ts](../oss/qwen-code/packages/core/src/permissions/shell-semantics.ts) | 不确定即按危险处理 |
+| C29| **任何"用模式匹配做保护"的设计必须附"静态分析做不到"的清单** | P0| [qwen·shell-semantics.ts](../oss/qwen-code/packages/core/src/permissions/shell-semantics.ts) | 承诺强度可审计 |
 | C30 | **审批可批量**：审批提前收集、**执行仍按原顺序**、**执行时守卫重跑** | P1 | [hermes·terminal_approval_batch.py](../oss/hermes-agent/agent/terminal_approval_batch.py) | 批量不改变执行顺序 |
 | C31 | **审批结果必须在每个能显示它的界面主动宣告**；超时静默结算是 bug；迟到通知须检查"这一轮是否仍是当前轮" | P0 | [hermes·approval_settle.py](../oss/hermes-agent/gateway/run_turn_runner_approval_settle.py) | **真实事故**换来的 |
-| C32 | **C 层决策由 3 值改为 4 值**（`allow / ask / deny / abstain`） | P0 | qwen `'default'` + agentscope `PASSTHROUGH`（**两家独立**） | 把"没意见，往下走"与"我要 ask"分开 |
+| C32| **C 层决策由 3 值改为 4 值**（`allow / ask / deny / abstain`） | P0| [qwen·autoMode.ts](../oss/qwen-code/packages/core/src/permissions/autoMode.ts) + [agentscope·_engine.py](../oss/agentscope/src/agentscope/permission/_engine.py) | 把"没意见，往下走"与"我要 ask"分开 |
 | C33 | **无人值守模式：把每一个 ASK 转为 DENY**（而非卸掉策略） | P1 | [agentscope·permission](../oss/agentscope/src/agentscope/permission) | 保留检测，只改结局 |
 | C34 | **仓库自带规则用 `trustGated` 标记门控**，信任变化时不移除规则而读当前信任 | P1 | [qwen·permission](../oss/qwen-code/packages/core/src/permissions) | 无需 per-skill 记账（补 C11 缺的机制） |
-| C35 | **禁止 agent 修改自身权限配置**。含具体绕过：**即使这次编辑是用户要求的，也不得顺带加入用户没要求的 allow 规则**。同清单含 `AGENTS.md` 一类项目指令文件 | P0 | 同上（`BUILTIN_SOFT_DENY`） | **见下方说明** |
-| C36 | **内置保护清单只能追加、不能替换**；用户提示有界（长度 + 条数） | P1 | 同上 | `MAX_USER_HINT_LENGTH=200` |
-| C37 | **IMDS（云实例元数据）与带外回调主机**列为网络侧拒绝项 | P1 | 同上 | 防 SSRF 式外带 |
-| C38 | **规则保留 `raw` 原文** | P0 | 同上 | 与 C18 的 `rule` 同源 |
-| C39 | **specifier 按 kind 分型匹配**（command→shell glob、path→**gitignore 风格**、domain、literal） | P1 | 同上 | kind 由工具类别推导 |
-| C40 | **规则可匹配具名参数**（如 `Agent(model:opus)`） | P2 | 同上 | `toolParamMatchers` |
-| C41 | **坏规则显式标记为永不匹配** | P1 | 同上 | 与 C23 合并 |
+| C35| **禁止 agent 修改自身权限配置**。含具体绕过：**即使这次编辑是用户要求的，也不得顺带加入用户没要求的 allow 规则**。同清单含 `AGENTS.md` 一类项目指令文件 | P0| [qwen·permissions/](../oss/qwen-code/packages/core/src/permissions) | **见下方说明** |
+| C36| **内置保护清单只能追加、不能替换**；用户提示有界（长度 + 条数） | P1| [qwen·permissions/](../oss/qwen-code/packages/core/src/permissions) | `MAX_USER_HINT_LENGTH=200` |
+| C37| **IMDS（云实例元数据）与带外回调主机**列为网络侧拒绝项 | P1| [qwen·permissions/](../oss/qwen-code/packages/core/src/permissions) | 防 SSRF 式外带 |
+| C38| **规则保留 `raw` 原文** | P0| [qwen·permissions/](../oss/qwen-code/packages/core/src/permissions) | 与 C18 的 `rule` 同源 |
+| C39| **specifier 按 kind 分型匹配**（command→shell glob、path→**gitignore 风格**、domain、literal） | P1| [qwen·permissions/](../oss/qwen-code/packages/core/src/permissions) | kind 由工具类别推导 |
+| C40| **规则可匹配具名参数**（如 `Agent(model:opus)`） | P2| [qwen·permissions/](../oss/qwen-code/packages/core/src/permissions) | `toolParamMatchers` |
+| C41| **坏规则显式标记为永不匹配** | P1| [qwen·permissions/](../oss/qwen-code/packages/core/src/permissions) | 与 C23 合并 |
 | C42 | **两阶段 LLM 判官**（贵路径修正便宜路径的假阳性）；**fail-closed 且带 `unavailable` 标记**；**abort 不算失败** | P2 | [qwen·classifier.ts](../oss/qwen-code/packages/core/src/permissions/classifier.ts) | 超时预算刻意宽松并写明理由 |
 | C43 | **权限聚合语义改为 `max()` 最严格者胜**（单调性 → 结构上关掉 C35） | P0 | [codex·policy.rs:403](../oss/codex/codex-rs/execpolicy/src/policy.rs#L403) | `Allow < Prompt < Forbidden`；**加规则永不变宽松** |
 | C44 | **规则自带 `match`/`not_match` 样例，加载期校验** | P0 | [codex·execpolicy/](../oss/codex/codex-rs/execpolicy) | 写错的规则在加载期就报错 |
 | C45 | **权限配置 linter**：检出"永不生效"的模式 | P0 | [kimi·evaluate.ts:85](../oss/kimi-code/packages/agent-core-v2/src/agent/toolPolicy/evaluate.ts#L85) | 与 C23/C41 合并为一件事 |
 | C46 | **保留元数据路径**（`.git` / 指令文件 / 配置目录）硬拦，**规则不得授权** | P0 | [codex·permissions.rs:36](../oss/codex/codex-rs/protocol/src/permissions.rs#L36) | 硬拦不可被规则覆盖 |
 | C47 | **批准的持久化作用域显式化**：一次性 / 会话 / 项目 / 用户 / 受管 | P0 | [codex·protocol.rs](../oss/codex/codex-rs/protocol/src/protocol.rs) | `ReviewDecision` 7 变体 |
-| C48 | **规则提案由引擎计算，模型只能发命令** | P0 | 同上（`ExecPolicyAmendment`） | 引擎算的提案 + 用户接受 |
-| C49 | **多来源权限按交集合成，无交集则拒绝启动** | P0 | codex `permission_profile_intersection.rs` + kimi（C25） | 不可合成时报错，**不放宽** |
+| C48| **规则提案由引擎计算，模型只能发命令** | P0| [codex·protocol.rs](../oss/codex/codex-rs/protocol/src/protocol.rs) | 引擎算的提案 + 用户接受 |
+| C49| **多来源权限按交集合成，无交集则拒绝启动** | P0| [codex·permission_profile_intersection.rs](../oss/codex/codex-rs/protocol/src/permission_profile_intersection.rs) | 不可合成时报错，**不放宽** |
 | C50 | **审批超时/取消必须带类型地失败**，禁止静默默认 | P0 | [zcode·broker.ts:105](../oss/zcode/apps/zcode-cli/packages/core/src/permission/broker.ts#L105) | `PermissionTimeout` reject，非 silent resolve |
 | C51 | **默认权限实现是拒绝**（未配置权限客户端 = deny） | P0 | [zcode·broker.ts](../oss/zcode/apps/zcode-cli/packages/core/src/permission/broker.ts) | `DenyPermissionBroker` 默认 |
 | C52 | **审批支持 `modifiedInput`**（改成这样再执行） | P1 | [zcode·turn-machine.ts:251](../oss/zcode/apps/zcode-cli/packages/core/src/agent/turn-machine.ts#L251) | 批准可携带修改后的参数 |
-| C53 | basename 规则必须绑**绝对路径清单**（反解释器路径绕过） | P1 | codex `host_executable` | 只写 basename 不足以防绕过 |
-| C54 | 审批来源分类配置（5 类）；**关闭某类 ≠ 放行 = 硬拒绝** | P1 | codex `GranularApprovalConfig` | 关掉的是"问"，不是"允许" |
+| C53| basename 规则必须绑**绝对路径清单**（反解释器路径绕过） | P1| [codex·execpolicy/parser.rs](../oss/codex/codex-rs/execpolicy/src/parser.rs) | 只写 basename 不足以防绕过 |
+| C54| 审批来源分类配置（5 类）；**关闭某类 ≠ 放行 = 硬拒绝** | P1| [codex·protocol.rs](../oss/codex/codex-rs/protocol/src/protocol.rs) | 关掉的是"问"，不是"允许" |
 | C55 | `justification` 必填；`forbidden` 须给替代做法 | P2 | [codex·execpolicy/](../oss/codex/codex-rs/execpolicy) | 拒绝要能告诉用户怎么办 |
 | C56 | 若做 LLM 判官，P0 定四件事：abstain 落回人 / 判官自身预算 / 超时常量被上层复用 / 受管可强制 | P1 | [codex·guardian/](../oss/codex/codex-rs/core/src/guardian) | 判官不能是隐式放行 |
 | C57 | **限制性判定必须在执行点用"权威标识"重算**，不得依赖传递下来的元数据 | P0 | [zcode·turn-loop.ts](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts) | 多端与恢复路径上丢失的元数据就是绕过口 |
@@ -330,17 +330,17 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | D1 | 统一路径校验（工作区内 + 白名单） | P0 | [codex·sandboxing/windows.rs](../oss/codex/codex-rs/sandboxing/src/windows.rs) | 所有文件操作必经，无旁路 |
 | D2 | 危险命令闸门 | P0 | [codex·prompts/templates/permissions](../oss/codex/codex-rs/prompts/templates/permissions) | `rm -rf` 等默认询问 |
 | D3 | 网络策略独立于进程策略 | P0 | [codex·doctor/network.rs](../oss/codex/codex-rs/cli/src/doctor/network.rs) | 可单独禁网而不禁进程 |
-| D4 | **工具拿不到裸进程 API** | P0 | [pi·types.ts](../oss/pi/packages/agent/src/types.ts) | 编译期断言 `ToolContext` 不含 `child_process` |
+| D4 | **工具拿不到裸进程 API** | P0 | [pi·tool-context.ts](../oss/pi/packages/agent/src/harness/tools/tool-context.ts) | 工具经 `ExecutionEnv` 抽象拿能力，`spawn` 只在 `harness/env/nodejs.ts`。**`harness/tools/` 实测 0 处 `child_process`** —— 我方按此断言 `ToolContext` 不含 `child_process` |
 | D5 | 沙箱可插后端 | P1 | [dsh·packages/sandbox/](../oss/deepseek-harness/packages/sandbox) | local 后端先跑通，接口不写死 |
 | D6 | Windows 受限令牌 helper（Rust 子进程） | P1 | [codex·windows-sandbox-rs/setup.rs](../oss/codex/codex-rs/windows-sandbox-rs/src/setup.rs) | 需 Win32 ACL + 能力 SID；TS 侧仅调用 |
 | D7 | 沙箱自检 `doctor` | P1 | [codex·cli/src/doctor/](../oss/codex/codex-rs/cli/src/doctor) | 可独立运行，报告沙箱可用性与网络策略 |
 | D8 | **API Key 用 DPAPI 加密** | P0 | [codex·dpapi.rs](../oss/codex/codex-rs/windows-sandbox-rs/src/dpapi.rs) | 配置文件内无明文 key |
-| D9 | 日志脱敏 | P0 | — | 断言日志不含 key / 用户原文 |
+| D9| 日志脱敏 | P0| **自研**（无上游参考） | 断言日志不含 key / 用户原文 |
 | D10 | **Windows ACL 沙箱（DSH 路线，独立于 Codex）** | P1 | [dsh·sandbox-windows-acl](../oss/deepseek-harness/packages/sandbox/sandbox-windows-acl) | 与 D6 二选一或互补 |
 | D11 | **PowerShell 作为一等 shell** | P1 | [dsh·packages/shell/](../oss/deepseek-harness/packages/shell) | Windows 下 `pwsh` 与 `bash` 都有 local/sandbox 两态 |
 | D12 | SSH 远程执行后端 | P2 | [dsh·packages/ssh/](../oss/deepseek-harness/packages/ssh) | `fs-ssh` / `sandbox-ssh` / `subprocess-ssh` 三层 |
 | D13 | **Windows kill-on-close Job 作为进程管辖范围所有者** | P1 | [dsh·subprocess-native-containment.md](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-08-28-subprocess-native-containment.md) | 子进程 `setsid`/重挂父进程/活过父进程时仍被管住；**超时子进程先回收再释放许可** |
-| D14 | **不可靠兜底必须显式告警** | P1 | 同上 | 无法建立强管辖时给一次性明确警告，**不假装已管住** |
+| D14| **不可靠兜底必须显式告警** | P1| [dsh·subprocess-native-containment.md](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-08-28-subprocess-native-containment.md) | 无法建立强管辖时给一次性明确警告，**不假装已管住** |
 | D15 | 已启动的命令绝不自动重试 | P0 | [pi-desktop·ADR 0041](../oss/pi-desktop/docs/adr/0041-bounded-host-runtime-and-persistence-outbox.md) | 幂等边界：**重试只对"未启动"安全** |
 | D16 | **网络隔离需 OS 身份 + WFP**；Job Object 只管进程生命周期，**不够**（Q17：接受但 **P1**） | **P1** | [codex·setup.rs:740](../oss/codex/codex-rs/windows-sandbox-rs/src/setup.rs#L740) | **P0 期间必须显式声明弱承诺**：「网络策略只在工具层生效，对任意子进程不可强制」 |
 
@@ -361,7 +361,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | E11 | **代码状态检查点**（与事件点对齐） | P0 | [pi·git-checkpoint.ts](../oss/pi/packages/coding-agent/examples/extensions/git-checkpoint.ts) | **场景①的真正要求**：revert 不只回到对话，还要回到当时的代码状态 |
 | E12 | **整值事件规则：状态事件携带变更后完整状态，绝非裸 delta** | P0 | [dsh·session-projection-and-command-log.md](../oss/deepseek-harness/.agents/notes/proposed/architecture/2026-07-27-session-projection-and-command-log.md) | 丢一次推送可由下一次自愈；按 seq 比较免疫乱序 |
 | E13 | **同步 append + write-behind + turn 末 flush 检查点** | P0 | [dsh·event-sourced-sessions.md](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-06-11-event-sourced-sessions.md) | 热路径绝不阻塞 I/O；每轮 turn 结束 await flush |
-| E14 | **原始流分片与组装后消息都入日志** | P1 | 同上 | 派生时以组装事件为准，不用分片 |
+| E14| **原始流分片与组装后消息都入日志** | P1| [dsh·event-sourced-sessions.md](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-06-11-event-sourced-sessions.md) | 派生时以组装事件为准，不用分片 |
 | E15 | **事件合并器**作为独立模块 | P1 | [zcode·zcodeSessionEventCoalescer.ts](../oss/zcode/packages/services/src/zcode-agent/zcodeSessionEventCoalescer.ts) | 服务于 E3 的"1 万事件 < 200ms" |
 | E16 | **每域一个 `fold`，同时用作投影与不变量校验；写入前校验"已有流+新事件"** | P0 | [dsh·invariant.ts](../oss/deepseek-harness/packages/schedule/schedule/src/invariant.ts) | fold 既是投影又是校验器，校验发生在 append 之前 |
 | E17 | **原子操作的中间态（reservation/promoting/rollback）也进事件流** | P1 | [zcode·session.events.ts](../oss/zcode/apps/zcode-cli/packages/contracts/src/events/session.events.ts) | 投影不猜中间态 |
@@ -374,7 +374,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | F1 | 系统提示管理 | P0 | [pi·packages/ai/](../oss/pi/packages/ai) | 提示词可独立修改 |
 | F2 | `AGENTS.md` 项目指令加载 | P0 | [opencode·AGENTS.md](../oss/opencode/AGENTS.md) | 按目录层级就近生效 |
 | F3 | `compaction` 压缩 | P0 | [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | 压缩后 token 显著下降且关键信息保留 |
-| F4 | `overflow` 与 `compaction` 分离 | P0 | 同上 | 先判溢出再决定压缩 |
+| F4| `overflow` 与 `compaction` 分离 | P0| [codex·compact.rs:315](../oss/codex/codex-rs/core/src/compact.rs#L315) | 先判溢出再决定压缩 |
 | F5 | 摘要 / 标题生成 | P1 | [qwen·docs/design/session-recap/](../oss/qwen-code/docs/design/session-recap) | 长会话有可读标题 |
 | F6 | 提示缓存优化 | P1 | [pi-mono·anthropic-cache-split.ts](../oss/pi-mono/packages/ai/src/api/anthropic-cache-split.ts) | 命中率可观测，token 省 ≥ 30%（§6.2） |
 | F7 | 时间上下文（当前时间注入） | P1 | [codex·current_time_reminder.rs](../oss/codex/codex-rs/core/src/context/current_time_reminder.rs) | 模型知道"现在"；长会话中时间不漂移 |
@@ -384,12 +384,12 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | F11 | 压缩失败三级兜底 | P1 | [pi-desktop·ADR 0049](../oss/pi-desktop/docs/adr/0049-context-compaction-failure-recovery.md) → [0282](../oss/pi-desktop/docs/adr/0282-compaction-summary-retry-and-sizing.md) → [0302](../oss/pi-desktop/docs/adr/0302-compaction-fallback-recent-window-and-chunked-summary.md) | 摘要重试与尺寸控制 → 回退近期窗口 → 分块摘要 |
 | F12 | **工具 schema 延迟加载**：工具可藏在检索后，模型按名索要才加载 schema | P1 | [claude-official·claude-code.d.ts](../refs/claude-official/mods/types/claude-code.d.ts) | `ToolDeferral`；与 F13/F14 相互约束 |
 | F13 | **中途改动（模型 / 推理档 / 工具集）不得作废已缓存前缀** | P1 | [pi-mono·cache-marker-telemetry-scar.md](../oss/pi-mono/docs/claude-bridge-cache-marker-telemetry-scar.md) | 变更以"位置性追加"表达，而非改写既有请求 |
-| F14 | **延迟加载的工具脚手架在首次请求即声明** | P1 | 同上 | 使后续工具增减不破坏前缀 |
+| F14| **延迟加载的工具脚手架在首次请求即声明** | P1| [pi-mono·cache-marker-telemetry-scar.md](../oss/pi-mono/docs/claude-bridge-cache-marker-telemetry-scar.md) | 使后续工具增减不破坏前缀 |
 | F15 | **压缩走 cache-safe 路径**（重放活前缀），不得冷写整个上下文 | P1 | [pi-mono·cache-retention.ts](../oss/pi-mono/packages/ai/src/utils/cache-retention.ts) | 压缩不作废缓存 |
-| F16 | **缓存健康可诊断**：区分"前缀漂移"与"thinking 被剥离"，并记录读/写 token 数 | P2 | 同上 | 缓存命中率下降可定位原因 |
+| F16| **缓存健康可诊断**：区分"前缀漂移"与"thinking 被剥离"，并记录读/写 token 数 | P2| [pi-mono·cache-retention.ts](../oss/pi-mono/packages/ai/src/utils/cache-retention.ts) | 缓存命中率下降可定位原因 |
 | F17 | **压缩/截断切点必须工具调用-结果配平**，且从内容现算 | P0 | [dsh·tool-pairing.ts](../oss/deepseek-harness/packages/compaction/compaction/src/tool-pairing.ts) | 不依赖可能被重写的 step 标记 |
 | F18 | **模型流中断恢复**：锚点先于故障持久化 / 有界重试 / **显式终态 `blocked`** | P1 | [zcode·session.events.ts](../oss/zcode/apps/zcode-cli/packages/contracts/src/events/session.events.ts) | `StreamRecovery*` 6 个事件 |
-| F19 | **压缩分两级**（microcompact 与 compact 各有边界事件） | P2 | 同上 | 两级各有可观测边界 |
+| F19| **压缩分两级**（microcompact 与 compact 各有边界事件） | P2| [zcode·session.events.ts](../oss/zcode/apps/zcode-cli/packages/contracts/src/events/session.events.ts) | 两级各有可观测边界 |
 | F20 | **压缩是生命周期**（开始/结束事件 + hook 可介入/中止），不是函数 | P0 | [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | 换实现不影响观察者 |
 | F21 | **压缩有相位**：`StandaloneTurn/PreTurn/MidTurn/PostTurn`（**Q13：P0 只做 `PreTurn` 与 `MidTurn`**） | P0 | 同上 + [zcode·compact.ts](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/compact.ts) | 三份独立证据（见 §9 交叉验证） |
 | F22 | **压缩后重建上下文用"压缩那一刻"的状态**，不用压缩前快照 | P0 | [codex·session/mod.rs:4530](../oss/codex/codex-rs/core/src/session/mod.rs#L4530) | `start_new_context_window` |
@@ -397,7 +397,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | F24 | **换到更小上下文的模型时必须先压缩**（`ModelDownshift`） | P0 | [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | 换小模型前先压缩 |
 | F25 | **上下文窗口编号化**；压缩 = 开新窗口 + 持久化窗口元数据 | P1 | [codex·session/mod.rs:4530](../oss/codex/codex-rs/core/src/session/mod.rs#L4530) | `window_number` / `window_ids` |
 | F26 | **压缩结果带指纹**（配置哈希），指纹变了重压 | P1 | [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | `CompHashChanged` |
-| F27 | 压缩策略具名（摘要式 / 前缀式） | P2 | 同上 | `Memento` / `PrefixCompaction` |
+| F27| 压缩策略具名（摘要式 / 前缀式） | P2| [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | `Memento` / `PrefixCompaction` |
 | F28 | **压缩抖动检测**：连续多次"极小工作量后又触发压缩" → **硬失败**，错误带全部计数 | P0 | [zcode·compact.ts](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/compact.ts) | 症状是"账单暴涨且看不到尽头"，无保护无法收敛 |
 | F29 | **换模压缩语义**：压缩请求跑在**旧**模型上、后续跑在**新**模型上 | P1 | [codex·compact.rs:423](../oss/codex/codex-rs/core/tests/suite/compact.rs#L423) | 压缩时剥掉 model-switch 更新项、后续带上 |
 | F30 | **配置解析失败保留上一份配置**，不回退默认 | P1 | [codex·session/tests.rs](../oss/codex/codex-rs/core/src/session/tests.rs) | 回退默认可能**变宽松**；fail-safe 方向 |
@@ -410,7 +410,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | G2 | todo 列表 | P1 | [opencode·todo.ts](../oss/opencode/packages/opencode/src/session/todo.ts) | 多步任务进度可见 |
 | G3 | goal 跨轮驱动 | P1 | [dsh·goal-round-driver](../oss/deepseek-harness/packages/goal/goal-round-driver) | goal 跨多个 turn 保持，不因单轮结束丢失 |
 | G4 | 计划落盘 | P1 | [pi-desktop·ADR 0053](../oss/pi-desktop/docs/adr/0053-plan-checkpoint-artifact-and-execution-epoch.md) | 重启后计划仍在；**批准要持久，但重启绝不重放旧 host 的工作** |
-| G5 | 审批过期策略 | P1 | — | 悬置审批有超时，不留永久挂起 |
+| G5| 审批过期策略 | P1| **自研**（无上游参考） | 悬置审批有超时，不留永久挂起 |
 | G6 | goal 截止时间调度 | P1 | [kimi·goalDeadlineScheduler.ts](../oss/kimi-code/packages/agent-core-v2/src/features/goal/goalDeadlineScheduler.ts) | goal 有 deadline；到期行为可定义（放弃/上报/续期） |
 | G7 | **计划模式 = 混合**（Q21）：状态是"同一个 agent"（可读），该状态下**写/执行权限硬关** | P1 | [§3 Q21](../docs/requirements.md) | 不一刀切禁读、也不靠提示词自律 |
 
@@ -420,7 +420,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | --- | --- | --- | --- | --- |
 | H1 | 子代理做成 `task` 工具 | P1 | [opencode·task.ts](../oss/opencode/packages/opencode/src/tool/task.ts) | 自动继承权限/审批/事件，无需新抽象 |
 | H2 | **结算栅栏** | P1 | [dsh·subagent](../oss/deepseek-harness/packages/subagent) | 子代理产出原子并入父会话，父会话读不到半成品 |
-| H3 | 权限降级 | P1 | 同上 | 子代理不得拥有高于父会话的权限 |
+| H3| 权限降级 | P1| [dsh·subagent](../oss/deepseek-harness/packages/subagent) | 子代理不得拥有高于父会话的权限 |
 | H4 | 子代理隔离上下文 | P1 | [opencode·task.ts](../oss/opencode/packages/opencode/src/tool/task.ts) | 子代理上下文不污染父会话 |
 | H5 | **权限降级算法：只继承 deny 与 external_directory，不继承授权** | P1 | [opencode·subagent-permissions.ts](../oss/opencode/packages/opencode/src/agent/subagent-permissions.ts) | 子代理默认禁用 `task`（不可再分子代理）与 `todowrite` |
 | H6 | 子代理执行后端可插 | P2 | [dsh·subagent-*](../oss/deepseek-harness/packages/subagent) | 五种：ACP / CC / Codex / DSH-SDK / 进程内 fork |
@@ -435,21 +435,21 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | I4 | 进程外插件（websocket） | P2 | [pi-desktop·plugin-websocket.ts](../oss/pi-desktop/apps/desktop/electron/main/plugin-websocket.ts) | 不可信插件隔离在独立进程（**只学行为**） |
 | I5 | 插件 SDK | P2 | [opencode·plugin/](../oss/opencode/packages/plugin) | 第三方可写插件而不碰内核 |
 | I6 | 权限双轨：内核内可信 / 进程外不可信 | P1 | [dsh·packages/hooks/](../oss/deepseek-harness/packages/hooks) | 按信任级分轨，不混为一谈 |
-| I7 | **hook 协议可兼容既有生态** | P2 | 同上 | DSH 同时提供 `hooks-claude-code` 与 `hooks-codex` |
+| I7| **hook 协议可兼容既有生态** | P2| [dsh·packages/hooks/](../oss/deepseek-harness/packages/hooks) | DSH 同时提供 `hooks-claude-code` 与 `hooks-codex` |
 | I8 | 人格 / agent 预设 | P2 | [codex·templates/personalities](../oss/codex/codex-rs/core/templates/personalities) | 可按会话选预设 |
 | I9 | 插件清单**安装期**全量校验、闭集枚举、**未实现的能力直接拒绝声明** | P1 | [pi-desktop·plugins/validation.rs](../oss/pi-desktop/crates/host-core/src/plugins/validation.rs) | 不是忽略，不是警告，是拒绝 |
 | I10 | hook 复核结论**可被 `superseded`**，且取代本身是持久事实 | P2 | [zcode·session.events.ts](../oss/zcode/apps/zcode-cli/packages/contracts/src/events/session.events.ts) | 复核可被后续复核取代 |
 | I11 | 治理逻辑（重复工具提醒、超时策略）做成**可插拔插件** | P2 | [dsh·packages/guard/](../oss/deepseek-harness/packages/guard) | 不在核心里硬编码治理 |
 | **I12** | **hook 洋葱链形态**：`($, e, next)` 每层可"进去前 / 出来后"、可截断不往下传（**Q14，决定 loop 与 tools 的形状**） | **P0** | [claude-official·mods/README.md](../refs/claude-official/mods/README.md) | **P0 只挂 3 个点**；选了平列表就再也补不上链的能力 |
-| I13 | 链上可观测与可预算：`next.trace` / `next.budget` | P1 | 同上 | 每层能看见走过哪些层、还剩多少预算 |
-| I14 | **跨层跳** `next.to(e, tier)` | P2 | 同上 | 托管层可跳过中间层直达 |
+| I13| 链上可观测与可预算：`next.trace` / `next.budget` | P1| [claude-official·mods/README.md](../refs/claude-official/mods/README.md) | 每层能看见走过哪些层、还剩多少预算 |
+| I14| **跨层跳** `next.to(e, tier)` | P2| [claude-official·mods/README.md](../refs/claude-official/mods/README.md) | 托管层可跳过中间层直达 |
 
 ### J. Models（27 项）
 
 | ID | 功能 | 优先级 | 参考（首选） | 验收要点 |
 | --- | --- | --- | --- | --- |
 | J1 | 流式响应 | P0 | [pi·packages/ai/](../oss/pi/packages/ai) | `message_update` 增量到达 |
-| J2 | 单厂商可用 | P0 | 同上 | 至少一家跑通 |
+| J2| 单厂商可用 | P0| [pi·packages/ai/](../oss/pi/packages/ai) | 至少一家跑通 |
 | J3 | 不透明配置 + 仅校验语法 | P0 | [cc-switch·schemas/provider.ts](../oss/cc-switch/src/lib/schemas/provider.ts) | 不为每个厂商建模；配置存字符串 |
 | J4 | **模型身份 = `{provider, modelId}` 二元组** | P0 | [pi·agent-harness.ts:142](../oss/pi/packages/agent/src/harness/agent-harness.ts#L142) | 同名模型跨厂商可区分；不用裸 model 名做 key |
 | J5 | 多厂商 | P1 | [opencode·packages/llm/](../oss/opencode/packages/llm) | 厂商适配独立成模块 |
@@ -471,7 +471,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | J21 | 成本核算 | P2 | [hermes·billing_usage.py](../oss/hermes-agent/agent/billing_usage.py) | token → 成本可算；按会话/按轮可查 |
 | J22 | **超时必须带错误码作用域**（多层嵌套时判定"谁超时"不能靠 signal） | P0 | [dsh·timeout-policy](../oss/deepseek-harness/packages/guard/timeout-policy/src/index.ts) | `TOOL_TIMEOUT` 码 + 信号换回不改工具 promise |
 | J23 | **区分三种超时**：总时长 / 空闲 / **可重臂空闲**（有传输活动则续期） | P1 | [dsh·util/timeout](../oss/deepseek-harness/packages/util/timeout/src/index.ts) | `IdleWatchdog.pulse()` |
-| J24 | **`setTimeout` 上限 2^31-1**（超出被静默钳到 1ms） | P1 | 同上 | `MAX_TIMER_DELAY_MS = 2_147_483_647` |
+| J24| **`setTimeout` 上限 2^31-1**（超出被静默钳到 1ms） | P1| [dsh·util/timeout](../oss/deepseek-harness/packages/util/timeout/src/index.ts) | `MAX_TIMER_DELAY_MS = 2_147_483_647` |
 | J25 | 输出 token 与非缓存输入 token **不同价**，预算按权重计 | P1 | [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | 预算不按裸 token 数算 |
 | J26 | **重试按显式错误分类；未知错误不重试**；退避带 jitter；**尊重服务端 Retry-After** | P0 | [kimi·retry.ts](../oss/kimi-code/packages/agent-core-v2/src/human/llm/requester/retry.ts) | `RETRYABLE_STATUS_CODES` 显式枚举；429/5xx 与未知分开 |
 | J27 | `retrying` 作为**一等事件**，带 `failedAttempt` | P1 | [kimi·engine.ts](../oss/kimi-code/packages/agent-core-v2/src/agent/loop/machine/engine.ts) | 重试在事件流里可见 |
@@ -496,7 +496,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | --- | --- | --- | --- | --- |
 | L1 | 事件即轨迹 | P0 | [pi·types.ts:485](../oss/pi/packages/agent/src/types.ts#L485) | 不另存一份日志 |
 | L2 | **发起端 + 审批人记录** | P0 | [opencode·permission/](../oss/opencode/packages/opencode/src/permission) | 场景⑥：可追溯到"谁在哪个端发起的" |
-| L3 | token 统计 | P0 | [cc-switch·stream_check.rs](../oss/cc-switch/src-tauri/src/database/dao/stream_check.rs) | 按会话/按轮可查 |
+| L3 | token 统计 | P0 | [cc-switch·usage_rollup.rs](../oss/cc-switch/src-tauri/src/database/dao/usage_rollup.rs) | 按会话/按轮可查；`input/output/cache_read/cache_creation_tokens` 与 `total_cost_usd` 分列 |
 | L4 | 轨迹回放 | P1 | [codex·rollout-trace/](../oss/codex/codex-rs/rollout-trace) | 从事件流重放一次真实会话 |
 | L5 | HTTP 级录制 | P2 | [opencode·http-recorder](../oss/opencode/packages/http-recorder) | 调试模型交互 |
 | L6 | 审计报表 | P2 | [hermes·gateway/](../oss/hermes-agent/gateway) | 汇总危险操作与审批 |
@@ -510,14 +510,14 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | ID | 功能 | 优先级 | 参考（首选） | 验收要点 |
 | --- | --- | --- | --- | --- |
 | M1 | 后台 job | P1 | [dsh·packages/jobs/](../oss/deepseek-harness/packages/jobs) | 不阻塞对话 |
-| M2 | job 注册表 | P1 | 同上 | job 状态可查、可取消 |
+| M2| job 注册表 | P1| [dsh·packages/jobs/](../oss/deepseek-harness/packages/jobs) | job 状态可查、可取消 |
 | M3 | 崩溃续跑 | P1 | [codex·daemon_recovery.rs](../oss/codex/codex-rs/core/src/session/daemon_recovery.rs) | 场景⑤：重启后不重复已完成副作用 |
 | M4 | 空闲回收 | P2 | [qwen·session-idle-reaper](../oss/qwen-code/docs/design/session-idle-reaper) | 空闲会话被回收，不常驻内存 |
 | M5 | goal 持久化 | P1 | [dsh·packages/goal/](../oss/deepseek-harness/packages/goal) | 跨重启仍在 |
 | M6 | **工具调用超时策略** | P1 | [dsh·guard/timeout-policy](../oss/deepseek-harness/packages/guard/timeout-policy/src/index.ts) | 每工具可配超时；超时是可观测事件（`TOOL_TIMEOUT`）而非静默失败 |
 | M7 | 统一 deadline 库 | P2 | [dsh·util/timeout](../oss/deepseek-harness/packages/util/timeout/src/index.ts) | 超时逻辑集中，不在各工具里重复实现 |
 | M8 | **持久化权威必须分代（generation / execution epoch）** | P1 | [pi-desktop·ADR 0041](../oss/pi-desktop/docs/adr/0041-bounded-host-runtime-and-persistence-outbox.md) | 过期的 host 代不能发通知或接受写入；**重启绝不重放旧进程创建的工作** |
-| M9 | **有界准入 + 有限队列** | P1 | 同上 | 工具类有独立全局上限，每会话另有上限；无界并发会引发资源故障连锁 |
+| M9| **有界准入 + 有限队列** | P1| [pi-desktop·ADR 0041](../oss/pi-desktop/docs/adr/0041-bounded-host-runtime-and-persistence-outbox.md) | 工具类有独立全局上限，每会话另有上限；无界并发会引发资源故障连锁 |
 | M10 | **预算是"要送达的事实"**：分级阈值 + 送达记账（写历史后才算送达，取消则重试）+ 换窗重置 | P0 | [codex·rollout_budget.rs](../oss/codex/codex-rs/core/src/rollout_budget.rs) | 预算不是"限制"，是必须送达的信号 |
 | M11 | **闲时任务**：长任务取号、闲时窗口核销执行（择时省钱） | P2 | [zcode·offPeakDispatchSettlement.ts](../oss/zcode/packages/desktop/src/scheduler/offPeakDispatchSettlement.ts) | 闲时窗口核销，不重复执行 |
 
@@ -525,16 +525,16 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 
 | ID | 功能 | 优先级 | 参考（首选） | 验收要点 |
 | --- | --- | --- | --- | --- |
-| N1 | 统一会话 ID | P1 | — | 各端指向同一会话 |
+| N1| 统一会话 ID | P1| **自研**（无上游参考） | 各端指向同一会话 |
 | N2 | 审批跨端（见 C6） | P1 | [opencode·permission/](../oss/opencode/packages/opencode/src/permission) | — |
 | N3 | 会话级互斥 | P1 | [zcode·sessionRealtimePort.ts](../oss/zcode/packages/services/src/session/sessionRealtimePort.ts) | Q6 已定可多端；同时写不产生交错 |
-| N4 | 事件序号 / epoch | P1 | [zcode·sessionRealtimePort.ts](../oss/zcode/packages/services/src/session/sessionRealtimePort.ts) | 乱序到达可检测 |
-| N5 | 推送 | P2 | — | 状态变更可推送到端 |
+| N4 | 事件序号 / epoch | P1 | [pi·session/types.ts:68](../oss/pi/packages/agent/src/harness/session/types.ts#L68) | `seq` 由 store 分配、调用方不提供。**跨端 epoch 无上游参考，需自研** |
+| N5| 推送 | P2| **自研**（无上游参考） | 状态变更可推送到端 |
 | N6 | **owner + lease + 类型化 owner 命令**：审批 / elicitation / hook 复核**共用一条命令通道**；命令是**闭集**；结果回传 | P0 | [zcode·sessionRealtimePort.ts](../oss/zcode/packages/services/src/session/sessionRealtimePort.ts) | 一条通道，不是三套并行 |
-| N7 | **每个界面是一个 host**（有投递方式之分）；run 由**租约**保护 | P1 | 同上 | Q6 要的会话级互斥 |
+| N7| **每个界面是一个 host**（有投递方式之分）；run 由**租约**保护 | P1| [zcode·sessionRealtimePort.ts](../oss/zcode/packages/services/src/session/sessionRealtimePort.ts) | Q6 要的会话级互斥 |
 | N8 | 多端 = **surface roster**，attach/detach 由事件维护 | P1 | [claude-official·claude-code.d.ts](../refs/claude-official/mods/types/claude-code.d.ts) | 端的加入/离开是持久事件 |
 | **N9** | **配置跨设备同步**（Q20）：加密 vault + 远端存储 + **三方合并** + 导入日志可崩溃恢复 | P1 | [pi-desktop·config_sync/](../oss/pi-desktop/crates/host-core/src/config_sync) | **里面有 API key，加密不是可选项**；独立子系统，不是"配置放哪儿" |
-| **N10** | 配置同步**禁止后写覆盖先写**，必须三方合并；冲突显式报错 | P1 | 同上 | 与 C49 同源纪律 |
+| **N10**| 配置同步**禁止后写覆盖先写**，必须三方合并；冲突显式报错 | P1| [pi-desktop·config_sync/](../oss/pi-desktop/crates/host-core/src/config_sync) | 与 C49 同源纪律 |
 
 ### O. 测试与诊断（30 项，10 条 P0）
 
@@ -546,13 +546,13 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | O1 | **主断言面 = 归一化 + 差分后的"模型上下文"快照** | P0 | [codex·context_snapshot.rs](../oss/codex/codex-rs/core/tests/common/context_snapshot.rs) | 不要断言内部状态，断言"模型实际看到的东西" |
 | O2 | **在网络边界 mock**：假 HTTP 服务器 + 脚本化 SSE 序列（每次模型调用消费一个） | P0 | [codex·responses.rs:1426](../oss/codex/codex-rs/core/tests/common/responses.rs#L1426) | 跑真实 HTTP 路径、真实 SSE 解析、真实会话循环，只有"对面的模型"是假的 |
 | O3 | **易变值必须归一化**（路径/ID/时间戳/元数据） | P0 | [dsh·session-snapshot/normalize.ts](../oss/deepseek-harness/packages/test-support/session-snapshot/src/normalize.ts) | 不归一化则快照无法稳定 |
-| O4 | **易变值用"具名占位符"而非通用 `<redacted>`** | P0 | 同上 | `{{sessionId}}` `{{cwd}}` `{{system}}`… **保留结构信息** |
+| O4| **易变值用"具名占位符"而非通用 `<redacted>`** | P0| [dsh·normalize.ts](../oss/deepseek-harness/packages/test-support/session-snapshot/src/normalize.ts) | `{{sessionId}}` `{{cwd}}` `{{system}}`… **保留结构信息** |
 | O5 | **事件 id 用稳定标签**而非通用占位符（**保留身份**，可断言"同一 id 出现在事件 1、5、9"） | P0 | [kimi·snapshots.ts](../oss/kimi-code/packages/agent-core-v2/test/harness/snapshots.ts) | 比 O4 更进一步：占位符抹掉身份，稳定标签保留身份 |
 | O6 | **归一化自己要有测试** | P0 | [dsh·normalize.spec.ts](../oss/deepseek-harness/packages/test-support/session-snapshot/tests/normalize.spec.ts) | DSH 归一化 625 行、测试 1,259 行 —— **测试比实现多** |
 | O7 | **事件序列断言 = 在真实事件流上断言不变量**（同回合共享 id / 成对事件成对 / 终态恰一个），**不写事件列表** | P0 | [codex·compact.rs:450](../oss/codex/codex-rs/core/tests/suite/compact.rs#L450) | 不脆（新增事件类型不用改测试）+ 测真流 |
 | O8 | **每次 recv 都要超时 + 具名期望** | P0 | [codex·session/tests.rs:761](../oss/codex/codex-rs/core/src/session/tests.rs#L761) | 事件驱动测试最坏的失败是"挂住"，超时把它变成可读失败 |
 | O9 | **结构化断言与快照配对**：关键语义用 `assert` + 一句人话，其余交给快照 | P0 | [codex·compact.rs:423](../oss/codex/codex-rs/core/tests/suite/compact.rs#L423) | 少数关键语义可读失败，其余全覆盖 |
-| O10 | **快照窗口头必须记录"窗口为何在此结束"** | P0 | 同上 | settings 变了 / 输入在第 N 条分叉 |
+| O10| **快照窗口头必须记录"窗口为何在此结束"** | P0| [codex·compact.rs:423](../oss/codex/codex-rs/core/tests/suite/compact.rs#L423) | settings 变了 / 输入在第 N 条分叉 |
 | O11 | **快照结构里自带 previous**，差分在**序列化时**算 | P0 | [kimi·snapshots.ts](../oss/kimi-code/packages/agent-core-v2/test/harness/snapshots.ts) | 差分不需要测试作者手写；不是前缀关系就打全量 |
 | O12 | **不变量检查服务** | P1 | [dsh·invariant.ts](../oss/deepseek-harness/packages/schedule/schedule/src/invariant.ts) | 包自己拥有不变量，可自动断言防回归 |
 | O13 | mock 记录全部请求 + "断言请求数量"的访问器 | P1 | [codex·responses.rs](../oss/codex/codex-rs/core/tests/common/responses.rs) | 先断言调用次数，结构错了给可读失败 |
@@ -563,15 +563,15 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | O18 | 运行时诊断报告 | P1 | [codex·cli/src/doctor/](../oss/codex/codex-rs/cli/src/doctor) | 一键导出环境/配置/沙箱可用性 |
 | O19 | **迁移断言**：旧字段不再被读 / 旧入口已退役 / 迁移后可恢复 | P1 | [kimi·migration-legacy](../oss/kimi-code/packages/migration-legacy) | ZCode 全仓唯一的一类测试，有参考价值 |
 | O20 | 先断言**模型调用次数**（带说明） | P1 | [codex·compact.rs:423](../oss/codex/codex-rs/core/tests/suite/compact.rs#L423) | `assert_eq!(requests.len(), 3, "expected user, compact, and follow-up requests")` |
-| O21 | 快照里写 `Scenario:` 一句自然语言 —— **快照本身即规格** | P1 | 同上 | 读快照即知测试意图 |
-| O22 | **每个相位/每个原因各有一条快照** | P1 | 同上 | compact 共 8 条快照，全仓 43 条 |
+| O21| 快照里写 `Scenario:` 一句自然语言 —— **快照本身即规格** | P1| [codex·compact.rs:423](../oss/codex/codex-rs/core/tests/suite/compact.rs#L423) | 读快照即知测试意图 |
+| O22| **每个相位/每个原因各有一条快照** | P1| [codex·compact.rs:423](../oss/codex/codex-rs/core/tests/suite/compact.rs#L423) | compact 共 8 条快照，全仓 43 条 |
 | O23 | 事件流快照**列对齐 + 单行 JSON**；domain 与 RPC/wire 事件**同流交错** | P1 | [kimi·snapshots.ts](../oss/kimi-code/packages/agent-core-v2/test/harness/snapshots.ts) | `[wire]`/`[emit]` 前缀 + `padEnd` 对齐 |
-| O24 | system prompt / tools **只在变化时打印**；等于默认值折叠成标签 | P1 | 同上 | **使缓存前缀稳定性（F13）可测** |
+| O24| system prompt / tools **只在变化时打印**；等于默认值折叠成标签 | P1| [kimi·snapshots.ts](../oss/kimi-code/packages/agent-core-v2/test/harness/snapshots.ts) | **使缓存前缀稳定性（F13）可测** |
 | O25 | **进程全局状态必须有隔离机制**，且注释写明**故障机制** | P1 | [pi-desktop·plugins/tests.rs](../oss/pi-desktop/crates/host-core/src/plugins/tests.rs) | `MARKET_ENV_LOCK` + RAII 守卫 + 中毒处理 |
 | O26 | **测试名写成完整行为规格**，把安全边界写进名字 | P1 | [codex·session/tests.rs](../oss/codex/codex-rs/core/src/session/tests.rs) | 如 `user_shell_commands_do_not_inherit_managed_network_proxy` |
 | O27 | 长行截断（160 字符）+ 已知长指引替换成一行标签 | P2 | [codex·context_snapshot.rs](../oss/codex/codex-rs/core/tests/common/context_snapshot.rs) | `MAX_SNAPSHOT_LINE_CHARS = 160` |
 | O28 | keyless 快照层作为**写下来的测试政策**；测试基础设施自成包组且有升降级规则 | P2 | [dsh·test-support](../oss/deepseek-harness/packages/test-support) | 7 包、22,817 行的包组 |
-| O29 | 不期望的事件直接 panic，不静默流过 | P2 | [codex·compact.rs:450](../oss/codex/codex-rs/core/tests/suite/compact.rs#L450) | 意外事件立刻失败 |
+| O29 | **期望外的错误直接 panic**；其余未识别事件走显式忽略臂 | P2 | [codex·compact.rs:470](../oss/codex/codex-rs/core/tests/suite/compact.rs#L470) | `EventMsg::Error(e) => panic!(...)`；末尾必须有**显式的** `_ => {}` —— 忽略是写出来的决定，不是遗漏 |
 | O30 | 断言跨组件因果（"装完必须出现在注册表"），不只断言字段值 | P2 | [pi-desktop·plugins/tests.rs](../oss/pi-desktop/crates/host-core/src/plugins/tests.rs) | 端到端因果可断言 |
 
 > **负面发现（不要采纳）**：kimi 的工具快照**只打印工具名，不打印 schema** ——
@@ -597,10 +597,10 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | Q2 | 会话查询（含工具化） | P2 | [dsh·session-query](../oss/deepseek-harness/packages/session-query) | agent 可查询历史会话；查询走 SQL 而非全量加载 |
 | Q3 | 落盘文件生命周期管理 | P1 | [dsh·packages/spill/](../oss/deepseek-harness/packages/spill) | 截断产生的临时文件有清理策略，不无限堆积 |
 | Q4 | 旧数据清理 | P2 | [pi-desktop·db/migrations.rs](../oss/pi-desktop/crates/host-core/src/db/migrations.rs) | 与 M4 idle 回收配合 |
-| **Q5** | **启动期对账**：把上次崩溃遗留的 `running` 全部改为 `interrupted`，**按对象类型细分错误码** | **P0** | 同上（`boot_maintenance`） | 场景⑤ 的落地点；`PLAN_APPROVAL_INTERRUPTED` / `PLAN_EXECUTION_INTERRUPTED` |
-| Q6 | 保留策略常量：审计 90 天 / 任务运行记录 100 条 | P2 | 同上 | 常量集中可查 |
+| **Q5**| **启动期对账**：把上次崩溃遗留的 `running` 全部改为 `interrupted`，**按对象类型细分错误码** | **P0**| [pi-desktop·migrations.rs](../oss/pi-desktop/crates/host-core/src/db/migrations.rs) | 场景⑤ 的落地点；`PLAN_APPROVAL_INTERRUPTED` / `PLAN_EXECUTION_INTERRUPTED` |
+| Q6| 保留策略常量：审计 90 天 / 任务运行记录 100 条 | P2| [pi-desktop·migrations.rs](../oss/pi-desktop/crates/host-core/src/db/migrations.rs) | 常量集中可查 |
 | Q7 | **日志冷热分离 + 后台 zstd 压缩 + 表示形态对上层透明 + 原子替换保权限 + 运行标记防重叠** | P1 | [codex·rollout/compression.rs](../oss/codex/codex-rs/rollout/src/compression.rs) | 事件源架构必然的债，**不影响热路径**，可 P1 再上 |
-| Q8 | 归档是独立一档（`ARCHIVED_SESSIONS_SUBDIR`），不是删除 | P2 | 同上 | 归档 ≠ 删除 |
+| Q8| 归档是独立一档（`ARCHIVED_SESSIONS_SUBDIR`），不是删除 | P2| [codex·rollout/compression.rs](../oss/codex/codex-rs/rollout/src/compression.rs) | 归档 ≠ 删除 |
 
 ### S. 调度与集成（5 项）
 
@@ -624,10 +624,10 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | T1 | **架构即代码**：可校验的策略文件（文件行数上限、禁止循环依赖与深导入、模块依赖白名单、公开入口清单、模块 owner），配 **`architecture:check --changed` 只查改动** + **渐进采用**（模块级 `managed` 开关） | P1 | [zcode·architecture-policy.yaml](../oss/zcode/architecture-policy.yaml) | 架构约束变成可执行的检查，不是文档 |
 | T2 | **带禁用词的领域词汇表**，每词条必须有 **`_Avoid_` 行**，按限界上下文分文件 | P1 | [zcode·CONTEXT.md](../oss/zcode/CONTEXT.md) | 命名分歧在词表层解决 |
 | T3 | **模块阅读包命令**：给定模块 id 产出读该模块所需的上下文包 | P2 | [zcode·architecture-policy.yaml](../oss/zcode/architecture-policy.yaml) | 降低"读一个模块要开十个文件"的成本 |
-| T4 | **架构豁免必须带理由**，写在同一条抑制语句上 | P2 | 同上 | `eslint-disable -- 理由` |
+| T4| **架构豁免必须带理由**，写在同一条抑制语句上 | P2| [zcode·architecture-policy.yaml](../oss/zcode/architecture-policy.yaml) | `eslint-disable -- 理由` |
 | T5 | **深度/递归上限要写实测溢出点与余量倍数** | P1 | [kimi·tree-sitter-bash/README.md](../oss/kimi-code/packages/tree-sitter-bash/README.md) | `MAX_SUBSTITUTION_DEPTH = 150`，实测溢出在 ~380–500 |
 | T6 | **畸形输入永不抛异常，降级返回 + 显式错误标志** | P1 | [kimi·tree-sitter-bash](../oss/kimi-code/packages/tree-sitter-bash) | 解析器的输入是不可信的 |
-| T7 | **性能断言进测试套件防复杂度退化**（不是防慢） | P2 | 同上 | 断言的是复杂度不是耗时 |
+| T7| **性能断言进测试套件防复杂度退化**（不是防慢） | P2| [kimi·tree-sitter-bash/README.md](../oss/kimi-code/packages/tree-sitter-bash/README.md) | 断言的是复杂度不是耗时 |
 | T8 | **以某上游为蓝本须产出 `known-diffs` 清单**（对齐 + 记录分歧） | P2 | [kimi·known-diffs.txt](../oss/kimi-code/packages/tree-sitter-bash/test/fixtures/corpus/known-diffs.txt) | 30+ 条有据可查的偏差，带 pin |
 | **T9** | **agent 本体出进程**（Q16）；跨进程接口**只传可序列化值、不共享引用** | **P0** | [zcode·architecture-policy.yaml](../oss/zcode/architecture-policy.yaml) | 违反这条，"出进程"会变成"重写"；**冷启动含进程启动+握手，需实测** |
 
