@@ -9,7 +9,13 @@
 
 | 日期 | 任务卡 | 需求ID | commit | 验收命令 | 结果摘要 |
 | --- | --- | --- | --- | --- | --- |
-| 2026-09-25 | T-1-00 | （脚手架，无功能 ID） | `753c809` | `npx tsc --noEmit && npx vitest run --passWithNoTests` | 退出码 0；`git check-attr eol` 新文件均 lf；钉 pnpm@10.29.2（corepack 0.34 与 pnpm 12 布局不兼容） |
+| 2026-09-25 | T-1-00 | （脚手架，无功能 ID） | `05a14ba` | `npx tsc --noEmit && npx vitest run --passWithNoTests` | 退出码 0；`git check-attr eol` 新文件均 lf；钉 pnpm@10.29.2（corepack 0.34 与 pnpm 12 布局不兼容） |
+| 2026-09-25 | T-1-01 | C14/C15/C16/E12 | `d3cf18a` | `npx vitest run src/kernel/events.test.ts` | 12 passed；13 成员与 EVENT_TYPES 互等；C16 失效演示实测 TS2345；assertJsonSafe 十类非法值全拒；E12 类型+运行时断言过 |
+| 2026-09-25 | T-1-02 | E1/E13/E10 | `d33775f` | `npx vitest run src/session/store.test.ts` | 11 passed；append 同步可见/seq 单调；崩溃模拟已 flush 序连续存活；snapshot 先 flush 防回归；C14 整批拒绝、seq 断层拒绝重建 |
+| 2026-09-25 | T-1-03 | E2 | `67df483` | `npx vitest run src/session/db.test.ts` | 4 passed；1000 事件建库→重开→seq 连续+payload 逐条相等；user_version 迁移幂等；better-sqlite3 句柄泄漏（open 失败关连接）已修 |
+| 2026-09-25 | T-1-04 | E3/E16 | `aadf88d` | `npx vitest run src/session/project.test.ts` | 8 passed；project(10k)=10.8ms<200ms；乱序/未知类型 append 前 reject；增量=全量语义等价；校验接入 append/restore |
+| 2026-09-25 | T-1-05 | E4 | `619fe03` | `npx vitest run src/session/revert.test.ts` | 5 passed；append5→revert(2)→投影仅前 2 条效果→unrevert 恢复；标记落流 append-only；最新标记生效；越界/空会话拒绝 |
+| 2026-09-25 | T-1-06 | O1–O6 | `bccfd6e` | `npx vitest run src/test-support/` | 13 passed；归一化自测路径/ID/时间戳三类；真端口 fetch 收 SSE；两次快照逐字节相等 |
 
 ---
 
@@ -71,6 +77,45 @@
 | 任务卡 | 卡在哪 | 已试过什么 |
 | --- | --- | --- |
 | （暂无） | | |
+
+---
+
+## 阶段 1 报告（完成于 2026-09-25）
+
+- **打勾情况**：7 / 7（T-1-00 ~ T-1-06 全部完成，无未完成项）
+- **产出的文件**：
+  - `package.json` / `tsconfig.json` / `vitest.config.ts` / `.gitignore`/`.gitattributes`（复用既有）——脚手架
+  - `src/kernel/events.ts`（约 300 行）+ `events.test.ts`——L0 词汇表 13+1 事件
+  - `src/session/store.ts` + `schema.sql` + `db.ts` + `project.ts` + `revert.ts` + 各自测试——事件源存储层
+  - `src/test-support/http-mock.ts` + `normalize.ts` + `snapshots.ts` + 3 个测试文件——测试基建
+- **验收台账**：7 卡 7 命令全部通过（见台账表）；全量 `npx vitest run` **53 passed / 0 failed**，`npx tsc --noEmit` 全程干净；`bash tools/count-features.sh` = 310 不变
+- **偏离计划的地方**：
+  1. **词汇表 13→14**（唯一实质偏离）：T-1-05 按卡新增 `session/revert` 标记事件，词汇表定稿本无此落点——已按待澄清流程立案（见上方"执行会话新发现"表 #1），**等用户追认**
+  2. pnpm 钉 10.29.2（corepack 0.34 兼容性）；tsconfig include 含 `vitest.config.ts`（TS18003 规避）
+  3. 台账 commit 哈希回填约定：**哈希在该卡提交后于下一卡提交/阶段收尾提交时回填**（amend 会重写哈希造成自引用悖论；T-1-00 行的 `753c809` 是 amend 前的悬空对象，本报告提交时已修正为 `05a14ba`）
+- **新发现的约束或坑**（建议进 `notes/01-workspace-gotchas.md` 或保持在本报告）：
+  - corepack 0.34 无法运行 pnpm 12（bin 从 `pnpm.cjs` 改 `pnpm.mjs`）；pnpm 10 需 `pnpm.onlyBuiltDependencies` 白名单才放行 better-sqlite3 的 postinstall
+  - better-sqlite3：`open()` 初始化失败路径必须 `db.close()`，否则 Windows 句柄泄漏 → 临时库文件 EBUSY 删不掉
+  - 未提交文件不受 `git checkout --` 保护（本会话曾用 `git checkout` 还原未跟踪文件失败，靠 python 重写恢复）
+  - pnpm 10 默认拦截依赖 postinstall（见上）；TS7 + vitest 5 + Node 22 组合全链路正常
+- **遗留风险与未知**：
+  - 词汇表 13→14 若被否决，回退面 = events.ts / events.test.ts / project.ts / revert.ts 一条链（约 1 小时工作量）
+  - project(10k) 基线 10.8ms 是本机数字，CI 方差出现前不拆独立 bench 文件
+  - 投影有效视图中 `openSteps`/`openToolCalls` 保持全流真值（无 seq），revert 切点后的消费方不依赖它们——阶段 3 loop 接入时复核
+  - `tsc` build 不会把 `schema.sql` 拷进 dist（P0 不交付 dist，记录在案）
+  - J2 真实厂商连通性、D3 弱承诺等人工确认项不变（见人工确认清单）
+- **下一阶段提示词**：
+
+```
+继续 aegent 内核的实施。读 docs/plan-p0.md 的 §0 执行协议，然后从「阶段 2」
+的第一张 [ ] 任务卡开始。上一阶段报告在 docs/plan-p0-progress.md。
+本阶段特有的注意：1) 词汇表现为 14 事件（含 session/revert，待澄清 #1 已按
+建议先行落地，若用户追认前发现回修需求以 l0-events.md §8 落地记录 2 为准）；
+2) T-2-02 起直接消费 src/test-support/http-mock 的 OpenAI 形 SSE（data: … +
+[DONE]），适配层 wire 映射如实测与 mock 不符可改 mock（成本为零）但要在卡上
+记偏离；3) T-2-03 的 Retry-After 头按 J26 验收要点自加（kimi 参考文件没有）。
+不要问要不要继续。
+```
 
 ---
 

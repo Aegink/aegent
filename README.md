@@ -38,7 +38,7 @@ aegent/
 ├── docs/
 │   ├── requirements.md        ★★ 需求文档（要做什么）
 │   ├── reference-cases.md     ★★ 参考案例索引（照着谁做）
-│   ├── l0-events.md           L0 事件词汇表设计（13 个事件，已定稿）
+│   ├── l0-events.md           L0 事件词汇表设计（13 事件 + E4 revert 标记 = 14，§8 有落地记录）
 │   ├── l0-eval.md             L0 内核评估
 │   ├── review-prompt.md       独立复核提示词（**查错不是补漏**，先有计划文档再跑）
 │   └── research/              调研产出（为什么），地图见其 README.md
@@ -71,7 +71,10 @@ aegent/
 │   ├── probe-repo.sh          单仓结构探针
 │   └── sweep.sh               按关注点全仓扫
 ├── notes/01-workspace-gotchas.md   踩坑记录（**动手前先读**）
-└── src/                       我方内核代码（待建）
+├── src/                       我方内核代码
+│   ├── kernel/events.ts       L0 事件词汇表（13+1 事件封闭联合，T-1-01）
+│   ├── session/               store（append/write-behind/snapshot/revert）+ SQLite + 投影
+│   └── test-support/          假 provider（http-mock）+ 归一化 + 快照基建
 ```
 
 ## 核心原则：上游副本 vs 我方产物
