@@ -63,7 +63,7 @@ aegent/
 │   ├── clone-all.sh           幂等克隆全部上游（已存在则跳过）
 │   ├── snapshot.sh            刷新 oss/SOURCES.lock
 │   ├── license-detect.sh      精确识别根许可（被其他脚本 source）
-│   ├── license-audit.sh       合规扫描：许可 / 泄露迹象 / sourcemap
+│   ├── license-audit.sh       合规扫描：许可 / 泄露迹象 / sourcemap（**全量约 50 分钟**，见下）
 │   ├── check-doc-links.sh     ★ 校验文档里所有相对链接（改文档后必跑）
 │   ├── count-features.sh      ★ 按层统计功能项数（改功能表后必跑）
 │   ├── inventory.sh           生成 docs/research/00-inventory.md
