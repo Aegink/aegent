@@ -1205,3 +1205,107 @@ ZCode `turn-loop.ts` 里那条修过 bug 的注释（automation 写工具按 `qu
 未读：`codex/tests/suite/compact.rs`(5,677) 与 `session/tests.rs`(12,880) 的本体、
 190 个 suite 文件、kimi `harness/agent.ts`(2,909) 的实现、
 DSH 7 个包的 22,817 行实现、pi-desktop 各 `tests.rs` 的内容。
+
+---
+
+## 15. 第八轮记录（测试断言深读 + 归一化实现）
+
+> 产出：`docs/research/21-test-assertions-deep.md`(273)。补上一轮 §6 自己点名的
+> "某一条 `insta::assert_snapshot!` 里到底断言了什么字符串——我一条都没看"。
+
+### 15.1 ★ Codex 快照的真实长相（已读到全文，39 行）
+
+```
+## Window 2 (after request 1: settings changed (parallel_tool_calls, tools))
+-- request 2 (compaction) --
+00:message/developer:     <PERMISSIONS_INSTRUCTIONS>
+01:message/user:          <ENVIRONMENT_CONTEXT>
+02:message/user:          function call limit push
+03:function_call/test_tool:{}
+04:function_call_output:  unsupported call: test_tool
+05:message/user:          <SUMMARIZATION_PROMPT>
+```
+
+**五个要素**：①**窗口头写明"为何在此开新窗口"**（settings 变了 / 输入在第 N 条分叉）
+②已知长段落折叠成一行标签 ③条目编号 `NN:kind` 且**窗口内连续**（故可用下标描述分叉点）
+④`Scenario:` 一句自然语言把语义写在快照里（**快照本身即规格**）⑤测试名与快照名一致，
+**每个压缩相位/原因各一条**（compact 共 8 条快照，全仓 43 条）。
+
+### 15.2 ★★ 事件序列的断言方式（此前两轮无答案，现已明确）
+
+`compact.rs:450` `assert_compaction_uses_turn_lifecycle_id` —— **不断言事件列表**，
+而是消费真实事件流并断言**身份不变量**：
+
+```rust
+while turn_completed_id.is_none() {
+    let event = codex.next_event().await.expect("next event");
+    match event.msg {
+        EventMsg::TurnStarted(_)   => turn_started_id = Some(event.id.clone()),
+        EventMsg::ItemStarted(ItemStartedEvent { item: TurnItem::ContextCompaction(_), .. })
+                                   => compact_started_id = Some(event.id.clone()),
+        EventMsg::Error(error)     => panic!("unexpected compaction error: {error:?}"),
+        EventMsg::TurnComplete(_)  => turn_completed_id = Some(event.id.clone()),
+        _ => {}
+    }
+}
+assert_eq!(turn_completed_id, turn_started_id, "turn start and complete should use the same event id");
+assert_eq!(compact_started_id, Some(turn_started_id.clone()), "compaction item start should use the turn event id");
+```
+
+**锁住的是"一个回合内所有条目都携带该回合的事件 id"** —— 这是客户端把 item 归到 turn 的**身份契约**。
+不脆（新增事件类型不用改测试）、测真流、**模式匹配钉住类型与载荷形状（编译期即炸）**、
+不期望的事件**直接 panic**。
+
+### 15.3 ★ 结构化断言与快照**配对**
+
+```rust
+assert_eq!(compact["model"].as_str(),   Some(previous_model));  // ★ 压缩用【旧】模型
+assert_eq!(follow_up["model"].as_str(), Some(next_model));      // ★ 后续用【新】模型
+assert!(body_contains_text(&compact_body, SUMMARIZATION_PROMPT), "…should include summarization prompt");
+assert!(!compact_body.contains("<model_switch>"), "…should strip trailing model-switch update item");
+```
+
+**分工：少数关键语义用 `assert` + 一句人话（失败时可读）；其余全部交给快照（全覆盖）。**
+且**先断言模型调用次数**（`assert_eq!(requests.len(), 3, "expected user, compact, and follow-up requests")`）。
+
+### 15.4 DSH 的归一化实现（`session-snapshot/src/normalize.ts`，625 行）
+
+模块注释原文：
+> They scrub **session ids, run cwd, RPC ids, timestamps, goal lifecycle clocks, and hook duration**
+> while **preserving semantic payload values**.
+
+**★ 关键决策：易变值换成"具名占位符"，不是通用 `<redacted>`：**
+`{{sessionId}}` `{{messageId}}` `{{usedTokens}}` `{{cwd}}` `{{system}}` `{{tools}}` `{{eventTime}}`
+`{{eventOmittedBytes}}` `{{sourceSessionFormatVersion}}`
+—— **保留"这里曾有 session id"这个结构信息**，同时让两个不同会话归一化成同一文本。
+
+**路径归一化是真正的工作量**（本文件最大部分）：处理 cwd 的**多种拼写**
+（`cwdSpellings` / `isCwdMatch` / `replaceCwdSpelling`）、`<path>` 标签、`file:///` 前缀、
+basename 匹配的**词边界**（`PATH_TEXT_BOUNDARY_RE`）、spill 文件路径规范化。
+另有 `EVENT_OMITTED_BYTES_RE`（省略字节数）、`UUID_RE`、`PACKED_CHUNK_ROW_TYPES`
+（text/reasoning/tool-call chunks 整类归一）、`omitFixtureEnvelope` 删 `seq/time/seq0/time0`
+（**有 seq0/time0 ⇒ 存在增量编码的基准值**）。
+
+**且归一化自己有 1,259 行测试**（`normalize.spec.ts`）—— **测试比实现多**。
+
+### 15.5 新增需求项 —— 8 条，4 条 P0
+
+| 编号 | 条目 | 优先级 |
+| --- | --- | --- |
+| **O13** | **事件序列断言 = 在真实事件流上断言不变量**（同回合共享 id / 成对事件成对 / 终态恰一个），**不写事件列表** | **P0** |
+| **O14** | **快照窗口头必须记录"窗口为何在此结束"**（settings 变 / 输入在第 N 条分叉） | **P0** |
+| **O15** | **结构化断言与快照配对**：关键语义用 `assert` + 一句人话，其余交给快照 | **P0** |
+| **O20** | **易变值用"具名占位符"而非通用 `<redacted>`**，保留结构信息；**归一化自己要有测试** | **P0** |
+| O16 | 先断言**模型调用次数**（带说明），结构错了给可读失败 | P1 |
+| O17 | 快照里写 `Scenario:` 一句自然语言 —— **快照本身即规格** | P1 |
+| O18 | **每个相位/每个原因各有一条快照** | P1 |
+| O19 | 不期望的事件直接 panic，不静默流过 | P2 |
+| **F23** | **换模压缩语义**：压缩请求跑在**旧**模型上、后续跑在**新**模型上；压缩时剥掉 model-switch 更新项、后续带上 | **P1** |
+
+**O 层现有 10 条 P0**（O1/O2/O4/O13/O14/O15/O20 + 前述）。
+
+### 15.6 诚实声明
+
+**本轮仍只读了 Codex + DSH 各一小块。** `compact.rs` 6,577 行里我读了约 120 行；
+`session/tests.rs`(12,880) 与其余 188 个 suite 文件未读；
+kimi / pi-desktop / ZCode 的**任何一条真实断言**未读。
