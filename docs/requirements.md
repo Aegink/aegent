@@ -66,6 +66,24 @@
 | **待定3** | `request/header` 是否进 L0 | 进 / 不进 | **进** —— 它是 J4（P0）的落点；事后补 header 事件等于改词汇表 |
 | **待定4** | 两处覆盖缺口 | — | **B10/B11 落盘生命周期**（截断临时文件的清理策略归属）；**F9 压缩发生在哪个 turn 边界必须可断言** |
 
+#### 待定5 / 待定6（来自 Claude Code 官方源码实读，见 `docs/research/06-claude-code-official.md` §8.3）
+
+| # | 待定 | 说明 |
+| --- | --- | --- |
+| **待定5** | **要不要 hook 洋葱链？** | Claude Code 的扩展模型是 `($, e, next)` 洋葱链 + tier + trace + budget。有了链，优先级由**链位置**表达（托管 > 用户 > 核心），且可观测（`next.trace`）、可预算（`next.budget`）、可跨层跳（`next.to(e,tier)`）。**代价**：链一旦定下，P0 的 loop 与 tools 都要按链的形态写 —— **与词汇表同级的单向门。** |
+| **待定6** | **规则集与链，谁是权限权威？** | OpenCode 用"规则集 + `findLast` 后写覆盖"；Claude Code 用"hook 链 + 位置"，规则匹配只产出 `rule` 证据。两者都成体系，**但不能同时当权威**，必须选一个，另一个降为在该权威内部的机制。 |
+
+**建议新增的功能项（来自官方源码，尚未采纳）**：
+
+| 建议 ID | 内容 | 依据 | 优先级 |
+| --- | --- | --- | --- |
+| **A12** | 用户输入携带**关联 id**，关联该输入之后、下一次输入之前的所有事件；**仍不提供 per-prompt 完成语义** | `claude-code.d.ts:588` `prompt.id` | P1 |
+| **C18** | 权限裁决结果带 **`rule`（规则原文，如 `Bash(git push:*)`）+ `reason`** | `ToolCheckResult`（`:9756`） | **P0** |
+| **C19** | **策略 dry-run**：可跑完整判定链而不执行工具 | `$.tool.check`（`:3229` "runs the same chain and executes nothing"） | P1 |
+| **F12** | **工具 schema 延迟加载**：工具可藏在检索后，模型按名索要才加载 schema | `ToolDeferral`（`:9781`） | P1 |
+| **N?** | 多端 = **surface roster**，attach/detach 由事件维护 | `session.attach`（`:3545`） | P1 |
+| **L?** | 链底"**无人应答的调用抛错并点名事件**"（C16 的运行时同构物） | `mods/README.md` | P1 |
+
 #### 待定项附带：Q9 的代价判断需修正
 
 Q9 原文写"放弃第三方插件自定义事件驱动 UI"，并据此把逃生舱定成 P2。
