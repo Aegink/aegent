@@ -140,7 +140,7 @@ scratch  secrets  session_collaboration  session_search  sessions  state
 tool_budget  tools  transcripts  turn_queue  user_skills  user_subagents  workspace
 ```
 
-对照我方 18 层，**其中有几个是我方没有独立列出的**：
+对照我方 19 层，**其中有几个是我方没有独立列出的**：
 
 | pi-desktop 模块 | 我方对应 | 备注 |
 | --- | --- | --- |
@@ -154,7 +154,7 @@ tool_budget  tools  transcripts  turn_queue  user_skills  user_subagents  worksp
 | `network_proxy.rs` | D 层 | **代理是独立模块**（不是网络策略的一部分） |
 | `artifacts.rs` | 无 | 产物 |
 
-> 建议：把这份清单与我方 18 层做一次**双向覆盖检查**（我方有哪些它没有、它有哪些我方没有）。
+> 建议：把这份清单与我方 19 层做一次**双向覆盖检查**（我方有哪些它没有、它有哪些我方没有）。
 > **这是本轮唯一一个"清单 vs 清单"的可操作产出。**
 
 ---

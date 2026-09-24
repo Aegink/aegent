@@ -1,6 +1,6 @@
 # L0 事件词汇表（设计稿）
 
-> 依据 `docs/eval-kernel-l0.md` §8 的结论：**L0 的第一个产物是词汇表，不是 `loop.ts`。**
+> 依据 `docs/l0-eval.md` §8 的结论：**L0 的第一个产物是词汇表，不是 `loop.ts`。**
 > 本文是那份词汇表的正式设计稿。所有上游引用均为本机实测（`oss/SOURCES.lock` 锁定 commit）。
 > **本文不含实现**，定稿后才写 `src/kernel/events.ts`。
 

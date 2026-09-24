@@ -254,7 +254,7 @@ model not yet resolved**. `next(e)` resolves to `{ model }`."
 `tool.describe` 的结果含 `ToolDeferral = boolean`：`true` = 藏在 `ToolSearch` 后面
 （模型按名要才加载 schema），`false` = 出现在提示词的清单里。
 → 这是**上下文经济**：不是所有工具的 schema 都进 prompt。
-**我方 169 项里没有这一条**，而它对 F 层（上下文）省 token 直接有效。
+**我方 303 项里没有这一条**，而它对 F 层（上下文）省 token 直接有效。
 
 ### 7.4 插件工具的命名与 schema
 
