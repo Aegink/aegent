@@ -157,6 +157,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **风险 / 未知**：`LlmFailure` 的具体形状 l0-events.md 自曝未展开读过（§8）——P0 自行定义最小形状并记入该文件勘误
 - **偏离 / 建议**：①卡上只要求 assertNever 辅助——实际还落了 `assertJsonSafe`（验收③点名它是"append 校验函数"，属于词汇表的 C14 运行时面）、`JsonValue/JsonRecord` 类型、`NewSessionEvent`（DistributiveOmit 去 seq/ts，pi NewEntry 纪律的类型面，T-1-02 直接消费）；②`stream` 定为 `TimedStreamChunk[]`（不抄 DSH delta-run 打包）；③载荷新增了 `TokenUsage`/`LlmFailure`/`StreamChunk` 子类型——都在"13 事件 + 3.3/3.4 联合"的载荷展开范围内，未新增事件
 - **完成记录**：2026-09-25。产出 `src/kernel/events.ts`（EventBase、13 事件接口 + SessionEvent 联合、TurnEndReason 6 变体、CancelCause 5 变体含 Q10 hook 形状、EVENT_TYPES + `_EVENT_TYPES_EXACT` 编译期闸门、assertNever/assertJsonSafe）+ `events.test.ts` 12 用例。验收：`npx vitest run src/kernel/events.test.ts` → 12 passed；①13 成员集合与 EVENT_TYPES 互等；②演示块取消注释实测 `npx tsc --noEmit` 报 TS2345（RequestHeaderEvent 不可赋给 never），随后恢复注释；③Error 实例 / 含 stack 对象 / 函数 / undefined / bigint / symbol / NaN / 循环 / Date / Map 全部 throw 且报错含路径；④E12 类型断言（keyof message === "content"、tokensBefore: number）+ 运行时 delta 键扫描通过。`npx tsc --noEmit` 全量干净。LlmFailure 勘误已记入 l0-events.md §8。
+
+#### T-1-02 · E1/E13/E10 · 事件追加写 + write-behind + 快照前 flush `[x]`
 - **依据需求**：E1（P0）· E13（P0）· E10（P0）
 - **上游首选参考**：[pi·commit.ts:20](../oss/pi/packages/agent/src/harness/session/commit.ts#L20)（`CommittedListAppendWrite` append-only 形状）；[dsh·event-sourced-sessions.md:15](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-06-11-event-sourced-sessions.md)（"Appends are synchronous (the hot path never blocks on I/O); … drain at the awaited `session/flush` checkpoint fired at every turn end"）；[codex·daemon_recovery.rs:2](../oss/codex/codex-rs/core/src/session/daemon_recovery.rs)（"Callers must flush the rollout after capture before persisting the snapshot"）
 - **取什么 / 别抄什么**：取"同步 append 接口 + 持久化缓冲 write-behind + turn 末 await flush"三层；别抄 OpenCode 的 JSON 文件树（冲突 5 已否决）
@@ -165,8 +167,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/session/store.test.ts`——①append 返回后 `load()` 立即可见（内存序）；②不发 flush 时崩溃模拟（进程内 kill buffer）不丢已 flush 的序；③"快照前必须 flush"写成 API 形状（`snapshot()` 内部先 `await flush()`）并有防回归测试
 - **依赖**：T-1-01
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①新增 `restore(sessionId)`（崩溃恢复路径，验收②的"杀进程重启"要有正式入口，seq 断层拒绝重建）与 `InMemoryEventStorage`（T-1-03 SQLite 前的测试后端）；②`EventStorage.appendBatch` 显式收 `sessionId`——事件本身不携带会话身份；③flush 按会话 promise 链串行化，失败不清 buffer（可重试）；④未做 highWaterMark 自动 flush——DSH 原文就是"只在检查点排空"，自动 flush 属于自加语义（YAGNI）
+- **完成记录**：2026-09-25。产出 `src/session/store.ts`（append 同步分配 seq/ts + assertJsonSafe 整批校验、write-behind buffer、flush 串行化、registerFlushPoint/runFlushPoint(turnEnd)、snapshot() 内部先 flush、restore() 崩溃恢复）+ `store.test.ts` 11 用例。验收：`npx vitest run src/session/store.test.ts` → 11 passed；①append 同步返回 load 即见、seq 单调跨会话独立、调用方给 seq 也被覆盖；②append 5 → flush → append 2 → 换 store restore → 恰见前 3 条且 seq 连续；③不手动 flush 直接 snapshot()，storage.readAll 覆盖到 snapshotSeq（防回归断言）；附：C14 整批拒绝、seq 断层拒绝重建、落库失败 buffer 不丢、并发 flush 去重。`npx tsc --noEmit` 全量干净。
 
 #### T-1-03 · E2 · SQLite 落地 `[ ]`
 - **依据需求**：E2（P0）
