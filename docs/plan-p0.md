@@ -3,7 +3,7 @@
 **状态**：v1.0 · 计划编写完成，未开始执行
 **配套**：执行进度在 [`plan-p0-progress.md`](plan-p0-progress.md)（打勾台账 / 阶段报告 / 待澄清 / 阻塞）
 **需求来源**：[`requirements.md`](requirements.md) §4（310 项，P0 共 104 项）——本计划**不复述**需求正文，只回答"怎么落地、按什么顺序、验收命令是什么"
-**锚点纪律**：本计划任务卡里的每一条 `oss/` 路径都是编写计划时**实际打开核对过的**（104 条 P0 逐条核对，发现 5 条错锚点已在任务卡中改用正确路径并记入进度文件「待澄清」）。执行会话开工前先跑 `bash tools/snapshot.sh` 并 `git diff oss/SOURCES.lock`，上游若刷新则先重验锚点再动手。
+**锚点纪律**：本计划任务卡里的每一条 `oss/` 路径都是编写计划时**实际打开核对过的**（104 条 P0 逐条核对，发现的 5 条错锚点与 1 条弱锚点已经用户裁决于 2026-09-25 回修 `requirements.md` §4，任务卡与 §4 索引均用正确路径）。执行会话开工前先跑 `bash tools/snapshot.sh` 并 `git diff oss/SOURCES.lock`，上游若刷新则先重验锚点再动手。
 
 ---
 
@@ -34,7 +34,7 @@
 
 - 实现中发现更好的做法：**先按计划做**，把想法写进卡的「偏离 / 建议」，不要当场改设计。
 - 发现前人的调研有错：写进 `plan-p0-progress.md` 的「待澄清」，附上你看到的原文与行号。
-- 本计划已知的错锚点（编写时发现，**未改 `requirements.md`**）：F21 · F24 · F26 · F27 · J25 · F2。任务卡已改用核对过的正确路径；`requirements.md` 是否回修由用户裁决（见进度文件「待澄清」表）。
+- 编写时发现的错锚点 F21 · F24 · F26 · F27 · J25 与弱锚点 F2，**已经用户裁决（2026-09-25）回修 `requirements.md` §4**，任务卡与 §4 索引表均使用核对过的正确路径。执行中若再发现新勘误，仍走本条上款的「待澄清」流程。
 
 ### §0.3 阶段结束的产出（两样，缺一不可）
 
@@ -51,12 +51,12 @@
 
 ## §1 阶段划分
 
-P0 共 **104 项需求 → 61 张任务卡 → 8 个阶段**。切分按**依赖排序**，不是按层号排。
+P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖排序**，不是按层号排。
 （P1 / P2 不切阶段，只在 §4 索引表里占位，轮到时再展开成任务卡。）
 
 | 阶段 | 主题 | 覆盖需求 | 为什么在这个位置 | 卡数 |
 | --- | --- | --- | --- | ---: |
-| 1 | 事件词汇表 + 事件源存储 + 测试基建 | E1–E4/E10/E12/E13/E16 · C14/C15/C16 · O1–O6（17 条） | 事件是唯一真相（不变量 1），词汇表是 Q9 单向门；测试基建必须先于 loop，否则后面每张卡都没法验收 | 6 |
+| 1 | 事件词汇表 + 事件源存储 + 测试基建 | E1–E4/E10/E12/E13/E16 · C14/C15/C16 · O1–O6（17 条） | 事件是唯一真相（不变量 1），词汇表是 Q9 单向门；测试基建必须先于 loop，否则后面每张卡都没法验收 | 7（含 T-1-00 脚手架） |
 | 2 | 模型接入 | J1–J4/J22/J26（6 条） | 没 `message_update` 就没有 loop；J22 超时错误码是 loop 与工具共用的地基 | 4 |
 | 3 | loop + 洋葱链 + agent 进程 + 事件流断言 | A1–A3/A6/A7/A9 · I12 · T9 · O7–O11（13 条） | Q14 定链形，loop 必须按链写；T9 出进程在 loop 定形时一起定，事后改等于重写 | 7 |
 | 4 | 工具层 | B1–B5/B9–B12/B14 · D4（11 条） | loop 调工具；D4（工具拿不到裸进程 API）必须随 `ToolContext` 定形，不能事后补 | 8 |
@@ -778,7 +778,7 @@ P0 共 **104 项需求 → 61 张任务卡 → 8 个阶段**。切分按**依赖
 
 #### T-7-02 · F3/F20/F21 · 压缩生命周期 + 相位（PreTurn/MidTurn） `[ ]`
 - **依据需求**：F3（P0）· F20（P0）· F21（P0，Q13 裁两相位）
-- **上游首选参考**：[codex·compact_token_budget.rs:19-23](../oss/codex/codex-rs/core/src/compact_token_budget.rs)（"It is still modeled as compaction so compact hooks and `ContextCompaction` turn items **observe the same lifecycle**" + pre/post hook 调用）；[zcode·turn-loop.ts:68](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts)（`state.modelStepCount === 0 ? CompactPhase.PreRequest : CompactPhase.MidTurn`——相位判定的实证。**注意**：`requirements.md` F21 原锚点写的是 `zcode·compact.ts`，相位证据实际在这条——错锚点已按此修正）
+- **上游首选参考**：[codex·compact_token_budget.rs:19-23](../oss/codex/codex-rs/core/src/compact_token_budget.rs)（"It is still modeled as compaction so compact hooks and `ContextCompaction` turn items **observe the same lifecycle**" + pre/post hook 调用）；[zcode·turn-loop.ts:68](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts)（`state.modelStepCount === 0 ? CompactPhase.PreRequest : CompactPhase.MidTurn`——相位判定的实证。`requirements.md` F21 原锚点曾误写 `zcode·compact.ts`，已于 2026-09-25 回修为此条）
 - **取什么 / 别抄什么**：压缩 = 生命周期（compaction 开始/结束事件 + hook 可介入/中止）；P0 相位枚举 `PreTurn | MidTurn`（Q13；StandaloneTurn/PostTurn 留枚举槽不实现）
 - **证据强度**：`读了代码`（两处均已打开核对）
 - **要产出**：`src/context/compaction.ts`（生命周期事件 + phase 字段 + pre/post hook 点经 T-3-01 链）+ 单测
@@ -826,7 +826,7 @@ P0 共 **104 项需求 → 61 张任务卡 → 8 个阶段**。切分按**依赖
 
 #### T-7-06 · F24 · 换更小上下文模型先压缩（ModelDownshift） `[ ]`
 - **依据需求**：F24（P0）
-- **上游首选参考**：[codex·compact_model_fallback.rs:29](../oss/codex/codex-rs/core/src/compact_model_fallback.rs)（`CompactionReason::ModelDownshift => "model_downshift"`——**requirements.md 原锚点写 compact_token_budget.rs，实际枚举在此**，错锚点已修正；P0 只做换模时的 reason 标记与先压缩判定，运行时换模本体 J6 是 P1）
+- **上游首选参考**：[codex·compact_model_fallback.rs:29](../oss/codex/codex-rs/core/src/compact_model_fallback.rs)（`CompactionReason::ModelDownshift => "model_downshift"`——`requirements.md` 原锚点曾误写 compact_token_budget.rs，已回修为此条；P0 只做换模时的 reason 标记与先压缩判定，运行时换模本体 J6 是 P1）
 - **取什么 / 别抄什么**：取 reason 枚举值与"检测到目标窗口更小 → 先压再切"的顺序；换模机制本身不实现
 - **证据强度**：`读了代码`（枚举行级确认）
 - **要产出**：`src/context/downshift.ts`（`maybeDownshift(targetModel, projection)`：窗口小 → 触发 T-7-02 压缩并打 ModelDownshift reason）+ 单测
@@ -850,7 +850,7 @@ P0 共 **104 项需求 → 61 张任务卡 → 8 个阶段**。切分按**依赖
 
 #### T-7-08 · M10 · 预算是送达的事实 `[ ]`
 - **依据需求**：M10（P0）
-- **上游首选参考**：[codex·rollout_budget.rs:27](../oss/codex/codex-rs/core/src/rollout_budget.rs)（"Last reminder delivered to each thread, so every thread observes crossed thresholds"——送达记账）+ [:62](../oss/codex/codex-rs/core/src/rollout_budget.rs)（`output_tokens * sampling_token_weight + non_cached_input * prefill_token_weight`——**这条同时是 J25 的正确锚点**；requirements J25 原锚点 compact_token_budget.rs 里无权重，错锚点已修正）
+- **上游首选参考**：[codex·rollout_budget.rs:27](../oss/codex/codex-rs/core/src/rollout_budget.rs)（"Last reminder delivered to each thread, so every thread observes crossed thresholds"——送达记账）+ [:62](../oss/codex/codex-rs/core/src/rollout_budget.rs)（`output_tokens * sampling_token_weight + non_cached_input * prefill_token_weight`——**这条同时是 J25 的正确锚点**；`requirements.md` J25 原锚点曾误写 compact_token_budget.rs（其中无权重计算），已回修为此条）
 - **取什么 / 别抄什么**：分级阈值 + 送达记账（写进历史才算送达，取消则重试）+ 换窗重置；预算按加权 token 不按裸数
 - **证据强度**：`读了代码`（两处行级确认）
 - **要产出**：`src/context/budget.ts`（阈值档 + `delivered` 记账表 + 换窗重置 + 加权计算）+ 单测
@@ -868,7 +868,7 @@ P0 共 **104 项需求 → 61 张任务卡 → 8 个阶段**。切分按**依赖
 - **要产出**：`src/context/system-prompt.ts`（装配：基础提示 + 模板（T-6-02）+ AGENTS.md 收集器）+ 单测
 - **验收**：`npx vitest run src/context/system-prompt.test.ts`——嵌套目录 `a/b/c` 下运行：`a/AGENTS.md` 与 `a/b/AGENTS.md` 同时生效且 b 的冲突项覆盖 a；提示词文件改动不需要碰任何 `.ts`
 - **依赖**：T-6-02
-- **风险 / 未知**：**加载逻辑无上游锚点**——若执行时在 opencode 源码里找到实现（建议先 `grep -rn "AGENTS.md" oss/opencode/packages/opencode/src/server/`），补进参考列并消待澄清
+- **风险 / 未知**：**加载逻辑无上游锚点，已裁决为自研语义**（2026-09-25：CWD 向上收集 + 就近覆盖）——若执行时在 opencode 源码里找到加载器实现（建议先 `grep -rn "AGENTS.md" oss/opencode/packages/opencode/src/server/`），回填 `requirements.md` 与本卡的参考列
 - **偏离 / 建议**：（执行时填）
 - **完成记录**：（执行时填）
 
@@ -948,7 +948,7 @@ P0 共 **104 项需求 → 61 张任务卡 → 8 个阶段**。切分按**依赖
 > 由脚本从 `requirements.md` §4 生成（生成脚本见本文末尾附注），列含义：
 > **落在哪个阶段/任务卡**：P0 填任务卡号（见 §3）；P1/P2 填 `P1-待展开` / `P2-待展开`。
 > **状态**：`未开始` / `进行中` / `已验收` / `阻塞` / `待澄清`——初始全为 `未开始`，执行会话打勾时同步改本表。
-> **首选参考**列沿用需求文档的锚点；**其中 F21/F24/F26/F27/J25/F2 六条的锚点经本计划核对后判定有误或偏弱，正确路径已写进对应任务卡**，本表保留原值以与需求文档保持一致（是否回修需求文档见进度文件「待澄清」）。
+> **首选参考**列沿用需求文档的锚点。编写计划时核对出的锚点勘误（F21/F24/F26/F27/J25/F2）**已经用户裁决于 2026-09-25 回修至 `requirements.md` §4**，本表与其同步。
 
 <!-- ANCHOR-TABLE-START -->
 
@@ -1085,7 +1085,7 @@ P0 共 **104 项需求 → 61 张任务卡 → 8 个阶段**。切分按**依赖
 | E17 | E | P1 | **原子操作的中间态（reservation/promoting/rollback）也进事件流** | [zcode·session.events.ts](../oss/zcode/apps/zcode-cli/packages/contracts/src/events/session.events.ts) | P1-待展开 | 未开始 |
 | E18 | E | P1 | **回合结局与该回合产出的消息一起结算**（机器自报 `produced[]`） | [kimi·engine.ts](../oss/kimi-code/packages/agent-core-v2/src/agent/loop/machine/engine.ts) | P1-待展开 | 未开始 |
 | F1 | F | P0 | 系统提示管理 | [pi·packages/ai/](../oss/pi/packages/ai) | T-7-09 | 未开始 |
-| F2 | F | P0 | `AGENTS.md` 项目指令加载 | [opencode·AGENTS.md](../oss/opencode/AGENTS.md) | T-7-09 | 未开始 |
+| F2 | F | P0 | `AGENTS.md` 项目指令加载 | [opencode·AGENTS.md](../oss/opencode/AGENTS.md)（文件实例；**加载逻辑自研**） | T-7-09 | 未开始 |
 | F3 | F | P0 | `compaction` 压缩 | [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | T-7-02 | 未开始 |
 | F4 | F | P0 | `overflow` 与 `compaction` 分离 | [codex·compact.rs:315](../oss/codex/codex-rs/core/src/compact.rs#L315) | T-7-01 | 未开始 |
 | F5 | F | P1 | 摘要 / 标题生成 | [qwen·docs/design/session-recap/](../oss/qwen-code/docs/design/session-recap) | P1-待展开 | 未开始 |
@@ -1104,13 +1104,13 @@ P0 共 **104 项需求 → 61 张任务卡 → 8 个阶段**。切分按**依赖
 | F18 | F | P1 | **模型流中断恢复**：锚点先于故障持久化 / 有界重试 / **显式终态 `blocked`** | [zcode·session.events.ts](../oss/zcode/apps/zcode-cli/packages/contracts/src/events/session.events.ts) | P1-待展开 | 未开始 |
 | F19 | F | P2 | **压缩分两级**（microcompact 与 compact 各有边界事件） | [zcode·session.events.ts](../oss/zcode/apps/zcode-cli/packages/contracts/src/events/session.events.ts) | P2-待展开 | 未开始 |
 | F20 | F | P0 | **压缩是生命周期**（开始/结束事件 + hook 可介入/中止），不是函数 | [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | T-7-02 | 未开始 |
-| F21 | F | P0 | **压缩有相位**：`StandaloneTurn/PreTurn/MidTurn/PostTurn`（**Q13：P0 只做 `PreTurn` 与 `MidTurn`**） | 同上 + [zcode·compact.ts](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/compact.ts) | T-7-02 | 未开始 |
+| F21 | F | P0 | **压缩有相位**：`StandaloneTurn/PreTurn/MidTurn/PostTurn`（**Q13：P0 只做 `PreTurn` 与 `MidTurn`**） | 同上 + [zcode·turn-loop.ts:68](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts#L68) | T-7-02 | 未开始 |
 | F22 | F | P0 | **压缩后重建上下文用"压缩那一刻"的状态**，不用压缩前快照 | [codex·session/mod.rs:4530](../oss/codex/codex-rs/core/src/session/mod.rs#L4530) | T-7-03 | 未开始 |
 | F23 | F | P0 | **压缩须声明"哪些消息不可丢"**（客户/插件注入的 developer 消息），给独立预算 | [codex·session/mod.rs:4536](../oss/codex/codex-rs/core/src/session/mod.rs#L4536) | T-7-03 | 未开始 |
-| F24 | F | P0 | **换到更小上下文的模型时必须先压缩**（`ModelDownshift`） | [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | T-7-06 | 未开始 |
+| F24 | F | P0 | **换到更小上下文的模型时必须先压缩**（`ModelDownshift`） | [codex·compact_model_fallback.rs:29](../oss/codex/codex-rs/core/src/compact_model_fallback.rs#L29) | T-7-06 | 未开始 |
 | F25 | F | P1 | **上下文窗口编号化**；压缩 = 开新窗口 + 持久化窗口元数据 | [codex·session/mod.rs:4530](../oss/codex/codex-rs/core/src/session/mod.rs#L4530) | P1-待展开 | 未开始 |
-| F26 | F | P1 | **压缩结果带指纹**（配置哈希），指纹变了重压 | [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | P1-待展开 | 未开始 |
-| F27 | F | P2 | 压缩策略具名（摘要式 / 前缀式） | [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | P2-待展开 | 未开始 |
+| F26 | F | P1 | **压缩结果带指纹**（配置哈希），指纹变了重压 | [codex·compact_model_fallback.rs:30](../oss/codex/codex-rs/core/src/compact_model_fallback.rs#L30) | P1-待展开 | 未开始 |
+| F27 | F | P2 | 压缩策略具名（摘要式 / 前缀式） | [codex·compact.rs:483](../oss/codex/codex-rs/core/src/compact.rs#L483) | P2-待展开 | 未开始 |
 | F28 | F | P0 | **压缩抖动检测**：连续多次"极小工作量后又触发压缩" → **硬失败**，错误带全部计数 | [zcode·compact.ts](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/compact.ts) | T-7-07 | 未开始 |
 | F29 | F | P1 | **换模压缩语义**：压缩请求跑在**旧**模型上、后续跑在**新**模型上 | [codex·compact.rs:423](../oss/codex/codex-rs/core/tests/suite/compact.rs#L423) | P1-待展开 | 未开始 |
 | F30 | F | P1 | **配置解析失败保留上一份配置**，不回退默认 | [codex·session/tests.rs](../oss/codex/codex-rs/core/src/session/tests.rs) | P1-待展开 | 未开始 |
@@ -1165,7 +1165,7 @@ P0 共 **104 项需求 → 61 张任务卡 → 8 个阶段**。切分按**依赖
 | J22 | J | P0 | **超时必须带错误码作用域**（多层嵌套时判定"谁超时"不能靠 signal） | [dsh·timeout-policy](../oss/deepseek-harness/packages/guard/timeout-policy/src/index.ts) | T-2-04 | 未开始 |
 | J23 | J | P1 | **区分三种超时**：总时长 / 空闲 / **可重臂空闲**（有传输活动则续期） | [dsh·util/timeout](../oss/deepseek-harness/packages/util/timeout/src/index.ts) | P1-待展开 | 未开始 |
 | J24 | J | P1 | **`setTimeout` 上限 2^31-1**（超出被静默钳到 1ms） | [dsh·util/timeout](../oss/deepseek-harness/packages/util/timeout/src/index.ts) | P1-待展开 | 未开始 |
-| J25 | J | P1 | 输出 token 与非缓存输入 token **不同价**，预算按权重计 | [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | P1-待展开 | 未开始 |
+| J25 | J | P1 | 输出 token 与非缓存输入 token **不同价**，预算按权重计 | [codex·rollout_budget.rs:62](../oss/codex/codex-rs/core/src/rollout_budget.rs#L62) | P1-待展开 | 未开始 |
 | J26 | J | P0 | **重试按显式错误分类；未知错误不重试**；退避带 jitter；**尊重服务端 Retry-After** | [kimi·retry.ts](../oss/kimi-code/packages/agent-core-v2/src/human/llm/requester/retry.ts) | T-2-03 | 未开始 |
 | J27 | J | P1 | `retrying` 作为**一等事件**，带 `failedAttempt` | [kimi·engine.ts](../oss/kimi-code/packages/agent-core-v2/src/agent/loop/machine/engine.ts) | P1-待展开 | 未开始 |
 | K1 | K | P0 | CLI | [pi·packages/](../oss/pi/packages) | T-8-01 | 未开始 |
