@@ -1051,3 +1051,96 @@ pi-desktop 把 `config_sync` 做成了一等子系统：加密 vault + WebDAV + 
 - 本轮五仓许可复核：Codex Apache-2.0 / ZCode Apache-2.0 / kimi-code MIT / DSH MIT →
   **可参考实现，摘代码须留版权头 + 登记 `THIRD_PARTY.md`**；
   **pi-desktop LGPL-3.0 → 行为可学，代码不可整段抄入**（`15-pi-desktop-code.md` 已标注）。
+
+---
+
+## 13. 第六轮记录（主循环 / 压缩与持久化 / 执行层）
+
+> 产出：`docs/research/17-codex-compact-persistence.md`(320) / `18-kimi-loop.md`(169) /
+> `19-zcode-execution.md`(213)。另 `16-permission-domain-deep.md`(272) 记于本轮前段。
+
+### 13.1 Codex 压缩与持久化（用户指定"最好用"）—— 新增 13 条
+
+| 编号 | 条目 | 优先级 |
+| --- | --- | --- |
+| F14 | **压缩是生命周期**（开始/结束事件 + hook 可介入/中止），不是函数；换实现不影响观察者 | **P0** |
+| F15 | **压缩有相位**：`StandaloneTurn/PreTurn/MidTurn/PostTurn`；**MidTurn 必须支持** | **P0** |
+| F16 | **压缩后重建上下文用"压缩那一刻"的状态**，不用压缩前快照 | **P0** |
+| F17 | **压缩须声明"哪些消息不可丢"**（客户/插件注入的 developer 消息），给独立预算 | **P0** |
+| F19 | **换到更小上下文的模型时必须先压缩**（`ModelDownshift`） | **P0** |
+| M10 | **预算是"要送达的事实"**：分级阈值 + 送达记账（写历史后才算送达，取消则重试）+ 换窗重置 | **P0** |
+| F18 | **上下文窗口编号化**；压缩 = 开新窗口 + 持久化窗口元数据 | P1 |
+| F20 | **压缩结果带指纹**（配置哈希），指纹变了重压 | P1 |
+| F21 | 压缩策略具名（摘要式 / 前缀式） | P2 |
+| L8 | 压缩作为结构化度量事件，6 维度：trigger/reason/implementation/phase/strategy/status | P1 |
+| J24 | 输出 token 与非缓存输入 token **不同价**，预算按权重计 | P1 |
+| **Q4** | **日志冷热分离 + 后台 zstd 压缩 + 表示形态对上层透明 + 原子替换保权限 + 运行标记防重叠** | **P1** |
+| Q5 | 归档是独立一档（`ARCHIVED_SESSIONS_SUBDIR`），不是删除 | P2 |
+
+### 13.2 kimi-code 主循环 —— 新增 6 条
+
+| 编号 | 条目 | 优先级 |
+| --- | --- | --- |
+| **J25** | **重试按显式错误分类；未知错误不重试**；退避带 jitter；**尊重服务端 Retry-After** | **P0** |
+| J26 | `retrying` 作为**一等事件**，带 `failedAttempt` | P1 |
+| B20 | 每步上报 `timing` 与 `traceId` | P1 |
+| A11 | **入队闸门三态**：放行 / 拦截（带理由）/ **改写消息** | P1 |
+| A12 | 循环有两个**显式护栏参数**：`abortTimeoutMs` 与 `maxStepsPerTurn` | P1 |
+| E20 | **回合结局与该回合产出的消息一起结算**（机器自报 `produced[]`），优于事后反推 | P1 |
+
+**形态记录**：kimi 的循环是**三台状态图组合**（agent × turn × tool，自研 `xstate2`）。
+这是五个仓里唯一的 statechart 方案。**记为形态参照，不作默认建议。**
+
+### 13.3 ZCode 执行层 —— 新增 7 条 + 1 条升级
+
+| 编号 | 条目 | 优先级 |
+| --- | --- | --- |
+| **F22** | **压缩抖动检测**：连续多次"极小工作量后又触发压缩"→ **硬失败**，错误带全部计数 | **P0** |
+| **C63** | **限制性判定必须在执行点用"权威标识"重算**，不得依赖传递下来的元数据 | **P0** |
+| A13 | **不同来源的输入在不同边界排空**（guide / queue / runtime commands 各一个点） | P1 |
+| A14 | 输入排空后重置相关的启发式计数 | P2 |
+| A15 | **协作式取消在每个 await 点后检查**，不只循环头 | P1 |
+| B21 | **输出 token 上限应作为"可续跑事件"**，不是回合终态 → 重新考虑 `l0-events.md` 的 `max-tokens` | P1 |
+| L9 | 循环内分段计时（mcp / tools 各自打点） | P2 |
+| **F15** | ✅ **升级：三份独立证据** —— Codex 四相位 + ZCode `PreRequest/MidTurn` + pi-desktop ADR 0030（`1,077,172 vs 1,000,000` 事故） | **P0** |
+
+### 13.4 本轮新增的跨仓共性
+
+**共性 #6：压缩有"相位"，且回合内部的压缩（MidTurn）是一等的。**
+Codex `CompactionPhase` 四值 · ZCode `PreRequest/MidTurn` · pi-desktop ADR 0030（反例式证据）。
+**三份独立，其中一个是用真实事故换来的。**
+
+**共性 #7：限制性判定必须能从"持久标识"在执行点重算，不能信传递下来的元数据。**
+ZCode `turn-loop.ts` 里那条修过 bug 的注释（automation 写工具按 `queryId` 重筛）
++ DSH `escalation.ts`（每次调用的约束不进全局 schema）。
+**多端与恢复路径上丢失的元数据就是绕过口。**
+
+### 13.5 本轮唯一"只有一家有"的两个机制
+
+1. **压缩抖动（rapid refill）的硬失败保护** —— 只有 ZCode。**我建议无条件采纳**（F22）：
+   症状是"账单暴涨且看不到尽头"，没有保护就无法收敛。
+2. **日志的 zstd 冷压缩 + 表示形态对上层透明** —— 只有 Codex。**建议整条采纳**（Q4）：
+   这是事件源架构必然的债，且它**不影响热路径**，可以 P1 再上。
+
+### 13.6 诚实声明的汇总（两轮累计）
+
+**六个仓（含 pi-desktop），以下区域两轮都没读：**
+
+- **所有仓的测试，一个都没读。** `docs/review-prompt.md` 要的
+  "怎么 mock LLM、怎么断言事件序列" —— **至今无答案**。最可惜的是
+  `codex-rs/core/tests/suite/compact.rs`（**5,677 行**）与 `session/tests.rs`（**12,880 行**）。
+- **Codex**：140 个 crate 里打开过的不超过 18 个；`compact.rs` 主体、
+  `compact_remote_v2.rs`(1,273) 实现、`context_manager/history.rs`(1,225)、
+  `rollout/recorder.rs`(2,249) 实现、`code-mode`(V8)、`app-server*`(6 crate)、`tui/`。
+- **ZCode**：`methods/` 25,587 行里逐行读过的不超过 300 行；
+  `steering.ts`(1,403) 与 `session-fork.ts`(1,487) 只读了函数表；
+  `bootstrap/src/app/dynamic-workflow-run-*`（30+ 文件）**两轮都没读**。
+- **kimi-code**：`loopService.ts` 2,285 行的**主体实现**仍未读；
+  `human/agent/machine.ts`(949) 与 `turn.ts`(886) 的状态图定义只读了导出签名；
+  `#human/xstate2`（自研状态图引擎）未读。
+- **DSH**：`core/agent-loop` 本体、`core/tools`、`core/session`、`llm/`、`context/`、
+  `client/` 全部未读。
+- **pi-desktop**：`rpc/mod.rs`(**8,810，全仓最大**)、`sessions.rs`(6,779)、
+  `tools/mod.rs`(4,435)、`config_sync/` 13 个文件只读了 `engine.rs` 的 import 区。
+
+**上一轮 §12 与本节合计：需求文档新增 62 条、待定 11 条。**
