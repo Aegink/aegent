@@ -206,7 +206,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①词汇表 13→14：卡上"追加 revert 标记事件"在 l0-events.md §3.2 的 13 事件里没有落点——按卡执行新增 `session/revert {targetSeq, phase: "revert"|"undo"}`（会话级元事件，不要求 turn/step 开合上下文，最新标记生效；undo 约定 targetSeq=0），l0-events.md §8 记落地记录 2，events.test 计数改 14，**进度文件另起待澄清表立案供用户追认**；②投影新增 `revertedTo` + `effectiveProjection()`（有效视图隐藏 seq > 切点的效果，含 lastUsage 按 lastUsageSeq 截断）；③`project()` 返回有效视图（消费面语义），全量态仍可从 Projector 实例取
 - **完成记录**：2026-09-25。产出 `src/session/revert.ts`（RevertService.revert/unrevert，标记落流 + project 重算）+ `revert.test.ts` 5 用例 + project.ts/events.ts 扩展。验收：`npx vitest run src/session/revert.test.ts` → 5 passed；append 5 → revert(2) → 有效投影只剩 seq≤2 效果（messages=[seq2]、toolCalls 空、lastUsage null）且标记落流（load 6 条、append-only 证据）→ unrevert 全恢复（load 7 条）；最新标记生效、undo 幂等 no-op、越界/空会话拒绝、revert 后继续 append 语义正确。全量 `npx vitest run` 40 passed，`npx tsc --noEmit` 干净。
 
-#### T-1-06 · O1–O6 · 测试基建包（假 provider + 归一化 + 快照） `[ ]`
+#### T-1-06 · O1–O6 · 测试基建包（假 provider + 归一化 + 快照） `[x]`
 - **依据需求**：O1（P0）· O2（P0）· O3（P0）· O4（P0）· O5（P0）· O6（P0）
 - **上游首选参考**：[codex·responses.rs:1426](../oss/codex/codex-rs/core/tests/common/responses.rs#L1426)（`mount_sse_sequence`——按模型调用次数挂脚本化 SSE）；[dsh·normalize.ts:16](../oss/deepseek-harness/packages/test-support/session-snapshot/src/normalize.ts)（`'{{sessionId}}'`/`'{{cwd}}'`/`'{{system}}'`/`'{{tools}}'`/`'{{eventTime}}'` 具名占位符）；[kimi·snapshots.ts:38](../oss/kimi-code/packages/agent-core-v2/test/harness/snapshots.ts)（`GenerateInputSnapshot{input, previous}`——快照自带 previous，差分在序列化时算；`SnapshotLabels{uuidLabels}` 稳定标签）
 - **取什么 / 别抄什么**：取三家的分工：假 HTTP（codex）+ 具名占位符归一化（dsh）+ 稳定标签与 previous 差分（kimi）；**别抄 kimi 的 tools 快照只打名字不打 schema**（需求文档 §4 O 层负面发现——用 `portable_tool_schema` 式的"schema 纳入归一化"）
@@ -215,8 +215,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/test-support/`——①归一化自测（O6：测试比实现多是目标不是笑话，至少覆盖路径/ID/时间戳三类）；②http-mock 起真端口，客户端走真实 fetch 收 SSE；③同一流两次快照逐字节相等（含 UUID 换成稳定标签后）
 - **依赖**：T-1-00（可与 T-1-01 并行实现，脚本按序取卡则自然在 T-1-05 后）
 - **风险 / 未知**：SSE 脚本化格式要贴近阶段 2 适配层的真实 wire 形状——先按 OpenAI `data: {...}` 约定，阶段 2 若不符再改（假 provider 是我方的，改起来无成本）
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①http-mock 除 SSE 脚本外加裸 `RawScript`（任意 status/body——T-2-03 重试用例直接消费，免得阶段 2 回改本包）；②normalize 的 UUID 用**整串匹配**才进稳定标签（子串替换会误伤普通文本）；时间戳只对时间键下的足够大的数值归一（TIME_KEYS 白名单 + epoch 下界），避免把普通计数器打成占位符；③snapshotToString 用键序排序的 stableStringify——同形状不同构造序也逐字节相等；④附 `firstDifference()` 人话差异定位（O9 配套）
+- **完成记录**：2026-09-25。产出 `src/test-support/http-mock.ts`（真端口 node:http server + 脚本化 SSE/Raw 序列 + 请求录制 + parseSse）、`normalize.ts`（具名占位符 + StableLabels 稳定标签 + stableStringify）、`snapshots.ts`（GenerateInputSnapshot{input,previous} + createSnapshotter + tools 带 schema）+ 3 个测试文件 13 用例。验收：`npx vitest run src/test-support/` → 13 passed；①归一化自测覆盖路径（cwd/tmp 双分隔符）/ID（稳定标签跨事件保身份）/时间戳（ISO+时间键数值）三类；②http-mock 起 127.0.0.1 随机真端口，客户端真实 fetch 收 `data:…`/`[DONE]`，脚本耗尽出 500；③同一逻辑流两次快照（不同 UUID/时间戳/cwd）snapshotToString 逐字节相等且 firstDifference=null。全量 53 passed / tsc 干净。
 
 ---
 
