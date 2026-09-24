@@ -7,7 +7,7 @@
 
 | 文件 | 作用 |
 | --- | --- |
-| **[`docs/requirements.md`](docs/requirements.md)** | **要做什么** —— 唯一权威的需求文档（19 层 / 303 项 / 102 项 P0） |
+| **[`docs/requirements.md`](docs/requirements.md)** | **要做什么** —— 唯一权威的需求文档（19 层 / 310 项 / 104 项 P0） |
 | **[`docs/reference-cases.md`](docs/reference-cases.md)** | **照着谁做** —— 按功能 ID 查的首选参考索引，带可点击的源码链接 |
 | **[`AGENTS.md`](AGENTS.md)** | 怎么写 —— 仓库级开发规范（优先级最高） |
 
@@ -22,7 +22,7 @@
 
 - 每条需求的「参考」列是一个**可点击的链接**，直接落在 `oss/<仓>/…` 的具体行上
 - 想知道"为什么这么定"→ `docs/research/` 的对应主题文档（地图见 `docs/research/README.md`）
-- 想知道"还没定什么"→ `docs/requirements.md` §3 待定项（12 项）
+- **决策已全部锁定**：Q1–Q9 见 §2，Q10–Q21（原 12 项待定）见 §3，含裁决理由
 
 ## 目录结构
 
@@ -38,7 +38,7 @@ aegent/
 ├── docs/
 │   ├── requirements.md        ★★ 需求文档（要做什么）
 │   ├── reference-cases.md     ★★ 参考案例索引（照着谁做）
-│   ├── l0-events.md           L0 事件词汇表设计（4 项待定见需求文档 §3.2）
+│   ├── l0-events.md           L0 事件词汇表设计（13 个事件，已定稿）
 │   ├── l0-eval.md             L0 内核评估
 │   ├── review-prompt.md       深度复查提示词（用于开新会话做独立复查）
 │   └── research/              调研产出（为什么），地图见其 README.md

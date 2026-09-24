@@ -4,6 +4,8 @@
 **用法**：需求文档里定了"做什么"，本文件说"照着谁做、点开看哪一段、抄什么、别抄什么"。
 **按功能 ID 查**（§1）· **按仓查**（§2，优点清单原文）· **排除清单与未细读**（§3）· **调研文档对应**（§4）。
 
+> **Q10–Q21 的 12 项决策已定**（`docs/requirements.md` §3），本文件已按决策更新首选与警告。
+>
 > **锚定**：所有路径指向 `oss/<仓>/…`，对应 `oss/SOURCES.lock` 的 commit。
 > 跑 `bash tools/snapshot.sh` 可确认上游未变；跑 `bash tools/check-doc-links.sh` 可校验链接。
 > **本项目不追求读完上游** —— 只在你真正开始做某一条时才点开它对应的位置。
@@ -92,7 +94,8 @@
 
 | ID | 首选（点击） | 取什么 | 别抄 / 备选 | 复用 |
 | --- | --- | --- | --- | --- |
-| C1–C4 | [opencode·permission/](../oss/opencode/packages/opencode/src/permission) | 三维求值 + `findLast` 的**求值顺序**；`permission × pattern` 双维度通配的形状 | **注意待定6**：kimi 是 first-match-wins，与它相反 | 🟡 |
+| C1 C3 C4 | [opencode·permission/](../oss/opencode/packages/opencode/src/permission) | 三维求值 + `permission × pattern` 双维度通配的**形状** | **Q15 已定：不抄它的 `findLast`** —— 我方是**前匹配胜**（见 C2） | 🟡 |
+| C2 | [kimi·permissionRules](../oss/kimi-code/packages/agent-core-v2/src/agent/permissionRules) | **前匹配胜**的求值顺序；规则集作为**链中一环**而不是权威 | OpenCode 的 `findLast` **只作对照**，用来写"行为相反"的测试 | 🟢 |
 | C5 C6 L2 N2 | 同上 | `Deferred` + `pending: Map` + `reply` 唤醒；**发起端与审批人记在哪** | — | 🟡 |
 | C7 | [codex·sandboxing/windows.rs](../oss/codex/codex-rs/sandboxing/src/windows.rs) | `WindowsSandboxFilesystemOverrides` 的**策略形状**（怎么表达"工作区内 + 白名单"） | — | 🟢 |
 | C8 | [dsh·permission-presets](../oss/deepseek-harness/packages/interaction/permission-presets/src/index.ts) | **两根正交旋钮**（`sandboxMode` × `approvalPolicy`）；预设是**命名捆包**；`permission/preset` 是 **log-only 意图事件**；`CUSTOM_PRESET` 是**派生值、从不作为载荷**；`AUTO_PRESET_SPEC` 只对当前会话 | — | 🟡 |
@@ -124,6 +127,7 @@
 | C53 C54 | [codex·execpolicy/](../oss/codex/codex-rs/execpolicy) + [codex·protocol.rs](../oss/codex/codex-rs/protocol/src/protocol.rs) | `host_executable(name, paths)` 把 basename 规则绑到**绝对路径清单**；`GranularApprovalConfig` **关闭某类 ≠ 放行 = 硬拒绝** | — | 🟡 |
 | C56 | [codex·guardian/](../oss/codex/codex-rs/core/src/guardian) | `GuardianAssessmentOutcome`/`Status`；**"`None` requests the existing user flow. No contributor is never an implicit allow."** | — | 🟡 |
 | C57 | [zcode·turn-loop.ts](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts) | 那条**修过 bug 的注释**：automation 写工具必须在 provider 请求边界**按 `queryId` 再硬过滤** | 与 B15 同源 | 🟢 |
+| C58 | [claude-official·claude-code.d.ts](../refs/claude-official/mods/types/claude-code.d.ts) | **链位置决定优先级**（`tier`：托管 > 用户 > 项目 > 核心）；规则匹配只产出 `rule` 证据 | 🔴 专有，只读声明；配套 I12 | 🔴 |
 
 ### D. Sandbox
 
@@ -215,6 +219,9 @@
 | I9 | [pi-desktop·plugins/validation.rs](../oss/pi-desktop/crates/host-core/src/plugins/validation.rs) | **安装期全量校验、闭集枚举、未实现的能力直接 `bail!` 拒绝声明**（不是忽略、不是警告） | 🔴 只学行为 | 🔴 |
 | I10 | [zcode·session.events.ts](../oss/zcode/apps/zcode-cli/packages/contracts/src/events/session.events.ts) | hook 复核结论**可被 `superseded`**，且取代本身是持久事实 | — | 🟢 |
 | I11 | [dsh·packages/guard/](../oss/deepseek-harness/packages/guard) | 治理逻辑做成可插拔包（`repeat-tool-reminder` / `timeout-policy`） | — | 🟡 |
+| **I12** | [claude-official·mods/README.md](../refs/claude-official/mods/README.md) | **洋葱链 `($, e, next)` 的形态**：每层可"进去前 / 出来后"、可截断不往下传。**Q14 已定要它** —— 这决定 P0 的 loop 与 tools 怎么组织 | 🔴 只读行为；**P0 只挂 3 个点**控制额度 | 🔴 |
+| I13 | 同上 | `next.trace` / `next.budget`：每层可观测、可预算 | 链的附带收益，P1 再做 | 🔴 |
+| I14 | 同上 | `next.to(e, tier)` 跨层跳 | 托管层直达，P2 | 🔴 |
 
 ### J. Models
 
@@ -277,6 +284,7 @@
 | N3 N4 N6 N7 | [zcode·sessionRealtimePort.ts](../oss/zcode/packages/services/src/session/sessionRealtimePort.ts) | **N 层的蓝本**：`owner + lease + 类型化 owner 命令`；**审批 / elicitation / hook 复核共用一条命令通道**；命令是**闭集**；结果**回传**；每个界面是一个 **host**（有投递方式之分） | OpenCode 的 `Deferred + Map` 降为实现细节 | 🟡 |
 | N8 A12 |  [claude-official·claude-code.d.ts:588](../refs/claude-official/mods/types/claude-code.d.ts#L588) | 多端 = **surface roster**，attach/detach 由事件维护（`session.attach`） | 🔴 只读声明 | 🔴 |
 | N1 N5 | — | **自研**：统一会话 ID 与推送没有值得抄的上游 | 注意 A9：**协议层不提供 per-prompt 完成语义** | — |
+| **N9 N10** | [pi-desktop·config_sync/](../oss/pi-desktop/crates/host-core/src/config_sync) | **Q20 已定要做**：加密 vault + 远端存储 + **三方合并** + 导入日志可崩溃恢复。**这是一整个子系统的量**（13 个文件），不是"配置放哪儿" | 🔴 只学行为；**里面有 API key，加密不是可选项** | 🔴 |
 
 ### O. 测试与诊断
 
@@ -334,6 +342,7 @@
 | T2 | [zcode·CONTEXT.md](../oss/zcode/CONTEXT.md) | 带**禁用词**的领域词汇表：每词条必须有 `_Avoid_` 行，按限界上下文分文件 | — | 🟡 |
 | T5 T6 T7 | [kimi·tree-sitter-bash/README.md](../oss/kimi-code/packages/tree-sitter-bash/README.md) | **上限要写实测溢出点与余量倍数**（`MAX_SUBSTITUTION_DEPTH = 150`，实测溢出在 ~380–500）；**畸形输入永不抛异常、降级返回 + 显式错误标志**；**性能断言防复杂度退化**（不是防慢） | — | 🟢 |
 | T8 | [kimi·known-diffs.txt](../oss/kimi-code/packages/tree-sitter-bash/test/fixtures/corpus/known-diffs.txt) | **以某上游为蓝本须产出 known-diffs 清单**：30+ 条有据可查的偏差，带 pin | — | 🟢 |
+| **T9** | [zcode·architecture-policy.yaml](../oss/zcode/architecture-policy.yaml) | 用可校验的策略文件把"跨进程接口只传可序列化值"**变成机器能查的约束**（Q16 已定出进程） | 别只写在文档里 —— 这条纪律违反一次就难回头 | 🟡 |
 
 ---
 

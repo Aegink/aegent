@@ -1,6 +1,6 @@
 # 多端 Agent 需求文档
 
-**状态**：v1.0（整理稿）· 决策全部锁定 · **待定 12 项待你定**
+**状态**：v1.1 · **决策全部锁定（Q1–Q21）** · 无待定项
 **本文件是"要做什么"的唯一权威**；"为什么这么定"在 `docs/research/`；"照着谁做"在 `docs/reference-cases.md`。
 **上游依据**：`oss/SOURCES.lock`（锚定 commit，结论可复现）· 遵循 `AGENTS.md`
 
@@ -13,7 +13,7 @@
 | **要做什么？做到哪一步算完？** | 本文件 §4 功能总表 + §8 验收标准 |
 | **这个功能照着哪个仓做？点开看哪一行？** | `docs/reference-cases.md`（**按功能 ID 查，带可点击的源码链接**） |
 | **为什么这么定？踩过什么坑？** | `docs/research/` 的对应主题文档（见 `docs/research/README.md` 地图） |
-| **哪条还没定？卡住了什么？** | 本文件 §3 待定项 |
+| **某条为什么这么定？** | 本文件 §3 决策记录（Q10–Q21，含裁决理由） |
 | **某条需求的完整推理链** | `docs/research/30-round-log.md`（按轮次的原始记录） |
 | **L0 事件词汇表怎么定？** | `docs/l0-events.md` · `docs/l0-eval.md` |
 
@@ -70,7 +70,7 @@
 | Q4 | 桌面端 | **Tauri 2**（由 Electron 变更） | 同机实测 33MB vs Electron 370–689MB |
 | Q5 | 模型来源 | **参考 cc-switch** | 不透明配置 + 语法校验 + 故障转移队列 |
 | Q6 | 并发会话写 | **可多端** | §4 N 层需会话级互斥 + 事件序号 |
-| Q7 | 技术栈 | **内核 TS + P1 原生 helper 用 Rust** | 语言边界即进程边界，不做 N-API |
+| Q7 | 技术栈 | **内核 TS + P1 原生 helper 用 Rust** | 语言边界即进程边界，不做 N-API；**agent 本体也出进程**（见 Q16） |
 | Q8 | 效率范围 | **所有生产开销都要高效** | 见 §6，五项可测指标 |
 | **Q9** | **事件扩展机制** | ✅ **封闭联合（学 Pi）** | 插件**不能**新增事件类型；换来实现行级运行时校验 |
 
@@ -117,62 +117,92 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 
 ---
 
-## 3. 待定项（12 项，需你定）
+## 3. 决策记录（Q10–Q21，全部已答 2026-09-25）
 
-> 整理时把原先散在 §1 各处的待定集中到这里。**前 4 项定完才能写 `src/kernel/events.ts`。**
+> 原「待定项」清单。**12 项已全部答复，答复即决定。**
+> 本节是**唯一权威**；散落在各层的旧描述一律以本节为准。
 
-### 3.1 一览
-
-| # | 待定 | 卡住什么 | 我的建议 |
+| # | 问题 | 你定的 | 落地到哪几条 |
 | --- | --- | --- | --- |
-| 待定1 | `hook` 取消原因带自由文本，与 **C14**（持久化事件不含自由文本）冲突 | L0 词汇表 | **(d) reason 结构化 + 自由文本单独放 `message`** |
-| 待定2 | **C17**（泛型逃生舱）的优先级 | L0 词汇表 | **提到 P1** |
-| 待定3 | `request/header` 是否进 L0 | L0 词汇表 | **进** |
-| 待定4 | 两处覆盖缺口 | L0 词汇表 | 见下 |
-| 待定5 | **要不要 hook 洋葱链？** | **P0 的 loop 与 tools 形态（单向门）** | 见下 |
-| 待定6 | **规则集与链，谁是权限权威？** | 同上 | kimi 的"链 + 策略模块"形态 |
-| 待定7 | **agent 运行时是否出进程？** | **P0 模块边界** | 见下 |
-| 待定8 | **Windows 上是否接受"建 OS 账户"这个前提？** | D 层边界 | 见下 |
-| 待定9 | **`permissionUpdates` 由谁产生？** | C 层安全边界 | **引擎算提案，模型只能发命令**（= C48） |
-| 待定10 | **shell 权限分析做到哪一档？** | C 层承诺的保护强度 | 见下 |
-| 待定11 | **配置是否跨设备同步？** | 是否要独立子系统 | 见下 |
-| 待定12 | **G 层计划模式二选一** | G 层形态 | 见下 |
+| **Q10** | hook 取消原因带自由文本，与 C14 冲突 | **(d)** reason 结构化（键值对）+ 自由文本单独放 `message` | `l0-events.md` §3.4 |
+| **Q11** | C17 泛型逃生舱的优先级 | **提到 P1** | C17 |
+| **Q12** | `request/header` 是否进 L0 | **进**（不再是 log-only） | `l0-events.md` §3.2 |
+| **Q13** | 两处覆盖缺口 | ① 落盘**打标记**策略前移 P0（实际清理仍 P1）；② F21 的 P0 **只做 `PreTurn` 与 `MidTurn`** | B10 · Q3 · F21 |
+| **Q14** | 要不要 hook 洋葱链 | **要 —— 选洋葱链**（不是平列表） | **I12–I14** · A/B 层按链形写 |
+| **Q15** | 规则集与链，谁是权限权威 | **第三条路**：形态是链、元素是策略模块、规则集降为链中一环；**前匹配胜** | **C2** · **C58** · C20 |
+| **Q16** | agent 运行时是否出进程 | **出进程** | **T9** · Q7 · K3 · M8 |
+| **Q17** | 是否接受"建 OS 账户" | **接受，但降到 P1** | D6 · D10 · D16 |
+| **Q18** | `permissionUpdates` 由谁产生 | **引擎算提案，模型只能发命令** | C48（确认） |
+| **Q19** | shell 权限分析做到哪档 | **B 档：语义分析**（不做完整语法树） | C27 · C28 · C29 |
+| **Q20** | 配置是否跨设备同步 | **要** | **N9 · N10**（新增子系统） |
+| **Q21** | 计划模式怎么实现 | **混合**：状态用"同一个 agent"，但该状态下**写/执行权限硬关** | G7 |
 
-### 3.2 前四项（L0 词汇表，来源 `docs/l0-events.md` §7）
+### 3.1 五个决定内核形态的裁决（详细）
 
-| # | 选项 | 建议与理由 |
-| --- | --- | --- |
-| **待定1** | (a) 丢弃 `hook` 变体 / (b) 保留但不带 reason，reason 只进遥测 / (c) 放宽 C14 为"不得含无界自由文本" / **(d) reason 结构化（值为 JSON 原始类型 record）+ 自由文本单独放 `message`** | **(d)** —— kimi-code 已在生产用这个形状，且同时满足 C14 与"UI 要说清为什么" |
-| **待定2** | 维持 P2 / 提到 P1 | **提到 P1** —— pi 的 `CustomEntry` 已证明"插件扩展"与"封闭联合"不互斥（`oss/pi/packages/agent/src/harness/session/types.ts:52`）。留槽成本是一个变体；不留槽是**全仓词汇表重构** |
-| **待定3** | 进 / 不进 | **进** —— 它是 J4（P0）的落点；事后补 header 事件等于改词汇表 |
-| **待定4** | — | **B10/B11 落盘生命周期**的归属（截断临时文件的清理策略归 Q3）；**F9 压缩发生在哪个 turn 边界必须可断言** |
+这五条决定第一行 `src/kernel/` 代码长什么样，理由记全。
 
-### 3.3 三个 P0 边界决定（定完才能写 loop 与 tools）
+#### Q14 · 要洋葱链，不要平列表
 
-| # | 待定 | 说明 |
-| --- | --- | --- |
-| **待定5** | **要不要 hook 洋葱链？** | Claude Code 官方声明的扩展模型是 `($, e, next)` 洋葱链 + tier + trace + budget。有了链，优先级由**链位置**表达（托管 > 用户 > 核心），且可观测（`next.trace`）、可预算（`next.budget`）、可跨层跳。**代价**：链一旦定下，P0 的 loop 与 tools 都要按链的形态写 —— **与词汇表同级的单向门。** |
-| **待定6** | **规则集与链，谁是权限权威？** | OpenCode 用"规则集 + `findLast` 后写覆盖"；Claude Code 用"hook 链 + 位置"，规则匹配只产出 `rule` 证据。两者都成体系，**但不能同时当权威**。**kimi-code 给出第三条路**：形态是链（可组合、有序），元素是策略模块（可单测），**OpenCode 式规则集降为链中一环**。建议按此定。相关冲突：kimi **first-match-wins** vs OpenCode **last-match-wins** —— 必须选一个并写进文档。 |
-| **待定7** | **agent 运行时是否出进程？** | ZCode 把**整个 agent** 放在独立子进程（协议 + stdio）；我方 Q7 目前是内核在进程内、只有 Windows 原生 helper 出进程。两种都成立，但**决定 P0 的模块边界**（进程边界决定哪些状态可共享、哪些必须序列化）。 |
+扩展点组织成 `($, e, next)` 洋葱链：每层包住下一层，可"进去前做、出来后做"、可截断不往下传、
+可带 trace 与 budget。**不是**在固定时点挂一串各跑各的回调。
 
-### 3.4 决定 D/C 层承诺强度的三项
+**代价（已明确接受）**：链一定，**P0 的 loop 与 tools 都要按链的形状写** ——
+与事件词汇表同级的单向门，不是"以后再加一层"能补的。
 
-| # | 待定 | 说明 |
-| --- | --- | --- |
-| **待定8** | **Windows 上是否接受"建 OS 账户"？** | Codex 用两个真实本地账户（`CodexSandboxOffline`/`CodexSandboxOnline`）+ WFP 防火墙实现网络隔离。**接受** → 有真隔离但工程量大（账户/DPAPI/WFP/隐藏/提权安装/卸载）；**不接受** → **必须显式声明"网络策略只在工具层生效，对任意子进程不可强制"**（诚实的弱承诺）。见 D16。 |
-| **待定9** | **`permissionUpdates` 由谁产生？** | ZCode 允许审批结果携带权限配置更新。**若允许模型填，就是 C35 那个缺口**；Codex 的做法是引擎算提案、用户接受（C48）。**必须选边。** |
-| **待定10** | **shell 权限分析做到哪一档？** | 三档：Codex 前缀 token 匹配 / qwen-code shell 语义分析 / kimi-code 完整 bash 语法树。对应三档工程成本。**"承诺的保护强度到哪一档"必须显式选，不能默认。**（`ls && rm -rf /` 的首 token 是 `ls` —— 这是前缀方案的固有软肋。） |
+**约束**：P0 **只在链上挂 3 个点**（额度小、路留着，见 I12）。
 
-### 3.5 两项范围内/外的取舍
+#### Q15 · 权限权威是链，规则集降为链中一环；前匹配胜
 
-| # | 待定 | 说明 |
-| --- | --- | --- |
-| **待定11** | **配置是否跨设备同步？** | pi-desktop 把 `config_sync` 做成了一等子系统：加密 vault + WebDAV + **三方合并** + 导入日志可崩溃恢复。**若要，这是独立子系统，不是"配置文件放哪儿"的问题。**（注意：那里有 API key，加密不是可选项。） |
-| **待定12** | **计划模式二选一** | `EXPLORE` 权限模式（agentscope）vs **Plan 就是处于 planning 状态的同一个 Agent**（DSH / pi-desktop ADR 0053）。前者不可绕过、后者不浪费 token。**整理时从 §1 正文中提出**，此前未列入待定清单。 |
+- **权威 = 链本身。** 层序 `托管 > 用户 > 项目 > 核心`；规则匹配只产出证据，不是终审。
+- **元素 = 策略模块**：每个策略一个模块，可在链上单测（C20）。
+- **规则集（OpenCode 那套表）降为链中的一环**，不再是权威。
+- **前匹配胜（first-match-wins）** —— 与 OpenCode 的 `findLast` **相反**，
+  必须写进文档，否则用户写的规则行为不可预测。
+
+> 这条同时解决 Q14 与 Q15 的耦合：链是骨架，规则集是骨架上的一个器官。
+
+#### Q16 · agent 本体出进程
+
+**整个 agent 放独立子进程**（协议 + stdio），与 Q7「语言边界即进程边界」一致。
+
+得到什么：桌面壳崩了 agent 还活着 · 权限可被 OS 沙箱硬管 · 多端共享同一 agent 更自然。
+付出什么：状态要序列化 · 冷启动慢 · 调试要跨进程。
+
+**配套纪律（T9）**：agent 对外接口**只传可序列化值，不共享引用**。
+违反这条会让"出进程"变成"重写"。
+
+> **对 §6.2「冷启动 < 500ms」的影响需要实测**：进程启动 + 握手计入冷启动。
+> 这是本条唯一的风险，P0 跑通后立刻测。
+
+#### Q17 · 接受建 OS 账户，但降到 P1
+
+接受 Codex 的路线：两个真实本地 Windows 账户（离线/在线）+ WFP 防火墙 + 文件 ACL，
+换子进程也逃不掉的隔离。**但降到 P1**。
+
+**P0 期间必须显式声明弱承诺**：**「网络策略只在工具层生效，对任意子进程不可强制」** ——
+写进文档与 UI，**不假装已管住**（D14 的同一条纪律）。
+
+> **给你留一句**：这条意味着安装时需要**管理员权限**，本机会多出两个隐藏账户。
+> 你已答复接受；若装到别人机器上会不一样，届时另行决定。
+
+#### Q19 · shell 分析做 B 档（语义分析）
+
+把 shell 命令解析成"虚拟工具操作"（要读哪些文件、写哪些文件、访问哪些域名），
+交给既有的 Read/Write/WebFetch 规则管。**做不到的明确标"不确定"，不确定按危险处理。**
+
+- **不选 A（看首词）**：`ls && rm -rf /` 的首词是 `ls` —— 日常使用中这不是理论问题
+- **不选 C（完整 bash 语法树）**：kimi 为它维护独立包 + 1,200 行测试 + 30 多条已知偏差，
+  对"只有我自己用"过重
+
+**范围（P0）**：只做 `&&` / `;` / 管道 / 重定向 / `cd` 这几种。
+其余形态落到 C28 的"不确定"分支（保守处理），**不静默放过**。
+
+> **承诺强度写进文档**：B 档能防误操作与常见绕过；对刻意构造的混淆（嵌套 eval、
+> 变量拼接）**不承诺**，由 C29 的"做不到清单"逐条列出。
 
 ---
 
-## 4. 功能总表（19 层，303 项）
+## 4. 功能总表（19 层，310 项）
 
 **优先级**：P0 = 最小闭环（**P0 跑通前不写任何 UI**）· P1 = 内核可用后 · P2 = 有余力再说
 **「参考」列**：**首选**参考实现，可点击，指向 `oss/<仓>/…`（锚定 `oss/SOURCES.lock` 的 commit）。
@@ -213,7 +243,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | B7 | 工具进度流式上报 | P1 | [pi·types.ts:485](../oss/pi/packages/agent/src/types.ts#L485) | `tool_execution_update` 事件按序到达 |
 | B8 | 扩展工具 `apply_patch` `lsp` `webfetch` `todo` `question` | P1 | [opencode·tool/](../oss/opencode/packages/opencode/src/tool) | 各工具独立单测 |
 | B9 | 工具调用 ID 全程可追 | P0 | [pi·types.ts:485](../oss/pi/packages/agent/src/types.ts#L485) | 事件流中 toolCallId 可从 start 追到 end |
-| B10 | 超限输出落盘 + 告知模型完整输出位置 | P0 | [pi·truncated-tool.ts](../oss/pi/packages/coding-agent/examples/extensions/truncated-tool.ts) | 截断时写临时文件，并把路径告诉模型，模型可再读 |
+| B10 | 超限输出落盘 + 告知模型完整输出位置（**Q13：落盘时就打"属于哪个会话 / 何时可删"标记**） | P0 | [pi·truncated-tool.ts](../oss/pi/packages/coding-agent/examples/extensions/truncated-tool.ts) | 写临时文件 + 路径告知模型；**标记策略在 P0**，实际清理仍 Q3(P1) |
 | B11 | 输出上限：50KB（约 10k token）或 2000 行，先到先算 | P0 | 同上 | 断言超限被截断且上限可配 |
 | B12 | 声明式输出契约：执行期类型值 ≠ 会话格式，需显式投影 | P0 | [dsh·canonical-tool-output.md](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-07-20-canonical-tool-output-contract.md) | 工具只返回契约描述的值；持久化值由显式投影产生 |
 | B13 | 重试预算：同路径 3 次，按 prompt × path 双作用域 | P1 | [pi-desktop·ADR 0207](../oss/pi-desktop/docs/adr/0207-three-mutation-recovery-failures.md) | 第 3 次带 `terminate`；可恢复错误码每码一次宽限；成功即清空该路径历史 |
@@ -231,7 +261,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | ID | 功能 | 优先级 | 参考（首选） | 验收要点 |
 | --- | --- | --- | --- | --- |
 | C1 | 三维求值 `allow` / `ask` / `deny` | P0 | [opencode·permission/](../oss/opencode/packages/opencode/src/permission) | 三种动作各有单测 |
-| C2 | `findLast` 覆盖语义（后写规则胜） | P0 | 同上 | 宽规则后接窄规则，断言窄规则生效 |
+| C2 | **前匹配胜（first-match-wins）**；规则集降为**链中的一环**，不再是权威 | P0 | [kimi·permissionRules](../oss/kimi-code/packages/agent-core-v2/src/agent/permissionRules) | 宽规则在前则窄规则永不生效 —— **与 OpenCode 的 `findLast` 相反**，必须有测试钉住 |
 | C3 | **默认落 `ask`（非 allow）** | P0 | 同上 | 无匹配规则时危险操作必须询问 |
 | C4 | 双维度通配 `permission` × `pattern` | P0 | 同上 | 能表达"只允许 `git status`" |
 | C5 | 待审批 `Deferred` + `pending: Map` | P0 | 同上 | 发起端 suspend，`reply` 可唤醒 |
@@ -249,14 +279,14 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | C17 | 若需插件事件，只开**一个泛型逃生舱类型**，不改词汇表机制 | P1 | [pi·session/types.ts:52](../oss/pi/packages/agent/src/harness/session/types.ts#L52) | `{type:"plugin", namespace, payload}` 形状 |
 | C18 | 权限裁决结果带 **`rule`（规则原文，如 `Bash(git push:*)`）+ `reason`** | P0 | [claude-official·claude-code.d.ts](../refs/claude-official/mods/types/claude-code.d.ts) | 裁决可解释；UI 能显示"因为哪条规则" |
 | C19 | **策略 dry-run**：可跑完整判定链而不执行工具 | P1 | 同上 | "runs the same chain and executes nothing" |
-| C20 | **具名策略的有序列表**：每个策略一个模块，首个非 undefined 者胜 | P0 | [kimi·permissionPolicyService.ts](../oss/kimi-code/packages/agent-core-v2/src/agent/permissionPolicy/permissionPolicyService.ts) | 顺序集中在一处可审 |
+| C20 | **链上的策略模块**：每个策略一个模块，首个非 undefined 者胜（**链是权威，见 C58**） | P0 | [kimi·permissionPolicyService.ts](../oss/kimi-code/packages/agent-core-v2/src/agent/permissionPolicy/permissionPolicyService.ts) | 顺序集中在一处可审 |
 | C21 | **参数匹配委托给工具自身**，策略引擎只把 `argPattern` 交下去 | P0 | [kimi·matchesRule.ts](../oss/kimi-code/packages/agent-core-v2/src/agent/permissionRules/matchesRule.ts) | 工具自己解释自己的参数匹配 |
 | C22 | **规则作用域**（project / user / turn-override / session-runtime） | P1 | kimi·`permissionRules` | 会话批准不混进用户配置 |
 | C23 | **策略自检**：报告永不匹配的模式（通配符用错、MCP 名不完整、未知工具名） | P1 | [kimi·evaluate.ts:85](../oss/kimi-code/packages/agent-core-v2/src/agent/toolPolicy/evaluate.ts#L85) | `findInactiveToolPatterns` 可单测 |
 | C24 | 审批响应带 **scope（记住本会话）/ feedback / 选项标签**，非二值 | P1 | kimi·`ApprovalResponse` | 审批可"记住"且可带反馈 |
 | C25 | **工具激活与工具批准分离**（工作区/档案/全局/会话四层按 AND 合成） | P1 | [kimi·evaluate.ts:43](../oss/kimi-code/packages/agent-core-v2/src/agent/toolPolicy/evaluate.ts#L43) | 四层纯 AND |
 | C26 | 规则语法采用 **`Tool(args)` 文本形式** | P1 | 两家独立实现（kimi + claude-official） | 配置可读、可复制粘贴 |
-| C27 | **Shell 语义分析**：把 shell 命令翻译成"虚拟工具操作"，使 Read/Write/WebFetch 规则能管住 shell 等价物 | P0 | [qwen·shell-semantics.ts](../oss/qwen-code/packages/core/src/permissions/shell-semantics.ts) | **堵住"用 Bash 绕过文件规则"这个真实漏洞** |
+| C27 | **Shell 语义分析（Q19 定 B 档）**：把 shell 命令翻译成"虚拟工具操作"，使 Read/Write/WebFetch 规则能管住 shell 等价物 | P0 | [qwen·shell-semantics.ts](../oss/qwen-code/packages/core/src/permissions/shell-semantics.ts) | **堵住"用 Bash 绕过文件规则"这个真实漏洞** |
 | C28 | **分析结果携带不确定性字段**（`cwdUnknown` / `pathMayDependOnCwd`），消费方按保守处理 | P0 | 同上 | 不确定即按危险处理 |
 | C29 | **任何"用模式匹配做保护"的设计必须附"静态分析做不到"的清单** | P0 | 同上 | 承诺强度可审计 |
 | C30 | **审批可批量**：审批提前收集、**执行仍按原顺序**、**执行时守卫重跑** | P1 | [hermes·terminal_approval_batch.py](../oss/hermes-agent/agent/terminal_approval_batch.py) | 批量不改变执行顺序 |
@@ -287,6 +317,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | C55 | `justification` 必填；`forbidden` 须给替代做法 | P2 | [codex·execpolicy/](../oss/codex/codex-rs/execpolicy) | 拒绝要能告诉用户怎么办 |
 | C56 | 若做 LLM 判官，P0 定四件事：abstain 落回人 / 判官自身预算 / 超时常量被上层复用 / 受管可强制 | P1 | [codex·guardian/](../oss/codex/codex-rs/core/src/guardian) | 判官不能是隐式放行 |
 | C57 | **限制性判定必须在执行点用"权威标识"重算**，不得依赖传递下来的元数据 | P0 | [zcode·turn-loop.ts](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts) | 多端与恢复路径上丢失的元数据就是绕过口 |
+| **C58** | **权限权威是链本身**：层序 `托管 > 用户 > 项目 > 核心`；规则匹配只产出**证据**不是终审（Q15） | **P0** | [claude-official·claude-code.d.ts](../refs/claude-official/mods/types/claude-code.d.ts) | 同一条规则在不同链位置上结果不同，且可断言 |
 
 > **C35 为什么是 P0**：一个能改写自己权限配置的 agent，会让 C10（危险命令库）、C11（项目信任）、
 > C27（shell 语义）**全部变成可选的** —— 先把自己加进白名单即可绕过。
@@ -311,7 +342,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | D13 | **Windows kill-on-close Job 作为进程管辖范围所有者** | P1 | [dsh·subprocess-native-containment.md](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-08-28-subprocess-native-containment.md) | 子进程 `setsid`/重挂父进程/活过父进程时仍被管住；**超时子进程先回收再释放许可** |
 | D14 | **不可靠兜底必须显式告警** | P1 | 同上 | 无法建立强管辖时给一次性明确警告，**不假装已管住** |
 | D15 | 已启动的命令绝不自动重试 | P0 | [pi-desktop·ADR 0041](../oss/pi-desktop/docs/adr/0041-bounded-host-runtime-and-persistence-outbox.md) | 幂等边界：**重试只对"未启动"安全** |
-| D16 | **网络隔离需 OS 身份 + WFP**；Job Object 只管进程生命周期，**不够** | P0 | [codex·setup.rs:740](../oss/codex/codex-rs/windows-sandbox-rs/src/setup.rs#L740) | 见待定8：不接受则必须声明弱承诺 |
+| D16 | **网络隔离需 OS 身份 + WFP**；Job Object 只管进程生命周期，**不够**（Q17：接受但 **P1**） | **P1** | [codex·setup.rs:740](../oss/codex/codex-rs/windows-sandbox-rs/src/setup.rs#L740) | **P0 期间必须显式声明弱承诺**：「网络策略只在工具层生效，对任意子进程不可强制」 |
 
 ### E. Session（18 项）
 
@@ -360,7 +391,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | F18 | **模型流中断恢复**：锚点先于故障持久化 / 有界重试 / **显式终态 `blocked`** | P1 | [zcode·session.events.ts](../oss/zcode/apps/zcode-cli/packages/contracts/src/events/session.events.ts) | `StreamRecovery*` 6 个事件 |
 | F19 | **压缩分两级**（microcompact 与 compact 各有边界事件） | P2 | 同上 | 两级各有可观测边界 |
 | F20 | **压缩是生命周期**（开始/结束事件 + hook 可介入/中止），不是函数 | P0 | [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | 换实现不影响观察者 |
-| F21 | **压缩有相位**：`StandaloneTurn/PreTurn/MidTurn/PostTurn`；**MidTurn 必须支持** | P0 | 同上 + [zcode·compact.ts](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/compact.ts) | 三份独立证据（见 §9 交叉验证） |
+| F21 | **压缩有相位**：`StandaloneTurn/PreTurn/MidTurn/PostTurn`（**Q13：P0 只做 `PreTurn` 与 `MidTurn`**） | P0 | 同上 + [zcode·compact.ts](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/compact.ts) | 三份独立证据（见 §9 交叉验证） |
 | F22 | **压缩后重建上下文用"压缩那一刻"的状态**，不用压缩前快照 | P0 | [codex·session/mod.rs:4530](../oss/codex/codex-rs/core/src/session/mod.rs#L4530) | `start_new_context_window` |
 | F23 | **压缩须声明"哪些消息不可丢"**（客户/插件注入的 developer 消息），给独立预算 | P0 | [codex·session/mod.rs:4536](../oss/codex/codex-rs/core/src/session/mod.rs#L4536) | 保留客户端的 developer 消息 |
 | F24 | **换到更小上下文的模型时必须先压缩**（`ModelDownshift`） | P0 | [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | 换小模型前先压缩 |
@@ -381,7 +412,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | G4 | 计划落盘 | P1 | [pi-desktop·ADR 0053](../oss/pi-desktop/docs/adr/0053-plan-checkpoint-artifact-and-execution-epoch.md) | 重启后计划仍在；**批准要持久，但重启绝不重放旧 host 的工作** |
 | G5 | 审批过期策略 | P1 | — | 悬置审批有超时，不留永久挂起 |
 | G6 | goal 截止时间调度 | P1 | [kimi·goalDeadlineScheduler.ts](../oss/kimi-code/packages/agent-core-v2/src/features/goal/goalDeadlineScheduler.ts) | goal 有 deadline；到期行为可定义（放弃/上报/续期） |
-| G7 | **计划模式形态二选一**（`EXPLORE` 权限模式 vs Plan 是同 Agent 的一个状态） | P1 | 见 §3 待定12 | 前者不可绕过、后者不浪费 token；**不能既做** |
+| G7 | **计划模式 = 混合**（Q21）：状态是"同一个 agent"（可读），该状态下**写/执行权限硬关** | P1 | [§3 Q21](../docs/requirements.md) | 不一刀切禁读、也不靠提示词自律 |
 
 ### H. Subagents（6 项）
 
@@ -409,6 +440,9 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | I9 | 插件清单**安装期**全量校验、闭集枚举、**未实现的能力直接拒绝声明** | P1 | [pi-desktop·plugins/validation.rs](../oss/pi-desktop/crates/host-core/src/plugins/validation.rs) | 不是忽略，不是警告，是拒绝 |
 | I10 | hook 复核结论**可被 `superseded`**，且取代本身是持久事实 | P2 | [zcode·session.events.ts](../oss/zcode/apps/zcode-cli/packages/contracts/src/events/session.events.ts) | 复核可被后续复核取代 |
 | I11 | 治理逻辑（重复工具提醒、超时策略）做成**可插拔插件** | P2 | [dsh·packages/guard/](../oss/deepseek-harness/packages/guard) | 不在核心里硬编码治理 |
+| **I12** | **hook 洋葱链形态**：`($, e, next)` 每层可"进去前 / 出来后"、可截断不往下传（**Q14，决定 loop 与 tools 的形状**） | **P0** | [claude-official·mods/README.md](../refs/claude-official/mods/README.md) | **P0 只挂 3 个点**；选了平列表就再也补不上链的能力 |
+| I13 | 链上可观测与可预算：`next.trace` / `next.budget` | P1 | 同上 | 每层能看见走过哪些层、还剩多少预算 |
+| I14 | **跨层跳** `next.to(e, tier)` | P2 | 同上 | 托管层可跳过中间层直达 |
 
 ### J. Models（27 项）
 
@@ -499,6 +533,8 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | N6 | **owner + lease + 类型化 owner 命令**：审批 / elicitation / hook 复核**共用一条命令通道**；命令是**闭集**；结果回传 | P0 | [zcode·sessionRealtimePort.ts](../oss/zcode/packages/services/src/session/sessionRealtimePort.ts) | 一条通道，不是三套并行 |
 | N7 | **每个界面是一个 host**（有投递方式之分）；run 由**租约**保护 | P1 | 同上 | Q6 要的会话级互斥 |
 | N8 | 多端 = **surface roster**，attach/detach 由事件维护 | P1 | [claude-official·claude-code.d.ts](../refs/claude-official/mods/types/claude-code.d.ts) | 端的加入/离开是持久事件 |
+| **N9** | **配置跨设备同步**（Q20）：加密 vault + 远端存储 + **三方合并** + 导入日志可崩溃恢复 | P1 | [pi-desktop·config_sync/](../oss/pi-desktop/crates/host-core/src/config_sync) | **里面有 API key，加密不是可选项**；独立子系统，不是"配置放哪儿" |
+| **N10** | 配置同步**禁止后写覆盖先写**，必须三方合并；冲突显式报错 | P1 | 同上 | 与 C49 同源纪律 |
 
 ### O. 测试与诊断（30 项，10 条 P0）
 
@@ -593,6 +629,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | T6 | **畸形输入永不抛异常，降级返回 + 显式错误标志** | P1 | [kimi·tree-sitter-bash](../oss/kimi-code/packages/tree-sitter-bash) | 解析器的输入是不可信的 |
 | T7 | **性能断言进测试套件防复杂度退化**（不是防慢） | P2 | 同上 | 断言的是复杂度不是耗时 |
 | T8 | **以某上游为蓝本须产出 `known-diffs` 清单**（对齐 + 记录分歧） | P2 | [kimi·known-diffs.txt](../oss/kimi-code/packages/tree-sitter-bash/test/fixtures/corpus/known-diffs.txt) | 30+ 条有据可查的偏差，带 pin |
+| **T9** | **agent 本体出进程**（Q16）；跨进程接口**只传可序列化值、不共享引用** | **P0** | [zcode·architecture-policy.yaml](../oss/zcode/architecture-policy.yaml) | 违反这条，"出进程"会变成"重写"；**冷启动含进程启动+握手，需实测** |
 
 ---
 
@@ -602,28 +639,29 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | --- | --- | --- | --- | --- |
 | A. Agent Loop | 7 | 9 | 1 | 17 |
 | B. Tools | 10 | 11 | 0 | 21 |
-| C. Policy / Permissions | 31 | 23 | 3 | 57 |
-| D. Sandbox | 8 | 7 | 1 | 16 |
+| C. Policy / Permissions | 32 | 23 | 3 | 58 |
+| D. Sandbox | 7 | 8 | 1 | 16 |
 | E. Session | 9 | 7 | 2 | 18 |
 | F. Context | 13 | 14 | 3 | 30 |
 | G. Planning | 0 | 7 | 0 | 7 |
 | H. Subagents | 0 | 5 | 1 | 6 |
-| I. MCP / Skills / Hooks / Plugins | 0 | 5 | 6 | 11 |
+| I. MCP / Skills / Hooks / Plugins | 1 | 6 | 7 | 14 |
 | J. Models | 6 | 19 | 2 | 27 |
 | K. Surfaces | 1 | 5 | 3 | 9 |
 | L. Observability | 3 | 4 | 3 | 10 |
 | M. 长任务 | 1 | 7 | 3 | 11 |
-| N. 多端同步 | 1 | 6 | 1 | 8 |
+| N. 多端同步 | 1 | 8 | 1 | 10 |
 | O. 测试与诊断 | 11 | 15 | 4 | 30 |
 | P. 多模态与附件 | 0 | 3 | 1 | 4 |
 | Q. 会话数据运维 | 1 | 3 | 4 | 8 |
 | S. 调度与集成 | 0 | 0 | 5 | 5 |
-| T. 工程实践与架构约束 | 0 | 4 | 4 | 8 |
-| **合计** | **102** | **154** | **47** | **303** |
+| T. 工程实践与架构约束 | 1 | 4 | 4 | 9 |
+| **合计** | **104** | **158** | **48** | **310** |
 
 > **19 层**（A–T；**R 保留给参考项目编号**，不是功能层）。
 > **数量变化轨迹**：88（初版估算）→ 105（脚本统计）→ 146（第二轮全仓扫描）→
-> 166（第三轮精读决策记录）→ 169（Q9 配套约束）→ **303**（第 5–9 轮代码精读 + 整理时消重去冲突）。
+> 166（第三轮精读决策记录）→ 169（Q9 配套约束）→ 303（第 5–9 轮代码精读 + 整理消重）
+> → **310**（Q14/Q15/Q16/Q20 四项决策带来的新增：C58 · I12–I14 · N9–N10 · T9）。
 > **除最后一次外，增长都源于漏查** —— 见 §9 风险表。
 > 这个轨迹本身说明：**"看起来完整"的清单，一深查就多出一截。**
 
@@ -695,7 +733,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | 多端并发写状态错乱 | P0 不开放多端写；N3 做前先定互斥粒度 |
 | 提示注入绕过策略（场景⑦） | 策略在**工具执行前**求值（C9），注入文本一律当数据 |
 | 抄了形状没抄纪律 | 纪律写成不变量 + 单测（`04-module-map.md` §不变量） |
-| **303 项功能铺得过宽** | P0 仅 **102** 项；**P0 跑通前不写任何 UI** |
+| **310 项功能铺得过宽** | P0 仅 **104** 项；**P0 跑通前不写任何 UI** |
 | 上游演进导致报告过时 | 每轮开工前 `bash tools/snapshot.sh` + `git diff oss/SOURCES.lock` |
 | **需求清单仍可能不全**（已实际发生五次） | 前四版分别漏了运行时换模（只查一个仓就下结论）、41 项功能（按记忆挑维度）、全部测试内容、编号冲突（多轮追加未归一）。**缓解**：`tools/count-features.sh` 统计而非手工；`tools/sweep.sh` 全仓扫而非凭印象；`tools/check-doc-links.sh` 校验引用；**整理后所有功能条目必须落在唯一编号上** |
 
@@ -764,8 +802,10 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | T | T1–T8（**新增层**） | 8 |
 | **合计** | | **134** |
 
-> 旧主表 169 项 → 新主表 303 项，净增 134；**无一条被删除**（原 `O4`「沙箱自检 doctor」
+> 旧主表 169 项 → 整理后 303 项，净增 134；**无一条被删除**（原 `O4`「沙箱自检 doctor」
 > 与 `D7` 重复，合并保留在 `D7`）。
+>
+> **整理之后**：§3 的 12 项决策又带来 7 条新需求（C58 · I12–I14 · N9–N10 · T9），**现为 310 项**。
 
 ### 10.3 O 层为何整层重写
 

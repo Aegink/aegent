@@ -123,7 +123,7 @@ interface EventBase {
 **`seq` / `ts` 由 store 分配**，照 pi 的 `NewEntry = Omit<Entry, "seq" | "timestamp">`（`types.ts:67`）。
 调用方给不出正确的 seq —— 它给一个就多一个不权威的顺序来源。
 
-### 3.2 事件联合（L0，共 12 个 + 1 个 log-only）
+### 3.2 事件联合（L0，共 **13** 个）
 
 | # | 事件 | 载荷 | 覆盖需求 |
 | --- | --- | --- | --- |
@@ -139,7 +139,7 @@ interface EventBase {
 | 10 | `tool/result` | `{turn, step, callId, message, error?, meta?}` | B10/B12 |
 | 11 | `compaction` | `{turn, summary, retainedTail, tokensBefore, usage?}` | **F9**（原草稿缺） |
 | 12 | `checkpoint` | `{turn, provider: string, ref: JsonValue}` | **E11**（原草稿缺） |
-| — | `request/header` | `{config, tools?, reason}` | **J4**（log-only） |
+| 13 | `request/header` | `{config, tools?, reason}` | **J4**（**Q12 定：进 L0，不再是 log-only**） |
 
 `user/message.source` 必须是联合：照 DSH 的 `types.ts:309` 注释，人类 prompt、注入上下文、
 目标续跑**三者都逐字投影 content，靠 `source` 区分**。没有 `source` 就再也分不开。
@@ -163,19 +163,27 @@ type TurnEndReason =
 ```ts
 type CancelCause =
   | { kind: "user" }
-  | { kind: "parent" }      // 子代理被父级取消；P1 才真用上，但槽位现在留
+  | { kind: "parent" }        // 子代理被父级取消；P1 才真用上，但槽位现在留
   | { kind: "disposed" }
-  | { kind: "legacy" };     // 导入的旧日志无 cause —— DSH types.ts:196 同款
+  | { kind: "hook"; reason: JsonRecord; message?: string }   // Q10 定形，见下
+  | { kind: "legacy" };       // 导入的旧日志无 cause —— DSH types.ts:196 同款
 ```
 
 **词汇来源**：DSH `types.ts:189`（`user` / `parent` / `hook` / `disposed`）。
 
-**⚠ 一处待你定的冲突**：DSH 的 `hook` 变体是 `{kind:'hook', reason: string}` —— **带自由文本**。
-这与我方 **C14**（持久化事件不含自由文本）直接冲突。三个选项：
+**Q10 已定（2026-09-25）：`hook` 变体保留，reason 结构化 + 自由文本单独放 `message`。**
 
-- **(a) 丢弃 `hook` 变体**，hooks 取消一律记为 `disposed` —— 最省事，损失归因精度
-- **(b) 保留 `hook` 但不带 reason**，reason 只进遥测不进会话日志 —— **建议此项**
-- **(c) 接受字符串**，放宽 C14 为"不得含**无界**自由文本" —— 与 C14 原文冲突，需改需求
+- `reason: JsonRecord` —— **JSON 原始类型的键值对**，如
+  `{ hook: "security-check", code: "DENIED_BY_POLICY" }`。可校验、可迁移、可查询索引
+- `message?: string` —— 只给**人看**的那句话。它**不属于** `reason`，
+  所以"持久化事件不含自由文本"这条规则（C14）作用在**判据字段**上而非展示字段上
+
+**为什么这样能同时满足两边**：C14 的目的是"事件能被自动校验、迁移、回放" ——
+它反对的是**用一句自然语言当判据**。把判据（`reason`）和展示（`message`）分开，
+判据侧保持结构化，展示侧才有自由文本。kimi-code 已在生产用这个形状。
+
+> **原始三选项已作废**（曾在 (a) 丢弃 / (b) 不带 reason / (c) 放宽 C14 之间选）。
+> 现答案 (d) 是第四选项：**结构化 + 展示字段分离**。
 
 ---
 
@@ -193,9 +201,11 @@ type CancelCause =
    （DSH `types.ts:361` 原文 "the raw `arguments` JSON string exactly as the model produced it (unparsed)"）。
    → 解析失败、键序、字节精度都不丢。
 6. **中断是标记不是推导**（§2.3）：`assistant/message.interrupted?: true`。
-7. **log-only 事件不回放成消息**：`request/header` 参与"重建请求"，不参与"派生历史"
-   （DSH `types.ts:390`, `:240-251`）。`system/message` 例外 —— 它是派生历史，不是 header
-   （DSH 明确把 `system` 标了 `@persistenceReserved` 并从 header 退休）。
+7. **header 与派生历史是两类东西**：`request/header` 参与"重建请求"，**不参与"派生历史"**
+   （DSH `types.ts:390`, `:240-251`）。**它现在是一等的 L0 事件（Q12），只是不带消息语义** ——
+   "进 L0"解决的是"这次请求带了什么设置"要有落点（J4 是 P0），不是让它变成一条消息。
+   `system/message` 例外 —— 它是派生历史，不是 header（DSH 把 `system` 标了
+   `@persistenceReserved` 并从 header 退休）。
 
 ---
 
@@ -244,13 +254,16 @@ type CancelCause =
 
 ---
 
-## 7. 未决（需要你定）
+## 7. 已定（2026-09-25，原「未决」四项）
 
-1. **§3.4 的 `hook` reason 冲突** —— 选 (a) / (b) / (c)？我建议 **(b)**。
-2. **C17 是否从 P2 提到 P1**？我建议**提到 P1**，理由见 §5。
-3. **`request/header` 是否进 L0** —— 它是 J4 的落点，但 J6（运行时换模）是 P1。
-   我建议 **L0 就进**：J4 是 P0，且事后补 header 事件等于改词汇表。
-4. **§6 两处 ⚠** —— B10/B11 落盘策略、F9 压缩归属。
+**这四项已全部答复，本文档据此定稿；`requirements.md` §3 是唯一权威记录。**
+
+| # | 问题 | 答案 | 对本文档的改动 |
+| --- | --- | --- | --- |
+| Q10 | §3.4 的 `hook` reason 冲突 | **(d)** reason 结构化（JSON 原始类型 record）+ 自由文本单独放 `message` | §3.4 的 `CancelCause` 形状据此定 |
+| Q11 | C17 逃生舱优先级 | **提到 P1**（理由见 §5） | §5 不再是"建议"，是**要做的** |
+| Q12 | `request/header` 进不进 L0 | **进** | §3.2 从"12 个 + 1 log-only"改为**13 个** |
+| Q13 | §6 两处 ⚠ | ① B10/B11 落盘**打标记**策略前移 P0（清理仍 P1）；② F9/F21 的 P0 **只做 `PreTurn` 与 `MidTurn`** | §6 的两处 ⚠ 标记可去掉，改为"P0 范围已定" |
 
 ---
 
@@ -263,4 +276,5 @@ type CancelCause =
 - **未验证**：`LlmFailure` 的具体形状（只在 `types.ts:212` 的 error 变体里被引用，未展开读）。
 - **未评估**：DSH 的 `SurfaceEventType` / `SurfaceOp` 机制是否要在 L0 引入。
   它区分"有序表面"与"原始日志"，可能对 N 层多端同步有用 —— **本轮没读，标注为未看**。
-- **本文档不构成需求变更**：§5、§7 的建议若要落地，需你确认后我再改 `requirements.md`。
+- **本文档的词汇表部分已定稿**（Q10–Q13 已答复）；尚未定稿的是 §8 列出的未验证项。
+- **上一行声明已履行**：§5、§7 的建议经你确认后已落到 `requirements.md`。
