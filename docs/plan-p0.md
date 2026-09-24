@@ -170,7 +170,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①新增 `restore(sessionId)`（崩溃恢复路径，验收②的"杀进程重启"要有正式入口，seq 断层拒绝重建）与 `InMemoryEventStorage`（T-1-03 SQLite 前的测试后端）；②`EventStorage.appendBatch` 显式收 `sessionId`——事件本身不携带会话身份；③flush 按会话 promise 链串行化，失败不清 buffer（可重试）；④未做 highWaterMark 自动 flush——DSH 原文就是"只在检查点排空"，自动 flush 属于自加语义（YAGNI）
 - **完成记录**：2026-09-25。产出 `src/session/store.ts`（append 同步分配 seq/ts + assertJsonSafe 整批校验、write-behind buffer、flush 串行化、registerFlushPoint/runFlushPoint(turnEnd)、snapshot() 内部先 flush、restore() 崩溃恢复）+ `store.test.ts` 11 用例。验收：`npx vitest run src/session/store.test.ts` → 11 passed；①append 同步返回 load 即见、seq 单调跨会话独立、调用方给 seq 也被覆盖；②append 5 → flush → append 2 → 换 store restore → 恰见前 3 条且 seq 连续；③不手动 flush 直接 snapshot()，storage.readAll 覆盖到 snapshotSeq（防回归断言）；附：C14 整批拒绝、seq 断层拒绝重建、落库失败 buffer 不丢、并发 flush 去重。`npx tsc --noEmit` 全量干净。
 
-#### T-1-03 · E2 · SQLite 落地 `[ ]`
+#### T-1-03 · E2 · SQLite 落地 `[x]`
 - **依据需求**：E2（P0）
 - **上游首选参考**：[cc-switch·database/](../oss/cc-switch/src-tauri/src/database)（schema.rs / migration.rs / dao/ 分层——Rust 侧只学分层形状）
 - **取什么 / 别抄什么**：取"schema 独立 + migration 独立 + DAO 按域分文件"的分层；不抄它的 Tauri 绑定
@@ -179,8 +179,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/session/db.test.ts`——建库 → append 1000 事件 → 重开连接 → 逐条读回 seq 连续且 payload 相等
 - **依赖**：T-1-02
 - **风险 / 未知**：better-sqlite3 是原生模块，Windows 编译需 prebuilt（若安装失败回退 `node:sqlite`，Node 22+ 内置，记偏离）
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①prebuilt 下载未用上，gyp 本地编译一次成功（better-sqlite3 13.0.3），未触发回退；②主键按语义写成 `(session_id, seq)` 复合——卡面"seq 主键"在第二会话插入时即冲突，schema.sql 有注释；③DAO 未按域拆文件（P0 只有 events 一个域，第二个域出现时再拆）；④db.ts 修了一个句柄泄漏：open 初始化失败时（schema 版本拒绝）必须关闭底层连接，否则 Windows 上临时库文件删不掉（EBUSY）——此坑值得进 notes；⑤pnpm 10 默认拦截 postinstall，package.json 加 `pnpm.onlyBuiltDependencies=["better-sqlite3"]`
+- **完成记录**：2026-09-25。产出 `src/session/schema.sql`（sessions + events 表，payload 存整事件 JSON）+ `src/session/db.ts`（WAL + foreign_keys、user_version 单调迁移、SqliteEventStorage implements EventStorage、单事务 appendBatch）+ `db.test.ts` 4 用例。验收：`npx vitest run src/session/db.test.ts` → 4 passed（含 1000 事件建库→重开→逐条 seq 连续 + payload 相等）；全量 `npx vitest run` 27 passed，`npx tsc --noEmit` 干净。
 
 #### T-1-04 · E3/E16 · 增量投影（索引 + 快照）+ fold 即校验 `[ ]`
 - **依据需求**：E3（P0）· E16（P0）
