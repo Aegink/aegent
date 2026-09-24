@@ -66,6 +66,30 @@
 | **待定3** | `request/header` 是否进 L0 | 进 / 不进 | **进** —— 它是 J4（P0）的落点；事后补 header 事件等于改词汇表 |
 | **待定4** | 两处覆盖缺口 | — | **B10/B11 落盘生命周期**（截断临时文件的清理策略归属）；**F9 压缩发生在哪个 turn 边界必须可断言** |
 
+#### 来自内核权限模型实读的建议（见 `docs/research/07-kernel-permission-models.md`）
+
+**建议新增**：
+
+| 建议 ID | 内容 | 依据 | 优先级 |
+| --- | --- | --- | --- |
+| **C20** | **具名策略的有序列表**：每个策略一个模块，首个非 undefined 者胜；顺序集中在一处可审 | kimi-code `permissionPolicyService.ts:39-55` | **P0** |
+| **C21** | **参数匹配委托给工具自身**，策略引擎只把 `argPattern` 交下去 | kimi-code `matchesRule.ts` | **P0** |
+| **C22** | **规则作用域**（project / user / turn-override / session-runtime），且会话批准不混进用户配置 | kimi-code `permissionRules` | P1 |
+| **C23** | **策略自检**：报告永不匹配的模式（通配符用错、MCP 名不完整、未知工具名） | kimi-code `findInactiveToolPatterns` | P1 |
+| **C24** | 审批响应带 **scope（记住本会话）/ feedback / 选项标签**，非二值 | kimi-code `ApprovalResponse` | P1 |
+| **C25** | **工具激活与工具批准分离**（工作区/档案/全局/会话四层按 AND 合成） | kimi-code `toolPolicy/evaluate.ts` | P1 |
+| **C26** | **规则语法采用 `Tool(args)` 文本形式**（Claude Code 与 kimi-code 的共同约定） | 两家独立实现 | P1 |
+
+**两处待定项的修正**：
+
+| 待定 | 修正 |
+| --- | --- |
+| **待定1** | 增加选项 **(d) reason 结构化（值为 JSON 原始类型 record）+ 自由文本单独放 `message`**。**建议 (d)** —— kimi-code 已在生产用这个形状，且它同时满足 C14 与"UI 要说清为什么" |
+| **待定6** | **不再是二选一。** kimi-code 给出第三条路：形态是链（可组合、有序），元素是策略模块（可单测），**OpenCode 式规则集降为链中一环**。建议按此定 |
+
+**一处相反冲突需并入待定6**：kimi-code **first-match-wins** vs OpenCode **last-match-wins** ——
+两者对"配置该怎么写"的要求完全相反，必须选一个并写进文档，否则用户写的规则行为不可预测。
+
 #### 待定5 / 待定6（来自 Claude Code 官方源码实读，见 `docs/research/06-claude-code-official.md` §8.3）
 
 | # | 待定 | 说明 |
