@@ -60,7 +60,11 @@ export interface SessionProjection {
   toolCalls: Map<string, ProjectionToolCall>;
   toolResults: Map<string, ProjectionToolResult>;
   lastUsage: TokenUsage | null;
+  /** lastUsage 所属事件的 seq（revert 切点截断判断用）。 */
+  lastUsageSeq: number | null;
   compactions: Array<{ seq: number; summary: string; retainedTail: number; tokensBefore: number }>;
+  /** 非 null 时有效投影只含 seq ≤ revertedTo 的效果（E4：最新 session/revert 标记生效）。 */
+  revertedTo: number | null;
 }
 
 function emptyProjection(): SessionProjection {
@@ -74,7 +78,9 @@ function emptyProjection(): SessionProjection {
     toolCalls: new Map(),
     toolResults: new Map(),
     lastUsage: null,
+    lastUsageSeq: null,
     compactions: [],
+    revertedTo: null,
   };
 }
 
@@ -189,6 +195,18 @@ export class Projector {
       case "checkpoint":
       case "request/header":
         break;
+      case "session/revert":
+        // 会话级元事件：不要求 turn/step 上下文。revert 的目标点不能在未来。
+        if (event.phase === "revert") {
+          if (event.targetSeq < 0 || event.targetSeq > this.state.lastSeq) {
+            throw new ProjectError(
+              `revert 目标 seq=${event.targetSeq} 越界（合法范围 0..${this.state.lastSeq}）`,
+            );
+          }
+        } else if (event.targetSeq !== 0) {
+          throw new ProjectError("undo 标记约定 targetSeq=0");
+        }
+        break;
       default:
         throw new ProjectError(`未知事件类型 ${(event as { type: string }).type}`);
     }
@@ -251,7 +269,10 @@ export class Projector {
           content: event.message.content,
           interrupted: event.interrupted,
         });
-        if (event.usage) s.lastUsage = event.usage;
+        if (event.usage) {
+          s.lastUsage = event.usage;
+          s.lastUsageSeq = event.seq;
+        }
         break;
       case "tool/call":
         s.toolCalls.set(event.callId, { seq: event.seq, turn, step: step!, name: event.name, arguments: event.arguments });
@@ -280,11 +301,33 @@ export class Projector {
       case "checkpoint":
       case "request/header":
         break; // 词汇表占位事件：P0 投影不消费
+      case "session/revert":
+        s.revertedTo = event.phase === "revert" ? event.targetSeq : null;
+        break;
     }
+  }
+
+  /**
+   * 有效投影（E4 消费面）：revertedTo 非 null 时返回隐藏 seq > revertedTo 效果的副本。
+   * openSteps/openToolCalls 是无 seq 的开集合，保持全流真值（P0 消费方不依赖它们过 revert 切点）。
+   */
+  effectiveProjection(): SessionProjection {
+    const s = this.state;
+    if (s.revertedTo === null) return s;
+    const cut = s.revertedTo;
+    return {
+      ...s,
+      messages: s.messages.filter((m) => m.seq <= cut),
+      lastUsage: s.lastUsageSeq !== null && s.lastUsageSeq <= cut ? s.lastUsage : null,
+      toolCalls: new Map([...s.toolCalls].filter(([, v]) => v.seq <= cut)),
+      toolResults: new Map([...s.toolResults].filter(([, v]) => v.seq <= cut)),
+      compactions: s.compactions.filter((c) => c.seq <= cut),
+      openTurn: s.openTurn && s.openTurn.seq <= cut ? s.openTurn : null,
+    };
   }
 }
 
-/** 便捷全量投影（E3 基准入口）：events → 会话投影。 */
+/** 便捷全量投影（E3 基准入口 / E4 消费入口）：events → 有效会话投影。 */
 export function project(events: readonly SessionEvent[]): SessionProjection {
-  return Projector.fold(events).projection;
+  return Projector.fold(events).effectiveProjection();
 }

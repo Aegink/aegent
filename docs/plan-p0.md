@@ -194,7 +194,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①未建独立 `*.bench.ts`——计时断言直接写在 project.test.ts（console.info 打基线：本机 project(10k)=10.8ms，阈值 200ms 余量 18 倍；等 CI 出现功率方差再拆 bench 文件）；②校验态/投影态分离：validateAppend 在"模拟态"上跑开合变更后总是回滚（否则批内配对查不出、或双重计数），单次 append 代价 O(新事件+开集合) 而非全量重放；③除验收两例外加结构性配对校验：双开 turn/step、无开而合、tool/result 无前置 tool/call——都写在文件头注释，供阶段 3 loop 对照；④投影器接进 store.append（E16"写入前校验"）与 store.restore（恢复流整体 fold，损坏拒绝）——连带把 store/db 旧测试的裸事件流补齐了 turn/step 框架（校验收紧是预期行为，不是回归）
 - **完成记录**：2026-09-25。产出 `src/session/project.ts`（Projector：fold/validateAppend/append、SessionProjection、ProjectError）+ `project.test.ts` 8 用例 + store.ts 接线改造。验收：`npx vitest run src/session/project.test.ts` → 8 passed；①1 万事件 project() 计时 10.8ms < 200ms（硬编码断言）；②乱序 seq（期望 9 实际 10）与未知类型（ghost/event）均在 append 前 ProjectError 且状态零污染；③增量 append 与全量 fold 语义等价、批内配对/双开/孤儿 result 全部拒绝；④store 接线：非法流整批拒绝且内存序无残迹。全量 `npx vitest run` 35 passed，`npx tsc --noEmit` 干净。
 
-#### T-1-05 · E4 · revert 回退到任意事件点 `[ ]`
+#### T-1-05 · E4 · revert 回退到任意事件点 `[x]`
 - **依据需求**：E4（P0）
 - **上游首选参考**：[opencode·revert.ts:13](../oss/opencode/packages/opencode/src/session/revert.ts)（`revert` / `unrevert` 接口形状）
 - **取什么 / 别抄什么**：取"revert 是会话级服务接口（带 unrevert 逆操作）"的形状；存储层用我方事件流实现（截断投影 + 标记事件），**代码状态回退在 E11（T-8-02），本卡只做对话态**
@@ -203,8 +203,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/session/revert.test.ts`——append 5 事件 → revert 到 seq=2 → 投影只含前 2 条效果 → unrevert 恢复
 - **依赖**：T-1-04
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①词汇表 13→14：卡上"追加 revert 标记事件"在 l0-events.md §3.2 的 13 事件里没有落点——按卡执行新增 `session/revert {targetSeq, phase: "revert"|"undo"}`（会话级元事件，不要求 turn/step 开合上下文，最新标记生效；undo 约定 targetSeq=0），l0-events.md §8 记落地记录 2，events.test 计数改 14，**进度文件另起待澄清表立案供用户追认**；②投影新增 `revertedTo` + `effectiveProjection()`（有效视图隐藏 seq > 切点的效果，含 lastUsage 按 lastUsageSeq 截断）；③`project()` 返回有效视图（消费面语义），全量态仍可从 Projector 实例取
+- **完成记录**：2026-09-25。产出 `src/session/revert.ts`（RevertService.revert/unrevert，标记落流 + project 重算）+ `revert.test.ts` 5 用例 + project.ts/events.ts 扩展。验收：`npx vitest run src/session/revert.test.ts` → 5 passed；append 5 → revert(2) → 有效投影只剩 seq≤2 效果（messages=[seq2]、toolCalls 空、lastUsage null）且标记落流（load 6 条、append-only 证据）→ unrevert 全恢复（load 7 条）；最新标记生效、undo 幂等 no-op、越界/空会话拒绝、revert 后继续 append 语义正确。全量 `npx vitest run` 40 passed，`npx tsc --noEmit` 干净。
 
 #### T-1-06 · O1–O6 · 测试基建包（假 provider + 归一化 + 快照） `[ ]`
 - **依据需求**：O1（P0）· O2（P0）· O3（P0）· O4（P0）· O5（P0）· O6（P0）

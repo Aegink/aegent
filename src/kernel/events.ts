@@ -1,5 +1,6 @@
 /**
- * L0 事件词汇表 —— `docs/l0-events.md` §3 定稿的落地（13 事件 + 6 结束原因 + 5 取消原因）。
+ * L0 事件词汇表 —— `docs/l0-events.md` §3 定稿的落地（13 事件 + E4 的 session/revert 标记
+ * 共 14 个 + 6 结束原因 + 5 取消原因；13→14 的裁决记录见 l0-events.md §8 落地记录）。
  *
  * 词汇表是 Q9 的单向门：定完再改的代价见
  * `oss/deepseek-harness/.agents/notes/rejected/architecture/2026-06-16-typed-event-schemas.md`。
@@ -294,6 +295,19 @@ export interface RequestHeaderEvent extends EventBase {
   reason: RequestHeaderReason;
 }
 
+/**
+ * revert 标记（E4，T-1-05）：最新标记生效。append-only 流不可截断，
+ * 回退 = 追加标记让有效投影隐藏 targetSeq 之后的效果（phase "revert"）；
+ * phase "undo"（unrevert）恢复全部，约定 targetSeq=0。
+ * 会话级元事件：不要求 turn/step 开合上下文。词汇表 13→14 的裁决记录见
+ * l0-events.md §8 落地记录与 plan-p0-progress.md 待澄清表。
+ */
+export interface SessionRevertEvent extends EventBase {
+  type: "session/revert";
+  targetSeq: number;
+  phase: "revert" | "undo";
+}
+
 export type SessionEvent =
   | TurnStartEvent
   | TurnEndEvent
@@ -307,9 +321,10 @@ export type SessionEvent =
   | ToolResultEvent
   | CompactionEvent
   | CheckpointEvent
-  | RequestHeaderEvent;
+  | RequestHeaderEvent
+  | SessionRevertEvent;
 
-/** 13 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
+/** 14 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
 export const EVENT_TYPES = [
   "turn/start",
   "turn/end",
@@ -324,6 +339,7 @@ export const EVENT_TYPES = [
   "compaction",
   "checkpoint",
   "request/header",
+  "session/revert",
 ] as const;
 
 export type SessionEventType = (typeof EVENT_TYPES)[number];
