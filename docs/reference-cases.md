@@ -172,7 +172,7 @@
 | ID | 首选（点击） | 取什么 | 别抄 / 备选 | 复用 |
 | --- | --- | --- | --- | --- |
 | F1 J1 J2 | [pi·packages/ai/](../oss/pi/packages/ai) | 厂商适配独立成包；流式响应的适配边界 | — | 🟡 |
-| F2 | [opencode·AGENTS.md](../oss/opencode/AGENTS.md) | 项目指令**按目录层级就近生效**的加载规则 | — | 🟢 |
+| F2 | [opencode·AGENTS.md](../oss/opencode/AGENTS.md) | 项目指令**文件实例**（内容是 opencode 自己的开发规范）。**加载逻辑我方自研**（2026-09-25 裁决）：CWD 向上收集 + 就近覆盖 —— 上游的加载器实现未定位，执行时可在 `packages/opencode/src/` 深入找，找到则回填本行 | 就近生效的"怎么加载"不能从该文件实例推出 | 🟢 |
 | F3 F4 F20 F21 F24 F26 F27 J25 | [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | **本文件是压缩域的权威参考**。取：模块注释那段"token 预算式压缩跳过模型摘要、直接装一个新窗口，**但仍建模为 compaction，以便 compact hook 与 `ContextCompaction` turn item 观察到同一生命周期**"；`CompactionPhase` 四值；`CompactionReason`（含 `ModelDownshift` / `CompHashChanged`）；`CompactionStrategy{Memento,PrefixCompaction}` | **优先级最高的一条**（用户指定"最好用"） | 🟢 |
 | F5 | [qwen·docs/design/session-recap/](../oss/qwen-code/docs/design/session-recap) | 会话摘要/标题的**设计文档**（读文档，不读代码） | 同目录另有 `session-title/` | 🟢 |
 | F6 F13 F14 F15 F16 | [pi-mono·anthropic-cache-split.ts](../oss/pi-mono/packages/ai/src/api/anthropic-cache-split.ts) | **提示缓存前缀稳定性的唯一来源**。取：前缀切分策略；再读 [cache-marker-telemetry-scar.md](../oss/pi-mono/docs/claude-bridge-cache-marker-telemetry-scar.md)（**这是一篇"疤"文档** —— 别人踩过的坑）与 [cache-retention.ts](../oss/pi-mono/packages/ai/src/utils/cache-retention.ts) | 我方效率要求里此前**完全没有这一维** | 🟢 |

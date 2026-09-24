@@ -372,7 +372,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | ID | 功能 | 优先级 | 参考（首选） | 验收要点 |
 | --- | --- | --- | --- | --- |
 | F1 | 系统提示管理 | P0 | [pi·packages/ai/](../oss/pi/packages/ai) | 提示词可独立修改 |
-| F2 | `AGENTS.md` 项目指令加载 | P0 | [opencode·AGENTS.md](../oss/opencode/AGENTS.md) | 按目录层级就近生效 |
+| F2 | `AGENTS.md` 项目指令加载 | P0 | [opencode·AGENTS.md](../oss/opencode/AGENTS.md)（文件实例；**加载逻辑自研**：CWD 向上收集 + 就近覆盖，上游加载器未定位） | 按目录层级就近生效 |
 | F3 | `compaction` 压缩 | P0 | [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | 压缩后 token 显著下降且关键信息保留 |
 | F4| `overflow` 与 `compaction` 分离 | P0| [codex·compact.rs:315](../oss/codex/codex-rs/core/src/compact.rs#L315) | 先判溢出再决定压缩 |
 | F5 | 摘要 / 标题生成 | P1 | [qwen·docs/design/session-recap/](../oss/qwen-code/docs/design/session-recap) | 长会话有可读标题 |
@@ -391,13 +391,13 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | F18 | **模型流中断恢复**：锚点先于故障持久化 / 有界重试 / **显式终态 `blocked`** | P1 | [zcode·session.events.ts](../oss/zcode/apps/zcode-cli/packages/contracts/src/events/session.events.ts) | `StreamRecovery*` 6 个事件 |
 | F19| **压缩分两级**（microcompact 与 compact 各有边界事件） | P2| [zcode·session.events.ts](../oss/zcode/apps/zcode-cli/packages/contracts/src/events/session.events.ts) | 两级各有可观测边界 |
 | F20 | **压缩是生命周期**（开始/结束事件 + hook 可介入/中止），不是函数 | P0 | [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | 换实现不影响观察者 |
-| F21 | **压缩有相位**：`StandaloneTurn/PreTurn/MidTurn/PostTurn`（**Q13：P0 只做 `PreTurn` 与 `MidTurn`**） | P0 | 同上 + [zcode·compact.ts](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/compact.ts) | 三份独立证据（见 §9 交叉验证） |
+| F21 | **压缩有相位**：`StandaloneTurn/PreTurn/MidTurn/PostTurn`（**Q13：P0 只做 `PreTurn` 与 `MidTurn`**） | P0 | 同上 + [zcode·turn-loop.ts:68](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts#L68)（`CompactPhase.PreRequest : CompactPhase.MidTurn`） | 三份独立证据（见 §9 交叉验证） |
 | F22 | **压缩后重建上下文用"压缩那一刻"的状态**，不用压缩前快照 | P0 | [codex·session/mod.rs:4530](../oss/codex/codex-rs/core/src/session/mod.rs#L4530) | `start_new_context_window` |
 | F23 | **压缩须声明"哪些消息不可丢"**（客户/插件注入的 developer 消息），给独立预算 | P0 | [codex·session/mod.rs:4536](../oss/codex/codex-rs/core/src/session/mod.rs#L4536) | 保留客户端的 developer 消息 |
-| F24 | **换到更小上下文的模型时必须先压缩**（`ModelDownshift`） | P0 | [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | 换小模型前先压缩 |
+| F24 | **换到更小上下文的模型时必须先压缩**（`ModelDownshift`） | P0 | [codex·compact_model_fallback.rs:29](../oss/codex/codex-rs/core/src/compact_model_fallback.rs#L29) | 换小模型前先压缩 |
 | F25 | **上下文窗口编号化**；压缩 = 开新窗口 + 持久化窗口元数据 | P1 | [codex·session/mod.rs:4530](../oss/codex/codex-rs/core/src/session/mod.rs#L4530) | `window_number` / `window_ids` |
-| F26 | **压缩结果带指纹**（配置哈希），指纹变了重压 | P1 | [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | `CompHashChanged` |
-| F27| 压缩策略具名（摘要式 / 前缀式） | P2| [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | `Memento` / `PrefixCompaction` |
+| F26 | **压缩结果带指纹**（配置哈希），指纹变了重压 | P1 | [codex·compact_model_fallback.rs:30](../oss/codex/codex-rs/core/src/compact_model_fallback.rs#L30) | `CompHashChanged` |
+| F27| 压缩策略具名（摘要式 / 前缀式） | P2| [codex·compact.rs:483](../oss/codex/codex-rs/core/src/compact.rs#L483) | `Memento` / `PrefixCompaction` |
 | F28 | **压缩抖动检测**：连续多次"极小工作量后又触发压缩" → **硬失败**，错误带全部计数 | P0 | [zcode·compact.ts](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/compact.ts) | 症状是"账单暴涨且看不到尽头"，无保护无法收敛 |
 | F29 | **换模压缩语义**：压缩请求跑在**旧**模型上、后续跑在**新**模型上 | P1 | [codex·compact.rs:423](../oss/codex/codex-rs/core/tests/suite/compact.rs#L423) | 压缩时剥掉 model-switch 更新项、后续带上 |
 | F30 | **配置解析失败保留上一份配置**，不回退默认 | P1 | [codex·session/tests.rs](../oss/codex/codex-rs/core/src/session/tests.rs) | 回退默认可能**变宽松**；fail-safe 方向 |
@@ -472,7 +472,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | J22 | **超时必须带错误码作用域**（多层嵌套时判定"谁超时"不能靠 signal） | P0 | [dsh·timeout-policy](../oss/deepseek-harness/packages/guard/timeout-policy/src/index.ts) | `TOOL_TIMEOUT` 码 + 信号换回不改工具 promise |
 | J23 | **区分三种超时**：总时长 / 空闲 / **可重臂空闲**（有传输活动则续期） | P1 | [dsh·util/timeout](../oss/deepseek-harness/packages/util/timeout/src/index.ts) | `IdleWatchdog.pulse()` |
 | J24| **`setTimeout` 上限 2^31-1**（超出被静默钳到 1ms） | P1| [dsh·util/timeout](../oss/deepseek-harness/packages/util/timeout/src/index.ts) | `MAX_TIMER_DELAY_MS = 2_147_483_647` |
-| J25 | 输出 token 与非缓存输入 token **不同价**，预算按权重计 | P1 | [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | 预算不按裸 token 数算 |
+| J25 | 输出 token 与非缓存输入 token **不同价**，预算按权重计 | P1 | [codex·rollout_budget.rs:62](../oss/codex/codex-rs/core/src/rollout_budget.rs#L62) | 预算不按裸 token 数算 |
 | J26 | **重试按显式错误分类；未知错误不重试**；退避带 jitter；**尊重服务端 Retry-After** | P0 | [kimi·retry.ts](../oss/kimi-code/packages/agent-core-v2/src/human/llm/requester/retry.ts) | `RETRYABLE_STATUS_CODES` 显式枚举；429/5xx 与未知分开 |
 | J27 | `retrying` 作为**一等事件**，带 `failedAttempt` | P1 | [kimi·engine.ts](../oss/kimi-code/packages/agent-core-v2/src/agent/loop/machine/engine.ts) | 重试在事件流里可见 |
 
