@@ -62,7 +62,7 @@
 | A8 | [grok·agent.rs](../oss/grok-build/crates/codegen/xai-grok-pager/src/app/agent.rs) | `in_flight_prompt` 的**保存与回填**：取消时把 prompt 放回输入框 | — | 🟡 |
 | A9 | [dsh·followup-enqueue.md](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-07-30-followup-enqueue-and-owned-runs.md) | **为什么否决 per-send 完成句柄**（steering/注入/续跑/恢复都会贡献内容）；`whenIdle()` 是整 agent 观察 | 别做 `session.finished` | 🟡 |
 | A10 A11 | [pi-desktop·active-turn-steering.md](../oss/pi-desktop/docs/adr/active-turn-steering.md) | `expectedTurnId` 的准入校验；**"已启动的工具先跑完，下一次模型请求才消费"** | 🔴 只学行为 | 🔴 |
-| A12 | [claude-official·claude-code.d.ts](../refs/claude-official/mods/types/claude-code.d.ts) | `prompt.id` 的**声明形状**（关联该输入之后、下一次输入之前的所有事件） | 🔴 专有，**只读声明不抄实现** | 🔴 |
+| A12 |  [claude-official·claude-code.d.ts:588](../refs/claude-official/mods/types/claude-code.d.ts#L588) | `prompt.id` 的**声明形状**（关联该输入之后、下一次输入之前的所有事件） | 🔴 专有，**只读声明不抄实现** | 🔴 |
 | A13 | [kimi·machine.ts:57](../oss/kimi-code/packages/agent-core-v2/src/human/agent/machine.ts#L57) | `PromptGateVerdict = boolean \| {block, message?}` —— **第三态"改写消息"** | — | 🟢 |
 | A14 | [kimi·engine.ts:303](../oss/kimi-code/packages/agent-core-v2/src/agent/loop/machine/engine.ts#L303) | `createAgentMachine({abortTimeoutMs, maxStepsPerTurn, …})` 的**参数命名与默认值** | — | 🟡 |
 | A15 A16 | [zcode·turn-loop.ts](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts) | 三个排空点（guide / queue / runtime commands）**分别在哪一行**；排空后重置了哪些计数 | — | 🟡 |
@@ -101,7 +101,7 @@
 | C12 C13 | [dsh·file-context-as-event-gate.md](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-06-26-file-context-as-event-gate.md) | 三件事解耦（工具做什么 / 新鲜度策略 / 已观察状态记录）；**为何 in-path 强制不可接受**（不经 `fileContext` 就到不了 `ctx.fs` → 无法整体丢弃） | 别做成 in-path | 🟡 |
 | C14 | [dsh·explicit-turn-cancellation.md](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-07-16-explicit-turn-cancellation.md) | 终态只记**粗粒度** `{kind:'aborted'}`；**加载时拒绝**带 reason 的旧记录（防 replay 重新引入 caller 细节） | — | 🟡 |
 | C15 C16 C17 | [dsh·rejected/typed-event-schemas.md](../oss/deepseek-harness/.agents/notes/rejected/architecture/2026-06-16-typed-event-schemas.md) | **为什么事后 Zodic 化不可能**：插件无法 declaration-merge Zod schema；影响面 6 map / ~10 declare module / 16 append 点 / ~7 switch 消费者 | 逃生舱形状看 [pi·session/types.ts:52](../oss/pi/packages/agent/src/harness/session/types.ts#L52) `CustomEntry` | 🟡 |
-| C18 C19 | [claude-official·claude-code.d.ts](../refs/claude-official/mods/types/claude-code.d.ts) | `ToolCheckResult` 的 **`rule`（规则原文）+ `reason`** 字段；`$.tool.check` 的 dry-run 语义（"runs the same chain and executes nothing"） | 🔴 只读声明 | 🔴 |
+| C18 C19 |  [claude-official·claude-code.d.ts:588](../refs/claude-official/mods/types/claude-code.d.ts#L588) | `ToolCheckResult` 的 **`rule`（规则原文）+ `reason`** 字段；`$.tool.check` 的 dry-run 语义（"runs the same chain and executes nothing"） | 🔴 只读声明 | 🔴 |
 | C20 C21 | [kimi·permissionPolicyService.ts](../oss/kimi-code/packages/agent-core-v2/src/agent/permissionPolicy/permissionPolicyService.ts) | 策略**模块数组** + "首个非 undefined 者胜"；`argPattern` **委托给工具自己解释** | — | 🟢 |
 | C22 | [kimi·permissionRules](../oss/kimi-code/packages/agent-core-v2/src/agent/permissionRules) | 四种作用域（project / user / turn-override / session-runtime）如何隔离 | — | 🟡 |
 | C23 C41 C45 | [kimi·evaluate.ts:85](../oss/kimi-code/packages/agent-core-v2/src/agent/toolPolicy/evaluate.ts#L85) | `findInactiveToolPatterns` 检出的**四类问题**（通配符用错 / MCP 名不完整 / 未知工具名 / …） | 与 C44 是同一洞察的两种实现 | 🟢 |
@@ -177,7 +177,7 @@
 | F9 | [pi-desktop·ADR 0030](../oss/pi-desktop/docs/adr/0030-turn-boundary-context-checkpoint-compaction.md) | **用真实事故换来的论证**：Bedrock 达 1,077,172 tokens 而上限 1,000,000，provider 在有任何恢复点前即拒绝；以及"pi-agent-core 提供什么、**不定义什么**"的划界 | 🔴 只学行为 | 🔴 |
 | F10 | [dsh·after-call-compaction-pressure.md](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-07-10-after-call-compaction-pressure-and-overflow-recovery.md) | **压力信号不能只看成功调用**：provider 可能在返回 usage 前拒绝；有些成功调用不返回 usage；恢复**在压缩无法证明进展时必须保留 provider 原始错误** | — | 🟡 |
 | F11 | [pi-desktop·ADR 0049](../oss/pi-desktop/docs/adr/0049-context-compaction-failure-recovery.md) → [0282](../oss/pi-desktop/docs/adr/0282-compaction-summary-retry-and-sizing.md) → [0302](../oss/pi-desktop/docs/adr/0302-compaction-fallback-recent-window-and-chunked-summary.md) | 三级兜底：**摘要重试与尺寸控制 → 回退近期窗口 → 分块摘要** | 🔴 只学行为 | 🔴 |
-| F12 | [claude-official·claude-code.d.ts](../refs/claude-official/mods/types/claude-code.d.ts) | `ToolDeferral` 的**声明形状**：工具藏在检索后，模型按名索要才加载 schema | 与 F13/F14 相互约束（延迟加载会破坏前缀 → 必须"首次请求即声明"） | 🔴 |
+| F12 |  [claude-official·claude-code.d.ts:588](../refs/claude-official/mods/types/claude-code.d.ts#L588) | `ToolDeferral` 的**声明形状**：工具藏在检索后，模型按名索要才加载 schema | 与 F13/F14 相互约束（延迟加载会破坏前缀 → 必须"首次请求即声明"） | 🔴 |
 | F17 | [dsh·tool-pairing.ts](../oss/deepseek-harness/packages/compaction/compaction/src/tool-pairing.ts) | 压缩切点必须**工具调用-结果配平**，且**从内容现算**（不依赖可能被重写的 step 标记） | — | 🟢 |
 | F18 F19 | [zcode·session.events.ts](../oss/zcode/apps/zcode-cli/packages/contracts/src/events/session.events.ts) | `StreamRecovery*` **6 个事件** —— 我方完全空白的维度：锚点先于故障持久化 / 有界重试 / **显式终态 `blocked`** | — | 🟢 |
 | F22 F23 F25 | [codex·session/mod.rs:4530](../oss/codex/codex-rs/core/src/session/mod.rs#L4530) | `start_new_context_window(step_context, world_state) -> u64` 返回 `(window_number, window_ids)`；`:4536` **保留客户端 developer 消息** | — | 🟢 |
@@ -275,7 +275,7 @@
 | ID | 首选（点击） | 取什么 | 别抄 / 备选 | 复用 |
 | --- | --- | --- | --- | --- |
 | N3 N4 N6 N7 | [zcode·sessionRealtimePort.ts](../oss/zcode/packages/services/src/session/sessionRealtimePort.ts) | **N 层的蓝本**：`owner + lease + 类型化 owner 命令`；**审批 / elicitation / hook 复核共用一条命令通道**；命令是**闭集**；结果**回传**；每个界面是一个 **host**（有投递方式之分） | OpenCode 的 `Deferred + Map` 降为实现细节 | 🟡 |
-| N8 A12 | [claude-official·claude-code.d.ts](../refs/claude-official/mods/types/claude-code.d.ts) | 多端 = **surface roster**，attach/detach 由事件维护（`session.attach`） | 🔴 只读声明 | 🔴 |
+| N8 A12 |  [claude-official·claude-code.d.ts:588](../refs/claude-official/mods/types/claude-code.d.ts#L588) | 多端 = **surface roster**，attach/detach 由事件维护（`session.attach`） | 🔴 只读声明 | 🔴 |
 | N1 N5 | — | **自研**：统一会话 ID 与推送没有值得抄的上游 | 注意 A9：**协议层不提供 per-prompt 完成语义** | — |
 
 ### O. 测试与诊断
