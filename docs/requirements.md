@@ -147,6 +147,33 @@
 **G 层需注明二选一**：`EXPLORE` 权限模式（agentscope）vs `Plan 是同一个 Agent 的状态`（DSH）——
 两条路都能做计划模式，前者不可绕过、后者不浪费 token。
 
+#### 来自 ZCode 的建议（见 `docs/research/10-zcode.md`）
+
+**ZCode 是前几轮的完全空白**（`oss/SOURCES.lock` 里有它，但我此前一行未读），
+产品形态与我方最接近：桌面 + 浏览器 + 终端 + Agent 运行时，Apache-2.0，README 有飞书社群入口。
+
+| 建议 ID | 内容 | 依据 | 优先级 |
+| --- | --- | --- | --- |
+| **T1** | **架构即代码**：可校验的策略文件（文件行数上限、禁止循环依赖与深导入、模块依赖白名单、公开入口清单、模块 owner），配 **`architecture:check --changed` 只查改动** + **渐进采用**（模块级 `managed` 开关） | ZCode `architecture-policy.yaml` | **P1** |
+| **T2** | **带禁用词的领域词汇表**，每词条必须有 **`_Avoid_` 行**，按限界上下文分文件 | ZCode `CONTEXT.md` | **P1** |
+| **T3** | **模块阅读包命令**：给定模块 id 产出读该模块所需的上下文包 | ZCode `architecture:context` | P2 |
+| **T4** | **架构豁免必须带理由**，写在同一条抑制语句上 | ZCode `eslint-disable -- 理由` | P2 |
+| **N5** | **owner + lease + 类型化 owner 命令**：审批 / elicitation / hook 复核**共用一条命令通道**；命令是**闭集**；结果回传 | ZCode `SessionRealtimePort` | **P0/P1** |
+| **N6** | **每个界面是一个 host**（有投递方式之分）；run 由**租约**保护（Q6 要的会话级互斥） | 同上 | P1 |
+| **M9** | **闲时任务**：长任务取号、闲时窗口核销执行（择时省钱） | ZCode `offPeakTask` | P2 |
+| **K?** | **画中画**：把 agent 的屏幕操作显示在浮动窗口，让用户看得见 | ZCode `cuaPipSession` | P2 |
+| **E15** | **事件合并器**作为独立模块（服务于"1 万事件投影 < 200ms"） | ZCode `zcodeSessionEventCoalescer` | P1 |
+
+**两处合并建议**：
+- **N 层以 ZCode 为蓝本**（owner + lease + 结果回传），OpenCode 的 `Deferred + Map` 降为实现细节
+- **T1 是 AGENTS.md §8 的落点** —— 我方 §8 只说"按变更风险选择静态检查"，没有任何具体的架构约束
+
+**新增待定7：agent 运行时是否出进程？**
+ZCode 把**整个 agent** 放在独立子进程（协议 + stdio）；
+我方 Q7 目前是内核在进程内、只有 Windows 原生 helper 出进程。
+两种都成立，但**决定 P0 的模块边界**（进程边界决定哪些状态可共享、哪些必须序列化）。
+**与待定5（hook 洋葱链）同级：都是 P0 的边界决定。**
+
 #### 待定5 / 待定6（来自 Claude Code 官方源码实读，见 `docs/research/06-claude-code-official.md` §8.3）
 
 | # | 待定 | 说明 |
