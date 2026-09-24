@@ -278,3 +278,4 @@ type CancelCause =
   它区分"有序表面"与"原始日志"，可能对 N 层多端同步有用 —— **本轮没读，标注为未看**。
 - **本文档的词汇表部分已定稿**（Q10–Q13 已答复）；尚未定稿的是 §8 列出的未验证项。
 - **上一行声明已履行**：§5、§7 的建议经你确认后已落到 `requirements.md`。
+- **落地记录（2026-09-25，T-1-01 执行会话）**：① §8 曾声明"未验证 LlmFailure 形状"——P0 已定最小形状并落在 `src/kernel/events.ts`：`{code, message, status?, providerRetryAfterMs?}`（取 DSH `packages/llm/llm/src/types.ts:41` 的前四字段；`requestId`/`offloadImages` 暂不引入，待有真实消费者再加）。② `assistant/message` / `assistant/attempt` 的 `stream` 落为 `TimedStreamChunk[]`（带原始时间戳的 chunk 定时序列）——**不抄** DSH 的 delta-run 打包（`assistant-stream.ts:20`，属压缩优化），P0 只需无损。③ `request/header.reason` 取 DSH 四值 `initial|resume|change|series`；`user/message.source` 三值定名 `user|injected|resume`。

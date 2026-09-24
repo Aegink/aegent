@@ -146,7 +146,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①§2.6 只定 pnpm 未定版本——corepack 0.34 与 pnpm 12（bin 改 `pnpm.mjs` 布局）不兼容，钉 `pnpm@10.29.2`（缓存完整、布局兼容）；②tsconfig `include` 加 `"vitest.config.ts"`：`src/` 全空时 tsc 报 TS18003，又不预写占位内核代码，让根配置文件充当合法输入；③目录骨架里 tools 按 T-4-01 实际形状放 `src/kernel/tools/`（§2.6 六个顶层模块目录无独立 tools）
 - **完成记录**：2026-09-25。产出 `package.json`（packageManager=pnpm@10.29.2，scripts test/build/check）+ `tsconfig.json`（strict, NodeNext, noUncheckedIndexedAccess）+ `vitest.config.ts` + src 七目录 .gitkeep + devDeps（typescript 7.0.2 / vitest 5.0.1 / @types/node 26.6.2）。验收：`npx tsc --noEmit && npx vitest run --passWithNoTests` 退出码 0（vitest 报 "No test files found, exiting with code 0"）；`git check-attr eol` 四个新文件均 `eol: lf`。
 
-#### T-1-01 · C14/C15/C16 + E12 · L0 事件词汇表落地 `src/kernel/events.ts` `[ ]`
+#### T-1-01 · C14/C15/C16 + E12 · L0 事件词汇表落地 `src/kernel/events.ts` `[x]`
 - **依据需求**：C14（P0）· C15（P0）· C16（P0）· E12（P0）
 - **上游首选参考**：[pi·types.ts:485](../oss/pi/packages/agent/src/types.ts#L485)（`AgentEvent` 封闭联合写法）；[dsh·explicit-turn-cancellation.md](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-07-16-explicit-turn-cancellation.md)（durable 事件无 stack/signal/error，`AgentCancelCause` 四变体）；[dsh·rejected/typed-event-schemas.md](../oss/deepseek-harness/.agents/notes/rejected/architecture/2026-06-16-typed-event-schemas.md)（为何封闭联合 + assertNever 是特性）
 - **取什么 / 别抄什么**：取 pi 的封闭联合写法与 DSH 的"无运行时对象"纪律；**词汇表本体不抄任何一家，以 `l0-events.md` §3 的 13 事件 + 3.3/3.4 联合为准**（它是三份上游实测后的定稿，生命周期是 turn → step → message 三级，不是 pi 的两级）
@@ -155,10 +155,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/kernel/events.test.ts`——①联合成员恰 13 个（`Exclude` 遍历断言）；②故意删一个 switch 分支时 `assertNever` 令 `tsc --noEmit` 失败（写成注释掉的演示用例或类型级测试说明）；③构造含 `stack`/`Error` 实例的对象过 `assertJsonSafe`（append 校验函数）必须 throw；④E12：状态事件载荷断言是完整值类型而非 delta 字段
 - **依赖**：T-1-00
 - **风险 / 未知**：`LlmFailure` 的具体形状 l0-events.md 自曝未展开读过（§8）——P0 自行定义最小形状并记入该文件勘误
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
-
-#### T-1-02 · E1/E13/E10 · 事件追加写 + write-behind + 快照前 flush `[ ]`
+- **偏离 / 建议**：①卡上只要求 assertNever 辅助——实际还落了 `assertJsonSafe`（验收③点名它是"append 校验函数"，属于词汇表的 C14 运行时面）、`JsonValue/JsonRecord` 类型、`NewSessionEvent`（DistributiveOmit 去 seq/ts，pi NewEntry 纪律的类型面，T-1-02 直接消费）；②`stream` 定为 `TimedStreamChunk[]`（不抄 DSH delta-run 打包）；③载荷新增了 `TokenUsage`/`LlmFailure`/`StreamChunk` 子类型——都在"13 事件 + 3.3/3.4 联合"的载荷展开范围内，未新增事件
+- **完成记录**：2026-09-25。产出 `src/kernel/events.ts`（EventBase、13 事件接口 + SessionEvent 联合、TurnEndReason 6 变体、CancelCause 5 变体含 Q10 hook 形状、EVENT_TYPES + `_EVENT_TYPES_EXACT` 编译期闸门、assertNever/assertJsonSafe）+ `events.test.ts` 12 用例。验收：`npx vitest run src/kernel/events.test.ts` → 12 passed；①13 成员集合与 EVENT_TYPES 互等；②演示块取消注释实测 `npx tsc --noEmit` 报 TS2345（RequestHeaderEvent 不可赋给 never），随后恢复注释；③Error 实例 / 含 stack 对象 / 函数 / undefined / bigint / symbol / NaN / 循环 / Date / Map 全部 throw 且报错含路径；④E12 类型断言（keyof message === "content"、tokensBefore: number）+ 运行时 delta 键扫描通过。`npx tsc --noEmit` 全量干净。LlmFailure 勘误已记入 l0-events.md §8。
 - **依据需求**：E1（P0）· E13（P0）· E10（P0）
 - **上游首选参考**：[pi·commit.ts:20](../oss/pi/packages/agent/src/harness/session/commit.ts#L20)（`CommittedListAppendWrite` append-only 形状）；[dsh·event-sourced-sessions.md:15](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-06-11-event-sourced-sessions.md)（"Appends are synchronous (the hot path never blocks on I/O); … drain at the awaited `session/flush` checkpoint fired at every turn end"）；[codex·daemon_recovery.rs:2](../oss/codex/codex-rs/core/src/session/daemon_recovery.rs)（"Callers must flush the rollout after capture before persisting the snapshot"）
 - **取什么 / 别抄什么**：取"同步 append 接口 + 持久化缓冲 write-behind + turn 末 await flush"三层；别抄 OpenCode 的 JSON 文件树（冲突 5 已否决）
