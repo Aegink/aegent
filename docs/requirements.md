@@ -925,3 +925,129 @@ S3、S5、S7 是**最容易做假**的三个，各自对应 §5 中的具体机�
 | **169 项功能铺得过宽** | P0 仅 **57** 项；**P0 跑通前不写任何 UI** |
 | 上游演进导致报告过时 | 每轮开工前 `bash tools/snapshot.sh` + `git diff oss/SOURCES.lock` |
 | **需求清单仍可能不全**（已实际发生三次） | 前两版分别漏了运行时换模（只查一个仓就下结论）与 41 项功能（按记忆挑维度）。**缓解**：用 `tools/count-features.sh` 统计而非手工数；用 `tools/sweep.sh` 按关注点全仓扫而非凭印象；把 DSH 的包结构当"关注点地图"逐项核对 |
+
+---
+
+## 12. 第五轮记录（Codex / ZCode / kimi-code / DSH / PI-Desktop 代码精读）
+
+> 产出：`docs/research/11-codex.md`(447) / `12-zcode-agent-loop.md`(279) /
+> `13-kimi-code.md`(228) / `14-dsh-code.md`(262) / `15-pi-desktop-code.md`(177)。
+> 本轮**只记新条目与新待定**，不重复前几轮已记结论。
+
+### 12.1 新增需求项
+
+**C 层（权限）—— 本轮最密集**
+
+| 编号 | 条目 | 优先级 | 来源 |
+| --- | --- | --- | --- |
+| C43 | **权限聚合语义改为 `max()` 最严格者胜**（单调性 → 结构上关掉 C35） | **P0** | Codex `policy.rs:403` |
+| C44 | **规则自带 `match`/`not_match` 样例，加载期校验** | **P0** | Codex execpolicy |
+| C45 | **权限配置 linter**：检出"永不生效"的模式（通配符用在内置工具上、名字不完整、未知工具） | **P0** | kimi-code `evaluate.ts:85` |
+| C46 | **保留元数据路径**（`.git` / 指令文件 / 配置目录）硬拦，**规则不得授权** | **P0** | Codex `permissions.rs:36-38` |
+| C47 | **批准的持久化作用域显式化**：一次性 / 会话 / 项目 / 用户 / 受管 | **P0** | Codex `ReviewDecision` 7 变体 |
+| C48 | **规则提案由引擎计算，模型只能发命令**（C35 的结构解） | **P0** | Codex `ExecPolicyAmendment` |
+| C49 | **多来源权限按交集合成，无交集则拒绝启动**（不可合成时报错，不放宽） | **P0** | Codex `permission_profile_intersection.rs` + kimi `isToolActiveComposed` |
+| C50 | **审批超时/取消必须带类型地失败**，禁止静默默认 | **P0** | ZCode `broker.ts:110` + Codex `TimedOut` |
+| C51 | **默认权限实现是拒绝**（未配置权限客户端 = deny） | **P0** | ZCode `DenyPermissionBroker` |
+| C52 | **审批支持 `modifiedInput`**（改成这样再执行） | P1 | ZCode `turn-machine.ts:251` |
+| C53 | basename 规则必须绑**绝对路径清单**（反解释器路径绕过） | P1 | Codex `host_executable` |
+| C54 | 审批来源分类配置（5 类）；**关闭某类 ≠ 放行 = 硬拒绝** | P1 | Codex `GranularApprovalConfig` |
+| C55 | `justification` 必填；`forbidden` 须给替代做法 | P2 | Codex execpolicy |
+| C56 | 若做 LLM 判官，P0 定四件事：abstain 落回人 / 判官自身预算 / 超时常量被上层复用 / 受管可强制 | P1 | Codex `guardian/` |
+
+**★ C43–C51 九条全部是 P0，且互相独立** —— 这是本轮最大的需求增量。
+
+**E / F / J 层**
+
+| 编号 | 条目 | 优先级 | 来源 |
+| --- | --- | --- | --- |
+| E16 | **每域一个 `fold`，同时用作投影与不变量校验；写入前校验"已有流+新事件"** | **P0** | DSH 38 处 `invariant.ts` |
+| E17 | **原子操作的中间态（reservation/promoting/rollback）也进事件流**，投影不猜 | P1 | ZCode `session.events.ts` |
+| F11 | **压缩/截断切点必须工具调用-结果配平**，且从内容现算（不依赖可能被重写的 step 标记） | **P0** | DSH `tool-pairing.ts` |
+| F12 | **模型流中断恢复**：锚点先于故障持久化 / 有界重试 / **显式终态 `blocked`** | P1 | ZCode `StreamRecovery*` 6 事件 |
+| F13 | **压缩分两级**（microcompact 与 compact 各有边界事件） | P2 | ZCode |
+| J21 | **超时必须带错误码作用域**（多层嵌套时判定"谁超时"不能靠 signal） | **P0** | DSH `timeout-policy` |
+| J22 | **区分三种超时**：总时长 / 空闲 / **可重臂空闲**（有传输活动则续期） | P1 | DSH `IdleWatchdog.pulse()` |
+| J23 | **`setTimeout` 上限 2^31-1**（超出被静默钳到 1ms） | P1 | DSH `MAX_TIMER_DELAY_MS` |
+
+**B 层**
+
+| 编号 | 条目 | 优先级 | 来源 |
+| --- | --- | --- | --- |
+| B14 | **凡设工作量上限处要两个轴：数量 + 时间**；**时间轴须在长循环内部检查** | **P0** | kimi `budget.ts` `tick()`/`progress()` |
+| B15 | **每次调用不同的约束不得进工具 schema**（schema 是全局的，有效模式是每调用真相） | P1 | DSH `escalation.ts` |
+| B16 | 工具声明的元数据**按 step 快照保留**，执行期用当初的清单 | P1 | Codex `parallel.rs` |
+| B17 | 工具并发用**一把 `RwLock`**：读=并行、写=排他；**未声明即不可并行** | P1 | Codex `parallel.rs:191` |
+| B18 | 超时参数**三档合并**（提示/默认/上限），**非法值抛错，上限不可关闭** | P1 | DSH `clampTimeout` |
+
+**D 层**
+
+| 编号 | 条目 | 优先级 | 来源 |
+| --- | --- | --- | --- |
+| D15 | **沙箱升级只能"严格更宽"**（阶梯表），且**执行期算，不进 schema** | P1 | DSH `WIDER_MODES` |
+| D16 | **网络隔离需 OS 身份 + WFP**，Job Object 只管进程生命周期，**不够** | **P0**（见待定8） | Codex `windows-sandbox-rs` |
+
+**I / Q / 全局**
+
+| 编号 | 条目 | 优先级 | 来源 |
+| --- | --- | --- | --- |
+| I16 | 插件清单**安装期**全量校验、闭集枚举、**未实现的能力直接拒绝声明**（不是忽略/警告） | P1 | pi-desktop `plugins/validation.rs` |
+| I17 | hook 复核结论**可被 `superseded`**，且取代本身是持久事实 | P2 | ZCode |
+| I18 | 治理逻辑（重复工具提醒、超时策略）做成**可插拔插件** | P2 | DSH `guard/` |
+| Q2 | **启动期对账**：把上次崩溃遗留的 `running` 全部改为 `interrupted`，**按对象类型细分错误码** | **P0** | pi-desktop `boot_maintenance` |
+| Q3 | 保留策略常量：审计 90 天 / 任务运行记录 100 条 | P2 | pi-desktop |
+| 全局 | **深度/递归上限要写实测溢出点与余量倍数**（进 `AGENTS.md`） | P1 | kimi `README` |
+| 全局 | **畸形输入永不抛异常，降级返回 + 显式错误标志** | P1 | kimi |
+| 全局 | **性能断言进测试套件防复杂度退化**（不是防慢） | P2 | kimi |
+| 全局 | **以某上游为蓝本须产出 `known-diffs` 清单**（对齐 + 记录分歧） | P2 | kimi `known-diffs.txt` |
+
+### 12.2 本轮跨仓共性（三个独立实现给出同一答案）
+
+1. **多来源权限合成只能"取交/取最严"，不能"覆盖"**
+   —— Codex `permission_profile_intersection` + kimi `isToolActiveComposed` + pi-desktop `config_sync/merge.rs`（拒绝 last-write-wins）。**三次独立。**
+2. **"配置写错了但静默不生效"是真实故障模式，必须有工具检出**
+   —— Codex `match`/`not_match`（加载期校验）+ kimi `findInactiveToolPatterns`（linter）。**两次独立，两种语言。**
+3. **审批超时必须带类型地失败，不能静默默认**
+   —— ZCode `PermissionTimeout` reject + Codex `TimedOut` 一等结局。对照 hermes-agent 的静默超时 bug。
+4. **工具失败后的处置，两个仓给出相反答案** —— ZCode「失败即收口」vs pi-desktop ADR 0207「3 次重试预算」。**我方选 pi-desktop。**
+
+### 12.3 新增待定
+
+**待定8：Windows 上是否接受"建 OS 账户"这个前提？**
+Codex 用两个真实本地账户（`CodexSandboxOffline`/`CodexSandboxOnline`）+ WFP 防火墙
+实现网络隔离。接受 → 有真隔离但工程量大（账户/DPAPI/WFP/隐藏/提权安装/卸载）；
+不接受 → **必须显式声明"网络策略只在工具层生效，对任意子进程不可强制"**（诚实的弱承诺）。
+**与待定7（agent 是否出进程）同级，共同决定 D 层边界。**
+
+**待定9：`permissionUpdates` 由谁产生？**
+ZCode 允许审批结果携带权限配置更新。**若允许模型填，就是 C35 那个缺口**；
+Codex 的做法是引擎算提案、用户接受。**必须选边。**（与 C48 相关。）
+
+**待定10：我方的 shell 权限分析做到哪一档？**
+三档：Codex 前缀 token 匹配 / qwen-code shell 语义分析 / kimi-code 完整 bash 语法树。
+对应三档工程成本。**"承诺的保护强度到哪一档"必须显式选，不能默认。**
+（`ls && rm -rf /` 的首 token 是 `ls` —— 这是前缀方案的固有软肋。）
+
+**待定11：配置是否跨设备同步？**
+pi-desktop 把 `config_sync` 做成了一等子系统：加密 vault + WebDAV + **三方合并** +
+导入日志可崩溃恢复。**若要，这是独立子系统，不是"配置文件放哪儿"的问题。**
+（注意：那里有 API key，加密不是可选项。）
+
+### 12.4 本轮确立的事实（无需决策，直接采纳）
+
+- **turn → step → message 三级生命周期，第四个独立确认**（Codex `StepContext`/`step_settings`；
+  前三个：pi 命名、Claude Code 契约、DSH durable step 边界）。`docs/l0-events.md` 决策 1 证据链闭合。
+- **`l0-events.md` 的 `{kind:"interrupted"}` 有了实施主体**：由**启动期对账任务**发出（Q2）。
+- **三种判决词汇表并存是合理的**（Codex：命令 `Allow/Prompt/Forbidden`、补丁 `AutoApprove/AskUser/Reject`、
+  审批答复 `ReviewDecision` 7 变体、判官裁决 `Allow/Deny`）。
+  **此前"统一权限词汇表"的倾向应当撤回** —— 对象不同，类型就该不同。
+
+### 12.5 法律边界执行情况
+
+- **`D:\下载\claude-code-source-mirror-main.zip` 本轮再次被点名要求阅读，未读、未解压、未引用。**
+  理由：泄露的专有源码不存在"只看原理"的中间态；一旦接触，后续设计可能被追溯为衍生，
+  对我方产品是净负。**合法最大值是 `refs/claude-official/mods/`（官方随插件发布的引擎类型声明）**，
+  已读并记于 `docs/research/06-claude-code-official.md`。
+- 本轮五仓许可复核：Codex Apache-2.0 / ZCode Apache-2.0 / kimi-code MIT / DSH MIT →
+  **可参考实现，摘代码须留版权头 + 登记 `THIRD_PARTY.md`**；
+  **pi-desktop LGPL-3.0 → 行为可学，代码不可整段抄入**（`15-pi-desktop-code.md` 已标注）。
