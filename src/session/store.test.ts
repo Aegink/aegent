@@ -11,6 +11,10 @@ function turnStart(turn: number): NewSessionEvent {
   return { type: "turn/start", turn };
 }
 
+function turnEnd(turn: number): NewSessionEvent {
+  return { type: "turn/end", turn, reason: { kind: "completed" } };
+}
+
 describe("SessionStore.append（E1/E13）", () => {
   it("验收①：append 返回后 load() 立即可见，seq/ts 由 store 分配且单调", () => {
     const store = new SessionStore();
@@ -19,7 +23,7 @@ describe("SessionStore.append（E1/E13）", () => {
     expect(store.load("s1")).toHaveLength(2);
     expect(a.map((e) => e.seq)).toEqual([1, 2]);
     expect(a.every((e) => typeof e.ts === "number" && e.ts > 0)).toBe(true);
-    const b = store.append("s1", [userMsg("again")]);
+    const b = store.append("s1", [userMsg("again")]); // turn 1 仍开着，合法
     expect(b[0]!.seq).toBe(3);
     // 会话间 seq 独立
     expect(store.append("s2", [turnStart(1)])[0]!.seq).toBe(1);
@@ -28,8 +32,9 @@ describe("SessionStore.append（E1/E13）", () => {
   it("调用方给不出权威 seq：多给也会被 store 分配的值覆盖（纪律 4）", () => {
     const store = new SessionStore();
     const bad = { ...userMsg("x"), seq: 99 } as unknown as NewSessionEvent;
-    const [committed] = store.append("s1", [bad]);
-    expect(committed!.seq).toBe(1);
+    store.append("s1", [turnStart(1), bad]);
+    const committed = store.load("s1")[1]!;
+    expect(committed.seq).toBe(2);
   });
 
   it("任一事件非法（C14）则整批拒绝，内存序无残迹", () => {
@@ -43,7 +48,9 @@ describe("SessionStore.append（E1/E13）", () => {
     } as unknown as NewSessionEvent;
     expect(() => store.append("s1", [userMsg("ok"), bad])).toThrow(/C14/);
     expect(store.load("s1")).toHaveLength(0);
-    expect(store.append("s1", [userMsg("fresh")])[0]!.seq).toBe(1);
+    const fresh = store.append("s1", [turnStart(1), userMsg("fresh")]);
+    expect(fresh[0]!.seq).toBe(1);
+    expect(store.load("s1")).toHaveLength(2);
   });
 });
 
@@ -72,7 +79,7 @@ describe("write-behind 与崩溃恢复（E13）", () => {
 
     const second = new SessionStore(storage);
     await second.restore("s1");
-    const fresh = second.append("s1", [userMsg("after-crash")]);
+    const fresh = second.append("s1", [userMsg("after-crash")]); // turn 1 恢复后仍开着
     expect(fresh[0]!.seq).toBe(3);
   });
 
@@ -102,12 +109,12 @@ describe("turn 末 flush 检查点（E13）", () => {
       order.push("hook");
     });
 
-    store.append("s1", [userMsg("q")]);
-    expect(store.pendingCount("s1")).toBe(1);
+    store.append("s1", [turnStart(1), userMsg("q")]);
+    expect(store.pendingCount("s1")).toBe(2);
     await store.runFlushPoint("turnEnd", "s1");
     expect(order).toEqual(["storage", "hook"]); // flush 在前，hook 在后
     expect(store.pendingCount("s1")).toBe(0);
-    expect(storage.readAll("s1")).toHaveLength(1);
+    expect(storage.readAll("s1")).toHaveLength(2);
   });
 });
 
@@ -152,13 +159,13 @@ describe("flush 串行化与失败语义", () => {
     };
 
     const store = new SessionStore(storage);
-    store.append("s1", [userMsg("a")]);
+    store.append("s1", [turnStart(1), userMsg("a")]);
     store.append("s1", [userMsg("b")]);
     await expect(store.flush("s1")).rejects.toThrow("disk on fire");
-    expect(store.pendingCount("s1")).toBe(2); // 失败不丢
+    expect(store.pendingCount("s1")).toBe(3); // 失败不丢
     await store.flush("s1");
-    expect(batches).toEqual([[1, 2]]); // 剩余 buffer 一批补上，顺序不乱
-    expect(persisted).toHaveLength(2);
+    expect(batches).toEqual([[1, 2, 3]]); // 剩余 buffer 一批补上，顺序不乱
+    expect(persisted).toHaveLength(3);
   });
 
   it("并发 flush 排队执行，同一批事件不重复落库", async () => {
@@ -170,9 +177,9 @@ describe("flush 串行化与失败语义", () => {
       original.call(storage, sid, events);
     };
     const store = new SessionStore(storage);
-    store.append("s1", [userMsg("a")]);
+    store.append("s1", [turnStart(1), userMsg("a")]);
     await Promise.all([store.flush("s1"), store.flush("s1")]);
     expect(batchCount.n).toBe(1);
-    expect(storage.readAll("s1")).toHaveLength(1);
+    expect(storage.readAll("s1")).toHaveLength(2);
   });
 });

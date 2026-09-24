@@ -14,6 +14,7 @@
  */
 
 import { assertJsonSafe, type NewSessionEvent, type SessionEvent } from "../kernel/events.js";
+import { Projector } from "./project.js";
 
 /**
  * 持久化后端接口。T-1-03 由 SQLite 实现；P0 语义约定：
@@ -64,6 +65,8 @@ export class SessionStore {
   private readonly flushChains = new Map<string, Promise<void>>();
   private readonly flushPoints = new Map<FlushPointPhase, FlushPointHook[]>();
   private nextSeqBySession = new Map<string, number>();
+  /** 每会话一个投影器（E16）：append 前用它校验"已有流+新事件"。 */
+  private readonly projectors = new Map<string, Projector>();
 
   constructor(private readonly storage: EventStorage = new InMemoryEventStorage()) {}
 
@@ -80,6 +83,10 @@ export class SessionStore {
       const committed = { ...event, seq: nextSeq++, ts } as SessionEvent;
       prepared.push(committed);
     }
+    // E16：写入前校验"已有流+新事件"。失败（如乱序/未知类型/开合不配对）在此抛出，
+    // 内存序、buffer、投影三者都不落任何一半。
+    const projector = this.projectorFor(sessionId);
+    projector.append(prepared);
     let list = this.events.get(sessionId);
     if (!list) {
       list = [];
@@ -95,6 +102,15 @@ export class SessionStore {
     this.nextSeqBySession.set(sessionId, nextSeq);
     this.lastSeq.set(sessionId, nextSeq - 1);
     return prepared;
+  }
+
+  private projectorFor(sessionId: string): Projector {
+    let projector = this.projectors.get(sessionId);
+    if (!projector) {
+      projector = Projector.fresh();
+      this.projectors.set(sessionId, projector);
+    }
+    return projector;
   }
 
   /** 内存序读取（同步）：活动进程内事件的唯一真相就在这里。 */
@@ -177,6 +193,8 @@ export class SessionStore {
       }
     }
     this.events.set(sessionId, [...rows]);
+    // 恢复的流整体过一遍 fold（E16）：损坏数据在这里被拒，绝不带病重建内存序
+    this.projectors.set(sessionId, Projector.fold(rows));
     const maxSeq = rows.length;
     this.lastSeq.set(sessionId, maxSeq);
     this.lastFlushedSeq.set(sessionId, maxSeq);

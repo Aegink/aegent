@@ -182,7 +182,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①prebuilt 下载未用上，gyp 本地编译一次成功（better-sqlite3 13.0.3），未触发回退；②主键按语义写成 `(session_id, seq)` 复合——卡面"seq 主键"在第二会话插入时即冲突，schema.sql 有注释；③DAO 未按域拆文件（P0 只有 events 一个域，第二个域出现时再拆）；④db.ts 修了一个句柄泄漏：open 初始化失败时（schema 版本拒绝）必须关闭底层连接，否则 Windows 上临时库文件删不掉（EBUSY）——此坑值得进 notes；⑤pnpm 10 默认拦截 postinstall，package.json 加 `pnpm.onlyBuiltDependencies=["better-sqlite3"]`
 - **完成记录**：2026-09-25。产出 `src/session/schema.sql`（sessions + events 表，payload 存整事件 JSON）+ `src/session/db.ts`（WAL + foreign_keys、user_version 单调迁移、SqliteEventStorage implements EventStorage、单事务 appendBatch）+ `db.test.ts` 4 用例。验收：`npx vitest run src/session/db.test.ts` → 4 passed（含 1000 事件建库→重开→逐条 seq 连续 + payload 相等）；全量 `npx vitest run` 27 passed，`npx tsc --noEmit` 干净。
 
-#### T-1-04 · E3/E16 · 增量投影（索引 + 快照）+ fold 即校验 `[ ]`
+#### T-1-04 · E3/E16 · 增量投影（索引 + 快照）+ fold 即校验 `[x]`
 - **依据需求**：E3（P0）· E16（P0）
 - **上游首选参考**：[zcode·zcodeSessionEventCoalescer.ts](../oss/zcode/packages/services/src/zcode-agent/zcodeSessionEventCoalescer.ts)（事件合并器：COALESCIBLE_MODEL_STREAMING_KINDS + accept/flush + 键合并）；[dsh·invariant.ts](../oss/deepseek-harness/packages/schedule/schedule/src/invariant.ts)（fold 既是投影又是校验器，`internal/dispatch` 预 append 校验）
 - **取什么 / 别抄什么**：取"投影走快照 + 增量尾巴，禁止全量重放"；zcode 那个文件是**合并器**（E3 的提速件）不是投影器本体——投影器按 E16 的 fold 模式自研
@@ -191,8 +191,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/session/project.test.ts`——①构造 1 万事件，`project()` < 200ms（vitest 计时断言，硬编码阈值）；②注入非法事件（乱序 seq / 未知类型）时 append 前 reject
 - **依赖**：T-1-03
 - **风险 / 未知**：200ms 阈值在本机跑不满功率时的方差——基准写成独立 `*.bench.ts`，CI 阈值放宽到 200ms 红线 + 基线记录
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①未建独立 `*.bench.ts`——计时断言直接写在 project.test.ts（console.info 打基线：本机 project(10k)=10.8ms，阈值 200ms 余量 18 倍；等 CI 出现功率方差再拆 bench 文件）；②校验态/投影态分离：validateAppend 在"模拟态"上跑开合变更后总是回滚（否则批内配对查不出、或双重计数），单次 append 代价 O(新事件+开集合) 而非全量重放；③除验收两例外加结构性配对校验：双开 turn/step、无开而合、tool/result 无前置 tool/call——都写在文件头注释，供阶段 3 loop 对照；④投影器接进 store.append（E16"写入前校验"）与 store.restore（恢复流整体 fold，损坏拒绝）——连带把 store/db 旧测试的裸事件流补齐了 turn/step 框架（校验收紧是预期行为，不是回归）
+- **完成记录**：2026-09-25。产出 `src/session/project.ts`（Projector：fold/validateAppend/append、SessionProjection、ProjectError）+ `project.test.ts` 8 用例 + store.ts 接线改造。验收：`npx vitest run src/session/project.test.ts` → 8 passed；①1 万事件 project() 计时 10.8ms < 200ms（硬编码断言）；②乱序 seq（期望 9 实际 10）与未知类型（ghost/event）均在 append 前 ProjectError 且状态零污染；③增量 append 与全量 fold 语义等价、批内配对/双开/孤儿 result 全部拒绝；④store 接线：非法流整批拒绝且内存序无残迹。全量 `npx vitest run` 35 passed，`npx tsc --noEmit` 干净。
 
 #### T-1-05 · E4 · revert 回退到任意事件点 `[ ]`
 - **依据需求**：E4（P0）

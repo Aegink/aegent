@@ -1,0 +1,164 @@
+import { performance } from "node:perf_hooks";
+
+import { describe, expect, it } from "vitest";
+
+import type { NewSessionEvent, SessionEvent } from "../kernel/events.js";
+import { Projector, project, ProjectError } from "./project.js";
+import { SessionStore } from "./store.js";
+
+/** 一轮完整 turn 的 8 个事件（turn → user → step → assistant → tool 对 → step 闭 → turn 闭）。 */
+function oneTurn(turn: number, seq0: number): SessionEvent[] {
+  const seq = () => seq0++;
+  const ts = 1_700_000_000_000 + turn;
+  const mk = (event: NewSessionEvent): SessionEvent => ({ ...event, seq: seq(), ts } as SessionEvent);
+  return [
+    mk({ type: "turn/start", turn }),
+    mk({ type: "user/message", turn, message: { content: `q${turn}` }, source: "user" }),
+    mk({ type: "step/start", turn, step: turn }),
+    mk({
+      type: "assistant/message",
+      turn,
+      step: turn,
+      message: { content: `a${turn}` },
+      stream: [],
+      usage: { inputTokens: 10, outputTokens: 5 },
+    }),
+    mk({ type: "tool/call", turn, step: turn, callId: `c${turn}`, name: "bash", arguments: "{}" }),
+    mk({
+      type: "tool/result",
+      turn,
+      step: turn,
+      callId: `c${turn}`,
+      message: { content: "ok" },
+    }),
+    mk({ type: "step/end", turn, step: turn }),
+    mk({ type: "turn/end", turn, reason: { kind: "completed" } }),
+  ];
+}
+
+function fullStream(turnCount: number): SessionEvent[] {
+  const events: SessionEvent[] = [];
+  let seq = 1;
+  for (let turn = 1; turn <= turnCount; turn++) {
+    events.push(...oneTurn(turn, seq));
+    seq += 8; // oneTurn 恰好消费 8 个连续 seq
+  }
+  return events;
+}
+
+describe("增量投影（E3）", () => {
+  it("验收①：1 万事件 project() < 200ms（硬编码阈值，vitest 计时断言）", () => {
+    const events = fullStream(1250); // 1250 × 8 = 10000
+    expect(events).toHaveLength(10_000);
+    const t0 = performance.now();
+    const projection = project(events);
+    const elapsed = performance.now() - t0;
+    expect(projection.lastSeq).toBe(10_000);
+    expect(elapsed).toBeLessThan(200);
+    console.info(`[基准基线] project(10k) = ${elapsed.toFixed(1)}ms（阈值 200ms）`);
+  });
+
+  it("增量 append 与全量 fold 结果一致（快照+尾巴路径的语义等价）", () => {
+    const events = fullStream(50);
+    const head = events.slice(0, 200);
+    const tail = events.slice(200);
+    const incremental = Projector.fresh();
+    incremental.append(head);
+    incremental.append(tail);
+    expect(incremental.projection.messages).toEqual(project(events).messages);
+    expect(incremental.projection.lastUsage).toEqual(project(events).lastUsage);
+    expect(incremental.projection.lastSeq).toBe(400);
+  });
+
+  it("投影内容抽查：消息 / 工具配对 / lastUsage 落位", () => {
+    const projection = project(fullStream(3));
+    expect(projection.turnCount).toBe(3);
+    expect(projection.openTurn).toBeNull();
+    expect(projection.messages.map((m) => m.role)).toEqual(["user", "assistant", "user", "assistant", "user", "assistant"]);
+    expect(projection.toolResults.get("c2")?.content).toBe("ok");
+    expect(projection.lastUsage).toEqual({ inputTokens: 10, outputTokens: 5 });
+    expect(projection.openToolCalls.size).toBe(0);
+  });
+});
+
+describe("fold 即校验（E16）", () => {
+  it("验收②：乱序 seq 在 append 前 reject，投影状态原地不动", () => {
+    const projector = Projector.fresh();
+    projector.append(oneTurn(1, 1)); // 占用 seq 1..8
+    const outOfOrder = oneTurn(2, 10); // 期望从 9 开始，10 即乱序
+    expect(() => projector.append(outOfOrder)).toThrow(ProjectError);
+    expect(() => projector.append(outOfOrder)).toThrow(/seq 不连续/);
+    // 回滚证据：合法流接着上一条继续仍然可行
+    expect(() => projector.append(oneTurn(2, 9))).not.toThrow();
+    expect(projector.projection.lastSeq).toBe(16);
+  });
+
+  it("验收②：未知事件类型在 append 前 reject", () => {
+    const projector = Projector.fresh();
+    const ghost = { type: "ghost/event", seq: 1, ts: 0, turn: 1 } as unknown as SessionEvent;
+    expect(() => projector.append([ghost])).toThrow(/未知事件类型/);
+  });
+
+  it("批内配对可查：同批 [turn/start…turn/end] 合法；同批双开 turn 拒绝", () => {
+    const projector = Projector.fresh();
+    expect(() => projector.append(oneTurn(1, 1))).not.toThrow(); // 批内开合完整
+    const doubleOpen = [
+      { type: "turn/start", seq: 9, ts: 0, turn: 2 } as SessionEvent,
+      { type: "turn/start", seq: 10, ts: 0, turn: 3 } as SessionEvent,
+    ];
+    expect(() => projector.append(doubleOpen)).toThrow(/尚未闭合/);
+  });
+
+  it("无开而合 / 无 call 而果：结构性配对拒绝", () => {
+    const projector = Projector.fresh();
+    expect(() =>
+      projector.append([{ type: "turn/end", seq: 1, ts: 0, turn: 1, reason: { kind: "completed" } } as SessionEvent]),
+    ).toThrow(/未开启/);
+
+    const stepwise = Projector.fresh();
+    stepwise.append(oneTurn(1, 1));
+    const orphanResult = [
+      { type: "turn/start", seq: 9, ts: 0, turn: 2 } as SessionEvent,
+      { type: "step/start", seq: 10, ts: 0, turn: 2, step: 2 } as SessionEvent,
+      {
+        type: "tool/result",
+        seq: 11,
+        ts: 0,
+        turn: 2,
+        step: 2,
+        callId: "no-such-call",
+        message: { content: "x" },
+      } as SessionEvent,
+    ];
+    expect(() => stepwise.append(orphanResult)).toThrow(/没有前置未闭合的 tool\/call/);
+  });
+});
+
+describe("与 SessionStore 的接线（E16 写入前校验）", () => {
+  it("store.append 对非法流抛 ProjectError，内存序零提交", () => {
+    const store = new SessionStore();
+    store.append("s1", [
+      { type: "turn/start", turn: 1 },
+      { type: "user/message", turn: 1, message: { content: "hi" }, source: "user" },
+    ]);
+    // 乱序数据造不出来（store 自己发 seq）——用结构非法打：结果先于 call
+    expect(() =>
+      store.append("s1", [
+        { type: "step/start", turn: 1, step: 1 },
+        { type: "tool/result", turn: 1, step: 1, callId: "x", message: { content: "y" } },
+      ]),
+    ).toThrow(ProjectError);
+    expect(store.load("s1")).toHaveLength(2); // 前两批完好，第三批整批未进
+    // 合法流继续可用（校验失败不留毒）
+    expect(() =>
+      store.append("s1", [
+        { type: "step/start", turn: 1, step: 1 },
+        { type: "tool/call", turn: 1, step: 1, callId: "c1", name: "bash", arguments: "{}" },
+        { type: "tool/result", turn: 1, step: 1, callId: "c1", message: { content: "ok" } },
+        { type: "step/end", turn: 1, step: 1 },
+        { type: "turn/end", turn: 1, reason: { kind: "completed" } },
+      ]),
+    ).not.toThrow();
+    expect(store.load("s1")).toHaveLength(7);
+  });
+});

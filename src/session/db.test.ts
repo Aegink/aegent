@@ -23,6 +23,7 @@ function tempDbPath(): string {
 function sampleEvents(turn: number): NewSessionEvent[] {
   return [
     { type: "turn/start", turn },
+    { type: "step/start", turn, step: turn },
     { type: "user/message", turn, message: { content: `q${turn}` }, source: "user" },
     { type: "assistant/message", turn, step: turn, message: { content: `a${turn}` }, stream: [] },
     {
@@ -41,6 +42,8 @@ function sampleEvents(turn: number): NewSessionEvent[] {
       message: { content: "ok" },
       meta: { exitCode: 0 },
     },
+    { type: "step/end", turn, step: turn },
+    { type: "turn/end", turn, reason: { kind: "completed" } },
   ];
 }
 
@@ -50,13 +53,13 @@ describe("SqliteEventStorage（E2）", () => {
     const storage = SqliteEventStorage.open({ path });
     const store = new SessionStore(storage);
 
-    // 20 批 × 10 turn × 5 事件/turn = 1000 事件（每 turn 覆盖 5 种事件类型）
+    // 25 批 × 5 turn × 8 事件/turn = 1000 事件（每 turn 覆盖 8 种事件类型）
     const appended: SessionEvent[] = [];
     try {
-      for (let batch = 0; batch < 20; batch++) {
+      for (let batch = 0; batch < 25; batch++) {
         const events: NewSessionEvent[] = [];
-        for (let i = 0; i < 10; i++) {
-          const turn = batch * 10 + i + 1;
+        for (let i = 0; i < 5; i++) {
+          const turn = batch * 5 + i + 1;
           events.push(...sampleEvents(turn));
         }
         appended.push(...store.append("s-long", events));
@@ -106,12 +109,13 @@ describe("SqliteEventStorage（E2）", () => {
     const storage = SqliteEventStorage.open({ path: tempDbPath() });
     const store = new SessionStore(storage);
     store.append("s-quiet", [
+      { type: "turn/start", turn: 1 },
       { type: "user/message", turn: 1, message: { content: "x" }, source: "user" },
     ]);
     expect(storage.readAll("s-quiet")).toHaveLength(0); // write-behind：未排空不落库
     expect(storage.readAll("ghost")).toHaveLength(0);
     await store.flush("s-quiet");
-    expect(storage.readAll("s-quiet")).toHaveLength(1);
+    expect(storage.readAll("s-quiet")).toHaveLength(2);
     storage.close();
   });
 });
