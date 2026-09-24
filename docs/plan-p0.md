@@ -134,7 +134,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 **依赖**：无（这是第一条）。
 **不做什么**：不写 loop（阶段 3）；不做 fork（E5/E6 是 P1/P2）；不做落盘文件清理（Q3 P1，只按 Q13 打标记）；不做 transcript 独立包（E7 P1）；不做 UI。
 
-#### T-1-00 · 工程脚手架与默认选型落定 `[ ]`
+#### T-1-00 · 工程脚手架与默认选型落定 `[x]`
 - **依据需求**：无对应功能 ID——这是 §2.6 默认选型的落卡动作
 - **上游首选参考**：无（工程惯例）
 - **取什么 / 别抄什么**：只搭 `package.json` / `tsconfig.json` / `vitest.config.ts` / 目录骨架，不预写任何内核代码
@@ -143,8 +143,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx tsc --noEmit && npx vitest run --passWithNoTests` 退出码 0；`git check-attr eol` 或 `file` 确认 LF
 - **依赖**：无
 - **风险 / 未知**：用户若推翻 §2.6 选型，只改这张卡
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①§2.6 只定 pnpm 未定版本——corepack 0.34 与 pnpm 12（bin 改 `pnpm.mjs` 布局）不兼容，钉 `pnpm@10.29.2`（缓存完整、布局兼容）；②tsconfig `include` 加 `"vitest.config.ts"`：`src/` 全空时 tsc 报 TS18003，又不预写占位内核代码，让根配置文件充当合法输入；③目录骨架里 tools 按 T-4-01 实际形状放 `src/kernel/tools/`（§2.6 六个顶层模块目录无独立 tools）
+- **完成记录**：2026-09-25。产出 `package.json`（packageManager=pnpm@10.29.2，scripts test/build/check）+ `tsconfig.json`（strict, NodeNext, noUncheckedIndexedAccess）+ `vitest.config.ts` + src 七目录 .gitkeep + devDeps（typescript 7.0.2 / vitest 5.0.1 / @types/node 26.6.2）。验收：`npx tsc --noEmit && npx vitest run --passWithNoTests` 退出码 0（vitest 报 "No test files found, exiting with code 0"）；`git check-attr eol` 四个新文件均 `eol: lf`。
 
 #### T-1-01 · C14/C15/C16 + E12 · L0 事件词汇表落地 `src/kernel/events.ts` `[ ]`
 - **依据需求**：C14（P0）· C15（P0）· C16（P0）· E12（P0）

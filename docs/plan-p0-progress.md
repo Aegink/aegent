@@ -9,7 +9,7 @@
 
 | 日期 | 任务卡 | 需求ID | commit | 验收命令 | 结果摘要 |
 | --- | --- | --- | --- | --- | --- |
-| （暂无） | | | | | |
+| 2026-09-25 | T-1-00 | （脚手架，无功能 ID） | `753c809` | `npx tsc --noEmit && npx vitest run --passWithNoTests` | 退出码 0；`git check-attr eol` 新文件均 lf；钉 pnpm@10.29.2（corepack 0.34 与 pnpm 12 布局不兼容） |
 
 ---
 

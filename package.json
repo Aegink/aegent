@@ -1,0 +1,21 @@
+{
+  "name": "aegent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.29.2",
+  "description": "aegent 内核（P0）：事件源、权限、沙箱、上下文管理的最小闭环",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "build": "tsc",
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  }
+}
