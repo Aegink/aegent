@@ -1309,3 +1309,96 @@ basename 匹配的**词边界**（`PATH_TEXT_BOUNDARY_RE`）、spill 文件路�
 **本轮仍只读了 Codex + DSH 各一小块。** `compact.rs` 6,577 行里我读了约 120 行；
 `session/tests.rs`(12,880) 与其余 188 个 suite 文件未读；
 kimi / pi-desktop / ZCode 的**任何一条真实断言**未读。
+
+---
+
+## 16. 第九轮记录（三家测试实现深读）
+
+> 产出：`docs/research/22-test-impl-three.md`(308)。补上一轮 §6 自己列的三个下一步。
+
+### 16.1 Codex `session/tests.rs`（12,880 行，全仓最大测试文件）
+
+**修正一个预期：它不是"事件序列测试"**，而是混合体，415 个测试按主题成簇：
+托管网络代理（8+）、配置热重载（7+）、度量遥测（5+）、MCP elicitation、流解析器、
+网络策略修订、中断/生命周期。
+
+**两条顺带发现的设计（此前不知道）**：
+- **配置解析失败时保留上一份配置**，**不回退默认值** —— 回退可能变宽松（fail-safe 方向正确）。
+- **配置分两类**：可热刷新字段 vs 会话内静态设置。
+
+**★ 测试名就是完整的行为规格**，把安全边界写进名字：
+`user_shell_commands_do_not_inherit_managed_network_proxy` /
+`danger_full_access_tool_attempts_do_not_enforce_managed_network` /
+`reload_user_config_layer_keeps_previous_config_for_malformed_shell_policy`
+
+**★ 事件断言的第二种写法**（与 `compact.rs` 的身份不变量并列）：
+
+```rust
+let first = tokio::time::timeout(Duration::from_millis(200), rx.recv()).await
+    .expect("expected turn started event without waiting for startup prewarm")
+    .expect("channel open");
+assert!(matches!(
+    first.msg,
+    EventMsg::TurnStarted(TurnStartedEvent { turn_id, .. }) if turn_id == tc.sub_id));
+```
+
+**要点**：①会话把事件推进 channel，测试逐条 recv，**顺序由连续 recv 表达**
+②**每次 recv 都套 timeout + 具名 expect**（事件驱动测试最坏的失败是"挂住"）
+③`matches!` 匹配**变体 + 载荷形状 + 字段关系（`if` 守卫）**，改名在编译期就炸
+④中断路径中途的 `EventMsg::RawResponseItem(_)` 标记事件也被钉住。
+
+**两种风格各有强弱，都应保留**：身份不变量不脆但锁不住顺序；有序迁移锁得住顺序但事件多了会脆。
+
+### 16.2 kimi `snapshots.ts` —— 差分在**序列化时**算
+
+- 用 **Symbol 标记 + `expect.addSnapshotSerializer`**：输出格式是 harness 的职责。
+- **事件快照**：`[wire]`/`[emit]` 前缀 + 事件名 `padEnd` 列对齐 + **JSON 压成一行**；
+  **domain 事件与 RPC 调用在同一条流里按序交错**。
+- **模型输入快照**：`GenerateInputSnapshot { input, previous }` —— **快照结构自带前一次调用**，
+  差分不需要测试作者手写。
+- **★ 稳定标签**（`uuidLabels`/`msgLabels`/`interactionLabels`）：
+  同一批快照内每个不同 UUID 映射到固定标签 —— **保留身份**，
+  于是仍可断言"同一 id 出现在事件 1、5、9"。**比 DSH 的 `{{sessionId}}` 占位符更进一步。**
+
+### 16.3 pi-desktop —— 进程全局状态的测试隔离
+
+```rust
+/// The marketplace source is process-global, so two tests pointing it at different
+/// catalogs — or one clearing it while another is mid-fetch — read each other's value.
+static MARKET_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+```
+配 `with_local_market(f)`：RAII 守卫围住"设变量 + 跑 + 清变量"，
+`unwrap_or_else(|e| e.into_inner())` 处理中毒，`unsafe` 带 `// Safety:` 说明。
+且用"指向不存在的 URL"**强制走离线回退**，让有网络行为的代码变成确定性单测。
+
+### 16.4 新增需求项 —— 10 条，3 条 P0
+
+| 编号 | 条目 | 优先级 |
+| --- | --- | --- |
+| **O21** | 事件 id 用**稳定标签**而非通用占位符（保留身份） | **P0** |
+| **O22** | 快照**结构里自带 previous**，差分在**序列化时**算 | **P0** |
+| **O23** | **每次 recv 都要超时 + 具名期望**（防"挂住"） | **P0** |
+| O24 | 事件流快照**列对齐 + 单行 JSON**；domain 与 RPC/wire 事件同流交错 | P1 |
+| O25 | system prompt / tools **只在变化时打印**；等于默认值折叠成标签（**使缓存前缀稳定性可测**） | P1 |
+| O26 | **进程全局状态必须有隔离机制**，且注释写明故障机制 | P1 |
+| O27 | **测试名写成完整行为规格**，把安全边界写进名字 | P1 |
+| O28 | 断言跨组件因果（"装完必须出现在注册表"），不只断言字段值 | P2 |
+| **F24** | **配置解析失败保留上一份配置**，不回退默认 | **P1** |
+| **B22** | 配置分两类：**可热刷新字段** vs **会话内静态设置** | P1 |
+
+### 16.5 一个负面发现（建议不采纳 kimi 的做法）
+
+**kimi 的 tools 快照只打印工具名，不打印 schema** ——
+而工具 schema 恰是**缓存前缀稳定性**与**模型行为**的关键输入。
+**Codex 的 `portable_tool_schema` 把 schema 纳入归一化后打印。建议采纳 Codex 的。**
+
+### 16.6 诚实声明（累计）
+
+**六轮下来，测试这块我读的仍是"方法论与骨架"，不是"测试内容"：**
+
+- `session/tests.rs` 12,880 行读了约 90 行（**415 个测试里 414 个未读**）
+- `compact.rs` 6,577 行读了约 120 行
+- kimi `snapshots.ts` 388 行读了约 200 行；`harness/agent.ts`(2,909) **仍未读**
+- pi-desktop `plugins/tests.rs` 2,186 行读了约 60 行；其余 8 个 `tests.rs` 未读
+- DSH 7 个测试包 22,817 行 **一行实现未读**；kimi/pi-desktop/ZCode 的任何一条真实断言未读
+- 其余 188 个 Codex suite 文件未读
