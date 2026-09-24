@@ -113,6 +113,40 @@
 | **J21** | **调用已计费但解析失败时，代价仍要记账** | mini-swe-agent `run()` | P1 |
 | **I?** | **扩展 API 的日落机制**：带日期的弃用、分级 UX、配置逃生舱、CI 禁止仓内自用、作者自查工具 | hermes-agent `COMPAT_MANIFEST.md` | P1 |
 
+#### 来自权限词汇表深读的建议（见 `docs/research/09-permission-vocabulary-deep.md`）
+
+**★ 最高严重度 —— 我方 P0 级安全缺口**
+
+| 建议 ID | 内容 | 依据 | 优先级 |
+| --- | --- | --- | --- |
+| **C35** | **禁止 agent 修改自身权限配置**。含一个具体绕过：**即使这次编辑是用户要求的，也不得顺带加入用户没要求的 allow 规则**。同一清单还含 `AGENTS.md` 一类项目指令文件（不得悄悄改自己的系统提示来源） | qwen-code `BUILTIN_SOFT_DENY` 第 4 类 | **P0** |
+| **C36** | **内置保护清单只能追加、不能替换**；用户提示有界（长度 + 条数） | qwen-code（`Replace-mode is not supported`；`MAX_USER_HINT_LENGTH=200`） | P1 |
+| **C37** | **IMDS（云实例元数据）与带外回调主机（collaborator 式 / request bin / 隧道）列为网络侧拒绝项** | qwen-code 代码注释 | P1 |
+
+> **C35 为什么是 P0**：一个能改写自己权限配置的 agent，会让 C10（危险命令库）、
+> C11（项目信任）、C27（shell 语义）**全部变成可选的** —— 先把自己加进白名单即可绕过。
+
+**词汇表与规则结构**
+
+| 建议 ID | 内容 | 依据 | 优先级 |
+| --- | --- | --- | --- |
+| **C32** | **C 层决策由 3 值改为 4 值**（`allow / ask / deny / abstain`）：把"没意见，往下走"与"我要 ask"分开 | qwen-code `'default'` + agentscope `PASSTHROUGH`，**两家独立** | **P0** |
+| **C38** | **规则保留 `raw` 原文**（与 C18 合并为一条） | qwen-code `PermissionRule.raw` | **P0** |
+| **C39** | **specifier 按 kind 分型匹配**（command→shell glob、path→**gitignore 风格**、domain、literal），kind 由工具类别推导 | qwen-code `SpecifierKind` | P1 |
+| **C40** | **规则可匹配具名参数**（如 `Agent(model:opus)`） | qwen-code `toolParamMatchers` | P2 |
+| **C41** | **坏规则显式标记为永不匹配**（与 C23 合并） | qwen-code `invalid` | P1 |
+
+**模式与判官**
+
+| 建议 ID | 内容 | 依据 | 优先级 |
+| --- | --- | --- | --- |
+| **C33** | **无人值守模式：把每一个 ASK 转为 DENY**（而非卸掉策略）—— 保留检测，只改结局。优于 kimi-code 的"装不了就别装" | agentscope `DONT_ASK` | P1 |
+| **C34** | **仓库自带规则用 `trustGated` 标记门控**，信任变化时不移除规则而读当前信任 —— 无需 per-skill 记账（补 C11 缺的机制） | qwen-code `trustGated` | P1 |
+| **C42** | **两阶段 LLM 判官**（贵路径用于修正便宜路径的假阳性）；**fail-closed 且带 `unavailable` 标记**；**abort 不算失败**；**超时预算刻意宽松并写明理由** | qwen-code `classifier.ts` | P2 |
+
+**G 层需注明二选一**：`EXPLORE` 权限模式（agentscope）vs `Plan 是同一个 Agent 的状态`（DSH）——
+两条路都能做计划模式，前者不可绕过、后者不浪费 token。
+
 #### 待定5 / 待定6（来自 Claude Code 官方源码实读，见 `docs/research/06-claude-code-official.md` §8.3）
 
 | # | 待定 | 说明 |
