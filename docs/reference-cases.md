@@ -119,7 +119,7 @@
 | C44 C55 | [codex·execpolicy/](../oss/codex/codex-rs/execpolicy) | `prefix_rule(pattern, decision, justification, match, not_match)` + **加载期校验**（`match`/`not_match` 自测样例）；`justification` 必填、`forbidden` 须给替代做法 | — | 🟢 |
 | C46 | [codex·permissions.rs:36](../oss/codex/codex-rs/protocol/src/permissions.rs#L36) | **保留元数据路径**清单（`.git` / `.agents` / `.codex`）**硬拦，规则不得授权** | — | 🟢 |
 | C47 C48 | [codex·protocol.rs](../oss/codex/codex-rs/protocol/src/protocol.rs) | `ReviewDecision` **7 变体** × **4 个持久化作用域**；`ApprovedExecpolicyAmendment` —— **提案由引擎算，模型只能发命令** | 直接回答**待定9** | 🟢 |
-| C50 C51 | [zcode·broker.ts:110](../oss/zcode/apps/zcode-cli/packages/core/src/permission/broker.ts#L110) | `DenyPermissionBroker` 作默认；超时 **reject with `PermissionTimeout`**（不是 silent resolve） | 对照 hermes 的静默超时 bug | 🟢 |
+| C50 C51 | [zcode·broker.ts:105](../oss/zcode/apps/zcode-cli/packages/core/src/permission/broker.ts#L105) | `DenyPermissionBroker` 作默认；超时 **reject with `PermissionTimeout`**（不是 silent resolve） | 对照 hermes 的静默超时 bug | 🟢 |
 | C52 | [zcode·turn-machine.ts:251](../oss/zcode/apps/zcode-cli/packages/core/src/agent/turn-machine.ts#L251) | `resolvePermission(toolCallId, decision, modifiedInput?)` —— 批准**可携带修改后的参数** | — | 🟢 |
 | C53 C54 | [codex·execpolicy/](../oss/codex/codex-rs/execpolicy) + [codex·protocol.rs](../oss/codex/codex-rs/protocol/src/protocol.rs) | `host_executable(name, paths)` 把 basename 规则绑到**绝对路径清单**；`GranularApprovalConfig` **关闭某类 ≠ 放行 = 硬拒绝** | — | 🟡 |
 | C56 | [codex·guardian/](../oss/codex/codex-rs/core/src/guardian) | `GuardianAssessmentOutcome`/`Status`；**"`None` requests the existing user flow. No contributor is never an implicit allow."** | — | 🟡 |
