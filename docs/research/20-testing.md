@@ -228,3 +228,37 @@ README 指向 `docs/testing.md`，称这些 harness 服务于 "**the keyless sna
 **因此本报告给的是"三家的测试方法论"，不是"三家的测试怎么写的"。**
 具体到"某一条 `insta::assert_snapshot!` 里到底断言了什么字符串"，
 我**一条都没看**。这是本轮最该被追问的地方。
+
+---
+
+## 7. 补正：ZCode 的测试（重查结果）
+
+第 §4 节我写"这个数字与仓规模严重不符，我不下结论 —— 很可能是我的 find 表达式有误"。
+**重查后：表达式无误，ZCode 全仓确实只有 4 个测试文件。**
+
+```
+./packages/services/test/importedClaudeRecovery.test.ts
+./packages/services/test/nonCliAcpRetirement.test.ts
+./packages/services/test/providerConfigMigration.test.ts
+./packages/ui/test/nonCliAcpRetirement.test.ts
+```
+
+（`find` 已用括号分组，并排除 `node_modules`/`dist`；`test`/`tests`/`__tests__` 目录全仓也只有 2 个。）
+
+### 7.1 ★ 这个发现本身值得记：ZCode 的测试**全是"迁移/退役"测试**
+
+四个文件名指向同一类测试：**证明"旧的东西真的没了 / 真的被迁移了"** ——
+`importedClaudeRecovery`（导入的 Claude 配置还能恢复）、
+`nonCliAcpRetirement`（非 CLI 的 ACP 已退役）、
+`providerConfigMigration`（provider 配置迁移）。
+
+**这不是行为测试，是"迁移断言"。** 它回答的是"我们的迁移做完了吗、做完之后旧的入口还在不在"。
+
+> **评价**：作为一个 122M、四种 surface 的产品仓，**只有 4 个测试且全部与迁移相关**，
+> 这是一个**重大缺口**，也是我读到的六个仓里**测试覆盖最弱的**。
+> 我**不把它当正面示范**。
+>
+> **但它揭示了一类我方也需要的东西（Q 层）**：
+> **迁移必须有可执行的断言** —— "旧字段不再被读" / "旧入口已退役" / "迁移后可恢复"。
+> 我方 Q1（事件日志版本迁移）目前只有规范，**没有这一层断言**。
+> **建议记为一类独立测试：迁移断言。**
