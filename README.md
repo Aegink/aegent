@@ -40,7 +40,7 @@ aegent/
 │   ├── reference-cases.md     ★★ 参考案例索引（照着谁做）
 │   ├── l0-events.md           L0 事件词汇表设计（13 个事件，已定稿）
 │   ├── l0-eval.md             L0 内核评估
-│   ├── review-prompt.md       深度复查提示词（用于开新会话做独立复查）
+│   ├── review-prompt.md       独立复核提示词（**查错不是补漏**，先有计划文档再跑）
 │   └── research/              调研产出（为什么），地图见其 README.md
 │       ├── 00-inventory.md       本机仓库盘点
 │       ├── 01-conclusion.md      结论 + 排除清单
@@ -65,6 +65,7 @@ aegent/
 │   ├── license-detect.sh      精确识别根许可（被其他脚本 source）
 │   ├── license-audit.sh       合规扫描：许可 / 泄露迹象 / sourcemap（**全量约 50 分钟**，见下）
 │   ├── check-doc-links.sh     ★ 校验文档里所有相对链接（改文档后必跑）
+│   ├── sample-anchors.sh      ★ 抽样「参考」列做锚点核对（复核会话用）
 │   ├── count-features.sh      ★ 按层统计功能项数（改功能表后必跑）
 │   ├── inventory.sh           生成 docs/research/00-inventory.md
 │   ├── probe-repo.sh          单仓结构探针
@@ -102,9 +103,20 @@ git diff oss/SOURCES.lock    # 先看清 commit 变了什么，再决定要不�
 
 ### 改文档后必跑
 ```bash
-bash tools/check-doc-links.sh   # 链接必须 0 失效（现有 478 个）
+bash tools/check-doc-links.sh   # 链接必须 0 失效（现有 492 个）
 bash tools/count-features.sh    # 功能数必须与需求文档 §5 表一致
 ```
+
+### 准备开独立复核会话时
+
+主任务是**抽样核对「参考」列** —— 310 条锚点支撑整个 P0 实现，指错了最贵：
+
+```bash
+bash tools/sample-anchors.sh 35 20260925   # 分层抽样：P0 60% / P1 30% / P2 10%
+```
+
+填回判定（✅ 对得上 / ⚠️ 行号偏 / ❌ 指错）后交给复核会话。
+完整提示词见 `docs/review-prompt.md`（**查错，不是补漏**；先有计划文档再跑）。
 
 ### 多轮修改的纪律
 
