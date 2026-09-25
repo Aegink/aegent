@@ -82,6 +82,12 @@ import {
 import { createToolGateLayer } from "../policy/gate.js";
 import { createApprovalAuditSink } from "../policy/audit-fields.js";
 import { PathGuard } from "../sandbox/path-guard.js";
+import {
+  ModelSwitchService,
+  type RegisteredModel,
+  type TurnModel,
+} from "./model-switch.js";
+import type { ModelIdentity } from "../models/identity.js";
 
 /** P0 内置摘要器：声明性前缀 + 拼接截断。真实摘要质量属 F5（P1）。 */
 export function truncatingSummarizer(maxChars = 2000): Summarizer {
@@ -128,7 +134,17 @@ export interface ChildAssemblyOptions {
    */
   permissionProfiles?: readonly PermissionSourceProfile[];
   /**
-   * git 仓库根（E11 代码检查点）：提供时每轮开始前打 git stash 检查点、
+   * J6 会话级模型注册表（T-P1-04，装配注册）：提供时启用运行时换模——
+   * 协议 model/switch 命令受理 + loop 每轮启动从捕获值取 provider；缺省
+   * 不提供 = 单模型装配零行为变化。J12 的配置发现/选择器留后续批次。
+   */
+  models?: readonly RegisteredModel[];
+  /**
+   * J6 换模启用时的初始身份（必须已注册，装配期即失败）；缺省取注册表
+   * 首项。只提供本字段而不提供 models = 装配自相矛盾，拒绝启动。
+   */
+  initialIdentity?: ModelIdentity;
+  /** git 仓库根（E11 代码检查点）：提供时每轮开始前打 git stash 检查点、
    * /revert 双回退（对话态 + 代码态）。缺省不启用（非 git 场景零开销）。
    */
   checkpointRepoRoot?: string;
@@ -165,6 +181,14 @@ export interface ChildAssembly {
   ): Promise<void>;
   /** 协议 revert 请求的处理（E4 对话态；越界错误上抛）。 */
   handleRevert(targetSeq: number): void;
+  /**
+   * 协议 model/switch 请求的处理（J6 换模立即受理；未注册模型抛
+   * ModelNotRegisteredError 上抛给协议层回类型化 error 行）。
+   * 未启用换模（无注册表）时 undefined。
+   */
+  handleModelSwitch?(identity: ModelIdentity): void;
+  /** loop 每轮模型解析（J7 turn 启动捕获）；未启用换模时 undefined。 */
+  modelForTurn?(turn: number): TurnModel;
   /** E11 代码检查点服务（checkpointRepoRoot 提供时存在；kick 前打点 + restoreCodeTo）。 */
   checkpoint?: GitCheckpointService;
   /** 工具注册的面（PathGuard 由装配定形，注册处必收）。 */
@@ -372,6 +396,28 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
       })
     : undefined;
 
+  // —— J6 换模（T-P1-04）：会话级模型选择状态。未提供注册表 = 不启用换模
+  //（单模型装配零行为变化）；只给 initialIdentity 而无注册表是装配自相
+  // 矛盾，拒绝启动（fail-closed，不静默忽略配置）。
+  if (options.initialIdentity !== undefined && !options.models?.length) {
+    throw new Error(
+      "initialIdentity 需要同时提供 models 注册表（J6 换模装配自相矛盾）",
+    );
+  }
+  const modelSwitch =
+    options.models && options.models.length > 0
+      ? new ModelSwitchService({
+          initial: options.initialIdentity ?? options.models[0]!.identity,
+          models: options.models,
+        })
+      : undefined;
+  const handleModelSwitch = modelSwitch
+    ? (identity: ModelIdentity): void => modelSwitch.switch(identity)
+    : undefined;
+  const modelForTurn = modelSwitch
+    ? (turn: number): TurnModel => modelSwitch.captureForTurn(turn)
+    : undefined;
+
   const toolGateLayer = createToolGateLayer({
     chain: policyChain,
     broker,
@@ -434,6 +480,9 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
     handleRevert: (targetSeq) => {
       revertService.revert(sessionId, targetSeq);
     },
+    ...(handleModelSwitch !== undefined && modelForTurn !== undefined
+      ? { handleModelSwitch, modelForTurn }
+      : {}),
     ...(checkpoint !== undefined ? { checkpoint } : {}),
     pathGuard,
     dispose: () => {

@@ -15,6 +15,7 @@
  */
 
 import { assertNever } from "../kernel/events.js";
+import type { ModelIdentity } from "../models/identity.js";
 import type { ApprovalReply } from "../policy/pending.js";
 
 // ---------------------------------------------------------------------------
@@ -33,6 +34,12 @@ export type OwnerCommand =
       /** 停止当前生成（A7 取消的 owner 入口；handler 由 loop 装配注入）。 */
       readonly type: "stop_generation";
       readonly reason?: string;
+    }
+  | {
+      /** J6 运行时换模（T-P1-04）：换模请求立即受理、生效点在新 turn；
+       * handler 由装配的 ModelSwitchService 承接（未注册模型类型化错误）。 */
+      readonly type: "model/switch";
+      readonly identity: ModelIdentity;
     };
 
 // ---------------------------------------------------------------------------
@@ -74,6 +81,8 @@ export interface OwnerPortHandlers {
     reply: ApprovalReply,
   ) => Promise<void>;
   readonly stopGeneration?: (reason?: string) => Promise<void>;
+  /** J6 换模处理（T-P1-04 装配注入；未启用换模的装配可不提供）。 */
+  readonly modelSwitch?: (identity: ModelIdentity) => Promise<void> | void;
 }
 
 export class OwnerCommandPort {
@@ -122,6 +131,8 @@ export class OwnerCommandPort {
         return this.handlers.respondPermission(command.requestId, command.reply);
       case "stop_generation":
         return this.handlers.stopGeneration?.(command.reason);
+      case "model/switch":
+        return this.handlers.modelSwitch?.(command.identity);
       default:
         return assertNever(command, "owner 命令闭集出现未知变体");
     }

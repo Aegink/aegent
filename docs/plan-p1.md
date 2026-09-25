@@ -63,7 +63,7 @@
 - **偏离 / 建议**：①ceiling 的生效点选**出口级**（gate 出口 + revalidator 同位 enforceCeiling，与 C46 同模式）而非链上模块——链是"首个非 undefined 者胜"（C58），ceiling 作为链模块会被用户层 allow 压过，违背"上限不因链序放宽"；②新增 `intersectAllProfiles` 折叠入口（空数组 → undefined，单来源原样返回）；③linter 的 knownToolNames 缺省 `BUILTIN_TOOL_NAMES`（builtin/index.ts 新导出，与注册清单同步维护），动态注册工具时由装配方传全量名单
 - **完成记录**：2026-09-25。产出 `intersect.ts` 加 `intersectAllProfiles` + `enforceCeiling`（出口 max，保留链裁决 rule 证据维持 C18）+ gate/revalidator 加 `ceiling` 选项 + assembly 加 `permissionProfiles`/`knownToolNames` 选项并接线（opaque 折叠即抛 = 拒绝启动）+ linter 警告落 `logger.warn("policy-lint: …")`。验收：`npx vitest run src/policy/ceiling-exit.test.ts` → **9 passed**（①两来源交集 deny 保留/allow 收窄 + gate 集成"用户 allow 被上限收窄为 ask→broker 拒→零执行"②无 ceiling 同配置放行回归 ③坏规则装配 linter 警告可检索含 unknown-tool/invalid-syntax 两类）。全量 `npx vitest run` **503 passed / 1 skipped**，`npx tsc --noEmit` 干净。
 
-#### T-P1-04 · J6/J7 · 运行时换模 + 在途 turn 模型捕获 `[ ]`
+#### T-P1-04 · J6/J7 · 运行时换模 + 在途 turn 模型捕获 `[x]`
 - **依据需求**：J6（P1）· J7（P1）
 - **上游首选参考**：[pi·agent-harness.ts:574](../oss/pi/packages/agent/src/harness/agent-harness.ts#L574)（`setModel(model, context): Promise<void>`）；[pi·agent-harness.ts:154](../oss/pi/packages/agent/src/harness/agent-harness.ts#L154)（`capturedModel?: ModelIdentity`——configured 与 captured 分离）
 - **取什么 / 别抄什么**：取"换模请求立即受理、生效点在新 turn；在途 turn 用其启动时捕获的模型跑完"；我方模型身份已是二元组（T-2-01），provider 在装配注入（T-8-01）——本卡加"会话内模型注册表 + turn 启动捕获"层，不动 provider 适配层
@@ -72,6 +72,8 @@
 - **验收**：`npx vitest run src/kernel/model-switch.test.ts`——①turn 进行中发换模 → 在途 turn 全程用旧模型（captured 断言）、下一 turn 用新模型；②换模到未注册模型报类型化错误不静默；③换模后 configured 与 captured 两值可分别观测
 - **依赖**：无
 - **风险 / 未知**：多 provider 共存时的注册表来源（装配注册 vs 配置发现）——P1 先装配注册，J12 选择器留后续批次
+- **偏离 / 建议**：①协议 wire 的 identity 用内联 `{provider, modelId}` 形状而非 `ModelIdentity` interface 引用——`AgentRequest` 的 JsonValue 型证闸门（`AssertNever`）要求隐式索引签名，interface 不满足该规则；结构与 ModelIdentity 等同，消费方零转换；②换模状态不落事件：J6 最小面驻进程内存，`model/switch` 事件是 T-P1-06 词汇表扩展（14→15）的落点；captured 为**单一槽位**（在途 turn 语义，单会话单 loop），不养每 turn 一条的历史——换模历史事实由流内事件承载（不变量 1 的同构推论）；③loop 捕获时点在 turn/start 落盘**前**——装配侧坏状态（身份未注册）在污染事件流前爆出；④REPL `/model` 命令不在本卡面（协议/owner-port/装配三层已通），UX 面随 T-P1-05/06 或 CLI 批次；⑤"loop 每轮启动从捕获值取 provider"落为 loop deps 的 `modelForTurn?` 可选注入——未启用换模的装配零行为变化（P0 回归用例钉死）；⑥request/header 的 config 改记 payload.identity（捕获后的身份）——在途换模"生效点在新 turn"的事件证据就在 header 的身份变化里
+- **完成记录**：2026-09-25。产出 `src/kernel/model-switch.ts`（ModelSwitchService：configured getter / switch 受理 / captureForTurn 捕获 / capturedFor 观测 / ModelNotRegisteredError code=MODEL_NOT_REGISTERED）+ `loop.ts` 的 `modelForTurn?`（turn 启动捕获存 turnModel 字段，runStep/callModel/header 全走捕获值）+ `agent-protocol.ts` 加 `model/switch` 命令（REQUEST_TYPES 闭集 + identity 非空校验 + JsonValue 型证自动覆盖）+ `owner-port.ts` 加同名命令变体（handler 可选，同 stop_generation 先例）+ `assembly.ts` 的 `models`/`initialIdentity` 选项（initialIdentity 无注册表 = 装配拒绝启动）+ `agent-process.ts` 协议 case（未装配→MODEL_SWITCH_UNAVAILABLE、未注册→MODEL_NOT_REGISTERED 类型化 error 行）。验收：`npx vitest run src/kernel/model-switch.test.ts` → **9 passed**：①loop 级 turn1 流中途换模 → turn1 两个 step 的 request/header 全是 m1（captured 断言的事件侧面）、内容 A#1/A#2，turn2 header m2、内容 B#1；②未注册 → ModelNotRegisteredError 且 configured 不动（受理原子性）；③configured 与 capturedFor 分别可观测 + 协议级全链 3 用例（合法换模下一 turn 生效 / 未注册 error 行 / 未装配 UNAVAILABLE）。连带 agent-protocol.test +1、owner-port.test +2（闭集分发与可选 handler）。全量 `npx vitest run` **515 passed / 1 skipped**，`npx tsc --noEmit` 干净，`count-features.sh` = 310 不变。
 
 #### T-P1-05 · J8/J11 · 换模事务性与四态状态机 `[ ]`
 - **依据需求**：J8（P1）· J11（P1）

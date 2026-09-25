@@ -92,6 +92,29 @@ describe("agent-protocol —— T9 可序列化协议", () => {
     );
   });
 
+  it("decodeRequest：model/switch（J6）identity 校验——非空 provider/modelId", () => {
+    expect(
+      decodeRequest('{"type":"model/switch","identity":{"provider":"openai","modelId":"m2"}}'),
+    ).toEqual({
+      type: "model/switch",
+      identity: { provider: "openai", modelId: "m2" },
+    });
+    // 外部输入逐项校验：缺 identity / 空 provider / 空 modelId / 非对象
+    expect(() => decodeRequest('{"type":"model/switch"}')).toThrow(/identity/);
+    expect(() =>
+      decodeRequest('{"type":"model/switch","identity":{"provider":"","modelId":"m"}}'),
+    ).toThrow(/identity/);
+    expect(() =>
+      decodeRequest('{"type":"model/switch","identity":{"provider":"p","modelId":""}}'),
+    ).toThrow(/identity/);
+    expect(() =>
+      decodeRequest('{"type":"model/switch","identity":"openai:m2"}'),
+    ).toThrow(/identity/);
+    // JsonValue 往返（wire 面可序列化）
+    const req = { type: "model/switch", identity: { provider: "p", modelId: "m" } };
+    expect(decodeRequest(JSON.stringify(req))).toEqual(req);
+  });
+
   it("decodeMessage：error 校验与未知类型拒绝", () => {
     expect(decodeMessage('{"type":"error","code":"X","message":"m"}')).toEqual({
       type: "error",

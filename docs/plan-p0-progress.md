@@ -73,7 +73,8 @@
 | 2026-09-25 | T-8-05 | （汇编卡，§8 十条） | （本次 commit） | 十条逐项执行（见「P0 终验收记录」） | 十条全过：①11 passed+smoke SQLite 复证 ②45 passed ③21 passed/1 skipped（符号链接→人工确认）④8 passed ⑤4 passed+config CLEAN ⑥10.1ms<200ms ⑦冷启动 283.3/273ms、RSS 47.1MB、Token 省 94.3% ⑧17/17 exit 0 ⑨548 链接 0 失效 ⑩310 与 §5 一致 |
 | 2026-09-25 | T-P1-01 | C46 | `b747dc9` | `npx vitest run src/policy/exit-guard.test.ts` | 10 passed；LIMITATIONS #7 旁路复现转绿（用户层 allow 先匹配压过链裁决→出口级仍 deny）；bash 虚拟写通道（>/>>/大小写/$VAR 段命中/cd 相对目标）+ write/edit 回归 + revalidator 出口同位（C46×C57 共存）；protected-names 拆分防循环依赖；全量 487 passed，tsc 干净（P1 批次 1 首卡，卡在 docs/plan-p1.md） |
 | 2026-09-25 | T-P1-02 | C22/C24/G5 | `2fcf0e4` | `npx vitest run src/policy/rule-scope.test.ts src/cli/cli.test.ts` | rule-scope 4 passed（turn-override endTurn 失效）+ CLI 级联 2 用例（--session 同规则免再问/once 对照再问）+ feedback 落 L2 审计；createSessionApprovalModule 装配接线（T-8-01 偏离⑤关闭）；证伪 grep 写文件 0 行；全量 494 passed，tsc 干净 |
-| 2026-09-25 | T-P1-03 | C49/C45 | （本次 commit） | `npx vitest run src/policy/ceiling-exit.test.ts` | 9 passed；enforceCeiling 出口级（gate/revalidator 同位，用户 allow 被上限收窄→零执行）+ intersectAllProfiles 折叠（opaque 即抛拒启动）+ linter 装配常开（policy-lint 警告可检索）；无 profiles 默认装配零行为变化；全量 503 passed，tsc 干净——**C22/C46 权限聚合组（3 卡）收官** |
+| 2026-09-25 | T-P1-03 | C49/C45 | `cd6c29c` | `npx vitest run src/policy/ceiling-exit.test.ts` | 9 passed；enforceCeiling 出口级（gate/revalidator 同位，用户 allow 被上限收窄→零执行）+ intersectAllProfiles 折叠（opaque 即抛拒启动）+ linter 装配常开（policy-lint 警告可检索）；无 profiles 默认装配零行为变化；全量 503 passed，tsc 干净——**C22/C46 权限聚合组（3 卡）收官** |
+| 2026-09-25 | T-P1-04 | J6/J7 | （本次 commit） | `npx vitest run src/kernel/model-switch.test.ts` | 9 passed；①turn1 流中途换模→在途两 step request/header 全旧身份、turn2 新模型（captured 事件侧面断言）；②未注册 MODEL_NOT_REGISTERED 类型化错误且 configured 不动；③configured/captured 分别观测；协议级全链 3 用例（合法换模下一 turn 生效/未注册 error 行/未装配 UNAVAILABLE）+ 闭集型证；全量 515 passed，tsc 干净——**J6 换模组首卡** |
 
 ---
 

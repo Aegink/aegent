@@ -3,7 +3,8 @@
  * （语言边界即进程边界的 wire 面）。
  *
  * 消息形状（stdio JSON 行协议：一行一条 JSON，`\n` 分隔）：
- *   父 → 子  AgentRequest ：prompt / cancel / revert / approve / dispose
+ *   父 → 子  AgentRequest ：prompt / cancel / revert / approve /
+ *                           model/switch（J6）/ dispose
  *   子 → 父  AgentMessage ：ready / accepted / event / approval_requested /
  *                           approval_settled / reverted / idle / error
  *
@@ -52,6 +53,13 @@ export type AgentRequest =
       /** C24：审批反馈，落 L2 审计记录。 */
       feedback?: string;
     }
+  | {
+      /** J6 运行时换模（T-P1-04）：立即受理，生效点在新 turn。identity
+       * 用内联形状（wire 可序列化型证要求；结构等同 models/identity 的
+       * ModelIdentity，消费方零转换）。 */
+      type: "model/switch";
+      identity: { provider: string; modelId: string };
+    }
   | { type: "dispose" };
 
 /** 子 → 父。 */
@@ -81,7 +89,14 @@ export class ProtocolError extends Error {
   }
 }
 
-const REQUEST_TYPES = new Set(["prompt", "cancel", "revert", "approve", "dispose"]);
+const REQUEST_TYPES = new Set([
+  "prompt",
+  "cancel",
+  "revert",
+  "approve",
+  "model/switch",
+  "dispose",
+]);
 const CANCEL_KINDS = new Set(["user", "parent", "disposed", "hook", "legacy"]);
 
 /** 单行 JSON 行数上限（防呆，不设复杂流控；超长即协议错误）。 */
@@ -115,6 +130,7 @@ export function decodeRequest(line: string): AgentRequest {
     reason?: unknown;
     scope?: unknown;
     feedback?: unknown;
+    identity?: unknown;
   };
   if (!REQUEST_TYPES.has(req.type)) {
     throw new ProtocolError("PROTOCOL_UNKNOWN_REQUEST", `未知请求类型 ${req.type}`);
@@ -172,6 +188,31 @@ export function decodeRequest(line: string): AgentRequest {
       ...(typeof req.reason === "string" ? { reason: req.reason } : {}),
       ...(req.scope !== undefined ? { scope: req.scope } : {}),
       ...(typeof req.feedback === "string" ? { feedback: req.feedback } : {}),
+    };
+  }
+  if (req.type === "model/switch") {
+    // J6：identity 的 provider/modelId 必须是非空字符串（J4 的 modelIdentity
+    // 同款校验——wire 面的重复校验是特性，子进程把 stdin 当不可信输入）。
+    const identity = req.identity as
+      | { provider?: unknown; modelId?: unknown }
+      | null
+      | undefined;
+    if (
+      typeof identity !== "object" ||
+      identity === null ||
+      typeof identity.provider !== "string" ||
+      identity.provider === "" ||
+      typeof identity.modelId !== "string" ||
+      identity.modelId === ""
+    ) {
+      throw new ProtocolError(
+        "PROTOCOL_MALFORMED",
+        "model/switch 需要 identity（provider/modelId 均为非空字符串）",
+      );
+    }
+    return {
+      type: "model/switch",
+      identity: { provider: identity.provider, modelId: identity.modelId },
     };
   }
   return { type: "dispose" };

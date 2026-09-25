@@ -129,4 +129,31 @@ describe("N6 · 命令闭集与 stop_generation", () => {
     expect(err?.code).toBe(OWNER_NOT_LEASE_HOLDER);
     expect(stopped()).toBeUndefined();
   });
+
+  it("model/switch 命令到达 handler（J6 换模的 owner 入口，T-P1-04）", async () => {
+    const switched: { provider: string; modelId: string }[] = [];
+    const port = new OwnerCommandPort({
+      respondPermission: async () => {},
+      modelSwitch: (identity) => {
+        switched.push(identity);
+      },
+    });
+    const lease = port.acquireLease("cli");
+    await port.requestOwnerCommand(lease, {
+      type: "model/switch",
+      identity: { provider: "openai", modelId: "m2" },
+    });
+    expect(switched).toEqual([{ provider: "openai", modelId: "m2" }]);
+  });
+
+  it("model/switch 在未提供 handler 时静默跳过（与 stop_generation 同款可选语义）", async () => {
+    const port = new OwnerCommandPort({ respondPermission: async () => {} });
+    const lease = port.acquireLease("cli");
+    await expect(
+      port.requestOwnerCommand(lease, {
+        type: "model/switch",
+        identity: { provider: "openai", modelId: "m2" },
+      }),
+    ).resolves.toBeUndefined();
+  });
 });

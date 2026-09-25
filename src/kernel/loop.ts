@@ -20,7 +20,9 @@
  *
  * 模型调用直接消费 T-2-02 的 ModelProvider/StreamChunk；重试由装配处套
  * T-2-03 的 withRetry（ProviderHttpError 只在响应头阶段抛、流产出后不重试，
- * 该语义已钉死在 retry.test）——loop 内不设第二条重试路径。
+ * 该语义已钉死在 retry.test）——loop 内不设第二条重试路径。模型身份每
+ * turn 启动捕获一次（J6/J7 的 modelForTurn，T-P1-04）：在途换模生效点在
+ * 新 turn，本 turn 全程用捕获值跑完。
  */
 
 import type { ModelIdentity } from "../models/identity.js";
@@ -179,6 +181,17 @@ export interface AgentLoopDeps {
     turnEnd?: ReadonlyArray<ChainLayer<LoopContext, TurnEndPayload, void>>;
   };
   /**
+   * J6/J7 每轮模型解析（T-P1-04 装配接线）：turn 启动时调用一次，返回值
+   * 即本 turn 全程的 provider 与 identity——在途换模只改装配侧 configured，
+   * 本 turn 用启动时捕获值跑完（生效点在新 turn，pi 的 captured/configured
+   * 分离同款）。缺省 undefined = 固定用 provider/identity（P0 单模型装配
+   * 零行为变化）。
+   */
+  modelForTurn?(turn: number): {
+    provider: ModelProvider;
+    identity: ModelIdentity;
+  };
+  /**
    * PreTurn 压缩挂点（T-8 装配，zcode PreRequest 同款）：本 turn 的
    * turn/start + user/message 已落盘（新 prompt 已入流）、首次模型请求尚未
    * 发出时调用——装配处在此跑本地溢出判定与 PreTurn 相位压缩（F9/F21）。
@@ -202,6 +215,15 @@ export class AgentLoop {
    * 每个 turn 一份新信号：runTurn 开始时重置，turn/end 发布前清槽。
    */
   private cancelCause: CancelCause | null = null;
+  /**
+   * 本 turn 的捕获值（J7）：runTurn 启动时从 modelForTurn 取（缺省退化为
+   * 固定 provider/identity），本 turn 全程不变——runStep/callModel 只读它，
+   * 不回读 deps.provider/identity。
+   */
+  private turnModel: {
+    provider: ModelProvider;
+    identity: ModelIdentity;
+  };
   private readonly toolChain: ChainExecutor<
     LoopContext,
     ToolCallPayload,
@@ -216,6 +238,9 @@ export class AgentLoop {
 
   constructor(private readonly deps: AgentLoopDeps) {
     this.$ = { sessionId: deps.sessionId };
+    // 缺省捕获 = 固定 provider/identity（P0 行为）；runTurn 启动时按
+    // modelForTurn 覆盖（J7）。
+    this.turnModel = { provider: deps.provider, identity: deps.identity };
     this.toolChain = composeChain({
       point: "toolCall",
       layers: deps.layers?.toolCall ?? [],
@@ -262,6 +287,11 @@ export class AgentLoop {
     const turn = this.nextTurnNumber();
     // 新 turn 一份新信号：丢弃 idle 期迟到的取消（不武装本 turn 之前的工作）
     this.cancelCause = null;
+    // J7 捕获：turn 启动即定本 turn 的模型（此后在途换模只影响后续 turn）。
+    // 捕获在 turn/start 落盘前——装配侧坏状态在此爆出，不污染事件流。
+    this.turnModel = this.deps.modelForTurn
+      ? this.deps.modelForTurn(turn)
+      : { provider: this.deps.provider, identity: this.deps.identity };
     store.append(sessionId, [
       { type: "turn/start", turn },
       { type: "user/message", turn, message: { content: prompt }, source: "user" },
@@ -331,7 +361,7 @@ export class AgentLoop {
     const payload: ModelRequestPayload = {
       turn,
       step,
-      identity: this.deps.identity,
+      identity: this.turnModel.identity,
       messages: this.buildMessages(),
       ...(this.deps.tools ? { tools: this.deps.tools } : {}),
     };
@@ -485,13 +515,18 @@ export class AgentLoop {
    * （不为记录失败而伪造模型消息，l0-events.md §2.2），再作硬退出上抛。
    */
   private async callModel(payload: ModelRequestPayload): Promise<ModelStepOutput> {
-    const { store, sessionId, identity, tools } = this.deps;
+    const { store, sessionId, tools } = this.deps;
     store.append(sessionId, [
       {
         type: "request/header",
         turn: payload.turn,
         step: payload.step,
-        config: { provider: identity.provider, modelId: identity.modelId },
+        // 记录本 turn 捕获值（J7）——换模生效点在新 turn 的事件证据就在
+        // 这里：在途 turn 的 header 保持旧身份，新 turn 起变为新身份。
+        config: {
+          provider: payload.identity.provider,
+          modelId: payload.identity.modelId,
+        },
         // ChatTool 是 interface（无隐式索引签名），展开成匿名字面量过 JsonValue
         ...(tools
           ? {
@@ -510,7 +545,7 @@ export class AgentLoop {
     const calls = new Map<string, { id: string; name: string; arguments: string }>();
     let usage: TokenUsage | undefined;
     try {
-      for await (const chunk of this.deps.provider.streamChat({
+      for await (const chunk of this.turnModel.provider.streamChat({
         identity: payload.identity,
         messages: payload.messages,
         ...(tools ? { tools } : {}),

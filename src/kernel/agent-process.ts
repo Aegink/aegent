@@ -34,6 +34,7 @@ import type { ModelIdentity } from "../models/identity.js";
 import { InMemoryEventStorage, type EventStorage, SessionStore } from "../session/store.js";
 import { Projector } from "../session/project.js";
 import { createChildAssembly, type ChildAssembly, type ChildAssemblyOptions } from "./assembly.js";
+import { ModelNotRegisteredError } from "./model-switch.js";
 import { registerBuiltinTools } from "./tools/builtin/index.js";
 import { NodeExecutionEnv } from "./tools/env.js";
 import { ToolRegistry } from "./tools/registry.js";
@@ -155,6 +156,9 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
     executeTool: (call) => toolRegistry.dispatch(call),
     decideTurn: assembly ? assembly.wrapDecideTurn(decideTurnBase) : decideTurnBase,
     queue,
+    // J6/J7：装配启用换模时，loop 每轮启动从捕获值取 provider/identity
+    //（在途换模生效点在新 turn）；未启用时缺省固定 provider/identity。
+    ...(assembly?.modelForTurn ? { modelForTurn: assembly.modelForTurn } : {}),
     ...(assembly
       ? {
           layers: assembly.layers,
@@ -276,6 +280,32 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
               message: e instanceof Error ? e.message : String(e),
             });
           });
+        return;
+      }
+      case "model/switch": {
+        // J6 换模：立即受理（configured 更新，生效点在新 turn——在途轮用
+        // 启动时捕获值跑完，行为证据经后续 request/header 的身份变化可见）。
+        // 失败回类型化 error 行：未注册 = MODEL_NOT_REGISTERED（不静默）。
+        if (!assembly?.handleModelSwitch) {
+          send({
+            type: "error",
+            code: "MODEL_SWITCH_UNAVAILABLE",
+            message: "子进程未装配模型注册表（最小/单模型装配无换模能力）",
+          });
+          return;
+        }
+        try {
+          assembly.handleModelSwitch(req.identity);
+        } catch (e) {
+          send({
+            type: "error",
+            code:
+              e instanceof ModelNotRegisteredError
+                ? e.code
+                : "MODEL_SWITCH_FAILED",
+            message: e instanceof Error ? e.message : String(e),
+          });
+        }
         return;
       }
       case "dispose":
