@@ -1,1 +1,3 @@
 Execute a bash command in the current working directory. Returns combined stdout and stderr plus the exit code. Accepts an optional timeout in seconds.
+
+Output is truncated to 2000 lines or 51200 bytes (whichever is hit first); when truncated, the full output is written to a file and its path is appended at the end.

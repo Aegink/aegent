@@ -24,8 +24,9 @@ import path from "node:path";
 import type { ChatTool } from "../../models/provider.js";
 import type { JsonRecord, JsonValue } from "../events.js";
 import type { ToolExecutionResult } from "../loop.js";
-import type { ExecutionEnv } from "./env.js";
 import type { ToolContext } from "./context.js";
+import type { ExecutionEnv } from "./env.js";
+import { boundedOutput } from "./truncate.js";
 
 /** 一个工具的注册定义：执行体在此，描述在 descriptions/<name>.txt（B2）。 */
 export interface ToolDef {
@@ -58,6 +59,8 @@ export class ToolRegistry {
   private readonly defs = new Map<string, ToolDef>();
   private readonly descriptionsDir: string;
   private readonly env: ExecutionEnv | undefined;
+  private readonly sessionId: string | undefined;
+  private readonly spillDir: string | undefined;
 
   /**
    * @param descriptionsDir 描述目录；缺省为同目录的 `descriptions/`。
@@ -65,12 +68,21 @@ export class ToolRegistry {
    * 无 diff"以此为机验形式。
    * @param env 执行环境（D4）：装配处注入 NodeExecutionEnv；缺省 undefined
    * 时执行型工具（bash）落 EXECUTION_ENV_MISSING。
+   * @param sessionId / spillDir 喂给 B5/B10 的出口截断（Q13 标记需要会话
+   * 身份）；缺省时标记记 "unknown-session"、spill 落系统临时目录。
    */
-  constructor(options?: { descriptionsDir?: string; env?: ExecutionEnv }) {
+  constructor(options?: {
+    descriptionsDir?: string;
+    env?: ExecutionEnv;
+    sessionId?: string;
+    spillDir?: string;
+  }) {
     this.descriptionsDir =
       options?.descriptionsDir ??
       path.join(path.dirname(fileURLToPath(import.meta.url)), "descriptions");
     this.env = options?.env;
+    this.sessionId = options?.sessionId;
+    this.spillDir = options?.spillDir;
   }
 
   /** 注册一个工具；重名是装配错误，立刻失败。 */
@@ -118,9 +130,10 @@ export class ToolRegistry {
   }
 
   /**
-   * 链底 terminal 的实现：解析参数 → 查表 → 构造 ToolContext → 执行。
-   * 返回 isError 而非抛错的两种情况（未知工具 / 参数坏）保证 call/result
-   * 配平；执行体自身的崩溃原样上抛交 loop 兜底（分层见头注释）。
+   * 链底 terminal 的实现：解析参数 → 查表 → 构造 ToolContext → 执行 →
+   * 出口截断（B5/B10/B11，boundOutput）。返回 isError 而非抛错的两种情况
+   * （未知工具 / 参数坏）保证 call/result 配平；执行体自身的崩溃原样上抛
+   * 交 loop 兜底（分层见头注释）。
    */
   async dispatch(call: ToolDispatchCall): Promise<ToolExecutionResult> {
     const def = this.defs.get(call.name);
@@ -147,7 +160,44 @@ export class ToolRegistry {
       toolCallId: call.callId,
       ...(this.env !== undefined ? { env: this.env } : {}),
     };
-    return def.execute(args, ctx);
+    const result = await def.execute(args, ctx);
+    return await this.boundOutput(call, result);
+  }
+
+  /**
+   * B5/B10：统一出口的输出截断——所有工具一次接入（工具本体零感知）。
+   * 截断事实写 meta（truncated/truncatedBy/spillPath，opencode 同款形状），
+   * 与工具自带的 meta 字段合并；完整输出路径在 content 尾部告知模型。
+   */
+  private async boundOutput(
+    call: ToolDispatchCall,
+    result: ToolExecutionResult,
+  ): Promise<ToolExecutionResult> {
+    if (typeof result.content !== "string" || result.content === "") return result;
+    const bounded = await boundedOutput(result.content, {
+      sessionId: this.sessionId ?? "unknown-session",
+      tool: call.name,
+      callId: call.callId,
+      ...(this.spillDir !== undefined ? { spillDir: this.spillDir } : {}),
+    });
+    if (!bounded.truncated) return result;
+    const baseMeta: JsonRecord =
+      result.meta !== undefined &&
+      typeof result.meta === "object" &&
+      !Array.isArray(result.meta) &&
+      result.meta !== null
+        ? result.meta
+        : {};
+    return {
+      ...result,
+      content: bounded.text,
+      meta: {
+        ...baseMeta,
+        truncated: true,
+        truncatedBy: bounded.truncatedBy ?? "bytes",
+        spillPath: bounded.spilled?.path ?? "",
+      },
+    };
   }
 }
 

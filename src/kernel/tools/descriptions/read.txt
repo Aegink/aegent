@@ -1,1 +1,3 @@
 Read the contents of a text file. Supports offset (1-indexed start line) and limit (max lines) for reading large files in chunks; a continuation hint with the next offset is appended when more lines remain. Output is the raw file content.
+
+Output is truncated to 2000 lines or 51200 bytes (whichever is hit first); when truncated, the full output is written to a file and its path is appended at the end.

@@ -1,1 +1,2 @@
 List files matching a glob pattern (supports ** for directories, * within a segment, ? for a single character). Searches under path (defaults to the current working directory) and returns absolute paths, sorted. Results are capped; refine the pattern if truncated.
+When output is long it is truncated to 2000 lines or 51200 bytes (whichever is hit first); the full output is written to a file and its path is appended at the end.
