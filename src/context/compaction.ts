@@ -30,7 +30,7 @@ import { buildChatMessages, effectiveEvents } from "../session/messages.js";
 import { latestBalancedCutAtOrBefore } from "./tool-pairing.js";
 import type { ChatMessage } from "../models/provider.js";
 
-/** 压缩请求：溢出的两种来源（本地提前判定 / provider 拒绝）各自带齐上下文。 */
+/** 压缩请求：溢出的两种来源（本地提前判定 / provider 拒绝）+ 换模压缩（F24）各自带齐上下文。 */
 export type CompactionRequest =
   | {
       /** 本地估算判溢出（发请求前的 A4 面，F10 的"provider 在返回 usage 前拒绝"之前）。 */
@@ -43,7 +43,28 @@ export type CompactionRequest =
       reason: "provider-overflow";
       /** provider 错误的展示消息（C14：判据在 overflow 识别层，这里只留展示面）。 */
       message: string;
+    }
+  | {
+      /** 换更小上下文模型先压缩（F24 ModelDownshift；换模本体 J6 是 P1）。 */
+      reason: "model-downshift";
+      targetModel: { provider: string; modelId: string };
+      targetContextWindow: number;
     };
+
+/**
+ * 事件 `compaction.reason` 的词表映射（codex·compact_model_fallback.rs:27-30 的
+ * CompactionReason 序列化风格）：两种溢出源在事件面共用 codex 的 "context_limit"
+ * （区分在 request 类型上）；换模压缩 = "model_downshift"（F24 验收字面值）。
+ */
+export function compactionReasonOf(request: CompactionRequest): string {
+  switch (request.reason) {
+    case "model-downshift":
+      return "model_downshift";
+    case "local-overflow":
+    case "provider-overflow":
+      return "context_limit";
+  }
+}
 
 /** 本地判定 → 压缩请求；未溢出返回 null（不压，正常发请求）。 */
 export function compactionRequestFromVerdict(
@@ -195,7 +216,8 @@ export class CompactionEngine {
       invocation,
     });
 
-    // 生命周期第 2 段：compaction 事件落盘（词汇表 §3.2#11：整值载荷）。
+    // 生命周期第 2 段：compaction 事件落盘（词汇表 §3.2#11：整值载荷；reason
+    // 按 codex CompactionReason 词表，F24 的换模压缩可从事件流回放）。
     const [committed] = store.append(sessionId, [
       {
         type: "compaction",
@@ -203,6 +225,7 @@ export class CompactionEngine {
         summary,
         retainedTail,
         tokensBefore,
+        reason: compactionReasonOf(input.request),
       },
     ]);
     const seq = committed!.seq;

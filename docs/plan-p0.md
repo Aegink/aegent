@@ -825,7 +825,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①增量状态机落成纯函数式 advancePairing（状态显式传、seq 连续性校验防跳段假配平；dsh 的 WeakMap+generation cache 是其表面重写场景的等价物，我方事件源 append 流不需要）；②compaction.chooseRetainedTail 接入方式 = 候选 user/system 边界经 latestBalancedCutAtOrBefore 验证/回退（保守方向：少摘要不劈对），与 T-7-02 卡注"用配平状态机替换"的差别是**组合**而非替换——user 边界策略仍是候选来源；③配平 delta 与 dsh 差异：我方 tool/call 与 tool/result 是独立事件（dsh 的 tool-call 内嵌 assistant 块），delta 直接 +1/-1；④expectPaired 复用点 = 切点前子流的配平断言（O7 断言器消费面）
 - **完成记录**：验收 `npx vitest run src/context/tool-pairing.test.ts` → 7 passed（tsc 干净，src/context 47 passed）。①孤立 result（corrupt surface）→ ToolPairingError 带 seq（增量/全量同抛）；断档推进抛错防假配平；②流尾悬挂 call：压缩 retainedTail 自动回退到 call 之前（悬挂 call+新 user 保留原文，少摘要不劈对），切点前子流无开着的 call 且过 expectPaired；③伪造 step 标记（result 谎称 step 42）切点仍按 callId 内容现算正确——对 step 标记免疫的内容现算证据
 
-#### T-7-06 · F24 · 换更小上下文模型先压缩（ModelDownshift） `[ ]`
+#### T-7-06 · F24 · 换更小上下文模型先压缩（ModelDownshift） `[x]`
 - **依据需求**：F24（P0）
 - **上游首选参考**：[codex·compact_model_fallback.rs:29](../oss/codex/codex-rs/core/src/compact_model_fallback.rs)（`CompactionReason::ModelDownshift => "model_downshift"`——`requirements.md` 原锚点曾误写 compact_token_budget.rs，已回修为此条；P0 只做换模时的 reason 标记与先压缩判定，运行时换模本体 J6 是 P1）
 - **取什么 / 别抄什么**：取 reason 枚举值与"检测到目标窗口更小 → 先压再切"的顺序；换模机制本身不实现
@@ -834,8 +834,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/context/downshift.test.ts`——小上下文目标 + 超限投影 → 压缩先于"切换"发生（次序断言），compaction 事件 reason=model_downshift
 - **依赖**：T-7-02、T-2-01
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①**词汇表 CompactionEvent 加可选 `reason?: string` 字段**（验收要求 compaction 事件带 reason，而 T-1 定稿的载荷无此位）——最小兼容扩展（旧流缺省读作 context_limit，C14 JSON 安全），值域取 codex CompactionReason 序列化词表（"context_limit"/"model_downshift"，user_requested/comp_hash_changed 留 P1/P2 槽位，注释已记）；先例：E4 的 session/revert 也是词汇表扩展经追认。②request 词表 kebab（"model-downshift"）与事件词表 snake（"model_downshift"）经 compactionReasonOf 映射桥接——request 面区分三源、事件面对齐 codex；③判定口径 = tokens > 目标窗口（严格大于，恰好装下不压）；相位固定 PreTurn（模型身份是请求级设置，MidTurn 途中不换）；④换模本体 J6 留 P1，"切换"由调用方在 maybeDownshift resolve 后执行
+- **完成记录**：验收 `npx vitest run src/context/downshift.test.ts` → 4 passed（tsc 干净）。①超限投影（totalTokens=9000 > 窗口 8000）→ maybeDownshift 内压缩 await 完成才 resolve，调用方其后才 switch（日志次序 ["compaction-entry","switch"]）；compaction 事件 reason="model_downshift"；②装得下 → needsCompaction=false 零事件零压缩入口调用；③无 lastUsage 本地估算兜底判定；④边界 tokens==window 不压；旁证：压缩后新窗口 = 摘要 + 保留尾部显著收缩
 
 #### T-7-07 · F28 · 压缩抖动硬失败 `[ ]`
 - **依据需求**：F28（P0）

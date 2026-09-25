@@ -286,6 +286,14 @@ export interface CompactionEvent extends EventBase {
   /** 压缩前完整 token 计数（E12：整值，不是 delta）。 */
   tokensBefore: number;
   usage?: TokenUsage;
+  /**
+   * 压缩触发原因的机器可读标记（F24/T-7-06；codex·compact_model_fallback.rs:27-30
+   * 的 CompactionReason 序列化词表）："context_limit"（溢出触发——本地判定或
+   * provider 拒绝两源共用，codex 的 ContextLimit）| "model_downshift"（换更小
+   * 上下文模型先压缩，F24）。user_requested / comp_hash_changed 是 P1/P2 槽位。
+   * 可选字段向后兼容：早期流缺省读作 context_limit。
+   */
+  reason?: string;
 }
 
 export interface CheckpointEvent extends EventBase {
