@@ -124,8 +124,14 @@ export function createToolGateLayer(
       if (answer.action === "allow") {
         return next({ ...e, arguments: JSON.stringify(args) });
       }
+      const askReason = verdict.reason ?? "默认询问（无匹配策略，不变量 3）";
       return deniedResult(
-        { action: "deny", reason: answer.reason ?? "审批人拒绝" },
+        {
+          action: "deny",
+          reason: answer.reason
+            ? `审批拒绝：${answer.reason}（原询问：${askReason}）`
+            : `审批未通过（原询问：${askReason}）`,
+        },
         TOOL_POLICY_DENIED,
       );
     } catch (error) {

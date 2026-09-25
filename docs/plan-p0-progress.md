@@ -46,7 +46,8 @@
 | 2026-09-25 | T-5-09 | C49 | `5db9d68` | `npx vitest run src/policy/intersect.test.ts` | 5 passed；可合成 CeilingProfile 逐工具 maxDecision 交集（复用 T-5-06 全序，3×3 穷举不放宽）；opaque 来源相遇抛 PermissionIntersectionError 含两来源名与原因（fail-closed）；纯函数交付，接线等 P1 多端 |
 | 2026-09-25 | T-5-10 | C51 | `3d125b6` | `npx vitest run src/policy/broker.test.ts` | 5 passed；缺省 DenyPermissionBroker 对任意 ask resolve deny 且 code=PERMISSION_BROKER_DENIED（deny 是合法结果非异常）；Manual 骨架复用 PendingApprovals（挂起/超时/宣告不重造）、timeoutMs 必填、dispose 透传 |
 | 2026-09-25 | T-5-11 | C57 | `bc667a4` | `npx vitest run src/policy/revalidate.test.ts` | 7 passed；伪造 approved/verdict/approvedBy 标记的调用执行点重算仍被拦（deny 与 abstain 都放不过）；链收到当前 sessionId+source 权威标识；registry.dispatch 增 guard 钩子（拒绝 isError TOOL_PERMISSION_DENIED 不执行不产生输出，放行传剥标记参数）；PolicyCall 扩权威标识字段 |
-| 2026-09-25 | T-5-12 | C9 | （本卡提交后回填） | `npx vitest run src/policy/gate.test.ts` | 10 passed；场景⑦ loop 级：注入文本经模型成为 bash 参数 → 危险库 stub 升 ask → 缺省 Deny broker 拒 → 工具零执行、tool/result isError、注入文本只在 user/assistant message 与 tool/call 数据位；gate=toolCall 点位 ChainLayer（loop 零改动），deny 不调 next 截断；abstain 按不变量 3 默认 ask；C46/C35/C48 全部过闸；verdictFromOutcome 并入规则原文增强可解释性 |
+| 2026-09-25 | T-5-12 | C9 | `86cef45` | `npx vitest run src/policy/gate.test.ts` | 10 passed；场景⑦ loop 级：注入文本经模型成为 bash 参数 → 危险库 stub 升 ask → 缺省 Deny broker 拒 → 工具零执行、tool/result isError、注入文本只在 user/assistant message 与 tool/call 数据位；gate=toolCall 点位 ChainLayer（loop 零改动），deny 不调 next 截断；abstain 按不变量 3 默认 ask；C46/C35/C48 全部过闸；verdictFromOutcome 并入规则原文增强可解释性 |
+| 2026-09-25 | T-5-13 | C10 | （本卡提交后回填） | `npx vitest run src/policy/dangerous-commands.test.ts` | 8 passed；三组起步模式（pi 原文正则）rm -rf/sudo/777 各升 ask 带模式名、大小写不敏感、ls 与普通 rm 不命中；清单冻结只追加（装配处加 fork-bomb 即生效）；gate 集成 rm -rf 拒绝且原询问理由透传到 tool/result；gate 改进：broker 拒绝保留原询问理由 |
 
 ---
 
