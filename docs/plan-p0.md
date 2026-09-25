@@ -744,7 +744,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①脱敏管道两层：**密钥正则恒开**（sk- 形态含 sk-proj- 连字符变体，字符集比卡面证伪模式更宽——掩码后必然不匹配证伪 grep）+ **用户原文开关**（redactUserContent 缺省 true = 隐私默认开，装配可关）。②用户原文的作用面是**约定字段** `userContent`（USER_CONTENT_FIELDS 闭集）——管道无法识别任意文本里的"原文"，约定"用户 prompt 原文只允许经该字段进日志"，放进 msg 属调用方违规（头注释声明）。③管道次序 = 先字段级掩码、再 JSON 序列化、再对整行过密钥正则——key 藏在 data 任意深度都掩得到。④落盘形状 = logDir 按日一文件、每行 JSON（ts/level/msg/data）；写失败吞错并降级 stderr 告警一次（日志失败不能带崩 agent）；sink/clock 可注入。⑤P0 不接线（T-8 L1/L3 消费），logs/ 目录由首次写惰性创建——卡面验收的 `logs/` grep 在装配前走 `|| echo CLEAN` 分支。
 - **完成记录**：2026-09-25。产出 `src/kernel/logger.ts`（createLogger + redactSecrets/redactUserFields 纯函数 + USER_CONTENT_FIELDS 闭集 + 按日文件 sink 容错）+ `logger.test.ts` 6 用例。验收：`npx vitest run src/kernel/logger.test.ts` → **6 passed**；①sk-… 与 sk-proj-… 整段掩码、data 深层 key 同掩、落盘文件过卡面证伪模式；②缺省 userContent 掩码原文不落盘（msg/ts/level 保留）、开关关后原文保留但 sk- 仍掩、约定字段闭集断言；③按日文件名与每行 JSON 形状断言。卡面第二段 `grep -rE "sk-…" logs/ || echo CLEAN` → **CLEAN**。全量 `npx vitest run` **376 passed / 1 skipped**，`npx tsc --noEmit` 干净。
 
-#### T-6-06 · D15 · 已启动的命令绝不自动重试 `[ ]`
+#### T-6-06 · D15 · 已启动的命令绝不自动重试 `[x]`
 - **依据需求**：D15（P0）
 - **上游首选参考**：[pi-desktop·ADR 0041:19](../oss/pi-desktop/docs/adr/0041-bounded-host-runtime-and-persistence-outbox.md)（"started commands are never automatically retried. Timed-out children…"——🔴 LGPL 只学行为）
 - **取什么 / 别抄什么**：幂等边界写进工具执行层：bash 工具的进程一旦 spawn，超时/错误**不重试**（重试只对"未启动"安全——模型重试需显式再次调用）
@@ -753,8 +753,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/kernel/tools/bash-retry-guard.test.ts`——注入超时的 bash 调用，重试层不发起第二次 spawn（计数断言）；错误信息含"命令已启动，不自动重试"
 - **依赖**：T-4-02、T-2-04
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①标记落 `meta.started`（与 T-4-05 exitCode 同一 meta 通道，不造第二套词汇）；**成功结果同样标记**（自动重发成功命令也是重复副作用），标记四态 = 成功/非零退出/超时（TOOL_TIMEOUT，env 已 kill）/未知失败（保守 fail-closed）。②分界函数 isSpawnFailure 白名单（ENOENT/EACCES/EAGAIN/EMFILE/ENFILE/ENOEXEC/E2BIG/ENAMETOOLONG）= ADR 的"transient spawn failures 可 bounded backoff"侧；清单外一律按已启动。③P0 没有工具自动重试层——本卡交付的是**契约**（标记 + assertRetryAllowed 检查点），测试里由"重试层消费者"角色实现 autoRetryLayer 演示拒绝语义；T-2-03 withRetry 是 provider 专用不通用，未来通用重试层落地时必须经此检查点（头注释声明）。④计数断言语义澄清：重试层**首次尝试合法**（须拿到结果才能检查标记），计数 = 初始 1 次 + 重试层首次 1 次 = 2、绝无第 3 次——"不发起第二次 spawn"指检查点之后。
+- **完成记录**：2026-09-25。产出 `src/kernel/tools/bash-retry-guard.ts`（markStarted/assertRetryAllowed/isSpawnFailure + RetryRefusedError{code:RETRY_REFUSED_STARTED}）+ bash 工具四态标记接线 + `bash-retry-guard.test.ts` 8 用例 + builtin.test 两条 meta 断言同步。验收：`npx vitest run src/kernel/tools/bash-retry-guard.test.ts` → **8 passed**；①超时调用：重试层 maxAttempts=3 只发起首次尝试即被拦（计数断言无第 3 次 spawn）、拒绝信息含"命令已启动，不自动重试"且 code=RETRY_REFUSED_STARTED；②可重试对照：EAGAIN spawn 失败无标记、重试层重发至成功（execCount=2）；③标记四态 + meta 合并防御 + isSpawnFailure 白名单原语用例。全量 `npx vitest run` **384 passed / 1 skipped**，`npx tsc --noEmit` 干净。
 
 ---
 

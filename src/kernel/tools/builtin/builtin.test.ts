@@ -170,9 +170,9 @@ describe("bash 工具（T-4-05 回填后：执行经 ExecutionEnv）", () => {
       command: "echo aegent-bash-ok",
     });
     expect(ok.isError).toBeUndefined();
-    // 输出原样转述（含尾换行不 trim）；截断属 T-4-06
+    // 输出原样转述（含尾换行不 trim）；截断属 T-4-06；started 为 D15 标记
     expect(ok.content).toBe("aegent-bash-ok\n");
-    expect(ok.meta).toEqual({ exitCode: 0 });
+    expect(ok.meta).toEqual({ exitCode: 0, started: true });
   }, 10_000);
 
   it("非零退出码 → isError + [exit code N] + meta.exitCode；空输出 → (no output)", async () => {
@@ -181,7 +181,7 @@ describe("bash 工具（T-4-05 回填后：执行经 ExecutionEnv）", () => {
     expect(failed.isError).toBe(true);
     expect(failed.content).toContain("oops");
     expect(failed.content).toContain("[exit code 7]");
-    expect(failed.meta).toEqual({ exitCode: 7 });
+    expect(failed.meta).toEqual({ exitCode: 7, started: true });
     const silent = await dispatch(registry, "bash", { command: "true" });
     expect(silent.isError).toBeUndefined();
     expect(silent.content).toBe("(no output)");

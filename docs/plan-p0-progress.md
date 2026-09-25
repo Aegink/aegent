@@ -55,7 +55,8 @@
 | 2026-09-25 | T-6-02 | D2 | `57e109d` | `npx vitest run src/sandbox/templates.test.ts` + `npm run build` | 5 passed；两档模板（on_request/never）可渲染且含命令分段说明（对齐 T-5-14 B 档实际行为）、切档内容互异；{{WRITABLE_ROOTS}} 全量替换且与 PathGuard.describeWritableRoots 联测；未知档位即抛；copy-assets 泛化后模板 md 进 dist（build 实测 4 项） |
 | 2026-09-25 | T-6-03 | D3 | `51abfc1` | `npx vitest run src/sandbox/network.test.ts` | 5 passed；deny 档字符串/URL/Request 全拒且真实请求零发生（NETWORK_DENIED 含目标 URL）；allow 档对 localhost 真端口放行 + 透传语义；deny 网络 × PathGuard 允许写组合验证独立一档；README 弱承诺声明机验在位（人工确认清单 D3 行仍待用户目检） |
 | 2026-09-25 | T-6-04 | D8 | `f53465a` | `npx vitest run src/sandbox/dpapi.test.ts` + config grep | 4 passed（真实 PowerShell 5.1 子进程）；protect→unprotect 往返一致（含中文载荷 base64 通道）；SecureKeyStore setKey→落盘 JSON 无明文 key（sk- 证伪）→getKey 往返；损坏 blob DPAPI_UNPROTECT_FAILED；config/ 不存在 → grep \|\| echo CLEAN；路线裁定 PowerShell（卡内偏离，未摘 dpapi.rs 代码故 THIRD_PARTY 无登记） |
-| 2026-09-25 | T-6-05 | D9 | （本卡） | `npx vitest run src/kernel/logger.test.ts` + logs grep | 6 passed；sk- 与 sk-proj- 变体整段掩码（data 深层同掩、恒开）；userContent 约定字段缺省掩码（开关可关、密钥恒掩）；按日文件每行 JSON、写失败降级不带崩；logs/ 不存在 → grep \|\| echo CLEAN |
+| 2026-09-25 | T-6-05 | D9 | `c5717dc` | `npx vitest run src/kernel/logger.test.ts` + logs grep | 6 passed；sk- 与 sk-proj- 变体整段掩码（data 深层同掩、恒开）；userContent 约定字段缺省掩码（开关可关、密钥恒掩）；按日文件每行 JSON、写失败降级不带崩；logs/ 不存在 → grep \|\| echo CLEAN |
+| 2026-09-25 | T-6-06 | D15 | （本卡） | `npx vitest run src/kernel/tools/bash-retry-guard.test.ts` | 8 passed；超时 bash 调用重试层不发起第二次重发（计数断言：初始+重试层首次=2、绝无第 3 次）且拒绝信息含"命令已启动，不自动重试"；started 标记四态（成功/非零/超时/未知失败）+ spawn 失败（ENOENT/EAGAIN）无标记可重试对照；builtin bash meta 断言同步 started |
 
 ---
 

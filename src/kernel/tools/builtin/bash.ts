@@ -11,6 +11,12 @@
  * 方言边界见 path-guard 头注释 LIMITATIONS。守卫拒绝发生在 env 启动命令
  * 之前（被拒命令未启动——D15 的幂等前提）。
  *
+ * 重试幂等边界（T-6-06/D15）：进程一旦 spawn（env.exec 已发出），结果
+ * 一律带 started 标记（成功/非零退出/超时/未知失败皆是）——自动重试层
+ * 见标记必须拒绝（bash-retry-guard.assertRetryAllowed）；只有 spawn 本身
+ * 失败（ENOENT 等，命令未启动）无标记、可安全重试。模型要重复执行请
+ * 显式再次调用。
+ *
  * 语义：退出码非 0 → isError（模型可感知失败）；超时 → TOOL_TIMEOUT
  * （J22/T-2-04 词汇，env 实现层 kill）；退出码同时落 meta.exitCode
  * （tool/result.meta 既有形状，不造第二套词汇）。
@@ -21,6 +27,7 @@ import type { ToolExecutionResult } from "../../loop.js";
 import { TimeoutError } from "../../timeout.js";
 import { analyzeShellCommand } from "../../../policy/shell-semantics.js";
 import { PathGuard, PathGuardError } from "../../../sandbox/path-guard.js";
+import { isSpawnFailure, markStarted } from "../bash-retry-guard.js";
 import type { ToolContext } from "../context.js";
 import type { ToolDef } from "../registry.js";
 import { toolError } from "./util.js";
@@ -89,20 +96,35 @@ export function createBashTool(options: { pathGuard: PathGuard }): ToolDef {
           command,
           timeout !== undefined ? { timeoutMs: timeout * 1000 } : undefined,
         );
-        return toResult(result);
+        // D15：命令已启动——成功结果同样标记（自动重发会产生重复副作用）
+        return markStarted(toResult(result));
       } catch (e) {
         if (e instanceof TimeoutError) {
-          return toolError(
-            "BashError",
-            e.code,
-            `命令在 ${String(timeout ?? "?")} 秒内未完成，已被终止`,
-            "execution timed out",
+          // 子进程已启动后被 kill（env 实现层回收）——已启动，标记
+          return markStarted(
+            toolError(
+              "BashError",
+              e.code,
+              `命令在 ${String(timeout ?? "?")} 秒内未完成，已被终止`,
+              "execution timed out",
+            ),
           );
         }
-        return toolError(
-          "BashError",
-          (e as NodeJS.ErrnoException).code ?? "EXEC_FAILED",
-          `命令启动失败：${String((e as Error).message)}`,
+        if (isSpawnFailure(e)) {
+          // spawn 本身失败：命令未启动，无标记——自动重试安全（bounded backoff）
+          return toolError(
+            "BashError",
+            (e as NodeJS.ErrnoException).code ?? "EXEC_FAILED",
+            `命令启动失败：${String((e as Error).message)}`,
+          );
+        }
+        // 未知失败：保守按已启动处理（D15 fail-closed——判断不了就不重试）
+        return markStarted(
+          toolError(
+            "BashError",
+            (e as NodeJS.ErrnoException).code ?? "EXEC_FAILED",
+            `命令执行失败：${String((e as Error).message)}`,
+          ),
         );
       }
     },
