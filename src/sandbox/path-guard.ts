@@ -206,6 +206,13 @@ export class PathGuard {
     return this.config.readRoots === undefined;
   }
 
+  /** 可写范围的人话描述（T-6-02 提示词模板的 {{WRITABLE_ROOTS}} 注入源）。 */
+  async describeWritableRoots(): Promise<string> {
+    const roots = await this.ensureRoots();
+    const all = roots.writable;
+    return all.length > 0 ? all.join("、") : "(未配置)";
+  }
+
   /** 写边界（出口级硬拦）：越界抛 PathGuardError，报错含目标路径（场景④）。 */
   async assertWritable(absPath: string): Promise<void> {
     await this.check(path.resolve(absPath), "write");
