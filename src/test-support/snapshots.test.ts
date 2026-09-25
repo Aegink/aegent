@@ -56,7 +56,7 @@ describe("模型上下文快照（O1/O5）", () => {
     const lastA = changed.input.messages.at(-1) as { content: string };
     const lastB = (changed.previous!.messages.at(-1)) as { content: string };
     expect(lastA.content).not.toBe(lastB.content);
-    expect(firstDifference(snapshotToString(changed), snapshotToString({ input: changed.input, previous: changed.input })))
+    expect(firstDifference(snapshotToString(changed), snapshotToString({ header: changed.header, input: changed.input, previous: changed.input })))
       .toBeTruthy();
   });
 

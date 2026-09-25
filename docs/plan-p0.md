@@ -357,7 +357,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①**基准脚本为 `scripts/cold-start.mjs` 而非卡面 `cold-start.ts`**——node 22 无 TS loader、选型未含 tsx，子进程只能跑编译产物；测试在 beforeAll 里 `npx tsc` 后 spawn `dist/src/kernel/agent-child.js`（include 含根级配置文件，产物路径多一层 `src/`）。②A9 协议面落法：`prompt` 的应答只有 `accepted{messageId}` 入队收执（即答不等轮），**没有** session.finished/轮结果消息——轮终态由父进程观察 turn/end 事件（DSH followup-enqueue 同款；父进程拥有子进程全生命周期，故收执+事件观察足够）。③子进程编排（kick 调度器）：忙时 prompt 进 PromptQueue（step 边界 steer）、空闲自动续开新轮、dispose 协作退出；队列固定 one-at-a-time（"all" 是会话级配置，T-8 暴露）。④事件出进程通道 = 转发型 SessionStore 子类（append 即转发，C14 已在源头兜底）。⑤echo provider 内置于子入口（本卡验收的是进程边界与协议，模型是假的；真实厂商装配 T-8）。
 - **完成记录**：`npx vitest run src/kernel/agent-process.test.ts` → **2 passed**（另 protocol.test 4 passed；全量 122 passed，tsc 干净）。①真实 stdio spawn：3 条 prompt 各自 ready→accepted→完整事件流（turn/start…turn/end{completed}，echo 内容与轮号全对），管道零 mock；②型证：`AssertNever<Exclude<AgentRequest, JsonValue>>` 与包络变体同款闸门在 agent-protocol.ts 编译期钉死（SessionEvent 为接口联合无法型证，由 C14 源头保证 + 测试 JSON 往返复证）；③**冷启动实测 `node scripts/cold-start.mjs`：spawn→首事件 best 89.6ms / median 90.4ms（3 轮），阈值 500ms 达标，Q16 的 Windows spawn 风险实测排除，无需待澄清**。
 
-#### T-3-07 · O7–O11 · 事件流断言方法落地 `[ ]`
+#### T-3-07 · O7–O11 · 事件流断言方法落地 `[x]`
 - **依据需求**：O7（P0）· O8（P0）· O9（P0）· O10（P0）· O11（P0）
 - **上游首选参考**：[codex·compact.rs:450](../oss/codex/codex-rs/core/tests/suite/compact.rs#L450)（`assert_compaction_uses_turn_lifecycle_id`——在真实事件流上断言不变量，不写事件列表）；[codex·session/tests.rs:761](../oss/codex/codex-rs/core/src/session/tests.rs#L761)（每次 recv 套超时 + 具名 expect）；[codex·compact.rs:423](../oss/codex/codex-rs/core/tests/suite/compact.rs#L423)（结构化 assert + 快照配对）；[kimi·snapshots.ts:38](../oss/kimi-code/packages/agent-core-v2/test/harness/snapshots.ts)（previous 差分）
 - **取什么 / 别抄什么**：取"不变量断言 + recv 超时 + 配对快照 + 窗口头说明"四件套；O10（窗口头记录"为何在此结束"）落在我方快照工具的 header 字段
@@ -366,8 +366,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/test-support/`——对 T-3-02 的 loop 流断言"同 turn 共享 turnId / step 事件成对 / 终态恰一个"；故意构造断列流时失败信息含人话说明（O9）
 - **依赖**：T-3-02
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①API 形状微调：`expectPaired(events, openType)` 二参（openType="step/start"|"tool/call"，配平键分别为 turn+step 与 callId），未按卡面示意做成 (step,start,end) 三参——两种配平共用一个追踪器实现，具体类型比通用三参更可读；`expectTurnScoped`（轮号连续/不嵌套/不悬挂/step 连续）是超出卡面的第四个不变量，来自词汇表纪律的自然推论。②`drainUntil`（收集到终态）是 recvWithTimeout 的姊妹形态——"发一条 prompt 收全事件"需要它，纯 recv 会丢中间条目。③O8 的超时原语复用 J22 的 withTimeout（内层不弃、无 unhandled rejection），不另写 race。④recvWithTimeout 接 `AsyncIterable<T>`（泛型）而非 SessionEvent 数组——它同样适用进程协议流（AgentMessage），这正是 O8 的主战场。
+- **完成记录**：`npx vitest run src/test-support/` → **19 passed**（其中 event-asserts 6 条；全量 128 passed，tsc 干净）。验收条目：①真 loop 两步流上 expectTurnScoped / expectPaired(step,start) / expectPaired(tool,call) / expectSingleTerminal 全过；②断列流（step 未闭合、孤儿 tool/result、双终态、终态后有同轮事件、悬挂轮、step/轮跳号）逐一给含现场 seq 的人话失败（O9），失败文案在测试里按原文断言。O10 落地 = snapshots.ts 的 `GenerateInputSnapshot.header{whyEnded, cutAt}`（缺省值大声提醒作者补写）；O11 在真 loop 两次模型调用上复证（previous 自带、差分序列化现算）。复用改造完成：loop.test.ts 的手写配对检查、loop.cancel.test.ts 的"恰一条"检查、agent-process.test.ts 的裸 for(;;) 收集全部换成断言方法（recv/drain 带超时防护）。
 
 ---
 

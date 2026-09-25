@@ -6,6 +6,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { decodeMessage, type AgentMessage } from "./agent-protocol.js";
 import { runAgentChildStdio, spawnAgentProcess } from "./agent-process.js";
+import { drainUntil, recvWithTimeout } from "../test-support/event-asserts.js";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const entryPath = path.join(root, "dist", "src", "kernel", "agent-child.js");
@@ -18,32 +19,37 @@ describe("agent-process —— T9 agent 出进程", () => {
 
   it("验收①：真实 stdio spawn——发 3 条 prompt 收全事件（管道不 mock）", async () => {
     const proc = spawnAgentProcess({ entryPath });
-    const iter = proc.messages[Symbol.asyncIterator]();
 
-    const first = await iter.next();
-    expect(first.value).toEqual({ type: "ready" });
+    const ready = await recvWithTimeout(proc.messages, (m) => m.type === "ready", "ready", 10_000);
+    expect(ready).toEqual({ type: "ready" });
 
     for (let i = 1; i <= 3; i++) {
       proc.send({ type: "prompt", messageId: `m${i}`, content: `第 ${i} 问` });
       // A9：prompt 的应答只有入队收执，没有 per-prompt 结果消息
-      const accepted = await iter.next();
-      expect(accepted.value).toEqual({ type: "accepted", messageId: `m${i}` });
+      const accepted = await recvWithTimeout(
+        proc.messages,
+        (m) => m.type === "accepted",
+        `accepted(m${i})`,
+        10_000,
+      );
+      expect(accepted).toEqual({ type: "accepted", messageId: `m${i}` });
 
-      // 轮终态像任何消费者一样从事件流观察（无 session.finished）
-      const events: Extract<AgentMessage, { type: "event" }>["event"][] = [];
-      for (;;) {
-        const next = await iter.next();
-        const m = next.value;
-        expect(m.type).toBe("event");
-        if (m.type !== "event") break;
-        events.push(m.event);
-        if (m.event.type === "turn/end") break;
-      }
+      // 轮终态像任何消费者一样从事件流观察（无 session.finished）——
+      // 收集到 turn/end 为止（O8：recv 全程带超时与具名期望）
+      const { items, last } = await drainUntil(
+        proc.messages,
+        (m): m is Extract<AgentMessage, { type: "event" }> =>
+          m.type === "event" && m.event.type === "turn/end",
+        `turn/end(m${i})`,
+        10_000,
+      );
+      const events = items
+        .filter((m): m is Extract<AgentMessage, { type: "event" }> => m.type === "event")
+        .map((m) => m.event);
       expect(events[0]!.type).toBe("turn/start");
-      expect(events.at(-1)).toMatchObject({
-        type: "turn/end",
-        turn: i,
-        reason: { kind: "completed" },
+      expect(last).toMatchObject({
+        type: "event",
+        event: { type: "turn/end", turn: i, reason: { kind: "completed" } },
       });
       const assistant = events.find((e) => e.type === "assistant/message");
       expect(assistant).toMatchObject({

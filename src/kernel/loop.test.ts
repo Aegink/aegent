@@ -10,6 +10,7 @@ import {
   type TurnDecision,
 } from "./loop.js";
 import { ScriptedProvider, makeLoop } from "./loop.test-utils.js";
+import { expectPaired, expectSingleTerminal, expectTurnScoped } from "../test-support/event-asserts.js";
 import type { ModelProvider } from "../models/provider.js";
 
 /**
@@ -59,15 +60,10 @@ describe("AgentLoop —— A1/A6 显式停止条件与两级生命周期", () =>
       "step/end",
       "turn/end",
     ]);
-    // A6：step/start 与 step/end 成对、同 turn 同号，都落在同一个用户轮 turn=1
-    const stepOf = (e: SessionEvent) => (e as { step: number }).step;
-    const starts = events.filter((e) => e.type === "step/start");
-    const ends = events.filter((e) => e.type === "step/end");
-    expect(starts.map(stepOf)).toEqual([1, 2]);
-    expect(ends.map(stepOf)).toEqual([1, 2]);
-    expect(
-      [...starts, ...ends].every((e) => (e as { turn: number }).turn === 1),
-    ).toBe(true);
+    // A6：配对/轮号/终态不变量由 T-3-07 的事件断言方法承担（O7：断言关系不断言列表）
+    expectTurnScoped(events);
+    expectPaired(events, "step/start");
+    expectSingleTerminal(events, 1);
 
     // request/header：首步 initial、续步 series；config 是 J4 身份二元组
     const headers = events.filter((e) => e.type === "request/header");

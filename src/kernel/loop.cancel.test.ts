@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { CancelCause } from "./events.js";
 import type { AgentLoop } from "./loop.js";
 import { ScriptedProvider, makeLoop } from "./loop.test-utils.js";
+import { expectSingleTerminal } from "../test-support/event-asserts.js";
 import type { ModelProvider } from "../models/provider.js";
 
 /**
@@ -46,9 +47,8 @@ describe("AgentLoop.cancel —— A7 取消 / 中断当前 turn", () => {
       "step/end",
       "turn/end",
     ]);
-    // 恰一条终止记录，且是事件流最后一条
-    expect(events.filter((e) => e.type === "turn/end")).toHaveLength(1);
-    expect(events.at(-1)!.type).toBe("turn/end");
+    // 恰一条终止记录、位于流末——终态不变量由 T-3-07 断言方法承担
+    expectSingleTerminal(events, 1);
     // 已交付前缀以 interrupted 标记落盘；其后 chunk 未被消费
     const msg = events.find((e) => e.type === "assistant/message") as {
       interrupted?: true;
@@ -82,10 +82,7 @@ describe("AgentLoop.cancel —— A7 取消 / 中断当前 turn", () => {
     };
     // step 完整走完，消息没有中断标记——标记只给真正被截断的流
     expect(msg.interrupted).toBeUndefined();
-    expect(events.at(-1)!.type).toBe("turn/end");
-    expect(
-      events.filter((e) => e.type === "turn/end"),
-    ).toHaveLength(1);
+    expectSingleTerminal(events, 1);
   });
 
   it("cause 落盘只拷声明字段：transport 污染的 stack 不进 durable 事件；原对象不冻结", async () => {
