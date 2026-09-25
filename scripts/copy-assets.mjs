@@ -24,6 +24,11 @@ const assets = [
     label: "权限模板",
   },
   {
+    src: path.join(root, "src", "context", "prompt"),
+    out: path.join(root, "dist", "src", "context", "prompt"),
+    label: "基础提示",
+  },
+  {
     src: path.join(root, "src", "sandbox", "dpapi"),
     out: path.join(root, "dist", "src", "sandbox", "dpapi"),
     label: "DPAPI helper",

@@ -372,7 +372,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | ID | 功能 | 优先级 | 参考（首选） | 验收要点 |
 | --- | --- | --- | --- | --- |
 | F1 | 系统提示管理 | P0 | [pi·packages/ai/](../oss/pi/packages/ai) | 提示词可独立修改 |
-| F2 | `AGENTS.md` 项目指令加载 | P0 | [opencode·AGENTS.md](../oss/opencode/AGENTS.md)（文件实例；**加载逻辑自研**：CWD 向上收集 + 就近覆盖，上游加载器未定位） | 按目录层级就近生效 |
+| F2 | `AGENTS.md` 项目指令加载 | P0 | [opencode·AGENTS.md](../oss/opencode/AGENTS.md)（文件实例）；加载器已在执行时定位：[opencode·session/instruction.ts](../oss/opencode/packages/opencode/src/session/instruction.ts)（`fs.findUp` **就近取一个、不叠加祖先**）——与本需求**自研语义**（CWD 向上收集全部 + 小节就近覆盖）不同，佐证自研裁决 | 按目录层级就近生效 |
 | F3 | `compaction` 压缩 | P0 | [codex·compact_token_budget.rs](../oss/codex/codex-rs/core/src/compact_token_budget.rs) | 压缩后 token 显著下降且关键信息保留 |
 | F4| `overflow` 与 `compaction` 分离 | P0| [codex·compact.rs:315](../oss/codex/codex-rs/core/src/compact.rs#L315) | 先判溢出再决定压缩 |
 | F5 | 摘要 / 标题生成 | P1 | [qwen·docs/design/session-recap/](../oss/qwen-code/docs/design/session-recap) | 长会话有可读标题 |

@@ -861,7 +861,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①产出落 `src/context/budget.ts`（与 B14 的 kernel/budget.ts 是两回事——B14 是工具循环次数/时限轴,本文件是 token 预算的送达记账,头注释声明避免混淆）；②deliveries 是 per-thread 单槽（Map insert 覆盖,codex 同款），"换窗重置"语义 = delivery 按 windowId 判定失效（weightedUsed 是会话树累计不清零,codex 同款）；③0 档提醒（尚未越过任何阈值的初始状态提醒）保留 codex 语义；④"写进历史才算送达"的落盘动作在调用方（loop/装配），本类只管记账——契约写在 markReminderDelivered 头注释
 - **完成记录**：验收 `npx vitest run src/context/budget.test.ts` → 8 passed（tsc 干净）。①初始 0 档提醒→送达→越档 index1 重新提醒→送达后同档不再发、越 index2 再发；②未 mark → 同档提醒重发、mark 后归 null；③换 windowId 已送达记录失效重发（含跨窗回访）；④加权公式断言：output×2+input×1=250、cacheRead 折减 230、全缓存输入 0、耗尽后 recordUsage 恒 true
 
-#### T-7-09 · F1/F2 · 系统提示管理 + AGENTS.md 项目指令加载 `[ ]`
+#### T-7-09 · F1/F2 · 系统提示管理 + AGENTS.md 项目指令加载 `[x]`
 - **依据需求**：F1（P0）· F2（P0）
 - **上游首选参考**：[pi·packages/ai/](../oss/pi/packages/ai)（提示词/适配独立于内核的包边界）；[opencode·AGENTS.md](../oss/opencode/AGENTS.md)（项目指令**文件实例**——⚠ 锚点弱：opencode 仓里这个文件是"被加载的对象"，"按目录层级就近生效"的**加载逻辑**实现文件在调研中未定位，已记待澄清）
 - **取什么 / 别抄什么**：系统提示 = 独立可改的文件/常量（不硬编码在 loop 里）；AGENTS.md 按 CWD 向上逐级收集、就近覆盖，P0 语义从简（拼接 + 就近优先），**确认声明这是自研语义而非上游照抄**
@@ -870,8 +870,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/context/system-prompt.test.ts`——嵌套目录 `a/b/c` 下运行：`a/AGENTS.md` 与 `a/b/AGENTS.md` 同时生效且 b 的冲突项覆盖 a；提示词文件改动不需要碰任何 `.ts`
 - **依赖**：T-6-02
 - **风险 / 未知**：**加载逻辑无上游锚点，已裁决为自研语义**（2026-09-25：CWD 向上收集 + 就近覆盖）——若执行时在 opencode 源码里找到加载器实现（建议先 `grep -rn "AGENTS.md" oss/opencode/packages/opencode/src/server/`），回填 `requirements.md` 与本卡的参考列
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①**风险栏承诺兑现：加载器已在 opencode 源码定位**——`session/instruction.ts` 的 `systemPaths` 段（`fs.findUp` + 注释"first project-level match wins so we don't stack AGENTS.md/CLAUDE.md from every ancestor"），其语义是**就近取一个不叠加**，与我方裁决"收集全部 + 小节就近覆盖"不同——requirements.md F2 参考列已回填并注明差异，自研语义维持；②"就近覆盖"的落地单元 = Markdown `##` 小节（同标题近层替代远层，独有小节共存，前导按远→近拼接）——验收要求"冲突项覆盖可断言"，纯拼接无法满足，这是满足验收的最小结构化语义；③基础提示落 `src/context/prompt/base.md`（copy-assets 清单 +1 项，build 实测 1 项进 dist）；④AGENTS.md 是用户文件：读取失败的层级跳过容错；基础提示/权限模板是构建产物缺失即抛（T-6-02 纪律）
+- **完成记录**：验收 `npx vitest run src/context/system-prompt.test.ts` → 8 passed（tsc 干净；`npm run build` copy-assets 基础提示 1 项进 dist；全量 458 passed）。①a/b/c 假 fs 下 a 与 a/b 同时生效（独有小节共存）、b 的"测试规范"覆盖 a（a 内容不在输出）、收集序列 [远→近] 含 root 层且 root 是边界；②不注入 basePrompt 时输出含真 base.md 内容——改文件零 .ts diff 机验在位；③权限段真模板渲染：{{WRITABLE_ROOTS}} 替换 describeWritableRoots 产出、on_request/never 两档内容互异（装配决定档位）
 
 ---
 
