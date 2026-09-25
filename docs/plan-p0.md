@@ -918,7 +918,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①视图独立于 schema 迁移（`CREATE VIEW IF NOT EXISTS`，ensureUsageView 打开库后调一次）——视图是 SELECT 语义面，不占 user_version 单调整数；②列名映射：词汇表 cacheWriteTokens ↔ cc-switch 的 cache_creation_tokens（同一语义两个叫法）；③total_cost_usd 不建列——P0 无定价输入（成本核算 J21 是 P2），列留给届时同批；④usage 缺失的 assistant/message 不进聚合（无计量即无事实，绝不算 0——与 F10"无 usage 本地估算兜底"分属两层，本视图只报告 provider 送达的计量）；total_tokens 缺失按 input+output 折算（compaction.tokensBeforeOf 同款）；⑤测试踩两个已知坑的复发：视图查的是 storage——**store.append 后必须 flush**（write-behind，不 flush 视图为空）；better-sqlite3 连接未 close → 临时库文件 EBUSY（T-1-03 坑，afterEach rmSync 加容错）。
 - **完成记录**：2026-09-25。产出 `src/obs/usage.ts`（USAGE_VIEW_SQL + ensureUsageView + usageBySession/usageByTurn + UsageRow 分列形状）+ `usage.test.ts` 3 用例。验收：`npx vitest run src/obs/usage.test.ts` → **3 passed**——1002 事件（167 轮×6）喂入后按会话 Σinput=1,402,800/Σoutput=140,280/cache 分列与按轮 167 行逐轮可查且数值正确；usage 缺失缺席（requests=2/3、不算 0）；totalTokens 显式值优先于折算（999 vs 折算 14）；多会话不串扰。L1 否定性面：`ls logs/` → **NO_LOG_DIR**（仓库根无平行轨迹文件）；模块纪律 = usage.ts 只对 events 表 SELECT、零写文件。全量 `npx vitest run` **472 passed / 1 skipped**（T-8-02 收尾 469 → 净增 3），`npx tsc --noEmit` 干净。
 
-#### T-8-04 · Q5 · 启动期对账 `[ ]`
+#### T-8-04 · Q5 · 启动期对账 `[x]`
 - **依据需求**：Q5（P0）
 - **上游首选参考**：[pi-desktop·db/migrations.rs:7](../oss/pi-desktop/crates/host-core/src/db/migrations.rs)（`boot_maintenance`：`SET status = CASE WHEN status = 'pending' THEN 'interrupted'…` + `PLAN_APPROVAL_INTERRUPTED` / `PLAN_EXECUTION_INTERRUPTED` 细分码——🔴 只学行为）
 - **取什么 / 别抄什么**：启动时把上次遗留的 running 状态按对象类型改为 interrupted 并细分错误码；**不重放**旧进程的工作（M8 纪律的前身）
@@ -927,8 +927,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/session/boot-maintenance.test.ts`——构造崩溃态库（running 行）→ 启动对账 → 全部 interrupted 且 errorCode 按类型细分（场景⑤的前半）；重启后 enqueue 新任务不触发旧任务续跑
 - **依赖**：T-1-03、T-8-01
 - **风险 / 未知**：P0 尚无 job 概念——对账对象是"进行中 turn"标记；job 级对账随 M3（P1）扩展
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①**对账落点从 UPDATE 改为追加事件**（架构使然）：事件源 append-only（不变量 1），无可 UPDATE 的 status 列——未闭合 step 落 step/end、未闭合 turn 落 turn/end{interrupted}（词汇表 §3.3 预留的"崩溃孤儿闭合"变体，loop 永不实时发出，T-3-06 的 nextTurnNumber 拒绝叠加注释"闭合属恢复路径（T-8）"在本卡兑现）；②细分错误码（STEP_INTERRUPTED / TURN_INTERRUPTED）在对账报告的 codes 里（机器面），事件流上的分类就是 turn/end 的 kind——pi-desktop 的 error_code 列同样是报告面；PLAN_* job 级细分码随 M3（P1）扩展清单；③不重放的结构性保证：闭合后投影干净 → 新 prompt 开新轮（turnCount+1），孤儿 turn 一经闭合即历史事实，无任何路径续跑它；队列随进程消亡不在持久面；④对账幂等（闭合后的流再跑零追加）。
+- **完成记录**：2026-09-25。产出 `src/session/boot-maintenance.ts`（reconcileBootState + STEP/TURN_INTERRUPTED_CODE）+ `boot-maintenance.test.ts` 5 用例。验收：`npx vitest run src/session/boot-maintenance.test.ts` → **5 passed**——崩溃态（孤儿 step+turn）对账全闭合、codes=[STEP_INTERRUPTED, TURN_INTERRUPTED] 按类型细分、closed 以 turn/end{interrupted} append-only 落流；干净启动 no-op 零追加；多孤儿 step 逐一闭合每步一码；幂等复跑 no-op；杀进程重启路径（SQLite 库 close→重开→store.restore 含 seq 连续校验→对账→新 prompt 开 turn 2，旧轮 interrupted 与新轮 completed 事件共存，不续跑）。全量 `npx vitest run` **477 passed / 1 skipped**（T-8-03 收尾 472 → 净增 5），`npx tsc --noEmit` 干净。
 
 #### T-8-05 · 需求 §8 全量验收（收尾卡，无新需求） `[ ]`
 - **依据需求**：§8 验收标准 1–10（对应需求 ID 已在各卡）
