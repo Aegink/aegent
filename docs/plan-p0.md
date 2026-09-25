@@ -801,7 +801,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①`startNewContextWindow` 入参取事件流而非投影对象（卡面写 projection）——事件流参数让"压缩那一刻"是现算时点而非绑定快照，F22 语义更直接，内部自己 fold；②摘要以 user 角色合成消息进新窗口（带声明性前缀，不落事件——与 buildMessages 同一"请求时现算"纪律）；③system 消息全量保留不占 F23 预算（F22 验收面），预算只管 source=injected 的 user 消息，默认 4096 为自研默认值（codex 64_000 是远程压缩场景），最新一条超预算也保留（注入上下文整条丢失比超预算危险）；④测试确认压缩时点语义：retainedFromEnd=1 保留"最后一个 user 起"——真实时点（PreTurn）下下一轮 prompt 已入流，摘要覆盖的是旧轮
 - **完成记录**：验收 `npx vitest run src/context/new-window.test.ts` → 9 passed（tsc 干净，src/context 32 passed）。①压缩后 system 消息原文逐字保留、不混摘要文本；②消息集逐条断言 = [system] → [摘要] → [developer 注入(预算内从新到旧)] → [seq>retainedTail 原文]；③预算充足全保/紧张从新到旧且至少保一条/普通 user 不享受预算；④压缩后追加事件自然进新窗口、两次压缩只认最新、revert 掉 compaction 即全量重建
 
-#### T-7-04 · F9/F10 · turn 边界压缩 + 调用后压力测量 `[ ]`
+#### T-7-04 · F9/F10 · turn 边界压缩 + 调用后压力测量 `[x]`
 - **依据需求**：F9（P0）· F10（P0）
 - **上游首选参考**：[pi-desktop·ADR 0030:18](../oss/pi-desktop/docs/adr/0030-turn-boundary-context-checkpoint-compaction.md)（"reached 1,077,172 tokens against a 1,000,000-token provider maximum, so the provider rejected the request before PI-Desktop had a recovery point"——🔴 只学行为）；[dsh·after-call-compaction-pressure.md:11](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-07-10-after-call-compaction-pressure-and-overflow-recovery.md)（"Successful calls are not the only pressure signal…preserves the provider error"）
 - **取什么 / 别抄什么**：压力测量在每个模型调用**之后**做（含无 usage 的成功调用与被拒调用两种信号）；恢复失败保留 provider 原始错误不吞
@@ -810,8 +810,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/context/pressure.test.ts`——①成功调用不带 usage → 仍产生压力记录；②压缩无法证明进展时抛出的错误 `cause` 是 provider 原始错误对象
 - **依赖**：T-7-02、T-2-02
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①事件留痕不新增事件类型——F10 可回放性由词汇表既有事件承载（usage 在 assistant/message.usage、拒绝在 assistant/attempt 与 turn/end{error}、本地估算是事件流纯函数现算），头注释声明；②压力阈值比率默认 0.8（dsh compaction-basic 同款默认常量 DEFAULT_PRESSURE_THRESHOLD_RATIO）；③"压缩无法证明进展"P0 落法 = abort/抛错即无进展、`compacted` 即进展证明（compaction 事件落盘是 append-only 持久事实；dsh 的 replaceGeneration 证明是同思想 P1 强化，注释已记）；④loop 接线留 T-8 装配（本卡用真 composeChain turnEnd 链在测试内钉次序，chain.ts 头注释预言的断言兑现）
+- **完成记录**：验收 `npx vitest run src/context/pressure.test.ts` → 8 passed（tsc 干净）。①无 usage 成功调用仍产生压力记录（source=local-estimate，tokens=保守估算）；②OverflowRecoveryError.cause === provider 原始错误对象（pre hook 中止与压缩抛错两路径均断言同一性）；③turn 边界次序断言：turnEnd 链压缩层在 next 前作业 → compaction.seq < turn/end.seq 且事件流过 expectTurnScoped；三信号（usage/本地兜底/provider-rejection）与阈值可配齐验
 
 #### T-7-05 · F17 · 切点工具调用-结果配平 `[ ]`
 - **依据需求**：F17（P0）
