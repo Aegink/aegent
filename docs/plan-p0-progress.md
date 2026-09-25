@@ -44,7 +44,8 @@
 | 2026-09-25 | T-5-07 | C35/C45 | `7bdd8fe` | `npx vitest run src/policy/self-guard.test.ts` | 10 passed；agent 写 permissions.json/AGENTS.md 拒绝且理由含"用户可手动修改"提示、agentInitiated=false 透传（防线在发起判定）；linter 三类警告（invalid/unknown-tool/no-matcher-for-args）只警不拒；**连带修 matchers 注册键大写 Bash→小写 bash 方言 bug**（注册名对齐，rule-loader.test 随迁） |
 | 2026-09-25 | T-5-08 | C47/C48 | `0651ef9` | `npx vitest run src/policy/review-decision.test.ts` | 9 passed；模型捎带规则提案字段被剥除（大小写变体同剥）且警告含 C48 纪律原文；会话作用域批准后同规则免再问、新会话重新问、once/project/user/managed P0 均不缓存；提案由引擎经 patternOf 计算（bash=完整命令原文）；批准历史落链上模块（kimi 同位） |
 | 2026-09-25 | T-5-09 | C49 | `5db9d68` | `npx vitest run src/policy/intersect.test.ts` | 5 passed；可合成 CeilingProfile 逐工具 maxDecision 交集（复用 T-5-06 全序，3×3 穷举不放宽）；opaque 来源相遇抛 PermissionIntersectionError 含两来源名与原因（fail-closed）；纯函数交付，接线等 P1 多端 |
-| 2026-09-25 | T-5-10 | C51 | （本卡提交后回填） | `npx vitest run src/policy/broker.test.ts` | 5 passed；缺省 DenyPermissionBroker 对任意 ask resolve deny 且 code=PERMISSION_BROKER_DENIED（deny 是合法结果非异常）；Manual 骨架复用 PendingApprovals（挂起/超时/宣告不重造）、timeoutMs 必填、dispose 透传 |
+| 2026-09-25 | T-5-10 | C51 | `3d125b6` | `npx vitest run src/policy/broker.test.ts` | 5 passed；缺省 DenyPermissionBroker 对任意 ask resolve deny 且 code=PERMISSION_BROKER_DENIED（deny 是合法结果非异常）；Manual 骨架复用 PendingApprovals（挂起/超时/宣告不重造）、timeoutMs 必填、dispose 透传 |
+| 2026-09-25 | T-5-11 | C57 | （本卡提交后回填） | `npx vitest run src/policy/revalidate.test.ts` | 7 passed；伪造 approved/verdict/approvedBy 标记的调用执行点重算仍被拦（deny 与 abstain 都放不过）；链收到当前 sessionId+source 权威标识；registry.dispatch 增 guard 钩子（拒绝 isError TOOL_PERMISSION_DENIED 不执行不产生输出，放行传剥标记参数）；PolicyCall 扩权威标识字段 |
 
 ---
 

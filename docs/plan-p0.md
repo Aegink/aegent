@@ -603,7 +603,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①deny 是合法结果（resolve 带裁决）而非异常——异常通道留给超时（PermissionTimeout）等真实故障；"错误码明确"落为 BrokerDeniedVerdict.code = PERMISSION_BROKER_DENIED（继承 Verdict 加机器码字段）。②ManualPermissionBroker 不重造挂起 Map（zcode 因 contracts 分层自建；我方 T-5-04 PendingApprovals 已有挂起/超时/宣告全套）——decide 直接路由 pending.ask，timeoutMs 必填，dispose 透传 pending.dispose()。③Port 面 = {name, decide, dispose?}，最小化——proposal 显示与 scope 收集属 gate（T-5-12）与 T-8 交互面，不进 broker 端口。
 - **完成记录**：2026-09-25。产出 `src/policy/broker.ts`（PermissionBrokerPort + DenyPermissionBroker 默认实现 + ManualPermissionBroker 骨架）+ `broker.test.ts` 5 用例。验收：`npx vitest run src/policy/broker.test.ts` → **5 passed**；①缺省 Deny broker 对 bash/write/read 任意 ask 请求 resolve {action:"deny", code=PERMISSION_BROKER_DENIED}，reason 含工具名与"未配置审批客户端"，反复询问结果一致；②Manual broker decide 挂起（asked 宣告）→ reply 唤醒为裁决、超时 rejects 类型化 PermissionTimeout、dispose 后 reply 落 stale。全量 `npx vitest run` **284 passed**，`npx tsc --noEmit` 干净。
 
-#### T-5-11 · C57 · 限制性判定在执行点用权威标识重算 `[ ]`
+#### T-5-11 · C57 · 限制性判定在执行点用权威标识重算 `[x]`
 - **依据需求**：C57（P0）
 - **上游首选参考**：[zcode·turn-loop.ts:112](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts)（修过 bug 的注释："loop state；但 queryId 仍是 automation-\*。provider 请求边界必须按 queryId 再硬过滤"）
 - **取什么 / 别抄什么**：取"执行点重算"纪律：工具执行前用**当前会话权威标识**（sessionId + 调用来源）重新求值，不信任事件/消息里捎带的判定结果
@@ -612,8 +612,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/policy/revalidate.test.ts`——伪造带"已批准"标记的工具调用消息，执行点重算后仍被策略拦下
 - **依赖**：T-5-02、T-4-02
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①PolicyCall 扩权威标识字段 sessionId/source（可选保持既有装配兼容；revalidate 构造时必绑当前值，从装配处取、不从消息取）。②决策标记剥除落 stripDecisionMarkers（approved/verdict/approvedBy 等 closed list，大小写不敏感、只扫顶层键）——结构保证是重算器从不读它们，剥除让伪造可观测且执行参数干净。③revalidate 只认 allow：ask/deny/abstain 一律拦（执行点是最后一道闸，fail closed；ask 的问人流程在 T-5-12 gate 更上游，批准经会话缓存/批准历史使重算收敛为 allow 才可能放行——once 批准故意的例外见 gate 卡）。④registry.dispatch 增可选 guard 钩子（ToolGuardOutcome：allowed + 剥除后参数），拒绝返回 isError TOOL_PERMISSION_DENIED、不执行不产生工具输出（拦截发生在截断/投影上游，与阶段注意 3 一致）；守卫可选、缺省无守卫（既有工具层单测装配零改动）。
+- **完成记录**：2026-09-25。产出 `src/policy/revalidate.ts`（stripDecisionMarkers + createRevalidator 绑 sessionId/source 权威重跑链、仅 allow 放行）+ chain.ts PolicyCall 增 sessionId/source + registry.ts 增 guard 钩子与 TOOL_PERMISSION_DENIED + `revalidate.test.ts` 7 用例。验收：`npx vitest run src/policy/revalidate.test.ts` → **7 passed**；①伪造 approved/verdict/approvedBy 的 rm 调用重算后 deny 拦下且标记全剥；②approved 标记不能把 abstain 洗成放行（curl|sh 被拦）；③合法调用放行且链收到当前 sessionId="session-current"/source="model"（权威标识证据）；④registry 集成：拒绝时不执行、isError code=TOOL_PERMISSION_DENIED、无工具输出；放行时工具收到剥标记后的参数，无守卫装配参数原样。全量 `npx vitest run` **291 passed**，`npx tsc --noEmit` 干净。
 
 #### T-5-12 · C9 · 策略求值在工具执行前 `[ ]`
 - **依据需求**：C9（P0，自研无上游参考）

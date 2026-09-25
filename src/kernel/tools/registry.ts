@@ -54,6 +54,16 @@ export interface ToolDef {
   ): ToolExecution | Promise<ToolExecution>;
 }
 
+/** 工具执行前置守卫（C57 执行点重算的接线面）：政策层实现，registry 在
+ * 解析参数后、执行前调用。拒绝即不执行。 */
+export interface ToolGuardOutcome {
+  readonly allowed: boolean;
+  /** 放行时给回（可能已剥除决策标记）的执行参数。 */
+  readonly args: JsonRecord;
+  readonly reason?: string;
+  readonly code?: string;
+}
+
 /** dispatch 的入参（与 tool/call 事件载荷、loop 的 executeTool 入参同源）。 */
 export interface ToolDispatchCall {
   callId: string;
@@ -68,6 +78,9 @@ export class ToolRegistry {
   private readonly env: ExecutionEnv | undefined;
   private readonly sessionId: string | undefined;
   private readonly spillDir: string | undefined;
+  private readonly guard:
+    | ((name: string, args: JsonRecord) => Promise<ToolGuardOutcome>)
+    | undefined;
 
   /**
    * @param descriptionsDir 描述目录；缺省为同目录的 `descriptions/`。
@@ -77,12 +90,15 @@ export class ToolRegistry {
    * 时执行型工具（bash）落 EXECUTION_ENV_MISSING。
    * @param sessionId / spillDir 喂给 B5/B10 的出口截断（Q13 标记需要会话
    * 身份）；缺省时标记记 "unknown-session"、spill 落系统临时目录。
+   * @param guard 执行前置守卫（C57/T-5-11）：阶段 5 权限层注入，缺省无
+   * 守卫（纯工具层单测装配）。
    */
   constructor(options?: {
     descriptionsDir?: string;
     env?: ExecutionEnv;
     sessionId?: string;
     spillDir?: string;
+    guard?: (name: string, args: JsonRecord) => Promise<ToolGuardOutcome>;
   }) {
     this.descriptionsDir =
       options?.descriptionsDir ??
@@ -90,6 +106,7 @@ export class ToolRegistry {
     this.env = options?.env;
     this.sessionId = options?.sessionId;
     this.spillDir = options?.spillDir;
+    this.guard = options?.guard;
   }
 
   /** 注册一个工具；重名是装配错误，立刻失败。 */
@@ -137,10 +154,11 @@ export class ToolRegistry {
   }
 
   /**
-   * 链底 terminal 的实现：解析参数 → 查表 → 构造 ToolContext → 执行 →
-   * 出口截断（B5/B10/B11，boundOutput）。返回 isError 而非抛错的两种情况
-   * （未知工具 / 参数坏）保证 call/result 配平；执行体自身的崩溃原样上抛
-   * 交 loop 兜底（分层见头注释）。
+   * 链底 terminal 的实现：解析参数 → 执行前置守卫（C57，拒绝即不执行、
+   * 不产生工具输出）→ 查表 → 构造 ToolContext → 执行 → 出口截断
+   * （B5/B10/B11，boundOutput）。返回 isError 而非抛错的几种情况（未知
+   * 工具 / 参数坏 / 守卫拒绝）保证 call/result 配平；执行体自身的崩溃
+   * 原样上抛交 loop 兜底（分层见头注释）。
    */
   async dispatch(call: ToolDispatchCall): Promise<ToolExecutionResult> {
     const def = this.defs.get(call.name);
@@ -161,6 +179,22 @@ export class ToolRegistry {
       args = parsed;
     } catch {
       return argumentsInvalid(call.name, call.arguments, "参数不是合法 JSON");
+    }
+    // 执行前置守卫（C57/T-5-11）：拦截发生在工具出口（截断/投影）上游，
+    // 拒绝时不执行、不产生工具输出
+    if (this.guard !== undefined) {
+      const outcome = await this.guard(call.name, args);
+      if (!outcome.allowed) {
+        return {
+          content: outcome.reason ?? "权限策略拒绝执行",
+          isError: true,
+          error: {
+            name: "RegistryError",
+            code: outcome.code ?? TOOL_PERMISSION_DENIED,
+          },
+        };
+      }
+      args = outcome.args;
     }
     // ToolContext 在这里装配（B9：toolCallId 就是配平的 callId）
     const ctx: ToolContext = {
@@ -211,6 +245,9 @@ export class ToolRegistry {
     };
   }
 }
+
+/** 执行前置守卫拒绝（C57）的缺省错误码。 */
+export const TOOL_PERMISSION_DENIED = "TOOL_PERMISSION_DENIED";
 
 function argumentsInvalid(
   name: string,

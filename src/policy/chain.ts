@@ -32,10 +32,15 @@ export type PolicyLayer = (typeof POLICY_LAYERS)[number];
 // 调用 / 裁决 / 模块
 // ---------------------------------------------------------------------------
 
-/** 一次策略求值的输入。最小面起步，后续卡按需扩展（sessionId、来源等）。 */
+/** 一次策略求值的输入。T-5-11 起带权威标识：sessionId + source（C57
+ * 执行点重算只认这两个当前事实，不认调用里捎带的判定元数据）。 */
 export interface PolicyCall {
   readonly tool: string;
   readonly args: JsonRecord;
+  /** 会话权威标识——revalidate 必带，装配处从 store/会话态取当前值。 */
+  readonly sessionId?: string;
+  /** 调用来源（model / user / resume…）——防跨来源洗白批准。 */
+  readonly source?: string;
 }
 
 /** 规则动作三维（C1）。四值决策（C32 的 abstain）随 T-5-03 在链级扩展。 */
