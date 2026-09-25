@@ -519,7 +519,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①abstain 落为**链级出口**（chain.evaluate 全链无人应答返回 abstain 裁决，替代 T-5-01 时的 undefined），模块级"没意见"仍是 undefined（C20 的 kimi 语义）——"我要 ask"（模块显式给）与"没意见往下走"（整链 abstain）在两个层面分开，qwen 的 'default'/'ask' 分层同构。②Verdict.rule 的规则原文经 rules.ts 新增的可选 `ruleText` 回调附带（T-5-05 加载器将传 raw 保留原文）；非规则来源裁决不带 rule 字段（`in` 断言缺席）。③模块 reason 缺席时由链以模块名合成人话理由（C18 不允许空 reason 出链）。④chain.test 的 undefined 用例随契约升级改写为 abstain 用例（T-5-01 验收①②③原样保留，仅断言从 toEqual({action}) 调整为含 reason 的 Verdict）。⑤allow<ask<deny 全序与 max() 聚合按卡边界留在 T-5-06，decision.ts 头注释已声明不做。
 - **完成记录**：2026-09-25。产出 `src/policy/decision.ts`（Decision 四值 + Verdict{action,rule?,reason} + verdictFromOutcome/abstainVerdict 合成器）+ chain.ts 出口升级（PolicyOutcome 增可选 rule/reason，evaluate 返回 Verdict）+ rules.ts 增 ruleText 证据回调 + `decision.test.ts` 7 用例 + chain.test.ts 契约同步改写。验收：`npx vitest run src/policy/decision.test.ts` → **7 passed**；①链上无匹配策略返回 abstain 而非 ask（toEqual(abstainVerdict()) 且与显式 ask 分断言）；②规则命中 verdict.rule="Bash(git status)"、reason 非空；非规则来源无 rule 字段、自定义 reason 透传；模块缺 reason 以模块名合成。附四值各自可达用例。全量 `npx vitest run` **222 passed**，`npx tsc --noEmit` 干净。
 
-#### T-5-04 · C5/C50/C31 · 待审批挂起 + 超时带类型失败 + 主动宣告 `[ ]`
+#### T-5-04 · C5/C50/C31 · 待审批挂起 + 超时带类型失败 + 主动宣告 `[x]`
 - **依据需求**：C5（P0）· C50（P0）· C31（P0）
 - **上游首选参考**：[opencode·permission/index.ts:20-24](../oss/opencode/packages/opencode/src/permission)（`Deferred` + `pending: Map` + `reply` 唤醒）；[zcode·broker.ts:105](../oss/zcode/apps/zcode-cli/packages/core/src/permission/broker.ts)（`CoreErrorType.PermissionTimeout` reject）；[hermes·run_turn_runner_approval_settle.py:42-51](../oss/hermes-agent/gateway/run_turn_runner_approval_settle.py)（`reason != "timeout"` 早退；`_run_still_current()` 检查迟到通知——真实事故代码）
 - **取什么 / 别抄什么**：取 Deferred+Map 的形状与"超时必须 reject"；宣告纪律照 hermes 事故教训写成本方规则
@@ -528,8 +528,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/policy/pending.test.ts`——①发起端 suspend、reply 唤醒后继续；②超时 reject 的错误类型为 `PermissionTimeout`（非 resolve、非泛 Error）；③迟到的 reply 落在已超时的请求上时返回明确 stale 错误
 - **依赖**：T-5-03
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①请求 id 由调用方提供（自然取工具调用 callId；D15 语义下重试即新调用新 id），id 撞挂起/墓碑同步抛 DuplicateApprovalError——防重检查有实义而非防御死代码。②已结算请求留 tombstone，迟到 reply 区分 Stale（settledWith=timeout/reply）与 Unknown（从未存在）——hermes `_run_still_current` 的进程内对应物，比一律 NotFound 诊断性强。③宣告（C31）落为构造器注入的 announce 回调（asked/settled/timed-out 三事实），超时同样宣告不静默；T-5-16 审计字段与 T-5-15 owner 通道消费此面。④`Promise.withResolvers` 需 ES2024 lib，不为单卡升全局脚手架——手写 deferred helper（恰为 opencode Deferred 形状）。⑤dispose 把未决请求按超时语义拒绝（类型化错误 + 宣告），不悬挂 promise 不静默放行。
+- **完成记录**：2026-09-25。产出 `src/policy/pending.ts`（PendingApprovals：ask 必填 timeoutMs / reply 唤醒 / PermissionTimeout·StaleApprovalError·UnknownApprovalError·DuplicateApprovalError 四个 code 化错误 / announce 宣告 / listPending / dispose）+ `pending.test.ts` 10 用例。验收：`npx vitest run src/policy/pending.test.ts` → **10 passed**；①ask 挂起（promise 未决 + listPending 可见 + asked 宣告）→ reply 唤醒继续（allow/deny 透传理由、缺省理由、并发互不串扰、同 id 重复发起同步抛 Duplicate）；②timeoutMs=10 超时 reject 的错误 instanceof PermissionTimeout（code=PERMISSION_TIMEOUT、requestId/timeoutMs 齐全）非 resolve 非泛 Error 且 timed-out 宣告发出；③超时后 reply 抛 StaleApprovalError（settledWith=timeout）、已答复后 reply 抛 settledWith=reply、从未存在抛 Unknown；附 dispose 拒绝不悬挂。全量 `npx vitest run` **232 passed**，`npx tsc --noEmit` 干净。
 
 #### T-5-05 · C21/C38/C44 · 参数匹配委托 + 规则 raw + 加载期校验 `[ ]`
 - **依据需求**：C21（P0）· C38（P0）· C44（P0）

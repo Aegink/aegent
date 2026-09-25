@@ -37,7 +37,8 @@
 | 2026-09-25 | T-4-08 | B9/B14 | `3757753` | `npx vitest run src/kernel/budget.test.ts` | 7 passed；tick 超数量/超时 throw（注入钟）、progress 只查截止；真实 loop 流 expectPaired(tool/call) 配平 + toolCallId 三段同源；预算耗尽停发缺席（取消同款语义）、turn 正常收束；默认 256 次/120s 可 Infinity 禁轴 |
 | 2026-09-25 | T-5-01 | C58/C20/C2 | `5ffd997` | `npx vitest run src/policy/chain.test.ts` | 10 passed；同两条规则托管/核心换位结果翻转（层序即权威）；[Bash(*)允许, Bash(git*)询问] → git status 落允许、反转落 ask（首匹配胜）；POLICY_LAYERS 唯一层序常量导出断言；模块崩溃上抛不跳过（fail-open 禁止）；rules.ts 泛型化只管顺序语义，通配匹配归 T-5-02 |
 | 2026-09-25 | T-5-02 | C1/C3/C4 | `6209b5a` | `npx vitest run src/policy/evaluate.test.ts` | 17 passed；allow/ask/deny 三动作各一例；无规则与不命中均落 ask（§8 第 2 条）；Bash(git status) 精确放行不放过 git push；方言钉死：大小写敏感、反斜杠不归一（opencode 差异点）；首匹配胜双向对照（findLast 语义下宽前规则会是 ask） |
-| 2026-09-25 | T-5-03 | C32/C18 | （本卡提交后回填） | `npx vitest run src/policy/decision.test.ts` | 7 passed；链上无匹配返回 abstain 而非 ask（与显式 ask 分开）；verdict 带 rule 原文与 reason（模块缺省以模块名合成）；chain.evaluate 出口从 undefined 升级为 abstain 裁决（chain.test 同步改写）；全量 222 passed |
+| 2026-09-25 | T-5-03 | C32/C18 | `fd154c3` | `npx vitest run src/policy/decision.test.ts` | 7 passed；链上无匹配返回 abstain 而非 ask（与显式 ask 分开）；verdict 带 rule 原文与 reason（模块缺省以模块名合成）；chain.evaluate 出口从 undefined 升级为 abstain 裁决（chain.test 同步改写）；全量 222 passed |
+| 2026-09-25 | T-5-04 | C5/C50/C31 | （本卡提交后回填） | `npx vitest run src/policy/pending.test.ts` | 10 passed；ask 挂起→reply 唤醒（并发互不串扰、同 id 防重）；超时 reject 类型化 PermissionTimeout（非 resolve 非泛 Error）且 timed-out 宣告不静默；迟到 reply 命中墓碑抛 Stale（区分 timeout/reply 结算方式，hermes 迟到通知教训）；dispose 按超时语义拒绝不悬挂 |
 
 ---
 
