@@ -9,7 +9,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { composeChain } from "./chain.js";
+import {
+  composeChain,
+  namedLayer,
+  type ChainNext,
+} from "./chain.js";
 import { HookRegistry, type HookErrorReport } from "./hooks.js";
 import {
   type LoopContext,
@@ -234,50 +238,105 @@ describe("验收① loop 级：hook 挂 toolCall 点位", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 验收④：崩溃双轨——trusted 上抛（策略层 T-5-01 同款）/ untrusted 隔离
+// I6 分轨与崩溃双轨（T-P1-09）：trusted 同链直调 / untrusted 独立观察轨
 // ---------------------------------------------------------------------------
 
-describe("验收④ 崩溃双轨", () => {
-  it("untrusted toolCall before 崩溃 → 隔离为 isError 工具结果（工具不执行、turn 不炸）", async () => {
-    const executed: string[] = [];
-    const reports: HookErrorReport[] = [];
-    const registry = new HookRegistry({
-      reportError: (r) => reports.push(r),
+/** untrusted 轨的宿主侧伪 next（观察轨不在内核链上，无真实 next 可透传）。 */
+function trailNext<E, R>(): ChainNext<E, R> {
+  return Object.assign(async () => undefined as R, {
+    point: "toolCall" as const,
+    trace: Object.freeze([]),
+    budget: Object.freeze({}),
+  });
+}
+
+describe("I6 分轨（T-P1-09 验收①）", () => {
+  it("untrusted 不进内核链：layer 只含 trusted，untracked 副作用不出现在链上", async () => {
+    const registry = new HookRegistry();
+    const touched: string[] = [];
+    registry.on<undefined, string, string>(
+      "toolCall",
+      async (_$, e, next) => {
+        touched.push("trusted:see");
+        return next(e);
+      },
+      { name: "trusted-observer" },
+    );
+    registry.on<undefined, string, string>(
+      "toolCall",
+      async (_$, e, next) => {
+        touched.push("untracked:see");
+        return next(e);
+      },
+      { name: "untracked-observer", trust: "untrusted" },
+    );
+    // 内核链（layer）：只有 trusted——untracked 的钩子体不执行
+    const kernelLayer = registry.layer<undefined, string, string>("toolCall")!;
+    const kernel = composeChain<undefined, string, string>({
+      point: "toolCall",
+      layers: [namedLayer("hooks", kernelLayer)],
+      terminal: async (_$, e) => e,
     });
-    registry.on<LoopContext, ToolCallPayload, ToolExecutionResult>(
+    const outcome = await kernel.run(undefined, "x");
+    expect(outcome).toEqual({ truncated: false, value: "x" });
+    expect(touched).toEqual(["trusted:see"]); // untracked 未被内核链触发
+
+    // 独立观察轨：untracked 在这里触发（宿主/后续进程外协议消费）
+    const trailLayer = registry.untrustedLayer<undefined, string, string>("toolCall")!;
+    await trailLayer(undefined, "x", trailNext<string, string>());
+    expect(touched).toEqual(["trusted:see", "untracked:see"]);
+  });
+
+  it("分轨后内核链零感知：只注册 untrusted 时 layer = undefined", () => {
+    const registry = new HookRegistry();
+    registry.on("toolCall", async () => "ignored", { trust: "untrusted" });
+    expect(registry.has("toolCall")).toBe(true);
+    expect(registry.layer("toolCall")).toBeUndefined(); // 内核链不挂
+    expect(registry.untrustedLayer("toolCall")).toBeDefined(); // 观察轨在
+  });
+
+  it("能力越界：untracked hook 调 next → 被轨隔离且报告点名越界（能力白名单 = 只观察）", async () => {
+    const reports: HookErrorReport[] = [];
+    const registry = new HookRegistry({ reportError: (r) => reports.push(r) });
+    registry.on<undefined, string, string>(
+      "toolCall",
+      (_$, e, next) => next(e), // 观察轨的 hook 试图驱动内核
+      { name: "overreaching", trust: "untrusted" },
+    );
+    const trail = registry.untrustedLayer<undefined, string, string>("toolCall")!;
+    await trail(undefined, "x", trailNext<string, string>());
+    expect(reports).toHaveLength(1);
+    expect(reports[0]!.hook).toBe("overreaching");
+    expect(reports[0]!.isolated).toBe(true);
+    expect((reports[0]!.error as Error).message).toContain("能力越界");
+  });
+
+  it("untrusted 轨崩溃隔离：崩溃 hook 被跳过（报告可检索），轨内其余 hook 照常", async () => {
+    const reports: HookErrorReport[] = [];
+    const registry = new HookRegistry({ reportError: (r) => reports.push(r) });
+    registry.on<undefined, string, string>(
       "toolCall",
       async () => {
         throw new Error("扩展插件炸了");
       },
       { name: "flaky-plugin", trust: "untrusted" },
     );
-    const provider = new ScriptedProvider();
-    provider.mount([
-      { type: "tool-call-delta", id: "c1", name: "bash", argsDelta: "{}" },
-      { type: "done" },
-    ]);
-    provider.mount([{ type: "text-delta", text: "完" }, { type: "done" }]);
-    const { loop, store } = makeLoop(provider, {
-      layers: {
-        toolCall: [registry.layer<LoopContext, ToolCallPayload, ToolExecutionResult>("toolCall")!],
+    const seen: string[] = [];
+    registry.on<undefined, string, string>(
+      "toolCall",
+      (_$, e) => {
+        seen.push(`observed:${e}`);
+        return "observed";
       },
-      executeTool: async (call) => {
-        executed.push(call.name);
-        return { content: "ok" };
-      },
-    });
-    // 与策略层相反的语义：hook 崩溃不上抛炸 turn——turn 正常收尾
-    const reason = await loop.runTurn("跑个工具");
-    expect(reason).toEqual({ kind: "completed" });
-    expect(executed).toEqual([]);
-    const result = store.load("s1").find((e) => e.type === "tool/result");
-    expect(result).toMatchObject({
-      message: { isError: true, content: "hook 崩溃（已隔离）：扩展插件炸了" },
-      error: { name: "HookError", code: "HOOK_FAILED" },
-    });
+      { name: "healthy-observer", trust: "untrusted" },
+    );
+    const trail = registry.untrustedLayer<undefined, string, string>("toolCall")!;
+    const result = await trail(undefined, "x", trailNext<string, string>());
+    expect(seen).toEqual(["observed:x"]); // 健康观察者照常
     expect(reports).toEqual([
       { point: "toolCall", hook: "flaky-plugin", isolated: true, error: expect.any(Error) },
     ]);
+    expect(result).toBe("observed"); // 观察返回向外传播（宿主决定消费与否）
   });
 
   it("trusted hook 崩溃 → 上抛（策略层 T-5-01 同款：fail-open 禁止）；toolCall 侧由基础设施 catch 落 isError", async () => {
@@ -310,72 +369,17 @@ describe("验收④ 崩溃双轨", () => {
     });
   });
 
-  it("untrusted hook after 段（next 已调）崩溃 → 上抛：动作已发生，装睡等于伪造事实", async () => {
+  it("untrusted 轨 dispose：已产出观察轨退场（返回 undefined 不炸）", async () => {
     const registry = new HookRegistry();
     registry.on<undefined, string, string>(
       "toolCall",
-      async (_$, e, next) => {
-        await next(e);
-        throw new Error("after 段炸了");
-      },
-      { name: "flaky-after", trust: "untrusted" },
+      (_$, e) => `observed:${e}`,
+      { name: "watcher", trust: "untrusted" },
     );
-    await expect(
-      runWithHook(registry, "toolCall", "x", async () => "executed"),
-    ).rejects.toThrow(/after 段炸了/);
-  });
-
-  it("untrusted modelRequest before 崩溃 → 截断（turn 以 blocked 终止，不炸不悬）", async () => {
-    const registry = new HookRegistry();
-    registry.on<LoopContext, ModelRequestPayload, ModelStepOutput>(
-      "modelRequest",
-      async () => {
-        throw new Error("请求侧扩展炸了");
-      },
-      { name: "flaky-request", trust: "untrusted" },
-    );
-    const provider = new ScriptedProvider();
-    provider.mount([{ type: "text-delta", text: "不应到达" }, { type: "done" }]);
-    const { loop } = makeLoop(provider, {
-      layers: {
-        modelRequest: [
-          registry.layer<LoopContext, ModelRequestPayload, ModelStepOutput>(
-            "modelRequest",
-          )!,
-        ],
-      },
-    });
-    const reason = await loop.runTurn("问");
-    expect(reason).toEqual({ kind: "blocked" });
-    expect(provider.requests).toHaveLength(0); // 请求未发出
-  });
-
-  it("untrusted turnEnd 崩溃 → 吞错继续收尾（turnEnd 截断 = turn 悬挂，比吞错更糟）", async () => {
-    const reports: HookErrorReport[] = [];
-    const registry = new HookRegistry({
-      reportError: (r) => reports.push(r),
-    });
-    registry.on<LoopContext, TurnEndPayload, void>(
-      "turnEnd",
-      async () => {
-        throw new Error("收尾观察者炸了");
-      },
-      { name: "flaky-end", trust: "untrusted" },
-    );
-    const provider = new ScriptedProvider();
-    provider.mount([{ type: "text-delta", text: "完" }, { type: "done" }]);
-    const { loop, store } = makeLoop(provider, {
-      layers: {
-        turnEnd: [registry.layer<LoopContext, TurnEndPayload, void>("turnEnd")!],
-      },
-    });
-    const reason = await loop.runTurn("问");
-    expect(reason).toEqual({ kind: "completed" });
-    // turn/end 照常落盘（收尾没被观察者卡死）
-    expect(store.load("s1").some((e) => e.type === "turn/end")).toBe(true);
-    expect(reports).toEqual([
-      { point: "turnEnd", hook: "flaky-end", isolated: true, error: expect.any(Error) },
-    ]);
+    const trail = registry.untrustedLayer<undefined, string, string>("toolCall")!;
+    registry.dispose();
+    const result = await trail(undefined, "x", trailNext<string, string>());
+    expect(result).toBeUndefined();
   });
 });
 

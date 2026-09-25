@@ -1,44 +1,31 @@
 /**
- * 内核 hooks（I1 / T-P1-07）——注册/触发分离的 hook 面（pi·hooks.ts 的
- * HookRegistry 同构：on 注册返回注销函数、close 后注册抛错；触发面在我方
- * 是 layer(point)：把已注册 hooks 按 mods 的 `($, e, next)` 链形嵌成一个
- * ChainLayer，由装配挂进三点位洋葱链）。
+ * 内核 hooks（I1/I6 / T-P1-07、T-P1-09）——注册/触发分离的 hook 面
+ * （pi·hooks.ts 的 HookRegistry 同构：on 注册返回注销函数、close 后注册抛错）。
+ * 信任轨（I6）在注册时声明（trust），T-P1-09 起**分轨**：
  *
- * ── 与策略层的关系（同链不同信任轨，I6 最小面）──
- * hook 层挂在权限 gate 外层（hooks → gate → terminal）：hook 对载荷的任何
- * 修改都会被内层权限重新判定，hook 截断优先于权限求值（不执行的方向安全）。
- * 信任轨在注册时声明（trust），崩溃语义与策略层相反：
+ *   trusted   同链直调——layer(point) 产出聚合层，由装配挂三点位洋葱链
+ *             （权限 gate 外层）。崩溃上抛，与策略层 T-5-01 同款（策略模块
+ *             崩溃 fail-open 是禁止的：放行一个无法判定的动作比中断更危险）。
+ *   untrusted 独立轨——untrustedLayer(point) 产出观察轨，**不进内核链**（分轨
+ *             断言：内核 trace 不含 untrusted 层）。能力白名单 = 只观察：
+ *             调 next 即能力越界抛错（不能截断/换载荷/驱动内核），崩溃在轨内
+ *             隔离（reportError + 跳过继续）。真进程隔离（子进程 + 协议，
+ *             dsh·hook-protocol 分包形状）随 K3/K4 批次。
  *
- *   trusted   崩溃上抛——与策略层 T-5-01 同款（策略模块崩溃 fail-open 是
- *             禁止的：放行一个无法判定的动作比中断更危险）。
- *   untrusted 崩溃隔离为 isError——扩展崩溃不能炸 turn（策略层语义的反面）。
- *
- * 隔离按点位与崩溃时机细分为三种（各自有"为什么"）：
- *   toolCall      before 段崩溃 → isError 工具结果截断（工具不执行，fail-closed）；
- *   modelRequest  before 段崩溃 → 空输出截断（loop 对截断只看 truncated 标记，
- *                 turn 以 blocked 终止，value 不消费）；
- *   turnEnd       崩溃一律吞错继续——turnEnd 截断 = turn 悬挂（closeTurn 大声
- *                 失败），比吞错更糟；hook 是收尾观察面，不能让观察者卡死收尾。
- *   after 段（next 已调）崩溃 → 一律上抛：动作事实已发生（工具已执行/请求已
- *   发出），"隔离为不执行"不存在，装睡等于伪造事实——上抛走既有基础设施
- *   catch 路径（toolCall 的 dispatchTool catch 落 isError，turn 不炸）。
- *
- * 分轨断言（untrusted 不进内核 trace）是 T-P1-09 的验收——本卡只保证结构
- * 可分：trust 维度注册时声明、聚合层按 trust 分流崩溃处理。注册序 = 链上
- * 嵌套序（先注册先看到事件，外层在前）；layer() 取注册快照，之后的注册在
- * 下一次 layer() 才生效（装配时序决定链内容，避免动态注册的半态链）。
+ * hook 本体是 mods 的 `($, e, next)` 链形；注册序 = 轨上嵌套序（先注册先看到
+ * 事件，外层在前）；layer()/untrustedLayer() 取注册快照，之后的注册在下一
+ * 次取层才生效（装配时序定轨内容，避免动态注册的半态轨）。
  */
 
 import { type ChainLayer, type ChainNext, type ChainPoint } from "./chain.js";
-import type { ModelStepOutput, ToolExecutionResult } from "./loop.js";
 
-/** 信任轨（I6 最小面）：trusted 崩溃上抛，untrusted 崩溃隔离。 */
+/** 信任轨（I6）：trusted 同链直调（崩溃上抛），untrusted 独立观察轨（崩溃隔离）。 */
 export type HookTrust = "trusted" | "untrusted";
 
 export interface HookRegistrationOptions {
-  /** hook 名（隔离/报告面可检索）；缺省 `hook#<序号>`。 */
+  /** hook 名（报告面可检索）；缺省 `hook#<序号>`。 */
   name?: string;
-  /** 信任轨；缺省 "trusted"（I1 是内核级可信扩展——P1-09 插件轨必须显式声明 untrusted）。 */
+  /** 信任轨；缺省 "trusted"（内核级可信扩展——插件轨必须显式声明 untrusted）。 */
   trust?: HookTrust;
 }
 
@@ -47,7 +34,7 @@ export interface HookErrorReport {
   readonly point: ChainPoint;
   readonly hook: string;
   readonly error: unknown;
-  /** true = 已隔离（untrusted before 段）；false = 上抛（trusted / after 段）。 */
+  /** true = untrusted 轨内隔离（跳过继续）；false = trusted 上抛。 */
   readonly isolated: boolean;
 }
 
@@ -98,13 +85,18 @@ export class HookRegistry {
     return (this.registrations.get(point)?.length ?? 0) !== 0;
   }
 
+  private snapshot(point: ChainPoint, trust: HookTrust): InternalRegistration[] {
+    return (this.registrations.get(point) ?? []).filter((r) => r.trust === trust);
+  }
+
   /**
-   * 产出挂进三点位链的聚合层（pi 的"触发"面）：注册序嵌套（先注册外层），
-   * 链内最末 hook 的 next = 链上真实 next。无注册 = undefined（装配不挂层，
-   * 零开销）。layer() 取快照——之后的注册不进本层。
+   * 内核链层（trusted 轨，I6 分轨的"同链直调"侧）：装配挂三点位（gate 外层
+   * ——hook 改载荷会被内层权限重新判定）。无 trusted 注册 = undefined（不挂
+   * 层，零开销）。取快照——之后的注册不进本层。trusted 崩溃上抛（策略层
+   * T-5-01 同款：fail-open 禁止）。
    */
   layer<C, E, R>(point: ChainPoint): ChainLayer<C, E, R> | undefined {
-    const snapshot = [...(this.registrations.get(point) ?? [])];
+    const snapshot = this.snapshot(point, "trusted");
     if (snapshot.length === 0) return undefined;
     return async ($, e, next) => {
       // dispose 后层直通（收摊不炸 turn）：已装配的链还持有本层，注册表
@@ -128,24 +120,44 @@ export class HookRegistry {
           // hook 间嵌套不新增 trace 条目——I13 的粒度是链层）。
           { point, trace: next.trace, budget: next.budget },
         );
-        if (reg.trust === "trusted") {
-          // 与策略层 T-5-01 同款：崩溃上抛（fail-open 禁止）。
-          return (await reg.run($, event, hookNext)) as R;
-        }
+        // 与策略层 T-5-01 同款：崩溃上抛（fail-open 禁止）。
+        return (await reg.run($, event, hookNext)) as R;
+      };
+      return runFrom(0, e);
+    };
+  }
+
+  /**
+   * untrusted 独立观察轨（I6 分轨的"隔离 + 能力受限"侧）：**不进内核链**
+   * （分轨断言：内核 trace 不含 untrusted 层——真进程隔离随 K3/K4）。
+   * 能力白名单 = 只观察：hook 拿到的 next 是哨兵，调用即抛能力越界
+   * （不能截断/换载荷/驱动内核）；hook 崩溃在轨内隔离（reportError +
+   * 跳过继续——观察结果无人消费，无 turn 悬挂风险，统一吞错无需分点位）。
+   * 轨底返回 undefined as R（观察终点没有内核动作可驱动；R 由调用方语境定）。
+   */
+  untrustedLayer<C, E, R>(point: ChainPoint): ChainLayer<C, E, R> | undefined {
+    const snapshot = this.snapshot(point, "untrusted");
+    if (snapshot.length === 0) return undefined;
+    return async ($, e, next) => {
+      void next; // 观察轨不消费宿主 next：dispose 后轨退场返回 undefined
+      if (this.disposedError !== undefined) return undefined as R;
+      const forbiddenNext: ChainNext<E, R> = Object.assign(
+        () => {
+          throw new Error(
+            `untrusted hook 能力越界（point=${point}）——观察轨不可调 next` +
+              "（能力白名单 = 只观察，截断/换载荷/驱动内核均为 trusted 轨能力）",
+          );
+        },
+        { point, trace: Object.freeze([]) as never, budget: Object.freeze({}) },
+      );
+      const runFrom = async (index: number, event: E): Promise<R> => {
+        const reg = snapshot[index];
+        if (reg === undefined) return undefined as R;
         try {
-          return (await reg.run($, event, hookNext)) as R;
+          return (await reg.run($, event, forbiddenNext)) as R;
         } catch (error) {
-          if (nextCalled) {
-            // after 段崩溃：动作已发生，装睡等于伪造事实——上抛。
-            this.reportError?.({ point, hook: reg.name, error, isolated: false });
-            throw error;
-          }
-          // before 段崩溃：隔离（错误可检索，turn 不炸）。
           this.reportError?.({ point, hook: reg.name, error, isolated: true });
-          if (point === "turnEnd") {
-            return runFrom(index + 1, event);
-          }
-          return isolatedValue(point, error) as R;
+          return runFrom(index + 1, event);
         }
       };
       return runFrom(0, e);
@@ -156,33 +168,5 @@ export class HookRegistry {
   dispose(): void {
     this.disposedError ??= new Error("HookRegistry 已 dispose——注册被拒绝");
     this.registrations.clear();
-  }
-}
-
-/**
- * untrusted hook before 段崩溃的隔离值（按点位）：形状知识在本文件（R 的
- * 类型来自 loop.ts，依赖单向），装配零负担。C14：content 只带错误消息，
- * 与 dispatchTool 的 isError 兜底同款纪律。
- */
-function isolatedValue(point: ChainPoint, error: unknown): unknown {
-  const message = error instanceof Error ? error.message : String(error);
-  switch (point) {
-    case "toolCall": {
-      const result: ToolExecutionResult = {
-        content: `hook 崩溃（已隔离）：${message}`,
-        isError: true,
-        error: { name: "HookError", code: "HOOK_FAILED" },
-      };
-      return result;
-    }
-    case "modelRequest": {
-      // loop 对 modelRequest 截断只看 truncated 标记（turn blocked），
-      // value 不消费——空输出是哨兵不是事实。
-      const output: ModelStepOutput = { content: "", toolCalls: [], timed: [] };
-      return output;
-    }
-    case "turnEnd":
-      // 不可达（turnEnd 的 untrusted 崩溃走吞错继续分支）。
-      return undefined;
   }
 }
