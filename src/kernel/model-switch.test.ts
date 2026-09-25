@@ -21,9 +21,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   ModelNotRegisteredError,
   ModelSwitchService,
+  ModelSwitchStateError,
+  nextSwitchPhase,
   type RegisteredModel,
 } from "./model-switch.js";
 import { AgentLoop } from "./loop.js";
+import { createChildAssembly } from "./assembly.js";
+import type { LlmFailure } from "./events.js";
 import { runAgentChildStdio, type AgentChildOptions } from "./agent-process.js";
 import {
   decodeMessage,
@@ -37,6 +41,7 @@ import { drainUntil, recvWithTimeout } from "../test-support/event-asserts.js";
 
 const identityA = { provider: "p", modelId: "m1" };
 const identityB = { provider: "p", modelId: "m2" };
+const identityC = { provider: "p", modelId: "m3" };
 
 type HeaderEvent = Extract<SessionEvent, { type: "request/header" }>;
 
@@ -57,13 +62,12 @@ function scriptedProvider(label: string, onFirstCall?: () => void): ModelProvide
   };
 }
 
-/** 两模型注册表：provider 的 onFirstCall 闭包延迟引用 service（构造后再赋值）。 */
+/** 三模型注册表：provider 的 onFirstCall 闭包延迟引用 service（构造后再赋值）。 */
 function makeService(onFirstCall?: () => void): ModelSwitchService {
-  const providerA = scriptedProvider("A", onFirstCall);
-  const providerB = scriptedProvider("B");
   const models: RegisteredModel[] = [
-    { identity: identityA, provider: providerA },
-    { identity: identityB, provider: providerB },
+    { identity: identityA, provider: scriptedProvider("A", onFirstCall) },
+    { identity: identityB, provider: scriptedProvider("B") },
+    { identity: identityC, provider: scriptedProvider("C") },
   ];
   return new ModelSwitchService({ initial: identityA, models });
 }
@@ -202,6 +206,193 @@ describe("J7 loop 接线 —— 每轮启动捕获、在途换模不串轮（验
 });
 
 // ---------------------------------------------------------------------------
+// T-P1-05（J8/J11）：换模事务性与四态状态机
+// ---------------------------------------------------------------------------
+
+/** 装配级测试的临时工作区根（afterEach 统一清理）。 */
+const tmpRoots: string[] = [];
+afterEach(() => {
+  for (const dir of tmpRoots.splice(0)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+describe("J8 迁移守卫 —— nextSwitchPhase 纯函数（验收①）", () => {
+  it("四态各自可达（合法迁移逐条断言）", () => {
+    // deferred：initial 且会话未建立时受理
+    expect(nextSwitchPhase("initial", "switch", false)).toBe("deferred");
+    // pending：initial 且会话已建立；preference/incompatible 开新事务
+    expect(nextSwitchPhase("initial", "switch", true)).toBe("pending");
+    expect(nextSwitchPhase("preference", "switch", true)).toBe("pending");
+    expect(nextSwitchPhase("incompatible", "switch", true)).toBe("pending");
+    // preference：deferred 应用（会话建立即生效）+ pending 生效确认
+    expect(nextSwitchPhase("deferred", "capture", false)).toBe("preference");
+    expect(nextSwitchPhase("pending", "capture", true)).toBe("preference");
+    // incompatible：pending/preference 下请求失败判不兼容
+    expect(nextSwitchPhase("pending", "incompatible-failure", true)).toBe(
+      "incompatible",
+    );
+    expect(nextSwitchPhase("preference", "incompatible-failure", true)).toBe(
+      "incompatible",
+    );
+    // 事务修订：deferred/pending 自迁移（重复换模不迁移状态）
+    expect(nextSwitchPhase("deferred", "switch", false)).toBe("deferred");
+    expect(nextSwitchPhase("pending", "switch", true)).toBe("pending");
+    // 捕获对无事务态是自迁移（合法）
+    expect(nextSwitchPhase("initial", "capture", false)).toBe("initial");
+    expect(nextSwitchPhase("preference", "capture", true)).toBe("preference");
+    expect(nextSwitchPhase("incompatible", "capture", true)).toBe("incompatible");
+  });
+
+  it("非法迁移被拒：类型化 ModelSwitchStateError（含 from 与事件详情）", () => {
+    // 未生效的事务不接受失败报告（deferred/initial 下请求不可能已发出）
+    for (const from of ["initial", "deferred", "incompatible"] as const) {
+      try {
+        nextSwitchPhase(from, "incompatible-failure", true);
+        expect.unreachable(`${from} 应拒 incompatible-failure`);
+      } catch (e) {
+        expect(e).toBeInstanceOf(ModelSwitchStateError);
+        expect((e as ModelSwitchStateError).code).toBe("MODEL_SWITCH_STATE_ERROR");
+        expect((e as ModelSwitchStateError).from).toBe(from);
+      }
+    }
+  });
+});
+
+describe("J8 deferred 暂存（验收②）", () => {
+  it("会话未建立时换模暂存（configured 不变），首个 turn 捕获即应用", () => {
+    const service = makeService();
+    service.switch(identityB);
+    expect(service.phase).toBe("deferred");
+    expect(service.configured).toEqual(identityA); // configured 不变
+    expect(service.lastSwitch).toEqual({ target: identityB, prev: identityA });
+    // 会话建立（首个 turn 捕获）即应用——本 turn 就用新模型
+    const capture = service.captureForTurn(1);
+    expect(capture.identity).toEqual(identityB);
+    expect(service.configured).toEqual(identityB);
+    expect(service.phase).toBe("preference");
+  });
+
+  it("deferred 事务修订：覆盖 target，应用时用最新目标", () => {
+    const service = makeService();
+    service.switch(identityB);
+    service.switch(identityC);
+    expect(service.lastSwitch).toEqual({ target: identityC, prev: identityA });
+    expect(service.captureForTurn(1).identity).toEqual(identityC);
+  });
+});
+
+describe("J11 失败回滚（验收③）", () => {
+  it("换模生效后请求失败判不兼容 → 回滚 prev 且回滚可观测", () => {
+    const service = makeService();
+    service.captureForTurn(1);
+    service.switch(identityB); // pending：configured=B、prev=A
+    // 对照：无关失败码不回滚（transient 错误不是回滚理由）
+    expect(service.reportRequestFailure(1, { code: "MODEL_HTTP_ERROR" })).toBe(false);
+    expect(service.configured).toEqual(identityB);
+    expect(service.reportRequestFailure(1, { code: "MODEL_INCOMPATIBLE" })).toBe(true);
+    expect(service.configured).toEqual(identityA); // 恢复 prev
+    expect(service.phase).toBe("incompatible");
+    expect(service.lastRollback).toEqual({
+      rolledBackTo: identityA,
+      from: identityB,
+      failureCode: "MODEL_INCOMPATIBLE",
+      turn: 1,
+    });
+    // 回滚后下一 turn 捕获到 prev；incompatible 态可再换模开新事务
+    expect(service.captureForTurn(2).identity).toEqual(identityA);
+    service.switch(identityB);
+    expect(service.phase).toBe("pending");
+  });
+
+  it("preference 态（换模已生效）同样可回滚", () => {
+    const service = makeService();
+    service.captureForTurn(1);
+    service.switch(identityB);
+    service.captureForTurn(2); // 生效确认 → preference
+    expect(service.reportRequestFailure(2, { code: "MODEL_INCOMPATIBLE" })).toBe(true);
+    expect(service.configured).toEqual(identityA);
+  });
+
+  it("对照：无换模事务时失败报告无事发生（initial 态）", () => {
+    const service = makeService();
+    service.captureForTurn(1);
+    expect(service.phase).toBe("initial");
+    expect(service.reportRequestFailure(1, { code: "MODEL_INCOMPATIBLE" })).toBe(false);
+    expect(service.lastRollback).toBeUndefined();
+  });
+});
+
+describe("J8 事务修订（验收④：同 turn 重复换模不产生中间半态）", () => {
+  it("A→B→C 同事务修订：prev 保持 A，回滚直接到 A（不经过 B）", () => {
+    const service = makeService();
+    service.captureForTurn(1); // 会话建立
+    service.switch(identityB); // 事务：A→B
+    service.switch(identityC); // 同 turn 修订：target=C、prev 保持 A
+    expect(service.phase).toBe("pending");
+    expect(service.lastSwitch).toEqual({ target: identityC, prev: identityA });
+    // 中间模型 B 从未成为回滚目标——生效后失败直接回 A
+    service.captureForTurn(2);
+    expect(service.configured).toEqual(identityC);
+    expect(service.reportRequestFailure(2, { code: "MODEL_INCOMPATIBLE" })).toBe(true);
+    expect(service.lastRollback?.rolledBackTo).toEqual(identityA);
+  });
+});
+
+describe("J11 装配与 loop 接线 —— 失败观测到回滚的闭环", () => {
+  it("装配级：onTurnError（不兼容判据命中）→ 下一 turn 捕获 prev；无关失败不回滚", () => {
+    const workspaceRoot = mkdtempSync(path.join(tmpdir(), "model-switch-"));
+    tmpRoots.push(workspaceRoot);
+    const store = new SessionStore(new InMemoryEventStorage());
+    const a = createChildAssembly({
+      sessionId: "s0",
+      store,
+      workspaceRoot,
+      contextWindow: 100_000,
+      approvalTimeoutMs: 5_000,
+      initialIdentity: identityA,
+      models: [
+        { identity: identityA, provider: scriptedProvider("A") },
+        { identity: identityB, provider: scriptedProvider("B") },
+      ],
+    });
+    expect(a.handleModelSwitch).toBeDefined();
+    a.handleModelSwitch!(identityB);
+    expect(a.modelForTurn!(1)!.identity).toEqual(identityB); // deferred 应用
+    a.onTurnError!(1, { code: "MODEL_HTTP_ERROR", message: "transient" });
+    expect(a.modelForTurn!(2)!.identity).toEqual(identityB); // 无关失败不回滚
+    a.onTurnError!(2, { code: "MODEL_INCOMPATIBLE", message: "不兼容" });
+    expect(a.modelForTurn!(3)!.identity).toEqual(identityA); // 回滚 prev
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  });
+
+  it("loop 级：turn 失败时 onTurnError 收到类型化 LlmFailure（观测点在 failTurn）", async () => {
+    const failures: LlmFailure[] = [];
+    const store = new SessionStore(new InMemoryEventStorage());
+    const loop = new AgentLoop({
+      sessionId: "s0",
+      store,
+      provider: {
+        async *streamChat() {
+          yield { type: "text-delta", text: "x" };
+          throw new Error("boom");
+        },
+      },
+      identity: identityA,
+      executeTool: async () => ({ content: "ok" }),
+      decideTurn: () => ({ action: "end" }),
+      onTurnError: (turn, failure) => {
+        failures.push({ ...failure });
+        void turn;
+      },
+    });
+    const r = await loop.runTurn("问");
+    expect(r).toMatchObject({ kind: "error", error: { code: "MODEL_UNKNOWN_ERROR" } });
+    expect(failures).toEqual([{ code: "MODEL_UNKNOWN_ERROR", message: "boom" }]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 协议级：model/switch 经 agent-process 全链（内存流，零 mock 管道）
 // ---------------------------------------------------------------------------
 
@@ -301,13 +492,6 @@ function eventsOf(items: readonly AgentMessage[]): SessionEvent[] {
 }
 
 describe("model/switch 协议命令 —— agent-process 全链", () => {
-  const tmpRoots: string[] = [];
-  afterEach(() => {
-    for (const dir of tmpRoots.splice(0)) {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
   function harnessWithRegistry(): ReturnType<typeof startChildHarness> {
     const workspaceRoot = mkdtempSync(path.join(tmpdir(), "model-switch-"));
     tmpRoots.push(workspaceRoot);

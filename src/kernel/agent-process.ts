@@ -158,7 +158,9 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
     queue,
     // J6/J7：装配启用换模时，loop 每轮启动从捕获值取 provider/identity
     //（在途换模生效点在新 turn）；未启用时缺省固定 provider/identity。
+    // J11：turn 失败通知 → 装配驱动换模回滚判据。
     ...(assembly?.modelForTurn ? { modelForTurn: assembly.modelForTurn } : {}),
+    ...(assembly?.onTurnError ? { onTurnError: assembly.onTurnError } : {}),
     ...(assembly
       ? {
           layers: assembly.layers,

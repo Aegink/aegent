@@ -34,7 +34,7 @@ import type {
   TurnEndPayload,
 } from "./loop.js";
 import type { ChainLayer } from "./chain.js";
-import type { SessionEvent } from "./events.js";
+import type { SessionEvent, LlmFailure } from "./events.js";
 import type { SessionStore } from "../session/store.js";
 import { RevertService } from "../session/revert.js";
 import {
@@ -189,6 +189,11 @@ export interface ChildAssembly {
   handleModelSwitch?(identity: ModelIdentity): void;
   /** loop 每轮模型解析（J7 turn 启动捕获）；未启用换模时 undefined。 */
   modelForTurn?(turn: number): TurnModel;
+  /**
+   * loop 的 turn 失败通知（J11 换模事务：不兼容判据命中 → 回滚 prev，
+   * 回滚落 warn 日志）；未启用换模时 undefined。
+   */
+  onTurnError?(turn: number, failure: LlmFailure): void;
   /** E11 代码检查点服务（checkpointRepoRoot 提供时存在；kick 前打点 + restoreCodeTo）。 */
   checkpoint?: GitCheckpointService;
   /** 工具注册的面（PathGuard 由装配定形，注册处必收）。 */
@@ -417,6 +422,20 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
   const modelForTurn = modelSwitch
     ? (turn: number): TurnModel => modelSwitch.captureForTurn(turn)
     : undefined;
+  const onTurnError = modelSwitch
+    ? (turn: number, failure: LlmFailure): void => {
+        // J11：不兼容判据命中 → 回滚 prev（回滚本身的可观测面 = 服务状态
+        // + 此处 warn 日志；落事件流在 T-P1-06 的词汇表扩展统一接入）。
+        const rolledBack = modelSwitch.reportRequestFailure(turn, failure);
+        if (rolledBack) {
+          const to = modelSwitch.configured;
+          logger?.warn(
+            `换模回滚：${failure.code} 于 turn ${turn}，已恢复到 ` +
+              `${to.provider}:${to.modelId}`,
+          );
+        }
+      }
+    : undefined;
 
   const toolGateLayer = createToolGateLayer({
     chain: policyChain,
@@ -481,7 +500,7 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
       revertService.revert(sessionId, targetSeq);
     },
     ...(handleModelSwitch !== undefined && modelForTurn !== undefined
-      ? { handleModelSwitch, modelForTurn }
+      ? { handleModelSwitch, modelForTurn, ...(onTurnError !== undefined ? { onTurnError } : {}) }
       : {}),
     ...(checkpoint !== undefined ? { checkpoint } : {}),
     pathGuard,

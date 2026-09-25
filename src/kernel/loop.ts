@@ -192,6 +192,13 @@ export interface AgentLoopDeps {
     identity: ModelIdentity;
   };
   /**
+   * J11 换模事务（T-P1-05 装配接线）：turn 以 error 终止时通知装配——
+   * 装配处据此驱动 ModelSwitchService.reportRequestFailure（不兼容判据
+   * 命中 → 回滚 prev）。同 beforeFirstModelRequest 先例：显式时点 hook，
+   * 不是链点位；纯通知，loop 不关心返回。
+   */
+  onTurnError?(turn: number, failure: LlmFailure): void;
+  /**
    * PreTurn 压缩挂点（T-8 装配，zcode PreRequest 同款）：本 turn 的
    * turn/start + user/message 已落盘（新 prompt 已入流）、首次模型请求尚未
    * 发出时调用——装配处在此跑本地溢出判定与 PreTurn 相位压缩（F9/F21）。
@@ -639,6 +646,8 @@ export class AgentLoop {
   private async failTurn(turn: number, e: unknown): Promise<TurnEndReason> {
     const { store, sessionId } = this.deps;
     const reason: TurnEndReason = { kind: "error", error: toLlmFailure(e) };
+    // J11 换模事务：失败事实先给装配（回滚判据的消费点），再闭合 turn。
+    this.deps.onTurnError?.(turn, reason.error);
     // 出错时当前 step 可能仍开着（流中途抛）；decideTurn 等晚段错误的 step
     // 已闭合——按投影判断，绝不二次闭合。
     const proj = Projector.fold(store.load(sessionId)).projection;
