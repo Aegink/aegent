@@ -124,9 +124,9 @@
 | --- | --- | --- |
 | J2（部分） | ~~真实厂商连通性需要 API key~~ **已实测（2026-09-25，用户提供 OpenAI 兼容端点，deepseek-v4.1-flash）**：流式 192 块（reasoning-delta/text-delta/usage/done）、usage 落库（input 2196/output 191/total 2387/reasoningTokens 175）、L3 视图可查；真实模型 tool_call 流式分片拼接正确（arguments 完整 JSON）、审批挂起→超时→isError 回喂→模型自适应重试→诚实收尾，27 事件配平落库。系统提示生效（模型自称 aegent）。**剩：不同厂商 wire 差异的多端点复测**（同一端点已闭环） | 其他厂商端点可复跑同款命令：`node dist/src/cli/index.js --smoke --provider openai --db <库> --workspace <git 仓>` + 环境变量 AEGENT_API_KEY / AEGENT_BASE_URL / AEGENT_MODEL |
 | T9 冷启动 | 「<500ms」依赖本机负载 | T-8-05 终验收已实测两形态：echo 模式 median 283.3ms、SQLite 模式 median 273ms，达标收口（T-3-06 基线 109.6ms 的上浮源于子进程装配扩容，见 T-8-05 偏离①） |
-| D3 弱承诺 | 「网络策略只管工具层」是声明不是代码属性 | 读 T-6-03 产出的 README 声明是否醒目 |
+| D3 弱承诺 | 「网络策略只管工具层」是声明不是代码属性 | **已关闭（2026-09-25 用户目检裁决："可以"）**——`src/sandbox/README.md` 置顶加粗的弱承诺段（只拦工具层 fetch，不承诺 bash 子进程/模型接入层/OS 级，deny 档 ≠ 网络隔离）获用户认可 |
 | T-6-01 符号链接逃逸 | 本机无创建符号链接特权（Windows 需开发者模式），逃逸用例自动跳过（LIMITATIONS #1） | 有特权环境跑 `npx vitest run src/sandbox/path-guard.test.ts` 应 22 全过（终验收实测 21 passed + 1 skipped）；realpath 归一逻辑已有"最近存在祖先"路径的确定性用例覆盖 |
-| §6.2 常驻内存 | 任务管理器观察（需求原文如此） | 用户空闲时目测 <150MB；**T-8-05 附 node 辅测**：agent-child 空闲 WorkingSet64 实测 47.1MB，余量充足 |
+| §6.2 常驻内存 | 任务管理器观察（需求原文如此） | **多会话并发实测完成（2026-09-25，用户要求的口径）**——agent-child 并发脚本（`scratch/_tmp_mem/concurrent.mjs`，WorkingSet64 每 250ms 采样）：① 8 会话×10 轮（~43 事件/进程）：单进程峰值 43.5–43.9MB，并发总 349.4MB；② 16 会话×10 轮：单进程 43.6–43.8MB，总 700.1MB；③ 8 会话×50 轮（~210 事件/进程，事件×5）：单进程 45.9–46.5MB（仅 +2.5MB）。**结论：单实例常驻稳定 43–47MB（<150MB 余量 3 倍+，含 node 运行时基线）；事件规模翻 5 倍内存仅微涨（大头是运行时基线，内核对象增长温和）；多会话 = N×单实例线性扩展（T9 每会话一进程的架构结果，16 会话总 700MB 超 150MB 是 16 个实例合计——单实例口径达标，进程级共享内核摊薄属 K5/P1 host 架构）**。任务管理器目测（需求原文方式）随时可做，数据在此可复核 |
 
 ### J2 实测记录（2026-09-25，真实 OpenAI 兼容端点）
 
