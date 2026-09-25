@@ -263,7 +263,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①"mock 时间"用 sleep/rand 双注入实现而非 vi.useFakeTimers——真端口 IO 与 fake timers 混用易死锁，等待时长被记录为断言数据不真睡；②Retry-After 的 HTTP 日期格式只在 parseRetryAfterMs 纯函数层测（withRetry 层的 Date.now 不可注入），withRetry 层测秒数格式；③附加防御：流已产出过增量后任何错误不重试（防未来适配层在流中途抛 ProviderHttpError 造成重复送达），写为独立用例
 - **完成记录**：2026-09-25。产出 `src/models/retry.ts`（RETRYABLE_STATUS_CODES = [408,409,429,500,502,503,504,529] + DEFAULT_MAX_ATTEMPTS=10 + backoffDelayMs（500·2^n 封顶 32s + 25% jitter）+ parseRetryAfterMs（秒数/HTTP 日期）+ withRetry 包装）+ `retry.test.ts` 10 用例。验收：`npx vitest run src/models/retry.test.ts` → 10 passed；①429×2 后成功：mock.calls=3、waits=[500,1000]；②400 即抛 calls=1、waits=[]；③Retry-After:2 → waits=[2000] 覆盖默认；④裸 Error（unknown）inner 恰 1 次；⑤maxAttempts=3 耗尽抛最后一次错误；⑥流产出后中断不重试。全量 `npx vitest run` 78 passed，`npx tsc --noEmit` 干净。
 
-#### T-2-04 · J22 · 超时错误码作用域 `[ ]`
+#### T-2-04 · J22 · 超时错误码作用域 `[x]`
 - **依据需求**：J22（P0）
 - **上游首选参考**：[dsh·timeout-policy/index.ts:25](../oss/deepseek-harness/packages/guard/timeout-policy/src/index.ts)（`export const TOOL_TIMEOUT = 'TOOL_TIMEOUT'`；"without racing or abandoning the tool promise"）
 - **取什么 / 别抄什么**：取"超时是带 code 的结构化错误，不是裸 signal"；signal 换回/恢复语义照 DSH
@@ -272,8 +272,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/kernel/timeout.test.ts`——超时路径错误 `code === 'TOOL_TIMEOUT'`；内层 promise 完成晚于超时不产生未捕获 rejection
 - **依赖**：T-1-00
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①P0 promise 风格下没有 DSH 的 exec 对象可做"signal 换回/恢复"——等价纪律落为"错误带 code、调用方按 code 路由"（与 DSH `timeoutOf(signal, code)` 判定同构），DSH 的 signal 接线纪律写进 timeout.ts 头注释，等阶段 3/4（T-3-04 取消、T-4-05 ToolContext）定形时照落；②实现不用 Promise.race 裸写（内层 rejection 无人接会变 unhandled rejection），改为内层 .then 双分支挂 handler（超时后结果 no-op）；③TimeoutError 是 Error 子类，头注释提醒 C14：落事件时须转 JsonRecord
+- **完成记录**：2026-09-25。产出 `src/kernel/timeout.ts`（TOOL_TIMEOUT 常量 + TimeoutError{code,timeoutMs} + withTimeout）+ `timeout.test.ts` 5 用例。验收：`npx vitest run src/kernel/timeout.test.ts` → 5 passed；①超时路径 code === "TOOL_TIMEOUT" 且 timeoutMs=10；②未超时正常结算且 clearTimeout 生效（不拖满预算）；③内层 rejection 原样透传；④内层晚完成（成功+失败双向）无 unhandledRejection（process 监听器断言）；⑤嵌套作用域：内层先到透传 INNER_TIMEOUT、外层先到报 OUTER_TIMEOUT。全量 `npx vitest run` 83 passed，`npx tsc --noEmit` 干净。
 
 ---
 
