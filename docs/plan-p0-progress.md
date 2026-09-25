@@ -35,6 +35,7 @@
 | 2026-09-25 | T-4-06 | B5/B10/B11 | `24b359c` | `npx vitest run src/kernel/tools/truncate.test.ts` | 6 passed；51KB/2000 行双触发（多字节不切断）、spill 首行 Q13 JSON 标记（sessionId/tool/callId/deletable）、完整原文落盘、registry 统一出口接入 meta 合并、isError 同截断；B11 描述声明落 4 个 txt |
 | 2026-09-25 | T-4-07 | B12 | `837d5cb` | `npx vitest run src/kernel/tools/contract.test.ts` | 5 passed；契约富值（函数+5000 行对象）经 dispatch 投影，事件 payload 无 value/函数且 <500B；isError/error/meta 通道齐；loop 落盘事件流端到端验证；投影点在 registry.dispatch（loop 零改动） |
 | 2026-09-25 | T-4-08 | B9/B14 | `3757753` | `npx vitest run src/kernel/budget.test.ts` | 7 passed；tick 超数量/超时 throw（注入钟）、progress 只查截止；真实 loop 流 expectPaired(tool/call) 配平 + toolCallId 三段同源；预算耗尽停发缺席（取消同款语义）、turn 正常收束；默认 256 次/120s 可 Infinity 禁轴 |
+| 2026-09-25 | T-5-01 | C58/C20/C2 | （本卡提交后回填） | `npx vitest run src/policy/chain.test.ts` | 10 passed；同两条规则托管/核心换位结果翻转（层序即权威）；[Bash(*)允许, Bash(git*)询问] → git status 落允许、反转落 ask（首匹配胜）；POLICY_LAYERS 唯一层序常量导出断言；模块崩溃上抛不跳过（fail-open 禁止）；rules.ts 泛型化只管顺序语义，通配匹配归 T-5-02 |
 
 ---
 

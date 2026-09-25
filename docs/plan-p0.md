@@ -483,7 +483,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 **依赖**：阶段 4（C9 需要 B 层执行点；C27 需要 bash 工具）。
 **不做什么**：不做审批跨端回转 UI（C6 P1——C5/N6 的通道已为它备好）；不做预设切换（C8 P1）；不做项目信任（C11 P1）；不做编辑前先读（C12 P1）；不做 dry-run（C19 P1）；不做规则作用域四层（C22 P1）；不做批量审批（C30 P1）；不做无人值守 ASK→DENY（C33 P1）；不做 LLM 判官（C42 P2、C56 P1）；不做 modifiedInput（C52 P1）。**N6 只做单端的 owner 命令通道闭集**，多端 host/roster（N3/N7/N8）是 P1。
 
-#### T-5-01 · C58/C20/C2 · 权限权威是链 + 策略模块数组 + 前匹配胜 `[ ]`
+#### T-5-01 · C58/C20/C2 · 权限权威是链 + 策略模块数组 + 前匹配胜 `[x]`
 - **依据需求**：C58（P0，Q15 裁决）· C20（P0）· C2（P0）
 - **上游首选参考**：[kimi·permissionPolicyService.ts](../oss/kimi-code/packages/agent-core-v2/src/agent/permissionPolicy/permissionPolicyService.ts)（`evaluate`：`for (const policy of this.policies) … if (result !== undefined) return`——首个非 undefined 者胜，顺序集中一处）；[kimi·permissionPolicy/policies/user-configured-rule.ts:51](../oss/kimi-code/packages/agent-core-v2/src/agent/permissionPolicy/policies/user-configured-rule.ts)（`for (const rule of rules) … if (match !== undefined) return match`——**首匹配胜**，与 OpenCode findLast 相反）；[opencode·permission/index.ts:32](../oss/opencode/packages/opencode/src/permission)（`findLast` + 默认 ask——**只作对照**，用来写"行为相反"的测试）
 - **取什么 / 别抄什么**：链是权威（层序 `托管 > 用户 > 项目 > 核心`），规则集是链中一环；**前匹配胜必须有用例钉死**（宽规则在前则窄规则永不生效）
@@ -492,8 +492,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/policy/chain.test.ts`——①同规则放托管层与核心层结果不同且可断言；②`[Bash(*)允许, Bash(git*)询问]` 序列下 `git status` 落允许（首匹配胜证据）；③链顺序定义在唯一常量处（断言导出顺序）
 - **依赖**：T-4-01
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①链求值落为 **async**（kimi permissionPolicyService.evaluate 同款 Promise）——内核洋葱链层类型本就兼容 Promise（ChainLayer 返回 `R | Promise<R>`），T-5-12 的 gate 挂入无阻抗。②rules.ts 落**泛型**规则集模块（`createRuleSetModule<R>` 只管首匹配顺序语义，match 函数注入）——规则形状 `Rule{permission,pattern,action}` 与双维通配是 T-5-02（evaluate.ts）的产出，本卡不写一遍就扔的匹配器；验收②的 `Bash(*)`/`Bash(git*)` 语义由测试本地最小匹配器表达。③失败纪律钉死：策略模块抛错原样上抛、绝不当作弃权跳过（权限链 fail-open 不可接受），chain.ts 头注释 + 独立用例。④PolicyOutcome P0 只有 `{action}`；C18 的 rule/reason 证据随 T-5-03 的 Verdict 扩展（加字段非破坏）。⑤层序词汇：托管/用户/项目/核心 → `managed/user/project/core`，中文映射在 POLICY_LAYERS 注释。⑥两个"链"的关系写明：policy/chain.ts（本卡，管"谁有裁决权"）与 kernel/chain.ts（T-3-01，管"干预时机"）是两个结构，前者由 T-5-12 的 gate 挂进后者 toolCall 点位。
+- **完成记录**：2026-09-25。产出 `src/policy/chain.ts`（POLICY_LAYERS 唯一层序常量 + PolicyCall/PolicyAction/PolicyOutcome/PolicyModule + assemblePolicyChain 按层展平、首个非 undefined 者胜、全弃权返回 undefined）+ `src/policy/rules.ts`（createRuleSetModule 泛型首匹配胜规则集模块）+ `chain.test.ts` 10 用例。验收：`npx vitest run src/policy/chain.test.ts` → **10 passed**；①同两条规则托管/核心换位后结果翻转（deny 胜与 allow 胜双向断言）；②`[Bash(*)允许, Bash(git*)询问]` → git status 落允许，反转顺序落 ask，且不匹配的规则不产生裁决（首匹配≠首条无条件胜）；③`[...POLICY_LAYERS]` 断言恰为 ["managed","user","project","core"] 且装配展平顺序一致。附：全链弃权 → undefined、首应答后不再询问后继模块、模块崩溃上抛不跳过。全量 `npx vitest run` **198 passed**，`npx tsc --noEmit` 干净。
 
 #### T-5-02 · C1/C3/C4 · 三维求值 + 默认 ask + 双维通配 `[ ]`
 - **依据需求**：C1（P0）· C3（P0）· C4（P0）
