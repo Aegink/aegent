@@ -4,6 +4,7 @@
  */
 
 import type { ToolRegistry } from "../registry.js";
+import { WriteQueue } from "../write-queue.js";
 import { createBashTool } from "./bash.js";
 import { createEditTool } from "./edit.js";
 import { createGlobTool } from "./glob.js";
@@ -12,11 +13,13 @@ import { createReadTool } from "./read.js";
 import { createWriteTool } from "./write.js";
 
 export function registerBuiltinTools(registry: ToolRegistry): void {
+  // B4：write/edit 共享一个写队列（同路径互斥、异路径并行）
+  const writeQueue = new WriteQueue();
   for (const def of [
     createReadTool(),
-    createWriteTool(),
+    createWriteTool({ writeQueue }),
     createBashTool(),
-    createEditTool(),
+    createEditTool({ writeQueue }),
     createGlobTool(),
     createGrepTool(),
   ]) {

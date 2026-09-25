@@ -10,7 +10,9 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import * as path from "node:path";
+import type { ToolExecutionResult } from "../../loop.js";
 import type { ToolDef } from "../registry.js";
+import type { WriteQueue } from "../write-queue.js";
 import { toolError } from "./util.js";
 
 export interface WriteArgs {
@@ -18,7 +20,8 @@ export interface WriteArgs {
   content: string;
 }
 
-export function createWriteTool(): ToolDef {
+export function createWriteTool(options?: { writeQueue?: WriteQueue }): ToolDef {
+  const queue = options?.writeQueue;
   return {
     name: "write",
     async execute(args) {
@@ -30,19 +33,23 @@ export function createWriteTool(): ToolDef {
         return toolError("WriteError", "INVALID_ARGUMENTS", "write 需要 content（字符串）");
       }
       const abs = path.resolve(filePath);
-      try {
-        await mkdir(path.dirname(abs), { recursive: true });
-        await writeFile(abs, content, "utf8");
-      } catch (e) {
-        return toolError(
-          "WriteError",
-          (e as NodeJS.ErrnoException).code ?? "IO_ERROR",
-          `写入 ${filePath} 失败：${(e as Error).message}`,
-        );
-      }
-      return {
-        content: `Successfully wrote to ${filePath} (${String(Buffer.byteLength(content, "utf8"))} bytes)`,
+      const doWrite = async (): Promise<ToolExecutionResult> => {
+        try {
+          await mkdir(path.dirname(abs), { recursive: true });
+          await writeFile(abs, content, "utf8");
+        } catch (e) {
+          return toolError(
+            "WriteError",
+            (e as NodeJS.ErrnoException).code ?? "IO_ERROR",
+            `写入 ${filePath} 失败：${(e as Error).message}`,
+          );
+        }
+        return {
+          content: `Successfully wrote to ${filePath} (${String(Buffer.byteLength(content, "utf8"))} bytes)`,
+        };
       };
+      // B4：落盘动作经写队列串行化（同路径 FIFO）；未接队列时直写（仅测试）
+      return queue ? queue.run(abs, doWrite) : doWrite();
     },
   };
 }

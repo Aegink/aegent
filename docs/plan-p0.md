@@ -414,7 +414,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①**edit 取单条 `{path, oldText, newText}` 而非 pi 的批量 `edits[]`**（P0 最小语义；oldText 唯一匹配约束：0 次 NOT_FOUND / ≥2 次 NOT_UNIQUE 均 isError 提示补上下文；替换用函数形式防 newText 的 `$&` 被解释；不做换行规范化——CRLF 文件需 oldText 同款行尾，记方言）。②**grep 的 ripgrep 主路径推迟到 T-4-05**：rg 调用是 spawn，受 D4 约束（`src/kernel/tools/` 下除 env.ts 外禁 child_process，T-4-05 的 grep 验收就是证伪命令），工具本体不能自带 spawn——P0 落纯 JS（walkFiles + 逐行 RegExp），rg 提速与 bash 执行同批经 ExecutionEnv 回填；正则方言 = JS RegExp（rg 集成时统一）。③include 过滤取 rg 语义：不含路径分隔符时对文件名匹配（`*.ts` 命中任意深度的 ts 文件）。④glob 输出**绝对路径**（自包含——模型拿去 read 不受 cwd 与搜索根错位影响）；方言 = `**` 跨段（尾随"星对斜杠"可零段）、单星段内任意（含点开头文件）、`?` 单字符（patterns.ts 头注释记录；`*` 不跨段，gitignore 点文件特判不做）。⑤二进制文件（含 NUL 字节）与读取失败的文件跳过（rg 默认同款）；glob/grep 输出上限 100/200 带截断提示。⑥**踩坑记录：块注释内写 glob 原文（含"星对斜杠"字样）会提前闭合注释**，patterns.ts 头注释因此改写措辞——先被误判为 TS7 lexer bug 排查（最小重现三种变体均不复现），根因就是注释内容，值得进 notes。⑦`noUncheckedIndexedAccess` 下索引访问需 undefined 防御（patterns/grep 各一处，与 loop.ts 防御风格一致）。
 - **完成记录**：2026-09-25。产出 `src/kernel/tools/builtin/{edit,glob,grep,patterns}.ts` + `descriptions/{edit,glob,grep}.txt` + builtin.test.ts 扩至 16 用例（注册入口 6 工具）。验收：`npx vitest run src/kernel/tools/builtin/` → **16 passed**，六工具各 ≥2 用例：edit 唯一匹配替换落盘（`$&` 不被解释）/ 不唯一与未找到 isError 且不落盘 / 参数坏；glob 嵌套目录 `**` 与 `?` 匹配输出绝对路径字母序 / 无匹配空输出 / 101 文件截断提示；grep 多文件行号正确 + include 按文件名过滤 / 单文件搜索 / 非法正则 INVALID_PATTERN / 无匹配。全量 `npx vitest run` **153 passed**，`npx tsc --noEmit` 干净。
 
-#### T-4-04 · B4 · 文件写串行化队列 `[ ]`
+#### T-4-04 · B4 · 文件写串行化队列 `[x]`
 - **依据需求**：B4（P0）
 - **上游首选参考**：[pi·harness/tools/](../oss/pi/packages/agent/src/harness/tools)（`file-mutation-queue.ts`——串行化粒度）
 - **取什么 / 别抄什么**：取"按路径串行"粒度；不同路径不互相阻塞
@@ -423,8 +423,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/kernel/tools/write-queue.test.ts`——并发 20 写同一路径：内容为某一次写入的完整值（无交错半截）；并发写 20 个不同路径总耗时明显低于全串行
 - **依赖**：T-4-02
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①**证据强度升级为"读了代码"**（pi file-mutation-queue.ts 62 行全读）：取其 Map promise 链形状、失败不毒化后续（finally releaseNext）、Map 清理防泄漏三点；**不取** canonical path 归一（env.realpath，P0 用 resolve 绝对路径为 key——Windows 同文件不同大小写会被误判为不同路径，记为已知边界，符号链接归一留 P1）。②实现精简为 24 行的 WriteQueue 类：chains 里存"吞错尾巴"（永不 reject，续链只走 fulfilled 分支），任务自身 rejection 只归调用方；tail 完成时自摘（防长期运行泄漏）。③接入面：`createWriteTool/createEditTool({writeQueue?})` 构造参数注入，edit 的**整个读-改-写**进队列（原子性关键：并发 edit 与 write 不产生交错产物）；registerBuiltinTools 创建共享实例——装配处零配置即走队列。④write/edit 头注释里 T-4-02/03 声明的"队列接入点"本卡兑现。
+- **完成记录**：2026-09-25。产出 `src/kernel/tools/write-queue.ts` + 接入 write/edit/index + `write-queue.test.ts` 6 用例。验收：`npx vitest run src/kernel/tools/write-queue.test.ts` → **6 passed**；①并发 20 写同一路径（任务内随机延迟+不同长度完整值）→ 文件内容恰为 FIFO 尾任务完整值；②并发 20 异路径（各 30ms）总耗时 <300ms（全串行下界 600ms 的一半以下）；③同 key FIFO 开始序 = 提交序；④前一任务 throw 不毒化后续、rejection 只归调用方、队列仍可用；⑤工具接入：12 个并发 write 经 dispatch 同路径落完整值、edit+write 并发同文件产物必为其中一方完整结果。全量 `npx vitest run` **159 passed**，`npx tsc --noEmit` 干净。
 
 #### T-4-05 · D4 · ToolContext 无裸进程 API `[ ]`
 - **依据需求**：D4（P0）

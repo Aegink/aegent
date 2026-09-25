@@ -12,7 +12,9 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import * as path from "node:path";
+import type { ToolExecutionResult } from "../../loop.js";
 import type { ToolDef } from "../registry.js";
+import type { WriteQueue } from "../write-queue.js";
 import { toolError } from "./util.js";
 
 export interface EditArgs {
@@ -32,7 +34,8 @@ function countOccurrences(text: string, needle: string): number {
   return count;
 }
 
-export function createEditTool(): ToolDef {
+export function createEditTool(options?: { writeQueue?: WriteQueue }): ToolDef {
+  const queue = options?.writeQueue;
   return {
     name: "edit",
     async execute(args) {
@@ -47,45 +50,49 @@ export function createEditTool(): ToolDef {
         return toolError("EditError", "INVALID_ARGUMENTS", "edit 需要 newText（字符串）");
       }
       const abs = path.resolve(filePath);
-      let text: string;
-      try {
-        text = await readFile(abs, "utf8");
-      } catch (e) {
-        return toolError(
-          "EditError",
-          (e as NodeJS.ErrnoException).code ?? "IO_ERROR",
-          `读取 ${filePath} 失败：${(e as Error).message}`,
-        );
-      }
-      const occurrences = countOccurrences(text, oldText);
-      if (occurrences === 0) {
-        return toolError(
-          "EditError",
-          "OLD_TEXT_NOT_FOUND",
-          `oldText 在 ${filePath} 中未找到——请核对原文（含空白与换行）后重试`,
-        );
-      }
-      if (occurrences > 1) {
-        return toolError(
-          "EditError",
-          "OLD_TEXT_NOT_UNIQUE",
-          `oldText 在 ${filePath} 中出现 ${String(occurrences)} 次——请加入更多上下文使其唯一`,
-        );
-      }
-      // 函数形式的替换串不经 $& 等 special pattern 解释（newText 原样落盘）
-      const next = text.replace(oldText, () => newText);
-      try {
-        await writeFile(abs, next, "utf8");
-      } catch (e) {
-        return toolError(
-          "EditError",
-          (e as NodeJS.ErrnoException).code ?? "IO_ERROR",
-          `写回 ${filePath} 失败：${(e as Error).message}`,
-        );
-      }
-      return {
-        content: `Edited ${filePath} (1 replacement, ${String(Buffer.byteLength(next, "utf8"))} bytes written)`,
+      // B4：整个"读-校验-替换-写回"进队列（读改写必须原子，防并发写交错）
+      const doEdit = async (): Promise<ToolExecutionResult> => {
+        let text: string;
+        try {
+          text = await readFile(abs, "utf8");
+        } catch (e) {
+          return toolError(
+            "EditError",
+            (e as NodeJS.ErrnoException).code ?? "IO_ERROR",
+            `读取 ${filePath} 失败：${(e as Error).message}`,
+          );
+        }
+        const occurrences = countOccurrences(text, oldText);
+        if (occurrences === 0) {
+          return toolError(
+            "EditError",
+            "OLD_TEXT_NOT_FOUND",
+            `oldText 在 ${filePath} 中未找到——请核对原文（含空白与换行）后重试`,
+          );
+        }
+        if (occurrences > 1) {
+          return toolError(
+            "EditError",
+            "OLD_TEXT_NOT_UNIQUE",
+            `oldText 在 ${filePath} 中出现 ${String(occurrences)} 次——请加入更多上下文使其唯一`,
+          );
+        }
+        // 函数形式的替换串不经 $& 等 special pattern 解释（newText 原样落盘）
+        const next = text.replace(oldText, () => newText);
+        try {
+          await writeFile(abs, next, "utf8");
+        } catch (e) {
+          return toolError(
+            "EditError",
+            (e as NodeJS.ErrnoException).code ?? "IO_ERROR",
+            `写回 ${filePath} 失败：${(e as Error).message}`,
+          );
+        }
+        return {
+          content: `Edited ${filePath} (1 replacement, ${String(Buffer.byteLength(next, "utf8"))} bytes written)`,
+        };
       };
+      return queue ? queue.run(abs, doEdit) : doEdit();
     },
   };
 }
