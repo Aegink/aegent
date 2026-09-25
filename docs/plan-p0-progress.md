@@ -68,6 +68,7 @@
 | 2026-09-25 | T-7-09 | F1/F2 | `eb34efe` | `npx vitest run src/context/system-prompt.test.ts` | 8 passed；a/b/c 假 fs：a 与 a/b 同时生效且 b 的"测试规范"覆盖 a、收集序列 [远→近] 含 root 层且 root 是边界；不注入 basePrompt 时输出含真 base.md（改文件零 .ts diff 机验）；权限段真模板两档互异 + {{WRITABLE_ROOTS}} 替换；`npm run build` 基础提示 1 项进 dist；opencode 加载器锚点（instruction.ts findUp 就近取一个不叠加）已回填 requirements F2 并注明与本方自研语义的差异；全量 458 passed |
 | 2026-09-25 | T-8-01 | K1 | （本次 commit） | `npx vitest run src/cli/` + smoke 实测 | 5 passed；审批全链路（write ask 挂起→/approve allow→文件落盘）、/revert 事件可见、越界类型化错误、echo 会话完整事件流；smoke（--db）SQLite 9 事件 seq 连续、system 提示 2264 字实测；阶段 5/7 模块接线进装配（gate/压缩/压力/抖动/预算/系统提示 + runFlushPoint 首接）；全量 463 passed |
 | 2026-09-25 | T-8-02 | E11 | （本次 commit） | `npx vitest run src/session/git-checkpoint.test.ts` | 6 passed（真 git 仓夹具）；场景① CLI 级联测：审批放行 write 改文件 → /revert 到改前事件点 → baseline.txt 回"改前"+ reverted 回执；空 stash 落 ref:null（偏离 pi 的跳过）；非 git 目录首次 warn 静默；无检查点/apply 冲突抛明确错误；全量 469 passed |
+| 2026-09-25 | T-8-03 | L1/L3 | （本次 commit） | `npx vitest run src/obs/usage.test.ts && ls logs/ \|\| echo NO_LOG_DIR` | 3 passed；1002 事件喂入按会话/按轮分列可查（Σinput=1,402,800 逐列断言）、usage 缺失不算 0、totalTokens 显式优先、多会话不串扰；logs/ NO_LOG_DIR（L1 否定性面）；全量 472 passed |
 
 ---
 

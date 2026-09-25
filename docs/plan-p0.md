@@ -906,7 +906,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①**打点时点是 turn 开始前而非"turn 末"**（卡面"turn 末打点"与场景①验收矛盾：turn 末的 stash 捕获的是"改后"，永远回不到"改前"）——pi turn_start 回调 "before LLM makes changes" 的等价时点：装配处（agent-process 的 kick）在 `loop.runTurn` 之前 `capture(turnCount+1)`，checkpoint 事件落在 turn/start 之前（词汇表 checkpoint 无轮开启要求，seq=1 即"会话开始前的代码状态"）。②**空 stash 落 `ref:null` 检查点而非跳过**（pi 对空 ref 直接跳过）：改前恰好干净（最常见！）时 pi 语义下无检查点可恢复，我方 null ref 表示"该时点与 HEAD 一致"，restoreCodeTo 据此 checkout 回 HEAD——场景①在基线干净的仓库才能过。③恢复语义 = `git checkout -- .`（丢弃 tracked 改动，即 revert 代码面要丢弃"未来"）→ ref 非 null 再 `git stash apply <ref>`；untracked 新文件不回退（stash create 不含 untracked，pi 同款边界，记 LIMITATIONS）。④revert 顺序：先对话态（校验便宜、失败零残迹）后代码态；代码恢复失败时对话已回退（部分回退，error 行可见）——P0 接受并记录。⑤协议新增 `reverted{targetSeq, codeRestored}` 回执消息（CLI 渲染"会话与代码已回退"/"仅对话态"）——代码恢复成功无事件可落（git 状态变化不在事件源管辖），回执是唯一可见面。⑥checkpoint 打点失败（非 git 目录）不阻断轮（onWarn 首次提示后静默防刷屏），后续 restoreCodeTo 明确报"无检查点"。⑦git 调用经 GitRunner 注入面（execFile，跨进程只传字符串参数，T9）；不在 src/kernel/tools/ 下（D4 证伪范围不涉及）。
 - **完成记录**：2026-09-25。产出 `src/session/git-checkpoint.ts`（GitCheckpointService.capture/restoreCodeTo + createGitRunner）+ 接线（assembly.checkpointRepoRoot → kick 前打点 → /revert 双回退 → 协议 reverted 回执 → CLI 渲染）+ `git-checkpoint.test.ts` 6 用例（真 git 仓夹具）。验收：`npx vitest run src/session/git-checkpoint.test.ts` → **6 passed**——场景①完整链（CLI 级联测：审批放行 write 改文件 → /revert 到改前事件点 seq=2 → baseline.txt 内容回"改前" + reverted 回执 + session/revert 事件可见）；干净工作区 ref:null 检查点；非 git 目录首次 warn 后静默零事件；无检查点覆盖抛明确错误；stash apply 冲突抛含 stderr 错误。全量 `npx vitest run` **469 passed / 1 skipped**（T-8-01 收尾 463 → 净增 6），`npx tsc --noEmit` 干净。
 
-#### T-8-03 · L1/L3 · 事件即轨迹 + token 统计 `[ ]`
+#### T-8-03 · L1/L3 · 事件即轨迹 + token 统计 `[x]`
 - **依据需求**：L1（P0）· L3（P0）
 - **上游首选参考**：[pi·types.ts:485](../oss/pi/packages/agent/src/types.ts#L485)（事件即轨迹——不另存一份日志）；[cc-switch·usage_rollup.rs:128](../oss/cc-switch/src-tauri/src/database/dao/usage_rollup.rs)（`input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, …, total_cost_usd` 分列 SQL——**requirements.md L3 原锚点曾指 stream_check.rs，40-anchor-checklist 已修正，此处与修正一致**）
 - **取什么 / 别抄什么**：L1 是**否定性验收**（日志目录不该出现平行轨迹文件）；L3 取分列聚合形状
@@ -915,8 +915,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/obs/usage.test.ts && ls logs/ 2>/dev/null || echo NO_LOG_DIR`——1000 事件喂入后按会话与按轮的 token 分列可查；轨迹重放只来自事件流（无第二份轨迹存储）
 - **依赖**：T-2-02、T-1-03
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①视图独立于 schema 迁移（`CREATE VIEW IF NOT EXISTS`，ensureUsageView 打开库后调一次）——视图是 SELECT 语义面，不占 user_version 单调整数；②列名映射：词汇表 cacheWriteTokens ↔ cc-switch 的 cache_creation_tokens（同一语义两个叫法）；③total_cost_usd 不建列——P0 无定价输入（成本核算 J21 是 P2），列留给届时同批；④usage 缺失的 assistant/message 不进聚合（无计量即无事实，绝不算 0——与 F10"无 usage 本地估算兜底"分属两层，本视图只报告 provider 送达的计量）；total_tokens 缺失按 input+output 折算（compaction.tokensBeforeOf 同款）；⑤测试踩两个已知坑的复发：视图查的是 storage——**store.append 后必须 flush**（write-behind，不 flush 视图为空）；better-sqlite3 连接未 close → 临时库文件 EBUSY（T-1-03 坑，afterEach rmSync 加容错）。
+- **完成记录**：2026-09-25。产出 `src/obs/usage.ts`（USAGE_VIEW_SQL + ensureUsageView + usageBySession/usageByTurn + UsageRow 分列形状）+ `usage.test.ts` 3 用例。验收：`npx vitest run src/obs/usage.test.ts` → **3 passed**——1002 事件（167 轮×6）喂入后按会话 Σinput=1,402,800/Σoutput=140,280/cache 分列与按轮 167 行逐轮可查且数值正确；usage 缺失缺席（requests=2/3、不算 0）；totalTokens 显式值优先于折算（999 vs 折算 14）；多会话不串扰。L1 否定性面：`ls logs/` → **NO_LOG_DIR**（仓库根无平行轨迹文件）；模块纪律 = usage.ts 只对 events 表 SELECT、零写文件。全量 `npx vitest run` **472 passed / 1 skipped**（T-8-02 收尾 469 → 净增 3），`npx tsc --noEmit` 干净。
 
 #### T-8-04 · Q5 · 启动期对账 `[ ]`
 - **依据需求**：Q5（P0）
