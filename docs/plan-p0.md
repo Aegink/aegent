@@ -591,7 +591,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①可交集面落 CeilingProfile（每工具一个三维动作上限 + defaultCeiling 缺省 allow；abstain 不是约束值不进上限词汇）——交集 = maxDecision 逐工具合成，直接复用 T-5-06 全序与单调性，不造第二套合并语义。②不可交集面落 OpaqueProfile（外部强管/规则集形态）——相遇即抛 PermissionIntersectionError（codex 同名），错误含两来源名与原因。③codex 的路径归一/符号链接处理属阶段 6 沙箱面，本卡不涉（头注释声明）。④结果来源名标 `intersect(a,b)`，可链式继续合成。
 - **完成记录**：2026-09-25。产出 `src/policy/intersect.ts`（CeilingProfile/OpaqueProfile + PermissionIntersectionError + intersectPermissionProfiles）+ `intersect.test.ts` 5 用例。验收：`npx vitest run src/policy/intersect.test.ts` → **5 passed**；①CLI 放行 bash 而配置默认 deny → 交集 bash=deny；不同工具约束逐工具合成、默认上限取更严；②opaque 相遇抛错且错误信息含 "cli" 与 "harness-managed" 及原因原文；③3×3 穷举性质：交集不比任一方更宽松。全量 `npx vitest run` **279 passed**，`npx tsc --noEmit` 干净。
 
-#### T-5-10 · C51 · 默认权限实现是拒绝 `[ ]`
+#### T-5-10 · C51 · 默认权限实现是拒绝 `[x]`
 - **依据需求**：C51（P0）
 - **上游首选参考**：[zcode·broker.ts:24](../oss/zcode/apps/zcode-cli/packages/core/src/permission/broker.ts)（`export class DenyPermissionBroker implements PermissionBrokerPort`）
 - **取什么 / 别抄什么**：未配置审批客户端 = deny；显式换 Manual/CLI broker 才会问人
@@ -600,8 +600,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/policy/broker.test.ts`——默认构造出的 broker 对任何 ask 请求返回 deny 且错误码明确
 - **依赖**：T-5-04
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①deny 是合法结果（resolve 带裁决）而非异常——异常通道留给超时（PermissionTimeout）等真实故障；"错误码明确"落为 BrokerDeniedVerdict.code = PERMISSION_BROKER_DENIED（继承 Verdict 加机器码字段）。②ManualPermissionBroker 不重造挂起 Map（zcode 因 contracts 分层自建；我方 T-5-04 PendingApprovals 已有挂起/超时/宣告全套）——decide 直接路由 pending.ask，timeoutMs 必填，dispose 透传 pending.dispose()。③Port 面 = {name, decide, dispose?}，最小化——proposal 显示与 scope 收集属 gate（T-5-12）与 T-8 交互面，不进 broker 端口。
+- **完成记录**：2026-09-25。产出 `src/policy/broker.ts`（PermissionBrokerPort + DenyPermissionBroker 默认实现 + ManualPermissionBroker 骨架）+ `broker.test.ts` 5 用例。验收：`npx vitest run src/policy/broker.test.ts` → **5 passed**；①缺省 Deny broker 对 bash/write/read 任意 ask 请求 resolve {action:"deny", code=PERMISSION_BROKER_DENIED}，reason 含工具名与"未配置审批客户端"，反复询问结果一致；②Manual broker decide 挂起（asked 宣告）→ reply 唤醒为裁决、超时 rejects 类型化 PermissionTimeout、dispose 后 reply 落 stale。全量 `npx vitest run` **284 passed**，`npx tsc --noEmit` 干净。
 
 #### T-5-11 · C57 · 限制性判定在执行点用权威标识重算 `[ ]`
 - **依据需求**：C57（P0）
