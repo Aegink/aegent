@@ -1,0 +1,83 @@
+/**
+ * 事件流 → ChatMessage 序列的重建（不变量 1 的消费面）——与 loop.buildMessages
+ * 同一语义（user/system/assistant 逐字、tool/call 挂回前一条 assistant、
+ * assistant/attempt 不进模型历史）。抽公共实现是因为压缩（T-7-02 摘要覆盖
+ * 区间）与新窗口重建（T-7-03 保留规则产出）都要"从事件流现算消息"，三处各写
+ * 一遍必然漂移；loop 侧内嵌实现换用本 helper 在 T-7-04 接线时顺路做。
+ */
+
+import type { ChatMessage } from "../models/provider.js";
+import type { SessionEvent } from "../kernel/events.js";
+
+export interface BuildMessagesOptions {
+  /** 只取 seq ≤ upToSeq 的事件（压缩覆盖区间 / 有效视窗过滤用）；缺省全流。 */
+  upToSeq?: number;
+}
+
+export function buildChatMessages(
+  events: readonly SessionEvent[],
+  opts: BuildMessagesOptions = {},
+): ChatMessage[] {
+  const upTo = opts.upToSeq ?? Number.POSITIVE_INFINITY;
+  type AssistantMsg = Extract<ChatMessage, { role: "assistant" }>;
+  const messages: ChatMessage[] = [];
+  let lastAssistant: AssistantMsg | null = null;
+  let pendingCalls: { id: string; name: string; arguments: string }[] = [];
+  const flushCalls = () => {
+    if (lastAssistant && pendingCalls.length > 0) {
+      lastAssistant.toolCalls = [...(lastAssistant.toolCalls ?? []), ...pendingCalls];
+      pendingCalls = [];
+    }
+  };
+  for (const e of events) {
+    if (e.seq > upTo) continue;
+    switch (e.type) {
+      case "user/message":
+        flushCalls();
+        messages.push({ role: "user", content: e.message.content });
+        break;
+      case "system/message":
+        flushCalls();
+        messages.push({ role: "system", content: e.message.content });
+        break;
+      case "assistant/message":
+        flushCalls();
+        lastAssistant = { role: "assistant", content: e.message.content };
+        messages.push(lastAssistant);
+        break;
+      case "tool/call":
+        pendingCalls.push({ id: e.callId, name: e.name, arguments: e.arguments });
+        break;
+      case "tool/result":
+        flushCalls();
+        messages.push({
+          role: "tool",
+          callId: e.callId,
+          content: e.message.content,
+          ...(e.message.isError ? { isError: true as const } : {}),
+        });
+        break;
+      default:
+        // attempt / compaction / checkpoint / header / turn.* / revert 不进消息
+        break;
+    }
+  }
+  flushCalls();
+  return messages;
+}
+
+/**
+ * 有效视窗（E4 消费面的事件级形态）：遵循最新 session/revert 标记（undo 恢复
+ * 全量），返回该视窗内的事件。loop.buildMessages 的 cut 逻辑同款；压缩与
+ * 新窗口重建都必须只看有效视窗——绝不摘要已被 revert 的内容。
+ */
+export function effectiveEvents(events: readonly SessionEvent[]): readonly SessionEvent[] {
+  let cut = Number.POSITIVE_INFINITY;
+  for (const e of events) {
+    if (e.type === "session/revert") {
+      cut = e.phase === "revert" ? e.targetSeq : Number.POSITIVE_INFINITY;
+    }
+  }
+  if (cut === Number.POSITIVE_INFINITY) return events;
+  return events.filter((e) => e.seq <= cut);
+}

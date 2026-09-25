@@ -1,18 +1,33 @@
 /**
- * 压缩模块（F4/T-7-01 范围：消费接口）——overflow.ts 的输出是本模块的输入：
- * 溢出判定与 provider 超限错误经映射函数转成 `CompactionRequest`，压缩执行
- * 本体（摘要生成、retainedTail 选择、`compaction` 事件落盘、生命周期与相位、
- * hook 介入点）属 T-7-02/T-7-03，在此接口之后接入。
+ * 压缩模块（F4/T-7-01 范围：消费接口；F3/F20/F21/T-7-02 范围：生命周期引擎）——
+ * overflow.ts 的输出是本模块的输入：溢出判定与 provider 超限错误经映射函数
+ * 转成 `CompactionRequest`。
  *
- * 模块分野纪律（F4）：本文件是"压了"的一侧，"超了"的判定全在 overflow.ts——
- * 消费方（loop 装配 / T-7-04 压力测量）的次序永远是：先问 overflow，拿到
- * CompactionRequest 才进本模块。
+ * 压缩是生命周期，不是函数（F20）：所有压缩走同一条
+ * pre hook（可中止）→ 摘要生成 → `compaction` 事件落盘 → post hook（观察）
+ * 的链路（codex·compact_token_budget.rs:19-23 的纪律——"It is still modeled
+ * as compaction so compact hooks and ContextCompaction turn items observe the
+ * same lifecycle"）。中止只发生在 pre hook（压缩未发生、无新窗口）；post hook
+ * 压缩已落盘，只观察不回滚（事件源 append-only）。
+ *
+ * 相位（F21）：P0 只做 `PreTurn | MidTurn` 两相位（Q13 裁决；zcode·turn-loop.ts:68
+ * 的判定实证——本 turn 尚无已完成模型 step 即 PreTurn，否则 MidTurn）。
+ * StandaloneTurn（独立压缩轮）/ PostTurn 是 F21 全枚举的 P1 槽位，不实现。
+ *
+ * 摘要质量属 F5（P1）——本引擎只提供生命周期与切点，summarizer 由装配注入
+ * （P0 测试用假 provider 剧本）。
  */
 
 import {
   type OverflowVerdict,
+  estimateMessagesTokens,
   isContextWindowExceeded,
 } from "./overflow.js";
+import type { SessionEvent } from "../kernel/events.js";
+import { Projector } from "../session/project.js";
+import { type SessionStore } from "../session/store.js";
+import { buildChatMessages, effectiveEvents } from "../session/messages.js";
+import type { ChatMessage } from "../models/provider.js";
 
 /** 压缩请求：溢出的两种来源（本地提前判定 / provider 拒绝）各自带齐上下文。 */
 export type CompactionRequest =
@@ -54,3 +69,180 @@ export function compactionRequestFromProviderError(
     message: error instanceof Error ? error.message : String(error),
   };
 }
+
+// ---------------------------------------------------------------------------
+// 相位（F21 / Q13 两相位）
+// ---------------------------------------------------------------------------
+
+export const COMPACTION_PHASES = ["PreTurn", "MidTurn"] as const;
+export type CompactionPhase = (typeof COMPACTION_PHASES)[number];
+
+/**
+ * zcode·turn-loop.ts:68 同款判定（`modelStepCount === 0 ? PreRequest : MidTurn`）：
+ * 入参是本 turn **已完成**的模型 step 数——0 表示第一次模型请求尚未发出（PreTurn），
+ * 已有完成 step 则处于轮中（MidTurn，step 边界触发面）。
+ */
+export function phaseForCompletedSteps(completedModelSteps: number): CompactionPhase {
+  return completedModelSteps === 0 ? "PreTurn" : "MidTurn";
+}
+
+// ---------------------------------------------------------------------------
+// 生命周期（pre hook → 摘要 → compaction 事件 → post hook）
+// ---------------------------------------------------------------------------
+
+/** 传给 pre/post hook 的介入上下文（F20：观察者与执行者解耦的契约面）。 */
+export interface CompactionInvocation {
+  sessionId: string;
+  /** 压缩归属的轮（PreTurn = 收尾中的当前轮；MidTurn = 进行中的轮）。 */
+  turn: number;
+  phase: CompactionPhase;
+  request: CompactionRequest;
+  /** 压缩前完整 token 计数（E12 整值）。 */
+  tokensBefore: number;
+}
+
+/** post hook 看到的结算事实（压缩已落盘）。 */
+export interface CompactionSettled extends CompactionInvocation {
+  summary: string;
+  retainedTail: number;
+  /** `compaction` 事件的 seq。 */
+  seq: number;
+}
+
+/** pre hook 裁决：proceed 放行 / abort 中止（中止后无新窗口、无 compaction 事件）。 */
+export type PreCompactOutcome = { action: "proceed" } | { action: "abort"; reason?: string };
+
+/**
+ * 摘要生成器（装配注入；P0 测试用假 provider 剧本，真实摘要质量属 F5 P1）。
+ * 入参 messages 是被摘要覆盖区间（seq ≤ retainedTail）的模型可见消息。
+ */
+export type Summarizer = (input: {
+  messages: ChatMessage[];
+  invocation: CompactionInvocation;
+}) => Promise<string>;
+
+/**
+ * 保留规则（F23 的不可丢消息与配平切点在 T-7-03/T-7-05 细化）：retainedFromEnd
+ * = 从尾部保留最近 N 个 user/system 消息边界起的全部原文，其余变摘要。
+ * 默认 1——最后一个用户请求必须原文保留（模型要看到当前指令）。
+ */
+export interface KeepRules {
+  retainedFromEnd?: number;
+}
+
+export type CompactionResult =
+  | {
+      kind: "compacted";
+      summary: string;
+      retainedTail: number;
+      tokensBefore: number;
+      /** `compaction` 事件 seq；新窗口从该事件读取重建参数（T-7-03）。 */
+      seq: number;
+    }
+  | { kind: "aborted"; by: "pre-hook"; reason?: string };
+
+export interface CompactionEngineDeps {
+  sessionId: string;
+  store: SessionStore;
+  summarizer: Summarizer;
+  preHook?: (invocation: CompactionInvocation) => PreCompactOutcome | Promise<PreCompactOutcome>;
+  postHook?: (settled: CompactionSettled) => void | Promise<void>;
+  keepRules?: KeepRules;
+}
+
+/** 压缩触发入参：相位与轮号由触发方（turn 边界 / step 边界装配）决定。 */
+export interface CompactionRunInput {
+  turn: number;
+  phase: CompactionPhase;
+  request: CompactionRequest;
+}
+
+/**
+ * 压缩引擎：生命周期的执行体。切点从事件流内容现算（F17 的纪律；本卡用
+ * user/system 边界策略，T-7-05 换成工具调用-结果配平状态机），覆盖范围是
+ * 有效视窗（最新 session/revert 标记内——绝不摘要已被 revert 的内容）。
+ */
+export class CompactionEngine {
+  constructor(private readonly deps: CompactionEngineDeps) {}
+
+  async run(input: CompactionRunInput): Promise<CompactionResult> {
+    const { sessionId, store } = this.deps;
+    const events = effectiveEvents(store.load(sessionId));
+    const tokensBefore = tokensBeforeOf(events);
+    const retainedTail = chooseRetainedTail(events, this.deps.keepRules?.retainedFromEnd ?? 1);
+
+    const invocation: CompactionInvocation = {
+      sessionId,
+      turn: input.turn,
+      phase: input.phase,
+      request: input.request,
+      tokensBefore,
+    };
+
+    // 生命周期第 1 段：pre hook 可中止（中止 = 无摘要、无 compaction 事件、
+    // 无新窗口——"hook 可介入/中止"的唯一裁决点）。
+    if (this.deps.preHook) {
+      const outcome = await this.deps.preHook(invocation);
+      if (outcome.action === "abort") {
+        return { kind: "aborted", by: "pre-hook", ...(outcome.reason !== undefined ? { reason: outcome.reason } : {}) };
+      }
+    }
+
+    // 摘要生成（被摘要区间 = 切点之前）。
+    const summary = await this.deps.summarizer({
+      messages: buildChatMessages(events, { upToSeq: retainedTail }),
+      invocation,
+    });
+
+    // 生命周期第 2 段：compaction 事件落盘（词汇表 §3.2#11：整值载荷）。
+    const [committed] = store.append(sessionId, [
+      {
+        type: "compaction",
+        turn: input.turn,
+        summary,
+        retainedTail,
+        tokensBefore,
+      },
+    ]);
+    const seq = committed!.seq;
+
+    // 生命周期第 3 段：post hook 观察（压缩已落盘，只观察不回滚）。
+    const settled: CompactionSettled = { ...invocation, summary, retainedTail, seq };
+    if (this.deps.postHook) await this.deps.postHook(settled);
+
+    return { kind: "compacted", summary, retainedTail, tokensBefore, seq };
+  }
+}
+
+/**
+ * 压缩前 token 计数：优先 provider 送达的 usage（最近一条带 usage 的
+ * assistant 消息，totalTokens 缺失时 input+output 折算），无 usage 时退回
+ * 本地估算（overflow.ts 的保守估算——方向注释见该文件头）。
+ */
+function tokensBeforeOf(events: readonly SessionEvent[]): number {
+  const projection = Projector.fold(events).projection;
+  const usage = projection.lastUsage;
+  if (usage) {
+    return usage.totalTokens ?? usage.inputTokens + usage.outputTokens;
+  }
+  return estimateMessagesTokens(buildChatMessages(events));
+}
+
+/**
+ * P0 切点：从尾部往回数第 N 个 user/system 消息边界，保留该消息及其后全部
+ * 原文——retainedTail = 边界前一条事件的 seq（词汇表语义："新窗口从该 seq
+ * 之后的事件重建"）。user/system 边界天然不劈开 assistant+tool 块；T-7-05
+ * 用配平状态机替换本策略。边界不足（消息太少）时全摘要：retainedTail = lastSeq。
+ */
+function chooseRetainedTail(events: readonly SessionEvent[], retainedFromEnd: number): number {
+  let found = 0;
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i]!;
+    if (e.type === "user/message" || e.type === "system/message") {
+      found++;
+      if (found === retainedFromEnd) return e.seq - 1;
+    }
+  }
+  return events.length > 0 ? events[events.length - 1]!.seq : 0;
+}
+

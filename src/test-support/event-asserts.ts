@@ -26,7 +26,9 @@ import { TimeoutError, withTimeout } from "../kernel/timeout.js";
 /**
  * turn 作用域不变量：turn 从 1 连续编号、不嵌套、不悬挂；turn 作用域事件
  * 归属当前开启的轮；轮内 step 从 1 连续递增。session/revert 是会话级元事件，
- * 不参与本检查。
+ * 不参与本检查；compaction / checkpoint / request/header 只声明 turn 归属、
+ * 不要求轮开启（与投影器 applyValidation 的判定一致——压缩合法地落在轮外，
+ * 如 turn 收尾后的 PreTurn 压缩）。
  */
 export function expectTurnScoped(events: readonly SessionEvent[]): void {
   let expectedTurn = 0;
@@ -59,12 +61,12 @@ export function expectTurnScoped(events: readonly SessionEvent[]): void {
       openTurn = null;
       continue;
     }
-    if (openTurn !== e.turn) {
-      throw new Error(
-        `事件 ${e.type}（seq=${e.seq}）声称属于 turn ${e.turn}，但当前开启的是 ${openTurn ?? "（无）"}——轮作用域事件必须归属已开启的轮`,
-      );
-    }
     if (e.type === "step/start") {
+      if (openTurn !== e.turn) {
+        throw new Error(
+          `事件 ${e.type}（seq=${e.seq}）声称属于 turn ${e.turn}，但当前开启的是 ${openTurn ?? "（无）"}——轮作用域事件必须归属已开启的轮`,
+        );
+      }
       const expectedStep = (stepCounters.get(e.turn) ?? 0) + 1;
       if (e.step !== expectedStep) {
         throw new Error(
@@ -72,6 +74,22 @@ export function expectTurnScoped(events: readonly SessionEvent[]): void {
         );
       }
       stepCounters.set(e.turn, expectedStep);
+      continue;
+    }
+    // step 作用域的其余事件（step/end / message / tool.*）要求轮开启；
+    // compaction / checkpoint / request/header 只带 turn 归属、不要求轮开启。
+    const requiresOpenTurn =
+      e.type === "step/end" ||
+      e.type === "user/message" ||
+      e.type === "system/message" ||
+      e.type === "assistant/message" ||
+      e.type === "assistant/attempt" ||
+      e.type === "tool/call" ||
+      e.type === "tool/result";
+    if (requiresOpenTurn && openTurn !== e.turn) {
+      throw new Error(
+        `事件 ${e.type}（seq=${e.seq}）声称属于 turn ${e.turn}，但当前开启的是 ${openTurn ?? "（无）"}——轮作用域事件必须归属已开启的轮`,
+      );
     }
   }
   if (openTurn !== null) {
