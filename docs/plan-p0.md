@@ -813,7 +813,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①事件留痕不新增事件类型——F10 可回放性由词汇表既有事件承载（usage 在 assistant/message.usage、拒绝在 assistant/attempt 与 turn/end{error}、本地估算是事件流纯函数现算），头注释声明；②压力阈值比率默认 0.8（dsh compaction-basic 同款默认常量 DEFAULT_PRESSURE_THRESHOLD_RATIO）；③"压缩无法证明进展"P0 落法 = abort/抛错即无进展、`compacted` 即进展证明（compaction 事件落盘是 append-only 持久事实；dsh 的 replaceGeneration 证明是同思想 P1 强化，注释已记）；④loop 接线留 T-8 装配（本卡用真 composeChain turnEnd 链在测试内钉次序，chain.ts 头注释预言的断言兑现）
 - **完成记录**：验收 `npx vitest run src/context/pressure.test.ts` → 8 passed（tsc 干净）。①无 usage 成功调用仍产生压力记录（source=local-estimate，tokens=保守估算）；②OverflowRecoveryError.cause === provider 原始错误对象（pre hook 中止与压缩抛错两路径均断言同一性）；③turn 边界次序断言：turnEnd 链压缩层在 next 前作业 → compaction.seq < turn/end.seq 且事件流过 expectTurnScoped；三信号（usage/本地兜底/provider-rejection）与阈值可配齐验
 
-#### T-7-05 · F17 · 切点工具调用-结果配平 `[ ]`
+#### T-7-05 · F17 · 切点工具调用-结果配平 `[x]`
 - **依据需求**：F17（P0）
 - **上游首选参考**：[dsh·tool-pairing.ts:2-5](../oss/deepseek-harness/packages/compaction/compaction/src/tool-pairing.ts)（"Tool-pairing balance over a session surface"；:56/:60 无配对即抛 corrupt surface）
 - **取什么 / 别抄什么**：切点选择从事件流内容现算（call/result 配平），不依赖可能被重写的 step 标记
@@ -822,8 +822,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/context/tool-pairing.test.ts`——喂含未配对 tool/call 的流：切点自动回退到配平位置；人为伪造 step 标记与内容不符时切点仍正确（内容现算证据）
 - **依赖**：T-7-02
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①增量状态机落成纯函数式 advancePairing（状态显式传、seq 连续性校验防跳段假配平；dsh 的 WeakMap+generation cache 是其表面重写场景的等价物，我方事件源 append 流不需要）；②compaction.chooseRetainedTail 接入方式 = 候选 user/system 边界经 latestBalancedCutAtOrBefore 验证/回退（保守方向：少摘要不劈对），与 T-7-02 卡注"用配平状态机替换"的差别是**组合**而非替换——user 边界策略仍是候选来源；③配平 delta 与 dsh 差异：我方 tool/call 与 tool/result 是独立事件（dsh 的 tool-call 内嵌 assistant 块），delta 直接 +1/-1；④expectPaired 复用点 = 切点前子流的配平断言（O7 断言器消费面）
+- **完成记录**：验收 `npx vitest run src/context/tool-pairing.test.ts` → 7 passed（tsc 干净，src/context 47 passed）。①孤立 result（corrupt surface）→ ToolPairingError 带 seq（增量/全量同抛）；断档推进抛错防假配平；②流尾悬挂 call：压缩 retainedTail 自动回退到 call 之前（悬挂 call+新 user 保留原文，少摘要不劈对），切点前子流无开着的 call 且过 expectPaired；③伪造 step 标记（result 谎称 step 42）切点仍按 callId 内容现算正确——对 step 标记免疫的内容现算证据
 
 #### T-7-06 · F24 · 换更小上下文模型先压缩（ModelDownshift） `[ ]`
 - **依据需求**：F24（P0）

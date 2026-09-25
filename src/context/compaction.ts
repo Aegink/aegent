@@ -27,6 +27,7 @@ import type { SessionEvent } from "../kernel/events.js";
 import { Projector } from "../session/project.js";
 import { type SessionStore } from "../session/store.js";
 import { buildChatMessages, effectiveEvents } from "../session/messages.js";
+import { latestBalancedCutAtOrBefore } from "./tool-pairing.js";
 import type { ChatMessage } from "../models/provider.js";
 
 /** 压缩请求：溢出的两种来源（本地提前判定 / provider 拒绝）各自带齐上下文。 */
@@ -231,8 +232,10 @@ function tokensBeforeOf(events: readonly SessionEvent[]): number {
 /**
  * P0 切点：从尾部往回数第 N 个 user/system 消息边界，保留该消息及其后全部
  * 原文——retainedTail = 边界前一条事件的 seq（词汇表语义："新窗口从该 seq
- * 之后的事件重建"）。user/system 边界天然不劈开 assistant+tool 块；T-7-05
- * 用配平状态机替换本策略。边界不足（消息太少）时全摘要：retainedTail = lastSeq。
+ * 之后的事件重建"）。F17（T-7-05）：候选边界**不配平**（悬挂 tool/call 的
+ * 崩溃残留等）时自动回退到最近的配平切点——内容现算，绝不依赖 step 标记，
+ * 宁可少摘要也不劈开 assistant 工具调用与其结果。边界不足（消息太少）时
+ * 全摘要：retainedTail = 配平验证过的流尾。
  */
 function chooseRetainedTail(events: readonly SessionEvent[], retainedFromEnd: number): number {
   let found = 0;
@@ -240,9 +243,14 @@ function chooseRetainedTail(events: readonly SessionEvent[], retainedFromEnd: nu
     const e = events[i]!;
     if (e.type === "user/message" || e.type === "system/message") {
       found++;
-      if (found === retainedFromEnd) return e.seq - 1;
+      if (found === retainedFromEnd) {
+        return latestBalancedCutAtOrBefore(events, e.seq - 1);
+      }
     }
   }
-  return events.length > 0 ? events[events.length - 1]!.seq : 0;
+  return latestBalancedCutAtOrBefore(
+    events,
+    events.length > 0 ? events[events.length - 1]!.seq : 0,
+  );
 }
 
