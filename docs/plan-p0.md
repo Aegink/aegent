@@ -732,7 +732,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①**路线裁定：PowerShell**（卡内二选一落定）。理由：D8 是冷路径（配置读写非热链路），PowerShell 5.1 系统自带零构建面，P0 不为此引入 Rust 工具链；T9 的"跨语言一律子进程"边界由 PowerShell 子进程同样满足——本卡是第一个跨语言组件，进程边界 + 可序列化协议（argv 动作名 + stdin/stdout base64 文本）在此定形。**未摘 dpapi.rs 任何代码**（ConvertTo/From-SecureString 用户域 DPAPI vs codex 机器域 CRYPTPROTECT_LOCAL_MACHINE，域语义差异记 dpapi.ps1 头注释），THIRD_PARTY.md 无需登记。②**明文不进命令行**（命令行对本机其他进程可见）：载荷走 stdin；全程 base64 绕开控制台代码页（中文载荷实测不乱码）。③**踩坑：PowerShell 5.1 读无 BOM 的 .ps1 用系统 ANSI 代码页（本机 GBK），UTF-8 中文注释按字节错位可破坏解析**（探针文件靠对齐运气通过、正式文件实爆 ParserError）——dpapi.ps1 强制纯 ASCII 注释，解析文档指针到 TS 头注释；此坑与"块注释写 glob 序列"同级别值得进 notes。④配置接线 = SecureKeyStore（setKey/getKey：明文→protect→blob JSON 落盘，读回 unprotect；密钥名白名单校验）；配置文件是装配面产物不进路径守卫范围；P0 配置目录由装配决定（config/ 尚未存在 → 卡面 grep 的 `\|\| echo CLEAN` 分支成立），测试内对落盘文件做同款 sk- 证伪。⑤copy-assets 增 DPAPI helper 清单项（ps1 是运行时伴生资产，缺失即抛 DPAPI_PROTECT_FAILED）。
 - **完成记录**：2026-09-25。产出 `src/sandbox/dpapi/dpapi.ps1`（纯 ASCII；protect/unprotect 两动作；stdin/stdout base64 协议）+ `src/sandbox/dpapi/index.ts`（protect/unprotect + DpapiError 五码：UNSUPPORTED_PLATFORM/PROTECT/UNPROTECT_FAILED/HELPER_TIMEOUT + 超时 kill + stderr 截断 500 字符）+ `src/sandbox/dpapi/secure-config.ts`（SecureKeyStore + assertKeyName 白名单）+ copy-assets 第三清单项 + `src/sandbox/dpapi.test.ts` 4 用例。验收：`npx vitest run src/sandbox/dpapi.test.ts` → **4 passed**（真实 PowerShell 5.1 子进程，无 mock）：①protect→unprotect 往返一致且 blob 不含明文（ASCII+中文混合载荷）；②setKey→落盘 JSON 无明文 key（`sk-[A-Za-z0-9]{20,}` 证伪通过）→getKey 往返、未配置返回 undefined；③损坏 blob → DPAPI_UNPROTECT_FAILED fail-loud；④密钥名非法 rejects。卡面第二段 `grep -rE "sk-…" config/ \|\| echo CLEAN` → **CLEAN**。`npm run build` ps1 进 dist；全量 `npx vitest run` **370 passed / 1 skipped**，`npx tsc --noEmit` 干净。
 
-#### T-6-05 · D9 · 日志脱敏 `[ ]`
+#### T-6-05 · D9 · 日志脱敏 `[x]`
 - **依据需求**：D9（P0，自研无上游参考）
 - **上游首选参考**：无（需求点名自研）
 - **取什么 / 别抄什么**：单出口 logger：落盘前过 `redact()`（key 正则、user 原文可配开关）；事件持久化已在 T-1-01 有 JSON 安全校验，本卡管**日志**通道
@@ -741,8 +741,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/kernel/logger.test.ts`——喂含 `sk-…` 与用户 prompt 原文的行，落盘内容两者被掩码；`grep -rE "sk-[A-Za-z0-9]{20,}" logs/ || echo CLEAN`
 - **依赖**：T-1-00
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①脱敏管道两层：**密钥正则恒开**（sk- 形态含 sk-proj- 连字符变体，字符集比卡面证伪模式更宽——掩码后必然不匹配证伪 grep）+ **用户原文开关**（redactUserContent 缺省 true = 隐私默认开，装配可关）。②用户原文的作用面是**约定字段** `userContent`（USER_CONTENT_FIELDS 闭集）——管道无法识别任意文本里的"原文"，约定"用户 prompt 原文只允许经该字段进日志"，放进 msg 属调用方违规（头注释声明）。③管道次序 = 先字段级掩码、再 JSON 序列化、再对整行过密钥正则——key 藏在 data 任意深度都掩得到。④落盘形状 = logDir 按日一文件、每行 JSON（ts/level/msg/data）；写失败吞错并降级 stderr 告警一次（日志失败不能带崩 agent）；sink/clock 可注入。⑤P0 不接线（T-8 L1/L3 消费），logs/ 目录由首次写惰性创建——卡面验收的 `logs/` grep 在装配前走 `|| echo CLEAN` 分支。
+- **完成记录**：2026-09-25。产出 `src/kernel/logger.ts`（createLogger + redactSecrets/redactUserFields 纯函数 + USER_CONTENT_FIELDS 闭集 + 按日文件 sink 容错）+ `logger.test.ts` 6 用例。验收：`npx vitest run src/kernel/logger.test.ts` → **6 passed**；①sk-… 与 sk-proj-… 整段掩码、data 深层 key 同掩、落盘文件过卡面证伪模式；②缺省 userContent 掩码原文不落盘（msg/ts/level 保留）、开关关后原文保留但 sk- 仍掩、约定字段闭集断言；③按日文件名与每行 JSON 形状断言。卡面第二段 `grep -rE "sk-…" logs/ || echo CLEAN` → **CLEAN**。全量 `npx vitest run` **376 passed / 1 skipped**，`npx tsc --noEmit` 干净。
 
 #### T-6-06 · D15 · 已启动的命令绝不自动重试 `[ ]`
 - **依据需求**：D15（P0）
