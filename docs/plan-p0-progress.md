@@ -19,7 +19,7 @@
 | 2026-09-25 | T-2-01 | J3/J4 | `d0b9452` | `npx vitest run src/models/` | 10 passed；非法 JSON 四类形状全拒且报错含行列（顶层 token 错误 V8 消息无位置→自写 RFC 8259 扫描器定位）；身份二元组跨厂商可区分、键同身份相等 |
 | 2026-09-25 | T-2-02 | J1/J2 | `dd27bdf` | `npx vitest run src/models/provider.test.ts` | 5 passed；三段剧本增量不丢不重（args 拼接回 JSON）、usage 终块过 C14 可落载荷；ProviderHttpError 透传 status/Retry-After；http-mock 与 wire 实测一致未改 mock |
 | 2026-09-25 | T-2-03 | J26 | `78e23f2` | `npx vitest run src/models/retry.test.ts` | 10 passed；429 退避重试 waits=[500,1000]、400/unknown 一次不打、Retry-After:2 覆盖默认退避、流产出后不重试防重复送达 |
-| 2026-09-25 | T-2-04 | J22 | （阶段报告提交时回填） | `npx vitest run src/kernel/timeout.test.ts` | 5 passed；超时 code=TOOL_TIMEOUT 带 timeoutMs；内层晚完成双向无 unhandledRejection；嵌套靠 code 判归属（内层先到透传内层码） |
+| 2026-09-25 | T-2-04 | J22 | `27b1ef7` | `npx vitest run src/kernel/timeout.test.ts` | 5 passed；超时 code=TOOL_TIMEOUT 带 timeoutMs；内层晚完成双向无 unhandledRejection；嵌套靠 code 判归属（内层先到透传内层码） |
 
 ---
 
@@ -119,6 +119,46 @@
 [DONE]），适配层 wire 映射如实测与 mock 不符可改 mock（成本为零）但要在卡上
 记偏离；3) T-2-03 的 Retry-After 头按 J26 验收要点自加（kimi 参考文件没有）。
 不要问要不要继续。
+```
+
+---
+
+## 阶段 2 报告（完成于 2026-09-25）
+
+- **打勾情况**：4 / 4（T-2-01 ~ T-2-04 全部完成，无未完成项）
+- **产出的文件**：
+  - `src/models/config.ts`（约 240 行，含 RFC 8259 定位扫描器）+ `identity.ts` + `config.test.ts` + `identity.test.ts`——T-2-01
+  - `src/models/provider.ts`（统一流接口 + ProviderHttpError）+ `openai-compat.ts`（SSE wire 映射）+ `provider.test.ts`——T-2-02
+  - `src/models/retry.ts`（显式分类 + 退避 + Retry-After）+ `retry.test.ts`——T-2-03
+  - `src/kernel/timeout.ts`（TOOL_TIMEOUT + withTimeout）+ `timeout.test.ts`——T-2-04
+- **验收台账**：4 卡 4 命令全部通过（见台账表）；全量 `npx vitest run` **83 passed / 0 failed**（阶段 1 收尾时 53 → 阶段 2 净增 30），`npx tsc --noEmit` 全程干净
+- **阶段完成定义核对**：http-mock 走通"流式增量到达（三段剧本不丢不重）+ 429 触发按策略重试（退避/Retry-After）+ 超时抛 TOOL_TIMEOUT 作用域错误"——三条均有自动化用例
+- **偏离计划的地方**：
+  1. **Delta = 词汇表 StreamChunk**：卡面"Delta 含 text/thinking/tool_call/usage"直接落成 events.ts 的 `StreamChunk`（text-delta/reasoning-delta/tool-call-delta/usage/done）——词汇表注释本就要求适配层映射到它，不造第二套增量词汇（T-2-02）
+  2. 新增 `ProviderHttpError{status,retryAfter,bodyPreview}` 接口面（卡面未预写）——T-2-03 重试分类的判据，抛出点在响应头阶段（T-2-02）
+  3. 重试"mock 时间"用 sleep/rand **注入**而非 vi.useFakeTimers——真端口 IO 与 fake timers 混用易死锁（T-2-03）
+  4. withTimeout 不用 Promise.race 裸写——内层 rejection 无人接会变 unhandled rejection；内层 .then 双分支挂 handler（T-2-04）
+  5. DSH 的"signal 换回/恢复"在 P0 promise 风格下无 exec 可换——等价纪律落为"错误带 code 按码路由"，DSH 接线纪律写进 timeout.ts 头注释，阶段 3/4 定形时照落（T-2-04）
+- **新发现的约束或坑**：
+  - Node 22 对**顶层 token 错误**（`not json`）的 JSON.parse 错误消息**不含位置**（对象内错误才带 position/line-column）——"报错含位置"不能靠解析 V8 文案，配了 ~120 行 RFC 8259 定位扫描器（JSON.parse 仍是权威裁决，扫描器只管定位）
+  - `data: [DONE]` 到达时适配层必须**产出** StreamChunk 的 `done` 终块再终止——初版直接 return，被验收测试抓出（消费方依赖 done 判流终）
+  - OpenAI 流式 tool_call 分片只在首片带 id/name，后续片仅 index+arguments——适配层按 index 记录开着的调用补回 id（风险/未知栏预警的 index 对齐，已落用例）
+- **遗留风险与未知**：
+  - J2 真实厂商连通性仍是人工确认清单项（真实 SSE 分片/usage 行为留 T-8-05 可选验收，无 key 时标注人工确认）
+  - Retry-After 的 HTTP 日期格式只在 parseRetryAfterMs 纯函数层测（withRetry 层 Date.now 不可注入）
+  - 词汇表 13→14 追认事项不变（待澄清执行会话新发现 #1）
+  - openai-compat 的流中途畸形帧按 MODEL_WIRE_ERROR 严格抛（不跳过不重试）——真实厂商若发非标准帧（如 keep-alive 注释行）需复核；SSE 注释行（`:` 开头）已跳过
+- **下一阶段提示词**：
+
+```
+继续 aegent 内核的实施。读 docs/plan-p0.md 的 §0 执行协议，然后从「阶段 3」
+的第一张 [ ] 任务卡开始。上一阶段报告在 docs/plan-p0-progress.md。
+本阶段特有的注意：1) T-3-01 洋葱链的三个点位选择（候选：工具调用前=权限、
+模型请求前=上下文、turn 结束=压缩）必须先在卡内写决定与理由再动手，选错
+连锁影响阶段 4/5/7；2) loop 的模型调用直接消费 T-2-02 的
+ModelProvider/StreamChunk 与 T-2-03 的 withRetry（ProviderHttpError 只在
+响应头阶段抛、流产出后不重试的语义已在 retry.test 钉死）；3) T-3-06 冷启动
+<500ms 要实测，超标不自行改设计，停下写待澄清。不要问要不要继续。
 ```
 
 ---
