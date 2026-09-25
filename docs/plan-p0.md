@@ -765,7 +765,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 **依赖**：阶段 3（turn 边界）、阶段 4（工具结果形状）。
 **不做什么**：不做缓存前缀优化（F6/F13–F16 P1/P2——pi-mono 那套前缀纪律 P0 不碰）；不做三级兜底（F11 P1）；不做窗口编号化与指纹（F25/F26 P1）；不做策略具名（F27 P2）；不做换模压缩（F29 P1）；不做工具结果裁剪器（F8 P1）；不做摘要标题（F5 P1）。**F21 按 Q13 只做 PreTurn 与 MidTurn 两相位。**
 
-#### T-7-01 · A4/F4 · 溢出检测先于压缩 `[ ]`
+#### T-7-01 · A4/F4 · 溢出检测先于压缩 `[x]`
 - **依据需求**：A4（P0）· F4（P0）
 - **上游首选参考**：[codex·compact.rs:315](../oss/codex/codex-rs/core/src/compact.rs#L315)（`Err(e) if matches!(e.details(), CodexErrorDetails::ContextWindowExceeded)`——溢出是 provider 错误的处理分支，与压缩分属两处）
 - **取什么 / 别抄什么**：取"溢出检测与压缩是两个模块、前者的输出是后者的输入"；别把"超了"与"压了"写成一个函数
@@ -775,7 +775,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **依赖**：T-3-02
 - **风险 / 未知**：token 估算与 provider 实际计数的偏差——P0 用保守系数（0.9），误差方向记注释
 - **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **完成记录**：验收 `npx vitest run src/context/overflow.test.ts` → 14 passed（tsc 干净）。两个模块分野落成类型接缝：`overflow.ts`（估算保守方向机验：1000 字符 = ceil(1000/3.6)=278 ≥ ceil(1000/4)，系数 0.9 除在字符密度上即放大估算，注释写明"宁可误判早压，不可漏判到 provider 无恢复点拒绝"）+ `isContextWindowExceeded`（结构化 code 优先、ProviderHttpError.body 启发式短语兜底、错误 message 刻意不认——Q10 自由文本不当判据）；`compaction.ts` 消费接口 = `CompactionRequest`（local-overflow / provider-overflow 两源）+ 两个映射函数，压缩执行本体留 T-7-02。调用次序断言：超限错误 → ["overflow-identified", "compaction-entry"] 依次发生、消费方收到压缩触发而非异常；对照用例证无关错误原路径上抛不被吞。loop 接线按卡留 T-7-02/T-7-04
 
 #### T-7-02 · F3/F20/F21 · 压缩生命周期 + 相位（PreTurn/MidTurn） `[ ]`
 - **依据需求**：F3（P0）· F20（P0）· F21（P0，Q13 裁两相位）
