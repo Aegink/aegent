@@ -882,7 +882,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 **依赖**：阶段 7。
 **不做什么**：不做 Tauri 壳（K2 P1）；不做 ACP/Web/飞书（K4/K5/K6 P1/P2）；不做轨迹回放器 UI（L4 P1）；不做后台 job（M1/M2 P1）；不做崩溃续跑的完整语义（M3 P1——Q5 对账已覆盖"不重复副作用"的启动面）。
 
-#### T-8-01 · K1 · CLI 最小端 `[ ]`
+#### T-8-01 · K1 · CLI 最小端 `[x]`
 - **依据需求**：K1（P0）
 - **上游首选参考**：[pi·packages/](../oss/pi/packages)（agent/coding-agent/tui 分包形态——内核可跑通的最小端）
 - **取什么 / 别抄什么**：只取"端是内核的薄壳"形态；P0 CLI 用 readline REPL（无 TUI 依赖），子进程模式经 T-3-06 协议
@@ -891,8 +891,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/cli/ && node dist/cli/index.js --smoke`——脚本化会话（管道喂输入）产生完整事件流；端到端联测在 T-8-05
 - **依赖**：T-3-06、T-5-04
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①**阶段 5/7 模块在本卡接线进子进程装配**（src/kernel/assembly.ts 新建；用户开工提示的兑现）：权限 gate 挂 toolCall（首次接入 agent 装配）、上下文装配层挂 modelRequest（系统提示首次落 system/message 事件——F22 重建的消费面；startNewContextWindow 现算消息集，无压缩退化为全量重建；next 后 PressureMonitor 调用后测量）、压缩层挂 turnEnd（compaction 先于 turn/end 落盘，T-7-04 次序断言的消费面）、PreTurn 压缩走 loop 新 hook `beforeFirstModelRequest`（**不是新链点位**——T-3-01 排除"压缩不挂 modelRequest"，hook 是 loop 在 try 内提供的显式时点，zcode PreRequest 同款；抛错走 failTurn 闭合不悬挂 turn）、step 收尾 `onToolStepCompleted` → RapidRefillGuard.recordCompletedToolStep、loop.buildMessages 内嵌版换成 src/session/messages.ts 的 buildChatMessages+effectiveEvents（压缩感知的消息集由装配层经 startNewContextWindow 换载荷提供，loop 不感知压缩）。②**loop.closeTurn 补接 E13 的 runFlushPoint("turnEnd")**（T-1-02 的检查点 API 首次接线）——CLI 的 SQLite 模式由此保证"事件落 SQL"（§8 第 1 条前半）。③**协议扩展**（agent-protocol.ts）：AgentRequest 增 `revert{targetSeq}` / `approve{requestId,action,reason?}`（decode 白名单同步）；AgentMessage 增 `approval_requested/settled`（PendingApprovals 宣告的协议转发）与 `idle`（见④）；approve/revert 只回 admission 语义——成功经事件流可见（session/revert 事件 / tool/result），失败回类型化 error 行（REVERT_FAILED / PERMISSION_REPLY_STALE 等）；未装配时请求回错误不静默。④**CLI 的 EOF 语义**：输入流 EOF（管道结束/Ctrl+D）后**等子进程 idle 宣告再 dispose**——"输入完毕，处理完剩余工作再退"，修掉"EOF 即取消在途轮"（脚本化会话的完整事件流要求）；`/exit` 保持立即退出语义。⑤**M10 预算接线在 decideTurn 包装**：加权记账（J25 公式）→ pendingReminder → 提醒落 user/message{source:"injected"} 写历史成功后 markReminderDelivered（"写进历史才算送达"）→ 耗尽显式 end。⑥**turnEnd 压缩失败不阻断轮收尾**（logger.warn + 放行 next）：turnEnd 截断会让 turn 悬挂（closeTurn 大声失败路径）；压力仍在，下一轮 PreTurn 重试，抖动由 RapidRefillGuard 兜底。⑦**scope=session 批准缓存未接线**（ApprovalScopeCache 留 P1）：CLI /approve 是一次性放行（once），会话级缓存需要规则审批面提供 scope 输入（C47 五档的规则审批 UI）——与阶段 5 报告的 once 语义一致。⑧**验收命令的实际产物路径是 `node dist/src/cli/index.js --smoke`**（卡面写 dist/cli/index.js；tsconfig include 含根配置文件导致产物多一层 src/——T-3-06 同款路径偏差）。⑨openai 真实厂商装配落在子进程入口（--provider openai：parseProviderConfig + createOpenAiCompatProvider + withRetry；loop 外包重试纪律）；J2 连通性仍为人工确认项。⑩copy-assets 清单补 schema.sql（SQLite 模式的 dist 运行依赖；T-1-03 预记的"需要时同批"兑现）。
+- **完成记录**：2026-09-25。产出 `src/cli/{repl.ts,index.ts}` + `cli.test.ts`、`src/kernel/assembly.ts`（生产装配）、loop.ts 四处接线、agent-protocol/agent-process 扩展、agent-child CLI 装配、package.json bin、copy-assets +1。验收：`npx vitest run src/cli/` → **5 passed**（脚本化会话完整事件流摘要 / 审批全链路：write 无规则 ask 挂起→approval_requested→/approve allow→文件真实落盘 / /revert 对话态回退 session/revert 事件可见 / 越界 revert 类型化错误行 / renderEventSummary 单元）；`npm run build && printf '你好…\n再写一句结束语\n' | node dist/src/cli/index.js --smoke --db <tmp>/events.db` → EXIT=0，事件流完整（turn/start→user×2→step→system→header→assistant→turn/end），SQLite 9 事件 seq 连续、system 提示 2264 字（base.md+权限段+AGENTS.md 就近装配实测）。全量 `npx vitest run` **463 passed / 1 skipped**（阶段 7 收尾 458 → 净增 5），`npx tsc --noEmit` 干净。
 
 #### T-8-02 · E11 · 代码状态检查点（git stash 对齐事件点） `[ ]`
 - **依据需求**：E11（P0）

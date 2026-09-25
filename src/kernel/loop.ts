@@ -31,6 +31,7 @@ import {
   type ModelProvider,
   ProviderHttpError,
 } from "../models/provider.js";
+import { buildChatMessages, effectiveEvents } from "../session/messages.js";
 import { Projector } from "../session/project.js";
 import type { SessionStore } from "../session/store.js";
 import { BudgetExceededError, ParseBudget } from "./budget.js";
@@ -177,6 +178,20 @@ export interface AgentLoopDeps {
     >;
     turnEnd?: ReadonlyArray<ChainLayer<LoopContext, TurnEndPayload, void>>;
   };
+  /**
+   * PreTurn 压缩挂点（T-8 装配，zcode PreRequest 同款）：本 turn 的
+   * turn/start + user/message 已落盘（新 prompt 已入流）、首次模型请求尚未
+   * 发出时调用——装配处在此跑本地溢出判定与 PreTurn 相位压缩（F9/F21）。
+   * 压缩不挂 modelRequest 链（T-3-01 排除项：与上下文装配互踩），这个显式
+   * 时点是 loop 提供给装配的唯一合法入口。
+   */
+  beforeFirstModelRequest?(turn: number): Promise<void>;
+  /**
+   * 一个含工具调用的 step 完成后回调（T-8 装配：RapidRefillGuard 的
+   * recordCompletedToolStep 记账——真实干活会拉高 toolTurnsSinceCompact，
+   * 解锁抖动断路器）。纯通知，loop 不关心返回。
+   */
+  onToolStepCompleted?(turn: number, step: number): void;
 }
 
 export class AgentLoop {
@@ -252,6 +267,12 @@ export class AgentLoop {
       { type: "user/message", turn, message: { content: prompt }, source: "user" },
     ]);
     try {
+      // PreTurn 压缩挂点（T-8 装配）：新 prompt 已入流、首次模型请求前。
+      // 必须在 try 内：hook 抛错走 failTurn 闭合（turn/start 已落盘——不能
+      // 把悬挂 turn 丢给进程级崩溃路径）。
+      if (this.deps.beforeFirstModelRequest) {
+        await this.deps.beforeFirstModelRequest(turn);
+      }
       for (let step = 1; ; step++) {
         // A7 边界检查：step 开始前
         if (this.cancelCause) break;
@@ -416,6 +437,10 @@ export class AgentLoop {
       }
     }
     store.append(sessionId, [{ type: "step/end", turn, step }]);
+    // T-8 装配通知：含工具调用的 step 完成记一笔（RapidRefillGuard 的干活记账）。
+    if (output.toolCalls.length > 0) {
+      this.deps.onToolStepCompleted?.(turn, step);
+    }
     if (this.cancelCause) return { kind: "cancelled" };
     return {
       kind: "completed",
@@ -566,6 +591,10 @@ export class AgentLoop {
         `turnEnd 链被截断（turn=${turn}）——P0 无合法消费方，turn 保持未闭合`,
       );
     }
+    // E13 turn 末 flush 检查点（T-8 装配接线）：flush 本体在内、注册的 hook
+    // 在外（拿到的都是"已持久化"时点）。落库失败向上抛——存储故障时进程
+    // 该退出，而不是假装轮已收尾。
+    await this.deps.store.runFlushPoint("turnEnd", this.deps.sessionId);
     // A3：turn/end 成功落盘才归位 idle——这是 run-state 的唯一归位点；
     // 到不了这里（崩溃/截断）的 turn 停在 busy，等恢复路径。
     this.deps.runState?.markIdle(this.deps.sessionId);
@@ -603,71 +632,16 @@ export class AgentLoop {
   }
 
   /**
-   * 从事件流重建模型请求的消息序列。有效视窗遵循最新 session/revert 标记
-   * （E4：最新标记生效）；assistant/attempt 不进模型历史（未产出可见消息，
-   * l0-events.md §2.2）；tool/call 挂回同 step 的 assistant 消息（wire 需要
-   * assistant.toolCalls 续话）。
+   * 从事件流重建模型请求的消息序列（T-8 接线：内嵌实现换成
+   * src/session/messages.ts 的公共 helper——压缩/新窗口重建消费同一实现，
+   * 三处各写一遍必然漂移）。有效视窗遵循最新 session/revert 标记（E4）；
+   * assistant/attempt 不进模型历史；tool/call 挂回同 step 的 assistant 消息。
+   * 压缩后的新窗口重建（摘要/developer 注入）在 modelRequest 链的装配层经
+   * startNewContextWindow 换载荷完成，loop 不感知压缩。
    */
   private buildMessages(): ChatMessage[] {
-    const events = this.deps.store.load(this.deps.sessionId);
-    let cut = Number.POSITIVE_INFINITY;
-    for (const e of events) {
-      if (e.type === "session/revert") {
-        cut = e.phase === "revert" ? e.targetSeq : Number.POSITIVE_INFINITY;
-      }
-    }
-    type AssistantMsg = Extract<ChatMessage, { role: "assistant" }>;
-    const messages: ChatMessage[] = [];
-    let lastAssistant: AssistantMsg | null = null;
-    let pendingCalls: { id: string; name: string; arguments: string }[] = [];
-    const flushCalls = () => {
-      if (lastAssistant && pendingCalls.length > 0) {
-        lastAssistant.toolCalls = [
-          ...(lastAssistant.toolCalls ?? []),
-          ...pendingCalls,
-        ];
-        pendingCalls = [];
-      }
-    };
-    for (const e of events) {
-      if (e.seq > cut) continue;
-      switch (e.type) {
-        case "user/message":
-          flushCalls();
-          messages.push({ role: "user", content: e.message.content });
-          break;
-        case "system/message":
-          flushCalls();
-          messages.push({ role: "system", content: e.message.content });
-          break;
-        case "assistant/message":
-          flushCalls();
-          lastAssistant = { role: "assistant", content: e.message.content };
-          messages.push(lastAssistant);
-          break;
-        case "tool/call":
-          pendingCalls.push({
-            id: e.callId,
-            name: e.name,
-            arguments: e.arguments,
-          });
-          break;
-        case "tool/result":
-          flushCalls();
-          messages.push({
-            role: "tool",
-            callId: e.callId,
-            content: e.message.content,
-            ...(e.message.isError ? { isError: true as const } : {}),
-          });
-          break;
-        default:
-          // attempt / compaction / checkpoint / header / turn.* / revert 不进消息
-          break;
-      }
-    }
-    flushCalls();
-    return messages;
+    const events = effectiveEvents(this.deps.store.load(this.deps.sessionId));
+    return buildChatMessages(events);
   }
 }
 

@@ -6,7 +6,7 @@
  * md）在此追加清单。
  */
 
-import { cpSync, existsSync, readdirSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -33,9 +33,21 @@ const assets = [
     out: path.join(root, "dist", "src", "sandbox", "dpapi"),
     label: "DPAPI helper",
   },
+  {
+    src: path.join(root, "src", "session", "schema.sql"),
+    out: path.join(root, "dist", "src", "session", "schema.sql"),
+    label: "schema.sql（SQLite 建库 DDL，T-8-01）",
+    file: true,
+  },
 ];
 
-for (const { src, out, label } of assets) {
+for (const { src, out, label, file } of assets) {
+  if (file) {
+    mkdirSync(path.dirname(out), { recursive: true });
+    copyFileSync(src, out);
+    console.log(`copy-assets: ${label} 1 项 → dist`);
+    continue;
+  }
   if (!existsSync(src)) throw new Error(`${label}目录不存在：${src}`);
   cpSync(src, out, { recursive: true });
   const files = readdirSync(src, { recursive: true }).filter(

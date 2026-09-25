@@ -28,9 +28,11 @@ import {
   decodeMessage,
   decodeRequest,
 } from "./agent-protocol.js";
+import type { ApprovalAnnouncement } from "../policy/pending.js";
 import type { ChatRequest, ModelProvider } from "../models/provider.js";
 import type { ModelIdentity } from "../models/identity.js";
-import { SessionStore } from "../session/store.js";
+import { InMemoryEventStorage, type EventStorage, SessionStore } from "../session/store.js";
+import { createChildAssembly, type ChildAssembly, type ChildAssemblyOptions } from "./assembly.js";
 import { registerBuiltinTools } from "./tools/builtin/index.js";
 import { NodeExecutionEnv } from "./tools/env.js";
 import { ToolRegistry } from "./tools/registry.js";
@@ -66,6 +68,16 @@ export interface AgentChildOptions {
   output?: NodeJS.WritableStream;
   /** dispose 或 stdin 关闭后退出（测试注入以免真实退出进程）。默认 process.exit。 */
   exit?: (code: number) => void;
+  /**
+   * 事件存储（T-8-01：CLI 的 SQLite 落库走此注入）。缺省 InMemory——
+   * 原生模块不进 echo 模式冷启动路径（Q16 <500ms 的结构性前提）。
+   */
+  storage?: EventStorage;
+  /**
+   * T-8-01 生产装配（权限 gate / 压缩 / 预算 / 抖动 / 系统提示）。
+   * 缺省 undefined = T-3-06 最小装配（echo + 无权限层），旧测试行为不变。
+   */
+  assembly?: Omit<ChildAssemblyOptions, "sessionId" | "store">;
 }
 
 /**
@@ -94,13 +106,45 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
       for (const event of committed) send({ type: "event", event });
       return committed;
     }
-  })();
+  })(options.storage ?? new InMemoryEventStorage());
+
+  // T-8-01 生产装配：审批宣告在此转发为协议行（asked → 待审批请求、
+  // settled → 答复落定；timed-out 不走协议——isError 的 tool/result 事件
+  // 已是事件流上的宣告事实）。
+  const assembly: ChildAssembly | undefined = options.assembly
+    ? createChildAssembly({
+        sessionId,
+        store,
+        ...options.assembly,
+        onApprovalAnnouncement: (announcement: ApprovalAnnouncement) => {
+          if (announcement.kind === "asked") {
+            send({
+              type: "approval_requested",
+              requestId: announcement.request.id,
+              tool: announcement.request.tool,
+              args: announcement.request.args,
+              timeoutMs: announcement.timeoutMs,
+            });
+          } else if (announcement.kind === "settled") {
+            send({
+              type: "approval_settled",
+              requestId: announcement.id,
+              allowed: announcement.verdict.action === "allow",
+            });
+          }
+          options.assembly?.onApprovalAnnouncement?.(announcement);
+        },
+      })
+    : undefined;
 
   const queue = new PromptQueue("one-at-a-time");
   // 工具装配（T-4-05 接线，兑现 T-4-02 偏离⑥）：注册表分发就是 toolCall 链的
   // 链底 terminal——executeTool 槽位由 registry.dispatch 充当，不存在旁路。
+  // T-8-01：装配提供 PathGuard 时经它构造（写守卫唯一入口，T-6-01）。
   const toolRegistry = new ToolRegistry({ env: new NodeExecutionEnv() });
-  registerBuiltinTools(toolRegistry);
+  registerBuiltinTools(toolRegistry, assembly ? { pathGuard: assembly.pathGuard } : {});
+  const decideTurnBase: AgentLoopDeps["decideTurn"] = (record) =>
+    record.toolCalls.length > 0 ? { action: "continue" } : { action: "end" };
   const loopDeps: AgentLoopDeps = {
     sessionId,
     store,
@@ -108,9 +152,16 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
     identity: options.identity ?? { provider: "echo", modelId: "echo-1" },
     tools: toolRegistry.toChatTools(),
     executeTool: (call) => toolRegistry.dispatch(call),
-    decideTurn: (record) =>
-      record.toolCalls.length > 0 ? { action: "continue" } : { action: "end" },
+    decideTurn: assembly ? assembly.wrapDecideTurn(decideTurnBase) : decideTurnBase,
     queue,
+    ...(assembly
+      ? {
+          layers: assembly.layers,
+          beforeFirstModelRequest: assembly.beforeFirstModelRequest,
+          onToolStepCompleted: (turn: number, step: number) =>
+            assembly.onToolStepCompleted(turn, step),
+        }
+      : {}),
   };
   const loop = new AgentLoop(loopDeps);
 
@@ -121,7 +172,13 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
     if (inflight) return;
     const next = queue.drain()[0];
     if (!next) {
-      if (disposing) exit(0);
+      if (disposing) {
+        exit(0);
+        return;
+      }
+      // T-8-01：宣告空闲（无在途轮且队列空）——CLI 的 EOF 语义据此等
+      // idle 再 dispose，避免"输入流关闭即取消在途轮"。
+      send({ type: "idle" });
       return;
     }
     inflight = loop
@@ -153,9 +210,54 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
       case "cancel":
         loop.cancel(req.cause as CancelCause);
         return;
+      case "revert": {
+        // E4 对话态回退：成功无专用应答——session/revert 事件经事件流可见；
+        // 失败（未装配 / 越界）回 error 行。
+        if (!assembly) {
+          send({
+            type: "error",
+            code: "REVERT_FAILED",
+            message: "子进程未装配会话服务（最小装配无 revert 处理）",
+          });
+          return;
+        }
+        try {
+          assembly.handleRevert(req.targetSeq);
+        } catch (e) {
+          send({
+            type: "error",
+            code: "REVERT_FAILED",
+            message: e instanceof Error ? e.message : String(e),
+          });
+        }
+        return;
+      }
+      case "approve": {
+        // C5 答复转达：成功无专用应答——settled 宣告与后续 tool/result 事件
+        // 可见；失败（未装配 / 迟到 / 未知 id）回 error 行（类型化 code）。
+        if (!assembly) {
+          send({
+            type: "error",
+            code: "APPROVE_FAILED",
+            message: "子进程未装配审批服务（最小装配无审批处理）",
+          });
+          return;
+        }
+        assembly.handleApprove(req.requestId, req.action, req.reason).catch(
+          (e: unknown) => {
+            send({
+              type: "error",
+              code: e instanceof Error && "code" in e ? String((e as { code: unknown }).code) : "APPROVE_FAILED",
+              message: e instanceof Error ? e.message : String(e),
+            });
+          },
+        );
+        return;
+      }
       case "dispose":
         disposing = true;
         loop.cancel({ kind: "disposed" });
+        assembly?.dispose(); // 挂起审批按超时语义拒绝——gate 落 isError 后轮可收
         if (!inflight) exit(0);
         return;
     }
@@ -189,6 +291,7 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
   if (!disposing) {
     disposing = true;
     loop.cancel({ kind: "disposed" });
+    assembly?.dispose();
   }
   if (!inflight) exit(0);
   await inflight;
@@ -247,10 +350,12 @@ export interface AgentProcess {
 export interface SpawnAgentOptions {
   /** 编译后的子进程入口（dist/src/kernel/agent-child.js）。 */
   entryPath: string;
+  /** 透传给子进程的参数（T-8-01：CLI 装配选项）。 */
+  args?: readonly string[];
 }
 
 export function spawnAgentProcess(options: SpawnAgentOptions): AgentProcess {
-  const child = spawn(process.execPath, [options.entryPath], {
+  const child = spawn(process.execPath, [options.entryPath, ...(options.args ?? [])], {
     stdio: ["pipe", "pipe", "inherit"],
   });
   const queue = new MessageQueue();
