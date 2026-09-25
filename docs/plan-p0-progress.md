@@ -66,10 +66,11 @@
 | 2026-09-25 | T-7-07 | F28 | `0c3316b` | `npx vitest run src/context/rapid-refill.test.ts` | 7 passed；零进展连续压缩 evaluate 拟算 1→2→3 → 引擎入口第 0 段抛 RapidRefillError 且 err.consecutiveRapidRefills=3/toolTurnsSinceCompact=0（全计数）、该次压缩未落盘；干活 3 步骤解锁归 0；熔断路径状态冻结不虚增；可配阈值 |
 | 2026-09-25 | T-7-08 | M10 | `363bd02` | `npx vitest run src/context/budget.test.ts` | 8 passed；越档提醒→markDelivered 后同档不再发；未 mark（取消）→ 同档重发；换 windowId 送达记账失效重发；加权公式 output×2+input×1=250、cacheRead 折减 230（J25 同款）；耗尽后 recordUsage 恒 true |
 | 2026-09-25 | T-7-09 | F1/F2 | `eb34efe` | `npx vitest run src/context/system-prompt.test.ts` | 8 passed；a/b/c 假 fs：a 与 a/b 同时生效且 b 的"测试规范"覆盖 a、收集序列 [远→近] 含 root 层且 root 是边界；不注入 basePrompt 时输出含真 base.md（改文件零 .ts diff 机验）；权限段真模板两档互异 + {{WRITABLE_ROOTS}} 替换；`npm run build` 基础提示 1 项进 dist；opencode 加载器锚点（instruction.ts findUp 就近取一个不叠加）已回填 requirements F2 并注明与本方自研语义的差异；全量 458 passed |
-| 2026-09-25 | T-8-01 | K1 | （本次 commit） | `npx vitest run src/cli/` + smoke 实测 | 5 passed；审批全链路（write ask 挂起→/approve allow→文件落盘）、/revert 事件可见、越界类型化错误、echo 会话完整事件流；smoke（--db）SQLite 9 事件 seq 连续、system 提示 2264 字实测；阶段 5/7 模块接线进装配（gate/压缩/压力/抖动/预算/系统提示 + runFlushPoint 首接）；全量 463 passed |
-| 2026-09-25 | T-8-02 | E11 | （本次 commit） | `npx vitest run src/session/git-checkpoint.test.ts` | 6 passed（真 git 仓夹具）；场景① CLI 级联测：审批放行 write 改文件 → /revert 到改前事件点 → baseline.txt 回"改前"+ reverted 回执；空 stash 落 ref:null（偏离 pi 的跳过）；非 git 目录首次 warn 静默；无检查点/apply 冲突抛明确错误；全量 469 passed |
-| 2026-09-25 | T-8-03 | L1/L3 | （本次 commit） | `npx vitest run src/obs/usage.test.ts && ls logs/ \|\| echo NO_LOG_DIR` | 3 passed；1002 事件喂入按会话/按轮分列可查（Σinput=1,402,800 逐列断言）、usage 缺失不算 0、totalTokens 显式优先、多会话不串扰；logs/ NO_LOG_DIR（L1 否定性面）；全量 472 passed |
-| 2026-09-25 | T-8-04 | Q5 | （本次 commit） | `npx vitest run src/session/boot-maintenance.test.ts` | 5 passed；崩溃态对账全闭合、codes=[STEP_INTERRUPTED, TURN_INTERRUPTED] 细分、turn/end{interrupted} append-only 落流；干净 no-op；幂等；杀进程重启 restore→对账→新 prompt 开 turn 2 不续跑（事件流 interrupted/completed 共存）；全量 477 passed |
+| 2026-09-25 | T-8-01 | K1 | `bfd6756` | `npx vitest run src/cli/` + smoke 实测 | 5 passed；审批全链路（write ask 挂起→/approve allow→文件落盘）、/revert 事件可见、越界类型化错误、echo 会话完整事件流；smoke（--db）SQLite 9 事件 seq 连续、system 提示 2264 字实测；阶段 5/7 模块接线进装配（gate/压缩/压力/抖动/预算/系统提示 + runFlushPoint 首接）；全量 463 passed |
+| 2026-09-25 | T-8-02 | E11 | `cb1d43c` | `npx vitest run src/session/git-checkpoint.test.ts` | 6 passed（真 git 仓夹具）；场景① CLI 级联测：审批放行 write 改文件 → /revert 到改前事件点 → baseline.txt 回"改前"+ reverted 回执；空 stash 落 ref:null（偏离 pi 的跳过）；非 git 目录首次 warn 静默；无检查点/apply 冲突抛明确错误；全量 469 passed |
+| 2026-09-25 | T-8-03 | L1/L3 | `ccc3370` | `npx vitest run src/obs/usage.test.ts && ls logs/ \|\| echo NO_LOG_DIR` | 3 passed；1002 事件喂入按会话/按轮分列可查（Σinput=1,402,800 逐列断言）、usage 缺失不算 0、totalTokens 显式优先、多会话不串扰；logs/ NO_LOG_DIR（L1 否定性面）；全量 472 passed |
+| 2026-09-25 | T-8-04 | Q5 | `b95fa8b` | `npx vitest run src/session/boot-maintenance.test.ts` | 5 passed；崩溃态对账全闭合、codes=[STEP_INTERRUPTED, TURN_INTERRUPTED] 细分、turn/end{interrupted} append-only 落流；干净 no-op；幂等；杀进程重启 restore→对账→新 prompt 开 turn 2 不续跑（事件流 interrupted/completed 共存）；全量 477 passed |
+| 2026-09-25 | T-8-05 | （汇编卡，§8 十条） | （本次 commit） | 十条逐项执行（见「P0 终验收记录」） | 十条全过：①11 passed+smoke SQLite 复证 ②45 passed ③21 passed/1 skipped（符号链接→人工确认）④8 passed ⑤4 passed+config CLEAN ⑥10.1ms<200ms ⑦冷启动 283.3/273ms、RSS 47.1MB、Token 省 94.3% ⑧17/17 exit 0 ⑨548 链接 0 失效 ⑩310 与 §5 一致 |
 
 ---
 
@@ -121,11 +122,11 @@
 
 | 需求ID | 为什么不能机验 | 人工要怎么确认 |
 | --- | --- | --- |
-| J2（部分） | 真实厂商连通性需要 API key；单测只覆盖 mock 流 | 用户提供一个真实端点跑一次会话，确认流式与 usage 正常 |
-| T9 冷启动 | 「<500ms」依赖本机负载 | 看 T-3-06 完成记录里的实测数字，超标则进待澄清 |
+| J2（部分） | 真实厂商连通性需要 API key；单测只覆盖 mock 流 | 用户提供一个真实端点跑一次会话，确认流式与 usage 正常。**openai 装配已就位**（T-8-01）：`node dist/src/cli/index.js --provider openai --db <库>` + 环境变量 AEGENT_API_KEY / AEGENT_BASE_URL / AEGENT_MODEL |
+| T9 冷启动 | 「<500ms」依赖本机负载 | T-8-05 终验收已实测两形态：echo 模式 median 283.3ms、SQLite 模式 median 273ms，达标收口（T-3-06 基线 109.6ms 的上浮源于子进程装配扩容，见 T-8-05 偏离①） |
 | D3 弱承诺 | 「网络策略只管工具层」是声明不是代码属性 | 读 T-6-03 产出的 README 声明是否醒目 |
-| T-6-01 符号链接逃逸 | 本机无创建符号链接特权（Windows 需开发者模式），逃逸用例自动跳过（LIMITATIONS #1） | 有特权环境跑 `npx vitest run src/sandbox/path-guard.test.ts` 应 22 全过；realpath 归一逻辑已有"最近存在祖先"路径的确定性用例覆盖 |
-| §6.2 常驻内存 | 任务管理器观察（需求原文如此） | 用户空闲时目测 <150MB |
+| T-6-01 符号链接逃逸 | 本机无创建符号链接特权（Windows 需开发者模式），逃逸用例自动跳过（LIMITATIONS #1） | 有特权环境跑 `npx vitest run src/sandbox/path-guard.test.ts` 应 22 全过（终验收实测 21 passed + 1 skipped）；realpath 归一逻辑已有"最近存在祖先"路径的确定性用例覆盖 |
+| §6.2 常驻内存 | 任务管理器观察（需求原文如此） | 用户空闲时目测 <150MB；**T-8-05 附 node 辅测**：agent-child 空闲 WorkingSet64 实测 47.1MB，余量充足 |
 
 ## 阻塞
 
@@ -459,6 +460,77 @@ step 收尾调 RapidRefillGuard.recordCompletedToolStep——接线改 loop 时�
 重启路径走 store.restore（seq 断层即抛）；3) T-8-05 全量验收跑需求 §8 十条
 前先核对人工确认清单（J2/D3/§6.2/符号链接四项），无法机验的写明人工确认
 方式。不要问要不要继续。
+```
+
+---
+
+## P0 终验收记录（T-8-05，2026-09-25）
+
+> §8 十条逐项执行，全部通过。人工确认清单（J2/D3/§6.2/符号链接四项）在执行前核对，
+> 无法机验的方式已写明（见上方清单更新）。
+
+| # | 验收条目 | 命令 | 结果摘要 |
+| --- | --- | --- | --- |
+| 1 | 场景①端到端 + 事件落 SQL + revert 任意点 | `npx vitest run src/session/git-checkpoint.test.ts src/session/revert.test.ts`；smoke `printf '写点东西\n' \| node dist/src/cli/index.js --smoke --db <tmp> --workspace <git 仓>` | **11 passed**（CLI 级联测：审批放行 write 改文件 → /revert 到改前事件点 → baseline.txt 回"改前" + reverted 回执；revert/unrevert 5 用例）；smoke 实测 SQLite 9 事件 seq 连续、checkpoint 事件（ref=null）落库 |
+| 2 | 危险命令默认询问 + 规则可覆盖 | `npx vitest run src/policy/dangerous-commands.test.ts src/policy/gate.test.ts src/policy/evaluate.test.ts src/policy/chain.test.ts` | **45 passed**（rm -rf/sudo/777 升 ask、场景⑦注入不改求值时机、无规则 abstain→ask、用户层 allow 规则压过核心层=可覆盖、层序权威） |
+| 3 | 越界写拒绝（场景④） | `npx vitest run src/sandbox/path-guard.test.ts` | **21 passed / 1 skipped**（符号链接逃逸用例需特权，跳过→人工确认清单；越界报错含目标路径不落盘、bash 重定向越界拒、cd 相对 fail-closed） |
+| 4 | 假 provider loop 两路径 | `npx vitest run src/kernel/loop.test.ts` | **8 passed**（continue 直到空手由 DecideTurn 显式 end / 首轮即 end；A1 反向钉死） |
+| 5 | API Key DPAPI 加密、配置无明文 | `npx vitest run src/sandbox/dpapi.test.ts`；`grep -r "sk-" config/ \|\| echo CLEAN` | **4 passed**（真实 PowerShell 5.1 子进程 protect→unprotect 往返、损坏 blob 拒）+ **CLEAN** |
+| 6 | 1 万事件投影 <200ms | `npx vitest run src/session/project.test.ts` | **8 passed**；实测 project(10k) = **10.1ms**（阈值 200ms 余量 20 倍） |
+| 7a | §6.2 冷启动 <500ms | `node scripts/cold-start.mjs`；SQLite 模式辅测脚本 | echo 模式 **median 283.3ms**（best 280.8，3 轮）；**SQLite 模式 median 273ms**（--db 动态加载原生模块仍达标）——两形态均 <500ms |
+| 7b | §6.2 常驻内存 <150MB | node WorkingSet64 辅测 + 任务管理器目测（人工） | agent-child 空闲 **RSS 47.1MB**（辅测）；任务管理器目测为需求原文方式，留人工确认 |
+| 7c | §6.2 Token 消耗省 ≥30% | `node scratch/_tmp_accept/token-compare.mjs`（40 轮长会话 compaction 前后对比） | 压缩前 4951 tokens → 压缩后（新窗口重建）281 tokens，**节省 94.3%** ≥30% |
+| 7d | §6.2 会话加载 <200ms | 同第 6 条 | **10.1ms** <200ms |
+| 8 | license-audit 17/17 | `bash tools/license-audit.sh` | exit 0，**17 个仓**（oss 16 + refs 1）逐仓通过、泄露关键词命中 0、无 "!!" 报警 |
+| 9 | check-doc-links 0 失效 | `bash tools/check-doc-links.sh` | **548 链接 0 失效** |
+| 10 | count-features 与 §5 一致 | `bash tools/count-features.sh` | 层数 19，**P0=104 / P1=158 / P2=48 / 总计=310**，与 §5 表逐层一致 |
+
+---
+
+## 阶段 8 报告（完成于 2026-09-25）
+
+- **打勾情况**：5 / 5（T-8-01 ~ T-8-05 全部完成，无未完成项）——**P0 全部 62 卡完成**
+- **产出的文件**：
+  - `src/cli/{index,repl}.ts` + `cli.test.ts`——CLI 薄壳（REPL/管道 + 事件流摘要 + /revert /cancel /approve）与 bin 入口（T-8-01）
+  - `src/kernel/assembly.ts`——生产装配（权限 gate / 上下文装配层 / turnEnd 压缩层 / PreTurn 挂点 / 抖动记账 / M10 预算 / 系统提示 / PathGuard）（T-8-01）
+  - `src/kernel/loop.ts` 接线（buildMessages 换 messages.ts helper、beforeFirstModelRequest / onToolStepCompleted 挂点、closeTurn 首接 runFlushPoint）、`agent-protocol.ts` 协议扩展（revert/approve/审批宣告/reverted/idle）、`agent-process.ts`（装配接入 + kick 前打点 + revert 双回退）、`agent-child.ts`（CLI 参数与环境变量装配 + openai 厂商装配）（T-8-01/02）
+  - `src/session/git-checkpoint.ts` + 测试——E11 代码检查点（T-8-02）
+  - `src/obs/usage.ts` + 测试——L3 token 统计 SQL 视图（T-8-03）
+  - `src/session/boot-maintenance.ts` + 测试——Q5 启动期对账（T-8-04）
+  - `scripts/copy-assets.mjs`（+schema.sql）、`package.json`（bin）
+- **验收台账**：5 卡 5 命令全部通过（见台账表）；全量 `npx vitest run` **477 passed / 1 skipped**（阶段 7 收尾 458 → 净增 19），`npx tsc --noEmit` 全程干净；§8 十条终验收全过（见「P0 终验收记录」）；`count-features.sh` = 310 不变、`check-doc-links.sh` = 548 链接 0 失效、license-audit 17/17
+- **阶段完成定义核对**：场景①全流程闭环 ✓（CLI → 过策略 → 改文件 → revert 对话与代码双回退，事件落 SQL）；杀进程重启无"快照说做了/事件说没做" ✓（store.restore seq 校验 + 对账闭合 + 新轮不续跑）
+- **偏离计划的地方**：
+  1. **阶段 5/7 模块在本阶段接线进装配**（用户开工提示兑现）：PreTurn 压缩走 loop 新 hook `beforeFirstModelRequest`（T-3-01 排除"压缩不挂 modelRequest"——hook 是 loop 在 try 内的显式时点，不是新链点位）；buildMessages 换公共 helper；runFlushPoint 首接（E13 检查点）
+  2. **协议扩展**：revert/approve 请求 + approval_requested/settled/reverted/idle 消息；CLI 的 EOF 语义 = 等子进程 idle 再 dispose（修"EOF 即取消在途轮"）
+  3. **E11 打点时点是 turn 开始前而非卡面"turn 末"**（卡面与场景①验收矛盾——turn 末 stash 捕获"改后"回不到"改前"；pi turn_start "before LLM makes changes" 同款）；空 stash 落 ref:null（偏离 pi 的跳过，保留"改前恰好干净"的恢复能力）
+  4. **对账从 UPDATE 改为追加事件**（事件源 append-only，无可 UPDATE 的 status 列；turn/end{interrupted} 用词汇表预留的崩溃孤儿闭合变体）
+  5. **scope=session 批准缓存未接线**（ApprovalScopeCache 留 P1）：CLI /approve 是一次性放行（once），会话级缓存需要规则审批面提供 scope 输入
+  6. 验收命令产物路径实际为 `dist/src/cli/index.js`（卡面 dist/cli/index.js，T-3-06 同款路径偏差）；冷启动实测上浮至 283.3/273ms（装配扩容），仍达标无需待澄清
+- **新发现的约束或坑**：
+  - **脚本化会话的 EOF 语义**：管道 EOF 即 dispose 会取消在途轮——新增 idle 协议消息，CLI 等 idle 再 dispose（/exit 保持立即退出）；idle 状态必须由"发 prompt 时作废 + 子进程空闲宣告"双向维护，否则初始 idle 会污染等待
+  - **视图查的是 storage**：store.append 后必须 flush 才能被 SQL 视图查到（write-behind 纪律在消费面实爆）；better-sqlite3 连接不 close → Windows EBUSY（T-1-03 坑两度复发，afterEach 加容错）
+  - **测试 provider 每轮产同名 callId 会让审批走 DuplicateApprovalError 无限循环**（decideTurn continue + isError 回喂）——脚本 provider 必须两轮剧本
+  - execFile 回调的 error 参数成功时是 **null** 不是 undefined（`error !== undefined` 判定会在成功路径取 null.code 抛 TypeError）
+  - snapshot.sh 在后台跑会被中断截断 SOURCES.lock（大目录 du 慢）——必须同步跑并 `git diff oss/SOURCES.lock` 复核
+- **遗留风险与未知**：
+  - J2 真实厂商连通性（人工确认清单；openai 装配已就位，等用户提供 key）
+  - D3 弱承诺目检、§6.2 常驻内存任务管理器复核、T-6-01 符号链接逃逸（有特权环境）——四项人工确认方式已写明
+  - 摘要质量（F5）、递归摘要、Q3 spill 清理策略、rg 提速、canonical path 归一、ContractResult 泛型化等 P1 项不变
+  - cold-start 基线 283ms 与 109ms 的差异源于装配扩容（参数解析 + 策略链 + 检查点），未优化——P0 阈值内，P1 若有需要可再压
+- **下一阶段提示词**：
+
+```
+P0 已全部完成（62/62 卡，§8 十条验收全过）。下一步是 P1：读 docs/plan-p0.md
+的 §0 执行协议与 §1 尾注（P1 不切阶段、轮到时展开成任务卡），从
+docs/requirements.md §4 索引的 P1 项里与用户一起圈定第一批范围并展开成
+任务卡（P1 共 158 条，建议按依赖成组：G 层 Planning、I 层 hooks/skills、
+J6 换模、C22/C46 出口级聚合、Q3 spill 清理等），再按 §0 协议执行。
+上一阶段报告在 docs/plan-p0-progress.md。本阶段特有的注意：1) P0 的
+人工确认清单（J2/D3/§6.2/符号链接）若有用户复核结论先回填；2) P1 展开卡
+时沿用 P0 卡格式（依据需求/参考锚点/取什么别抄什么/验收），锚点先核对
+oss/SOURCES.lock 的 commit；3) 阶段 8 的装配层（src/kernel/assembly.ts）
+是 P1 功能接线的主要落点，别绕过它开旁路。不要问要不要继续。
 ```
 
 ---

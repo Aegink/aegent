@@ -88,6 +88,9 @@ async function main(): Promise<void> {
       ? {
           assembly: {
             workspaceRoot: cli.workspace ?? process.cwd(),
+            // E11：工作区即 git 仓时启用代码检查点（非 git 目录由
+            // GitCheckpointService 首次打点时拒绝并提示，不中断轮）
+            checkpointRepoRoot: cli.workspace ?? process.cwd(),
             contextWindow: cli.contextWindow ?? 200_000,
             approvalTimeoutMs: cli.approvalTimeoutMs ?? 120_000,
           },

@@ -930,7 +930,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①**对账落点从 UPDATE 改为追加事件**（架构使然）：事件源 append-only（不变量 1），无可 UPDATE 的 status 列——未闭合 step 落 step/end、未闭合 turn 落 turn/end{interrupted}（词汇表 §3.3 预留的"崩溃孤儿闭合"变体，loop 永不实时发出，T-3-06 的 nextTurnNumber 拒绝叠加注释"闭合属恢复路径（T-8）"在本卡兑现）；②细分错误码（STEP_INTERRUPTED / TURN_INTERRUPTED）在对账报告的 codes 里（机器面），事件流上的分类就是 turn/end 的 kind——pi-desktop 的 error_code 列同样是报告面；PLAN_* job 级细分码随 M3（P1）扩展清单；③不重放的结构性保证：闭合后投影干净 → 新 prompt 开新轮（turnCount+1），孤儿 turn 一经闭合即历史事实，无任何路径续跑它；队列随进程消亡不在持久面；④对账幂等（闭合后的流再跑零追加）。
 - **完成记录**：2026-09-25。产出 `src/session/boot-maintenance.ts`（reconcileBootState + STEP/TURN_INTERRUPTED_CODE）+ `boot-maintenance.test.ts` 5 用例。验收：`npx vitest run src/session/boot-maintenance.test.ts` → **5 passed**——崩溃态（孤儿 step+turn）对账全闭合、codes=[STEP_INTERRUPTED, TURN_INTERRUPTED] 按类型细分、closed 以 turn/end{interrupted} append-only 落流；干净启动 no-op 零追加；多孤儿 step 逐一闭合每步一码；幂等复跑 no-op；杀进程重启路径（SQLite 库 close→重开→store.restore 含 seq 连续校验→对账→新 prompt 开 turn 2，旧轮 interrupted 与新轮 completed 事件共存，不续跑）。全量 `npx vitest run` **477 passed / 1 skipped**（T-8-03 收尾 472 → 净增 5），`npx tsc --noEmit` 干净。
 
-#### T-8-05 · 需求 §8 全量验收（收尾卡，无新需求） `[ ]`
+#### T-8-05 · 需求 §8 全量验收（收尾卡，无新需求） `[x]`
 - **依据需求**：§8 验收标准 1–10（对应需求 ID 已在各卡）
 - **上游首选参考**：无
 - **取什么 / 别抄什么**：逐条执行并记录，缺一不可
@@ -939,8 +939,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：依次执行——①场景①端到端（CLI → 改文件 → revert 双回退）②危险命令默认询问 ③越界写拒绝 ④假 provider loop 两路径 ⑤配置无明文 key ⑥1 万事件投影 <200ms ⑦§6.2 四指标实测 ⑧`bash tools/license-audit.sh` 仍 17/17 ⑨`bash tools/check-doc-links.sh` 0 失效 ⑩`bash tools/count-features.sh` 与 §5 一致
 - **依赖**：T-8-01…T-8-04 全部
 - **风险 / 未知**：⑦冷启动若在 T-3-06 实测超标，此处收口（待澄清决议后重测）
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①⑦冷启动实测口径扩展为两形态：echo 模式（InMemory）median 283.3ms 与 SQLite 模式（--db 动态加载原生模块）median 273ms——T-3-06 的 109.6ms 基线因子进程装配扩容（CLI 参数解析 + 权限链/压缩/检查点装配）自然上浮，仍 <500ms 达标，无需待澄清；②Token 消耗指标（§6.2"compaction 前后对比"）以一次性脚本实测（scratch/_tmp_accept/token-compare.mjs：40 轮长会话、摘要覆盖前 38 轮保留 2 轮，4951→281 tokens 节省 94.3%），非单测断言——对比方法可复现；③常驻内存除需求原文的"任务管理器观察"外附 node WorkingSet64 辅测 47.1MB（人工确认清单同步更新）；④场景①的"事件落 SQL"机验 = T-8-01 smoke（--db）9 事件 seq 连续 + checkpoint 事件落库复证；真 CLI + 真实 LLM 的场景①组合留 J2 人工确认（openai 装配已就位）。
+- **完成记录**：2026-09-25，十条全过（命令与输出摘要见 progress 文件「P0 终验收记录」节）。①11 passed（场景① CLI 联测 + revert 任意点）+ smoke SQLite 9 事件复证；②45 passed；③21 passed/1 skipped（符号链接→人工确认）；④8 passed；⑤4 passed + config grep CLEAN；⑥project(10k)=10.1ms；⑦四指标全达标（见偏离①②③）；⑧license-audit 17 仓 exit 0 无报警；⑨548 链接 0 失效；⑩P0=104/P1=158/P2=48/310 与 §5 一致。
 
 ---
 
