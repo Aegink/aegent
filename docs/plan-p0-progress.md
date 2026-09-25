@@ -32,7 +32,8 @@
 | 2026-09-25 | T-4-03 | B3（后半） | `408a5fb` | `npx vitest run src/kernel/tools/builtin/` | 16 passed；六工具各 ≥2 用例；edit 唯一匹配/$& 不解释、glob 绝对路径+截断、grep 行号+include 按名过滤+INVALID_PATTERN；rg 主路径因 D4（spawn 属 env）推迟 T-4-05；踩坑：块注释内写"星对斜杠"提前闭合注释 |
 | 2026-09-25 | T-4-04 | B4 | `a3e0e9c` | `npx vitest run src/kernel/tools/write-queue.test.ts` | 6 passed；同路径 20 并发落完整值无交错、异路径 20×30ms 总耗时 <300ms（串行下界 600ms 之半）、失败不毒化+自摘尾巴；edit 整个读改写进队列，write/edit 构造注入共享实例 |
 | 2026-09-25 | T-4-05 | D4 | `7f72dc4` | `npx vitest run src/kernel/tools/env.test.ts` + grep 证伪 + 冷启动 | env.test 8 passed（真执行 6 + 类型封闭 2）；child_process 证伪 0 行；bash 回填（stdout/exit code/TOOL_TIMEOUT）；agent-process 接线注册表分发；冷启动 median 109.6ms 达标；build 脚本补描述 txt 拷贝（T-4-01 预记的 dist 风险实爆已修） |
-| 2026-09-25 | T-4-06 | B5/B10/B11 | （回填于 T-4-07） | `npx vitest run src/kernel/tools/truncate.test.ts` | 6 passed；51KB/2000 行双触发（多字节不切断）、spill 首行 Q13 JSON 标记（sessionId/tool/callId/deletable）、完整原文落盘、registry 统一出口接入 meta 合并、isError 同截断；B11 描述声明落 4 个 txt |
+| 2026-09-25 | T-4-06 | B5/B10/B11 | `24b359c` | `npx vitest run src/kernel/tools/truncate.test.ts` | 6 passed；51KB/2000 行双触发（多字节不切断）、spill 首行 Q13 JSON 标记（sessionId/tool/callId/deletable）、完整原文落盘、registry 统一出口接入 meta 合并、isError 同截断；B11 描述声明落 4 个 txt |
+| 2026-09-25 | T-4-07 | B12 | （回填于 T-4-08） | `npx vitest run src/kernel/tools/contract.test.ts` | 5 passed；契约富值（函数+5000 行对象）经 dispatch 投影，事件 payload 无 value/函数且 <500B；isError/error/meta 通道齐；loop 落盘事件流端到端验证；投影点在 registry.dispatch（loop 零改动） |
 
 ---
 

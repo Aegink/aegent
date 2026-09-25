@@ -24,9 +24,15 @@ import path from "node:path";
 import type { ChatTool } from "../../models/provider.js";
 import type { JsonRecord, JsonValue } from "../events.js";
 import type { ToolExecutionResult } from "../loop.js";
+import { isContractResult, projectResult, type ContractResult } from "./contract.js";
 import type { ToolContext } from "./context.js";
 import type { ExecutionEnv } from "./env.js";
 import { boundedOutput } from "./truncate.js";
+
+/** 工具执行体的两种返回：已投影值，或契约富值（B12，dispatch 统一投影）。 */
+export type ToolExecution =
+  | ToolExecutionResult
+  | ContractResult;
 
 /** 一个工具的注册定义：执行体在此，描述在 descriptions/<name>.txt（B2）。 */
 export interface ToolDef {
@@ -40,11 +46,12 @@ export interface ToolDef {
   /**
    * 执行体：已解析的参数对象 + 执行上下文（ToolContext，D4——进程能力只在
    * ctx.env 实现层）。不需要 ctx 的工具可以少收参数（TS 方法兼容）。
+   * 返回纯投影值或契约富值（B12：{value, render}，富值经 render 投影落盘）。
    */
   execute(
     args: JsonRecord,
     ctx: ToolContext,
-  ): ToolExecutionResult | Promise<ToolExecutionResult>;
+  ): ToolExecution | Promise<ToolExecution>;
 }
 
 /** dispatch 的入参（与 tool/call 事件载荷、loop 的 executeTool 入参同源）。 */
@@ -160,7 +167,11 @@ export class ToolRegistry {
       toolCallId: call.callId,
       ...(this.env !== undefined ? { env: this.env } : {}),
     };
-    const result = await def.execute(args, ctx);
+    const executed = await def.execute(args, ctx);
+    // B12：契约富值（含 value/render）在此投影成落盘形状——富值不出本函数
+    const result = isContractResult(executed)
+      ? await projectResult(args, executed)
+      : executed;
     return await this.boundOutput(call, result);
   }
 

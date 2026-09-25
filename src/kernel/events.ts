@@ -12,6 +12,10 @@
  *    不可 JSON 序列化的值；append 前 `assertJsonSafe` 兜底拒绝。
  * 3. 整值事件（E12）：携带状态的事件载荷是变更后的完整值，绝非裸 delta。
  *
+ * 两类投影规则勿混用（B12，T-4-07 起）：tool/result 是**投影面**——工具的
+ * 执行期富值经 render() 投影后才落盘（见 tools/contract.ts），富值本身
+ * 绝不进事件；状态类事件（message/usage/…）是 E12 **整值面**——完整值直落。
+ *
  * 生命周期是三级：turn（用户轮）→ step（一次模型调用 + 其工具执行）→ message。
  * pi 的 "turn" 在我方叫 step（l0-events.md §2.1 决定 1）。
  */

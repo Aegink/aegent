@@ -450,17 +450,17 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①**接入点选 registry.dispatch 统一出口**（卡面"接入全部工具出口"的落法）：所有工具一次接入零感知，截断事实进 meta（truncated/truncatedBy/spillPath，opencode metadata 同款形状），与工具自带 meta 合并（防御非对象 meta）。②截断语义 P0 明确化：行超先截行 → 截后仍超字节再截字节 → truncatedBy 记**最后生效**的上限；spill 文件永远落**完整原文**（pi 的 truncatedBy 区分逻辑按此简化并记录）。③UTF-8 字节截断不切断多字节序列（截点回退续字节；用例以 3 字节中文验证无 U+FFFD）。④Q13 标记形状 `{kind, sessionId, tool, callId, createdAt, deletable, truncatedBy}`：deletable 恒 "manual"（清理器 P1 只读此行；"after-session-end" 等值留待清理策略定义时扩展）；文件布局 = 首行标记 + 空行 + 完整原文（读回约定写头注释）。⑤落盘失败上抛交 loop 兜底（不静默吞"完整输出已丢失"）。⑥isError 结果同样过截断（超大错误输出同样不淹没上下文）。⑦B11 落法：descriptions/{read,bash,glob,grep}.txt 追加统一上限声明句（write/edit 输出恒短不加）。⑧registry 构造参数加 sessionId/spillDir（缺省 "unknown-session" / 系统临时目录 aegent-tool-spill）。
 - **完成记录**：2026-09-25。产出 `src/kernel/tools/truncate.ts`（boundedOutput + truncateUtf8 字节边界安全 + SpillMarker）+ registry 出口接入（boundOutput 私有方法）+ 4 个描述文件补 B11 声明 + `truncate.test.ts` 6 用例。验收：`npx vitest run src/kernel/tools/truncate.test.ts` → **6 passed**；①字节触发（20k 中文 ≈60KB）：截后保留部分 ≤51KB 且无乱码；②行触发（2001 行）：保留 2000 行 + 尾部"[Output truncated (2000 lines). 完整输出在 <path>]"；③双触发（2100 行×100B）：truncatedBy=bytes、spill 首行 JSON 可解析（kind/sessionId/tool/callId/deletable/truncatedBy 齐全）、首行+空行后恰为完整原文；④registry 集成：dispatch 返回 meta 合并（exitCode+truncated+spillPath 共存）、spill 标记记录真实 tool/callId/sessionId、isError 大输出同样截断。全量 `npx vitest run` **176 passed**，`npx tsc --noEmit` 干净。
 
-#### T-4-07 · B12 · 声明式输出契约 `[ ]`
+#### T-4-07 · B12 · 声明式输出契约 `[x]`
 - **依据需求**：B12（P0）
 - **上游首选参考**：[dsh·canonical-tool-output.md:11](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-07-20-canonical-tool-output-contract.md)（"one typed value during execution and an explicit projection into the existing durable/model-facing content"；持久化只存 content/error/meta）
-- **取什么 / 别抄什么**：取"执行期富值 ≠ 会话格式"；工具返回 `{value, render()}`，落盘的是 `render()` 产物 + meta——**不**把富中间值写进事件
+- **取什么 / 别抄什么**：取"执行期富值 ≠ 会话格式"；工具返回 `{value, render(args,value), meta?}`，落盘的是 `render()` 产物 + meta——**不**把富中间值写进事件
 - **证据强度**：`读了文档`（md 关键段读过）
 - **要产出**：`src/kernel/tools/contract.ts`（ToolResult 类型：`{value, render(args,value), meta?}` + 投影函数）+ loop 持久化点改造 + 单测
 - **验收**：`npx vitest run src/kernel/tools/contract.test.ts`——工具返回含函数/大对象的结果时，落盘事件 payload `JSON.stringify` 不含函数且体积 ≤ render 产物（断言事件里无 `value` 字段）
 - **依赖**：T-4-06
 - **风险 / 未知**：与 E12（整值事件）的相互作用——tool/result 按 B12 投影，状态类事件按 E12 整值；两类规则写在 `events.ts` 注释里防止混用
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①**"loop 持久化点改造"实为 registry.dispatch 投影点**：loop 落 tool/result 事件本来就只消费 content（T-3-02 定形时即如此），投影点在工具出口 dispatch——富值不出 dispatch 函数作用域，loop 零改动（产出物语义与卡面一致，落点不同）。②两种返回兼容：`ToolExecution = ToolExecutionResult | ContractResult`，dispatch 用 isContractResult 结构识别后统一 projectResult——现有工具零迁移。③ContractResult.render 的 value 参数 P0 是 unknown（工具作者自行收窄）——泛型 `ToolDef<V>` 能让推断自动流动但传染注册面类型，留 P1 按需；render 只见 args/value（不暴露 ctx/store/进程，投影无副作用面）。④E12 边界按风险栏落进 events.ts 头注释（tool/result 投影面 vs 状态类整值面，两句话防混用）。⑤isError/error/meta 通道是契约的一部分（富值失败也要投影出结构化错误，不是只能成功投影）。
+- **完成记录**：2026-09-25。产出 `src/kernel/tools/contract.ts`（ContractResult + isContractResult + projectResult）+ registry 接入（ToolExecution 联合 + dispatch 投影点）+ events.ts 头注释边界 + `contract.test.ts` 5 用例。验收：`npx vitest run src/kernel/tools/contract.test.ts` → **5 passed**；①投影产物键恰为 content/meta（5000 行大对象 + 函数在 value 里，序列化 <200B 且不含 "value"/"fn"）；②registry 集成：契约工具 dispatch 落投影产物、isError/error 通道正确；③**loop 落盘事件流验证**：ScriptedProvider 发 tool_call → store.load 的 tool/result payload JSON.stringify 不含 value/secretFn/NEVER、体积 <500B、content="rows=2000"、callId 配平。全量 `npx vitest run` **181 passed**，`npx tsc --noEmit` 干净。
 
 #### T-4-08 · B9/B14 · toolCallId 贯穿 + 双轴预算 `[ ]`
 - **依据需求**：B9（P0）· B14（P0）
