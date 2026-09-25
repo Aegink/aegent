@@ -26,8 +26,9 @@
  * ── P1/P2 槽位（词汇表同款"留槽的自觉"）──
  *   I13  next.trace / next.budget —— P0 字段存在、恒为空值、从不写入。
  *   I14  next.to(e, tier) 跨层跳 —— P2，不预留 API 形状。
- *   signal —— claude-official 把 AbortSignal 挂在 next 上；我方 P0 是 promise
- *   风格（见 timeout.ts 头注释），取消接线由 T-3-04 定形时再决定是否要此槽。
+ *   signal —— claude-official 把 AbortSignal 挂在 next 上；T-3-04 已定：我方
+ *   取消是 loop 内的协作式置槽检查（promise 风格，见 loop.ts cancel()），
+ *   P0 不需要 next.signal 槽。
  */
 
 // ---------------------------------------------------------------------------

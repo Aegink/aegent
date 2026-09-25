@@ -39,6 +39,7 @@ import {
   composeChain,
 } from "./chain.js";
 import type {
+  CancelCause,
   JsonValue,
   LlmFailure,
   NewSessionEvent,
@@ -74,6 +75,8 @@ export interface ModelStepOutput {
   usage?: TokenUsage;
   /** 无损定时流记录——assistant/message.stream 与 assistant/attempt.stream 的来源。 */
   timed: TimedStreamChunk[];
+  /** A7：流中途被取消——内容是已交付前缀，其后不再消费。 */
+  interrupted?: true;
 }
 
 /** toolCall 点位：包住"单次工具执行"（载荷与 tool/call 事件同源）。 */
@@ -163,6 +166,12 @@ export interface AgentLoopDeps {
 
 export class AgentLoop {
   private readonly $: LoopContext;
+  /**
+   * A7 取消槽：运行时 cause，**绝不冻结**（undici 会对 abort reason 赋 stack，
+   * 冻结让真因变 TypeError）；落盘时经 copyCause 只拷声明字段。
+   * 每个 turn 一份新信号：runTurn 开始时重置，turn/end 发布前清槽。
+   */
+  private cancelCause: CancelCause | null = null;
   private readonly toolChain: ChainExecutor<
     LoopContext,
     ToolCallPayload,
@@ -199,6 +208,18 @@ export class AgentLoop {
   }
 
   /**
+   * A7：取消当前 turn（first-wins，重复调用只认第一次）。
+   * 协作式纪律：取消只是置槽，loop 在每个 await 边界检查，绝不 Promise.race
+   * 弃掉在途的 adapter/工具 promise（未协作的工作自然结算后才收轮）。
+   * 无活动 turn 时调用是无害 no-op——槽在下一次 runTurn 开始时重置，
+   * 迟到的取消不武装后续工作（DSH："does not arm later work"）。
+   */
+  cancel(cause: CancelCause): void {
+    if (this.cancelCause) return;
+    this.cancelCause = cause;
+  }
+
+  /**
    * 跑一个用户轮：turn/start → user/message → N 个 step → turn/end。
    * 返回结束原因（硬退出的 error 也不抛——终态在事件流里，pi 同款
    * "error responses remain hard exits"）。
@@ -206,17 +227,22 @@ export class AgentLoop {
   async runTurn(prompt: string): Promise<TurnEndReason> {
     const { store, sessionId } = this.deps;
     const turn = this.nextTurnNumber();
+    // 新 turn 一份新信号：丢弃 idle 期迟到的取消（不武装本 turn 之前的工作）
+    this.cancelCause = null;
     store.append(sessionId, [
       { type: "turn/start", turn },
       { type: "user/message", turn, message: { content: prompt }, source: "user" },
     ]);
     try {
       for (let step = 1; ; step++) {
+        // A7 边界检查：step 开始前
+        if (this.cancelCause) break;
         // A2：step 边界是注入点——按 QueueMode 排空队列（含第一步前），
         // steer 消息落 user/message 后经投影自然进入本次请求。
         this.drainQueue(turn);
         const result = await this.runStep(turn, step);
         if (result.kind === "blocked") return { kind: "blocked" };
+        if (result.kind === "cancelled") break;
         // A1：end 必须由 DecideTurn 显式给出；continue 则同轮进下一个 step。
         const decision = await this.deps.decideTurn(result.record);
         if (decision.action === "end") {
@@ -224,6 +250,7 @@ export class AgentLoop {
           return { kind: "completed" };
         }
       }
+      return await this.abortTurn(turn);
     } catch (e) {
       return this.failTurn(turn, e);
     }
@@ -255,7 +282,11 @@ export class AgentLoop {
   private async runStep(
     turn: number,
     step: number,
-  ): Promise<{ kind: "completed"; record: StepRecord } | { kind: "blocked" }> {
+  ): Promise<
+    { kind: "completed"; record: StepRecord }
+    | { kind: "blocked" }
+    | { kind: "cancelled" }
+  > {
     const { store, sessionId } = this.deps;
     store.append(sessionId, [{ type: "step/start", turn, step }]);
     const payload: ModelRequestPayload = {
@@ -274,6 +305,36 @@ export class AgentLoop {
       return { kind: "blocked" };
     }
     const output = outcome.value;
+    if (output.interrupted) {
+      // A7 流中断：已交付前缀以 interrupted 标记落盘（中断是写入时记录的事实，
+      // 不是读取时的推导，l0-events §2.3）；无文本前缀但流有内容则按
+      // "未产出可见消息"落 assistant/attempt；未派发的工具调用缺席（DSH 同款）。
+      store.append(sessionId, [
+        ...(output.content !== ""
+          ? [
+              {
+                type: "assistant/message" as const,
+                turn,
+                step,
+                message: { content: output.content },
+                stream: output.timed,
+                interrupted: true as const,
+              },
+            ]
+          : output.timed.length > 0
+            ? [
+                {
+                  type: "assistant/attempt" as const,
+                  turn,
+                  step,
+                  stream: output.timed,
+                },
+              ]
+            : []),
+        { type: "step/end", turn, step },
+      ]);
+      return { kind: "cancelled" };
+    }
     store.append(sessionId, [
       {
         type: "assistant/message",
@@ -286,6 +347,8 @@ export class AgentLoop {
     ]);
     const toolResults: StepRecord["toolResults"] = [];
     for (const call of output.toolCalls) {
+      // A7 边界检查：已派发/已执行工具的结果照落盘（事实），未派发的缺席
+      if (this.cancelCause) break;
       store.append(sessionId, [
         {
           type: "tool/call",
@@ -318,6 +381,7 @@ export class AgentLoop {
       ]);
     }
     store.append(sessionId, [{ type: "step/end", turn, step }]);
+    if (this.cancelCause) return { kind: "cancelled" };
     return {
       kind: "completed",
       record: {
@@ -414,6 +478,9 @@ export class AgentLoop {
           case "done":
             break;
         }
+        // A7 协作式中断：已到达的 chunk 已如实记录，其后不再消费
+        // （break 会经 generator .return() 关闭流，不弃 promise 不赛跑）
+        if (this.cancelCause) break;
       }
     } catch (e) {
       store.append(sessionId, [
@@ -431,12 +498,31 @@ export class AgentLoop {
       toolCalls: [...calls.values()],
       ...(usage ? { usage } : {}),
       timed,
+      ...(this.cancelCause ? { interrupted: true as const } : {}),
     };
   }
 
   // -------------------------------------------------------------------------
   // turn 收尾（turnEnd 点位）与失败路径
   // -------------------------------------------------------------------------
+
+  /**
+   * A7 中断收尾：**清槽先行**——turn/end 发布前到达的取消是 idle 取消
+   * （DSH："terminal publication ... remain outside its authority"），
+   * 落盘的 cause 是声明字段拷贝，不是运行期对象。
+   */
+  private async abortTurn(turn: number): Promise<TurnEndReason> {
+    const cause = this.cancelCause;
+    this.cancelCause = null;
+    if (!cause) {
+      // 不可达（break 前必有 cause）；防御兜底：无因不当中断处理
+      await this.closeTurn(turn, { kind: "completed" });
+      return { kind: "completed" };
+    }
+    const reason: TurnEndReason = { kind: "aborted", cause: copyCause(cause) };
+    await this.closeTurn(turn, reason);
+    return reason;
+  }
 
   private async closeTurn(turn: number, reason: TurnEndReason): Promise<void> {
     const outcome = await this.turnEndChain.run(this.$, { turn, reason });
@@ -546,6 +632,27 @@ export class AgentLoop {
     }
     flushCalls();
     return messages;
+  }
+}
+
+/**
+ * cause 落盘前只拷贝声明字段（DSH："copies the declared fields where the
+ * cause becomes durable data"）——运行期 transport 可能给原对象附加 stack 等
+ * 不稳定细节（undici 对 abort reason 的行为），durable 事件绝不带它们（C14）。
+ */
+function copyCause(cause: CancelCause): CancelCause {
+  switch (cause.kind) {
+    case "hook":
+      return {
+        kind: "hook",
+        reason: cause.reason,
+        ...(cause.message !== undefined ? { message: cause.message } : {}),
+      };
+    case "user":
+    case "parent":
+    case "disposed":
+    case "legacy":
+      return { kind: cause.kind };
   }
 }
 

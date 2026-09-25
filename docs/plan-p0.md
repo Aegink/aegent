@@ -321,7 +321,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①steer 落 user/message 用 source="user"（source 记**来源**不记**机制**——steer 是人类原话，"发生在 step 边界"由事件位置自证；l0-events §3.2 的三值是 user/injected/resume，"注入"不是第四值）②QueueMode 挂在队列构造器（会话级配置）而非每次 drain 传参（pi 是 drain 点传参；P0 单会话单队列，构造器足够，留 P1 再议）③从队列**开启新 turn**（空闲期排空）属进程编排，接线在 T-3-06，本卡只接 turn 内 step 边界。
 - **完成记录**：`npx vitest run src/kernel/queue.test.ts` → **6 passed**（全量 106 passed，tsc 干净）。验收三条：①all 模式注入 3 条 → step 边界全量消费，事件顺序与入队一致（steer-甲/乙/丙），下一次请求按序带全；②one-at-a-time 每边界只出最旧 1 条（甲、乙被消费，丙留队列且从未进请求）；③类型层 `// @ts-expect-error` 断言 `finished()` 不存在（tsc 通过 = 该属性确实缺席，加了就会编译失败）。另钉：入队收执仅 `{messageId}`、drain 两档纯函数行为、跨边界不丢不重（FIFO）。
 
-#### T-3-04 · A7 · 取消 / 中断当前 turn `[ ]`
+#### T-3-04 · A7 · 取消 / 中断当前 turn `[x]`
 - **依据需求**：A7（P0）
 - **上游首选参考**：[dsh·explicit-turn-cancellation.md:15](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-07-16-explicit-turn-cancellation.md)（`AgentCancelCause` 四变体；**不可冻结 cancel cause**——undici 会赋 `stack`，冻结致 `fetch` 抛 TypeError 取代真因；durable 终态只记粗粒度 `{kind:'aborted'}`）
 - **取什么 / 别抄什么**：取"运行时 cause 与 durable 终态分离"；我方 CancelCause 按 l0-events.md §3.4（5 变体，Q10 已定 hook 形状）；中断后 `turn/end{aborted}` + `assistant/message{interrupted:true}` 落盘（l0-events.md §2.3：中断是标记不是推导）
@@ -330,8 +330,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/kernel/loop.cancel.test.ts`——流中途取消 → 事件流恰有一条 `turn/end{kind:"aborted"}` 且其后无该 turn 的事件；对 cause 冻结的 undici 行为写一个回归注释测试（可 mock）
 - **依赖**：T-3-02
 - **风险 / 未知**：undici stack 行为在 Node 版本间可能变化——测试以"abort 后 fetch 的拒绝原因可达"为准，不死锁具体报错文本
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①我方 durable 终态**带 cause**（`turn/end{aborted, cause}`，词汇表 §3.3 定稿如此）而非 DSH 的粗粒度 `{kind:'aborted'}`——差异自觉：我方 CancelCause 本就是 JSON 安全的封闭联合（Q10），与 DSH 当年"cause 含自由文本/运行时细节"不可同日而语；DSH 的**拷贝声明字段**纪律照收（copyCause），两全。②协作式落地为"取消槽 + await 边界检查"（流 chunk 循环、工具派发循环、step 边界、决策点前），不弃 promise 不赛跑——与 T-2-04 timeout.ts 头注释的接线纪律一致；`next.signal` 槽确认不需要（chain.ts 注释已更新）。③取消不清空队列中的 steer（P0 从简，积压消息留给下一轮；DSH 的"清队列"随空闲期取消语义进 P1）。④新 turn 一份新信号：runTurn 开始重置槽、abortTurn 清槽先行（turn/end 发布前的取消=idle 取消）。
+- **完成记录**：`npx vitest run src/kernel/loop.cancel.test.ts` → **6 passed**（全量 112 passed，tsc 干净）。验收两条：①流中途取消 → 事件流恰一条 `turn/end{aborted}`、位于流末尾、其前是 `assistant/message{interrupted:true}`（已交付前缀"前半后半"，其后 chunk 未消费）、step 配对保持、DecideTurn 未被询问；②冻结 cause 的 undici 回归测试——冻结对象被 undici 式 transport（mock 赋 stack）当场 TypeError 吞真因，loop.cancel 后调用方对象未冻结、扩展可达、真因可达。另钉四条：step 边界取消不伪造 interrupted 标记、cause 落盘只含声明字段（stack 不进 durable 事件）、first-wins + idle 取消 no-op、工具间取消已派发结果照落/未派发缺席。
 
 #### T-3-05 · A3 · 运行态独立于 loop `[ ]`
 - **依据需求**：A3（P0）
