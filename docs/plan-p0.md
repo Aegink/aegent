@@ -579,7 +579,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①ReviewDecision 落为联合类型 {action:"allow",scope} | {action:"deny",reason?}——deny 无作用域可言（无物可记），比 codex 七变体收窄为两分支 + 五档 REVIEW_SCOPES（带穷尽编译闸门）。②提案的 pattern 维度提取落 RuleMatchable 新增可选 `patternOf`（C21 同一知识面：工具自己知道自己哪个参数是 pattern；无法提取 → 提案缺席 → 批准只能一次性）。③"记警告事件"落为 stripProposedAmendments 返回的结构化 warnings 记录——C15 下无对应 session 事件类型，不造旁路事件；去向由 gate（T-5-12）与 T-8 显示面接线。剥除只扫顶层键（不深挖值防误伤命令原文），保留键闭集是已知局限——结构保证是引擎从不读模型输出的提案，剥除只为观测"试图夹带"。④会话批准落为链上模块 createSessionApprovalModule（kimi SessionApprovalHistory 同位）+ 进程内 ApprovalScopeCache，sessionId 装配期绑定（链按会话组装）；once/project/user/managed 在 P0 都不缓存（宁可多问不可多放）。⑤提案粒度 P0 = 精确调用值（bash 即完整命令原文），放宽粒度属审批 UX 留 P1。
 - **完成记录**：2026-09-25。产出 `src/policy/review-decision.ts`（REVIEW_SCOPES 五档 + ReviewDecision 联合 + RuleProposal/proposeAmendment + stripProposedAmendments + ApprovalScopeCache + createSessionApprovalModule）+ matchers.ts 增 patternOf + `review-decision.test.ts` 9 用例。验收：`npx vitest run src/policy/review-decision.test.ts` → **9 passed**；①args 带 ruleProposal 字段被剥除（大小写变体同剥）且警告含"规则提案由引擎计算（C48）"、命令原文提及提案字样不受影响；②链上首调 ask → record(scope=session) → 二调 allow 带 rule=bash(git status) 与 scope 理由 → 新会话 s2 重新 ask，once/project/user/managed 均不缓存。全量 `npx vitest run` **274 passed**，`npx tsc --noEmit` 干净。
 
-#### T-5-09 · C49 · 多来源权限交集合成 `[ ]`
+#### T-5-09 · C49 · 多来源权限交集合成 `[x]`
 - **依据需求**：C49（P0）
 - **上游首选参考**：[codex·permission_profile_intersection.rs:20](../oss/codex/codex-rs/protocol/src/permission_profile_intersection.rs)（"A policy cannot be intersected without weakening either input" → `PermissionIntersectionError` 拒绝）
 - **取什么 / 别抄什么**：取"不可合成时报错，绝不放宽"；P0 来源只有 CLI 单端 + 配置默认，交集逻辑先落地为纯函数
@@ -588,8 +588,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/policy/intersect.test.ts`——两来源各给可合成 profile → 交集生效；给不可合成组合 → 抛错且错误信息含两来源名
 - **依赖**：T-5-06
 - **风险 / 未知**：P0 实际只有单来源在跑——本卡以纯函数 + 测试交付，接线等 P1 多端
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①可交集面落 CeilingProfile（每工具一个三维动作上限 + defaultCeiling 缺省 allow；abstain 不是约束值不进上限词汇）——交集 = maxDecision 逐工具合成，直接复用 T-5-06 全序与单调性，不造第二套合并语义。②不可交集面落 OpaqueProfile（外部强管/规则集形态）——相遇即抛 PermissionIntersectionError（codex 同名），错误含两来源名与原因。③codex 的路径归一/符号链接处理属阶段 6 沙箱面，本卡不涉（头注释声明）。④结果来源名标 `intersect(a,b)`，可链式继续合成。
+- **完成记录**：2026-09-25。产出 `src/policy/intersect.ts`（CeilingProfile/OpaqueProfile + PermissionIntersectionError + intersectPermissionProfiles）+ `intersect.test.ts` 5 用例。验收：`npx vitest run src/policy/intersect.test.ts` → **5 passed**；①CLI 放行 bash 而配置默认 deny → 交集 bash=deny；不同工具约束逐工具合成、默认上限取更严；②opaque 相遇抛错且错误信息含 "cli" 与 "harness-managed" 及原因原文；③3×3 穷举性质：交集不比任一方更宽松。全量 `npx vitest run` **279 passed**，`npx tsc --noEmit` 干净。
 
 #### T-5-10 · C51 · 默认权限实现是拒绝 `[ ]`
 - **依据需求**：C51（P0）
