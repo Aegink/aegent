@@ -378,7 +378,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 **依赖**：阶段 3（loop 分发点）。
 **不做什么**：不做并行执行开关（B6 P1）；不做进度流式上报的 UI 面（B7 P1，事件通道已有）；不做扩展工具 apply_patch/lsp/webfetch/todo/question（B8 P1）；不做重试预算（B13 P1）与 RwLock 并发准入（B17 P1——B4 的串行写队列已覆盖 P0 写路径）。
 
-#### T-4-01 · B1/B2 · 工具注册表 + 描述与代码分离 `[ ]`
+#### T-4-01 · B1/B2 · 工具注册表 + 描述与代码分离 `[x]`
 - **依据需求**：B1（P0）· B2（P0）
 - **上游首选参考**：[opencode·plugin/](../oss/opencode/packages/plugin)（第三方注册入口：src/tool.ts 等）；[opencode·tool/](../oss/opencode/packages/opencode/src/tool)（`*.txt` 与 `.ts` 同目录同名的描述分离）
 - **取什么 / 别抄什么**：取"注册表 API + 描述文件按名拼装"；不抄 opencode 的 Effect/Layer 栈
@@ -387,8 +387,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/kernel/tools/registry.test.ts`——注册自定义工具无需改内核文件（测试里动态注册即证）；改 `.txt` 内容后 description 变化且 `.ts` 无 diff
 - **依赖**：T-3-02
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①**assertJsonSafe 菱形误报本修随本卡 commit**（用户开工指示，阶段 3 报告遗留）：walk 完子树 `seen.delete` 回溯——seen 只表达"当前祖先链"，同一对象在树内出现两次（usage 同挂 stream 与顶层字段）不再误判循环，真正的环仍在祖先链内命中拒绝；events.test 补"菱形合法 + 循环仍拒"用例；连带移除 loop.ts 里 T-3-02 加的 usage 克隆 workaround（共享引用直通，loop.test 回归通过）。②`descriptionsDir` 构造参数可注入——验收②"改 txt 后 description 变化且 ts 无 diff"的机验形式（临时目录写 A → 改 B，同一实例同一份 .ts）；缺省为同目录 `descriptions/`，dist 场景 txt 不进 dist 与 T-1-03 的 schema.sql 同题（P0 不交付 dist，记录在案）。③description 每次直读不缓存——"改描述即生效"是 B2 的卖点，装配时才读无性能压力；描述文件缺失即抛（模型可见的描述不静默成空串）。④execute 签名 P0 只收 `(args: JsonRecord)`——ToolContext 形状随 T-4-05（D4）定形时统一接入，不预埋一个马上要改的签名。⑤错误分层：未知工具 / 参数坏 → dispatch 返回 isError（`TOOL_NOT_FOUND` / `TOOL_ARGUMENTS_INVALID`，说明回喂模型可自修，opencode InvalidArgumentsError 的 message 意图）；执行体崩溃原样上抛交 loop.dispatchTool 兜底（既有路径）——两层合计保证 call/result 配平。⑥注册表分发即 toolCall 链的链底 terminal（本卡头注释写明装配关系；loop 接线随 T-4-02）。
+- **完成记录**：2026-09-25。产出 `src/kernel/tools/registry.ts`（ToolRegistry：registerTool 重名即败 / has / names / description 按名读 txt / toChatTools 缺省空 schema / dispatch 链底分发）+ `registry.test.ts` 8 用例 + events.ts 菱形修复 + loop.ts 克隆移除 + events.test 13 用例（+1）。验收：`npx vitest run src/kernel/tools/registry.test.ts` → **8 passed**；①动态注册自定义工具（测试现场构造 ToolDef）经 dispatch 执行成功——注册面无需改内核；②临时目录 txt 写"版本 A"→ description 为 A，改写"版本 B\n第二行"→ description 随变，同一 registry 实例、同一份 .ts 零改动；③缺失描述即抛、TOOL_NOT_FOUND / TOOL_ARGUMENTS_INVALID（含数组/标量/null 五种坏参数）落 isError 不上抛、执行体崩溃原样上抛、重名注册即败、toChatTools 缺省 `{type:"object",properties:{}}`。全量 `npx vitest run` **137 passed**，`npx tsc --noEmit` 干净。
 
 #### T-4-02 · B3a · 内置工具 read / bash / write `[ ]`
 - **依据需求**：B3（P0，前半）

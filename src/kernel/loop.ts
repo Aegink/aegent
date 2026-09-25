@@ -481,9 +481,7 @@ export class AgentLoop {
             break;
           }
           case "usage":
-            // 克隆：usage 对象同时出现在 stream 记录与事件顶层字段，
-            // 共享引用会被 assertJsonSafe 的"祖先路径"判成循环引用（见卡面偏离）
-            usage = { ...chunk.usage };
+            usage = chunk.usage;
             break;
           case "done":
             break;

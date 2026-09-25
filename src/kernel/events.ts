@@ -29,6 +29,8 @@ export type JsonRecord = { [key: string]: JsonValue };
  * 拒绝：undefined / 函数 / symbol / bigint / 非有限数 / Error 实例 /
  * 任何带 `stack` 属性的对象（跨 realm Error 与手工拼的运行时对象都会命中）/
  * 非 plain 对象（Map / Set / Date / AbortSignal 等类实例）/ 循环引用。
+ * 同一对象的重复出现（菱形 / 共享引用）是合法的——seen 集合 walk 完子树即
+ * 回溯，只表达祖先链（见 walk 内注释）。
  */
 export function assertJsonSafe(value: unknown, path = "$"): JsonValue {
   const seen = new WeakSet<object>();
@@ -59,16 +61,26 @@ export function assertJsonSafe(value: unknown, path = "$"): JsonValue {
     }
     if (seen.has(v as object)) throw new JsonSafeError(p, "循环引用");
     seen.add(v as object);
-    if (Array.isArray(v)) return v.map((item, i) => walk(item, `${p}[${i}]`));
-    const proto = Object.getPrototypeOf(v) as object | null;
-    if (proto !== Object.prototype && proto !== null) {
-      throw new JsonSafeError(p, `非 plain 对象（${proto.constructor?.name ?? "unknown"} 实例）`);
+    let result: JsonValue;
+    if (Array.isArray(v)) {
+      result = v.map((item, i) => walk(item, `${p}[${i}]`));
+    } else {
+      const proto = Object.getPrototypeOf(v) as object | null;
+      if (proto !== Object.prototype && proto !== null) {
+        throw new JsonSafeError(p, `非 plain 对象（${proto.constructor?.name ?? "unknown"} 实例）`);
+      }
+      const out: JsonRecord = {};
+      for (const [k, item] of Object.entries(v as Record<string, unknown>)) {
+        out[k] = walk(item, `${p}.${k}`);
+      }
+      result = out;
     }
-    const out: JsonRecord = {};
-    for (const [k, item] of Object.entries(v as Record<string, unknown>)) {
-      out[k] = walk(item, `${p}.${k}`);
-    }
-    return out;
+    // 回溯（T-3-02 踩中的菱形误报本修）：seen 只表达"当前祖先链"，walk 完
+    // 子树即退出集合——同一对象在树内出现两次（如 usage 同时挂 stream 记录
+    // 与事件顶层字段）是合法共享引用，不是循环；真正的环在子树内未退出时
+    // 再次命中，仍会拒绝。
+    seen.delete(v as object);
+    return result;
   };
   return walk(value, path);
 }

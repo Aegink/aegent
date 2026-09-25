@@ -11,6 +11,7 @@ import {
   type SessionEvent,
   type SessionEventType,
   type ToolResultEvent,
+  type TokenUsage,
   type TurnEndEvent,
   type TurnEndReason,
 } from "./events.js";
@@ -160,6 +161,21 @@ describe("assertJsonSafe（C14 的执行点）", () => {
   it("合法 JSON 值原样通过（嵌套 / 数组 / null）", () => {
     const value = { a: [1, "x", null, true], b: { c: "y" } };
     expect(assertJsonSafe(value)).toEqual(value);
+  });
+
+  it("同一对象出现两次（共享引用/菱形）合法，不判循环——T-3-02 踩中形状的本修用例", () => {
+    // usage 同时挂 stream 记录与事件顶层字段：loop 把 provider 的 usage 对象
+    // 原样放进两处（T-4-01 修掉了曾在此场景上绕道的克隆 workaround）。
+    const usage: TokenUsage = { inputTokens: 3, outputTokens: 5 };
+    const value = {
+      stream: [{ time: 1, chunk: { type: "usage", usage } }],
+      usage,
+    };
+    expect(assertJsonSafe(value)).toEqual(value);
+    // 循环仍拒绝：环在祖先链内未回溯时再次命中
+    const cyclic: Record<string, unknown> = { usage };
+    cyclic.self = cyclic;
+    expect(() => assertJsonSafe(cyclic)).toThrow(/循环/);
   });
 });
 

@@ -27,6 +27,7 @@
 | 2026-09-25 | T-3-05 | A3 | `8250b93` | `npx vitest run src/kernel/run-state.test.ts` | 4 passed；双重故障注入后 busy 停留、恢复路径归位 idle；closeTurn 尾部唯一归位点；error/blocked/aborted 三路径同样归位 |
 | 2026-09-25 | T-3-06 | T9 | `46c1906` | `npx vitest run src/kernel/agent-process.test.ts` + `node scripts/cold-start.mjs` | 6 passed；真 stdio spawn 3 条 prompt 收全事件（管道零 mock）+ 协议 JsonValue 型证；**冷启动 median 90.4ms（best 89.6，3 轮）< 500ms 达标** |
 | 2026-09-25 | T-3-07 | O7–O11 | `8ef2d8f` | `npx vitest run src/test-support/` | 19 passed；真 loop 流四不变量全过（轮号/step 配对/tool 配平/终态恰一）；断列流含 seq 的人话失败；O10 header+O11 previous 复证；T-3-02/04/06 测试复用改造 |
+| 2026-09-25 | T-4-01 | B1/B2 | （回填于 T-4-02） | `npx vitest run src/kernel/tools/registry.test.ts` | 8 passed；动态注册即证扩展面、txt 改 A→B description 随变代码零 diff、TOOL_NOT_FOUND/ARGS_INVALID 落 isError 保配平；附带 assertJsonSafe 菱形误报本修（loop 克隆 workaround 移除，全量 137 passed） |
 
 ---
 
