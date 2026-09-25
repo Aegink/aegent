@@ -639,7 +639,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①三组起步模式照抄 pi 正则原文（rm -rf/--recursive、sudo、chmod|chown 777，/i 大小写不敏感）；"无 UI 时 block"在我方落为模块裁决 ask → gate 走 C51 缺省 Deny broker（无人应答即拒，与 pi non-interactive 同向）。②清单 BUILTIN 常量 Object.freeze（C36 只追加不替换现在立纪律），扩展经 createDangerousCommandModule 的 patterns 参数在装配处追加（验收"新增模式只注册不改内核"的机验形式）；整体替换内置清单由装配评审把关，库不做运行时禁止。③模块只扫 bash 工具命令原文（写路径等价物随 T-5-14 虚拟操作接入同一模块面）；非 bash / 命令非字符串弃权。④头注释写装配次序建议（kimi 同位序）：用户层 deny 规则 → 本模块（核心层前位）→ 会话批准历史 → 其他。⑤连带改 gate：broker 拒绝时拒绝理由**保留原询问理由**（"审批拒绝/未通过（原询问：命中危险模式…）"）——否则危险命中的可解释性（C18）在最终裁决里丢失。
 - **完成记录**：2026-09-25。产出 `src/policy/dangerous-commands.ts`（BUILTIN_DANGEROUS_PATTERNS 三组起步 + findDangerousCommand + createDangerousCommandModule 链上模块）+ `dangerous-commands.test.ts` 8 用例 + gate.ts 拒绝理由组合改进。验收：`npx vitest run src/policy/dangerous-commands.test.ts` → **8 passed**；①`rm -rf /x`/`sudo x`/`chmod 777 x` 各升 ask 且理由带模式名，大小写不敏感，`ls`/`git status`/普通 `rm notes.txt` 不命中；②清单冻结、装配处追加 fork-bomb 自定义模式即生效；③gate 集成：rm -rf → ask → 缺省 Deny broker 拒 → 工具零执行、tool/result isError 含"recursive-delete"（原询问理由透传），ls 带 allow 规则照常执行。全量 `npx vitest run` **309 passed**，`npx tsc --noEmit` 干净。
 
-#### T-5-14 · C27/C28/C29 · shell 语义分析 B 档 `[ ]`
+#### T-5-14 · C27/C28/C29 · shell 语义分析 B 档 `[x]`
 - **依据需求**：C27（P0，Q19 定 B 档）· C28（P0）· C29（P0）
 - **上游首选参考**：[qwen·shell-semantics.ts:72](../oss/qwen-code/packages/core/src/permissions/shell-semantics.ts)（`cwdUnknown?: boolean` :77 `pathMayDependOnCwd?: boolean`）；[:26](../oss/qwen-code/packages/core/src/permissions/shell-semantics.ts)（"Known limitations (cannot be statically analysed)" 清单）
 - **取什么 / 别抄什么**：**B 档范围按 Q19 只做 `&&` / `;` / 管道 / 重定向 / `cd` 五种**——把命令拆成虚拟工具操作交既有规则管；qwen 65KB 的完整实现只取结构与不确定性字段，**不整段搬运**；C29 的"做不到清单"必须随代码交付（注释 + 文档各一份）
@@ -648,8 +648,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/policy/shell-semantics.test.ts`——①`echo hi && rm -rf /x` 产出两个虚拟操作、第二个命中危险库；②`cd $SOMEWHERE && cat x` 产出 `cwdUnknown` 且消费方按危险处理；③`eval "$(…)"` 落"不确定"分支按危险处理；④LIMITATIONS 清单存在且 ≥5 条
 - **依赖**：T-5-12、T-4-02（bash 工具）
 - **风险 / 未知**：B 档解析器是本阶段最大自研件——先写 LIMITATIONS 再写解析器，防止范围膨胀回 C 档
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①按卡面纪律先写 LIMITATIONS（8 条，注释 + docs/shell-semantics-limitations.md 各一份，代码侧载体 SHELL_ANALYSIS_LIMITATIONS 冻结导出，测试断言两处逐字一致防漂移）再写解析器。②扫描器形状：引号/转义感知分段（&& || ; | 换行，$( ) 区域不透明跳过并判 uncertain）→ 段内抽取引号外重定向（>/>>/<；fd 重定向 2> 按 LIMITATIONS #5 不抽取原样保留）→ cd 状态跨段传播（动态目标→cwdUnknown，字面/无参→pathMayDependOnCwd）。③虚拟操作三态 command/file-write/file-read（qwen ShellOperation 的 cwdUnknown/pathMayDependOnCwd 字段名照取）。④链上模块裁决序：保留路径重定向写 deny（C46 经 C27 关 bash 旁路）→ uncertain ask → 危险模式 ask（复用 C10 findDangerousCommand，与危险库模块二选一装配即可）→ cwd 保守 ask。⑤已知边界：虚拟操作裁决受首匹配层序影响非出口硬拦（LIMITATIONS #7，C46 出口级组合留 P1）。
+- **完成记录**：2026-09-25。产出 `src/policy/shell-semantics.ts`（VirtualOp/ShellAnalysis + SHELL_ANALYSIS_LIMITATIONS 8 条 + analyzeShellCommand B 档扫描器 + createShellSemanticsModule）+ `docs/shell-semantics-limitations.md`（同源拷贝）+ `shell-semantics.test.ts` 11 用例。验收：`npx vitest run src/policy/shell-semantics.test.ts` → **11 passed**；①`echo hi && rm -rf /x` 产出两个 command 操作、gate 集成下第二段命中 recursive-delete 拒绝；②`cd $SOMEWHERE && cat x` → cwdUnknown 且模块 ask（C28 按危险处理），字面 cd 只标 pathMayDependOnCwd；③`eval "$(…)"` → uncertain → ask，$(/source 同判、单引号内不误判；④LIMITATIONS ≥5 且文档逐字同步。附：>/>>/< 三种重定向抽取、相对路径目标标 pathMayDependOnCwd、重定向写 .git 直接 deny、管道分段。全量 `npx vitest run` **320 passed**，`npx tsc --noEmit` 干净，check-doc-links 新文档 0 失效。
 
 #### T-5-15 · N6 · owner + lease + 类型化 owner 命令通道 `[ ]`
 - **依据需求**：N6（P0）
