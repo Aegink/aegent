@@ -5,8 +5,8 @@
  * （行长 >200 截断），超上限截断并提示。
  *
  * P0 实现是纯 JS（fs 遍历 + 逐行 RegExp）：卡面设想的 ripgrep 主路径需要
- * spawn rg——spawn 属 T-4-05 的 ExecutionEnv 实现层（D4：工具本体不得出现
- * child_process），rg 提速与 bash 执行同批经 env 回填。正则方言 = JS
+ * spawn rg——spawn 属 T-4-05 的 ExecutionEnv 实现层（D4：工具本体不得含
+ * 裸进程 API），rg 提速与 bash 执行同批经 env 回填。正则方言 = JS
  * RegExp（rg 集成时统一并记录）；include 复用 glob 方言（patterns.ts）。
  * 二进制文件（含 NUL 字节）与读取失败的文件跳过（rg 默认同款行为）。
  */

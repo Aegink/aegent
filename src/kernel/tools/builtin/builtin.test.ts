@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ToolRegistry } from "../registry.js";
+import { NodeExecutionEnv } from "../env.js";
 import { registerBuiltinTools } from "./index.js";
 
 const tmpDirs: string[] = [];
@@ -106,8 +107,8 @@ describe("write 工具", () => {
   });
 });
 
-describe("bash 工具（P0 桩，T-4-05 回填）", () => {
-  it("参数校验：command 缺失 / timeout 非法即拒（回填后不变）", async () => {
+describe("bash 工具（T-4-05 回填后：执行经 ExecutionEnv）", () => {
+  it("参数校验：command 缺失 / timeout 非法即拒", async () => {
     const registry = new ToolRegistry();
     registerBuiltinTools(registry);
     const noCmd = await dispatch(registry, "bash", { timeout: 5 });
@@ -118,13 +119,44 @@ describe("bash 工具（P0 桩，T-4-05 回填）", () => {
     expect(hugeTimeout.error?.code).toBe("INVALID_ARGUMENTS");
   });
 
-  it("合法参数落在桩上 → isError TOOL_NOT_IMPLEMENTED（执行体待 ExecutionEnv）", async () => {
+  it("缺 ExecutionEnv → isError EXECUTION_ENV_MISSING（装配缺失的明确报错）", async () => {
     const registry = new ToolRegistry();
     registerBuiltinTools(registry);
     const stub = await dispatch(registry, "bash", { command: "echo hi" });
     expect(stub.isError).toBe(true);
-    expect(stub.error?.code).toBe("TOOL_NOT_IMPLEMENTED");
+    expect(stub.error?.code).toBe("EXECUTION_ENV_MISSING");
   });
+
+  it("经 env 真执行：stdout 回显（回填验收：stdout/exit code）", async () => {
+    const registry = new ToolRegistry({ env: new NodeExecutionEnv() });
+    registerBuiltinTools(registry);
+    const ok = await dispatch(registry, "bash", { command: "echo aegent-bash-ok" });
+    expect(ok.isError).toBeUndefined();
+    // 输出原样转述（含尾换行不 trim）；截断属 T-4-06
+    expect(ok.content).toBe("aegent-bash-ok\n");
+    expect(ok.meta).toEqual({ exitCode: 0 });
+  }, 10_000);
+
+  it("非零退出码 → isError + [exit code N] + meta.exitCode；空输出 → (no output)", async () => {
+    const registry = new ToolRegistry({ env: new NodeExecutionEnv() });
+    registerBuiltinTools(registry);
+    const failed = await dispatch(registry, "bash", { command: "echo oops >&2; exit 7" });
+    expect(failed.isError).toBe(true);
+    expect(failed.content).toContain("oops");
+    expect(failed.content).toContain("[exit code 7]");
+    expect(failed.meta).toEqual({ exitCode: 7 });
+    const silent = await dispatch(registry, "bash", { command: "true" });
+    expect(silent.isError).toBeUndefined();
+    expect(silent.content).toBe("(no output)");
+  }, 10_000);
+
+  it("timeout 超时 → isError TOOL_TIMEOUT（J22 词汇贯穿）", async () => {
+    const registry = new ToolRegistry({ env: new NodeExecutionEnv() });
+    registerBuiltinTools(registry);
+    const slow = await dispatch(registry, "bash", { command: "sleep 5", timeout: 1 });
+    expect(slow.isError).toBe(true);
+    expect(slow.error?.code).toBe("TOOL_TIMEOUT");
+  }, 10_000);
 });
 
 describe("edit 工具", () => {

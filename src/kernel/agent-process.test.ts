@@ -14,7 +14,7 @@ const entryPath = path.join(root, "dist", "src", "kernel", "agent-child.js");
 describe("agent-process —— T9 agent 出进程", () => {
   beforeAll(() => {
     // 子进程只能跑编译产物（node 22 无 TS loader；选型未含 tsx）——先构建
-    execSync("npx tsc", { cwd: root, stdio: "pipe" });
+    execSync("npm run build", { cwd: root, stdio: "pipe" });
   }, 180_000);
 
   it("验收①：真实 stdio spawn——发 3 条 prompt 收全事件（管道不 mock）", async () => {

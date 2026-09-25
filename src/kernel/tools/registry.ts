@@ -24,6 +24,8 @@ import path from "node:path";
 import type { ChatTool } from "../../models/provider.js";
 import type { JsonRecord, JsonValue } from "../events.js";
 import type { ToolExecutionResult } from "../loop.js";
+import type { ExecutionEnv } from "./env.js";
+import type { ToolContext } from "./context.js";
 
 /** 一个工具的注册定义：执行体在此，描述在 descriptions/<name>.txt（B2）。 */
 export interface ToolDef {
@@ -35,10 +37,13 @@ export interface ToolDef {
    */
   parameters?: JsonValue;
   /**
-   * 执行体：收到已解析的参数对象。执行上下文（ToolContext）在 T-4-05
-   * （D4 定形）接入——P0 不预埋一个马上要改的签名。
+   * 执行体：已解析的参数对象 + 执行上下文（ToolContext，D4——进程能力只在
+   * ctx.env 实现层）。不需要 ctx 的工具可以少收参数（TS 方法兼容）。
    */
-  execute(args: JsonRecord): ToolExecutionResult | Promise<ToolExecutionResult>;
+  execute(
+    args: JsonRecord,
+    ctx: ToolContext,
+  ): ToolExecutionResult | Promise<ToolExecutionResult>;
 }
 
 /** dispatch 的入参（与 tool/call 事件载荷、loop 的 executeTool 入参同源）。 */
@@ -52,16 +57,20 @@ export interface ToolDispatchCall {
 export class ToolRegistry {
   private readonly defs = new Map<string, ToolDef>();
   private readonly descriptionsDir: string;
+  private readonly env: ExecutionEnv | undefined;
 
   /**
    * @param descriptionsDir 描述目录；缺省为同目录的 `descriptions/`。
    * 可注入是给测试用临时目录——验收②"改 txt 后 description 变化且 .ts
    * 无 diff"以此为机验形式。
+   * @param env 执行环境（D4）：装配处注入 NodeExecutionEnv；缺省 undefined
+   * 时执行型工具（bash）落 EXECUTION_ENV_MISSING。
    */
-  constructor(options?: { descriptionsDir?: string }) {
+  constructor(options?: { descriptionsDir?: string; env?: ExecutionEnv }) {
     this.descriptionsDir =
       options?.descriptionsDir ??
       path.join(path.dirname(fileURLToPath(import.meta.url)), "descriptions");
+    this.env = options?.env;
   }
 
   /** 注册一个工具；重名是装配错误，立刻失败。 */
@@ -109,9 +118,9 @@ export class ToolRegistry {
   }
 
   /**
-   * 链底 terminal 的实现：解析参数 → 查表 → 执行。返回 isError 而非抛错的
-   * 两种情况（未知工具 / 参数坏）保证 call/result 配平；执行体自身的崩溃
-   * 原样上抛交 loop 兜底（分层见头注释）。
+   * 链底 terminal 的实现：解析参数 → 查表 → 构造 ToolContext → 执行。
+   * 返回 isError 而非抛错的两种情况（未知工具 / 参数坏）保证 call/result
+   * 配平；执行体自身的崩溃原样上抛交 loop 兜底（分层见头注释）。
    */
   async dispatch(call: ToolDispatchCall): Promise<ToolExecutionResult> {
     const def = this.defs.get(call.name);
@@ -133,7 +142,12 @@ export class ToolRegistry {
     } catch {
       return argumentsInvalid(call.name, call.arguments, "参数不是合法 JSON");
     }
-    return def.execute(args);
+    // ToolContext 在这里装配（B9：toolCallId 就是配平的 callId）
+    const ctx: ToolContext = {
+      toolCallId: call.callId,
+      ...(this.env !== undefined ? { env: this.env } : {}),
+    };
+    return def.execute(args, ctx);
   }
 }
 

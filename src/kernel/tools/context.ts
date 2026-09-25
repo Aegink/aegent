@@ -1,0 +1,23 @@
+/**
+ * ToolContext（D4）——工具执行上下文。类型面保证工具拿不到裸进程 API
+ * （不变量 2）：进程能力只在 env 实现层（env.ts），本接口不含任何裸进程
+ * API 词汇；键集合是封闭清单，多出任何键（含想塞进程句柄字段的口子）都
+ * 会被 env.test 的类型级测试编译期拦下。
+ *
+ * P0 面：
+ *   - env      执行环境（可选：纯 fs 工具不需要；bash 等执行型工具缺失时
+ *              落 EXECUTION_ENV_MISSING isError）；
+ *   - toolCallId  本次调用的 callId（B9 贯穿：与 tool/call、tool/result
+ *              的 callId 配平，不造第二套词汇）；
+ *   - signal   取消信号槽（A7）；P0 装配未接，形状先行。
+ * policy（阶段 5 权限裁决）与 emit（B7 进度上报，P1）随对应阶段接入——
+ * P0 先落会留空字段（YAGNI）。
+ */
+
+import type { ExecutionEnv } from "./env.js";
+
+export interface ToolContext {
+  readonly env?: ExecutionEnv;
+  readonly toolCallId: string;
+  readonly signal?: AbortSignal;
+}

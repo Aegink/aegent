@@ -31,6 +31,9 @@ import {
 import type { ChatRequest, ModelProvider } from "../models/provider.js";
 import type { ModelIdentity } from "../models/identity.js";
 import { SessionStore } from "../session/store.js";
+import { registerBuiltinTools } from "./tools/builtin/index.js";
+import { NodeExecutionEnv } from "./tools/env.js";
+import { ToolRegistry } from "./tools/registry.js";
 
 // ---------------------------------------------------------------------------
 // echo provider（P0 子进程内置：回声最后一条 user 消息；协议与进程全真）
@@ -94,16 +97,17 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
   })();
 
   const queue = new PromptQueue("one-at-a-time");
+  // 工具装配（T-4-05 接线，兑现 T-4-02 偏离⑥）：注册表分发就是 toolCall 链的
+  // 链底 terminal——executeTool 槽位由 registry.dispatch 充当，不存在旁路。
+  const toolRegistry = new ToolRegistry({ env: new NodeExecutionEnv() });
+  registerBuiltinTools(toolRegistry);
   const loopDeps: AgentLoopDeps = {
     sessionId,
     store,
     provider: options.provider ?? echoProvider(),
     identity: options.identity ?? { provider: "echo", modelId: "echo-1" },
-    executeTool: async () => ({
-      content: "子进程未装配工具（工具层在阶段 4/5 接入）",
-      isError: true,
-      error: { name: "ToolError", code: "TOOL_UNAVAILABLE" },
-    }),
+    tools: toolRegistry.toChatTools(),
+    executeTool: (call) => toolRegistry.dispatch(call),
     decideTurn: (record) =>
       record.toolCalls.length > 0 ? { action: "continue" } : { action: "end" },
     queue,
