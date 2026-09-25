@@ -837,7 +837,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①**词汇表 CompactionEvent 加可选 `reason?: string` 字段**（验收要求 compaction 事件带 reason，而 T-1 定稿的载荷无此位）——最小兼容扩展（旧流缺省读作 context_limit，C14 JSON 安全），值域取 codex CompactionReason 序列化词表（"context_limit"/"model_downshift"，user_requested/comp_hash_changed 留 P1/P2 槽位，注释已记）；先例：E4 的 session/revert 也是词汇表扩展经追认。②request 词表 kebab（"model-downshift"）与事件词表 snake（"model_downshift"）经 compactionReasonOf 映射桥接——request 面区分三源、事件面对齐 codex；③判定口径 = tokens > 目标窗口（严格大于，恰好装下不压）；相位固定 PreTurn（模型身份是请求级设置，MidTurn 途中不换）；④换模本体 J6 留 P1，"切换"由调用方在 maybeDownshift resolve 后执行
 - **完成记录**：验收 `npx vitest run src/context/downshift.test.ts` → 4 passed（tsc 干净）。①超限投影（totalTokens=9000 > 窗口 8000）→ maybeDownshift 内压缩 await 完成才 resolve，调用方其后才 switch（日志次序 ["compaction-entry","switch"]）；compaction 事件 reason="model_downshift"；②装得下 → needsCompaction=false 零事件零压缩入口调用；③无 lastUsage 本地估算兜底判定；④边界 tokens==window 不压；旁证：压缩后新窗口 = 摘要 + 保留尾部显著收缩
 
-#### T-7-07 · F28 · 压缩抖动硬失败 `[ ]`
+#### T-7-07 · F28 · 压缩抖动硬失败 `[x]`
 - **依据需求**：F28（P0）
 - **上游首选参考**：[zcode·compact.ts:230](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/compact.ts)（`context.rapidRefill.shouldBlock` + `consecutiveRapidRefills` + `toolTurnsSinceCompact`）
 - **取什么 / 别抄什么**：取"连续极小工作量后又压缩 → 硬失败 + 错误带全部计数"；ZCode 独家，需求注明无条件采纳
@@ -846,8 +846,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/context/rapid-refill.test.ts`——连续 N 次（默认 3，可配）"压缩后几乎无进展又压缩" → 硬失败，错误对象含 consecutiveRapidRefills/toolTurnsSinceCompact 全计数
 - **依赖**：T-7-02
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①接入点 = CompactionEngine.run 的生命周期第 0 段（deps.rapidRefillGuard 可选注入，先于 pre hook）；②zcode 的 evaluateRapidRefill 纯拟算 + recordCompactSuccess 才落账的分离照搬（阻断时状态冻结不虚增，干活 toolTurnsSinceCompact 涨过阈值自然解锁——"硬失败"不是永久的，真实进展可恢复）；③工具步骤记账 recordCompletedToolStep 的 loop 接线留 T-8 装配（本卡 Guard 单元级 + 引擎接入级双覆盖）
+- **完成记录**：验收 `npx vitest run src/context/rapid-refill.test.ts` → 7 passed（tsc 干净，src/context 58 passed）。①零进展连续压缩 evaluate 拟算 1→2→3，第 3 次 shouldBlock → 引擎入口抛 RapidRefillError，err.consecutiveRapidRefills=3 / err.toolTurnsSinceCompact=0（验收字面全计数），且该次压缩未落盘（只 2 条 compaction）；②干活 3 步骤后 evaluate 归 0 放行（可配 max=2 同验）；③熔断路径状态冻结（拟算 3 抛错后 snapshot 仍 2）；④纯拟算幂等（连续 evaluate 同值）
 
 #### T-7-08 · M10 · 预算是送达的事实 `[ ]`
 - **依据需求**：M10（P0）

@@ -28,6 +28,7 @@ import { Projector } from "../session/project.js";
 import { type SessionStore } from "../session/store.js";
 import { buildChatMessages, effectiveEvents } from "../session/messages.js";
 import { latestBalancedCutAtOrBefore } from "./tool-pairing.js";
+import { RapidRefillError, type RapidRefillGuard } from "./rapid-refill.js";
 import type { ChatMessage } from "../models/provider.js";
 
 /** 压缩请求：溢出的两种来源（本地提前判定 / provider 拒绝）+ 换模压缩（F24）各自带齐上下文。 */
@@ -170,6 +171,12 @@ export interface CompactionEngineDeps {
   preHook?: (invocation: CompactionInvocation) => PreCompactOutcome | Promise<PreCompactOutcome>;
   postHook?: (settled: CompactionSettled) => void | Promise<void>;
   keepRules?: KeepRules;
+  /**
+   * 压缩抖动断路器（F28，T-7-07）：提供时在 run 入口（生命周期第 0 段，先于
+   * pre hook）评估——连续"压缩后几乎无进展又压缩"达阈值即硬失败；压缩成功后
+   * 落账。工具步骤的 recordCompletedToolStep 由 loop/装配侧调用。
+   */
+  rapidRefillGuard?: RapidRefillGuard;
 }
 
 /** 压缩触发入参：相位与轮号由触发方（turn 边界 / step 边界装配）决定。 */
@@ -189,6 +196,13 @@ export class CompactionEngine {
 
   async run(input: CompactionRunInput): Promise<CompactionResult> {
     const { sessionId, store } = this.deps;
+    // 生命周期第 0 段：抖动断路器（F28）——拟算计数，达阈值即硬失败
+    //（错误带全计数）。拟算值只在压缩成功后落账（阻断时状态冻结，干活解锁）。
+    const refillDecision = this.deps.rapidRefillGuard?.evaluate();
+    if (refillDecision?.shouldBlock) {
+      throw new RapidRefillError(refillDecision);
+    }
+
     const events = effectiveEvents(store.load(sessionId));
     const tokensBefore = tokensBeforeOf(events);
     const retainedTail = chooseRetainedTail(events, this.deps.keepRules?.retainedFromEnd ?? 1);
@@ -233,6 +247,11 @@ export class CompactionEngine {
     // 生命周期第 3 段：post hook 观察（压缩已落盘，只观察不回滚）。
     const settled: CompactionSettled = { ...invocation, summary, retainedTail, seq };
     if (this.deps.postHook) await this.deps.postHook(settled);
+
+    // 压缩成功落账抖动计数（拟算值此时才生效；F28）。
+    if (refillDecision && this.deps.rapidRefillGuard) {
+      this.deps.rapidRefillGuard.recordCompactSuccess(refillDecision);
+    }
 
     return { kind: "compacted", summary, retainedTail, tokensBefore, seq };
   }
