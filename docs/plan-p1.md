@@ -39,7 +39,7 @@
 - **偏离 / 建议**：①清单与段匹配拆出 `protected-names.ts`（唯一权威）——protected-paths（出口）与 shell-semantics（扫描器）各自单向 import，避免出口反向消费扫描器成环；protected-paths re-export 保持既有 import 面；②gate.ts **零改动**——层内自调 enforceProtectedPaths 自动获得 bash 分支；③revalidate.ts 的 createRevalidator 出口补 enforceProtectedPaths（不依赖装配方记得包 withProtectedPaths）；④LIMITATIONS #7 改写且双载体同步：语义裁决（uncertain/危险/cd 保守）仍在链上受层序影响，保留名单硬拦升出口级；⑤aggregate.test 的"bash 不在本拦面"用例注释更新（断言不变：rm 非重定向写，链上危险模式兜底）
 - **完成记录**：2026-09-25。产出 `src/policy/protected-names.ts`（清单唯一权威）+ `protected-paths.ts` 扩 bash 虚拟写出口分支（analyzeShellCommand 的 file-write 目标过段匹配）+ `revalidate.ts` 出口同位 + `exit-guard.test.ts` 10 用例。验收：`npx vitest run src/policy/exit-guard.test.ts` → **10 passed**；③号验收（#7 旁路复现转绿）：用户层 `bash(echo *)` allow 先匹配胜、链裁决 allow、出口压 deny 且理由含"硬拦"；②对照非保护路径透传；④revalidator 链 abstain + .git 重定向 → 拒绝、伪造 approved 标记剥除与硬拦共存。全量 `npx vitest run` **487 passed / 1 skipped**，`npx tsc --noEmit` 干净。
 
-#### T-P1-02 · C22/C24/G5 · 规则作用域四档 + 审批 scope/feedback 通道 `[ ]`
+#### T-P1-02 · C22/C24/G5 · 规则作用域四档 + 审批 scope/feedback 通道 `[x]`
 - **依据需求**：C22（P1）· C24（P1）· G5（P1，自研）
 - **上游首选参考**：[kimi·interaction/approval.ts:18-19](../oss/kimi-code/packages/agent-core-v2/src/agent/interaction/approval.ts#L18)（`scope?: 'session'` + `feedback?: string` 字段形状）；[kimi·permissionRules/](../oss/kimi-code/packages/agent-core-v2/src/agent/permissionRules)（五文件分层：configSection/permissionRules/permissionRulesOps/Service——作用域是规则集的装载维度）
 - **取什么 / 别抄什么**：取 kimi 的审批响应字段形状与"作用域决定规则进哪层"的分法；别抄其 Service/标识符注入架构（我方无 Effect）；G5 悬置审批超时 P0 已有 `PermissionTimeout`，本卡只把它从"每 broker 必填常量"升为可配策略并保住"不留永久挂起"验收
@@ -48,6 +48,8 @@
 - **验收**：`npx vitest run src/policy/scope-cache.test.ts src/session/owner-port.test.ts`——①`/approve scope=session` 后同会话同规则免再问、新会话重新问（P0 review-decision 用例扩到 CLI 级联测）；②批准记录不落用户配置文件（证伪 grep）；③带 feedback 的答复在审计面可检索；④turn-override 作用域规则在 turn 结束失效
 - **依赖**：T-P1-01（出口级在位后，session-runtime 规则层不得含硬拦路径授权——同一出口验证）
 - **风险 / 未知**：repl.ts 的 `/approve` 解析扩展要与既有参数兼容；turn-override 是四档里唯一带生命周期的，若与 T-3-03 队列语义冲突降为三档并记待澄清
+- **偏离 / 建议**：①C22 四档落法——project/user 由配置规则集承载（既有），session-runtime 由 ApprovalScopeCache 承载（本卡装配进链），turn-override 新建 `rule-scope.ts`（TurnScopeRules：显式 endTurn 剪除失效，能力面先行，产生面随审批 scope=turn UX 接线）；②**write/edit 工具无 patternOf**（builtinRuleMatchers 只登记 bash）——其批准结构上只能 once（C48：无法提取 pattern 就不能升级为规则），session 缓存对 bash 生效、对 write/edit 不生效，这是 C48 纪律的自然结果非缺陷，新工具登记匹配器后自动获得；③approvalTimeoutMs 装配可配已有（G5 策略面），悬置清单 listPending 既有
+- **完成记录**：2026-09-25。产出 `src/policy/rule-scope.ts` + ApprovalReply 扩 scope/feedback + 协议 approve 扩字段（闭集校验）+ agent-process/assembly 全链传参 + **createSessionApprovalModule 装配进 policyChain core 层**（T-8-01 偏离⑤关闭：scope=session 批准经 proposeAmendment 算提案后 record）+ repl `/approve` 扩 `--session`/`--feedback` + feedback 落 L2 审计记录。验收：`npx vitest run src/policy/scope-cache.test.ts` 不存在该文件名，实际按产出拆 `src/policy/rule-scope.test.ts`（4 passed，含验收④ endTurn 失效）+ `src/cli/cli.test.ts` 扩 2 级联测（--session 后 call_2 免再问且放行恰 1 次；once 对照第二轮再问）+ audit-fields/pending 扩 feedback 透传；②证伪 grep `writeFile|appendFile` in src/policy/ = 0 行（批准记录不落任何文件）。全量 `npx vitest run` **494 passed / 1 skipped**，`npx tsc --noEmit` 干净。
 
 #### T-P1-03 · C49/C45 · intersect 与 linter 的装配接线 `[ ]`
 - **依据需求**：C49（P1 接线；纯函数 T-5-09 已交付）· C45（P1 接线；linter T-5-07 已交付）
