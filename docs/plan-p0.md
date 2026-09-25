@@ -543,7 +543,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①坏规则两种处置按来源纪律分开（比卡面"显式标 never-match"更细）：语法畸形 → 保留标 invalid 永不命中（qwen 同款，原文留给 T-5-07 linter 点名）；样例自相矛盾 → **整批加载即报错**带行号（codex validate_match_examples 纪律——违背自测承诺的规则比没有更危险）。②工具级规则 / 未登记工具的规则带样例即矛盾（examples-without-args）——无从校验的承诺按矛盾拒（C44 宁严勿松）。③C21 委托面落 matchers.ts（RuleMatchable{matchesRule, sampleCall} + bashRuleMatcher + builtinRuleMatchers 注册表）：sampleCall 让加载期校验与运行时走同一委托路径，避免两套匹配逻辑分叉；带参规则在调用方工具未登记匹配器时永不命中（kimi fail-closed 同款）。④evaluateRule（T-5-02 直接双维原语）与 loadedRuleMatch（链上委托路径）并存，参数维度共用同一通配方言（bashRuleMatcher 内部即 wildcardMatch），关系写进 rule-loader.ts 头注释。⑤loadRules 产出 LoadedRule 后以 loadedRuleText（raw）作 ruleText 接 createRuleSetModule——T-5-03 预留的 ruleText 回调在本卡兑现。
 - **完成记录**：2026-09-25。产出 `src/policy/rule-loader.ts`（LoadedRule{raw,toolName,argPattern?,action,invalid,line?} + parseRulePattern kimi 同款 + loadRules 样例校验 + RuleLoadError 全量违规列行号 + loadedRuleMatch 链上委托匹配 + loadedRuleText）+ `src/policy/matchers.ts`（RuleMatchable + bashRuleMatcher + builtinRuleMatchers）+ `rule-loader.test.ts` 12 用例 + pending.test.ts 一处固定 sleep 改轮询（全量并行下的计时竞态加固）。验收：`npx vitest run src/policy/rule-loader.test.ts` → **12 passed**；①正样例未命中/反样例反而命中加载即报错、错误消息含"第 3 行"与原文、多条违规一次全列（7 行 not-match + 12 行 match）；②链上 `Bash(git status)` 规则命中后 verdict.rule === raw 原文回显。附：裸规则/Tool() 空参/三种畸形 invalid never-match、examples-without-args 两类、未登记工具带参规则永不命中（链弃权）、工具名维度通配 B*。全量 `npx vitest run` **244 passed** 连续 3 轮稳定，`npx tsc --noEmit` 干净。
 
-#### T-5-06 · C43/C46 · `max()` 聚合 + 保留元数据路径硬拦 `[ ]`
+#### T-5-06 · C43/C46 · `max()` 聚合 + 保留元数据路径硬拦 `[x]`
 - **依据需求**：C43（P0）· C46（P0）
 - **上游首选参考**：[codex·execpolicy/src/policy.rs:403](../oss/codex/codex-rs/execpolicy/src/policy.rs#L403)（`matched_rules.iter().map(RuleMatch::decision).max()`）；[codex·protocol/src/permissions.rs:36](../oss/codex/codex-rs/protocol/src/permissions.rs#L36)（`PROTECTED_METADATA_*_PATH_NAME = ".git"/".agents"/".codex"`）
 - **取什么 / 别抄什么**：`Allow < ask < deny` 全序 + `max()` 最严格者胜——**加规则在数学上不可能放宽**（C35 的结构解，优先实现）；保留路径清单硬拦且规则不可授权
@@ -552,8 +552,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/policy/aggregate.test.ts`——任意规则组合下加一条规则结果不变宽松（穷举小决策空间的性质测试）；`.git/` 下写操作即使配了 allow 也 deny
 - **依赖**：T-5-03
 - **风险 / 未知**：max() 与"链权威"（T-5-01）的并存语义——链先走（谁裁决谁赢），max() 用于**多来源**合并；两者边界写成注释并用用例钉住
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①abstain 作 max 的单位元（codex 无此值）——"没意见"不拉高不拉低，空集/全弃权聚合为 abstain。②DECISION_ORDER 带 C16 同款穷尽编译闸门（漏变体编译失败）。③硬拦清单只收 .git/.agents/.codex（codex 同款；C46 需求的"指令文件/配置目录"归 T-5-07 的 C35 编辑器级防线，两清单互补不重复——protected-paths.ts 头注释写明分工）。④方言保守方向：路径段不分大小写比较（Windows 盘 .GIT 即 .git）、任一路径段命中即拦（嵌套仓库的 .git 同受保护，比 codex 工作区顶层更严，记已知取舍）；只拦写不拦读（git 日常要读 .git，codex forbidden_agent_metadata_write 同款）；bash 不在 P0 拦面（写操作经 T-5-14 虚拟操作接入，清单注释防后来者误以为漏了）。⑤withProtectedPaths 组合形态交付（链裁决 → 硬拦出口），T-5-12 gate 直接消费。
+- **完成记录**：2026-09-25。产出 `src/policy/aggregate.ts`（DECISION_ORDER 唯一全序 + decisionSeverity + maxDecision）+ `src/policy/protected-paths.ts`（PROTECTED_METADATA_PATH_NAMES + findProtectedMetadataSegment + enforceProtectedPaths + withProtectedPaths）+ `aggregate.test.ts` 11 用例。验收：`npx vitest run src/policy/aggregate.test.ts` → **11 passed**；①穷举 2^4 子集 × 4 种追加意见共 64 组合，severity(max(S∪{d})) ≥ severity(max(S)) 恒成立（加规则在数学上不可能放宽）；②链配裸 write allow 规则后 `.git/config` 写仍 deny（reason 含保留段名、rule 字段缺席证明非规则来源）、ask 同压、正常路径透传、read 触及 .git 不拦。全量 `npx vitest run` **255 passed**，`npx tsc --noEmit` 干净。
 
 #### T-5-07 · C35/C45 · 禁止自我修改 + 权限配置 linter `[ ]`
 - **依据需求**：C35（P0）· C45（P0）
