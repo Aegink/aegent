@@ -20,6 +20,13 @@
 | 2026-09-25 | T-2-02 | J1/J2 | `dd27bdf` | `npx vitest run src/models/provider.test.ts` | 5 passed；三段剧本增量不丢不重（args 拼接回 JSON）、usage 终块过 C14 可落载荷；ProviderHttpError 透传 status/Retry-After；http-mock 与 wire 实测一致未改 mock |
 | 2026-09-25 | T-2-03 | J26 | `78e23f2` | `npx vitest run src/models/retry.test.ts` | 10 passed；429 退避重试 waits=[500,1000]、400/unknown 一次不打、Retry-After:2 覆盖默认退避、流产出后不重试防重复送达 |
 | 2026-09-25 | T-2-04 | J22 | `27b1ef7` | `npx vitest run src/kernel/timeout.test.ts` | 5 passed；超时 code=TOOL_TIMEOUT 带 timeoutMs；内层晚完成双向无 unhandledRejection；嵌套靠 code 判归属（内层先到透传内层码） |
+| 2026-09-25 | T-3-01 | I12 | `011ca06` | `npx vitest run src/kernel/chain.test.ts` | 9 passed；两层序=前1前2链底后2后1；截断跨层传播（链底没发生即 truncated）；trace/budget 留槽；三点位 toolCall/modelRequest/turnEnd 决定先落卡后动手 |
+| 2026-09-25 | T-3-02 | A1/A6 | `8046579` | `npx vitest run src/kernel/loop.test.ts` | 8 passed；A1 反向钉死（无 toolCall+continue 仍继续）；三链全走到；attempt 不伪造消息；工具崩溃回喂 isError；消息从事件投影重建 |
+| 2026-09-25 | T-3-03 | A2/A9 | `58270ac` | `npx vitest run src/kernel/queue.test.ts` | 6 passed；入队收执仅 `{messageId}`、@ts-expect-error 钉死无 finished()；all 全量 FIFO / one-at-a-time 每边界最旧一条；step 边界注入顺序与入队一致不丢不重 |
+| 2026-09-25 | T-3-04 | A7 | `cf128ff` | `npx vitest run src/kernel/loop.cancel.test.ts` | 6 passed；流中取消恰一条 turn/end{aborted}+interrupted 前缀、其后无同轮事件；cause 落盘拷声明字段（stack 不进事件）；first-wins+idle no-op；undici 冻结回归测试 |
+| 2026-09-25 | T-3-05 | A3 | `8250b93` | `npx vitest run src/kernel/run-state.test.ts` | 4 passed；双重故障注入后 busy 停留、恢复路径归位 idle；closeTurn 尾部唯一归位点；error/blocked/aborted 三路径同样归位 |
+| 2026-09-25 | T-3-06 | T9 | `46c1906` | `npx vitest run src/kernel/agent-process.test.ts` + `node scripts/cold-start.mjs` | 6 passed；真 stdio spawn 3 条 prompt 收全事件（管道零 mock）+ 协议 JsonValue 型证；**冷启动 median 90.4ms（best 89.6，3 轮）< 500ms 达标** |
+| 2026-09-25 | T-3-07 | O7–O11 | `8ef2d8f` | `npx vitest run src/test-support/` | 19 passed；真 loop 流四不变量全过（轮号/step 配对/tool 配平/终态恰一）；断列流含 seq 的人话失败；O10 header+O11 previous 复证；T-3-02/04/06 测试复用改造 |
 
 ---
 
@@ -159,6 +166,49 @@
 ModelProvider/StreamChunk 与 T-2-03 的 withRetry（ProviderHttpError 只在
 响应头阶段抛、流产出后不重试的语义已在 retry.test 钉死）；3) T-3-06 冷启动
 <500ms 要实测，超标不自行改设计，停下写待澄清。不要问要不要继续。
+```
+
+---
+
+## 阶段 3 报告（完成于 2026-09-25）
+
+- **打勾情况**：7 / 7（T-3-01 ~ T-3-07 全部完成，无未完成项）
+- **产出的文件**：
+  - `src/kernel/chain.ts` + `chain.test.ts`——洋葱链骨架（T-3-01）
+  - `src/kernel/loop.ts` + `loop.test.ts` + `loop.cancel.test.ts` + `loop.test-utils.ts`——主循环 / 取消 / 测试共用工具（T-3-02/04）
+  - `src/kernel/queue.ts` + `queue.test.ts`——prompt 队列与 step 边界注入（T-3-03）
+  - `src/kernel/run-state.ts` + `run-state.test.ts`——运行态服务（T-3-05）
+  - `src/kernel/agent-protocol.ts` + `agent-process.ts` + `agent-child.ts` + `agent-protocol.test.ts` + `agent-process.test.ts`——出进程与 JSON 行协议（T-3-06）
+  - `src/test-support/event-asserts.ts` + 测试；`snapshots.ts` 增 header（O10/O11）（T-3-07）；`scripts/cold-start.mjs`——冷启动基准
+- **验收台账**：7 卡 7 命令全部通过（见台账表）；全量 `npx vitest run` **128 passed / 0 failed**（阶段 2 收尾 83 → 净增 45），`npx tsc --noEmit` 全程干净；`count-features.sh`=310 不变、`check-doc-links.sh`=0 失效
+- **阶段完成定义核对**：假 provider 驱动的 continue/end 两路径 ✓（loop.test）；取消后事件流有终止记录 ✓（恰一条 turn/end{aborted}）；进程模式冷启动实测落档 ✓（median 90.4ms < 500ms）
+- **偏离计划的地方**：
+  1. **T-3-01 三点位按用户指示提前到该卡落卡**（卡面原文留 T-3-02 钉）：`toolCall`/`modelRequest`/`turnEnd`（命名取被包动作，DSH `tools/execute` 同款），决定与排除项写进卡面与 chain.ts 头注释
+  2. **assertJsonSafe 菱形引用误报**（T-1-01 产物）：同一对象在事件树出现两次（非循环）被判循环引用——T-3-02 实测踩中（usage 同挂 stream 与顶层字段），本阶段在 loop 侧克隆绕过；**本修建议（walk 子树后 seen.delete 回溯 + 共享引用用例）留给阶段 4 开工前做**，未擅改 T-1-01 产物
+  3. T-3-06 基准脚本 `scripts/cold-start.mjs` 而非卡面 `cold-start.ts`（node 22 无 TS loader、选型无 tsx）；子进程只跑 dist 产物，测试 beforeAll `npx tsc`
+  4. T9 协议面按 A9 落法：`prompt` 应答只有 `accepted{messageId}` 收执（即答），**无** session.finished、无 per-prompt 结果——轮终态由父进程观察 turn/end 事件（dsh followup-enqueue 同款）
+- **新发现的约束或坑**：
+  - **事件转发是子进程的关键接线**：append 进 store ≠ 协议可见（首版因此挂起）——转发型 SessionStore 子类（append 即发 event 行）是出进程的标准形态，T-8 CLI 端沿用
+  - Windows spawn + node 启动 + ESM 图加载实测 ~90ms：**Q16 的 spawn 开销担忧实测排除**；基准带 OS 缓存预热 + 3 轮取中位数
+  - agent 子进程依赖图不含 better-sqlite3（InMemory store）——原生模块不进冷启动路径是 <500ms 的结构性前提，T-8 若给子进程接 SQLite 存储需重新实测
+  - loop 消息序列从 `store.load()` 投影重建（不变量 1，不养第二份历史），buildMessages 已处理 revert 有效视窗——阶段 7 压缩接入时在同一入口扩展
+- **遗留风险与未知**：
+  - assertJsonSafe 菱形误报待修（见偏离 2）：阶段 4 的 tool/result.meta 若共享引用会再踩，建议进阶段 4 开工前先修
+  - run-state 是进程内 Map；CLI（T-8）跨进程看子进程运行态需协议层转发 status 事实（本阶段未加该消息，需要时补）
+  - withRetry 只在单测层验证；子进程 echo provider 未经过真实 429 路径（J2 人工确认清单不变）
+  - 子进程 dispose 的"协作退出"依赖 runTurn 正常结算；loop 崩溃（AGENT_LOOP_CRASH）时子进程 exit(1)，父进程恢复语义留 T-8
+- **下一阶段提示词**：
+
+```
+继续 aegent 内核的实施。读 docs/plan-p0.md 的 §0 执行协议，然后从「阶段 4」
+的第一张 [ ] 任务卡开始。上一阶段报告在 docs/plan-p0-progress.md。
+本阶段特有的注意：1) 开工先修 assertJsonSafe 的菱形引用误报（src/kernel/
+events.ts 的 WeakSet 无回溯——walk 完子树 seen.delete 回溯，并补一条
+"同一对象出现两次"的合法用例；这是 T-1-01 产物的 bug 修复，在 T-4-01 卡的
+commit 里带上并记偏离）；2) 工具执行必须走 T-3-01 的 toolCall 链（注册表
+分发是链底 terminal，阶段 5 权限层挂同一链），ToolContext 不暴露裸进程
+API（D4）随 T-4-05 定形；3) B10/B11 落盘打标记与 toolCallId 贯穿在事件层
+已有形状（tool/result.meta、callId 配平），别造第二套词汇。不要问要不要继续。
 ```
 
 ---
