@@ -1,0 +1,1 @@
+Read the contents of a text file. Supports offset (1-indexed start line) and limit (max lines) for reading large files in chunks; a continuation hint with the next offset is appended when more lines remain. Output is the raw file content.

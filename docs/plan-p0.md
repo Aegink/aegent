@@ -390,7 +390,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①**assertJsonSafe 菱形误报本修随本卡 commit**（用户开工指示，阶段 3 报告遗留）：walk 完子树 `seen.delete` 回溯——seen 只表达"当前祖先链"，同一对象在树内出现两次（usage 同挂 stream 与顶层字段）不再误判循环，真正的环仍在祖先链内命中拒绝；events.test 补"菱形合法 + 循环仍拒"用例；连带移除 loop.ts 里 T-3-02 加的 usage 克隆 workaround（共享引用直通，loop.test 回归通过）。②`descriptionsDir` 构造参数可注入——验收②"改 txt 后 description 变化且 ts 无 diff"的机验形式（临时目录写 A → 改 B，同一实例同一份 .ts）；缺省为同目录 `descriptions/`，dist 场景 txt 不进 dist 与 T-1-03 的 schema.sql 同题（P0 不交付 dist，记录在案）。③description 每次直读不缓存——"改描述即生效"是 B2 的卖点，装配时才读无性能压力；描述文件缺失即抛（模型可见的描述不静默成空串）。④execute 签名 P0 只收 `(args: JsonRecord)`——ToolContext 形状随 T-4-05（D4）定形时统一接入，不预埋一个马上要改的签名。⑤错误分层：未知工具 / 参数坏 → dispatch 返回 isError（`TOOL_NOT_FOUND` / `TOOL_ARGUMENTS_INVALID`，说明回喂模型可自修，opencode InvalidArgumentsError 的 message 意图）；执行体崩溃原样上抛交 loop.dispatchTool 兜底（既有路径）——两层合计保证 call/result 配平。⑥注册表分发即 toolCall 链的链底 terminal（本卡头注释写明装配关系；loop 接线随 T-4-02）。
 - **完成记录**：2026-09-25。产出 `src/kernel/tools/registry.ts`（ToolRegistry：registerTool 重名即败 / has / names / description 按名读 txt / toChatTools 缺省空 schema / dispatch 链底分发）+ `registry.test.ts` 8 用例 + events.ts 菱形修复 + loop.ts 克隆移除 + events.test 13 用例（+1）。验收：`npx vitest run src/kernel/tools/registry.test.ts` → **8 passed**；①动态注册自定义工具（测试现场构造 ToolDef）经 dispatch 执行成功——注册面无需改内核；②临时目录 txt 写"版本 A"→ description 为 A，改写"版本 B\n第二行"→ description 随变，同一 registry 实例、同一份 .ts 零改动；③缺失描述即抛、TOOL_NOT_FOUND / TOOL_ARGUMENTS_INVALID（含数组/标量/null 五种坏参数）落 isError 不上抛、执行体崩溃原样上抛、重名注册即败、toChatTools 缺省 `{type:"object",properties:{}}`。全量 `npx vitest run` **137 passed**，`npx tsc --noEmit` 干净。
 
-#### T-4-02 · B3a · 内置工具 read / bash / write `[ ]`
+#### T-4-02 · B3a · 内置工具 read / bash / write `[x]`
 - **依据需求**：B3（P0，前半）
 - **上游首选参考**：[pi·harness/tools/](../oss/pi/packages/agent/src/harness/tools)（read.ts/write.ts/bash.ts 最小集划分）
 - **取什么 / 别抄什么**：取工具集划分与参数形状；bash 实现经 T-4-05 的 ExecutionEnv（**本卡先留桩，T-4-05 落 env 后回填**——两卡依赖已互写）
@@ -399,8 +399,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/kernel/tools/builtin/`——read 读文件、write 写文件（走 T-4-04 队列）、bash 执行回显 stdout/exit code；各含边界用例（不存在路径/空输出）
 - **依赖**：T-4-01
 - **风险 / 未知**：bash 的 shell 选择（Windows 下 cmd/PowerShell/bash）——P0 用 `bash`（Git Bash 存在于本机），跨壳留 P1 D11
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①**证据强度升级为"读了代码"**：pi 三工具参数形状逐个打开核对——read `{path, offset?(1 起), limit?}`（limit 用尽附 Use offset=N 续读提示）、write `{path, content}`（父目录自动创建）、bash `{command, timeout?秒}`（setTimeout 上限换算的秒数上限校验一并落地，回填不动）。②bash 按卡面留桩：参数校验 + timeout 校验已定，执行体返回 `TOOL_NOT_IMPLEMENTED` isError；**验收的"bash 回显 stdout/exit code"条目随 T-4-05 回填后补跑**（卡面依赖顺序自身如此）。③write 的"走 T-4-04 队列"同理随 T-4-04 接入（本卡直写，写文件头注释已声明接入点）。④工具内可预期失败（路径不存在 / 参数坏）统一返回 isError 回喂模型（`toolError` helper：code 取 Node errno 如 ENOENT 或 INVALID_ARGUMENTS），不上抛——上抛留给基础设施崩溃（loop.dispatchTool 兜底），与 T-4-01 偏离⑤的分层一致。⑤read 输出不带行号前缀（pi 直出原文；opencode 带行号的样式不取，edit 的"旧串→新串"语义不依赖行号）；图片/二进制检测不做（pi imageProcessor 分支，P1）；以换行结尾的文件尾空串不算一行。⑥`registerBuiltinTools(registry)` 注册入口（builtin/index.ts）——装配处一行挂载；loop/agent-child 的真实接线随 T-4-05（bash 可跑后端到端接，避免接两次）。⑦路径边界（D8/D9 沙箱、C 层审批）不在工具本体做——read/write 头注释写明由阶段 5/6 的链层与沙箱负责，防后来者以为漏了。
+- **完成记录**：2026-09-25。产出 `src/kernel/tools/builtin/{read,write,bash,util,index}.ts` + `descriptions/{read,write,bash}.txt`（B2 描述分离在真实工具上落地）+ `builtin.test.ts` 8 用例。验收：`npx vitest run src/kernel/tools/builtin/` → **8 passed**；read：多行原样读取 / offset+limit 切片带"[Showing lines 2-3 of 5. Use offset=4 to continue.]"提示 / 不存在路径 isError ENOENT / 空文件空输出 / offset 越界 isError OFFSET_BEYOND_EOF；write：新文件自动建父目录且落盘一致 / 覆盖已有 / 空 content 0 bytes / 参数坏 INVALID_ARGUMENTS；bash（桩）：command 缺失与 timeout=0 拒绝 INVALID_ARGUMENTS、合法参数落 TOOL_NOT_IMPLEMENTED 桩。全量 `npx vitest run` **145 passed**，`npx tsc --noEmit` 干净。bash stdout/exit code 与 write 入队列两条验收点的兑现计划见偏离②③。
 
 #### T-4-03 · B3b · 内置工具 edit / glob / grep `[ ]`
 - **依据需求**：B3（P0，后半）

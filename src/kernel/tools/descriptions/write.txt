@@ -1,0 +1,1 @@
+Write content to a file (UTF-8). Creates the file if it does not exist and overwrites it if it does; parent directories are created automatically. Returns the written byte count.

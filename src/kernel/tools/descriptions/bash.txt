@@ -1,0 +1,1 @@
+Execute a bash command in the current working directory. Returns combined stdout and stderr plus the exit code. Accepts an optional timeout in seconds.
