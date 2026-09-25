@@ -28,7 +28,8 @@
 | 2026-09-25 | T-3-06 | T9 | `46c1906` | `npx vitest run src/kernel/agent-process.test.ts` + `node scripts/cold-start.mjs` | 6 passed；真 stdio spawn 3 条 prompt 收全事件（管道零 mock）+ 协议 JsonValue 型证；**冷启动 median 90.4ms（best 89.6，3 轮）< 500ms 达标** |
 | 2026-09-25 | T-3-07 | O7–O11 | `8ef2d8f` | `npx vitest run src/test-support/` | 19 passed；真 loop 流四不变量全过（轮号/step 配对/tool 配平/终态恰一）；断列流含 seq 的人话失败；O10 header+O11 previous 复证；T-3-02/04/06 测试复用改造 |
 | 2026-09-25 | T-4-01 | B1/B2 | `d957c4f` | `npx vitest run src/kernel/tools/registry.test.ts` | 8 passed；动态注册即证扩展面、txt 改 A→B description 随变代码零 diff、TOOL_NOT_FOUND/ARGS_INVALID 落 isError 保配平；附带 assertJsonSafe 菱形误报本修（loop 克隆 workaround 移除，全量 137 passed） |
-| 2026-09-25 | T-4-02 | B3（前半） | （回填于 T-4-03） | `npx vitest run src/kernel/tools/builtin/` | 8 passed；read 切片+续读提示+ENOENT/空文件/越界边界、write 自动建父目录+覆盖+0 字节、bash 参数校验落地留桩 TOOL_NOT_IMPLEMENTED（stdout/exit code 随 T-4-05 回填补跑） |
+| 2026-09-25 | T-4-02 | B3（前半） | `0b012da` | `npx vitest run src/kernel/tools/builtin/` | 8 passed；read 切片+续读提示+ENOENT/空文件/越界边界、write 自动建父目录+覆盖+0 字节、bash 参数校验落地留桩 TOOL_NOT_IMPLEMENTED（stdout/exit code 随 T-4-05 回填补跑） |
+| 2026-09-25 | T-4-03 | B3（后半） | （回填于 T-4-04） | `npx vitest run src/kernel/tools/builtin/` | 16 passed；六工具各 ≥2 用例；edit 唯一匹配/$& 不解释、glob 绝对路径+截断、grep 行号+include 按名过滤+INVALID_PATTERN；rg 主路径因 D4（spawn 属 env）推迟 T-4-05；踩坑：块注释内写"星对斜杠"提前闭合注释 |
 
 ---
 

@@ -1,0 +1,1 @@
+Edit a file with a targeted text replacement. oldText must match exactly one occurrence in the file (provide more surrounding context if it is not unique); newText replaces it verbatim. Files with CRLF line endings require oldText to use the same line endings.

@@ -1,0 +1,1 @@
+List files matching a glob pattern (supports ** for directories, * within a segment, ? for a single character). Searches under path (defaults to the current working directory) and returns absolute paths, sorted. Results are capped; refine the pattern if truncated.

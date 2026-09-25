@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -107,24 +107,171 @@ describe("write 工具", () => {
 });
 
 describe("bash 工具（P0 桩，T-4-05 回填）", () => {
-  it("参数校验落地（command 缺失 / timeout 非法即拒），合法参数落在桩上", async () => {
+  it("参数校验：command 缺失 / timeout 非法即拒（回填后不变）", async () => {
     const registry = new ToolRegistry();
     registerBuiltinTools(registry);
     const noCmd = await dispatch(registry, "bash", { timeout: 5 });
     expect(noCmd.error?.code).toBe("INVALID_ARGUMENTS");
     const badTimeout = await dispatch(registry, "bash", { command: "ls", timeout: 0 });
     expect(badTimeout.error?.code).toBe("INVALID_ARGUMENTS");
+    const hugeTimeout = await dispatch(registry, "bash", { command: "ls", timeout: 1e12 });
+    expect(hugeTimeout.error?.code).toBe("INVALID_ARGUMENTS");
+  });
+
+  it("合法参数落在桩上 → isError TOOL_NOT_IMPLEMENTED（执行体待 ExecutionEnv）", async () => {
+    const registry = new ToolRegistry();
+    registerBuiltinTools(registry);
     const stub = await dispatch(registry, "bash", { command: "echo hi" });
     expect(stub.isError).toBe(true);
     expect(stub.error?.code).toBe("TOOL_NOT_IMPLEMENTED");
   });
 });
 
-describe("内置工具注册入口", () => {
-  it("registerBuiltinTools 挂上 read/write/bash，且描述文件在位（B2）", () => {
+describe("edit 工具", () => {
+  it("唯一匹配替换成功并落盘（newText 原样写入，$& 等不被解释）", async () => {
+    const dir = tempDir();
+    const file = path.join(dir, "code.txt");
+    writeFileSync(file, "const a = 1;\nconst b = 2;\n", "utf8");
     const registry = new ToolRegistry();
     registerBuiltinTools(registry);
-    expect(registry.names()).toEqual(["read", "write", "bash"]);
+    const result = await dispatch(registry, "edit", {
+      path: file,
+      oldText: "const a = 1;",
+      newText: 'const a = "$&"; // keep',
+    });
+    expect(result.isError).toBeUndefined();
+    expect(readFileSync(file, "utf8")).toBe('const a = "$&"; // keep\nconst b = 2;\n');
+  });
+
+  it("oldText 不唯一 → NOT_UNIQUE；未找到 → NOT_FOUND（均 isError 不落盘）", async () => {
+    const dir = tempDir();
+    const file = path.join(dir, "dup.txt");
+    writeFileSync(file, "x\nx\ny\n", "utf8");
+    const registry = new ToolRegistry();
+    registerBuiltinTools(registry);
+    const notUnique = await dispatch(registry, "edit", {
+      path: file,
+      oldText: "x",
+      newText: "z",
+    });
+    expect(notUnique.isError).toBe(true);
+    expect(notUnique.error?.code).toBe("OLD_TEXT_NOT_UNIQUE");
+    const notFound = await dispatch(registry, "edit", {
+      path: file,
+      oldText: "不存在的串",
+      newText: "z",
+    });
+    expect(notFound.isError).toBe(true);
+    expect(notFound.error?.code).toBe("OLD_TEXT_NOT_FOUND");
+    expect(readFileSync(file, "utf8")).toBe("x\nx\ny\n");
+  });
+
+  it("参数坏（oldText 空 / newText 缺失）→ isError INVALID_ARGUMENTS", async () => {
+    const registry = new ToolRegistry();
+    registerBuiltinTools(registry);
+    const empty = await dispatch(registry, "edit", { path: "a.txt", oldText: "", newText: "x" });
+    expect(empty.error?.code).toBe("INVALID_ARGUMENTS");
+    const noNew = await dispatch(registry, "edit", { path: "a.txt", oldText: "x" });
+    expect(noNew.error?.code).toBe("INVALID_ARGUMENTS");
+  });
+});
+
+describe("glob 工具", () => {
+  it("嵌套目录按模式匹配，输出绝对路径字母序（*.ts 与 ** 跨段与 ?）", async () => {
+    const dir = tempDir();
+    writeFileSync(path.join(dir, "a.ts"), "", "utf8");
+    mkdirSync(path.join(dir, "sub", "deep"), { recursive: true });
+    writeFileSync(path.join(dir, "sub", "b.ts"), "", "utf8");
+    writeFileSync(path.join(dir, "sub", "deep", "c.ts"), "", "utf8");
+    writeFileSync(path.join(dir, "note.md"), "", "utf8");
+    const registry = new ToolRegistry();
+    registerBuiltinTools(registry);
+
+    const tsFiles = await dispatch(registry, "glob", { pattern: "**/*.ts", path: dir });
+    expect(tsFiles.content).toBe(
+      [
+        path.join(dir, "a.ts"),
+        path.join(dir, "sub", "b.ts"),
+        path.join(dir, "sub", "deep", "c.ts"),
+      ].join("\n"),
+    );
+
+    const deep = await dispatch(registry, "glob", { pattern: "**/deep/*.ts", path: dir });
+    expect(deep.content).toBe(path.join(dir, "sub", "deep", "c.ts"));
+
+    const singleChar = await dispatch(registry, "glob", { pattern: "?.ts", path: dir });
+    expect(singleChar.content).toBe(path.join(dir, "a.ts"));
+  });
+
+  it("无匹配空输出；超上限截断提示（默认 100）", async () => {
+    const dir = tempDir();
+    const registry = new ToolRegistry();
+    registerBuiltinTools(registry);
+    const none = await dispatch(registry, "glob", { pattern: "*.nope", path: dir });
+    expect(none.content).toBe("No files found");
+
+    for (let i = 0; i < 101; i++) {
+      writeFileSync(path.join(dir, `f${String(i).padStart(3, "0")}.ts`), "", "utf8");
+    }
+    const many = await dispatch(registry, "glob", { pattern: "f*.ts", path: dir });
+    const lines = String(many.content).split("\n");
+    expect(lines).toHaveLength(102); // 100 条 + 空行 + 截断提示
+    expect(String(many.content)).toContain("101 files matched, showing first 100");
+  });
+});
+
+describe("grep 工具（P0 纯 JS 实现）", () => {
+  it("嵌套目录多文件搜索，行号与内容正确；include 按 glob 过滤", async () => {
+    const dir = tempDir();
+    mkdirSync(path.join(dir, "src"), { recursive: true });
+    writeFileSync(path.join(dir, "src", "one.ts"), "const a = 1;\nconst b = alpha;\n", "utf8");
+    writeFileSync(path.join(dir, "two.md"), "# alpha\n", "utf8");
+    const registry = new ToolRegistry();
+    registerBuiltinTools(registry);
+
+    const all = await dispatch(registry, "grep", { pattern: "alpha", path: dir });
+    expect(String(all.content).split("\n")).toEqual([
+      `${path.join(dir, "src", "one.ts")}:2: const b = alpha;`,
+      `${path.join(dir, "two.md")}:1: # alpha`,
+    ]);
+
+    const tsOnly = await dispatch(registry, "grep", {
+      pattern: "alpha",
+      path: dir,
+      include: "*.ts",
+    });
+    expect(String(tsOnly.content)).toBe(
+      `${path.join(dir, "src", "one.ts")}:2: const b = alpha;`,
+    );
+  });
+
+  it("单文件搜索；正则语法；非法正则 isError；无匹配 No matches found", async () => {
+    const dir = tempDir();
+    const file = path.join(dir, "nums.txt");
+    writeFileSync(file, "n 1\nn 22\nn 333\n", "utf8");
+    const registry = new ToolRegistry();
+    registerBuiltinTools(registry);
+
+    const single = await dispatch(registry, "grep", { pattern: "\\d{3}", path: file });
+    expect(String(single.content)).toBe(`${file}:3: n 333`);
+
+    const dirSearch = await dispatch(registry, "grep", { pattern: "n \\d+", path: dir });
+    expect(String(dirSearch.content)).toContain("n 333");
+
+    const none = await dispatch(registry, "grep", { pattern: "不存在的文本", path: dir });
+    expect(none.content).toBe("No matches found");
+
+    const badRe = await dispatch(registry, "grep", { pattern: "([", path: dir });
+    expect(badRe.isError).toBe(true);
+    expect(badRe.error?.code).toBe("INVALID_PATTERN");
+  });
+});
+
+describe("内置工具注册入口", () => {
+  it("registerBuiltinTools 挂上六个内置工具，且描述文件在位（B2）", () => {
+    const registry = new ToolRegistry();
+    registerBuiltinTools(registry);
+    expect(registry.names()).toEqual(["read", "write", "bash", "edit", "glob", "grep"]);
     // 描述从真 descriptions/ 目录读出（非空）——内置描述文件的存在性证明
     for (const name of registry.names()) {
       expect(registry.description(name).length).toBeGreaterThan(0);

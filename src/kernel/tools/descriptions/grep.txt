@@ -1,0 +1,1 @@
+Search file contents with a JavaScript regular expression. Searches under path (a directory, or a single file; defaults to the current working directory), optionally restricted to files matching the include glob (e.g. "*.ts"). Returns matches as path:line: text, capped with a truncation notice. Binary files are skipped.

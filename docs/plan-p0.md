@@ -402,7 +402,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①**证据强度升级为"读了代码"**：pi 三工具参数形状逐个打开核对——read `{path, offset?(1 起), limit?}`（limit 用尽附 Use offset=N 续读提示）、write `{path, content}`（父目录自动创建）、bash `{command, timeout?秒}`（setTimeout 上限换算的秒数上限校验一并落地，回填不动）。②bash 按卡面留桩：参数校验 + timeout 校验已定，执行体返回 `TOOL_NOT_IMPLEMENTED` isError；**验收的"bash 回显 stdout/exit code"条目随 T-4-05 回填后补跑**（卡面依赖顺序自身如此）。③write 的"走 T-4-04 队列"同理随 T-4-04 接入（本卡直写，写文件头注释已声明接入点）。④工具内可预期失败（路径不存在 / 参数坏）统一返回 isError 回喂模型（`toolError` helper：code 取 Node errno 如 ENOENT 或 INVALID_ARGUMENTS），不上抛——上抛留给基础设施崩溃（loop.dispatchTool 兜底），与 T-4-01 偏离⑤的分层一致。⑤read 输出不带行号前缀（pi 直出原文；opencode 带行号的样式不取，edit 的"旧串→新串"语义不依赖行号）；图片/二进制检测不做（pi imageProcessor 分支，P1）；以换行结尾的文件尾空串不算一行。⑥`registerBuiltinTools(registry)` 注册入口（builtin/index.ts）——装配处一行挂载；loop/agent-child 的真实接线随 T-4-05（bash 可跑后端到端接，避免接两次）。⑦路径边界（D8/D9 沙箱、C 层审批）不在工具本体做——read/write 头注释写明由阶段 5/6 的链层与沙箱负责，防后来者以为漏了。
 - **完成记录**：2026-09-25。产出 `src/kernel/tools/builtin/{read,write,bash,util,index}.ts` + `descriptions/{read,write,bash}.txt`（B2 描述分离在真实工具上落地）+ `builtin.test.ts` 8 用例。验收：`npx vitest run src/kernel/tools/builtin/` → **8 passed**；read：多行原样读取 / offset+limit 切片带"[Showing lines 2-3 of 5. Use offset=4 to continue.]"提示 / 不存在路径 isError ENOENT / 空文件空输出 / offset 越界 isError OFFSET_BEYOND_EOF；write：新文件自动建父目录且落盘一致 / 覆盖已有 / 空 content 0 bytes / 参数坏 INVALID_ARGUMENTS；bash（桩）：command 缺失与 timeout=0 拒绝 INVALID_ARGUMENTS、合法参数落 TOOL_NOT_IMPLEMENTED 桩。全量 `npx vitest run` **145 passed**，`npx tsc --noEmit` 干净。bash stdout/exit code 与 write 入队列两条验收点的兑现计划见偏离②③。
 
-#### T-4-03 · B3b · 内置工具 edit / glob / grep `[ ]`
+#### T-4-03 · B3b · 内置工具 edit / glob / grep `[x]`
 - **依据需求**：B3（P0，后半）
 - **上游首选参考**：同 T-4-02（pi harness/tools 的 edit.ts / path-utils.ts；glob/grep 参考 pi 同目录与 opencode tool/ 同名工具）
 - **取什么 / 别抄什么**：edit 取"旧串→新串"最小语义（fuzzy 匹配不做）；grep 用 `ripgrep` 不存在则回退 JS 实现（P0 单测环境可控）
@@ -411,8 +411,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/kernel/tools/builtin/`——六工具各有 ≥2 用例（B3 验收要点"六个均有单测"）
 - **依赖**：T-4-02
 - **风险 / 未知**：grep/glob 的模式方言（gitignore 风格 vs glob）——与 C39（P1）对齐时再统一，P0 记录所选方言
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①**edit 取单条 `{path, oldText, newText}` 而非 pi 的批量 `edits[]`**（P0 最小语义；oldText 唯一匹配约束：0 次 NOT_FOUND / ≥2 次 NOT_UNIQUE 均 isError 提示补上下文；替换用函数形式防 newText 的 `$&` 被解释；不做换行规范化——CRLF 文件需 oldText 同款行尾，记方言）。②**grep 的 ripgrep 主路径推迟到 T-4-05**：rg 调用是 spawn，受 D4 约束（`src/kernel/tools/` 下除 env.ts 外禁 child_process，T-4-05 的 grep 验收就是证伪命令），工具本体不能自带 spawn——P0 落纯 JS（walkFiles + 逐行 RegExp），rg 提速与 bash 执行同批经 ExecutionEnv 回填；正则方言 = JS RegExp（rg 集成时统一）。③include 过滤取 rg 语义：不含路径分隔符时对文件名匹配（`*.ts` 命中任意深度的 ts 文件）。④glob 输出**绝对路径**（自包含——模型拿去 read 不受 cwd 与搜索根错位影响）；方言 = `**` 跨段（尾随"星对斜杠"可零段）、单星段内任意（含点开头文件）、`?` 单字符（patterns.ts 头注释记录；`*` 不跨段，gitignore 点文件特判不做）。⑤二进制文件（含 NUL 字节）与读取失败的文件跳过（rg 默认同款）；glob/grep 输出上限 100/200 带截断提示。⑥**踩坑记录：块注释内写 glob 原文（含"星对斜杠"字样）会提前闭合注释**，patterns.ts 头注释因此改写措辞——先被误判为 TS7 lexer bug 排查（最小重现三种变体均不复现），根因就是注释内容，值得进 notes。⑦`noUncheckedIndexedAccess` 下索引访问需 undefined 防御（patterns/grep 各一处，与 loop.ts 防御风格一致）。
+- **完成记录**：2026-09-25。产出 `src/kernel/tools/builtin/{edit,glob,grep,patterns}.ts` + `descriptions/{edit,glob,grep}.txt` + builtin.test.ts 扩至 16 用例（注册入口 6 工具）。验收：`npx vitest run src/kernel/tools/builtin/` → **16 passed**，六工具各 ≥2 用例：edit 唯一匹配替换落盘（`$&` 不被解释）/ 不唯一与未找到 isError 且不落盘 / 参数坏；glob 嵌套目录 `**` 与 `?` 匹配输出绝对路径字母序 / 无匹配空输出 / 101 文件截断提示；grep 多文件行号正确 + include 按文件名过滤 / 单文件搜索 / 非法正则 INVALID_PATTERN / 无匹配。全量 `npx vitest run` **153 passed**，`npx tsc --noEmit` 干净。
 
 #### T-4-04 · B4 · 文件写串行化队列 `[ ]`
 - **依据需求**：B4（P0）
