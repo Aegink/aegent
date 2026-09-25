@@ -37,6 +37,10 @@ import type { ChainLayer } from "./chain.js";
 import type { SessionEvent } from "./events.js";
 import type { SessionStore } from "../session/store.js";
 import { RevertService } from "../session/revert.js";
+import {
+  GitCheckpointService,
+  createGitRunner,
+} from "../session/git-checkpoint.js";
 import { effectiveEvents } from "../session/messages.js";
 import {
   type Summarizer,
@@ -100,6 +104,11 @@ export interface ChildAssemblyOptions {
   approvalTimeoutMs: number;
   /** 用户层规则（行文本；缺省无规则——bash 走核心层 shell 语义分析）。 */
   rules?: readonly RuleSource[];
+  /**
+   * git 仓库根（E11 代码检查点）：提供时每轮开始前打 git stash 检查点、
+   * /revert 双回退（对话态 + 代码态）。缺省不启用（非 git 场景零开销）。
+   */
+  checkpointRepoRoot?: string;
   /** M10 预算配置；缺省不启用预算轴。 */
   budget?: BudgetConfig;
   /** 压缩摘要器；缺省 P0 内置截断摘要。 */
@@ -127,6 +136,8 @@ export interface ChildAssembly {
   handleApprove(requestId: string, action: "allow" | "deny", reason?: string): Promise<void>;
   /** 协议 revert 请求的处理（E4 对话态；越界错误上抛）。 */
   handleRevert(targetSeq: number): void;
+  /** E11 代码检查点服务（checkpointRepoRoot 提供时存在；kick 前打点 + restoreCodeTo）。 */
+  checkpoint?: GitCheckpointService;
   /** 工具注册的面（PathGuard 由装配定形，注册处必收）。 */
   pathGuard: PathGuard;
   /** 释放未决审批（dispose 路径：按超时语义拒绝，不悬挂）。 */
@@ -298,6 +309,14 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
   };
 
   const revertService = new RevertService(store);
+  const checkpoint = options.checkpointRepoRoot
+    ? new GitCheckpointService({
+        sessionId,
+        store,
+        runGit: createGitRunner(options.checkpointRepoRoot),
+        onWarn: (message) => logger?.warn(message),
+      })
+    : undefined;
 
   const toolGateLayer = createToolGateLayer({
     chain: policyChain,
@@ -344,6 +363,7 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
     handleRevert: (targetSeq) => {
       revertService.revert(sessionId, targetSeq);
     },
+    ...(checkpoint !== undefined ? { checkpoint } : {}),
     pathGuard,
     dispose: () => {
       pending.dispose();

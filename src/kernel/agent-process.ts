@@ -32,6 +32,7 @@ import type { ApprovalAnnouncement } from "../policy/pending.js";
 import type { ChatRequest, ModelProvider } from "../models/provider.js";
 import type { ModelIdentity } from "../models/identity.js";
 import { InMemoryEventStorage, type EventStorage, SessionStore } from "../session/store.js";
+import { Projector } from "../session/project.js";
 import { createChildAssembly, type ChildAssembly, type ChildAssemblyOptions } from "./assembly.js";
 import { registerBuiltinTools } from "./tools/builtin/index.js";
 import { NodeExecutionEnv } from "./tools/env.js";
@@ -181,8 +182,17 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
       send({ type: "idle" });
       return;
     }
-    inflight = loop
-      .runTurn(next.content)
+    inflight = (async () => {
+      // E11 代码检查点：每轮开始前打点（pi turn_start "before LLM makes
+      // changes" 的等价时点——此刻工作区就是"改前"状态，场景①的恢复依据）。
+      // 打点失败内部消化（onWarn），不阻断轮。
+      if (assembly?.checkpoint) {
+        const turn =
+          Projector.fold(store.load(sessionId)).projection.turnCount + 1;
+        await assembly.checkpoint.capture(turn);
+      }
+      return loop.runTurn(next.content);
+    })()
       .then(() => undefined)
       .catch((e: unknown) => {
         // loop 崩溃（异常逃出 runTurn）：会话可能有未闭合 turn，进程不可继续
@@ -211,8 +221,8 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
         loop.cancel(req.cause as CancelCause);
         return;
       case "revert": {
-        // E4 对话态回退：成功无专用应答——session/revert 事件经事件流可见；
-        // 失败（未装配 / 越界）回 error 行。
+        // E4+E11 双回退：先对话态（校验便宜、失败不产生半退）再代码态。
+        // 成功回 reverted 回执（CLI 据此报告代码是否回退）；失败回 error 行。
         if (!assembly) {
           send({
             type: "error",
@@ -221,15 +231,23 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
           });
           return;
         }
-        try {
-          assembly.handleRevert(req.targetSeq);
-        } catch (e) {
-          send({
-            type: "error",
-            code: "REVERT_FAILED",
-            message: e instanceof Error ? e.message : String(e),
-          });
-        }
+        void (async () => {
+          try {
+            assembly.handleRevert(req.targetSeq);
+            let codeRestored = false;
+            if (assembly.checkpoint) {
+              await assembly.checkpoint.restoreCodeTo(req.targetSeq);
+              codeRestored = true;
+            }
+            send({ type: "reverted", targetSeq: req.targetSeq, codeRestored });
+          } catch (e) {
+            send({
+              type: "error",
+              code: "REVERT_FAILED",
+              message: e instanceof Error ? e.message : String(e),
+            });
+          }
+        })();
         return;
       }
       case "approve": {

@@ -5,7 +5,7 @@
  * 消息形状（stdio JSON 行协议：一行一条 JSON，`\n` 分隔）：
  *   父 → 子  AgentRequest ：prompt / cancel / revert / approve / dispose
  *   子 → 父  AgentMessage ：ready / accepted / event / approval_requested /
- *                           approval_settled / idle / error
+ *                           approval_settled / reverted / idle / error
  *
  * `idle`（T-8-01）：子进程在"无在途轮且队列空"时宣告——CLI 的管道 EOF
  * 语义（"输入完毕，处理完剩余工作再退"）据此等 idle 再 dispose，避免
@@ -58,6 +58,7 @@ export type AgentMessage =
       timeoutMs: number;
     }
   | { type: "approval_settled"; requestId: string; allowed: boolean }
+  | { type: "reverted"; targetSeq: number; codeRestored: boolean }
   | { type: "idle" }
   | { type: "error"; code: string; message: string };
 
@@ -179,6 +180,8 @@ export function decodeMessage(line: string): AgentMessage {
     args?: unknown;
     timeoutMs?: unknown;
     allowed?: unknown;
+    targetSeq?: unknown;
+    codeRestored?: unknown;
   };
   switch (msg.type) {
     case "ready":
@@ -228,6 +231,16 @@ export function decodeMessage(line: string): AgentMessage {
         throw new ProtocolError("PROTOCOL_MALFORMED", "approval_settled 需要 allowed 布尔");
       }
       return { type: "approval_settled", requestId: msg.requestId, allowed: msg.allowed };
+    }
+    case "reverted": {
+      // revert 完成回执（E11：对话态 + 代码态双回退后发出；失败走 error 行）
+      if (typeof msg.targetSeq !== "number" || !Number.isInteger(msg.targetSeq) || msg.targetSeq < 0) {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "reverted 需要非负整数 targetSeq");
+      }
+      if (typeof msg.codeRestored !== "boolean") {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "reverted 需要 codeRestored 布尔");
+      }
+      return { type: "reverted", targetSeq: msg.targetSeq, codeRestored: msg.codeRestored };
     }
     case "error":
       if (typeof msg.code !== "string" || typeof msg.message !== "string") {

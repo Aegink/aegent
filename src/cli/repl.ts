@@ -150,6 +150,13 @@ export async function runCli(options: RunCliOptions): Promise<void> {
         case "approval_settled":
           out(msg.allowed ? `✔ 审批已放行 ${msg.requestId}` : `✘ 审批已拒绝 ${msg.requestId}`);
           break;
+        case "reverted":
+          out(
+            msg.codeRestored
+              ? `◆ 会话与代码已回退到 seq=${msg.targetSeq}`
+              : `◆ 会话回退 → seq=${msg.targetSeq}（本会话无代码检查点，仅对话态）`,
+          );
+          break;
         case "error":
           out(`! [${msg.code}] ${oneLine(msg.message)}`);
           break;
