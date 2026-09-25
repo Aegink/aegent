@@ -42,7 +42,16 @@ export type AgentRequest =
   | { type: "prompt"; messageId: string; content: string }
   | { type: "cancel"; cause: CancelCause }
   | { type: "revert"; targetSeq: number }
-  | { type: "approve"; requestId: string; action: "allow" | "deny"; reason?: string }
+  | {
+      type: "approve";
+      requestId: string;
+      action: "allow" | "deny";
+      reason?: string;
+      /** C24：批准作用域——session 由子进程答复路径落会话批准缓存。 */
+      scope?: "once" | "session";
+      /** C24：审批反馈，落 L2 审计记录。 */
+      feedback?: string;
+    }
   | { type: "dispose" };
 
 /** 子 → 父。 */
@@ -104,6 +113,8 @@ export function decodeRequest(line: string): AgentRequest {
     requestId?: unknown;
     action?: unknown;
     reason?: unknown;
+    scope?: unknown;
+    feedback?: unknown;
   };
   if (!REQUEST_TYPES.has(req.type)) {
     throw new ProtocolError("PROTOCOL_UNKNOWN_REQUEST", `未知请求类型 ${req.type}`);
@@ -148,11 +159,19 @@ export function decodeRequest(line: string): AgentRequest {
     if (req.reason !== undefined && typeof req.reason !== "string") {
       throw new ProtocolError("PROTOCOL_MALFORMED", "approve 的 reason 必须是字符串");
     }
+    if (req.scope !== undefined && req.scope !== "once" && req.scope !== "session") {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "approve 的 scope 只能是 once 或 session");
+    }
+    if (req.feedback !== undefined && typeof req.feedback !== "string") {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "approve 的 feedback 必须是字符串");
+    }
     return {
       type: "approve",
       requestId: req.requestId,
       action: req.action,
       ...(typeof req.reason === "string" ? { reason: req.reason } : {}),
+      ...(req.scope !== undefined ? { scope: req.scope } : {}),
+      ...(typeof req.feedback === "string" ? { feedback: req.feedback } : {}),
     };
   }
   return { type: "dispose" };

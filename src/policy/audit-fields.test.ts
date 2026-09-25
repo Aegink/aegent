@@ -84,6 +84,24 @@ describe("验收 · 一次完整审批流后可检索到 {surface:\"cli\", appro
       requestId: "call-t",
     });
   });
+
+  it("C24 feedback：答复带 feedback 时落 settled 审计记录（T-P1-02）", async () => {
+    const { pending, records } = makeAuditedPending();
+    const askPromise = pending.ask(
+      { id: "call-f", sessionId: "s1", tool: "bash", args: { command: "ls" } },
+      { timeoutMs: 5_000 },
+    );
+    await pending.reply("call-f", {
+      action: "allow",
+      reason: "可以",
+      feedback: "下次直接用 git status",
+    });
+    await askPromise;
+    expect(records.find((r) => r.phase === "settled")).toMatchObject({
+      requestId: "call-f",
+      feedback: "下次直接用 git status",
+    });
+  });
 });
 
 describe("L2 · T-5-15 通道接入（owner 回复走同一审计面）", () => {

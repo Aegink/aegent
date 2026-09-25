@@ -105,22 +105,40 @@ export async function runCli(options: RunCliOptions): Promise<void> {
       return;
     }
     if (name === "/approve") {
-      const requestId = rest[0];
-      const action = rest[1];
+      // C24：--session 记入会话批准缓存（同会话同规则免再问）、--feedback
+      // 落审计。标志剥离后再按位置参数解析，避免与理由文本混淆。
+      const tokens = [...rest];
+      let scope: "once" | "session" | undefined;
+      let feedback: string | undefined;
+      const feedbackIdx = tokens.indexOf("--feedback");
+      if (feedbackIdx >= 0) {
+        const text = tokens[feedbackIdx + 1];
+        tokens.splice(feedbackIdx, text === undefined ? 1 : 2);
+        if (text !== undefined) feedback = text;
+      }
+      const sessionIdx = tokens.indexOf("--session");
+      if (sessionIdx >= 0) {
+        tokens.splice(sessionIdx, 1);
+        scope = "session";
+      }
+      const requestId = tokens[0];
+      const action = tokens[1];
       if (!requestId || (action !== "allow" && action !== "deny")) {
-        out("用法：/approve <requestId> allow|deny [理由]");
+        out("用法：/approve <requestId> allow|deny [理由] [--session] [--feedback 文本]");
         return;
       }
-      const reason = rest.slice(2).join(" ");
+      const reason = tokens.slice(2).join(" ");
       connection.send({
         type: "approve",
         requestId,
         action,
         ...(reason !== "" ? { reason } : {}),
+        ...(scope !== undefined ? { scope } : {}),
+        ...(feedback !== undefined ? { feedback } : {}),
       });
       return;
     }
-    out(`未知命令 ${String(name)}。可用：/revert <seq> /cancel /approve <id> allow|deny [理由] /exit`);
+    out(`未知命令 ${String(name)}。可用：/revert <seq> /cancel /approve <id> allow|deny [理由] [--session] [--feedback 文本] /exit`);
   };
 
   // idle 观测（对象属性承载——TS 不跨闭包窄化可变捕获）
@@ -145,7 +163,7 @@ export async function runCli(options: RunCliOptions): Promise<void> {
         }
         case "approval_requested":
           out(`⏸ 待审批 [${msg.requestId}] ${msg.tool} ${oneLine(JSON.stringify(msg.args), 120)}`);
-          out(`  /approve ${msg.requestId} allow|deny [理由]（${Math.round(msg.timeoutMs / 1000)}s 内答复，超时按拒绝结算）`);
+          out(`  /approve ${msg.requestId} allow|deny [理由] [--session] [--feedback 文本]（${Math.round(msg.timeoutMs / 1000)}s 内答复，超时按拒绝结算；--session 记住本会话）`);
           break;
         case "approval_settled":
           out(msg.allowed ? `✔ 审批已放行 ${msg.requestId}` : `✘ 审批已拒绝 ${msg.requestId}`);

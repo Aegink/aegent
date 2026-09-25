@@ -202,6 +202,92 @@ describe("aegent CLI（T-8-01）", () => {
     expect(await readFile(target, "utf8")).toBe("你好，场景①");
   });
 
+  it("T-P1-02 C22/C24：/approve --session 后同会话同规则免再问（bash 同命令第二轮直过）", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-scope-"));
+    const command = "echo scope-cache-演示";
+    const toolCall = (id: string) => [
+      {
+        type: "tool-call-delta",
+        id,
+        name: "bash",
+        argsDelta: JSON.stringify({ command }),
+      },
+      { type: "done" },
+    ] as StreamChunk[];
+    const provider = scriptedProvider([
+      toolCall("call_1"),
+      [
+        { type: "text-delta", text: "第一轮完成" },
+        { type: "usage", usage: { inputTokens: 100, outputTokens: 20 } },
+        { type: "done" },
+      ],
+      toolCall("call_2"),
+      [
+        { type: "text-delta", text: "第二轮免问" },
+        { type: "usage", usage: { inputTokens: 100, outputTokens: 20 } },
+        { type: "done" },
+      ],
+    ]);
+    const lines = await runScriptedSession(
+      { provider, assembly: { workspaceRoot: workspace, contextWindow: 200_000, approvalTimeoutMs: 5_000 } },
+      async function* ({ waitFor }) {
+        yield "跑一下命令";
+        await waitFor((line) => line.includes("⏸ 待审批 [call_1]"));
+        yield "/approve call_1 allow --session";
+        await waitFor((line) => line.includes("── turn 1 结束"));
+        yield "再跑一次同样的命令";
+        // 轮 2：同会话同规则（bash 同命令原文 → 引擎提案同 raw）→ 缓存命中免问
+        await waitFor((line) => line.includes("── turn 2 结束"));
+      },
+    );
+    expect(lines.some((l) => l.includes("⏸ 待审批 [call_1]"))).toBe(true);
+    expect(lines.some((l) => l.includes("⏸ 待审批 [call_2]"))).toBe(false);
+    expect(lines.filter((l) => l.includes("✔ 审批已放行"))).toHaveLength(1);
+  });
+
+  it("T-P1-02 对照：不带 --session 的批准是 once——同命令第二轮再次询问", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-once-"));
+    const command = "echo once-演示";
+    const toolCall = (id: string) => [
+      {
+        type: "tool-call-delta",
+        id,
+        name: "bash",
+        argsDelta: JSON.stringify({ command }),
+      },
+      { type: "done" },
+    ] as StreamChunk[];
+    const provider = scriptedProvider([
+      toolCall("call_1"),
+      [
+        { type: "text-delta", text: "一轮" },
+        { type: "usage", usage: { inputTokens: 100, outputTokens: 20 } },
+        { type: "done" },
+      ],
+      toolCall("call_2"),
+      [
+        { type: "text-delta", text: "二轮" },
+        { type: "usage", usage: { inputTokens: 100, outputTokens: 20 } },
+        { type: "done" },
+      ],
+    ]);
+    const lines = await runScriptedSession(
+      { provider, assembly: { workspaceRoot: workspace, contextWindow: 200_000, approvalTimeoutMs: 5_000 } },
+      async function* ({ waitFor }) {
+        yield "跑一下命令";
+        await waitFor((line) => line.includes("⏸ 待审批 [call_1]"));
+        yield "/approve call_1 allow";
+        await waitFor((line) => line.includes("── turn 1 结束"));
+        yield "再跑一次";
+        await waitFor((line) => line.includes("⏸ 待审批 [call_2]"));
+        yield "/approve call_2 deny 理由不变";
+        await waitFor((line) => line.includes("── turn 2 结束"));
+      },
+    );
+    expect(lines.some((l) => l.includes("⏸ 待审批 [call_1]"))).toBe(true);
+    expect(lines.some((l) => l.includes("⏸ 待审批 [call_2]"))).toBe(true);
+  });
+
   it("/revert 对话态回退（session/revert 事件经协议转发）", async () => {
     const lines = await runScriptedSession(
       {

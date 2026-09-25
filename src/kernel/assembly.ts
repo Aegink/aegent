@@ -66,6 +66,11 @@ import { createRuleSetModule } from "../policy/rules.js";
 import { type RuleSource, loadRules, loadedRuleMatch, loadedRuleText } from "../policy/rule-loader.js";
 import { builtinRuleMatchers } from "../policy/matchers.js";
 import { createShellSemanticsModule } from "../policy/shell-semantics.js";
+import {
+  ApprovalScopeCache,
+  createSessionApprovalModule,
+  proposeAmendment,
+} from "../policy/review-decision.js";
 import { createToolGateLayer } from "../policy/gate.js";
 import { createApprovalAuditSink } from "../policy/audit-fields.js";
 import { PathGuard } from "../sandbox/path-guard.js";
@@ -132,8 +137,14 @@ export interface ChildAssembly {
   onToolStepCompleted(turn: number, step: number): void;
   /** 决策包装（预算记账 + 提醒注入；决策语义仍由 base 给出）。 */
   wrapDecideTurn(base: DecideTurn): DecideTurn;
-  /** 协议 approve 请求的处理（C5 挂起唤醒；Stale/Unknown 类型化错误上抛）。 */
-  handleApprove(requestId: string, action: "allow" | "deny", reason?: string): Promise<void>;
+  /** 协议 approve 请求的处理（C5 挂起唤醒 + C24 scope/feedback：session 作用域落批准缓存、feedback 落审计；Stale/Unknown 类型化错误上抛）。 */
+  handleApprove(
+    requestId: string,
+    action: "allow" | "deny",
+    reason?: string,
+    scope?: "once" | "session",
+    feedback?: string,
+  ): Promise<void>;
   /** 协议 revert 请求的处理（E4 对话态；越界错误上抛）。 */
   handleRevert(targetSeq: number): void;
   /** E11 代码检查点服务（checkpointRepoRoot 提供时存在；kick 前打点 + restoreCodeTo）。 */
@@ -166,7 +177,11 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
   });
   const broker = new ManualPermissionBroker(pending, options.approvalTimeoutMs);
 
-  // —— 权限链（C58 层序常量展开）：用户规则集 > 核心（shell 语义分析）
+  // —— 权限链（C58 层序常量展开）：用户规则集 > 核心（会话批准历史 +
+  // shell 语义分析）。C22：session-runtime 作用域的批准规则由
+  // ApprovalScopeCache 承载（进程内存、随会话灭，结构上不落配置文件），
+  // 链上经 createSessionApprovalModule 在后续同规则调用免问（T-P1-02）。
+  const approvalCache = new ApprovalScopeCache(sessionId);
   const loadedRules = loadRules(options.rules ?? [], builtinRuleMatchers);
   const policyChain = assemblePolicyChain({
     ...(loadedRules.length > 0
@@ -181,7 +196,14 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
           ],
         }
       : {}),
-    core: [createShellSemanticsModule()],
+    core: [
+      createSessionApprovalModule({
+        cache: approvalCache,
+        sessionId,
+        matchers: builtinRuleMatchers,
+      }),
+      createShellSemanticsModule(),
+    ],
   });
 
   // —— 压缩 / 压力 / 抖动（阶段 7 模块接线）
@@ -354,11 +376,27 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
       guard.recordCompletedToolStep();
     },
     wrapDecideTurn,
-    handleApprove: async (requestId, action, reason) => {
+    handleApprove: async (requestId, action, reason, scope, feedback) => {
+      // C22/C24：scope=session 的批准在答复成功后落会话批准缓存——提案
+      // 由引擎从挂起请求的 tool/args 计算（C48），缓存进程内、随会话灭。
+      const request = pending
+        .listPending()
+        .find((r) => r.id === requestId);
       await pending.reply(requestId, {
         action,
         ...(reason !== undefined ? { reason } : {}),
+        ...(scope !== undefined ? { scope } : {}),
+        ...(feedback !== undefined ? { feedback } : {}),
       });
+      if (action === "allow" && scope === "session" && request !== undefined) {
+        const proposal = proposeAmendment(
+          { tool: request.tool, args: request.args, sessionId, source: "model" },
+          builtinRuleMatchers,
+        );
+        if (proposal !== undefined) {
+          approvalCache.record(sessionId, proposal.raw, "session");
+        }
+      }
     },
     handleRevert: (targetSeq) => {
       revertService.revert(sessionId, targetSeq);

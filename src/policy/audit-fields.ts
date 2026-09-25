@@ -41,6 +41,8 @@ export interface ApprovalAuditRecord {
   /** 审批人（L2 必填）：asked 阶段同样必填，取值 "user" 表示等人的审批面。 */
   readonly approver: ApprovalApprover;
   readonly at: number;
+  /** C24 审批反馈：答复人可选填写，settled 且有 feedback 时存在。 */
+  readonly feedback?: string;
 }
 
 /** 唯一构造入口：surface/approver 缺一不可（缺字段构造即类型报错——L2）。 */
@@ -51,6 +53,7 @@ export function approvalAuditRecord(fields: {
   readonly surface: ApprovalSurface;
   readonly approver: ApprovalApprover;
   readonly at: number;
+  readonly feedback?: string;
 }): ApprovalAuditRecord {
   return { kind: "approval", ...fields };
 }
@@ -102,6 +105,9 @@ export function createApprovalAuditSink(
             surface,
             approver: "user",
             at,
+            ...(announcement.feedback !== undefined
+              ? { feedback: announcement.feedback }
+              : {}),
           }),
         );
         return;

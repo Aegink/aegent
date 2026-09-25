@@ -261,15 +261,21 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
           });
           return;
         }
-        assembly.handleApprove(req.requestId, req.action, req.reason).catch(
-          (e: unknown) => {
+        assembly
+          .handleApprove(
+            req.requestId,
+            req.action,
+            req.reason,
+            req.scope,
+            req.feedback,
+          )
+          .catch((e: unknown) => {
             send({
               type: "error",
               code: e instanceof Error && "code" in e ? String((e as { code: unknown }).code) : "APPROVE_FAILED",
               message: e instanceof Error ? e.message : String(e),
             });
-          },
-        );
+          });
         return;
       }
       case "dispose":

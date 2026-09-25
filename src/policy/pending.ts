@@ -30,16 +30,24 @@ export interface ApprovalRequest {
   readonly args: JsonRecord;
 }
 
-/** 审批人的答复。人已经答了，allow/deny 之外没有第三种合法答复。 */
+/**
+ * 审批人的答复。人已经答了，allow/deny 之外没有第三种合法答复。
+ * C24 扩展（T-P1-02）：批准可带作用域（scope=session 由答复路径落
+ * ApprovalScopeCache，同会话同规则免再问）与 feedback（落 L2 审计）；
+ * deny 无物可记，scope 无意义。
+ */
 export interface ApprovalReply {
   readonly action: "allow" | "deny";
   readonly reason?: string;
+  readonly scope?: "once" | "session";
+  readonly feedback?: string;
 }
 
-/** C31 主动宣告：三类事实，凡能显示审批的界面都应消费。 */
+/** C31 主动宣告：三类事实，凡能显示审批的界面都应消费。settled 的
+ * feedback 是 C24 审批反馈的透传（答复人可选填写，审计面消费）。 */
 export type ApprovalAnnouncement =
   | { kind: "asked"; request: ApprovalRequest; timeoutMs: number }
-  | { kind: "settled"; id: string; verdict: Verdict; tool: string }
+  | { kind: "settled"; id: string; verdict: Verdict; tool: string; feedback?: string }
   | { kind: "timed-out"; id: string; timeoutMs: number; tool: string };
 
 // ---------------------------------------------------------------------------
@@ -183,7 +191,13 @@ export class PendingApprovals {
       reply.action === "allow"
         ? { action: "allow", reason: reply.reason ?? "审批人放行" }
         : { action: "deny", reason: reply.reason ?? "审批人拒绝" };
-    this.announce?.({ kind: "settled", id, verdict, tool: entry.request.tool });
+    this.announce?.({
+      kind: "settled",
+      id,
+      verdict,
+      tool: entry.request.tool,
+      ...(reply.feedback !== undefined ? { feedback: reply.feedback } : {}),
+    });
     entry.settle(verdict);
   }
 
