@@ -708,7 +708,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①**模板内容按我方语义重写，不摘 codex 原文**：codex 的 sandbox_permissions/prefix_rule/escalation 机制在我方不存在（审批走 C5/broker），照抄会向模型描述不存在的能力；保留的形态 = 档位文件独立目录 + 分段说明 + 行为纪律，分段说明对齐 T-5-14 B 档实际行为（| && || ; 换行切段、重定向单独走路径边界、cd 后相对路径拒绝）。②两档 = `on_request`（Manual 审批在位）与 `never`（审批不可用/缺省 Deny broker）——对应 T-5-10 broker 的两个真实形态，不预写 P1 的 unless_trusted 等档位。③占位符只一个：`{{WRITABLE_ROOTS}}`（T-6-01 守卫的可写范围），渲染输入经 PathGuard.describeWritableRoots()（本卡给 path-guard.ts 加的唯一方法）——T-7-05 装配即"基础提示 + renderPermissionsPrompt(档位, {writableRoots})"。④copy-assets.mjs 泛化为资产清单（描述 txt + 模板 md 两项）——不泛化则模板 md 是下一个"T-4-01 dist 风险实爆"。
 - **完成记录**：2026-09-25。产出 `src/sandbox/templates/permissions/approval_policy/{on_request,never}.md` + `src/sandbox/templates.ts`（APPROVAL_PROMPT_TIERS 闭集 + renderPermissionsPrompt 占位符全量替换）+ `path-guard.ts` 增 describeWritableRoots + `scripts/copy-assets.mjs` 泛化 + `templates.test.ts` 5 用例。验收：`npx vitest run src/sandbox/templates.test.ts` → **5 passed**（两档在位非空；on_request 含"独立命令段/|/&&/;与换行/重定向"分段说明与拒绝后纪律，占位符替换后无 "{{" 残留；never 含"审批通道不可用/被直接拒绝"且与 on_request 互异；未知档位即抛；describeWritableRoots→渲染联测含真实目录）。`npm run build` 实测模板 md 进 dist（4 项）；全量 `npx vitest run` **361 passed / 1 skipped**，`npx tsc --noEmit` 干净。
 
-#### T-6-03 · D3 · 网络策略独立于进程策略 `[ ]`
+#### T-6-03 · D3 · 网络策略独立于进程策略 `[x]`
 - **依据需求**：D3（P0）
 - **上游首选参考**：[codex·cli/src/doctor/network.rs](../oss/codex/codex-rs/cli/src/doctor/network.rs)（网络检查单列成档——DoctorCheck 体系里网络是独立维度）
 - **取什么 / 别抄什么**：取"网络是独立一档"：`NetworkPolicy = allow|deny` 独立于沙箱档位；**P0 弱承诺显式写进产出**（只拦工具层 fetch，不承诺管住任意子进程——Q17 纪律）
@@ -717,8 +717,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/sandbox/network.test.ts`——deny 档下工具内 fetch 被拦且错误码正确；allow 档放行（对 localhost）；产出物 README 含弱承诺声明
 - **依赖**：T-4-05
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①guardedFetch 落为 `createNetworkGuard({policy, fetchImpl?}) → {policy, fetch}`——fetch 与全局同形状（drop-in 注入给期望 fetch 的工具），fetchImpl 可注入（测试/替代实现）。②README 落 `src/sandbox/README.md`（弱承诺声明置顶加粗，即人工确认清单 D3 行的核对对象）；接线纪律写明：网络类工具（P1 B8）必须经 guard.fetch、不得用全局 fetch；**模型接入层（src/models/）不走本守卫**——J 层是内核自身流量，禁网档不断模型连接（"工具层 fetch"的字面语义）。③P0 无网络类工具，本卡只落策略与入口形状，ToolContext 接线等第一个网络工具出现时随其定形（YAGNI，与 T-4-05 的 policy/emit 字段同一逻辑）。④Node 类型面无 RequestInfo 全局名，首参类型用 `Request | URL | string` 结构联合。
+- **完成记录**：2026-09-25。产出 `src/sandbox/network.ts`（NetworkPolicy allow|deny + createNetworkGuard + NetworkDeniedError{code:NETWORK_DENIED, url}）+ `src/sandbox/README.md`（弱承诺置顶：只拦工具层 fetch，不承诺管住子进程/provider 流量/其他入口）+ `network.test.ts` 5 用例。验收：`npx vitest run src/sandbox/network.test.ts` → **5 passed**；①deny 档字符串/URL/Request 三种输入全拒、报错含目标 URL 与政策名、fetchImpl 零调用（被拒请求不发生）；②allow 档对 HttpMock localhost 真端口放行（200/pong）且 init 原样透传；③deny 网络 × PathGuard 允许写组合——写边界不受网络档影响（独立一档的行为表达）；④README 弱承诺声明四要点机验在位。全量 `npx vitest run` **366 passed / 1 skipped**，`npx tsc --noEmit` 干净。
 
 #### T-6-04 · D8 · API Key 用 DPAPI 加密 `[ ]`
 - **依据需求**：D8（P0）
