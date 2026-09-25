@@ -304,8 +304,15 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
       });
     }
   });
-  await closed;
-  // stdin 关闭：视作 dispose（父进程先行离场时不留悬挂轮）
+  // 父进程意外离场（stdout 断开 → EPIPE）：不崩——无监听器时该错误会直接
+  // 杀死子进程，turn 的 write-behind buffer 随之丢失。走与 stdin 关闭相同的
+  // 优雅收尾：cancel 在途轮、等轮收尾（turn 末 flush 落库）再退出。
+  // J2 实测踩中：父进程被 head 截断后子进程崩溃，事件 buffer 全丢。
+  const outputBroken = new Promise<void>((resolve) => {
+    output.on("error", () => resolve());
+  });
+  await Promise.race([closed, outputBroken]);
+  // stdin 关闭或输出断开：视作 dispose（父进程先行离场时不留悬挂轮）
   if (!disposing) {
     disposing = true;
     loop.cancel({ kind: "disposed" });

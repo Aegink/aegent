@@ -122,11 +122,19 @@
 
 | 需求ID | 为什么不能机验 | 人工要怎么确认 |
 | --- | --- | --- |
-| J2（部分） | 真实厂商连通性需要 API key；单测只覆盖 mock 流 | 用户提供一个真实端点跑一次会话，确认流式与 usage 正常。**openai 装配已就位**（T-8-01）：`node dist/src/cli/index.js --provider openai --db <库>` + 环境变量 AEGENT_API_KEY / AEGENT_BASE_URL / AEGENT_MODEL |
+| J2（部分） | ~~真实厂商连通性需要 API key~~ **已实测（2026-09-25，用户提供 OpenAI 兼容端点，deepseek-v4.1-flash）**：流式 192 块（reasoning-delta/text-delta/usage/done）、usage 落库（input 2196/output 191/total 2387/reasoningTokens 175）、L3 视图可查；真实模型 tool_call 流式分片拼接正确（arguments 完整 JSON）、审批挂起→超时→isError 回喂→模型自适应重试→诚实收尾，27 事件配平落库。系统提示生效（模型自称 aegent）。**剩：不同厂商 wire 差异的多端点复测**（同一端点已闭环） | 其他厂商端点可复跑同款命令：`node dist/src/cli/index.js --smoke --provider openai --db <库> --workspace <git 仓>` + 环境变量 AEGENT_API_KEY / AEGENT_BASE_URL / AEGENT_MODEL |
 | T9 冷启动 | 「<500ms」依赖本机负载 | T-8-05 终验收已实测两形态：echo 模式 median 283.3ms、SQLite 模式 median 273ms，达标收口（T-3-06 基线 109.6ms 的上浮源于子进程装配扩容，见 T-8-05 偏离①） |
 | D3 弱承诺 | 「网络策略只管工具层」是声明不是代码属性 | 读 T-6-03 产出的 README 声明是否醒目 |
 | T-6-01 符号链接逃逸 | 本机无创建符号链接特权（Windows 需开发者模式），逃逸用例自动跳过（LIMITATIONS #1） | 有特权环境跑 `npx vitest run src/sandbox/path-guard.test.ts` 应 22 全过（终验收实测 21 passed + 1 skipped）；realpath 归一逻辑已有"最近存在祖先"路径的确定性用例覆盖 |
 | §6.2 常驻内存 | 任务管理器观察（需求原文如此） | 用户空闲时目测 <150MB；**T-8-05 附 node 辅测**：agent-child 空闲 WorkingSet64 实测 47.1MB，余量充足 |
+
+### J2 实测记录（2026-09-25，真实 OpenAI 兼容端点）
+
+- **端点**：用户提供的第三方网关（deepseek-v4.1-flash，reasoning 模型；地址/key 不落盘，见会话记录）。
+- **会话一（纯对话）**：CLI 真进程 `--provider openai --db` → 模型回复正确且自称 aegent（**系统提示装配生效**）；流 192 块全类型到达；usage 落库含 reasoningTokens（适配层 toTokenUsage 映射 `delta.reasoning` 变体实测有效——T-2-02 预判的两个变体之一）；L3 视图按会话分列可查。
+- **会话二（工具调用）**：模型自发产 write 调用 → **流式分片拼接正确**（arguments 完整 JSON，T-2-02 风险栏的"真实厂商 index 对齐"实测闭环）→ 无规则 ask → 审批挂起 → 12s 超时 isError 回喂 → 模型自适应改试 bash/read → 连续被拦 → **诚实收尾**报告失败。27 事件 seq 连续、三对 call/result 配平、turn/end{completed}。
+- **实测发现并修复一个真实缺陷（commit 本次）**：父进程意外死亡（如输出被 head 截断）→ 子进程往断开的 stdout 写 → 无监听器的 EPIPE 直接杀死子进程 → write-behind buffer 丢失（j2tool.db 只剩 schema、0 事件）。修复：agent-process 给 output 挂 error 监听，EPIPE 走与 stdin 关闭相同的优雅收尾（cancel 在途轮 → 等轮收尾 flush 落库 → exit）。
+- **观察（记录不阻塞）**：toChatTools 缺省空 JSON schema（T-4-01 既定形状）下真实模型会猜参数名（read 传了 `{file_text}` 而非 `{path}`，description txt 里有说明但模型未遵循）——P1 给真实厂商装配带上参数 schema 可解。
 
 ## 阻塞
 
