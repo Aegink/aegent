@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { CHAIN_POINTS, composeChain, type ChainNext } from "./chain.js";
+import {
+  CHAIN_POINTS,
+  composeChain,
+  namedLayer,
+  type ChainNext,
+} from "./chain.js";
 
 describe("composeChain —— I12 洋葱链骨架", () => {
   it("验收①：两层时执行序 = 前1 → 前2 → 链底 → 后2 → 后1", async () => {
@@ -68,7 +73,7 @@ describe("composeChain —— I12 洋葱链骨架", () => {
     expect(outcome).toEqual({ truncated: true, value: "denied" });
   });
 
-  it("验收③：预算/trace 槽位存在（P0 只留字段，恒为空值）", async () => {
+  it("槽位零行为变化：不配 budgetMs 时 budget 恒空槽（P0 回归）", async () => {
     const seen: ChainNext<string, string>[] = [];
     const executor = composeChain<undefined, string, string>({
       point: "toolCall",
@@ -88,9 +93,130 @@ describe("composeChain —— I12 洋葱链骨架", () => {
     expect(seen).toHaveLength(2);
     for (const next of seen) {
       expect(next.point).toBe("toolCall");
-      expect(next.trace).toEqual([]);
       expect(next.budget).toEqual({});
     }
+  });
+
+  it("I13 trace：每层看到走过层的序号+名字，完整层序在最内层可见", async () => {
+    const traces: unknown[] = [];
+    const executor = composeChain<undefined, string, string>({
+      point: "toolCall",
+      terminal: async (_$, e) => e,
+      layers: [
+        namedLayer("gate", async (_$, e, next) => {
+          traces.push(["layer0 sees", [...next.trace]]);
+          return next(e);
+        }),
+        namedLayer("hooks", async (_$, e, next) => {
+          traces.push(["layer1 sees", [...next.trace]]);
+          return next(e);
+        }),
+        async (_$, e, next) => {
+          // 未命名层缺省 layer#<index>
+          traces.push(["layer2 sees", [...next.trace]]);
+          return next(e);
+        },
+      ],
+    });
+    await executor.run(undefined, "p");
+    expect(traces).toEqual([
+      ["layer0 sees", []],
+      ["layer1 sees", [{ layer: 0, name: "gate" }]],
+      [
+        "layer2 sees",
+        [
+          { layer: 0, name: "gate" },
+          { layer: 1, name: "hooks" },
+        ],
+      ],
+    ]);
+  });
+
+  it("I13 trace：截断层之后的层不入轨迹（trace 反映实际走过的层）", async () => {
+    let layer1Trace: unknown;
+    const executor = composeChain<undefined, string, string>({
+      point: "toolCall",
+      terminal: async () => "terminal",
+      layers: [
+        namedLayer("gate", (_$, e, next) => next(e)),
+        namedLayer("deny", () => "denied"),
+        async (_$, e, next) => {
+          layer1Trace = "reachable";
+          return next(e);
+        },
+      ],
+    });
+    const outcome = await executor.run(undefined, "p");
+    expect(outcome).toEqual({ truncated: true, value: "denied" });
+    expect(layer1Trace).toBeUndefined();
+  });
+
+  it("I13 budget：remaining 随注入时钟衰减，内层看到的不大于外层", async () => {
+    let clock = 1_000;
+    const now = () => clock;
+    const seen: number[] = [];
+    const executor = composeChain<undefined, string, string>({
+      point: "modelRequest",
+      terminal: async (_$, e) => e,
+      budgetMs: 500,
+      now,
+      layers: [
+        async (_$, e, next) => {
+          seen.push(next.budget.remaining!);
+          clock += 120;
+          return next(e);
+        },
+        async (_$, e, next) => {
+          seen.push(next.budget.remaining!);
+          return next(e);
+        },
+      ],
+    });
+    await executor.run(undefined, "p");
+    expect(seen).toEqual([500, 380]);
+  });
+
+  it("I13 budget：超支保留真实负值（诊断面，不截到 0）", async () => {
+    let clock = 0;
+    let innerSeen: number | undefined;
+    const executor = composeChain<undefined, string, string>({
+      point: "toolCall",
+      terminal: async (_$, e) => e,
+      budgetMs: 100,
+      now: () => clock,
+      layers: [
+        async (_$, e, next) => {
+          clock = 250;
+          return next(e);
+        },
+        async (_$, e, next) => {
+          innerSeen = next.budget.remaining;
+          return next(e);
+        },
+      ],
+    });
+    await executor.run(undefined, "p");
+    expect(innerSeen).toBe(-150);
+  });
+
+  it("L10：terminal 缺失时链底 next 无人应答抛错并点名事件", async () => {
+    const unanswered = composeChain<undefined, string, string>({
+      point: "toolCall",
+      layers: [async (_$, e, next) => next(e)],
+    });
+    await expect(unanswered.run(undefined, "p")).rejects.toThrow(
+      /无人应答（point=toolCall）/,
+    );
+
+    // 对照：无人应答只发生在到达链底时——截断的链不触达链底，不抛
+    const truncating = composeChain<undefined, string, string>({
+      point: "modelRequest",
+      layers: [() => "blocked"],
+    });
+    await expect(truncating.run(undefined, "p")).resolves.toEqual({
+      truncated: true,
+      value: "blocked",
+    });
   });
 
   it("next(e2) 换载荷：链底收到变换后的载荷（modelRequest 点位的必备语义）", async () => {

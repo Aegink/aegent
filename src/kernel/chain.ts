@@ -23,12 +23,20 @@
  * 测量+落事件）；权限不挂 modelRequest（对象错位）；压缩不挂 modelRequest
  * （与上下文装配互踩）。另开点位 = 改设计，走待澄清。
  *
- * ── P1/P2 槽位（词汇表同款"留槽的自觉"）──
- *   I13  next.trace / next.budget —— P0 字段存在、恒为空值、从不写入。
+ * ── P1/P2 槽位 ──
+ *   I13  next.trace / next.budget —— T-P1-07 已填实：trace 记录走过层的
+ *        序号+名字（层名经 namedLayer 附加，未命名层记 layer#<index>）；
+ *        budget 按墙钟时间衰减（composeChain 传 budgetMs 才启用，缺省恒空
+ *        槽 = 零行为变化），时钟注入（T-2-03 纪律）可测。
  *   I14  next.to(e, tier) 跨层跳 —— P2，不预留 API 形状。
  *   signal —— claude-official 把 AbortSignal 挂在 next 上；T-3-04 已定：我方
  *   取消是 loop 内的协作式置槽检查（promise 风格，见 loop.ts cancel()），
  *   P0 不需要 next.signal 槽。
+ *
+ * ── L10：链底无人应答 ──
+ * mods 的链底规则"a call they leave unanswered throws, naming its event"在我
+ * 方的落点：terminal 缺省时到达链底的 next 调用抛错并点名点位事件——
+ * composeChain 不传 terminal 即启用（P0 三链都传，零行为变化）。
  */
 
 // ---------------------------------------------------------------------------
@@ -40,18 +48,24 @@ export const CHAIN_POINTS = ["toolCall", "modelRequest", "turnEnd"] as const;
 
 export type ChainPoint = (typeof CHAIN_POINTS)[number];
 
-/** I13（P1）填充：分派轨迹条目。P0 只保证数组存在且为空。 */
+/** I13（P1 已填实）：分派轨迹条目——层调 next 时本层入列。 */
 export interface ChainTraceEntry {
   /** 走过的层序号（0 起，外层在前）。 */
   layer: number;
+  /** 层名（namedLayer 附加；未命名层 = `layer#<index>`）。 */
+  name: string;
 }
 
-/** I13（P1）槽位：本次分派的轨迹。P0 恒为空数组。 */
+/** I13（P1 已填实）：本次分派的轨迹——层看到的 = 在它之前走过的层（不含自己）。 */
 export type ChainTrace = readonly ChainTraceEntry[];
 
-/** I13（P1）槽位：单层预算。P0 字段存在、不消费。 */
+/**
+ * I13（P1 已填实）槽位：单层预算。composeChain 传 budgetMs 时启用——
+ * remaining = 预算减去本次分派已耗墙钟毫秒（进入本层时点计，负值 = 已超支，
+ * 保留真实值供诊断）；缺省恒为空槽 `{}`（零行为变化）。
+ */
 export interface ChainBudget {
-  /** 剩余额度（单位由 P1 填充方定：毫秒或 token）。 */
+  /** 剩余额度（毫秒；负值 = 已超支）。 */
   readonly remaining?: number;
 }
 
@@ -102,29 +116,73 @@ export interface ChainExecutor<C, E, R> {
 }
 
 /**
+ * I13：给层附加名字（trace 记录层名用）。直接在层函数上定义只读属性——
+ * 层通常单点构造、单处命名；重复命名以最后一次为准（configurable 允许）。
+ */
+export function namedLayer<C, E, R>(
+  name: string,
+  layer: ChainLayer<C, E, R>,
+): ChainLayer<C, E, R> {
+  Object.defineProperty(layer, "chainLayerName", {
+    value: name,
+    configurable: true,
+  });
+  return layer;
+}
+
+function layerNameOf(layer: unknown, index: number): string {
+  const named = (layer as { chainLayerName?: string }).chainLayerName;
+  return named ?? `layer#${String(index)}`;
+}
+
+/**
  * 组装洋葱链。每层拿到的 next 只暴露纯 R 值——截断标记在层间不可见
  * （层看到的世界与"内层正常执行完"无异），只在 run 的结果里浮出。
+ *
+ * terminal 缺省（L10）= 到达链底的 next 调用抛错并点名点位事件；P0 三链
+ * 都传 terminal，缺省仅服务于"纯 hook 链"形态（链底无人应答必须大声失败，
+ * 不能静默）。
  */
 export function composeChain<C, E, R>(options: {
   point: ChainPoint;
-  terminal: ChainTerminal<C, E, R>;
+  terminal?: ChainTerminal<C, E, R>;
   layers: ReadonlyArray<ChainLayer<C, E, R>>;
+  /** I13：本次分派的时间预算（毫秒）；缺省 = budget 恒空槽（零行为变化）。 */
+  budgetMs?: number;
+  /** 时钟注入（T-2-03 纪律：可测性优于读全局钟）；缺省 Date.now。 */
+  now?: () => number;
 }): ChainExecutor<C, E, R> {
   const { point, terminal, layers } = options;
+  const nowFn = options.now ?? Date.now;
 
   const dispatch = async (
     index: number,
     $: C,
     e: E,
+    walked: ChainTraceEntry[],
+    startedAt: number,
   ): Promise<ChainOutcome<R>> => {
     const layer = layers[index];
     if (layer === undefined) {
+      if (terminal === undefined) {
+        // L10：链底无人应答——错误点名事件（mods 同名语义）。
+        throw new Error(
+          `洋葱链底无人应答（point=${point}）——terminal 缺失时到达链底的 ` +
+            "next 调用即无人应答，大声失败不静默",
+        );
+      }
       return { truncated: false, value: await terminal($, e) };
     }
     let nextCalled = false;
     // 内层的截断要向外传播：truncated 的语义是"链底动作没发生"，
     // 与截断发生在哪一层无关（外层透传不算洗白）。
     let innerTruncated = false;
+    const budget: ChainBudget =
+      options.budgetMs === undefined
+        ? Object.freeze({})
+        : Object.freeze({
+            remaining: options.budgetMs - (nowFn() - startedAt),
+          });
     const next: ChainNext<E, R> = Object.assign(
       (e2: E) => {
         if (nextCalled) {
@@ -133,20 +191,30 @@ export function composeChain<C, E, R>(options: {
           );
         }
         nextCalled = true;
-        return dispatch(index + 1, $, e2).then((inner) => {
+        return dispatch(
+          index + 1,
+          $,
+          e2,
+          [...walked, { layer: index, name: layerNameOf(layer, index) }],
+          startedAt,
+        ).then((inner) => {
           innerTruncated = inner.truncated;
           return inner.value;
         });
       },
       {
         point,
-        trace: Object.freeze([] as ChainTraceEntry[]),
-        budget: Object.freeze({}),
+        trace: Object.freeze([...walked]) as ChainTrace,
+        budget,
       },
     );
     const value = await layer($, e, next);
     return { truncated: nextCalled ? innerTruncated : true, value };
   };
 
-  return { point, run: ($, e) => dispatch(0, $, e) };
+  return {
+    point,
+    run: ($, e) =>
+      dispatch(0, $, e, [], options.budgetMs === undefined ? 0 : nowFn()),
+  };
 }

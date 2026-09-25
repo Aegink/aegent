@@ -3,6 +3,8 @@
  *
  *   toolCall      权限 gate（C9 求值先于执行；ask → Manual broker 挂起等
  *                 CLI /approve 转达答复，超时/拒绝落 isError 保配平）。
+ *                 I1 hooks（T-P1-07）：registry 聚合层挂 gate 外层（hooks →
+ *                 gate → terminal，hook 改载荷会被内层权限重新判定）。
  *   modelRequest  上下文装配层：系统提示首次落流（system/message 事件，F22
  *                 的重建消费面）→ startNewContextWindow 现算消息集（无压缩
  *                 退化为全量重建；压缩后的摘要/developer 注入在此生效）→
@@ -31,9 +33,15 @@ import type {
   LoopContext,
   ModelRequestPayload,
   ModelStepOutput,
+  ToolCallPayload,
+  ToolExecutionResult,
   TurnEndPayload,
 } from "./loop.js";
-import type { ChainLayer } from "./chain.js";
+import {
+  type ChainLayer,
+  namedLayer,
+} from "./chain.js";
+import { type HookRegistry } from "./hooks.js";
 import type { SessionEvent, LlmFailure } from "./events.js";
 import type { SessionStore } from "../session/store.js";
 import { RevertService } from "../session/revert.js";
@@ -191,6 +199,12 @@ export interface ChildAssemblyOptions {
    * /revert 双回退（对话态 + 代码态）。缺省不启用（非 git 场景零开销）。
    */
   checkpointRepoRoot?: string;
+  /**
+   * 内核 hooks（I1/T-P1-07）：宿主构造并注册后传入，装配把 registry 的
+   * 聚合层挂三点位（hook 层在权限 gate 外层——hook 对载荷的修改会被内层
+   * 权限重新判定）。无注册的点位不挂层；缺省不提供 = 零行为变化。
+   */
+  hooks?: HookRegistry;
   /** M10 预算配置；缺省不启用预算轴。 */
   budget?: BudgetConfig;
   /** 压缩摘要器；缺省 P0 内置截断摘要。 */
@@ -503,10 +517,33 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
     ...(ceiling !== undefined ? { ceiling } : {}),
   });
 
+  // —— I1 hooks（T-P1-07）：registry 聚合层挂三点位外层（hooks → gate →
+  // terminal：hook 改载荷会被内层权限重新判定；无注册点位不挂层，零开销）。
+  const hookToolLayer = options.hooks?.layer<
+    LoopContext,
+    ToolCallPayload,
+    ToolExecutionResult
+  >("toolCall");
+  const hookModelLayer = options.hooks?.layer<
+    LoopContext,
+    ModelRequestPayload,
+    ModelStepOutput
+  >("modelRequest");
+  const hookTurnEndLayer = options.hooks?.layer<LoopContext, TurnEndPayload, void>("turnEnd");
+
   const layers: ChildAssembly["layers"] = {
-    toolCall: [toolGateLayer],
-    modelRequest: [contextLayer],
-    turnEnd: [turnEndCompactionLayer],
+    toolCall: [
+      ...(hookToolLayer ? [namedLayer("hooks", hookToolLayer)] : []),
+      toolGateLayer,
+    ],
+    modelRequest: [
+      ...(hookModelLayer ? [namedLayer("hooks", hookModelLayer)] : []),
+      contextLayer,
+    ],
+    turnEnd: [
+      ...(hookTurnEndLayer ? [namedLayer("hooks", hookTurnEndLayer)] : []),
+      turnEndCompactionLayer,
+    ],
   };
 
   return {
