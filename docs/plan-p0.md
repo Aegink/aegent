@@ -345,7 +345,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①归位点**唯一**——markIdle 只在 closeTurn 尾部（turn/end 成功落盘后）调用，completed/error/blocked/aborted 四条收尾路径自然全覆盖，崩溃与 turnEnd 截断到不了这里；markBusy 在 runTurn 第一行（turn 尝试开始即 busy，先于任何校验——宁可误报 busy，绝不误报 idle）。②P0 是进程内 Map；T9 出进程后"跨进程观察运行态"由 T-3-06 协议层转发状态事实，本服务只管本进程视图。
 - **完成记录**：`npx vitest run src/kernel/run-state.test.ts` → **4 passed**（全量 116 passed，tsc 干净）。验收条目：双重故障注入（decideTurn 抛错 + turnEnd 层抛错）使异常逃出 runTurn → run-state 仍判 busy → 恢复路径 markIdle 归位 idle；服务全程不读 loop 内部变量（只有 markBusy/markIdle 两个通知点）。另钉：turn 进行中 busy/收轮后 idle、error/blocked/aborted 三路径同样归位、多会话独立且未知会话默认 idle。
 
-#### T-3-06 · T9 · agent 出进程 + 可序列化协议 `[ ]`
+#### T-3-06 · T9 · agent 出进程 + 可序列化协议 `[x]`
 - **依据需求**：T9（P0）——Q16 裁决的落地
 - **上游首选参考**：[zcode·architecture-policy.yaml](../oss/zcode/architecture-policy.yaml)（用可校验策略文件把约束机器化的**形态**——我方 P0 用注释+类型约定起步，策略文件化留 P1 T1）
 - **取什么 / 别抄什么**：取"约束要能被机器查"的意图；P0 最小实现：agent 进程 + stdio JSON 行协议 + 入口类型签名只收 `JsonValue`
@@ -354,8 +354,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/kernel/agent-process.test.ts` + `node scripts/cold-start.ts`——①父进程 spawn 子进程发 3 条 prompt 收全事件（走真实 stdio 不 mock）；②协议类型逐一断言 assignable to JsonValue（类型测试）；③冷启动（spawn→首事件）打印实测值，**若 > 500ms 在完成记录标注并进进度文件待澄清**（Q16 自留的风险点）
 - **依赖**：T-3-05
 - **风险 / 未知**：Windows spawn 开销——**这正是 Q16 点名要实测的**；超标不自行改设计，停下写待澄清
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①**基准脚本为 `scripts/cold-start.mjs` 而非卡面 `cold-start.ts`**——node 22 无 TS loader、选型未含 tsx，子进程只能跑编译产物；测试在 beforeAll 里 `npx tsc` 后 spawn `dist/src/kernel/agent-child.js`（include 含根级配置文件，产物路径多一层 `src/`）。②A9 协议面落法：`prompt` 的应答只有 `accepted{messageId}` 入队收执（即答不等轮），**没有** session.finished/轮结果消息——轮终态由父进程观察 turn/end 事件（DSH followup-enqueue 同款；父进程拥有子进程全生命周期，故收执+事件观察足够）。③子进程编排（kick 调度器）：忙时 prompt 进 PromptQueue（step 边界 steer）、空闲自动续开新轮、dispose 协作退出；队列固定 one-at-a-time（"all" 是会话级配置，T-8 暴露）。④事件出进程通道 = 转发型 SessionStore 子类（append 即转发，C14 已在源头兜底）。⑤echo provider 内置于子入口（本卡验收的是进程边界与协议，模型是假的；真实厂商装配 T-8）。
+- **完成记录**：`npx vitest run src/kernel/agent-process.test.ts` → **2 passed**（另 protocol.test 4 passed；全量 122 passed，tsc 干净）。①真实 stdio spawn：3 条 prompt 各自 ready→accepted→完整事件流（turn/start…turn/end{completed}，echo 内容与轮号全对），管道零 mock；②型证：`AssertNever<Exclude<AgentRequest, JsonValue>>` 与包络变体同款闸门在 agent-protocol.ts 编译期钉死（SessionEvent 为接口联合无法型证，由 C14 源头保证 + 测试 JSON 往返复证）；③**冷启动实测 `node scripts/cold-start.mjs`：spawn→首事件 best 89.6ms / median 90.4ms（3 轮），阈值 500ms 达标，Q16 的 Windows spawn 风险实测排除，无需待澄清**。
 
 #### T-3-07 · O7–O11 · 事件流断言方法落地 `[ ]`
 - **依据需求**：O7（P0）· O8（P0）· O9（P0）· O10（P0）· O11（P0）
