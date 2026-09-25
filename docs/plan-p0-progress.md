@@ -57,6 +57,8 @@
 | 2026-09-25 | T-6-04 | D8 | `f53465a` | `npx vitest run src/sandbox/dpapi.test.ts` + config grep | 4 passed（真实 PowerShell 5.1 子进程）；protect→unprotect 往返一致（含中文载荷 base64 通道）；SecureKeyStore setKey→落盘 JSON 无明文 key（sk- 证伪）→getKey 往返；损坏 blob DPAPI_UNPROTECT_FAILED；config/ 不存在 → grep \|\| echo CLEAN；路线裁定 PowerShell（卡内偏离，未摘 dpapi.rs 代码故 THIRD_PARTY 无登记） |
 | 2026-09-25 | T-6-05 | D9 | `c5717dc` | `npx vitest run src/kernel/logger.test.ts` + logs grep | 6 passed；sk- 与 sk-proj- 变体整段掩码（data 深层同掩、恒开）；userContent 约定字段缺省掩码（开关可关、密钥恒掩）；按日文件每行 JSON、写失败降级不带崩；logs/ 不存在 → grep \|\| echo CLEAN |
 | 2026-09-25 | T-6-06 | D15 | `5ddc455` | `npx vitest run src/kernel/tools/bash-retry-guard.test.ts` | 8 passed；超时 bash 调用重试层不发起第二次重发（计数断言：初始+重试层首次=2、绝无第 3 次）且拒绝信息含"命令已启动，不自动重试"；started 标记四态（成功/非零/超时/未知失败）+ spawn 失败（ENOENT/EAGAIN）无标记可重试对照；builtin bash meta 断言同步 started |
+| 2026-09-25 | T-7-01 | A4/F4 | `e97d040` | `npx vitest run src/context/overflow.test.ts` | 14 passed；溢出与压缩两个模块（OverflowVerdict→CompactionRequest 类型接缝）；本地估算保守方向机验（0.9 除在密度=放大 11%，注释写明"宁可早压不可漏判"）；超限错误识别 code 优先/body 短语兜底、message 刻意不认（Q10）；调用次序断言 ["overflow-identified","compaction-entry"]、无关错误原路径上抛对照 |
+| 2026-09-25 | T-7-02 | F3/F20/F21 | `d73afe7` | `npx vitest run src/context/compaction.test.ts` | 9 passed；pre hook 可中止（abort 后零 compaction 事件、summarizer 未调）→摘要→事件落盘→post hook 观察；Q13 两相位 phaseForCompletedSteps(0)=PreTurn/(≥1)=MidTurn、MidTurn 于 step 边界可断言；compaction 载荷对齐词汇表（tokensBefore 缺 usage 退本地估算）；revert 有效视窗内压缩；O7 断言器连带修（compaction/checkpoint/header 不要求轮开启）；全量 407 passed |
 
 ---
 

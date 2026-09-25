@@ -777,7 +777,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：（执行时填）
 - **完成记录**：验收 `npx vitest run src/context/overflow.test.ts` → 14 passed（tsc 干净）。两个模块分野落成类型接缝：`overflow.ts`（估算保守方向机验：1000 字符 = ceil(1000/3.6)=278 ≥ ceil(1000/4)，系数 0.9 除在字符密度上即放大估算，注释写明"宁可误判早压，不可漏判到 provider 无恢复点拒绝"）+ `isContextWindowExceeded`（结构化 code 优先、ProviderHttpError.body 启发式短语兜底、错误 message 刻意不认——Q10 自由文本不当判据）；`compaction.ts` 消费接口 = `CompactionRequest`（local-overflow / provider-overflow 两源）+ 两个映射函数，压缩执行本体留 T-7-02。调用次序断言：超限错误 → ["overflow-identified", "compaction-entry"] 依次发生、消费方收到压缩触发而非异常；对照用例证无关错误原路径上抛不被吞。loop 接线按卡留 T-7-02/T-7-04
 
-#### T-7-02 · F3/F20/F21 · 压缩生命周期 + 相位（PreTurn/MidTurn） `[ ]`
+#### T-7-02 · F3/F20/F21 · 压缩生命周期 + 相位（PreTurn/MidTurn） `[x]`
 - **依据需求**：F3（P0）· F20（P0）· F21（P0，Q13 裁两相位）
 - **上游首选参考**：[codex·compact_token_budget.rs:19-23](../oss/codex/codex-rs/core/src/compact_token_budget.rs)（"It is still modeled as compaction so compact hooks and `ContextCompaction` turn items **observe the same lifecycle**" + pre/post hook 调用）；[zcode·turn-loop.ts:68](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts)（`state.modelStepCount === 0 ? CompactPhase.PreRequest : CompactPhase.MidTurn`——相位判定的实证。`requirements.md` F21 原锚点曾误写 `zcode·compact.ts`，已于 2026-09-25 回修为此条）
 - **取什么 / 别抄什么**：压缩 = 生命周期（compaction 开始/结束事件 + hook 可介入/中止）；P0 相位枚举 `PreTurn | MidTurn`（Q13；StandaloneTurn/PostTurn 留枚举槽不实现）
@@ -786,10 +786,10 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/context/compaction.test.ts`——压缩产生 `compaction` 事件（载荷含 summary/retainedTail/tokensBefore，对齐 l0-events.md §3.2#11）；hook 可中止（中止后无新窗口）；MidTurn 相位在 step 边界触发可断言
 - **依赖**：T-7-01、T-3-01
 - **风险 / 未知**：摘要生成需要模型调用——用假 provider 剧本测；真实摘要质量属 F5（P1）不验收
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①压缩生命周期落成 CompactionEngine（pre hook 可中止 → summarizer 注入生成摘要 → compaction 事件落盘 → post hook 观察，中止只在 pre——post 时压缩已落盘，append-only 不回滚）；②切点 P0 用 user/system 消息边界策略（天然不劈 assistant+tool 配对块），T-7-05 换配平状态机；③消息重建抽公共 helper `src/session/messages.ts`（buildChatMessages + effectiveEvents，压缩与新窗口共用；loop.buildMessages 内嵌版换用 helper 留 T-7-04 接线时做）；④**O7 断言器连带修**（expectTurnScoped）：compaction/checkpoint/request/header 与投影器语义对齐（只带 turn 归属、不要求轮开启）——压缩是第一个合法落盘在轮外的消费方，PreTurn 压缩落在 turn/end 之后
+- **完成记录**：验收 `npx vitest run src/context/compaction.test.ts` → 9 passed。①compaction 事件载荷对齐词汇表 §3.2#11（summary/retainedTail/tokensBefore 整值，usage 缺失退本地估算兜底）；②pre hook abort → 无 compaction 事件、summarizer 未被调、结果 {kind:"aborted", by:"pre-hook"}；post hook 收到结算事实（seq=事件 seq）；③phaseForCompletedSteps(0)=PreTurn/(≥1)=MidTurn，MidTurn 在 step 边界（turn 2 进行中、step 1 已闭合）触发可断言；tool 配对块整块保留或整块摘要；revert 有效视窗内压缩不覆盖被撤销内容。全量 407 passed（384→+23）、tsc 干净
 
-#### T-7-03 · F22/F23 · 压缩后用"压缩那一刻"状态 + 不可丢消息 `[ ]`
+#### T-7-03 · F22/F23 · 压缩后用"压缩那一刻"状态 + 不可丢消息 `[x]`
 - **依据需求**：F22（P0）· F23（P0）
 - **上游首选参考**：[codex·session/mod.rs:4530](../oss/codex/codex-rs/core/src/session/mod.rs#L4530)（`pub(crate) async fn start_new_context_window(`）；[:4536](../oss/codex/codex-rs/core/src/session/mod.rs#L4536)（`let retained_client_developer_messages = …`）
 - **取什么 / 别抄什么**：新窗口从压缩事件那一刻的投影状态重建（不用压缩前快照）；developer/注入消息有独立保留预算
@@ -798,8 +798,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/context/new-window.test.ts`——压缩后投影里"注入的系统提示"仍在且不被摘要改写；新窗口首请求的消息集 = 保留规则产出的集合（逐条断言）
 - **依赖**：T-7-02、T-1-04
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①`startNewContextWindow` 入参取事件流而非投影对象（卡面写 projection）——事件流参数让"压缩那一刻"是现算时点而非绑定快照，F22 语义更直接，内部自己 fold；②摘要以 user 角色合成消息进新窗口（带声明性前缀，不落事件——与 buildMessages 同一"请求时现算"纪律）；③system 消息全量保留不占 F23 预算（F22 验收面），预算只管 source=injected 的 user 消息，默认 4096 为自研默认值（codex 64_000 是远程压缩场景），最新一条超预算也保留（注入上下文整条丢失比超预算危险）；④测试确认压缩时点语义：retainedFromEnd=1 保留"最后一个 user 起"——真实时点（PreTurn）下下一轮 prompt 已入流，摘要覆盖的是旧轮
+- **完成记录**：验收 `npx vitest run src/context/new-window.test.ts` → 9 passed（tsc 干净，src/context 32 passed）。①压缩后 system 消息原文逐字保留、不混摘要文本；②消息集逐条断言 = [system] → [摘要] → [developer 注入(预算内从新到旧)] → [seq>retainedTail 原文]；③预算充足全保/紧张从新到旧且至少保一条/普通 user 不享受预算；④压缩后追加事件自然进新窗口、两次压缩只认最新、revert 掉 compaction 即全量重建
 
 #### T-7-04 · F9/F10 · turn 边界压缩 + 调用后压力测量 `[ ]`
 - **依据需求**：F9（P0）· F10（P0）
