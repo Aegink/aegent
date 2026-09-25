@@ -144,7 +144,16 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
   // 链底 terminal——executeTool 槽位由 registry.dispatch 充当，不存在旁路。
   // T-8-01：装配提供 PathGuard 时经它构造（写守卫唯一入口，T-6-01）。
   const toolRegistry = new ToolRegistry({ env: new NodeExecutionEnv() });
-  registerBuiltinTools(toolRegistry, assembly ? { pathGuard: assembly.pathGuard } : {});
+  registerBuiltinTools(
+    toolRegistry,
+    assembly
+      ? {
+          pathGuard: assembly.pathGuard,
+          // I2 技能根 = 工作区根（skill_load 的扫描面）
+          skillsRoot: options.assembly?.workspaceRoot ?? process.cwd(),
+        }
+      : {},
+  );
   const decideTurnBase: AgentLoopDeps["decideTurn"] = (record) =>
     record.toolCalls.length > 0 ? { action: "continue" } : { action: "end" };
   const loopDeps: AgentLoopDeps = {

@@ -64,6 +64,7 @@ import { startNewContextWindow } from "../context/new-window.js";
 import { RapidRefillGuard } from "../context/rapid-refill.js";
 import { type BudgetConfig, RolloutBudget } from "../context/budget.js";
 import { assembleSystemPrompt } from "../context/system-prompt.js";
+import { loadSkills } from "./skills.js";
 import {
   type ApprovalAnnouncement,
   PendingApprovals,
@@ -356,10 +357,18 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
     // step/start 已落盘，合法）；落事件而非只注入载荷——F22 重建消费事件流。
     const effective = effectiveEvents(store.load(sessionId));
     if (!effective.some((ev) => ev.type === "system/message")) {
+      // I2 技能清单（T-P1-08）：扫描 .zcode/skills，坏技能诊断落日志不炸；
+      // 清单定格在首落时点（改 SKILL.md 对新会话生效；正文经 skill_load
+      // 每次直读、当前会话即时）。
+      const skillLoad = loadSkills(options.workspaceRoot);
+      for (const d of skillLoad.diagnostics) {
+        logger?.warn(`skill-lint: [${d.code}] ${d.path} —— ${d.message}`);
+      }
       const prompt = await assembleSystemPrompt({
         approvalTier: "on_request",
         describeWritableRoots: () => pathGuard.describeWritableRoots(),
         cwd: options.workspaceRoot,
+        ...(skillLoad.skills.length > 0 ? { skills: skillLoad.skills } : {}),
       });
       store.append(sessionId, [
         {

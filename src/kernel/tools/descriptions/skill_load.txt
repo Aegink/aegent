@@ -1,0 +1,1 @@
+Load a skill's full instructions by name. Skill names come from the "可用技能" section of the system prompt. Returns the skill body wrapped in a <skill> tag with its file location; follow the loaded instructions for the task at hand. Re-invoke if you need the skill content again later in the session.

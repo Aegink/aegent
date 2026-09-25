@@ -15,6 +15,7 @@ import { createEditTool } from "./edit.js";
 import { createGlobTool } from "./glob.js";
 import { createGrepTool } from "./grep.js";
 import { createReadTool } from "./read.js";
+import { createSkillLoadTool } from "./skill.js";
 import { createWriteTool } from "./write.js";
 
 /** 内置工具名清单（C45 linter 的 unknown-tool 判定缺省面；与
@@ -26,11 +27,12 @@ export const BUILTIN_TOOL_NAMES = [
   "edit",
   "glob",
   "grep",
+  "skill_load",
 ] as const;
 
 export function registerBuiltinTools(
   registry: ToolRegistry,
-  options: { pathGuard?: PathGuard } = {},
+  options: { pathGuard?: PathGuard; skillsRoot?: string } = {},
 ): void {
   const guard = options.pathGuard ?? PathGuard.forWorkspace(process.cwd());
   // B4：write/edit 共享一个写队列（同路径互斥、异路径并行）
@@ -42,6 +44,12 @@ export function registerBuiltinTools(
     createEditTool({ writeQueue, pathGuard: guard }),
     createGlobTool(),
     createGrepTool(),
+    // I2 技能面：skillsRoot = 工作区根（agent-process 传 assembly 的
+    // workspaceRoot）；缺省进程 cwd（与 pathGuard 缺省同款纪律）
+    createSkillLoadTool({
+      pathGuard: guard,
+      skillsRoot: options.skillsRoot ?? process.cwd(),
+    }),
   ]) {
     registry.registerTool(def);
   }

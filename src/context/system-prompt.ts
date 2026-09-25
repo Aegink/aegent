@@ -130,6 +130,11 @@ export interface SystemPromptDeps {
   cwd: string;
   /** AGENTS.md 收集边界（缺省文件系统根；生产装配传工作区根）。 */
   root?: string;
+  /**
+   * 技能清单（I2/T-P1-08）：装配侧经 loadSkills 扫描后传入，渲染为尾段
+   * （正文按名经 skill_load 工具读取）；空/缺省 = 不加段（零行为变化）。
+   */
+  skills?: readonly { name: string; description: string }[];
   /** fs 注入面（测试假 fs；缺省 node:fs 同步读取）。 */
   existsFile?: (p: string) => boolean;
   readFile?: (p: string) => string;
@@ -160,7 +165,23 @@ export async function assembleSystemPrompt(deps: SystemPromptDeps): Promise<stri
   }
   const agents = mergeAgentsDocs(contents);
 
-  return [base, permissions, agents]
+  // 4. 技能清单尾段（I2/T-P1-08）：名+描述列给模型，正文按名经 skill_load
+  //    读取；空清单不加段。
+  const skillsSection = renderSkillsSection(deps.skills);
+
+  return [base, permissions, agents, skillsSection]
     .filter((part) => part.trim() !== "")
     .join("\n\n");
+}
+
+function renderSkillsSection(
+  skills: readonly { name: string; description: string }[] | undefined,
+): string {
+  if (!skills || skills.length === 0) return "";
+  const lines = skills.map((s) => `- ${s.name}: ${s.description}`);
+  return [
+    "## 可用技能",
+    "以下技能可通过 skill_load 工具按名加载正文，先读后按其指引行事：",
+    ...lines,
+  ].join("\n");
 }
