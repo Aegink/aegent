@@ -251,7 +251,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①卡面"Delta 含 text/thinking/tool_call/usage"直接落成词汇表 `StreamChunk`（text-delta/reasoning-delta/tool-call-delta/usage/done）——events.ts 注释本就要求"适配层把厂商 wire 事件映射到这里"，不造第二套增量词汇；②新增 `ProviderHttpError{status,retryAfter,bodyPreview}`（响应头阶段抛出）——T-2-03 重试层的分类判据，属卡面未预写的接口面；③请求固定带 `stream_options.include_usage`（否则 OpenAI 不发 usage 终块）、assistant 空正文+tool_calls 时 wire content 置 null；④本阶段注意 2 未触发：http-mock 的 OpenAI 形 SSE 与适配层实测一致，未改 mock；⑤tool_call 分片按 index 对齐：首片记 id/name，后续片由适配层补回 id（OpenAI wire 后续片只有 index+arguments）
 - **完成记录**：2026-09-25。产出 `src/models/provider.ts`（ModelProvider/ChatRequest/ChatMessage/ChatTool/ProviderHttpError/toTokenUsage）+ `src/models/openai-compat.ts`（settings 私有展开 + SSE 帧解析 + wire 映射）+ `provider.test.ts` 5 用例。验收：`npx vitest run src/models/provider.test.ts` → 5 passed；①三段剧本（reasoning+text/tool_call 分片/usage）逐个到达，text 拼接无损、args 拼接后 JSON 可解析、分片 id 按 index 补回"call_1"；②usage 终块形状=TokenUsage 且过 assertJsonSafe（C14，阶段 3 loop 原样落 assistant/message.usage）；③请求形状（path/authorization/model/stream_options/tool 消息映射）断言通过；④非 2xx 抛 ProviderHttpError 且 status/retryAfter 透传；⑤[DONE] 收束为 done 终块、无 usage 剧本不产 usage 块。全量 `npx vitest run` 68 passed，`npx tsc --noEmit` 干净。
 
-#### T-2-03 · J26 · 重试显式分类 `[ ]`
+#### T-2-03 · J26 · 重试显式分类 `[x]`
 - **依据需求**：J26（P0）
 - **上游首选参考**：[kimi·retry.ts:10](../oss/kimi-code/packages/agent-core-v2/src/human/llm/requester/retry.ts)（`RETRYABLE_STATUS_CODES = [408,409,429,500,502,503,504,529]`；`case 'unknown'` 不重试）
 - **取什么 / 别抄什么**：取显式枚举 + unknown 不重试 + jitter；**Retry-After 响应头**需求点要求尊重（kimi 文件未含此项，按 J26 验收要点自加）
@@ -260,8 +260,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/models/retry.test.ts`——429 按退避重试（mock 时间）；400 不重试；`Retry-After: 2` 覆盖默认退避；未知错误一次都不打
 - **依赖**：T-2-02
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①"mock 时间"用 sleep/rand 双注入实现而非 vi.useFakeTimers——真端口 IO 与 fake timers 混用易死锁，等待时长被记录为断言数据不真睡；②Retry-After 的 HTTP 日期格式只在 parseRetryAfterMs 纯函数层测（withRetry 层的 Date.now 不可注入），withRetry 层测秒数格式；③附加防御：流已产出过增量后任何错误不重试（防未来适配层在流中途抛 ProviderHttpError 造成重复送达），写为独立用例
+- **完成记录**：2026-09-25。产出 `src/models/retry.ts`（RETRYABLE_STATUS_CODES = [408,409,429,500,502,503,504,529] + DEFAULT_MAX_ATTEMPTS=10 + backoffDelayMs（500·2^n 封顶 32s + 25% jitter）+ parseRetryAfterMs（秒数/HTTP 日期）+ withRetry 包装）+ `retry.test.ts` 10 用例。验收：`npx vitest run src/models/retry.test.ts` → 10 passed；①429×2 后成功：mock.calls=3、waits=[500,1000]；②400 即抛 calls=1、waits=[]；③Retry-After:2 → waits=[2000] 覆盖默认；④裸 Error（unknown）inner 恰 1 次；⑤maxAttempts=3 耗尽抛最后一次错误；⑥流产出后中断不重试。全量 `npx vitest run` 78 passed，`npx tsc --noEmit` 干净。
 
 #### T-2-04 · J22 · 超时错误码作用域 `[ ]`
 - **依据需求**：J22（P0）
