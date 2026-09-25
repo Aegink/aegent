@@ -48,6 +48,7 @@ export function makeLoop(
     layers?: AgentLoopDeps["layers"];
     queue?: PromptQueue;
     runState?: RunState;
+    toolBudget?: AgentLoopDeps["toolBudget"];
   },
 ): Harness {
   const store = new SessionStore();
@@ -74,6 +75,7 @@ export function makeLoop(
     ...(opts?.layers ? { layers: opts.layers } : {}),
     ...(opts?.queue ? { queue: opts.queue } : {}),
     ...(opts?.runState ? { runState: opts.runState } : {}),
+    ...(opts?.toolBudget ? { toolBudget: opts.toolBudget } : {}),
   });
   return { store, loop, decideCalls };
 }

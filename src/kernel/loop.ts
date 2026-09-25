@@ -33,6 +33,7 @@ import {
 } from "../models/provider.js";
 import { Projector } from "../session/project.js";
 import type { SessionStore } from "../session/store.js";
+import { BudgetExceededError, ParseBudget } from "./budget.js";
 import {
   type ChainExecutor,
   type ChainLayer,
@@ -159,6 +160,13 @@ export interface AgentLoopDeps {
    * busy 由恢复路径归位（宁可误报 busy，绝不误报 idle）。
    */
   runState?: RunState;
+  /**
+   * 工具循环的双轴预算（B14，T-4-08 接入）：缺省启用默认上限
+   * （DEFAULT_MAX_TOOL_CALLS / DEFAULT_TOOL_LOOP_TIMEOUT_MS），传 Infinity
+   * 显式禁轴。预算耗尽 = 停止派发，未派发的调用缺席（与取消同语义，
+   * 配平不变量不受影响）。
+   */
+  toolBudget?: { maxTicks?: number; timeoutMs?: number };
   /** 三个点位的层。P0 恒空数组；阶段 5/7 的权限/上下文/压缩层从这里进。 */
   layers?: {
     toolCall?: ReadonlyArray<
@@ -356,9 +364,19 @@ export class AgentLoop {
       },
     ]);
     const toolResults: StepRecord["toolResults"] = [];
+    // B14：每个 step 的工具分发循环一份预算（tick=派发、progress=执行完回环）
+    const budget = new ParseBudget(this.deps.toolBudget ?? {});
     for (const call of output.toolCalls) {
       // A7 边界检查：已派发/已执行工具的结果照落盘（事实），未派发的缺席
       if (this.cancelCause) break;
+      try {
+        budget.tick();
+      } catch (e) {
+        // B14 预算耗尽：本调用与其后调用不再派发（缺席语义 = 取消同款）；
+        // step 正常闭合，模型从部分结果 + 缺席中感知收束
+        if (!(e instanceof BudgetExceededError)) throw e;
+        break;
+      }
       store.append(sessionId, [
         {
           type: "tool/call",
@@ -389,6 +407,13 @@ export class AgentLoop {
           ...(result.meta !== undefined ? { meta: result.meta } : {}),
         },
       ]);
+      // 执行完回环时只查时间轴（不计数）——防单件慢工具绕过数量轴
+      try {
+        budget.progress();
+      } catch (e) {
+        if (!(e instanceof BudgetExceededError)) throw e;
+        break;
+      }
     }
     store.append(sessionId, [{ type: "step/end", turn, step }]);
     if (this.cancelCause) return { kind: "cancelled" };

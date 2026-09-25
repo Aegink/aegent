@@ -462,7 +462,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①**"loop 持久化点改造"实为 registry.dispatch 投影点**：loop 落 tool/result 事件本来就只消费 content（T-3-02 定形时即如此），投影点在工具出口 dispatch——富值不出 dispatch 函数作用域，loop 零改动（产出物语义与卡面一致，落点不同）。②两种返回兼容：`ToolExecution = ToolExecutionResult | ContractResult`，dispatch 用 isContractResult 结构识别后统一 projectResult——现有工具零迁移。③ContractResult.render 的 value 参数 P0 是 unknown（工具作者自行收窄）——泛型 `ToolDef<V>` 能让推断自动流动但传染注册面类型，留 P1 按需；render 只见 args/value（不暴露 ctx/store/进程，投影无副作用面）。④E12 边界按风险栏落进 events.ts 头注释（tool/result 投影面 vs 状态类整值面，两句话防混用）。⑤isError/error/meta 通道是契约的一部分（富值失败也要投影出结构化错误，不是只能成功投影）。
 - **完成记录**：2026-09-25。产出 `src/kernel/tools/contract.ts`（ContractResult + isContractResult + projectResult）+ registry 接入（ToolExecution 联合 + dispatch 投影点）+ events.ts 头注释边界 + `contract.test.ts` 5 用例。验收：`npx vitest run src/kernel/tools/contract.test.ts` → **5 passed**；①投影产物键恰为 content/meta（5000 行大对象 + 函数在 value 里，序列化 <200B 且不含 "value"/"fn"）；②registry 集成：契约工具 dispatch 落投影产物、isError/error 通道正确；③**loop 落盘事件流验证**：ScriptedProvider 发 tool_call → store.load 的 tool/result payload JSON.stringify 不含 value/secretFn/NEVER、体积 <500B、content="rows=2000"、callId 配平。全量 `npx vitest run` **181 passed**，`npx tsc --noEmit` 干净。
 
-#### T-4-08 · B9/B14 · toolCallId 贯穿 + 双轴预算 `[ ]`
+#### T-4-08 · B9/B14 · toolCallId 贯穿 + 双轴预算 `[x]`
 - **依据需求**：B9（P0）· B14（P0）
 - **上游首选参考**：[pi·types.ts:485](../oss/pi/packages/agent/src/types.ts#L485)（toolCallId 在 start/update/end 三处贯穿）；[kimi·budget.ts](../oss/kimi-code/packages/tree-sitter-bash/src/budget.ts)（`tick()` 计数+查截止 / `progress()` 只查截止——文件头注释即分工说明）
 - **取什么 / 别抄什么**：取 ParseBudget 的两方法分工；工具循环统一用
@@ -471,8 +471,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/kernel/budget.test.ts`——①事件流不变量：每个 tool/result 的 callId 都能在前面找到同名 tool/call（用 T-3-07 方法）；②`tick` 超数量与超时都 throw、`progress` 只查截止（mock Date.now）
 - **依赖**：T-3-07、T-4-02
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①kimi budget.ts 全文核对（证据强度落为`读了代码`）：形状逐项对应——`BudgetOptions{timeoutMs?, maxNodes?}` → 我方 `{timeoutMs?, maxTicks?}`；`Aborted` → `BudgetExceededError{code}`（code 判别两轴，J22 的"按 code 路由"纪律）；**新增** `now` 注入（kimi 直读 Date.now 不可测；T-2-03 同款纪律），验收②的 mock 即注入而非 fake timers。②B9 的贯穿是**三段同源**：模型产出的 callId → loop 落 tool/call → registry.dispatch 装配 ToolContext.toolCallId → 工具可见；无需新词汇（事件层 callId 配平 + ctx 传递，预算测试对真实 loop 流断言）。③工具循环接入语义：预算耗尽 = **停止派发**，未派发调用缺席（T-3-04 取消的"未派发的缺席"同一语义，不造第二套词汇；无 call 即无 result，配平不变量不破）；step 正常闭合、DecideTurn 拿部分结果照常决策。④`AgentLoopDeps.toolBudget?` 缺省启用默认上限（256 次 / 120s，大而有效不扰正常会话），传 Infinity 显式禁轴——比"默认不启用"更符合 B14 的防御定位，行为验收覆盖两态。⑤loop.test-utils.makeLoop 透传 toolBudget（测试装配面跟进）。
+- **完成记录**：2026-09-25。产出 `src/kernel/budget.ts`（ParseBudget：tick 计数+双查 / progress 只查时 / BudgetExceededError{code} / now 注入）+ loop 工具循环接入（tick 派发前、progress 回环时，耗尽 break 缺席）+ loop.test-utils 透传 + `budget.test.ts` 7 用例。验收：`npx vitest run src/kernel/budget.test.ts` → **7 passed**；①真实 loop 流上 expectTurnScoped + expectPaired(tool/call) 配平过，toolCallId 三段同源（executeTool 收到的 callId 逐一等于模型产出）；②tick 超数量（3+1）/超时（mock 注入钟 1099→1100）都 throw、progress 只查截止不计数、错误带结构化 code；③预算 2/5 调用：前 2 派发配平、后 3 缺席无孤儿、turn 仍 completed 收束。全量 `npx vitest run` **188 passed**，`npx tsc --noEmit` 干净。
 
 ---
 
