@@ -29,16 +29,21 @@ export interface Verdict {
 
 /**
  * 把一个模块应答合成为裁决：模块自带 reason/rule 证据时透传，缺席时
- * 以模块名合成人话理由（C18 的"裁决可解释"不允许空 reason 出链）。
+ * 以模块名合成人话理由；带规则原文的证据并入合成理由（C18 的"因哪条
+ * 规则"不允许只藏在 rule 字段里）。空 reason 不允许出链。
  */
 export function verdictFromOutcome(
   moduleName: string,
   outcome: PolicyOutcome,
 ): Verdict {
+  const base = outcome.reason ?? `策略模块 ${moduleName} 裁决为 ${outcome.action}`;
   return {
     action: outcome.action,
     ...(outcome.rule !== undefined ? { rule: outcome.rule } : {}),
-    reason: outcome.reason ?? `策略模块 ${moduleName} 裁决为 ${outcome.action}`,
+    reason:
+      outcome.rule !== undefined && outcome.reason === undefined
+        ? `${base}（依规则 ${outcome.rule}）`
+        : base,
   };
 }
 
