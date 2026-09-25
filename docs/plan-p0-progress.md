@@ -76,7 +76,7 @@
 | 2026-09-25 | T-P1-03 | C49/C45 | `cd6c29c` | `npx vitest run src/policy/ceiling-exit.test.ts` | 9 passed；enforceCeiling 出口级（gate/revalidator 同位，用户 allow 被上限收窄→零执行）+ intersectAllProfiles 折叠（opaque 即抛拒启动）+ linter 装配常开（policy-lint 警告可检索）；无 profiles 默认装配零行为变化；全量 503 passed，tsc 干净——**C22/C46 权限聚合组（3 卡）收官** |
 | 2026-09-25 | T-P1-04 | J6/J7 | `ca3bba5` | `npx vitest run src/kernel/model-switch.test.ts` | 9 passed；①turn1 流中途换模→在途两 step request/header 全旧身份、turn2 新模型（captured 事件侧面断言）；②未注册 MODEL_NOT_REGISTERED 类型化错误且 configured 不动；③configured/captured 分别观测；协议级全链 3 用例（合法换模下一 turn 生效/未注册 error 行/未装配 UNAVAILABLE）+ 闭集型证；全量 515 passed，tsc 干净——**J6 换模组首卡** |
 | 2026-09-25 | T-P1-05 | J8/J11 | `be30e4a` | `npx vitest run src/kernel/model-switch.test.ts` | 19 passed（+10）；①迁移守卫纯函数合法表逐条+非法组合 ModelSwitchStateError；②deferred 暂存 configured 不变→首个 turn 捕获即应用；③回滚恢复 prev 且 lastRollback 可观测（无关码/无事务对照不回滚）；④A→B→C 同事务修订 prev 保持 A；loop 新 hook onTurnError 接装配（failTurn 透传 LlmFailure）；T-P1-04 用例零改动全绿；全量 525 passed，tsc 干净 |
-| 2026-09-25 | T-P1-06 | J9/J10/J14 | （本次 commit） | `npx vitest run src/kernel/model-switch.test.ts src/kernel/events.test.ts` | 37 passed（24+13）；①换模/回滚落 model/switch 事件 seq 连续可投影（modelSwitches 事实源）+协议行转发可见；②globalDefault 变更不改变已有会话级选择；③重启重建装配后模型仍是用户选的（J14）；④C16 编译闸门+计数 15；对照：流内选择不在注册表装配失败不静默；**词汇表 14→15 已立案待追认**（执行会话新发现 #2）；全量 530 passed，tsc 干净——**J6 换模组（3 卡）收官** |
+| 2026-09-25 | T-P1-06 | J9/J10/J14 | `3e37f14` | `npx vitest run src/kernel/model-switch.test.ts src/kernel/events.test.ts` | 37 passed（24+13）；①换模/回滚落 model/switch 事件 seq 连续可投影（modelSwitches 事实源）+协议行转发可见；②globalDefault 变更不改变已有会话级选择；③重启重建装配后模型仍是用户选的（J14）；④C16 编译闸门+计数 15；对照：流内选择不在注册表装配失败不静默；**词汇表 14→15 已立案待追认**（执行会话新发现 #2）；全量 530 passed，tsc 干净——**J6 换模组（3 卡）收官** |
 
 ---
 
@@ -590,6 +590,55 @@ docs/plan-p0-progress.md（批次 1 · 第一组报告）。本组特有的注�
 落地记录 + 待澄清表立案供追认，session/revert 先例）；3) 卡面验收若与实际
 模块名不符（如 scope-cache.test.ts），按产出实际拆分文件并在完成记录注明
 （T-P1-02 先例）。不要问要不要继续。
+```
+
+---
+
+## 批次 1 · 第二组报告（J6 换模，完成于 2026-09-25）
+
+- **打勾情况**：3 / 3（T-P1-04 ~ T-P1-06 全部完成，无未完成项）——**J6 换模组收官**
+- **产出的文件**：
+  - `src/kernel/model-switch.ts`——ModelSwitchService：configured/captured 分离（J6/J7，pi·agent-harness 同款）+ 五态状态机（initial/deferred/pending/preference/incompatible，grok·agent.rs ModelState 同名语义映射）+ 纯函数迁移守卫 `nextSwitchPhase`（表格外抛 ModelSwitchStateError）+ 事务化 switch（deferred 暂存不改 configured、事务修订 prev 保持最初）+ `reportRequestFailure` 回滚（MODEL_INCOMPATIBLE_CODES 判据）+ emit 落流注入（T-P1-04/05/06 三卡递进）
+  - `src/kernel/loop.ts`——`modelForTurn?`（turn 启动捕获、全程不变，request/header 记捕获身份=事件证据）+ `onTurnError?`（failTurn 内 LlmFailure 透传，J11 失败观测点）
+  - `src/kernel/agent-protocol.ts`——协议新命令 `model/switch`（REQUEST_TYPES 闭集 + identity 非空校验 + JsonValue 型证自动覆盖）
+  - `src/session/owner-port.ts`——命令闭集加同名变体（handler 可选，stop_generation 先例）
+  - `src/kernel/assembly.ts`——`models`/`initialIdentity`/`globalDefaultIdentity` 装配选项 + handleModelSwitch/modelForTurn/onTurnError 暴露 + `resolveInitialIdentity`（J14 回放保护：流内 model/switch 权威 > initialIdentity > 注册表首项；与全局默认不一致 warn 保留会话级选择；不在注册表 → 装配失败 fail-closed）+ emit 落 store.append
+  - `src/kernel/events.ts`——词汇表 14→15：`model/switch {from, to, reason: "user"|"rollback"}`（⏳ 待追认，执行会话新发现 #2）
+  - `src/session/project.ts`——投影 validation 豁免 + modelSwitches 记录（revert 切点切割）；`src/test-support/event-asserts.ts`——O7 会话级元事件豁免面 +model/switch
+  - `docs/l0-events.md`——§3.2 表格补全至 15 行（session/revert 行为落地记录 2 漏项，顺手修正）+ §8 落地记录 3（含不追认回退面）
+  - 测试：`src/kernel/model-switch.test.ts` 24 用例（服务/迁移守卫/事务/落流/分离/重启/协议全链）+ agent-protocol.test +1 + owner-port.test +2 + events.test 计数 15
+- **验收台账**：3 卡 3 命令全过（见台账表）；全量 `npx vitest run` **530 passed / 1 skipped**（第一组收官 503 → 净增 27），`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 548 链接 0 失效
+- **偏离计划的地方**：
+  1. **协议/事件载荷的 identity 用内联 `{provider, modelId}` 形状**而非引用 ModelIdentity interface——`AgentRequest` 的 JsonValue 型证（AssertNever）要求隐式索引签名、interface 不满足；events.ts 加内联载荷同时保持 L0 零反向依赖（不 import models 层）
+  2. **"回滚本身落事件"与词汇表扩展合并做**（T-P1-05 偏离③ → T-P1-06 兑现）：T-P1-05 先以 lastRollback/phase/warn 日志可观测，T-P1-06 的 model/switch 事件 reason="rollback" 落流——词汇表一次扩展到位，不落中间形态
+  3. **deferred 应用不重复落事件**：受理即落 `user` 事件（用户选择事实持久化），应用时最新 to 已权威——reason 值域收敛为 "user"|"rollback" 两值（卡面只定形状，值域为执行决定）
+  4. **换模状态演进三步走**：T-P1-04 进程内存 → T-P1-05 事务化 → T-P1-06 落流——captured 保持单一槽位（在途 turn 语义），换模历史唯一事实源是流内事件（不变量 1 同构）
+  5. **request/header 改记捕获后身份**（payload.identity）——在途换模"生效点在新 turn"的事件证据就在 header 的身份变化里
+- **新发现的约束或坑**：
+  - **JsonValue 型证闸门对 interface 不友好**：TS 的隐式索引签名只给 type alias/匿名对象类型，interface 不给——wire/事件载荷引用 interface 类型会炸 `AssertNever<Exclude<_, JsonValue>>`。新事件/wire 载荷一律内联形状（本组三处同坑）
+  - **snapshot.sh 同步跑也会超时截断 SOURCES.lock**（本组开工实测 >3 分钟被工具超时打断，lock 尾部 13 行被删）——`git checkout -- oss/SOURCES.lock` 恢复；大目录 du 慢是根因。后续开工建议：不再全量重跑快照，改 `git status oss/` 确认 lock 干净 + 依赖展卡时的当日核对结论（或给脚本加超时保护——未改脚本，不顺手改无关代码）
+  - 装配级测试的 createChildAssembly 需要完整选项面（workspaceRoot 临时目录 + contextWindow + approvalTimeoutMs）——mkdir 临时目录归 tmpRoots 数组统一 afterEach 清理
+  - 状态机纯函数 `nextSwitchPhase(from, event, hasCapturedTurn)` 导出后穷举测试直接钉合法表——迁移守卫类功能的可测性模式（供 T-P1-09 trust 维度等参考）
+- **遗留风险与未知**：
+  - **词汇表 14→15 待用户追认**（待澄清表 #2 已立案；不追认回退面 = l0-events.md §8 落地记录 3 所列约 1-2 小时）
+  - REPL `/model` 命令未做：协议/owner-port/装配三层已通，CLI UX 面随后续批次（agent-child.ts 也未接 models 注册表——CLI 单模型，换模能力在装配面就绪）
+  - 换模回滚的用户可见面只有 warn 日志 + 流内 rollback 事件；CLI 展示面未做
+  - incompatible 判据单成员起步（MODEL_INCOMPATIBLE），能力矩阵/上下文超窗按卡面风险留后续
+  - 快照重验：本组未全量重跑 snapshot.sh（超时截断恢复，见坑 2）——下一组开工若距展卡日较远建议重验锚点
+- **下一组**：T-P1-07 ~ 09（I 层扩展面 3 卡：hooks/skills/双轨），再后 T-P1-10 ~ 13（G 层 Planning）
+- **下一组提示词**：
+
+```
+继续 aegent P1 批次 1 的实施。读 docs/plan-p1.md 的卡序（执行协议沿用
+docs/plan-p0.md §0），从「T-P1-07」的第一张 [ ] 任务卡开始。上一组报告在
+docs/plan-p0-progress.md（批次 1 · 第二组报告）。本组特有的注意：1) T-P1-07
+hook 崩溃语义与策略层相反——可信轨上抛（T-5-01 fail-open 禁止）、不可信轨
+隔离为 isError，trust 维度注册时声明，分轨断言留给 T-P1-09；2) T-P1-08
+skills 目录约定 .zcode/skills/ 是自研命名无上游约束，frontmatter 解析复用
+T-7-09 收集器经验，"改 SKILL.md 零 .ts diff"机验同 T-4-01 描述文件基建，
+copy-assets 清单要跟上；3) 词汇表现 15（model/switch 待追认，落地记录 3
+含回退面），T-P1-10 todo 扩 15→16 时流程同款（assertNever + §8 记录 +
+待澄清立案）。不要问要不要继续。
 ```
 
 ---
