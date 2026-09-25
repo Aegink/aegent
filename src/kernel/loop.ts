@@ -41,11 +41,13 @@ import {
 import type {
   JsonValue,
   LlmFailure,
+  NewSessionEvent,
   TimedStreamChunk,
   TokenUsage,
   TurnEndReason,
 } from "./events.js";
 import { TimeoutError } from "./timeout.js";
+import { type PromptQueue } from "./queue.js";
 
 // ---------------------------------------------------------------------------
 // 链点位的载荷 / 产物类型（T-3-01 卡定形的三个点的具体形状）
@@ -141,6 +143,12 @@ export interface AgentLoopDeps {
     call: { callId: string; name: string; arguments: string },
   ): Promise<ToolExecutionResult>;
   decideTurn: DecideTurn;
+  /**
+   * prompt 队列（A2/A9，T-3-03 接线）：step 边界按 QueueMode 排空注入。
+   * 空闲期（两轮之间）入队的消息会在下一个 step 边界一并进入请求；
+   * 从队列开启新 turn 属进程编排（T-3-06），不在 loop 内。
+   */
+  queue?: PromptQueue;
   /** 三个点位的层。P0 恒空数组；阶段 5/7 的权限/上下文/压缩层从这里进。 */
   layers?: {
     toolCall?: ReadonlyArray<
@@ -204,6 +212,9 @@ export class AgentLoop {
     ]);
     try {
       for (let step = 1; ; step++) {
+        // A2：step 边界是注入点——按 QueueMode 排空队列（含第一步前），
+        // steer 消息落 user/message 后经投影自然进入本次请求。
+        this.drainQueue(turn);
         const result = await this.runStep(turn, step);
         if (result.kind === "blocked") return { kind: "blocked" };
         // A1：end 必须由 DecideTurn 显式给出；continue 则同轮进下一个 step。
@@ -221,6 +232,25 @@ export class AgentLoop {
   // -------------------------------------------------------------------------
   // step：step/start → 模型调用 → 工具分发 → step/end
   // -------------------------------------------------------------------------
+
+  /** step 边界注入（A2）：排空队列、按序落 user/message（不丢不重）。 */
+  private drainQueue(turn: number): void {
+    const queue = this.deps.queue;
+    if (!queue) return;
+    const drained = queue.drain();
+    if (drained.length === 0) return;
+    this.deps.store.append(
+      this.deps.sessionId,
+      drained.map(
+        (p): NewSessionEvent => ({
+          type: "user/message",
+          turn,
+          message: { content: p.content },
+          source: "user",
+        }),
+      ),
+    );
+  }
 
   private async runStep(
     turn: number,

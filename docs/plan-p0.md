@@ -309,7 +309,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **完成记录**：`npx vitest run src/kernel/loop.test.ts` → **8 passed**（全量 100 passed，tsc 干净）。验收两条剧本：①工具→continue、空手→DecideTurn 第二次显式给 end（decideCalls=[有 toolCall, 无 toolCall]）；②首轮即 end。另钉六条：A1 反向用例（无 toolCall+continue ⇒ loop 继续，不自行推断停止）、三链点位全走到（Q14"loop 按链写"）、模型失败硬退出（assistant/attempt 半截流+step 闭合+turn/end{error}，不伪造 assistant/message）、工具执行崩溃落 isError 的 tool/result 并回喂模型（配平不变量）、连续轮号自增、modelRequest 层截断 ⇒ step 空过+turn/end{blocked}。措辞映射已写进测试注释：pi 的 "turn" = 我方 step。
 - **完成记录补充（偏离）**：① **发现 `assertJsonSafe` 菱形引用误报**——同一对象在事件树内出现两次（非循环）会被判"循环引用"（WeakSet 无回溯；实测：usage 同时挂 stream 记录与事件顶层字段）。本卡在 loop 侧克隆 usage 解掉，**events.ts 的误报本修建议回 T-1-01 产物走单独小修**（walk 子树后 `seen.delete`），未擅改。② 卡面"TurnDecision 判定 continue/end"落为 `DecideTurn` 回调（pi FinishTurn 同位：step 收尾后、下一请求前），默认 continue/end 策略属调用方不属 loop。③ 消息序列从 `store.load()` 投影重建（不变量 1），不养第二份历史；revert 有效视窗已遵循。
 
-#### T-3-03 · A2/A9 · steer 注入 + turn 只能入队 `[ ]`
+#### T-3-03 · A2/A9 · steer 注入 + turn 只能入队 `[x]`
 - **依据需求**：A2（P0）· A9（P0）
 - **上游首选参考**：[pi·types.ts:55](../oss/pi/packages/agent/src/types.ts#L55)（`QueueMode = "all" | "one-at-a-time"`——注入节奏是枚举不是布尔）；[dsh·followup-enqueue.md:11](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-07-30-followup-enqueue-and-owned-runs.md)（否决 per-send 完成句柄；"no `session.finished`"）
 - **取什么 / 别抄什么**：取 QueueMode 枚举与"入队即返回 `{messageId}`，无 per-prompt 完成语义"；**绝不**提供 `session.finished`
@@ -318,8 +318,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/kernel/queue.test.ts`——`all` 模式下注入 3 条 → 下一步全量消费且事件顺序与入队一致；`one-at-a-time` 只消费 1 条；类型层面**不存在** `finished()` API（测试里 `// @ts-expect-error` 断言）
 - **依赖**：T-3-02
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①steer 落 user/message 用 source="user"（source 记**来源**不记**机制**——steer 是人类原话，"发生在 step 边界"由事件位置自证；l0-events §3.2 的三值是 user/injected/resume，"注入"不是第四值）②QueueMode 挂在队列构造器（会话级配置）而非每次 drain 传参（pi 是 drain 点传参；P0 单会话单队列，构造器足够，留 P1 再议）③从队列**开启新 turn**（空闲期排空）属进程编排，接线在 T-3-06，本卡只接 turn 内 step 边界。
+- **完成记录**：`npx vitest run src/kernel/queue.test.ts` → **6 passed**（全量 106 passed，tsc 干净）。验收三条：①all 模式注入 3 条 → step 边界全量消费，事件顺序与入队一致（steer-甲/乙/丙），下一次请求按序带全；②one-at-a-time 每边界只出最旧 1 条（甲、乙被消费，丙留队列且从未进请求）；③类型层 `// @ts-expect-error` 断言 `finished()` 不存在（tsc 通过 = 该属性确实缺席，加了就会编译失败）。另钉：入队收执仅 `{messageId}`、drain 两档纯函数行为、跨边界不丢不重（FIFO）。
 
 #### T-3-04 · A7 · 取消 / 中断当前 turn `[ ]`
 - **依据需求**：A7（P0）

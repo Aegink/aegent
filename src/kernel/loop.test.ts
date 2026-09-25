@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import type { ChainLayer } from "./chain.js";
 import type { SessionEvent, StreamChunk } from "./events.js";
 import {
   AgentLoop,
@@ -10,72 +9,14 @@ import {
   type ToolExecutionResult,
   type TurnDecision,
 } from "./loop.js";
-import type { ChatRequest, ModelProvider } from "../models/provider.js";
-import { SessionStore } from "../session/store.js";
+import { ScriptedProvider, makeLoop } from "./loop.test-utils.js";
+import type { ModelProvider } from "../models/provider.js";
 
 /**
- * 剧本化假 provider：每次模型调用吃一份 StreamChunk 脚本，记录收到的请求。
- * 阶段 2 的 http-mock 走真 HTTP wire，这里只验 loop 语义，不必绕道网络。
+ * 前置说明（A6 措辞映射，卡面要求写明）：本文件的 "step" 是 l0-events 三级
+ * 生命周期里的一次模型调用 + 其工具执行；pi 上游管它叫 "turn"。我方的 turn
+ * 是用户轮（runTurn 一次），由 turn/start…turn/end 包裹。
  */
-class ScriptedProvider implements ModelProvider {
-  private readonly scripts: StreamChunk[][] = [];
-  readonly requests: ChatRequest[] = [];
-  private callCount = 0;
-
-  mount(script: StreamChunk[]): void {
-    this.scripts.push(script);
-  }
-
-  async *streamChat(req: ChatRequest): AsyncIterable<StreamChunk> {
-    this.requests.push(req);
-    const script = this.scripts[this.callCount];
-    this.callCount += 1;
-    if (!script) throw new Error(`无剧本（第 ${this.callCount} 次调用）`);
-    for (const chunk of script) yield chunk;
-  }
-}
-
-interface Harness {
-  store: SessionStore;
-  loop: AgentLoop;
-  decideCalls: StepRecord[];
-}
-
-function makeLoop(
-  provider: ModelProvider,
-  opts?: {
-    decideTurn?: DecideTurn;
-    executeTool?: AgentLoopDeps["executeTool"];
-    layers?: AgentLoopDeps["layers"];
-  },
-): Harness {
-  const store = new SessionStore();
-  const decideCalls: StepRecord[] = [];
-  // 默认决策（真实语义的占位）：有 toolCall 继续、没有则 end——注意 loop
-  // 本体不看 toolCall，继续/停止完全来自这里。
-  const decideTurn: DecideTurn = async (record) => {
-    decideCalls.push(record);
-    if (opts?.decideTurn) return opts.decideTurn(record);
-    return record.toolCalls.length > 0
-      ? { action: "continue" }
-      : { action: "end" };
-  };
-  const executeTool: AgentLoopDeps["executeTool"] =
-    opts?.executeTool ??
-    (async (call) => ({ content: `ran ${call.name} ${call.arguments}` }));
-  const loop = new AgentLoop({
-    sessionId: "s1",
-    store,
-    provider,
-    identity: { provider: "mock", modelId: "m-1" },
-    executeTool,
-    decideTurn,
-    ...(opts?.layers ? { layers: opts.layers } : {}),
-  });
-  return { store, loop, decideCalls };
-}
-
-const types = (events: readonly SessionEvent[]) => events.map((e) => e.type);
 
 describe("AgentLoop —— A1/A6 显式停止条件与两级生命周期", () => {
   it("验收①：模型持续要工具 → continue；空手而归 → 仍由 DecideTurn 显式给 end", async () => {
@@ -103,7 +44,7 @@ describe("AgentLoop —— A1/A6 显式停止条件与两级生命周期", () =>
     expect(decideCalls[1]!.toolCalls).toHaveLength(0);
 
     const events = store.load("s1");
-    expect(types(events)).toEqual([
+    expect(events.map((e) => e.type)).toEqual([
       "turn/start",
       "user/message",
       "step/start",
@@ -118,8 +59,7 @@ describe("AgentLoop —— A1/A6 显式停止条件与两级生命周期", () =>
       "step/end",
       "turn/end",
     ]);
-    // A6（措辞按 l0-events.md §2.1 映射：pi 的 "turn" = 我方 step）——
-    // step/start 与 step/end 成对、同 turn 同号，都落在同一个用户轮 turn=1
+    // A6：step/start 与 step/end 成对、同 turn 同号，都落在同一个用户轮 turn=1
     const stepOf = (e: SessionEvent) => (e as { step: number }).step;
     const starts = events.filter((e) => e.type === "step/start");
     const ends = events.filter((e) => e.type === "step/end");
@@ -180,7 +120,7 @@ describe("AgentLoop —— A1/A6 显式停止条件与两级生命周期", () =>
     const reason = await loop.runTurn("你好");
     expect(reason).toEqual({ kind: "completed" });
     expect(decideCalls).toHaveLength(1);
-    expect(types(store.load("s1"))).toEqual([
+    expect(store.load("s1").map((e) => e.type)).toEqual([
       "turn/start",
       "user/message",
       "step/start",
@@ -197,7 +137,7 @@ describe("AgentLoop —— A1/A6 显式停止条件与两级生命周期", () =>
     provider.mount([{ type: "text-delta", text: "第二答" }, { type: "done" }]);
     let calls = 0;
     const { loop, store, decideCalls } = makeLoop(provider, {
-      decideTurn: (record) => {
+      decideTurn: () => {
         calls += 1;
         return calls === 1 ? { action: "continue" } : { action: "end" };
       },
@@ -270,7 +210,7 @@ describe("AgentLoop —— A1/A6 显式停止条件与两级生命周期", () =>
     });
     // attempt 保留已产出的半截流；没有伪造的 assistant/message
     const events = store.load("s1");
-    expect(types(events)).toEqual([
+    expect(events.map((e) => e.type)).toEqual([
       "turn/start",
       "user/message",
       "step/start",
@@ -346,7 +286,7 @@ describe("AgentLoop —— A1/A6 显式停止条件与两级生命周期", () =>
     const reason = await loop.runTurn("被拦");
     expect(reason).toEqual({ kind: "blocked" });
     expect(provider.requests).toHaveLength(0);
-    expect(types(store.load("s1"))).toEqual([
+    expect(store.load("s1").map((e) => e.type)).toEqual([
       "turn/start",
       "user/message",
       "step/start",
@@ -355,3 +295,6 @@ describe("AgentLoop —— A1/A6 显式停止条件与两级生命周期", () =>
     ]);
   });
 });
+
+// 类型引用保持（防止误删导出的编译期契约）
+void ({} as AgentLoop | AgentLoopDeps | TurnDecision | undefined);
