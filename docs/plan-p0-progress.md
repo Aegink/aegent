@@ -34,7 +34,7 @@
 | 2026-09-25 | T-4-05 | D4 | `7f72dc4` | `npx vitest run src/kernel/tools/env.test.ts` + grep 证伪 + 冷启动 | env.test 8 passed（真执行 6 + 类型封闭 2）；child_process 证伪 0 行；bash 回填（stdout/exit code/TOOL_TIMEOUT）；agent-process 接线注册表分发；冷启动 median 109.6ms 达标；build 脚本补描述 txt 拷贝（T-4-01 预记的 dist 风险实爆已修） |
 | 2026-09-25 | T-4-06 | B5/B10/B11 | `24b359c` | `npx vitest run src/kernel/tools/truncate.test.ts` | 6 passed；51KB/2000 行双触发（多字节不切断）、spill 首行 Q13 JSON 标记（sessionId/tool/callId/deletable）、完整原文落盘、registry 统一出口接入 meta 合并、isError 同截断；B11 描述声明落 4 个 txt |
 | 2026-09-25 | T-4-07 | B12 | `837d5cb` | `npx vitest run src/kernel/tools/contract.test.ts` | 5 passed；契约富值（函数+5000 行对象）经 dispatch 投影，事件 payload 无 value/函数且 <500B；isError/error/meta 通道齐；loop 落盘事件流端到端验证；投影点在 registry.dispatch（loop 零改动） |
-| 2026-09-25 | T-4-08 | B9/B14 | （回填于阶段报告） | `npx vitest run src/kernel/budget.test.ts` | 7 passed；tick 超数量/超时 throw（注入钟）、progress 只查截止；真实 loop 流 expectPaired(tool/call) 配平 + toolCallId 三段同源；预算耗尽停发缺席（取消同款语义）、turn 正常收束；默认 256 次/120s 可 Infinity 禁轴 |
+| 2026-09-25 | T-4-08 | B9/B14 | `3757753` | `npx vitest run src/kernel/budget.test.ts` | 7 passed；tick 超数量/超时 throw（注入钟）、progress 只查截止；真实 loop 流 expectPaired(tool/call) 配平 + toolCallId 三段同源；预算耗尽停发缺席（取消同款语义）、turn 正常收束；默认 256 次/120s 可 Infinity 禁轴 |
 
 ---
 
@@ -217,6 +217,54 @@ commit 里带上并记偏离）；2) 工具执行必须走 T-3-01 的 toolCall �
 分发是链底 terminal，阶段 5 权限层挂同一链），ToolContext 不暴露裸进程
 API（D4）随 T-4-05 定形；3) B10/B11 落盘打标记与 toolCallId 贯穿在事件层
 已有形状（tool/result.meta、callId 配平），别造第二套词汇。不要问要不要继续。
+```
+
+---
+
+## 阶段 4 报告（完成于 2026-09-25）
+
+- **打勾情况**：8 / 8（T-4-01 ~ T-4-08 全部完成，无未完成项）
+- **产出的文件**：
+  - `src/kernel/tools/registry.ts` + `registry.test.ts`——工具注册表（链底 terminal）与描述分离（T-4-01）
+  - `src/kernel/tools/builtin/{read,write,bash,edit,glob,grep,patterns,util,index}.ts` + `builtin.test.ts`——六个内置工具与注册入口（T-4-02/03/05）
+  - `src/kernel/tools/descriptions/{read,write,bash,edit,glob,grep}.txt`——B2 描述分离 + B11 上限声明（T-4-02/03/06）
+  - `src/kernel/tools/write-queue.ts` + 测试——B4 同路径 FIFO 写队列（T-4-04）
+  - `src/kernel/tools/env.ts` + `context.ts` + `env.test.ts`——D4 ExecutionEnv/ToolContext 与类型封闭闸门（T-4-05）
+  - `src/kernel/tools/truncate.ts` + 测试——B5/B10/B11 截断与 spill（T-4-06）
+  - `src/kernel/tools/contract.ts` + 测试——B12 输出契约（T-4-07）
+  - `src/kernel/budget.ts` + 测试——B14 双轴预算（T-4-08）
+  - `src/kernel/loop.ts`（B14 接入 + 菱形修复连带）、`agent-process.ts`（工具装配接线）、`scripts/copy-assets.mjs`、`package.json`（build 含资产拷贝）
+- **验收台账**：8 卡 8 命令全部通过（见台账表）；全量 `npx vitest run` **188 passed / 0 failed**（阶段 3 收尾 128 → 净增 60），`npx tsc --noEmit` 全程干净；`count-features.sh`=310 不变、`check-doc-links.sh`=0 失效；冷启动重跑 median 109.6ms < 500ms；D4 证伪 `grep -rn child_process src/kernel/tools/ | grep -v env.ts` = 0 行
+- **开工前置项兑现**：assertJsonSafe 菱形误报本修随 T-4-01 commit（walk 子树 seen.delete 回溯 + 合法用例 + loop 克隆 workaround 移除，用户开工指示的完成）
+- **偏离计划的地方**：
+  1. **grep 的 ripgrep 主路径未回填**（T-4-03 偏离②改口）：rg 是 spawn，受 D4 约束必须走 ExecutionEnv；JS 版已验收且语义等价，按 YAGNI 留待有性能需求时经 env 接入（rg 14.1.1 本机在位）
+  2. **ToolContext P0 面 = {env?, toolCallId, signal?}**：卡面清单的 policy/emit 随阶段 5 与 B7 接入，不预埋空字段（T-4-05 偏离②，待用户追认）
+  3. **agent-process 提前接线**（T-4-05 偏离⑥，兑现 T-4-02 偏离⑥承诺）：executeTool 槽位 = registry.dispatch，tools = registry.toChatTools()
+  4. **build 脚本补资产拷贝**：descriptions/*.txt 不进 dist 曾致子进程装配即抛（T-4-01 预记的 dist 风险实爆，agent-process.test 抓到）——`tsc && node scripts/copy-assets.mjs`；schema.sql 同题仍留待需要时同批
+  5. bash 输出原样转述不 trim；预算缺省启用（256 次/120s）而非默认关闭（T-4-08 偏离④）
+- **新发现的约束或坑**：
+  - **块注释内写 glob 原文（含"星对斜杠"序列）会提前闭合注释**，后面全部代码被 lexer 状态错乱误报（初判 TS7 lexer bug，最小重现排除后定位）——写文档注释引用模式时必须改写措辞
+  - D4 的证伪命令按字面 grep：注释里出现 "child_process" 字样也命中（初版 4 行注释全中），一律写"裸进程 API"
+  - tsc（TS7.0.2）不拷非 ts 资产，凡运行时读取的伴生文件必须进 copy-assets 清单
+  - better-sqlite3 / 原生模块之外，Windows 下 spawn bash 依赖 Git Bash 在 PATH（P0 已知前提，D11 P1 跨壳）
+- **遗留风险与未知**：
+  - rg 提速、canonical path 归一（大小写/符号链接）、ContractResult 泛型化（ToolDef<V>）三项按 YAGNI 留 P1，已记卡面
+  - grep JS 版在大目录（node_modules 级）是全遍历，无提前终止——若阶段 5/6 的被测场景变重再接 rg
+  - ToolContext.signal 是类型槽未接线；取消传达给工具执行留 P1（loop 的协作式取消目前只到 await 边界）
+  - 人工确认清单不变（J2 真实厂商连通性、D3、§6.2 常驻内存）
+- **下一阶段提示词**：
+
+```
+继续 aegent 内核的实施。读 docs/plan-p0.md 的 §0 执行协议，然后从「阶段 5」
+的第一张 [ ] 任务卡开始。上一阶段报告在 docs/plan-p0-progress.md。
+本阶段特有的注意：1) 权限层挂 T-3-01 定形的 toolCall 链（C9 求值在执行前，
+截断=拒绝执行），工具装配面是 T-4-05 的 ToolContext{env?,toolCallId,signal?}
+——policy 字段随本阶段接入，别另开旁路；2) C27 shell 语义分析的被测对象是
+T-4-05 回填后的 bash 工具（经 ExecutionEnv，本机 Git Bash）；C43 max() 与
+C35 是同一结构解（阶段 5 不做什么栏已列，先做 T-5-06 的聚合再谈例外）；
+3) T-4-06 的 spill/truncate 与 T-4-07 的 contract 投影在工具出口（registry.
+dispatch）已就位，权限层截断发生在其上游，拒执行时不产生工具输出。
+不要问要不要继续。
 ```
 
 ---
