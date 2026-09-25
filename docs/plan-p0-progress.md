@@ -41,7 +41,8 @@
 | 2026-09-25 | T-5-04 | C5/C50/C31 | `b4fb030` | `npx vitest run src/policy/pending.test.ts` | 10 passed；ask 挂起→reply 唤醒（并发互不串扰、同 id 防重）；超时 reject 类型化 PermissionTimeout（非 resolve 非泛 Error）且 timed-out 宣告不静默；迟到 reply 命中墓碑抛 Stale（区分 timeout/reply 结算方式，hermes 迟到通知教训）；dispose 按超时语义拒绝不悬挂 |
 | 2026-09-25 | T-5-05 | C21/C38/C44 | `968752f` | `npx vitest run src/policy/rule-loader.test.ts` | 12 passed；样例矛盾加载即报错全量列行号（正例未命中/反例命中/无从校验三类）；畸形规则 invalid never-match 原文保留；C21 委托 bash 匹配器、未登记工具带参规则永不命中（fail-closed）；raw 原文进 verdict.rule；连带 pending.test 固定 sleep 改轮询消竞态；全量 244 passed×3 稳定 |
 | 2026-09-25 | T-5-06 | C43/C46 | `15597d4` | `npx vitest run src/policy/aggregate.test.ts` | 11 passed；穷举 16 子集×4 追加=64 组合单调性恒成立（加规则不可能放宽，C35 结构解）；abstain 单位元；.git/.agents/.codex 硬拦出口压过 allow/ask（规则不得授权）、read 不拦、大小写不敏感与嵌套 .git 保守方言；withProtectedPaths 组合交付给 T-5-12 |
-| 2026-09-25 | T-5-07 | C35/C45 | （本卡提交后回填） | `npx vitest run src/policy/self-guard.test.ts` | 10 passed；agent 写 permissions.json/AGENTS.md 拒绝且理由含"用户可手动修改"提示、agentInitiated=false 透传（防线在发起判定）；linter 三类警告（invalid/unknown-tool/no-matcher-for-args）只警不拒；**连带修 matchers 注册键大写 Bash→小写 bash 方言 bug**（注册名对齐，rule-loader.test 随迁） |
+| 2026-09-25 | T-5-07 | C35/C45 | `7bdd8fe` | `npx vitest run src/policy/self-guard.test.ts` | 10 passed；agent 写 permissions.json/AGENTS.md 拒绝且理由含"用户可手动修改"提示、agentInitiated=false 透传（防线在发起判定）；linter 三类警告（invalid/unknown-tool/no-matcher-for-args）只警不拒；**连带修 matchers 注册键大写 Bash→小写 bash 方言 bug**（注册名对齐，rule-loader.test 随迁） |
+| 2026-09-25 | T-5-08 | C47/C48 | （本卡提交后回填） | `npx vitest run src/policy/review-decision.test.ts` | 9 passed；模型捎带规则提案字段被剥除（大小写变体同剥）且警告含 C48 纪律原文；会话作用域批准后同规则免再问、新会话重新问、once/project/user/managed P0 均不缓存；提案由引擎经 patternOf 计算（bash=完整命令原文）；批准历史落链上模块（kimi 同位） |
 
 ---
 

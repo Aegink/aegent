@@ -567,7 +567,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①受保护清单落 agents.md + permissions.json（qwen 清单同位项裁剪到 P0；只能追加不能替换——C36 注释），与 C46 元数据目录清单分工写明（protected-paths 管目录、本卡管文件）。②判别面落 `SelfGuardContext.agentInitiated` 显式标志：经 loop 工具循环恒 true，false 供显式用户代操作路径（P0 无此路径，测试钉语义）；用户手改文件不进工具循环天然不受限。③linter 类别按 kimi 裁剪为三类：invalid-syntax（loadRules 标 invalid 的畸形）/ unknown-tool（照收）/ no-matcher-for-args（**我方新增**——T-5-05 fail-closed 让带参规则在未登记匹配器的工具上静默死掉，linter 让它可见；工具名通配带参给"无法静态确认"变体）；kimi 的 MCP 两类 P0 无 MCP 不适用。④linter 只警告不拒装——死规则是配置错误非攻击面，装前硬拒只留给样例矛盾（C44），分层写明。⑤**连带修一处方言 bug**：matchers.ts 注册键原写大写 "Bash"，与注册表小写工具名不符（本卡测试按注册名构造 PolicyCall 抓出）——键改 "bash"，rule-loader.test 随迁小写方言，头注释写明"规则文本工具名按注册表名写（大写 Bash 是上游显示习惯）"。
 - **完成记录**：2026-09-25。产出 `src/policy/self-guard.ts`（SELF_EDIT_PROTECTED_NAMES + findSelfEditProtectedSegment + SelfGuardContext + enforceSelfGuard，拒绝理由含"用户可手动修改"提示）+ `src/policy/linter.ts`（lintRules 三类 LintIssue 带行号）+ protected-paths.ts 导出共享 isWritePathTool + `self-guard.test.ts` 10 用例 + rule-loader.test.ts 方言随迁。验收：`npx vitest run src/policy/self-guard.test.ts` → **10 passed**；①agent 写 config/permissions.json 拒绝且 reason 含"用户可手动修改"（链 allow 裁决也被压）；AGENTS.md 的 write/edit 同拒；②agentInitiated=false 同文件透传不拦；③lint("Bashh(git *)") 输出 unknown-tool + no-matcher-for-args 双警告带行号。附：普通路径/读指令文件不拦、畸形规则 invalid-syntax、健康规则零警告、linter 不拒装。全量 `npx vitest run` **265 passed**，`npx tsc --noEmit` 干净。
 
-#### T-5-08 · C47/C48 · 批准作用域显式化 + 提案由引擎算 `[ ]`
+#### T-5-08 · C47/C48 · 批准作用域显式化 + 提案由引擎算 `[x]`
 - **依据需求**：C47（P0）· C48（P0，Q18 确认）
 - **上游首选参考**：[codex·protocol/src/protocol.rs:4152](../oss/codex/codex-rs/protocol/src/protocol.rs)（`pub enum ReviewDecision`——Approved / **ApprovedExecpolicyAmendment{proposed_execpolicy_amendment}**（:4158）/ 会话缓存批准等变体）
 - **取什么 / 别抄什么**：取"批准是一次带作用域的决策 + 引擎算好提案模型只能发命令"；P0 作用域枚举做齐（一次性/会话/项目/用户/受管），**持久化落库只做一次性与会话**（项目/用户/受管的持久化随 C22 P1）
@@ -576,8 +576,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/policy/review-decision.test.ts`——模型消息里若携带"规则提案"字段，解析时被剥除并记警告事件；批准会话作用域后同规则二次调用不再询问，新会话重新询问
 - **依赖**：T-5-04
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①ReviewDecision 落为联合类型 {action:"allow",scope} | {action:"deny",reason?}——deny 无作用域可言（无物可记），比 codex 七变体收窄为两分支 + 五档 REVIEW_SCOPES（带穷尽编译闸门）。②提案的 pattern 维度提取落 RuleMatchable 新增可选 `patternOf`（C21 同一知识面：工具自己知道自己哪个参数是 pattern；无法提取 → 提案缺席 → 批准只能一次性）。③"记警告事件"落为 stripProposedAmendments 返回的结构化 warnings 记录——C15 下无对应 session 事件类型，不造旁路事件；去向由 gate（T-5-12）与 T-8 显示面接线。剥除只扫顶层键（不深挖值防误伤命令原文），保留键闭集是已知局限——结构保证是引擎从不读模型输出的提案，剥除只为观测"试图夹带"。④会话批准落为链上模块 createSessionApprovalModule（kimi SessionApprovalHistory 同位）+ 进程内 ApprovalScopeCache，sessionId 装配期绑定（链按会话组装）；once/project/user/managed 在 P0 都不缓存（宁可多问不可多放）。⑤提案粒度 P0 = 精确调用值（bash 即完整命令原文），放宽粒度属审批 UX 留 P1。
+- **完成记录**：2026-09-25。产出 `src/policy/review-decision.ts`（REVIEW_SCOPES 五档 + ReviewDecision 联合 + RuleProposal/proposeAmendment + stripProposedAmendments + ApprovalScopeCache + createSessionApprovalModule）+ matchers.ts 增 patternOf + `review-decision.test.ts` 9 用例。验收：`npx vitest run src/policy/review-decision.test.ts` → **9 passed**；①args 带 ruleProposal 字段被剥除（大小写变体同剥）且警告含"规则提案由引擎计算（C48）"、命令原文提及提案字样不受影响；②链上首调 ask → record(scope=session) → 二调 allow 带 rule=bash(git status) 与 scope 理由 → 新会话 s2 重新 ask，once/project/user/managed 均不缓存。全量 `npx vitest run` **274 passed**，`npx tsc --noEmit` 干净。
 
 #### T-5-09 · C49 · 多来源权限交集合成 `[ ]`
 - **依据需求**：C49（P0）

@@ -18,6 +18,11 @@ export interface RuleMatchable {
   matchesRule(argPattern: string, call: PolicyCall): boolean;
   /** 把样本字符串构造成该工具的调用形状（加载期样例校验用）。 */
   sampleCall(sample: string): PolicyCall;
+  /**
+   * 本调用的 pattern 维度取值（C48 引擎计算规则提案用）。无法提取时
+   * 返回 undefined——该调用的批准只对本次有效，不能升级为规则。
+   */
+  patternOf?(call: PolicyCall): string | undefined;
 }
 
 /** bash 匹配器：模式串按 evaluate.ts 的通配方言匹配命令原文。 */
@@ -27,7 +32,11 @@ export const bashRuleMatcher: RuleMatchable = {
     return typeof command === "string" && wildcardMatch(command, argPattern);
   },
   sampleCall(sample) {
-    return { tool: "Bash", args: { command: sample } };
+    return { tool: "bash", args: { command: sample } };
+  },
+  patternOf(call) {
+    const command = call.args.command;
+    return typeof command === "string" ? command : undefined;
   },
 };
 
