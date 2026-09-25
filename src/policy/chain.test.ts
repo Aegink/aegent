@@ -43,7 +43,7 @@ function bashCall(command: string): PolicyCall {
   return { tool: "Bash", args: { command } satisfies JsonRecord };
 }
 
-describe("POLICY_LAYERS 层序常量（验收③）", () => {
+describe("POLICY_LAYERS 层序常量（T-5-01 验收③）", () => {
   it("导出顺序即 C58 层序：托管 > 用户 > 项目 > 核心", () => {
     expect([...POLICY_LAYERS]).toEqual(["managed", "user", "project", "core"]);
   });
@@ -64,7 +64,7 @@ describe("POLICY_LAYERS 层序常量（验收③）", () => {
   });
 });
 
-describe("层序即权威（验收①：C58）", () => {
+describe("层序即权威（T-5-01 验收①：C58）", () => {
   const denyInManaged = assemblePolicyChain({
     managed: [ruleSet("managed", [{ tool: "Bash", argPattern: "git*", action: "deny" }])],
     core: [ruleSet("core", [{ tool: "Bash", argPattern: "git*", action: "allow" }])],
@@ -75,19 +75,19 @@ describe("层序即权威（验收①：C58）", () => {
   });
 
   it("同两条规则，托管层 deny 在前则 deny 胜", async () => {
-    await expect(denyInManaged.evaluate(bashCall("git status"))).resolves.toEqual({
-      action: "deny",
-    });
+    const verdict = await denyInManaged.evaluate(bashCall("git status"));
+    expect(verdict.action).toBe("deny");
+    expect(verdict.reason).toBe("策略模块 managed 裁决为 deny");
   });
 
   it("同两条规则换位后托管层 allow 在前则 allow 胜——结果随位置翻转", async () => {
-    await expect(allowInManaged.evaluate(bashCall("git status"))).resolves.toEqual({
-      action: "allow",
-    });
+    await expect(
+      allowInManaged.evaluate(bashCall("git status")),
+    ).resolves.toMatchObject({ action: "allow" });
   });
 });
 
-describe("规则集首匹配胜（验收②：C2/Q15）", () => {
+describe("规则集首匹配胜（T-5-01 验收②：C2/Q15）", () => {
   // 宽规则在前、窄规则在后：窄规则被完全遮蔽。
   const wideFirst = ruleSet("user-rules", [
     { tool: "Bash", argPattern: "*", action: "allow" },
@@ -100,33 +100,38 @@ describe("规则集首匹配胜（验收②：C2/Q15）", () => {
   ]);
 
   it("[Bash(*)允许, Bash(git*)询问] 下 git status 落允许", async () => {
-    await expect(wideFirst.evaluate(bashCall("git status"))).resolves.toEqual({
-      action: "allow",
-    });
+    await expect(wideFirst.evaluate(bashCall("git status"))).resolves.toMatchObject(
+      { action: "allow" },
+    );
   });
 
   it("同规则集反转顺序后 git status 落询问——顺序决定结果", async () => {
-    await expect(narrowFirst.evaluate(bashCall("git status"))).resolves.toEqual({
-      action: "ask",
-    });
+    await expect(
+      narrowFirst.evaluate(bashCall("git status")),
+    ).resolves.toMatchObject({ action: "ask" });
   });
 
   it("不匹配的规则不产生裁决：git push 走到窄规则，无关宽规则不遮蔽链后模块", async () => {
     // narrowFirst 中 Bash(git*) 命中 git push → ask；证明首条匹配生效，
     // 而非"第一条规则无条件胜"（那条对 git push 本就不匹配）。
-    await expect(narrowFirst.evaluate(bashCall("git push"))).resolves.toEqual({
-      action: "ask",
-    });
+    await expect(narrowFirst.evaluate(bashCall("git push"))).resolves.toMatchObject(
+      { action: "ask" },
+    );
   });
 });
 
 describe("弃权与失败纪律", () => {
-  it("全链无模块应答时返回 undefined（默认 ask 兜底属消费方语义，T-5-02/12）", async () => {
+  it("全链无模块应答时返回 abstain 而非 ask（C32：没意见是显式出口）", async () => {
     const chain = assemblePolicyChain({
       managed: [ruleSet("managed", [{ tool: "Bash", argPattern: "git*", action: "allow" }])],
     });
-    await expect(chain.evaluate(bashCall("ls"))).resolves.toBeUndefined();
-    await expect(assemblePolicyChain({}).evaluate(bashCall("ls"))).resolves.toBeUndefined();
+    const verdict = await chain.evaluate(bashCall("ls"));
+    expect(verdict.action).toBe("abstain");
+    expect(verdict.action).not.toBe("ask");
+    expect(verdict.reason).toBeTruthy();
+    await expect(assemblePolicyChain({}).evaluate(bashCall("ls"))).resolves.toEqual(
+      { action: "abstain", reason: "权限链上无策略模块应答" },
+    );
   });
 
   it("首个应答模块之后的模块不再被询问", async () => {
@@ -143,7 +148,9 @@ describe("弃权与失败纪律", () => {
         },
       ],
     });
-    await expect(chain.evaluate(bashCall("ls"))).resolves.toEqual({ action: "deny" });
+    await expect(chain.evaluate(bashCall("ls"))).resolves.toMatchObject({
+      action: "deny",
+    });
     expect(later).toBe(0);
   });
 

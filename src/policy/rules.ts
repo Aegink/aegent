@@ -23,6 +23,12 @@ export interface RuleSetOptions<R> {
   readonly rules: readonly R[];
   /** 返回 undefined = 该规则不匹配本次调用（只是没命中，不是拒绝）。 */
   readonly match: (rule: R, call: PolicyCall) => PolicyAction | undefined;
+  /**
+   * 规则原文渲染（C18 的 verdict.rule 证据）——提供时，命中裁决附带
+   * 该规则的原文（T-5-05 的加载器将传 raw 保留的原文）；不提供则裁决
+   * 不带 rule 字段。
+   */
+  readonly ruleText?: (rule: R) => string;
 }
 
 /**
@@ -32,13 +38,18 @@ export interface RuleSetOptions<R> {
 export function createRuleSetModule<R>(
   options: RuleSetOptions<R>,
 ): PolicyModule {
-  const { name, rules, match } = options;
+  const { name, rules, match, ruleText } = options;
   return {
     name,
     async evaluate(call: PolicyCall): Promise<PolicyOutcome | undefined> {
       for (const rule of rules) {
         const action = match(rule, call);
-        if (action !== undefined) return { action };
+        if (action !== undefined) {
+          return {
+            action,
+            ...(ruleText !== undefined ? { rule: ruleText(rule) } : {}),
+          };
+        }
       }
       return undefined;
     },

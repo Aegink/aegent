@@ -507,7 +507,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①动作词汇不造第二套：Rule.action 复用 chain.ts 的 `PolicyAction`（C1 三维在两卡间同源）。②通配匹配与 opencode 的两处刻意方言差异（头注释 + 测试钉死）：**大小写敏感**（opencode 在 Windows 不敏感——路径大小写归阶段 6 路径守卫统一 realpath 处理，规则匹配保持可预测）；**不做反斜杠归一**（opencode 把入参的 `\` 换斜杠——pattern 维度承载 shell 命令原文，反斜杠是其语法一部分，归一会造成假匹配）。③本卡只落纯函数求值面（wildcardMatch/defaultAskRule/evaluateRule），不接 createRuleSetModule——PolicyCall 的哪个参数算 pattern 维度是工具自身语义（C21/T-5-05 的委托），接线随 T-5-05 rule-loader，不预写。④返回值恒为 Rule（命中规则本身即证据，默认 ask 也带回查询维度 permission），C18 的 verdict 形状随 T-5-03 包一层。
 - **完成记录**：2026-09-25。产出 `src/policy/evaluate.ts`（Rule{permission,pattern,action} + wildcardMatch 锚定全串/星跨任意/问号单字符/尾随"空格加星"可选 + defaultAskRule + evaluateRule 首匹配胜）+ `evaluate.test.ts` 17 用例。验收：`npx vitest run src/policy/evaluate.test.ts` → **17 passed**；①allow/ask/deny 三动作各一例；②无规则与有规则不命中均落 ask（需求 §8 第 2 条）且默认规则带回查询 permission；③`Bash(git status)` 精确放行 `git status`、不放过 `git push` 也不跨工具用。附：双维独立命中（permission 维度通配 Bash*）、星跨段/问号/锚定/元字符字面、大小写敏感与反斜杠不归一方言、首匹配胜双向（宽前 allow，findLast 语义下会是 ask）。`npx tsc --noEmit` 干净。
 
-#### T-5-03 · C32/C18 · 四值决策 + 裁决带 rule 与 reason `[ ]`
+#### T-5-03 · C32/C18 · 四值决策 + 裁决带 rule 与 reason `[x]`
 - **依据需求**：C32（P0）· C18（P0）
 - **上游首选参考**：[qwen·autoMode.ts:15](../oss/qwen-code/packages/core/src/permissions/autoMode.ts)（"All three layers only fire when L4 PermissionManager returned `'default'`"）；[agentscope·_engine.py:135](../oss/agentscope/src/agentscope/permission/_engine.py)（`PASSTHROUGH`）；[claude-official·claude-code.d.ts:3656](../refs/claude-official/mods/types/claude-code.d.ts)（`'tool.check': ToolCheckResult` → `{ decision, reason?, rule? }`——🔴 专有只读声明）
 - **取什么 / 别抄什么**：第四值命名 `abstain`（"没意见往下走"与"我要 ask"分开）；裁决结果必须带规则原文与理由
@@ -516,8 +516,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/policy/decision.test.ts`——链上无匹配策略时返回 abstain 而非 ask；最终 verdict 含 `rule`（规则原文）与 `reason`
 - **依赖**：T-5-02
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①abstain 落为**链级出口**（chain.evaluate 全链无人应答返回 abstain 裁决，替代 T-5-01 时的 undefined），模块级"没意见"仍是 undefined（C20 的 kimi 语义）——"我要 ask"（模块显式给）与"没意见往下走"（整链 abstain）在两个层面分开，qwen 的 'default'/'ask' 分层同构。②Verdict.rule 的规则原文经 rules.ts 新增的可选 `ruleText` 回调附带（T-5-05 加载器将传 raw 保留原文）；非规则来源裁决不带 rule 字段（`in` 断言缺席）。③模块 reason 缺席时由链以模块名合成人话理由（C18 不允许空 reason 出链）。④chain.test 的 undefined 用例随契约升级改写为 abstain 用例（T-5-01 验收①②③原样保留，仅断言从 toEqual({action}) 调整为含 reason 的 Verdict）。⑤allow<ask<deny 全序与 max() 聚合按卡边界留在 T-5-06，decision.ts 头注释已声明不做。
+- **完成记录**：2026-09-25。产出 `src/policy/decision.ts`（Decision 四值 + Verdict{action,rule?,reason} + verdictFromOutcome/abstainVerdict 合成器）+ chain.ts 出口升级（PolicyOutcome 增可选 rule/reason，evaluate 返回 Verdict）+ rules.ts 增 ruleText 证据回调 + `decision.test.ts` 7 用例 + chain.test.ts 契约同步改写。验收：`npx vitest run src/policy/decision.test.ts` → **7 passed**；①链上无匹配策略返回 abstain 而非 ask（toEqual(abstainVerdict()) 且与显式 ask 分断言）；②规则命中 verdict.rule="Bash(git status)"、reason 非空；非规则来源无 rule 字段、自定义 reason 透传；模块缺 reason 以模块名合成。附四值各自可达用例。全量 `npx vitest run` **222 passed**，`npx tsc --noEmit` 干净。
 
 #### T-5-04 · C5/C50/C31 · 待审批挂起 + 超时带类型失败 + 主动宣告 `[ ]`
 - **依据需求**：C5（P0）· C50（P0）· C31（P0）

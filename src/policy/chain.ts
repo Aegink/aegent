@@ -17,6 +17,7 @@
  */
 
 import type { JsonRecord } from "../kernel/events.js";
+import { abstainVerdict, verdictFromOutcome, type Verdict } from "./decision.js";
 
 // ---------------------------------------------------------------------------
 // 层序（C58 的唯一权威定义处）
@@ -40,9 +41,13 @@ export interface PolicyCall {
 /** 规则动作三维（C1）。四值决策（C32 的 abstain）随 T-5-03 在链级扩展。 */
 export type PolicyAction = "allow" | "ask" | "deny";
 
-/** 模块裁决。C18 的 rule/reason 证据随 T-5-03 的 Verdict 扩展进本形状。 */
+/** 模块裁决。C18 的 rule/reason 证据由模块可选附带（规则集命中时附 rule）。 */
 export interface PolicyOutcome {
   readonly action: PolicyAction;
+  /** 规则原文证据（C18）；非规则来源的模块裁决缺席。 */
+  readonly rule?: string;
+  /** 模块自述理由（C18）；缺席时由链以模块名合成。 */
+  readonly reason?: string;
 }
 
 export interface PolicyModule {
@@ -54,8 +59,11 @@ export interface PolicyModule {
 export interface PolicyChain {
   /** 装配后的实际模块顺序（审计面：托管层在前，核心层在后）。 */
   readonly modules: readonly PolicyModule[];
-  /** 全链弃权返回 undefined——默认动作（ask 兜底）由消费方语义决定。 */
-  evaluate(call: PolicyCall): Promise<PolicyOutcome | undefined>;
+  /**
+   * 求值一次：首个应答模块的裁决经 C18 证据合成后返回；全链无人应答
+   * 返回 abstain（C32——"没意见"是显式出口，不是 ask，也不是 undefined）。
+   */
+  evaluate(call: PolicyCall): Promise<Verdict>;
 }
 
 /**
@@ -70,12 +78,14 @@ export function assemblePolicyChain(
   );
   return {
     modules,
-    async evaluate(call: PolicyCall): Promise<PolicyOutcome | undefined> {
+    async evaluate(call: PolicyCall): Promise<Verdict> {
       for (const module of modules) {
         const outcome = await module.evaluate(call);
-        if (outcome !== undefined) return outcome;
+        if (outcome !== undefined) {
+          return verdictFromOutcome(module.name, outcome);
+        }
       }
-      return undefined;
+      return abstainVerdict();
     },
   };
 }
