@@ -546,6 +546,50 @@ oss/SOURCES.lock 的 commit；3) 阶段 8 的装配层（src/kernel/assembly.ts�
 
 ---
 
+## 批次 1 · 第一组报告（C22/C46 权限聚合，完成于 2026-09-25）
+
+> P1 启动会话：批次 1 圈定为四组 26 条（用户全选：C22/C46 聚合、G 层 Planning、J6 换模、I 层扩展面），展卡 13 张于 `docs/plan-p1.md`（锚点 18 处逐一核对、snapshot 无漂移、commit `55697d6`）。本组为第一批次的第一组。
+
+- **打勾情况**：3 / 3（T-P1-01 ~ T-P1-03 全部完成，无未完成项）——**C22/C46 权限聚合组收官**
+- **产出的文件**：
+  - `src/policy/protected-names.ts`（C46 清单唯一权威，拆分防循环依赖）+ `protected-paths.ts` 扩 bash 虚拟写出口分支（T-P1-01）
+  - `src/policy/exit-guard.test.ts`——出口级硬拦 10 用例（T-P1-01）
+  - `src/policy/rule-scope.ts`（C22 turn-override 载荷）+ 测试；`revalidate.ts` 出口同位（T-P1-01/02）
+  - ApprovalReply 扩 scope/feedback（C24）+ 协议 approve 扩字段 + assembly/agent-process/repl 全链传参 + feedback 落 L2 审计（T-P1-02）
+  - **createSessionApprovalModule 装配进 policyChain**（T-8-01 偏离⑤关闭）+ repl `/approve --session/--feedback`（T-P1-02）
+  - `intersect.ts` 加 `intersectAllProfiles`/`enforceCeiling` + gate/revalidator `ceiling` 选项 + assembly `permissionProfiles`/`knownToolNames` 接线 + linter 常开落 `policy-lint` 日志（T-P1-03）+ `ceiling-exit.test.ts` 9 用例
+- **验收台账**：3 卡 3 命令全过（见台账表）；全量 `npx vitest run` **503 passed / 1 skipped**（P0 收官 477 → 净增 26），`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变
+- **偏离计划的地方**：
+  1. **C46 出口落法**：gate 零改动（层内自调 enforceProtectedPaths 自动获得 bash 分支）；revalidate 出口补硬拦与上限——执行点不依赖装配方记得包 withProtectedPaths
+  2. **write/edit 无 patternOf**（builtinRuleMatchers 只登记 bash）：其批准结构上只能 once——C48 纪律的自然结果非缺陷；session 缓存对 bash 生效
+  3. **C49 ceiling 选出口级**而非链上模块：链是首匹配胜（C58），ceiling 进链会被用户层 allow 压过，违背"上限不因链序放宽"
+  4. turn-override 能力面先行（显式 endTurn 剪除失效），产生面（审批 scope=turn UX）随后续批次
+- **新发现的约束或坑**：
+  - protected-paths ↔ shell-semantics 潜在循环 import（出口反向消费扫描器）——拆 `protected-names.ts` 解决；同模式（清单/出口/扫描器三职责）可供后续硬拦类功能参考
+  - Verdict 的 reason 必填（abstain 也带）——构造测试裁决时不能写 `{action:"abstain"}` 裸形状
+  - PermissionBrokerPort 有必填 `name` 字段，stub broker 必须带
+- **遗留风险与未知**：
+  - C46 bash 硬拦复用 B 档扫描器，B 档 LIMITATIONS（tee/dd/cp 参数式写不识别等）原样继承——rm -rf 类由链上危险模式 ask 兜底，出口级不拦
+  - linter 警告目前只落日志；进事件流（可观测面）等词汇表扩展时一并考虑
+  - ApprovalScopeCache 每子进程装配一个（会话绑定）；跨进程恢复的缓存重建随恢复路径后续批次
+- **下一组**：T-P1-04 ~ 06（J6 换模组 3 卡），再后 T-P1-07 ~ 09（I 层扩展面）、T-P1-10 ~ 13（G 层 Planning）
+- **下一阶段提示词**：
+
+```
+继续 aegent P1 批次 1 的实施。读 docs/plan-p1.md 的卡序（执行协议沿用
+docs/plan-p0.md §0），从「T-P1-04」的第一张 [ ] 任务卡开始。上一组报告在
+docs/plan-p0-progress.md（批次 1 · 第一组报告）。本组特有的注意：1) T-P1-04
+起是 J6 换模组——换模状态/捕获/事务都落 src/kernel/model-switch.ts，装配
+走 assembly.ts（sessionId 绑定的模型注册表 + gate 同款出口纪律），协议新
+命令经 agent-protocol.ts 闭集（漏分支 assertNever 编译失败是特性）；
+2) T-P1-06 新增 model/switch 事件走词汇表扩展流程（14→15，l0-events.md §8
+落地记录 + 待澄清表立案供追认，session/revert 先例）；3) 卡面验收若与实际
+模块名不符（如 scope-cache.test.ts），按产出实际拆分文件并在完成记录注明
+（T-P1-02 先例）。不要问要不要继续。
+```
+
+---
+
 ## 阶段 N 报告模板（执行会话每阶段复制一份填写，勿删本模板）
 
 ### 阶段 N 报告（完成于 YYYY-MM-DD）
