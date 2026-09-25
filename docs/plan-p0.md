@@ -239,7 +239,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①未引入 zod——superRefine 的"存字符串只校验语法"用自写校验函数等价落地（一处校验引依赖是过早抽象）；②"报错含位置"不能靠解析 V8 错误文案：实测 Node 22 对顶层 token 错误（`not json`）的 JSON.parse 消息不含位置，故配一个 ~120 行 RFC 8259 语法扫描器自定位行列——JSON.parse 仍是权威裁决，扫描器只管定位（其 bug 最多让位置不准，不会误拒合法配置）；③identityKey 在 provider/modelId 含 ":" 时键有歧义，注释约定机器匹配一律对象字段相等、绝不从 key 反解析
 - **完成记录**：2026-09-25。产出 `src/models/config.ts`（ProviderConfig + ProviderConfigError{code,line?,column?,offset?} + parseProviderConfig + locateJsonError 定位扫描器）+ `src/models/identity.ts`（ModelIdentity + modelIdentity + identityKey）+ 2 测试文件 10 用例。验收：`npx vitest run src/models/` → 10 passed；①非法 JSON 四类形状（尾逗号/顶层 token/未闭合/非法转义）全部拒绝且报错含"第 X 行第 Y 列"，多行配置行号正确；②`identity("openai","gpt-4o") !== identity("other","gpt-4o")`、键不等且同身份键相等；③空字段/非对象形状拒绝。`npx tsc --noEmit` 全量干净。
 
-#### T-2-02 · J1/J2 · 单厂商流式适配 `[ ]`
+#### T-2-02 · J1/J2 · 单厂商流式适配 `[x]`
 - **依据需求**：J1（P0）· J2（P0）
 - **上游首选参考**：[pi·packages/ai/](../oss/pi/packages/ai)（厂商适配独立成包的边界：src/{api,auth,compat}）
 - **取什么 / 别抄什么**：取"适配层独立目录、内核只见统一流接口"的形状；厂商选**OpenAI 兼容**端点（覆盖面最大，且 http-mock 易造）
@@ -248,8 +248,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/models/provider.test.ts`——脚本化 SSE 三段（text/tool_call/usage）逐个到达，`message_update` 型增量不丢不重；usage 进事件载荷
 - **依赖**：T-2-01、T-1-06
 - **风险 / 未知**：真实厂商的 tool_call 流式分片拼接规则（index 对齐）——mock 按 OpenAI 规范造，真实连通性验收留到 T-8-05（可选项，无 key 时标注人工确认）
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①卡面"Delta 含 text/thinking/tool_call/usage"直接落成词汇表 `StreamChunk`（text-delta/reasoning-delta/tool-call-delta/usage/done）——events.ts 注释本就要求"适配层把厂商 wire 事件映射到这里"，不造第二套增量词汇；②新增 `ProviderHttpError{status,retryAfter,bodyPreview}`（响应头阶段抛出）——T-2-03 重试层的分类判据，属卡面未预写的接口面；③请求固定带 `stream_options.include_usage`（否则 OpenAI 不发 usage 终块）、assistant 空正文+tool_calls 时 wire content 置 null；④本阶段注意 2 未触发：http-mock 的 OpenAI 形 SSE 与适配层实测一致，未改 mock；⑤tool_call 分片按 index 对齐：首片记 id/name，后续片由适配层补回 id（OpenAI wire 后续片只有 index+arguments）
+- **完成记录**：2026-09-25。产出 `src/models/provider.ts`（ModelProvider/ChatRequest/ChatMessage/ChatTool/ProviderHttpError/toTokenUsage）+ `src/models/openai-compat.ts`（settings 私有展开 + SSE 帧解析 + wire 映射）+ `provider.test.ts` 5 用例。验收：`npx vitest run src/models/provider.test.ts` → 5 passed；①三段剧本（reasoning+text/tool_call 分片/usage）逐个到达，text 拼接无损、args 拼接后 JSON 可解析、分片 id 按 index 补回"call_1"；②usage 终块形状=TokenUsage 且过 assertJsonSafe（C14，阶段 3 loop 原样落 assistant/message.usage）；③请求形状（path/authorization/model/stream_options/tool 消息映射）断言通过；④非 2xx 抛 ProviderHttpError 且 status/retryAfter 透传；⑤[DONE] 收束为 done 终块、无 usage 剧本不产 usage 块。全量 `npx vitest run` 68 passed，`npx tsc --noEmit` 干净。
 
 #### T-2-03 · J26 · 重试显式分类 `[ ]`
 - **依据需求**：J26（P0）
