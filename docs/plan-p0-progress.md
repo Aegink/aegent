@@ -59,6 +59,13 @@
 | 2026-09-25 | T-6-06 | D15 | `5ddc455` | `npx vitest run src/kernel/tools/bash-retry-guard.test.ts` | 8 passed；超时 bash 调用重试层不发起第二次重发（计数断言：初始+重试层首次=2、绝无第 3 次）且拒绝信息含"命令已启动，不自动重试"；started 标记四态（成功/非零/超时/未知失败）+ spawn 失败（ENOENT/EAGAIN）无标记可重试对照；builtin bash meta 断言同步 started |
 | 2026-09-25 | T-7-01 | A4/F4 | `e97d040` | `npx vitest run src/context/overflow.test.ts` | 14 passed；溢出与压缩两个模块（OverflowVerdict→CompactionRequest 类型接缝）；本地估算保守方向机验（0.9 除在密度=放大 11%，注释写明"宁可早压不可漏判"）；超限错误识别 code 优先/body 短语兜底、message 刻意不认（Q10）；调用次序断言 ["overflow-identified","compaction-entry"]、无关错误原路径上抛对照 |
 | 2026-09-25 | T-7-02 | F3/F20/F21 | `d73afe7` | `npx vitest run src/context/compaction.test.ts` | 9 passed；pre hook 可中止（abort 后零 compaction 事件、summarizer 未调）→摘要→事件落盘→post hook 观察；Q13 两相位 phaseForCompletedSteps(0)=PreTurn/(≥1)=MidTurn、MidTurn 于 step 边界可断言；compaction 载荷对齐词汇表（tokensBefore 缺 usage 退本地估算）；revert 有效视窗内压缩；O7 断言器连带修（compaction/checkpoint/header 不要求轮开启）；全量 407 passed |
+| 2026-09-25 | T-7-03 | F22/F23 | `c585f96` | `npx vitest run src/context/new-window.test.ts` | 9 passed；消息集逐条断言 [system]→[摘要]→[developer 注入(预算从新到旧,至少保一条)]→[retainedTail 后原文]；system 原文逐字不被摘要改写；压缩后追加事件自然进新窗口、只认最新压缩、revert 掉 compaction 即全量重建 |
+| 2026-09-25 | T-7-04 | F9/F10 | `6be4531` | `npx vitest run src/context/pressure.test.ts` | 8 passed；三信号统一压力记录（usage 权威/无 usage 本地兜底仍产生记录/provider 拒绝=压力证据,无关错误 null）；OverflowRecoveryError.cause === provider 原始错误对象（abort 与压缩抛错两路径）；turnEnd 链压缩层次序断言 compaction.seq < turn/end.seq；阈值默认 0.8（dsh 同款） |
+| 2026-09-25 | T-7-05 | F17 | `567e196` | `npx vitest run src/context/tool-pairing.test.ts` | 7 passed；增量配平状态机（纯函数 advancePairing,断档/corrupt 抛 ToolPairingError 带 seq）；流尾悬挂 call → retainedTail 自动回退到 call 之前（切点前子流过 expectPaired）；伪造 step 标记（result 谎称 step 42）切点仍按 callId 内容现算——对 step 标记免疫 |
+| 2026-09-25 | T-7-06 | F24 | `37954f0` | `npx vitest run src/context/downshift.test.ts` | 4 passed；超限投影 → maybeDownshift 内压缩 await 完成先于"切换"（日志次序 ["compaction-entry","switch"]）；compaction 事件 reason="model_downshift"（词汇表加可选 reason 字段,codex CompactionReason 词表）；装得下/恰好等于不压、无 usage 本地估算兜底 |
+| 2026-09-25 | T-7-07 | F28 | `0c3316b` | `npx vitest run src/context/rapid-refill.test.ts` | 7 passed；零进展连续压缩 evaluate 拟算 1→2→3 → 引擎入口第 0 段抛 RapidRefillError 且 err.consecutiveRapidRefills=3/toolTurnsSinceCompact=0（全计数）、该次压缩未落盘；干活 3 步骤解锁归 0；熔断路径状态冻结不虚增；可配阈值 |
+| 2026-09-25 | T-7-08 | M10 | `363bd02` | `npx vitest run src/context/budget.test.ts` | 8 passed；越档提醒→markDelivered 后同档不再发；未 mark（取消）→ 同档重发；换 windowId 送达记账失效重发；加权公式 output×2+input×1=250、cacheRead 折减 230（J25 同款）；耗尽后 recordUsage 恒 true |
+| 2026-09-25 | T-7-09 | F1/F2 | `eb34efe` | `npx vitest run src/context/system-prompt.test.ts` | 8 passed；a/b/c 假 fs：a 与 a/b 同时生效且 b 的"测试规范"覆盖 a、收集序列 [远→近] 含 root 层且 root 是边界；不注入 basePrompt 时输出含真 base.md（改文件零 .ts diff 机验）；权限段真模板两档互异 + {{WRITABLE_ROOTS}} 替换；`npm run build` 基础提示 1 项进 dist；opencode 加载器锚点（instruction.ts findUp 就近取一个不叠加）已回填 requirements F2 并注明与本方自研语义的差异；全量 458 passed |
 
 ---
 
@@ -396,6 +403,58 @@ Roots()（模板 md 已在 copy-assets 清单），权限档位来源由装配�
 压缩发生在 turn 边界（T-3-01 的 turnEnd 点位已预留），F21 按 Q13 只做
 PreTurn/MidTurn 两相位，切点工具配平复用 expectPaired(tool/call)。不要问
 要不要继续。
+```
+
+---
+
+## 阶段 7 报告（完成于 2026-09-25）
+
+- **打勾情况**：9 / 9（T-7-01 ~ T-7-09 全部完成，无未完成项）
+- **产出的文件**（新目录 `src/context/`）：
+  - `src/context/overflow.ts` + `overflow.test.ts`——溢出检测（本地估算保守系数 0.9 + provider 超限错误识别）（T-7-01）
+  - `src/context/compaction.ts` + `compaction.test.ts`——CompactionRequest 消费接口 + 压缩生命周期引擎（pre hook 可中止→摘要→compaction 事件→post hook）+ Q13 两相位 + 切点选择（T-7-01/02/05）
+  - `src/context/new-window.ts` + `new-window.test.ts`——压缩后新窗口重建（F22 现算 + F23 developer 预算）（T-7-03）
+  - `src/context/pressure.ts` + `pressure.test.ts`——调用后压力测量（三信号）+ OverflowRecoveryError + turnEnd 链压缩层次序断言（T-7-04）
+  - `src/context/tool-pairing.ts` + `tool-pairing.test.ts`——增量配平状态机（T-7-05）
+  - `src/context/downshift.ts` + `downshift.test.ts`——ModelDownshift 换模先压缩（T-7-06）
+  - `src/context/rapid-refill.ts` + `rapid-refill.test.ts`——压缩抖动断路器（T-7-07）
+  - `src/context/budget.ts` + `budget.test.ts`——预算送达记账 + 加权计算（T-7-08）
+  - `src/context/system-prompt.ts` + `system-prompt.test.ts` + `prompt/base.md`——系统提示装配 + AGENTS.md 加载（T-7-09）
+  - `src/session/messages.ts`——buildChatMessages + effectiveEvents 公共 helper（压缩/新窗口消费）
+  - `scripts/copy-assets.mjs`（基础提示清单 +1）、`src/kernel/events.ts`（CompactionEvent 加可选 reason）、`src/test-support/event-asserts.ts`（O7 对齐词汇表）、`docs/requirements.md`（F2 锚点回填）
+- **验收台账**：9 卡 9 命令全部通过（见台账表）；全量 `npx vitest run` **458 passed / 1 skipped**（阶段 6 收尾 384 → 净增 74），`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 716 链接 0 失效；`npm run build` 实测基础提示 1 项进 dist
+- **阶段完成定义核对**：超长上下文先触发 overflow 判定而非直接压 ✓（overflow.test 次序断言：识别分支先于压缩入口、错误不抛用户）；压缩后 token 显著下降且 developer 消息保留 ✓（new-window.test：消息集逐条断言 + downshift.test 旁证压缩后新窗口收缩）；抖动保护可触发 ✓（rapid-refill.test：第 3 次零进展压缩熔断，错误带全计数）
+- **偏离计划的地方**：
+  1. **词汇表 CompactionEvent 加可选 `reason?: string` 字段**（T-7-06）：验收要求 compaction 事件带 reason（F24），而 T-1 定稿载荷无此位——最小兼容扩展（旧流缺省读作 context_limit；C14 JSON 安全），值域取 codex CompactionReason 序列化词表；先例与理由写在卡面与词汇表注释。**若用户不认可，回退面 = events.ts 一处字段 + compaction.ts 映射函数（约 20 行）**
+  2. **O7 断言器连带修**（T-7-02）：expectTurnScoped 原把所有非 revert 事件当轮作用域，压缩是第一个合法落盘在轮外的消费方（PreTurn 压缩在 turn/end 之后）——对齐投影器既有语义：compaction/checkpoint/request/header 只带 turn 归属不要求轮开启
+  3. **压缩切点是"组合"而非"替换"**（T-7-05）：user/system 消息边界策略（T-7-02）仍是候选来源，配平状态机做验证/回退——候选不配平（悬挂 call 崩溃残留）时退到最近配平点，保守方向
+  4. **F2 锚点回填**（T-7-09）：opencode 加载器已在源码定位（session/instruction.ts），语义是"findUp 就近取一个不叠加"，与我方自研裁决"收集全部 + 小节就近覆盖"不同——requirements.md 已回填并注明差异，自研语义维持
+  5. 消息重建抽公共 helper `src/session/messages.ts`（三处消费：压缩覆盖区间/新窗口重建/将来 loop 接线）；loop.buildMessages 内嵌版换用 helper 留 T-8 接线时顺路
+- **新发现的约束或坑**：
+  - **压缩的时点语义**：retainedFromEnd=1 保留"最后一个 user 起"——真实 PreTurn 时点下下一轮 prompt 已入流（zcode PreRequest 同款判定），摘要覆盖旧轮；压缩发生在 turn 刚收尾、下一轮未开始时（PostTurn 形态），保留尾就是刚完成的轮，摘要区间为空（压缩无效但无损）——T-8 装配时应把 PreTurn 压缩挂在"新 prompt 入流后、首次模型请求前"的点位
+  - **expectTurnScoped 与投影器的轮作用域口径**是两套维护面：投影器按事件类型分支，断言器按同一口径——新增"合法轮外落盘"事件类型时两处要同步（本次 compaction 落了 checkpoint/request/header 的既有豁免面）
+  - **测试构造事件流时 system/message 必须落在开启的 step 内**（投影 requireOpenTurn+Step），turn/end 不可重复落——假流夹具最常踩的两处
+  - vitest 下 `import.meta.url` 指向 src——模板/提示文件用真文件路径测试可行（dist 由 copy-assets 保障），无需 mock fs
+- **遗留风险与未知**：
+  - **压缩/预算/抖动的 loop 接线在 T-8 装配**：本阶段全部为模块级交付（overflow→compaction→new-window 的类型接缝、pressure/recoverFromOverflow 原语、rapidRefillGuard 引擎入口）——loop 的 turnEnd 链挂压缩层、step 收尾调 recordCompletedToolStep、提示词进 request/header，都在装配处完成，T-8 验收场景①前必须就位
+  - 摘要质量属 F5（P1）：当前 summarizer 由装配注入假实现，真实摘要提示词未实现
+  - 词汇表 reason 字段扩展待用户默认追认（偏离 1；不追认回退面小）
+  - 递归摘要（第二次压缩的摘要不含第一次摘要文本）是已知简化，F5/P1 处理
+  - 人工确认清单不变（J2 真实厂商连通性、D3 弱承诺目检、§6.2 常驻内存、T-6-01 符号链接）
+- **下一阶段提示词**：
+
+```
+继续 aegent 内核的实施。读 docs/plan-p0.md 的 §0 执行协议，然后从「阶段 8」
+的第一张 [ ] 任务卡开始。上一阶段报告在 docs/plan-p0-progress.md。
+本阶段特有的注意：1) 阶段 7 的压缩/预算/抖动全部是模块级交付，T-8 装配时
+把 turnEnd 链挂压缩层（T-7-04 的次序断言已钉 compaction 先于 turn/end）、
+PreTurn 压缩挂"新 prompt 入流后首次模型请求前"（zcode PreRequest 同款）、
+step 收尾调 RapidRefillGuard.recordCompletedToolStep——接线改 loop 时顺路
+把 buildMessages 换成 src/session/messages.ts 的公共 helper；2) T-8-02 代码
+状态检查点消费 E4 的 revert 标记与 checkpoint 事件（词汇表已留位），杀进程
+重启路径走 store.restore（seq 断层即抛）；3) T-8-05 全量验收跑需求 §8 十条
+前先核对人工确认清单（J2/D3/§6.2/符号链接四项），无法机验的写明人工确认
+方式。不要问要不要继续。
 ```
 
 ---
