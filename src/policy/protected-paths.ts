@@ -47,9 +47,14 @@ export function findProtectedMetadataSegment(
 
 /**
  * P0 写路径工具（注册表名）。bash 写操作经 T-5-14 的虚拟操作接入硬拦，
- * 本清单不收 bash——防后来者以为漏了。
+ * 本清单不收 bash——防后来者以为漏了。self-guard（C35）共用此判定。
  */
 const WRITE_PATH_TOOLS: ReadonlySet<string> = new Set(["write", "edit"]);
+
+/** 该工具是否为"写路径"类（硬拦与自我修改防线共用的判定面）。 */
+export function isWritePathTool(tool: string): boolean {
+  return WRITE_PATH_TOOLS.has(tool);
+}
 
 /**
  * 硬拦出口：链裁决之后、执行之前调用。写类工具的 args.path 任一段
@@ -59,7 +64,7 @@ export function enforceProtectedPaths(
   verdict: Verdict,
   call: PolicyCall,
 ): Verdict {
-  if (!WRITE_PATH_TOOLS.has(call.tool)) return verdict;
+  if (!isWritePathTool(call.tool)) return verdict;
   const path = call.args.path;
   if (typeof path !== "string") return verdict;
   const segment = findProtectedMetadataSegment(path);

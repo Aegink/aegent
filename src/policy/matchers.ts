@@ -32,9 +32,12 @@ export const bashRuleMatcher: RuleMatchable = {
 };
 
 /**
- * P0 内置匹配器注册表（卡面"先 bash"）。新工具实现 RuleMatchable 后在
- * 此登记；未登记工具的带参规则在 loadedRuleMatch 里永不命中（见上）。
+ * P0 内置匹配器注册表（卡面"先 bash"）。**键 = 注册表工具名（小写）**，
+ * 与 PolicyCall.tool（gate 从 tool/call 事件取的注册名）严格一致——规则
+ * 文本的工具名维度也按注册表名写（`bash(git *)`，大写 Bash 是上游显示
+ * 习惯，不匹配）。新工具实现 RuleMatchable 后在此登记；未登记工具的
+ * 带参规则在 loadedRuleMatch 里永不命中（见上）。
  */
 export const builtinRuleMatchers: Readonly<Record<string, RuleMatchable>> = {
-  Bash: bashRuleMatcher,
+  bash: bashRuleMatcher,
 };

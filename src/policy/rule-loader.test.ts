@@ -12,19 +12,19 @@ import {
 import { createRuleSetModule } from "./rules.js";
 
 const bashCall = (command: string): PolicyCall => ({
-  tool: "Bash",
+  tool: "bash",
   args: { command },
 });
 
 describe("解析与 raw 保留（C38）", () => {
   it("Tool(argPattern) 拆解，原文原样保留", () => {
     const rules = loadRules(
-      [{ raw: "Bash(git *)", action: "ask" }],
+      [{ raw: "bash(git *)", action: "ask" }],
       builtinRuleMatchers,
     );
     expect(rules[0]).toMatchObject({
-      raw: "Bash(git *)",
-      toolName: "Bash",
+      raw: "bash(git *)",
+      toolName: "bash",
       argPattern: "git *",
       invalid: false,
     });
@@ -32,19 +32,19 @@ describe("解析与 raw 保留（C38）", () => {
 
   it("裸工具规则无 argPattern；Tool() 空参数按裸工具（kimi 同款）", () => {
     const rules = loadRules(
-      [{ raw: "Bash", action: "deny" }, { raw: "Bash()", action: "ask" }],
+      [{ raw: "bash", action: "deny" }, { raw: "bash()", action: "ask" }],
       builtinRuleMatchers,
     );
-    expect(rules[0]).toMatchObject({ toolName: "Bash", action: "deny" });
+    expect(rules[0]).toMatchObject({ toolName: "bash", action: "deny" });
     expect(rules[0]?.argPattern).toBeUndefined();
-    expect(rules[1]).toMatchObject({ toolName: "Bash" });
+    expect(rules[1]).toMatchObject({ toolName: "bash" });
     expect(rules[1]?.argPattern).toBeUndefined();
   });
 
   it("畸形规则保留原文标 invalid（qwen never-match 纪律），加载不炸", () => {
     const rules = loadRules(
       [
-        { raw: "Bash(git", action: "allow", line: 2 },
+        { raw: "bash(git", action: "allow", line: 2 },
         { raw: "(git *)", action: "allow", line: 3 },
         { raw: "   ", action: "allow", line: 4 },
       ],
@@ -72,7 +72,7 @@ describe("C44 · 加载期样例校验", () => {
     const rules = loadRules(
       [
         {
-          raw: "Bash(git *)",
+          raw: "bash(git *)",
           action: "allow",
           line: 5,
           matchExamples: ["git status", "git push"],
@@ -90,7 +90,7 @@ describe("C44 · 加载期样例校验", () => {
       loadRules(
         [
           {
-            raw: "Bash(git push *)",
+            raw: "bash(git push *)",
             action: "allow",
             line: 3,
             matchExamples: ["git status"],
@@ -104,10 +104,10 @@ describe("C44 · 加载期样例校验", () => {
     } catch (e) {
       const err = e as RuleLoadError;
       expect(err.violations).toEqual([
-        { line: 3, raw: "Bash(git push *)", kind: "match-example", sample: "git status" },
+        { line: 3, raw: "bash(git push *)", kind: "match-example", sample: "git status" },
       ]);
       expect(err.message).toContain("第 3 行");
-      expect(err.message).toContain("Bash(git push *)");
+      expect(err.message).toContain("bash(git push *)");
     }
   });
 
@@ -116,14 +116,14 @@ describe("C44 · 加载期样例校验", () => {
       loadRules(
         [
           {
-            raw: "Bash(git *)",
+            raw: "bash(git *)",
             action: "ask",
             line: 7,
             matchExamples: ["git log"], // 合法
             notMatchExamples: ["git status"], // 反例实际命中 → 违规
           },
           {
-            raw: "Bash(rm *)",
+            raw: "bash(rm *)",
             action: "deny",
             line: 12,
             matchExamples: ["ls"], // 正例未命中 → 违规
@@ -146,8 +146,8 @@ describe("C44 · 加载期样例校验", () => {
     const load = () =>
       loadRules(
         [
-          { raw: "Bash", action: "allow", line: 2, matchExamples: ["anything"] },
-          { raw: "Write(/a/**)", action: "allow", line: 3, matchExamples: ["/a/b"] },
+          { raw: "bash", action: "allow", line: 2, matchExamples: ["anything"] },
+          { raw: "write(/a/**)", action: "allow", line: 3, matchExamples: ["/a/b"] },
         ],
         builtinRuleMatchers,
       );
@@ -169,8 +169,8 @@ describe("C21 · 参数匹配委托（链上路径）", () => {
   it("bash 规则经匹配器命中命令；首匹配胜 + raw 进 verdict（验收②）", async () => {
     const rules = loadRules(
       [
-        { raw: "Bash(git status)", action: "allow" },
-        { raw: "Bash(git *)", action: "ask" },
+        { raw: "bash(git status)", action: "allow" },
+        { raw: "bash(git *)", action: "ask" },
       ],
       builtinRuleMatchers,
     );
@@ -186,12 +186,12 @@ describe("C21 · 参数匹配委托（链上路径）", () => {
     });
     const verdict = await chain.evaluate(bashCall("git status"));
     expect(verdict.action).toBe("allow");
-    expect(verdict.rule).toBe("Bash(git status)"); // raw 原文回显
+    expect(verdict.rule).toBe("bash(git status)"); // raw 原文回显
   });
 
   it("未登记匹配器的工具，带参规则永不命中（fail-closed），链弃权", async () => {
     const rules = loadRules(
-      [{ raw: "Write(/a/**)", action: "allow" }],
+      [{ raw: "write(/a/**)", action: "allow" }],
       builtinRuleMatchers,
     );
     const chain = assemblePolicyChain({
@@ -210,13 +210,13 @@ describe("C21 · 参数匹配委托（链上路径）", () => {
   });
 
   it("裸工具规则不经委托，按工具名通配命中", async () => {
-    const rules = loadRules([{ raw: "Bash", action: "deny" }], builtinRuleMatchers);
+    const rules = loadRules([{ raw: "bash", action: "deny" }], builtinRuleMatchers);
     const match = loadedRuleMatch(builtinRuleMatchers);
     expect(match(rules[0]!, bashCall("anything"))).toBe("deny");
   });
 
   it("工具名维度通配：B* 规则命中 Bash 调用", () => {
-    const rules = loadRules([{ raw: "B*(git *)", action: "ask" }], builtinRuleMatchers);
+    const rules = loadRules([{ raw: "b*(git *)", action: "ask" }], builtinRuleMatchers);
     const match = loadedRuleMatch(builtinRuleMatchers);
     expect(match(rules[0]!, bashCall("git push"))).toBe("ask");
   });

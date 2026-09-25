@@ -555,7 +555,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①abstain 作 max 的单位元（codex 无此值）——"没意见"不拉高不拉低，空集/全弃权聚合为 abstain。②DECISION_ORDER 带 C16 同款穷尽编译闸门（漏变体编译失败）。③硬拦清单只收 .git/.agents/.codex（codex 同款；C46 需求的"指令文件/配置目录"归 T-5-07 的 C35 编辑器级防线，两清单互补不重复——protected-paths.ts 头注释写明分工）。④方言保守方向：路径段不分大小写比较（Windows 盘 .GIT 即 .git）、任一路径段命中即拦（嵌套仓库的 .git 同受保护，比 codex 工作区顶层更严，记已知取舍）；只拦写不拦读（git 日常要读 .git，codex forbidden_agent_metadata_write 同款）；bash 不在 P0 拦面（写操作经 T-5-14 虚拟操作接入，清单注释防后来者误以为漏了）。⑤withProtectedPaths 组合形态交付（链裁决 → 硬拦出口），T-5-12 gate 直接消费。
 - **完成记录**：2026-09-25。产出 `src/policy/aggregate.ts`（DECISION_ORDER 唯一全序 + decisionSeverity + maxDecision）+ `src/policy/protected-paths.ts`（PROTECTED_METADATA_PATH_NAMES + findProtectedMetadataSegment + enforceProtectedPaths + withProtectedPaths）+ `aggregate.test.ts` 11 用例。验收：`npx vitest run src/policy/aggregate.test.ts` → **11 passed**；①穷举 2^4 子集 × 4 种追加意见共 64 组合，severity(max(S∪{d})) ≥ severity(max(S)) 恒成立（加规则在数学上不可能放宽）；②链配裸 write allow 规则后 `.git/config` 写仍 deny（reason 含保留段名、rule 字段缺席证明非规则来源）、ask 同压、正常路径透传、read 触及 .git 不拦。全量 `npx vitest run` **255 passed**，`npx tsc --noEmit` 干净。
 
-#### T-5-07 · C35/C45 · 禁止自我修改 + 权限配置 linter `[ ]`
+#### T-5-07 · C35/C45 · 禁止自我修改 + 权限配置 linter `[x]`
 - **依据需求**：C35（P0）· C45（P0）
 - **上游首选参考**：[qwen·classifier-prompts/system-prompt.ts:42](../oss/qwen-code/packages/core/src/permissions/classifier-prompts/system-prompt.ts)（`BUILTIN_SOFT_DENY` 第 4 条逐字含"包括在用户要求的同文件编辑中加/宽 allow 规则"，含 AGENTS.md 类指令文件）；[kimi·toolPolicy/evaluate.ts:85](../oss/kimi-code/packages/agent-core-v2/src/agent/toolPolicy/evaluate.ts#L85)（`findInactiveToolPatterns`——linter 检出永不生效模式）
 - **取什么 / 别抄什么**：C35 = 保留路径（T-5-06）+ **编辑器级防线**：write/edit 工具对权限配置文件与指令文件路径拒绝 agent 发起的写（用户手动改不受限——防线在"agent 发起"判定）；linter 按 kimi 四类问题裁剪为我方对应项
@@ -564,8 +564,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/policy/self-guard.test.ts`——①agent 写 `config/permissions.json`（含 allow 规则增项）被拒；②同文件**用户操作**（非 agent 上下文）可写；③linter：喂一条永不匹配的规则输出警告
 - **依赖**：T-5-06、T-4-03
 - **风险 / 未知**："agent 发起 vs 用户手动"的判别在 P0 单端 CLI 里是调用上下文标志（进程内可信），多端后的伪造面是 P1 权限降级（H3）的事——注释写明边界
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①受保护清单落 agents.md + permissions.json（qwen 清单同位项裁剪到 P0；只能追加不能替换——C36 注释），与 C46 元数据目录清单分工写明（protected-paths 管目录、本卡管文件）。②判别面落 `SelfGuardContext.agentInitiated` 显式标志：经 loop 工具循环恒 true，false 供显式用户代操作路径（P0 无此路径，测试钉语义）；用户手改文件不进工具循环天然不受限。③linter 类别按 kimi 裁剪为三类：invalid-syntax（loadRules 标 invalid 的畸形）/ unknown-tool（照收）/ no-matcher-for-args（**我方新增**——T-5-05 fail-closed 让带参规则在未登记匹配器的工具上静默死掉，linter 让它可见；工具名通配带参给"无法静态确认"变体）；kimi 的 MCP 两类 P0 无 MCP 不适用。④linter 只警告不拒装——死规则是配置错误非攻击面，装前硬拒只留给样例矛盾（C44），分层写明。⑤**连带修一处方言 bug**：matchers.ts 注册键原写大写 "Bash"，与注册表小写工具名不符（本卡测试按注册名构造 PolicyCall 抓出）——键改 "bash"，rule-loader.test 随迁小写方言，头注释写明"规则文本工具名按注册表名写（大写 Bash 是上游显示习惯）"。
+- **完成记录**：2026-09-25。产出 `src/policy/self-guard.ts`（SELF_EDIT_PROTECTED_NAMES + findSelfEditProtectedSegment + SelfGuardContext + enforceSelfGuard，拒绝理由含"用户可手动修改"提示）+ `src/policy/linter.ts`（lintRules 三类 LintIssue 带行号）+ protected-paths.ts 导出共享 isWritePathTool + `self-guard.test.ts` 10 用例 + rule-loader.test.ts 方言随迁。验收：`npx vitest run src/policy/self-guard.test.ts` → **10 passed**；①agent 写 config/permissions.json 拒绝且 reason 含"用户可手动修改"（链 allow 裁决也被压）；AGENTS.md 的 write/edit 同拒；②agentInitiated=false 同文件透传不拦；③lint("Bashh(git *)") 输出 unknown-tool + no-matcher-for-args 双警告带行号。附：普通路径/读指令文件不拦、畸形规则 invalid-syntax、健康规则零警告、linter 不拒装。全量 `npx vitest run` **265 passed**，`npx tsc --noEmit` 干净。
 
 #### T-5-08 · C47/C48 · 批准作用域显式化 + 提案由引擎算 `[ ]`
 - **依据需求**：C47（P0）· C48（P0，Q18 确认）
