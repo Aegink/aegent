@@ -56,7 +56,7 @@
 | 2026-09-25 | T-6-03 | D3 | `51abfc1` | `npx vitest run src/sandbox/network.test.ts` | 5 passed；deny 档字符串/URL/Request 全拒且真实请求零发生（NETWORK_DENIED 含目标 URL）；allow 档对 localhost 真端口放行 + 透传语义；deny 网络 × PathGuard 允许写组合验证独立一档；README 弱承诺声明机验在位（人工确认清单 D3 行仍待用户目检） |
 | 2026-09-25 | T-6-04 | D8 | `f53465a` | `npx vitest run src/sandbox/dpapi.test.ts` + config grep | 4 passed（真实 PowerShell 5.1 子进程）；protect→unprotect 往返一致（含中文载荷 base64 通道）；SecureKeyStore setKey→落盘 JSON 无明文 key（sk- 证伪）→getKey 往返；损坏 blob DPAPI_UNPROTECT_FAILED；config/ 不存在 → grep \|\| echo CLEAN；路线裁定 PowerShell（卡内偏离，未摘 dpapi.rs 代码故 THIRD_PARTY 无登记） |
 | 2026-09-25 | T-6-05 | D9 | `c5717dc` | `npx vitest run src/kernel/logger.test.ts` + logs grep | 6 passed；sk- 与 sk-proj- 变体整段掩码（data 深层同掩、恒开）；userContent 约定字段缺省掩码（开关可关、密钥恒掩）；按日文件每行 JSON、写失败降级不带崩；logs/ 不存在 → grep \|\| echo CLEAN |
-| 2026-09-25 | T-6-06 | D15 | （本卡） | `npx vitest run src/kernel/tools/bash-retry-guard.test.ts` | 8 passed；超时 bash 调用重试层不发起第二次重发（计数断言：初始+重试层首次=2、绝无第 3 次）且拒绝信息含"命令已启动，不自动重试"；started 标记四态（成功/非零/超时/未知失败）+ spawn 失败（ENOENT/EAGAIN）无标记可重试对照；builtin bash meta 断言同步 started |
+| 2026-09-25 | T-6-06 | D15 | `5ddc455` | `npx vitest run src/kernel/tools/bash-retry-guard.test.ts` | 8 passed；超时 bash 调用重试层不发起第二次重发（计数断言：初始+重试层首次=2、绝无第 3 次）且拒绝信息含"命令已启动，不自动重试"；started 标记四态（成功/非零/超时/未知失败）+ spawn 失败（ENOENT/EAGAIN）无标记可重试对照；builtin bash meta 断言同步 started |
 
 ---
 
@@ -344,6 +344,55 @@ args.path 接入，bash 经 T-5-14 的虚拟文件操作（file-write/file-read�
 进程只传可序列化值（T9）；3) D3 网络策略的弱承诺声明（只拦工具层 fetch，
 不承诺管住任意子进程）必须写进产出 README，gate 的 broker 放行目前是
 once 语义、scope=session 缓存记录的接线在 T-8——阶段 6 不用补。不要问
+要不要继续。
+```
+
+---
+
+## 阶段 6 报告（完成于 2026-09-25）
+
+- **打勾情况**：6 / 6（T-6-01 ~ T-6-06 全部完成，无未完成项）
+- **产出的文件**：
+  - `src/sandbox/path-guard.ts` + `path-guard.test.ts` + `docs/sandbox-path-limitations.md`（LIMITATIONS 双载体）——工作区边界唯一入口（T-6-01）
+  - `src/test-support/tmp-fs.ts`（夹具落盘助手）+ `src/kernel/tools/builtin/{read,write,edit,bash,index}.ts` 守卫接线——T-6-01
+  - `src/sandbox/templates.ts` + `templates/permissions/approval_policy/{on_request,never}.md` + `templates.test.ts`——D2 提示词模板（T-6-02）
+  - `src/sandbox/network.ts` + `src/sandbox/README.md`（弱承诺声明置顶）+ `network.test.ts`——D3 网络独立一档（T-6-03）
+  - `src/sandbox/dpapi/{dpapi.ps1,index.ts,secure-config.ts}` + `dpapi.test.ts`——D8 DPAPI（T-6-04）
+  - `src/kernel/logger.ts` + `logger.test.ts`——D9 日志脱敏（T-6-05）
+  - `src/kernel/tools/bash-retry-guard.ts` + `bash-retry-guard.test.ts`——D15 重试幂等边界（T-6-06）
+  - `scripts/copy-assets.mjs` 泛化为资产清单（描述 txt/模板 md/DPAPI ps1 三项）
+- **验收台账**：6 卡 6 命令全部通过（见台账表）；全量 `npx vitest run` **384 passed / 1 skipped**（阶段 5 收尾 331 → 净增 53），`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变，`check-doc-links.sh` 0 失效；三个 grep 证伪全过（builtin/ 裸 fs 写 0 行、config/ CLEAN、logs/ CLEAN）
+- **阶段完成定义核对**：越界写被拒且报错明确 ✓（场景④：报错含目标路径与允许范围、不落盘）；配置文件无明文 key ✓（SecureKeyStore 落盘 JSON 的 sk- 证伪）；单独禁网可测 ✓（NetworkPolicy allow/deny 与路径/权限两轴独立）
+- **偏离计划的地方**：
+  1. **fs 写能力收进 PathGuard**（T-6-01）：工具本体零裸 fs 写 + 工厂类型必收守卫——无旁路由构造保证，同时是 grep 证伪的达成方式；T-4-05 env.ts 头注释预告的"阶段 6 把 fs 收进接口"实际落点改为沙箱守卫（进程执行归 env、文件 I/O 归守卫，能力面不混在一处）
+  2. **T-6-04 路线裁定 PowerShell**（卡内二选一）：D8 冷路径 + PS 5.1 系统自带零构建面；**未摘 dpapi.rs 任何代码**（用户域 DPAPI vs codex 机器域），THIRD_PARTY.md 无登记；跨进程协议 = argv 动作名 + stdin/stdout base64（明文不进命令行，T9）
+  3. **bash 工具引入 policy/shell-semantics 纯函数 import**（T-6-01）：内核工具 → 策略层唯一一处反向依赖（analyzeShellCommand 无状态、无模块环）
+  4. **cd 追踪在 assertShellFileOps 内按 op 序重建**（T-6-01）：字面 cd 后相对目标 fail-closed——最初实现错解析到进程 cwd 造成假放行，被测试抓出后修正
+  5. **D3 弱承诺 README 落 `src/sandbox/README.md`**（弱承诺置顶加粗）；**D2 模板内容按我方语义重写**（codex 的 sandbox_permissions/prefix_rule 机制在我方不存在）
+- **新发现的约束或坑**：
+  - **PowerShell 5.1 读无 BOM 的 .ps1 用系统 ANSI 代码页（本机 GBK）**：UTF-8 中文注释按字节错位可破坏解析（探针文件靠对齐运气通过、正式文件实爆 ParserError）——.ps1 强制纯 ASCII 注释；与"块注释写 glob 序列提前闭合"同级别进 notes
+  - **grep 证伪按字面匹配：`writeFileSync` 含 `writeFile` 子串**——测试夹具也算命中，夹具落盘助手移到 `src/test-support/tmp-fs.ts` 后 builtin/ 才 0 命中
+  - **.mjs 是纯 JS**：copy-assets 曾误写 TS 类型标注直接 SyntaxError
+  - **T-5-14 扫描器对 Windows 风格绝对路径（`C:\x` 不以 `/` 开头）也打 pathMayDependOnCwd** → 策略面会多 ask（保守方向无害）；守卫不依赖该标志（以 path.isAbsolute 判定），T-5-14 产物未动
+- **遗留风险与未知**：
+  - T-6-01 符号链接逃逸用例本机无创建特权自动跳过（人工确认清单新增行：有特权环境应 22 全过）
+  - D3 弱承诺 README 待用户目检（人工确认清单既有行）
+  - 守卫只覆盖工具入口：bash 不经重定向的写手段（tee/dd/cp，C29 #6）与命令替换/eval 内重定向守卫不可见——后者走 C28 的 ask 面（用户批准即担责）；第三方子进程自发行为不承诺管住（D3/D16 弱承诺）
+  - glob/grep 未接守卫（只读 + P0 读面不限，显式记录）；P0 读边界仅显式配置 readRoots 时存在
+  - logger / SecureKeyStore 的运行时接线在 T-8（L1/L3 与装配）；logs/、config/ 目录由装配决定
+  - 人工确认清单：J2 真实厂商连通性、D3 弱承诺目检、§6.2 常驻内存、T-6-01 符号链接（新增）
+- **下一阶段提示词**：
+
+```
+继续 aegent 内核的实施。读 docs/plan-p0.md 的 §0 执行协议，然后从「阶段 7」
+的第一张 [ ] 任务卡开始。上一阶段报告在 docs/plan-p0-progress.md。
+本阶段特有的注意：1) T-7-01 溢出检测与压缩是两个模块（overflow 的输出是
+compaction 的输入，别写成一个函数），本地 token 估算用保守系数 0.9，误
+差方向记注释；2) T-7-05 系统提示装配直接消费阶段 6 的
+renderPermissionsPrompt(tier, {writableRoots}) + PathGuard.describeWritable
+Roots()（模板 md 已在 copy-assets 清单），权限档位来源由装配决定；3) F9/F17
+压缩发生在 turn 边界（T-3-01 的 turnEnd 点位已预留），F21 按 Q13 只做
+PreTurn/MidTurn 两相位，切点工具配平复用 expectPaired(tool/call)。不要问
 要不要继续。
 ```
 
