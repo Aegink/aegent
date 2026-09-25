@@ -79,7 +79,7 @@
 | 2026-09-25 | T-P1-06 | J9/J10/J14 | `3e37f14` | `npx vitest run src/kernel/model-switch.test.ts src/kernel/events.test.ts` | 37 passed（24+13）；①换模/回滚落 model/switch 事件 seq 连续可投影（modelSwitches 事实源）+协议行转发可见；②globalDefault 变更不改变已有会话级选择；③重启重建装配后模型仍是用户选的（J14）；④C16 编译闸门+计数 15；对照：流内选择不在注册表装配失败不静默；**词汇表 14→15 已立案待追认**（执行会话新发现 #2）；全量 530 passed，tsc 干净——**J6 换模组（3 卡）收官** |
 | 2026-09-26 | T-P1-07 | I1/I13 | `11a8d33` | `npx vitest run src/kernel/hooks.test.ts src/kernel/chain.test.ts` | 27 passed（chain 14 + hooks 13）；①hook 嵌套序=注册序、前 hook 截断不调 next（loop 级工具不执行、tool/result 落 hook 值）；②trace 完整层序（namedLayer）+budget 墙钟衰减可断言（500→380/超支 -150）；③L10 链底无人应答抛错点名事件；④崩溃双轨：untrusted before→隔离 isError（HOOK_FAILED）、trusted→上抛（T-5-01 同款）、after 段一律上抛、modelRequest→blocked、turnEnd→吞错继续；hook 层挂 gate 外层；全量 548 passed，tsc 干净，count-features 310 |
 | 2026-09-26 | T-P1-08 | I2 | `219af6d` | `npx vitest run src/kernel/skills.test.ts` | 8 passed；①递归发现含嵌套源；②缺损/坏行/重复名产诊断码不抛（invalid_metadata/parse_failed/duplicate_name）；③skill_load 按名取正文、未知名 SKILL_NOT_FOUND；④改 SKILL.md 零 .ts diff 机验（清单+正文跟文件走）；集成：system/message 首落带清单、诊断落 skill-lint 日志；copy-assets 整目录拷贝自动跟上（工具描述 7→8）；BUILTIN_TOOL_NAMES 6→7；全量 556 passed，tsc 干净，count-features 310 |
-| 2026-09-26 | T-P1-09 | I6/I9 | 本组 commit | `npx vitest run src/kernel/hooks.test.ts src/kernel/plugin-manifest.test.ts` | 22 passed（14+8）；①分轨：layer 只含 trusted（内核 trace 零 untracked 感知）、untrustedLayer 独立观察轨（next 哨兵=能力越界抛错、崩溃轨内隔离+报告可检索）；②未实现能力拒绝且列明缺哪项；③闭集外字段/坏 point/重复声明拒绝；④trusted 安装后内核链直调、untrusted 观察轨可用、声明未实现 handler 拒绝且回滚无半态、uninstall 摘净；全量 565 passed，tsc 干净，count-features 310——**I 层扩展面组（3 卡）收官** |
+| 2026-09-26 | T-P1-09 | I6/I9 | `8ec9cbb` | `npx vitest run src/kernel/hooks.test.ts src/kernel/plugin-manifest.test.ts` | 22 passed（14+8）；①分轨：layer 只含 trusted（内核 trace 零 untracked 感知）、untrustedLayer 独立观察轨（next 哨兵=能力越界抛错、崩溃轨内隔离+报告可检索）；②未实现能力拒绝且列明缺哪项；③闭集外字段/坏 point/重复声明拒绝；④trusted 安装后内核链直调、untrusted 观察轨可用、声明未实现 handler 拒绝且回滚无半态、uninstall 摘净；全量 565 passed，tsc 干净，count-features 310——**I 层扩展面组（3 卡）收官** |
 
 ---
 
@@ -646,6 +646,53 @@ T-7-09 收集器经验，"改 SKILL.md 零 .ts diff"机验同 T-4-01 描述文�
 copy-assets 清单要跟上；3) 词汇表现 15（model/switch 待追认，落地记录 3
 含回退面），T-P1-10 todo 扩 15→16 时流程同款（assertNever + §8 记录 +
 待澄清立案）。不要问要不要继续。
+```
+
+---
+
+## 批次 1 · 第三组报告（I 层扩展面，完成于 2026-09-26）
+
+- **打勾情况**：3 / 3（T-P1-07 ~ T-P1-09 全部完成，无未完成项）——**I 层扩展面组收官**（批次 1 已完成 9 / 13 卡，剩 G 层 T-P1-10 ~ 13）
+- **产出的文件**：
+  - `src/kernel/chain.ts`——I13 填实（`ChainTraceEntry` 加 name + `namedLayer` 附加层名、未命名记 `layer#<index>`；`budgetMs` 墙钟衰减 + `now` 时钟注入，不配恒空槽零行为变化）+ L10（`terminal?` 可选化，链底无人应答抛错点名点位事件）
+  - `src/kernel/hooks.ts`——HookRegistry（on 返回注销函数 / has / layer / untrustedLayer / dispose；T-P1-07 聚合层起步、T-P1-09 分轨定型：layer 只含 trusted，untrustedLayer 独立观察轨——next 哨兵 = 能力越界抛错、崩溃轨内隔离 + reportError 可检索）
+  - `src/kernel/skills.ts`——`.zcode/skills/**/SKILL.md` 递归发现（名字取目录名、frontmatter name 可覆盖）+ 行解析 frontmatter（无 yaml 依赖）+ 四类诊断码与清单并返不抛异常 + skillBody/formatSkillInvocation
+  - `src/kernel/tools/builtin/skill.ts` + `descriptions/skill_load.txt`——skill_load 工具（重扫描不缓存、读经 PathGuard、SKILL_NOT_FOUND 类型化错误）；BUILTIN_TOOL_NAMES 6→7
+  - `src/kernel/plugin-manifest.ts`——validateManifest（形状闭集 + trust 闭集 + 未实现能力列明缺哪项 + hooks point 闭集/重复拒绝，错误全量收集）+ installPlugin（声明未实现 handler 拒绝且回滚无半态、`<插件>:<hook>` 前缀注册、uninstall）
+  - `src/context/system-prompt.ts`——`skills?` 尾段渲染（"## 可用技能"，空清单不加段零行为变化）
+  - `src/kernel/assembly.ts`——`hooks?: HookRegistry` 装配选项（聚合层挂三点位 gate 外层）+ contextLayer 技能扫描（诊断落 skill-lint warn）+ 清单进系统提示
+  - `src/kernel/agent-process.ts`——workspaceRoot 作 skillsRoot 传 registerBuiltinTools
+  - 测试：hooks.test 14 用例、skills.test 8、plugin-manifest.test 8、chain.test 9→14；builtin.test 工具清单断言 6→7
+- **验收台账**：3 卡 3 命令全过（见台账表）；全量 `npx vitest run` **565 passed / 1 skipped**（J6 组收官 530 → 净增 35），`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 548 链接 0 失效；`npm run build` 实测 copy-assets 工具描述 7→8 项自动跟上（脚本零改动）
+- **偏离计划的地方**：
+  1. **I13 层名载体**：`namedLayer` 函数属性（defineProperty）而非 layers 改对象形状——后者波及约 20 处既有测试构造，违背精准修改
+  2. **T-P1-07 的 untrusted "隔离为 isError" 过渡语义在 T-P1-09 分轨后取消**：untrusted 不再进内核链（无 isError 化场景），观察轨崩溃统一吞错 + 报告；hooks.test 对应用例随分轨改写，T-P1-07 卡面验收④的完成记录已注明演进
+  3. **untrusted 轨触发面 P1 是进程内 registry 方法**：真进程隔离/协议随 K3/K4（卡面风险栏既定）；能力白名单行为面 = 只观察（next 哨兵），capabilities 清单校验先行、运行时能力面随 K 层接入
+  4. **技能清单定格与正文即时的不对称**：清单定格在 system/message 首落时点（改 SKILL.md 对新会话生效——清单是事件流历史事实），skill_load 正文每次直读当前会话即时生效（F22 事件重建的自然结果）
+- **新发现的约束或坑**：
+  - **函数泛型收窄**：`typeof x === "string"` 存进布尔变量后再用不收窄 unknown（TS 局限）——守卫要内联或先提局部常量再判断（plugin-manifest.ts hooks 段踩过）
+  - 装配级手动跑链时 system/message 落流要求已开启的 turn+step（词汇表校验）——测试需先 append turn/start + step/start
+  - registry 快照语义（layer()/untrustedLayer() 取注册快照）让"装配时序定轨内容"可测，但意味着快照后注册要重新取层——分轨断言测试依赖这一点
+- **遗留风险与未知**：
+  - untrusted 观察轨目前无生产触发方（宿主/进程外协议消费随 K3/K4）——registry 面就绪、装配未接线
+  - skill 工具每次 dispatch 全量重扫技能目录——技能面大时的性能未测（技能数量小，暂不优化）
+  - chain budget 只有可见性（remaining 衰减可断言），超预算执行面（截断/超时）无验收点，留后续
+  - REPL `/model` 命令仍欠（J6 组遗留，随 CLI 批次）
+- **下一组**：T-P1-10 ~ 13（G 层 Planning 4 卡：todo/plan 模式/goal/计划落盘），其中 T-P1-10、T-P1-12 各需一次词汇表扩展（15→16、16→17）
+- **下一组提示词**：
+
+```
+继续 aegent P1 批次 1 的实施。读 docs/plan-p1.md 的卡序（执行协议沿用
+docs/plan-p0.md §0），从「T-P1-10」的第一张 [ ] 任务卡开始。上一组报告在
+docs/plan-p0-progress.md（批次 1 · 第三组报告）。本组特有的注意：1) T-P1-10
+todo 扩词汇表 15→16、T-P1-12 goal 扩 16→17，流程同 model/switch 先例
+（events.ts 闭集 + project 豁免 + event-asserts O7 豁免面 + l0-events.md §8
+落地记录含回退面 + 待澄清表立案供追认；事件载荷一律内联形状——JsonValue
+型证对 interface 不友好）；2) T-P1-10 todo 工具过 T-P1-01 出口级硬拦的
+plan 模式对照用例为 T-P1-11 铺垫，T-P1-11 硬关复用 exit-guard（protected-
+names 唯一权威同款结构），提示词独立文件进 copy-assets 的 descriptions
+清单；3) T-P1-13 依赖 T-P1-11 plan 模式与 E11 checkpoint（装配
+checkpointRepoRoot 先例），"重启不重放"按 Q5 对账口径。不要问要不要继续。
 ```
 
 ---
