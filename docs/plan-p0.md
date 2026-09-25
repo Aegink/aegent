@@ -531,7 +531,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①请求 id 由调用方提供（自然取工具调用 callId；D15 语义下重试即新调用新 id），id 撞挂起/墓碑同步抛 DuplicateApprovalError——防重检查有实义而非防御死代码。②已结算请求留 tombstone，迟到 reply 区分 Stale（settledWith=timeout/reply）与 Unknown（从未存在）——hermes `_run_still_current` 的进程内对应物，比一律 NotFound 诊断性强。③宣告（C31）落为构造器注入的 announce 回调（asked/settled/timed-out 三事实），超时同样宣告不静默；T-5-16 审计字段与 T-5-15 owner 通道消费此面。④`Promise.withResolvers` 需 ES2024 lib，不为单卡升全局脚手架——手写 deferred helper（恰为 opencode Deferred 形状）。⑤dispose 把未决请求按超时语义拒绝（类型化错误 + 宣告），不悬挂 promise 不静默放行。
 - **完成记录**：2026-09-25。产出 `src/policy/pending.ts`（PendingApprovals：ask 必填 timeoutMs / reply 唤醒 / PermissionTimeout·StaleApprovalError·UnknownApprovalError·DuplicateApprovalError 四个 code 化错误 / announce 宣告 / listPending / dispose）+ `pending.test.ts` 10 用例。验收：`npx vitest run src/policy/pending.test.ts` → **10 passed**；①ask 挂起（promise 未决 + listPending 可见 + asked 宣告）→ reply 唤醒继续（allow/deny 透传理由、缺省理由、并发互不串扰、同 id 重复发起同步抛 Duplicate）；②timeoutMs=10 超时 reject 的错误 instanceof PermissionTimeout（code=PERMISSION_TIMEOUT、requestId/timeoutMs 齐全）非 resolve 非泛 Error 且 timed-out 宣告发出；③超时后 reply 抛 StaleApprovalError（settledWith=timeout）、已答复后 reply 抛 settledWith=reply、从未存在抛 Unknown；附 dispose 拒绝不悬挂。全量 `npx vitest run` **232 passed**，`npx tsc --noEmit` 干净。
 
-#### T-5-05 · C21/C38/C44 · 参数匹配委托 + 规则 raw + 加载期校验 `[ ]`
+#### T-5-05 · C21/C38/C44 · 参数匹配委托 + 规则 raw + 加载期校验 `[x]`
 - **依据需求**：C21（P0）· C38（P0）· C44（P0）
 - **上游首选参考**：[kimi·matchesRule.ts](../oss/kimi-code/packages/agent-core-v2/src/agent/permissionRules/matchesRule.ts)（`parsePattern` 拆 `Tool(argPattern)` + `execution.matchesRule?.(parsed.argPattern)` 委托回工具）；[qwen·permissions/types.ts:47](../oss/qwen-code/packages/core/src/permissions)（`raw: string`——规则原文保留；`:73` 畸形规则标 never-match）；[codex·execpolicy/src/rule.rs:282](../oss/codex/codex-rs/execpolicy)（`validate_not_match_examples`——match/not_match 自测样例加载期校验）
 - **取什么 / 别抄什么**：取委托形状与 raw 字段；加载期校验做成规则加载器的必经步骤（含正样例必须匹配、反样例必须不匹配）
@@ -540,8 +540,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/policy/rule-loader.test.ts`——样例不符的规则加载即报错并列出行号；raw 字段在 verdict 中可回显
 - **依赖**：T-5-02
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①坏规则两种处置按来源纪律分开（比卡面"显式标 never-match"更细）：语法畸形 → 保留标 invalid 永不命中（qwen 同款，原文留给 T-5-07 linter 点名）；样例自相矛盾 → **整批加载即报错**带行号（codex validate_match_examples 纪律——违背自测承诺的规则比没有更危险）。②工具级规则 / 未登记工具的规则带样例即矛盾（examples-without-args）——无从校验的承诺按矛盾拒（C44 宁严勿松）。③C21 委托面落 matchers.ts（RuleMatchable{matchesRule, sampleCall} + bashRuleMatcher + builtinRuleMatchers 注册表）：sampleCall 让加载期校验与运行时走同一委托路径，避免两套匹配逻辑分叉；带参规则在调用方工具未登记匹配器时永不命中（kimi fail-closed 同款）。④evaluateRule（T-5-02 直接双维原语）与 loadedRuleMatch（链上委托路径）并存，参数维度共用同一通配方言（bashRuleMatcher 内部即 wildcardMatch），关系写进 rule-loader.ts 头注释。⑤loadRules 产出 LoadedRule 后以 loadedRuleText（raw）作 ruleText 接 createRuleSetModule——T-5-03 预留的 ruleText 回调在本卡兑现。
+- **完成记录**：2026-09-25。产出 `src/policy/rule-loader.ts`（LoadedRule{raw,toolName,argPattern?,action,invalid,line?} + parseRulePattern kimi 同款 + loadRules 样例校验 + RuleLoadError 全量违规列行号 + loadedRuleMatch 链上委托匹配 + loadedRuleText）+ `src/policy/matchers.ts`（RuleMatchable + bashRuleMatcher + builtinRuleMatchers）+ `rule-loader.test.ts` 12 用例 + pending.test.ts 一处固定 sleep 改轮询（全量并行下的计时竞态加固）。验收：`npx vitest run src/policy/rule-loader.test.ts` → **12 passed**；①正样例未命中/反样例反而命中加载即报错、错误消息含"第 3 行"与原文、多条违规一次全列（7 行 not-match + 12 行 match）；②链上 `Bash(git status)` 规则命中后 verdict.rule === raw 原文回显。附：裸规则/Tool() 空参/三种畸形 invalid never-match、examples-without-args 两类、未登记工具带参规则永不命中（链弃权）、工具名维度通配 B*。全量 `npx vitest run` **244 passed** 连续 3 轮稳定，`npx tsc --noEmit` 干净。
 
 #### T-5-06 · C43/C46 · `max()` 聚合 + 保留元数据路径硬拦 `[ ]`
 - **依据需求**：C43（P0）· C46（P0）

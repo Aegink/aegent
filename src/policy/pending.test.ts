@@ -101,7 +101,12 @@ describe("C50 · 超时带类型失败", () => {
   it("超时后请求移出挂起名单", async () => {
     const { registry } = makeRegistry();
     registry.ask(makeRequest("call-t2"), { timeoutMs: 10 }).catch(() => {});
-    await new Promise((r) => setTimeout(r, 30));
+    // 轮询等待而非固定 sleep：并行负载下 10ms 计时器可能晚点
+    const start = Date.now();
+    while (registry.listPending().length > 0) {
+      if (Date.now() - start > 2_000) throw new Error("超时未移出挂起名单");
+      await new Promise((r) => setTimeout(r, 5));
+    }
     expect(registry.listPending()).toEqual([]);
   });
 });
