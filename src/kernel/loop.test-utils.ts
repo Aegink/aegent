@@ -12,6 +12,7 @@ import {
 } from "./loop.js";
 import type { ChatRequest, ModelProvider } from "../models/provider.js";
 import type { PromptQueue } from "./queue.js";
+import type { RunState } from "./run-state.js";
 import { SessionStore } from "../session/store.js";
 
 /** 剧本化假 provider：每次模型调用吃一份 StreamChunk 脚本，记录收到的请求。 */
@@ -46,6 +47,7 @@ export function makeLoop(
     executeTool?: AgentLoopDeps["executeTool"];
     layers?: AgentLoopDeps["layers"];
     queue?: PromptQueue;
+    runState?: RunState;
   },
 ): Harness {
   const store = new SessionStore();
@@ -71,6 +73,7 @@ export function makeLoop(
     decideTurn,
     ...(opts?.layers ? { layers: opts.layers } : {}),
     ...(opts?.queue ? { queue: opts.queue } : {}),
+    ...(opts?.runState ? { runState: opts.runState } : {}),
   });
   return { store, loop, decideCalls };
 }

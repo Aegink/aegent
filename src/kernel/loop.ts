@@ -49,6 +49,7 @@ import type {
 } from "./events.js";
 import { TimeoutError } from "./timeout.js";
 import { type PromptQueue } from "./queue.js";
+import { type RunState } from "./run-state.js";
 
 // ---------------------------------------------------------------------------
 // 链点位的载荷 / 产物类型（T-3-01 卡定形的三个点的具体形状）
@@ -152,6 +153,12 @@ export interface AgentLoopDeps {
    * 从队列开启新 turn 属进程编排（T-3-06），不在 loop 内。
    */
   queue?: PromptQueue;
+  /**
+   * 运行态服务（A3，T-3-05 接线）：runTurn 开始 markBusy，turn/end 落盘成功
+   * 后（closeTurn 尾部，唯一通知点）markIdle。崩溃路径到不了 markIdle——
+   * busy 由恢复路径归位（宁可误报 busy，绝不误报 idle）。
+   */
+  runState?: RunState;
   /** 三个点位的层。P0 恒空数组；阶段 5/7 的权限/上下文/压缩层从这里进。 */
   layers?: {
     toolCall?: ReadonlyArray<
@@ -226,6 +233,9 @@ export class AgentLoop {
    */
   async runTurn(prompt: string): Promise<TurnEndReason> {
     const { store, sessionId } = this.deps;
+    // A3：turn 尝试开始即 busy（先于任何校验与落盘）——若本 turn 半途崩溃，
+    // busy 停留，由恢复路径归位。
+    this.deps.runState?.markBusy(sessionId);
     const turn = this.nextTurnNumber();
     // 新 turn 一份新信号：丢弃 idle 期迟到的取消（不武装本 turn 之前的工作）
     this.cancelCause = null;
@@ -533,6 +543,9 @@ export class AgentLoop {
         `turnEnd 链被截断（turn=${turn}）——P0 无合法消费方，turn 保持未闭合`,
       );
     }
+    // A3：turn/end 成功落盘才归位 idle——这是 run-state 的唯一归位点；
+    // 到不了这里（崩溃/截断）的 turn 停在 busy，等恢复路径。
+    this.deps.runState?.markIdle(this.deps.sessionId);
   }
 
   /** 硬退出：闭合仍开着的 step → turnEnd 链落 turn/end{error}。 */

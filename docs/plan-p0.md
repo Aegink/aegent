@@ -333,7 +333,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①我方 durable 终态**带 cause**（`turn/end{aborted, cause}`，词汇表 §3.3 定稿如此）而非 DSH 的粗粒度 `{kind:'aborted'}`——差异自觉：我方 CancelCause 本就是 JSON 安全的封闭联合（Q10），与 DSH 当年"cause 含自由文本/运行时细节"不可同日而语；DSH 的**拷贝声明字段**纪律照收（copyCause），两全。②协作式落地为"取消槽 + await 边界检查"（流 chunk 循环、工具派发循环、step 边界、决策点前），不弃 promise 不赛跑——与 T-2-04 timeout.ts 头注释的接线纪律一致；`next.signal` 槽确认不需要（chain.ts 注释已更新）。③取消不清空队列中的 steer（P0 从简，积压消息留给下一轮；DSH 的"清队列"随空闲期取消语义进 P1）。④新 turn 一份新信号：runTurn 开始重置槽、abortTurn 清槽先行（turn/end 发布前的取消=idle 取消）。
 - **完成记录**：`npx vitest run src/kernel/loop.cancel.test.ts` → **6 passed**（全量 112 passed，tsc 干净）。验收两条：①流中途取消 → 事件流恰一条 `turn/end{aborted}`、位于流末尾、其前是 `assistant/message{interrupted:true}`（已交付前缀"前半后半"，其后 chunk 未消费）、step 配对保持、DecideTurn 未被询问；②冻结 cause 的 undici 回归测试——冻结对象被 undici 式 transport（mock 赋 stack）当场 TypeError 吞真因，loop.cancel 后调用方对象未冻结、扩展可达、真因可达。另钉四条：step 边界取消不伪造 interrupted 标记、cause 落盘只含声明字段（stack 不进 durable 事件）、first-wins + idle 取消 no-op、工具间取消已派发结果照落/未派发缺席。
 
-#### T-3-05 · A3 · 运行态独立于 loop `[ ]`
+#### T-3-05 · A3 · 运行态独立于 loop `[x]`
 - **依据需求**：A3（P0）
 - **上游首选参考**：[opencode·run-state.ts](../oss/opencode/packages/opencode/src/session/run-state.ts)（SessionRunState 服务：idle/busy 状态可脱离 loop 判定）
 - **取什么 / 别抄什么**：取"运行态是独立服务、字段最小（idle/busy + 崩溃可判定）"；不抄 Effect 依赖栈
@@ -342,8 +342,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/kernel/run-state.test.ts`——loop 崩溃（注入 throw）后 run-state 仍可判定 busy → 由恢复路径归位 idle；不读 loop 内部变量
 - **依赖**：T-3-02
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①归位点**唯一**——markIdle 只在 closeTurn 尾部（turn/end 成功落盘后）调用，completed/error/blocked/aborted 四条收尾路径自然全覆盖，崩溃与 turnEnd 截断到不了这里；markBusy 在 runTurn 第一行（turn 尝试开始即 busy，先于任何校验——宁可误报 busy，绝不误报 idle）。②P0 是进程内 Map；T9 出进程后"跨进程观察运行态"由 T-3-06 协议层转发状态事实，本服务只管本进程视图。
+- **完成记录**：`npx vitest run src/kernel/run-state.test.ts` → **4 passed**（全量 116 passed，tsc 干净）。验收条目：双重故障注入（decideTurn 抛错 + turnEnd 层抛错）使异常逃出 runTurn → run-state 仍判 busy → 恢复路径 markIdle 归位 idle；服务全程不读 loop 内部变量（只有 markBusy/markIdle 两个通知点）。另钉：turn 进行中 busy/收轮后 idle、error/blocked/aborted 三路径同样归位、多会话独立且未知会话默认 idle。
 
 #### T-3-06 · T9 · agent 出进程 + 可序列化协议 `[ ]`
 - **依据需求**：T9（P0）——Q16 裁决的落地
