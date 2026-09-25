@@ -39,8 +39,8 @@ export interface ApprovalReply {
 /** C31 主动宣告：三类事实，凡能显示审批的界面都应消费。 */
 export type ApprovalAnnouncement =
   | { kind: "asked"; request: ApprovalRequest; timeoutMs: number }
-  | { kind: "settled"; id: string; verdict: Verdict }
-  | { kind: "timed-out"; id: string; timeoutMs: number };
+  | { kind: "settled"; id: string; verdict: Verdict; tool: string }
+  | { kind: "timed-out"; id: string; timeoutMs: number; tool: string };
 
 // ---------------------------------------------------------------------------
 // 类型化错误（C50：超时带类型失败；迟到 reply 带 stale 错误）
@@ -183,7 +183,7 @@ export class PendingApprovals {
       reply.action === "allow"
         ? { action: "allow", reason: reply.reason ?? "审批人放行" }
         : { action: "deny", reason: reply.reason ?? "审批人拒绝" };
-    this.announce?.({ kind: "settled", id, verdict });
+    this.announce?.({ kind: "settled", id, verdict, tool: entry.request.tool });
     entry.settle(verdict);
   }
 
@@ -198,7 +198,12 @@ export class PendingApprovals {
       this.pending.delete(id);
       this.settled.set(id, { settledWith: "timeout" });
       clearTimeout(entry.timer);
-      this.announce?.({ kind: "timed-out", id, timeoutMs: entry.timeoutMs });
+      this.announce?.({
+        kind: "timed-out",
+        id,
+        timeoutMs: entry.timeoutMs,
+        tool: entry.request.tool,
+      });
       entry.fail(new PermissionTimeout(id, entry.timeoutMs));
     }
   }
@@ -208,7 +213,12 @@ export class PendingApprovals {
     if (entry === undefined) return; // 已被 reply 结算，计时器迟到无害
     this.pending.delete(id);
     this.settled.set(id, { settledWith: "timeout" });
-    this.announce?.({ kind: "timed-out", id, timeoutMs });
+    this.announce?.({
+      kind: "timed-out",
+      id,
+      timeoutMs,
+      tool: entry.request.tool,
+    });
     entry.fail(new PermissionTimeout(id, timeoutMs));
   }
 }
