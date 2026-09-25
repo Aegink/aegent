@@ -663,7 +663,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①命令闭集 P0 落两个变体（respond_permission / stop_generation）——elicitation / hook 复核变体随对应功能加入联合，assertNever 穷尽 switch 保证漏分支编译失败（闭集是类型面强制非文档约定）；handler 由装配注入（respondPermission→pending.reply，stopGeneration→loop.cancel），端口层不依赖 policy 具体实现。②lease 句柄带 leaseId 序号令牌——同一 owner 释放重获后旧句柄的 release 与 requestOwnerCommand 均失效（仅比 ownerId 字符串会让旧句柄复活）。③结果回传 = requestOwnerCommand 的 promise：handler 成功/类型化失败（Stale/Unknown）原样上抛，端口层不改写。④LeaseBusy/NotLeaseHolder 带 code（C50 同款错误纪律）。
 - **完成记录**：2026-09-25。产出 `src/session/owner-port.ts`（OwnerCommand 闭集 + LeaseHandle + LeaseBusyError/NotLeaseHolderError + OwnerCommandPort）+ `owner-port.test.ts` 6 用例。验收：`npx vitest run src/session/owner-port.test.ts` → **6 passed**；①T-5-04 联测：pending.ask 挂起 → owner 发 respond_permission → C5 Deferred 唤醒（发起端 resolves 审批裁决）；②非持有 lease 发命令被拒（NotLeaseHolderError code=OWNER_NOT_LEASE_HOLDER）、重复 acquire 抛 LeaseBusy（heldBy 可见）、释放重获后旧句柄 release no-op 且发命令失效；③stop_generation 到达 handler；④迟到/未知答复的类型化错误原样回传。全量 `npx vitest run` **326 passed**，`npx tsc --noEmit` 干净。
 
-#### T-5-16 · L2 · 发起端 + 审批人记录 `[ ]`
+#### T-5-16 · L2 · 发起端 + 审批人记录 `[x]`
 - **依据需求**：L2（P0）
 - **上游首选参考**：[opencode·permission/](../oss/opencode/packages/opencode/src/permission)（审批请求信息结构——`pending: Map` 的 info 载荷是落点）
 - **取什么 / 别抄什么**：审批请求/裁决事件必须带 `surface`（发起端）与 `approver`（审批人）字段；场景⑥（事后追查）的落点
@@ -672,8 +672,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/policy/audit-fields.test.ts`——一次完整审批流后，事件流中可检索到 `{surface:"cli", approver:"user"}` 对；缺字段的事件构造即类型报错
 - **依赖**：T-5-15
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①接入点落 T-5-04 的宣告通道（C31 三事实是 P0 唯一审批事件流；l0-events 词汇表无审批事件，不造第二套），转换器 createApprovalAuditSink 包装 announce 回调；T-5-15 通道的回复经 pending.reply 落同一流。②approver 判定：settled→user、timed-out→timeout；broker 兜底拒绝（C51）不经过挂起表故审计为空——没有"审批"发生过，诚实留空（头注释写明）。③L2 两字段无默认值：唯一构造入口 approvalAuditRecord 必填参数，缺字段构造即编译失败；asked 阶段 approver 固定 "user"（挂起等人的审批面）。④连带给 T-5-04 宣告的 settled/timed-out 变体增量补 tool 字段（挂起表现成有 request.tool）——审计"审批了什么"必须有工具名，空串是假完整。
+- **完成记录**：2026-09-25。产出 `src/policy/audit-fields.ts`（APPROVAL_SURFACES/APPROVAL_APPROVERS 闭集 + ApprovalAuditRecord + approvalAuditRecord + createApprovalAuditSink）+ pending.ts 宣告补 tool + `audit-fields.test.ts` 5 用例。验收：`npx vitest run src/policy/audit-fields.test.ts` → **5 passed**；①完整流（asked→settled）后记录含 {surface:"cli", approver:"user"} 且带 requestId/tool；②超时流 approver=timeout；③T-5-15 通道回复走同一审计面（owner 发 respond_permission → settled 带 surface/approver/tool）；④缺字段构造的类型面验证（唯一入口必填）。全量 `npx vitest run` **331 passed**，`npx tsc --noEmit` 干净。
 
 ---
 

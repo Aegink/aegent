@@ -49,7 +49,8 @@
 | 2026-09-25 | T-5-12 | C9 | `86cef45` | `npx vitest run src/policy/gate.test.ts` | 10 passed；场景⑦ loop 级：注入文本经模型成为 bash 参数 → 危险库 stub 升 ask → 缺省 Deny broker 拒 → 工具零执行、tool/result isError、注入文本只在 user/assistant message 与 tool/call 数据位；gate=toolCall 点位 ChainLayer（loop 零改动），deny 不调 next 截断；abstain 按不变量 3 默认 ask；C46/C35/C48 全部过闸；verdictFromOutcome 并入规则原文增强可解释性 |
 | 2026-09-25 | T-5-13 | C10 | `429783a` | `npx vitest run src/policy/dangerous-commands.test.ts` | 8 passed；三组起步模式（pi 原文正则）rm -rf/sudo/777 各升 ask 带模式名、大小写不敏感、ls 与普通 rm 不命中；清单冻结只追加（装配处加 fork-bomb 即生效）；gate 集成 rm -rf 拒绝且原询问理由透传到 tool/result；gate 改进：broker 拒绝保留原询问理由 |
 | 2026-09-25 | T-5-14 | C27/C28/C29 | `3cfb85b` | `npx vitest run src/policy/shell-semantics.test.ts` | 11 passed；B 档扫描器（&&/;/管道/重定向/cd 五种）拆虚拟操作，rm -rf 段命中危险库拒绝；cd $VAR → cwdUnknown 保守 ask、eval/$() 判不确定；重定向写 .git 直接 deny（C46 bash 旁路关闭）；LIMITATIONS 8 条注释+文档双载体逐字一致 |
-| 2026-09-25 | T-5-15 | N6 | （本卡提交后回填） | `npx vitest run src/session/owner-port.test.ts` | 6 passed；审批请求经通道 → respond_permission 回传 → C5 Deferred 唤醒（T-5-04 联测）；lease 最小版（重复 acquire LeaseBusy、旧句柄按 leaseId 令牌失效、非持有者 NotLeaseHolder）；命令闭集 assertNever 穷尽 + 结果回传原样上抛 |
+| 2026-09-25 | T-5-15 | N6 | `4131a10` | `npx vitest run src/session/owner-port.test.ts` | 6 passed；审批请求经通道 → respond_permission 回传 → C5 Deferred 唤醒（T-5-04 联测）；lease 最小版（重复 acquire LeaseBusy、旧句柄按 leaseId 令牌失效、非持有者 NotLeaseHolder）；命令闭集 assertNever 穷尽 + 结果回传原样上抛 |
+| 2026-09-25 | T-5-16 | L2 | `428bd03` | `npx vitest run src/policy/audit-fields.test.ts` | 5 passed；完整审批流后可检索 {surface:"cli", approver:"user"}（带 requestId/tool）；超时流 approver=timeout；T-5-15 通道回复走同一审计面；两字段闭集无默认值、缺字段构造即编译失败；pending 宣告 settled/timed-out 增量补 tool |
 
 ---
 
@@ -280,6 +281,63 @@ C35 是同一结构解（阶段 5 不做什么栏已列，先做 T-5-06 的聚�
 3) T-4-06 的 spill/truncate 与 T-4-07 的 contract 投影在工具出口（registry.
 dispatch）已就位，权限层截断发生在其上游，拒执行时不产生工具输出。
 不要问要不要继续。
+```
+
+---
+
+## 阶段 5 报告（完成于 2026-09-25）
+
+- **打勾情况**：16 / 16（T-5-01 ~ T-5-16 全部完成，无未完成项）
+- **产出的文件**：
+  - `src/policy/chain.ts` + `rules.ts` + `chain.test.ts`——权限链（POLICY_LAYERS 层序、首个非 undefined 者胜）与泛型首匹配规则集模块（T-5-01）
+  - `src/policy/evaluate.ts` + 测试——双维通配 + 默认 ask 兜底 + 首匹配求值（T-5-02）
+  - `src/policy/decision.ts` + 测试——四值决策（链级 abstain 出口）+ Verdict{action,rule?,reason}（T-5-03）
+  - `src/policy/pending.ts` + 测试——待审批挂起注册表（Deferred+Map、PermissionTimeout、迟到 reply stale 墓碑、三事实宣告）（T-5-04）
+  - `src/policy/matchers.ts` + `rule-loader.ts` + 测试——C21 参数匹配委托（bash 匹配器 + sampleCall 样例校验路径）+ C38 raw 保留 + C44 加载期样例校验（T-5-05）
+  - `src/policy/aggregate.ts` + `protected-paths.ts` + 测试——max() 单调聚合（穷举性质测试）+ .git/.agents/.codex 硬拦出口（T-5-06）
+  - `src/policy/self-guard.ts` + `linter.ts` + 测试——C35 自我修改防线（agentInitiated 判定）+ C45 linter 三类永不生效警告（T-5-07）
+  - `src/policy/review-decision.ts` + 测试——C47 五档作用域（P0 落 once+session）+ C48 引擎算提案 + 模型捎带提案剥除 + 会话批准链上模块（T-5-08）
+  - `src/policy/intersect.ts` + 测试——C49 多来源交集（opaque 相遇 fail-closed）（T-5-09）
+  - `src/policy/broker.ts` + 测试——C51 审批出口端口（Deny 缺省 + Manual 骨架）（T-5-10）
+  - `src/policy/revalidate.ts` + 测试——C57 执行点重算（剥决策标记 + 权威标识重跑链）；registry.dispatch 增 guard 钩子（T-5-11）
+  - `src/policy/gate.ts` + 测试——C9 策略闸门挂 toolCall 点位（loop 零改动的 ChainLayer），场景⑦注入测试（T-5-12）
+  - `src/policy/dangerous-commands.ts` + 测试——C10 危险命令模式库（pi 三组起步、只追加）（T-5-13）
+  - `src/policy/shell-semantics.ts` + `docs/shell-semantics-limitations.md` + 测试——C27/C28/C29 B 档扫描器 + LIMITATIONS 8 条双载体（T-5-14）
+  - `src/session/owner-port.ts` + 测试——N6 owner 命令通道（闭集 + lease + 结果回传）（T-5-15）
+  - `src/policy/audit-fields.ts` + 测试——L2 surface/approver 审计字段（T-5-16）
+- **验收台账**：16 卡 16 命令全部通过（见台账表）；全量 `npx vitest run` **331 passed / 0 failed**（阶段 4 收尾 188 → 净增 143），`npx tsc --noEmit` 全程干净；`check-doc-links.sh` 对新文档 0 失效
+- **阶段完成定义核对**：注入文本不能改变求值时机 ✓（gate.test 场景⑦：注入文本只在 user/assistant message 与 tool/call 数据位，求值先于执行、工具零执行）；无规则危险命令默认询问 ✓（gate abstain→ask→缺省 Deny broker + dangerous-commands 升 ask）；规则加载期校验拒绝坏规则 ✓（rule-loader 样例矛盾整批拒 + linter 三类警告）；审批超时带类型失败 ✓（PermissionTimeout code 化 + 宣告）
+- **偏离计划的地方**：
+  1. **rules.ts 泛型化**（T-5-01）：规则集模块只管首匹配顺序语义、match 注入——规则形状与通配归 T-5-02/05，避免写一遍就扔的匹配器
+  2. **abstain 落为链级出口**（T-5-03）：chain.evaluate 全链无人应答返回 abstain 裁决替代 undefined；模块级"没意见"仍是 undefined（kimi 语义），ask/abstain 两层分开
+  3. **registry guard 与 gate 的部署边界**（T-5-11/12）：gate 是 P0 规范执行面；registry guard（C57 重算）留给无 gate 的旁路装配——两者同时启用时 once 批准无法过第二次重算，头注释已声明
+  4. **matchers 注册键方言 bug 本修**（T-5-07 连带）：键从大写 "Bash" 改小写 "bash" 对齐注册表名——**PolicyCall.tool 用注册表小写名，规则文本必须按注册名写**（大写 Bash 是上游显示习惯）
+  5. **gate 拒绝理由保留原询问**（T-5-13 连带）+ verdictFromOutcome 并入规则原文（T-5-12 连带）：C18 可解释性不因 broker 兜底而丢失
+  6. **pending 宣告 settled/timed-out 增量补 tool**（T-5-16 连带）：审计"审批了什么"需要工具名
+- **新发现的约束或坑**：
+  - **SessionStore.load(sessionId) 必须显式传会话 id**——无参调用返回空数组（keys 按会话分桶），gate.test 曾因此误判"事件流为空"
+  - 固定 sleep 等待计时器在 vitest 并行下会竞态（pending.test 30ms 等 10ms 定时器偶发不过）——统一改轮询等待（连跑 3 轮验证稳定）
+  - 测试直调 ChainLayer 时 next 必须构造带 point/trace/budget 槽位的完整 ChainNext（T-3-01 形状），裸函数过不了类型
+  - "首匹配胜 + 层序"的组合语义：用户层 allow 规则会压过核心层模块（危险库/语义分析）——这是 C2 的既定语义（显式规则优先），但意味着用户手滑写宽规则会静默关掉危险提示，linter（C45）与提示词模板（T-6-02）是配套防线
+- **遗留风险与未知**：
+  - shell 虚拟操作的裁决在链上受首匹配层序影响，非出口级硬拦（LIMITATIONS #7）——用户层 allow 规则可能先于语义分析模块裁决，C46 出口级组合留 P1
+  - scope=session 的批准缓存记录接线在 T-8（owner 通道转达答复时调 ApprovalScopeCache）；P0 gate 的 broker 放行仅 once 语义
+  - bash 参数式写文件（tee/dd/cp）不识别为写操作（LIMITATIONS #6）；fd 重定向不抽取（#5）——C29 清单已声明
+  - intersect / linter 的装配接线等 T-8（P0 单来源单链在跑）；人工确认清单不变（J2 真实厂商连通性、D3、§6.2 常驻内存）
+- **下一阶段提示词**：
+
+```
+继续 aegent 内核的实施。读 docs/plan-p0.md 的 §0 执行协议，然后从「阶段 6」
+的第一张 [ ] 任务卡开始。上一阶段报告在 docs/plan-p0-progress.md。
+本阶段特有的注意：1) T-6-01 路径守卫是唯一入口：read/write/edit 经
+args.path 接入，bash 经 T-5-14 的虚拟文件操作（file-write/file-read）接入，
+验收的 grep 证伪按字面匹配——注释里写 writeFile 也会命中，写"裸 fs 写"；
+2) T-6-04 DPAPI 是第一个跨语言组件（Rust helper 或 PowerShell 二选一在卡
+内定并记偏离），摘 codex dpapi.rs 须保留版权头并登记 THIRD_PARTY.md，跨
+进程只传可序列化值（T9）；3) D3 网络策略的弱承诺声明（只拦工具层 fetch，
+不承诺管住任意子进程）必须写进产出 README，gate 的 broker 放行目前是
+once 语义、scope=session 缓存记录的接线在 T-8——阶段 6 不用补。不要问
+要不要继续。
 ```
 
 ---
