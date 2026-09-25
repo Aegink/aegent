@@ -67,6 +67,14 @@ import { type RuleSource, loadRules, loadedRuleMatch, loadedRuleText } from "../
 import { builtinRuleMatchers } from "../policy/matchers.js";
 import { createShellSemanticsModule } from "../policy/shell-semantics.js";
 import {
+  enforceCeiling,
+  intersectAllProfiles,
+  type CeilingProfile,
+  type PermissionSourceProfile,
+} from "../policy/intersect.js";
+import { lintRules } from "../policy/linter.js";
+import { BUILTIN_TOOL_NAMES } from "./tools/builtin/index.js";
+import {
   ApprovalScopeCache,
   createSessionApprovalModule,
   proposeAmendment,
@@ -109,6 +117,16 @@ export interface ChildAssemblyOptions {
   approvalTimeoutMs: number;
   /** 用户层规则（行文本；缺省无规则——bash 走核心层 shell 语义分析）。 */
   rules?: readonly RuleSource[];
+  /**
+   * C45 linter 的注册表现存工具名（unknown-tool 判定面）；缺省内置六
+   * 工具。装配面注入 registry 名单（动态注册工具时由装配方传入）。
+   */
+  knownToolNames?: readonly string[];
+  /**
+   * C49 权限来源画像（多来源时交集折叠为有效上限，opaque 相遇即抛——
+   * 拒绝启动，fail-closed）。缺省无 = 单来源装配零行为变化（T-P1-03）。
+   */
+  permissionProfiles?: readonly PermissionSourceProfile[];
   /**
    * git 仓库根（E11 代码检查点）：提供时每轮开始前打 git stash 检查点、
    * /revert 双回退（对话态 + 代码态）。缺省不启用（非 git 场景零开销）。
@@ -183,6 +201,20 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
   // 链上经 createSessionApprovalModule 在后续同规则调用免问（T-P1-02）。
   const approvalCache = new ApprovalScopeCache(sessionId);
   const loadedRules = loadRules(options.rules ?? [], builtinRuleMatchers);
+  // C45 linter 装配接线：规则加载后常开，"永不生效"的规则只警告不拒
+  // （装配会让有其他活规则的配置整体不可用过狠）——警告落日志可检索。
+  const lintIssues = lintRules(loadedRules, {
+    knownToolNames: options.knownToolNames ?? BUILTIN_TOOL_NAMES,
+    matchers: builtinRuleMatchers,
+  });
+  for (const issue of lintIssues) {
+    logger?.warn(`policy-lint: [${issue.kind}] ${issue.raw} —— ${issue.detail}`);
+  }
+  // C49 多来源交集折叠（T-P1-03）：opaque 相遇抛 PermissionIntersection
+  // Error（装配失败 = 拒绝启动），折叠结果经 gate/revalidator 出口生效。
+  const ceiling: CeilingProfile | undefined = intersectAllProfiles(
+    options.permissionProfiles ?? [],
+  );
   const policyChain = assemblePolicyChain({
     ...(loadedRules.length > 0
       ? {
@@ -345,6 +377,7 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
     broker,
     sessionId,
     onWarning: (warning) => logger?.warn("策略警告", { userContent: warning }),
+    ...(ceiling !== undefined ? { ceiling } : {}),
   });
 
   const layers: ChildAssembly["layers"] = {

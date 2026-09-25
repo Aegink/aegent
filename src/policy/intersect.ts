@@ -21,7 +21,8 @@
 
 import { maxDecision } from "./aggregate.js";
 import type { Decision, } from "./decision.js";
-import type { PolicyAction } from "./chain.js";
+import type { PolicyAction, PolicyCall } from "./chain.js";
+import type { Verdict } from "./decision.js";
 
 // ---------------------------------------------------------------------------
 // 来源画像
@@ -104,5 +105,50 @@ export function intersectPermissionProfiles(
     source: `intersect(${a.source},${b.source})`,
     ceilings,
     ...(defaultCeiling === "abstain" ? {} : { defaultCeiling: defaultCeiling as PolicyAction }),
+  };
+}
+
+/**
+ * 多来源链式折叠（装配面入口）：逐个并入有效上限集，opaque 相遇即抛
+ * PermissionIntersectionError（拒绝启动，错误含来源名）。空数组返回
+ * undefined（无约束 = 单来源装配零行为变化）。
+ */
+export function intersectAllProfiles(
+  profiles: readonly PermissionSourceProfile[],
+): CeilingProfile | undefined {
+  let acc: CeilingProfile | undefined;
+  for (const p of profiles) {
+    if (p.kind === "opaque") {
+      throw new PermissionIntersectionError(
+        [acc?.source ?? p.source, p.source],
+        p.reason,
+      );
+    }
+    acc = acc === undefined ? p : intersectPermissionProfiles(acc, p);
+  }
+  return acc;
+}
+
+/**
+ * 出口级来源上限（C49 的执行面，T-P1-03 装配接线）：链裁决之后再 max
+ * 一次来源上限——与 enforceProtectedPaths（C46）同位（gate 出口与
+ * revalidator），上限不依赖链层序、规则不得放宽它。上限为 allow 时不
+ * 约束；上限不产生 rule 证据（它不是规则来源），但保留链裁决的 rule
+ * 以维持 C18 可解释性（"哪条规则想放行、被哪个来源的上限压住"）。
+ */
+export function enforceCeiling(
+  verdict: Verdict,
+  call: PolicyCall,
+  profile: CeilingProfile | undefined,
+): Verdict {
+  if (profile === undefined) return verdict;
+  const ceiling = effectiveCeiling(profile, call.tool);
+  if (ceiling === "allow") return verdict;
+  const action = maxDecision([verdict.action, ceiling]);
+  if (action === verdict.action) return verdict;
+  return {
+    action,
+    ...(verdict.rule !== undefined ? { rule: verdict.rule } : {}),
+    reason: `来源 "${profile.source}" 的权限上限为 ${ceiling}，压过 ${verdict.action}（C49 交集有效集）`,
   };
 }

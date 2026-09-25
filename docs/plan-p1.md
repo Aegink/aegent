@@ -51,7 +51,7 @@
 - **偏离 / 建议**：①C22 四档落法——project/user 由配置规则集承载（既有），session-runtime 由 ApprovalScopeCache 承载（本卡装配进链），turn-override 新建 `rule-scope.ts`（TurnScopeRules：显式 endTurn 剪除失效，能力面先行，产生面随审批 scope=turn UX 接线）；②**write/edit 工具无 patternOf**（builtinRuleMatchers 只登记 bash）——其批准结构上只能 once（C48：无法提取 pattern 就不能升级为规则），session 缓存对 bash 生效、对 write/edit 不生效，这是 C48 纪律的自然结果非缺陷，新工具登记匹配器后自动获得；③approvalTimeoutMs 装配可配已有（G5 策略面），悬置清单 listPending 既有
 - **完成记录**：2026-09-25。产出 `src/policy/rule-scope.ts` + ApprovalReply 扩 scope/feedback + 协议 approve 扩字段（闭集校验）+ agent-process/assembly 全链传参 + **createSessionApprovalModule 装配进 policyChain core 层**（T-8-01 偏离⑤关闭：scope=session 批准经 proposeAmendment 算提案后 record）+ repl `/approve` 扩 `--session`/`--feedback` + feedback 落 L2 审计记录。验收：`npx vitest run src/policy/scope-cache.test.ts` 不存在该文件名，实际按产出拆 `src/policy/rule-scope.test.ts`（4 passed，含验收④ endTurn 失效）+ `src/cli/cli.test.ts` 扩 2 级联测（--session 后 call_2 免再问且放行恰 1 次；once 对照第二轮再问）+ audit-fields/pending 扩 feedback 透传；②证伪 grep `writeFile|appendFile` in src/policy/ = 0 行（批准记录不落任何文件）。全量 `npx vitest run` **494 passed / 1 skipped**，`npx tsc --noEmit` 干净。
 
-#### T-P1-03 · C49/C45 · intersect 与 linter 的装配接线 `[ ]`
+#### T-P1-03 · C49/C45 · intersect 与 linter 的装配接线 `[x]`
 - **依据需求**：C49（P1 接线；纯函数 T-5-09 已交付）· C45（P1 接线；linter T-5-07 已交付）
 - **上游首选参考**：[codex·permission_profile_intersection.rs:37](../oss/codex/codex-rs/protocol/src/permission_profile_intersection.rs#L37)（`intersect_effective_permission_profiles`——多来源在会话启动时合成，不可合成报错）；[kimi·toolPolicy/evaluate.ts:85](../oss/kimi-code/packages/agent-core-v2/src/agent/toolPolicy/evaluate.ts#L85)（`findInactiveToolPatterns` 常开）
 - **取什么 / 别抄什么**：取"交集合成发生在装配/启动期，产出不可变有效集"的时点；我方 `intersect.ts` 纯函数与 `linter.ts` 不改语义，只接进 `assembly.ts`（多来源 profile 出现时合成）与 `rule-loader.ts`（加载后跑 linter，警告落日志/事件）
@@ -60,6 +60,8 @@
 - **验收**：`npx vitest run src/policy/aggregate.test.ts src/policy/rule-loader.test.ts`（扩用例）——①两来源 profile 交集后 deny 保留、allow 收窄、总不放宽（复用 T-5-06 单调性断言）；②单来源路径行为与 P0 逐字节一致（回归）；③含永不生效模式的规则集加载时 linter 警告可检索
 - **依赖**：无（与 T-P1-01/02 并行安全，脚本按序则在其后）
 - **风险 / 未知**：P0 单来源装配的回归面——交集路径必须是"有第二来源才激活"，默认装配零行为变化
+- **偏离 / 建议**：①ceiling 的生效点选**出口级**（gate 出口 + revalidator 同位 enforceCeiling，与 C46 同模式）而非链上模块——链是"首个非 undefined 者胜"（C58），ceiling 作为链模块会被用户层 allow 压过，违背"上限不因链序放宽"；②新增 `intersectAllProfiles` 折叠入口（空数组 → undefined，单来源原样返回）；③linter 的 knownToolNames 缺省 `BUILTIN_TOOL_NAMES`（builtin/index.ts 新导出，与注册清单同步维护），动态注册工具时由装配方传全量名单
+- **完成记录**：2026-09-25。产出 `intersect.ts` 加 `intersectAllProfiles` + `enforceCeiling`（出口 max，保留链裁决 rule 证据维持 C18）+ gate/revalidator 加 `ceiling` 选项 + assembly 加 `permissionProfiles`/`knownToolNames` 选项并接线（opaque 折叠即抛 = 拒绝启动）+ linter 警告落 `logger.warn("policy-lint: …")`。验收：`npx vitest run src/policy/ceiling-exit.test.ts` → **9 passed**（①两来源交集 deny 保留/allow 收窄 + gate 集成"用户 allow 被上限收窄为 ask→broker 拒→零执行"②无 ceiling 同配置放行回归 ③坏规则装配 linter 警告可检索含 unknown-tool/invalid-syntax 两类）。全量 `npx vitest run` **503 passed / 1 skipped**，`npx tsc --noEmit` 干净。
 
 #### T-P1-04 · J6/J7 · 运行时换模 + 在途 turn 模型捕获 `[ ]`
 - **依据需求**：J6（P1）· J7（P1）

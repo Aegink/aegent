@@ -17,6 +17,17 @@ import { createGrepTool } from "./grep.js";
 import { createReadTool } from "./read.js";
 import { createWriteTool } from "./write.js";
 
+/** 内置工具名清单（C45 linter 的 unknown-tool 判定缺省面；与
+ * registerBuiltinTools 的注册清单同步维护，新增工具两处都加）。 */
+export const BUILTIN_TOOL_NAMES = [
+  "read",
+  "write",
+  "bash",
+  "edit",
+  "glob",
+  "grep",
+] as const;
+
 export function registerBuiltinTools(
   registry: ToolRegistry,
   options: { pathGuard?: PathGuard } = {},

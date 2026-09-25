@@ -24,6 +24,7 @@ import type { JsonRecord } from "../kernel/events.js";
 import type { PolicyChain } from "./chain.js";
 import type { Verdict } from "./decision.js";
 import { enforceProtectedPaths } from "./protected-paths.js";
+import { enforceCeiling, type CeilingProfile } from "./intersect.js";
 
 /** 决策标记保留键（大小写不敏感剥除；闭集局限同 review-decision.ts）。 */
 const DECISION_MARKER_KEYS: ReadonlySet<string> = new Set([
@@ -80,15 +81,18 @@ export function createRevalidator(options: {
   readonly chain: PolicyChain;
   readonly sessionId: string;
   readonly source: string;
+  /** C49 来源上限（与 gate 出口同位；缺省无上限）。 */
+  readonly ceiling?: CeilingProfile;
 }): Revalidator {
   const { chain, sessionId, source } = options;
   return async (tool, args) => {
     const { args: clean, strippedKeys } = stripDecisionMarkers(args);
     const call = { tool, args: clean, sessionId, source };
     let verdict = await chain.evaluate(call);
-    // C46 出口级硬拦与 gate 同位：执行点是最后一道闸，硬拦不依赖装配
-    // 方是否记得用 withProtectedPaths 包链（T-P1-01）。
+    // C46 出口级硬拦与 C49 来源上限，均与 gate 同位：执行点是最后一道
+    // 闸，不依赖装配方是否记得用 withProtectedPaths 包链（T-P1-01/03）。
     verdict = enforceProtectedPaths(verdict, call);
+    verdict = enforceCeiling(verdict, call, options.ceiling);
     return {
       allowed: verdict.action === "allow",
       verdict,

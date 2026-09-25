@@ -36,6 +36,7 @@ import type { JsonRecord } from "../kernel/events.js";
 import type { PolicyCall, PolicyChain } from "./chain.js";
 import type { Verdict } from "./decision.js";
 import { enforceProtectedPaths } from "./protected-paths.js";
+import { enforceCeiling, type CeilingProfile } from "./intersect.js";
 import { enforceSelfGuard } from "./self-guard.js";
 import { stripProposedAmendments } from "./review-decision.js";
 import type { PermissionBrokerPort } from "./broker.js";
@@ -55,6 +56,8 @@ export interface ToolGateOptions {
   readonly source?: string;
   /** C48 剥出的提案夹带警告去向；缺省丢弃（记录面随 T-8）。 */
   readonly onWarning?: (warning: string) => void;
+  /** C49 来源上限（多来源交集折叠结果；缺省无上限——单来源装配零行为变化）。 */
+  readonly ceiling?: CeilingProfile;
 }
 
 function deniedResult(verdict: Verdict, code: string): ToolExecutionResult {
@@ -105,6 +108,7 @@ export function createToolGateLayer(
     const call = policyCallOf(e, args, options);
     let verdict = await options.chain.evaluate(call);
     verdict = enforceProtectedPaths(verdict, call);
+    verdict = enforceCeiling(verdict, call, options.ceiling);
     verdict = enforceSelfGuard(verdict, call, { agentInitiated: true });
 
     if (verdict.action === "allow") {
