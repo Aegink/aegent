@@ -296,7 +296,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：**点位决定（2026-09-25 执行会话，动手前落卡；卡面原文"在 T-3-02 定形时钉死"，按用户指示提前到本卡）**。决定：P0 三点位 = `toolCall`（包住"工具分发执行"，即候选"工具调用前"）、`modelRequest`（包住"模型请求"，即候选"模型请求前"）、`turnEnd`（包住"turn 收尾"，即候选"turn 结束"）——命名取被包的**动作**而非位置（DSH `tools/execute` 同款），链形本身已含"进去前/出来后"。理由：① 权限的对象是工具调用，C9 明文"策略求值在工具执行前"（不变量 3 默认 ask），截断=不调 next=不执行，链形天然表达"挡下"，权限层挂 `toolCall`；② 上下文装配的对象是"这次请求发什么"，必须在模型请求前，且 `next(e2)` 可换载荷是该点位的必备能力（阶段 7 的压缩后状态/系统提示经此注入，T-2-02 的 provider 调用被它包住），挂 `modelRequest`；③ 压缩按 F9 明文在 turn 边界且可断言（F21 P0 只做 PreTurn/MidTurn），挂 `turnEnd`——层可自选在 next 前（turn/end 事件落盘前）或后做压缩，与 l0-events 的 `turn/end{reason}` 对齐。**排除项（防后来者加点位）**：step 级不挂（F10 压力测量是观察非干预，loop 直接测量+落事件）；权限不挂 `modelRequest`（对象错位）；压缩不挂 `modelRequest`（与上下文装配互踩）。**连锁约束（写给阶段 4/5/7）**：工具分发、权限层、上下文装配、压缩只准挂这三个点，另开点位=改设计，走待澄清。另一条 API 偏差：卡面写 `composeChain(layers)`，实际为 `composeChain({point, terminal, layers})`——链必须有**链底**（引擎自身动作），否则最内层 next 无人应答；这是 claude-official 链底规则"nothing beneath them"在我方的对应物（链底不是层，是 terminal）。
 - **完成记录**：`npx vitest run src/kernel/chain.test.ts` → **9 passed**；`npx tsc --noEmit` 干净。验收三条：①两层执行序 = 前1→前2→链底→后2→后1（实测含链底位次）；②中间层截断时外层 after 仍执行、链底不执行、`{truncated:true, value:截断层应答}`；③`next.trace`（空数组）/`next.budget`（空槽）/`next.point` 槽位存在，P0 恒为空不写入。另钉四条语义：`next(e2)` 换载荷（modelRequest 必备）、同层二次 next 抛错（防双重执行）、同步层支持、截断判定不依赖返回值真值（截断层返回 undefined 仍记 truncated）。点位名与决定见「偏离 / 建议」；chain.ts 头注释带同款决定摘要供阶段 4/5/7 实施者阅读。
 
-#### T-3-02 · A1/A6 · 显式停止条件 + 两级生命周期 `[ ]`
+#### T-3-02 · A1/A6 · 显式停止条件 + 两级生命周期 `[x]`
 - **依据需求**：A1（P0）· A6（P0）
 - **上游首选参考**：[pi·types.ts:143](../oss/pi/packages/agent/src/types.ts#L143)（`AgentTurnDecision = { action: "continue" } | { action: "end" }`——停止是返回的决策，不是循环推断）；[pi·types.ts:485](../oss/pi/packages/agent/src/types.ts#L485)（turn 级与 agent 级事件分层）
 - **取什么 / 别抄什么**：取显式联合；**turn 语义按 l0-events.md 的三级生命周期**（pi 的 "turn" 在我方叫 "step"），A6 的验收"一个 turn = 一次 assistant 回复 + 其工具调用"对应我方 **step**——这条措辞差异要在测试注释里写明，避免后来者混淆
@@ -305,8 +305,9 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/kernel/loop.test.ts`——假 provider 两剧本：①模型持续要工具 → continue 直到模型空手而归时**仍由 DecideTurn 显式给 end**；②第一轮即 end；事件流断言（用 T-3-07 的不变量方法）step/start 与 step/end 成对
 - **依赖**：T-3-01、T-2-02
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①发现 `assertJsonSafe` 菱形引用误报（详见完成记录补充，建议回修 events.ts）②TurnDecision 落为 DecideTurn 回调 ③消息序列从事件投影重建（不变量 1）
+- **完成记录**：`npx vitest run src/kernel/loop.test.ts` → **8 passed**（全量 100 passed，tsc 干净）。验收两条剧本：①工具→continue、空手→DecideTurn 第二次显式给 end（decideCalls=[有 toolCall, 无 toolCall]）；②首轮即 end。另钉六条：A1 反向用例（无 toolCall+continue ⇒ loop 继续，不自行推断停止）、三链点位全走到（Q14"loop 按链写"）、模型失败硬退出（assistant/attempt 半截流+step 闭合+turn/end{error}，不伪造 assistant/message）、工具执行崩溃落 isError 的 tool/result 并回喂模型（配平不变量）、连续轮号自增、modelRequest 层截断 ⇒ step 空过+turn/end{blocked}。措辞映射已写进测试注释：pi 的 "turn" = 我方 step。
+- **完成记录补充（偏离）**：① **发现 `assertJsonSafe` 菱形引用误报**——同一对象在事件树内出现两次（非循环）会被判"循环引用"（WeakSet 无回溯；实测：usage 同时挂 stream 记录与事件顶层字段）。本卡在 loop 侧克隆 usage 解掉，**events.ts 的误报本修建议回 T-1-01 产物走单独小修**（walk 子树后 `seen.delete`），未擅改。② 卡面"TurnDecision 判定 continue/end"落为 `DecideTurn` 回调（pi FinishTurn 同位：step 收尾后、下一请求前），默认 continue/end 策略属调用方不属 loop。③ 消息序列从 `store.load()` 投影重建（不变量 1），不养第二份历史；revert 有效视窗已遵循。
 
 #### T-3-03 · A2/A9 · steer 注入 + turn 只能入队 `[ ]`
 - **依据需求**：A2（P0）· A9（P0）
