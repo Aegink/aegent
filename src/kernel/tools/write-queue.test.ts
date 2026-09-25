@@ -8,6 +8,7 @@ import { createEditTool } from "./builtin/edit.js";
 import { createWriteTool } from "./builtin/write.js";
 import { registerBuiltinTools } from "./builtin/index.js";
 import { WriteQueue } from "./write-queue.js";
+import { PathGuard } from "../../sandbox/path-guard.js";
 
 const tmpDirs: string[] = [];
 afterEach(() => {
@@ -90,7 +91,7 @@ describe("写队列接入 write / edit 工具", () => {
     const dir = tempDir();
     const file = path.join(dir, "tool.txt");
     const registry = new ToolRegistry();
-    registerBuiltinTools(registry);
+    registerBuiltinTools(registry, { pathGuard: PathGuard.forWorkspace(dir) });
     const writes = Array.from({ length: 12 }, (_, i) => {
       const content = `CONTENT-${String(i).padStart(2, "0")}-`.repeat(i + 1);
       return registry
@@ -109,8 +110,8 @@ describe("写队列接入 write / edit 工具", () => {
     writeFileSync(file, "base\n", "utf8");
     const queue = new WriteQueue();
     const registry = new ToolRegistry();
-    registry.registerTool(createWriteTool({ writeQueue: queue }));
-    registry.registerTool(createEditTool({ writeQueue: queue }));
+    registry.registerTool(createWriteTool({ writeQueue: queue, pathGuard: PathGuard.forWorkspace(dir) }));
+    registry.registerTool(createEditTool({ writeQueue: queue, pathGuard: PathGuard.forWorkspace(dir) }));
     await Promise.all([
       registry.dispatch({
         callId: "e1",

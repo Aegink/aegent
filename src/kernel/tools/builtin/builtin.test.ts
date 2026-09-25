@@ -1,9 +1,11 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ToolRegistry } from "../registry.js";
 import { NodeExecutionEnv } from "../env.js";
+import { PathGuard } from "../../../sandbox/path-guard.js";
+import { seedTextFile } from "../../../test-support/tmp-fs.js";
 import { registerBuiltinTools } from "./index.js";
 
 const tmpDirs: string[] = [];
@@ -21,6 +23,16 @@ function tempDir(): string {
   return dir;
 }
 
+/**
+ * 装配内置工具 + 守卫工作区（T-6-01）：四个文件工具类型上必收守卫——
+ * 夹具目录即守卫工作区（写面限制在工作区内正是被测语义）。
+ */
+function toolsWith(dir: string, env?: NodeExecutionEnv): ToolRegistry {
+  const registry = new ToolRegistry(env !== undefined ? { env } : undefined);
+  registerBuiltinTools(registry, { pathGuard: PathGuard.forWorkspace(dir) });
+  return registry;
+}
+
 function dispatch(registry: ToolRegistry, name: string, args: unknown) {
   return registry.dispatch({
     callId: "c1",
@@ -33,10 +45,8 @@ describe("read 工具", () => {
   it("读文件原文（多行，含中文）", async () => {
     const dir = tempDir();
     const file = path.join(dir, "sample.txt");
-    writeFileSync(file, "第一行\nsecond line\n第三行\n", "utf8");
-    const registry = new ToolRegistry();
-    registerBuiltinTools(registry);
-    const result = await dispatch(registry, "read", { path: file });
+    seedTextFile(file, "第一行\nsecond line\n第三行\n");
+    const result = await dispatch(toolsWith(dir), "read", { path: file });
     // 尾换行不算一行：原文去尾空行
     expect(result).toEqual({ content: "第一行\nsecond line\n第三行" });
   });
@@ -44,23 +54,20 @@ describe("read 工具", () => {
   it("offset/limit 切片 + 续读导航提示（pi 同款）", async () => {
     const dir = tempDir();
     const file = path.join(dir, "big.txt");
-    writeFileSync(file, "l1\nl2\nl3\nl4\nl5\n", "utf8");
-    const registry = new ToolRegistry();
-    registerBuiltinTools(registry);
-    const result = await dispatch(registry, "read", { path: file, offset: 2, limit: 2 });
+    seedTextFile(file, "l1\nl2\nl3\nl4\nl5\n");
+    const result = await dispatch(toolsWith(dir), "read", { path: file, offset: 2, limit: 2 });
     expect(result.content).toBe("l2\nl3\n\n[Showing lines 2-3 of 5. Use offset=4 to continue.]");
   });
 
   it("边界：不存在路径 → isError（ENOENT）；空文件 → 空输出；offset 越界 → isError", async () => {
     const dir = tempDir();
-    const registry = new ToolRegistry();
-    registerBuiltinTools(registry);
+    const registry = toolsWith(dir);
     const missing = await dispatch(registry, "read", { path: path.join(dir, "no-such.txt") });
     expect(missing.isError).toBe(true);
     expect(missing.error?.code).toBe("ENOENT");
 
     const empty = path.join(dir, "empty.txt");
-    writeFileSync(empty, "", "utf8");
+    seedTextFile(empty, "");
     const result = await dispatch(registry, "read", { path: empty });
     expect(result).toEqual({ content: "" });
 
@@ -68,15 +75,22 @@ describe("read 工具", () => {
     expect(beyond.isError).toBe(true);
     expect(beyond.error?.code).toBe("OFFSET_BEYOND_EOF");
   });
+
+  it("路径边界：P0 读面不限，工作区外路径也可读（读边界仅显式配置 readRoots 时生效）", async () => {
+    const dir = tempDir();
+    const outside = tempDir();
+    const file = path.join(outside, "anywhere.txt");
+    seedTextFile(file, "content");
+    const result = await dispatch(toolsWith(dir), "read", { path: file });
+    expect(result).toEqual({ content: "content" });
+  });
 });
 
 describe("write 工具", () => {
   it("写新文件（父目录不存在自动创建），落盘内容一致", async () => {
     const dir = tempDir();
     const file = path.join(dir, "nested", "deep", "out.txt");
-    const registry = new ToolRegistry();
-    registerBuiltinTools(registry);
-    const result = await dispatch(registry, "write", { path: file, content: "hello 你好\n" });
+    const result = await dispatch(toolsWith(dir), "write", { path: file, content: "hello 你好\n" });
     expect(result.isError).toBeUndefined();
     expect(result.content).toContain("Successfully wrote to");
     expect(readFileSync(file, "utf8")).toBe("hello 你好\n");
@@ -85,9 +99,8 @@ describe("write 工具", () => {
   it("覆盖已有文件；空内容边界（0 字节）", async () => {
     const dir = tempDir();
     const file = path.join(dir, "over.txt");
-    writeFileSync(file, "old", "utf8");
-    const registry = new ToolRegistry();
-    registerBuiltinTools(registry);
+    seedTextFile(file, "old");
+    const registry = toolsWith(dir);
     await dispatch(registry, "write", { path: file, content: "new content" });
     expect(readFileSync(file, "utf8")).toBe("new content");
 
@@ -97,9 +110,19 @@ describe("write 工具", () => {
     expect(readFileSync(file, "utf8")).toBe("");
   });
 
+  it("路径边界（C7 场景④）：工作区外写 → isError PATH_OUTSIDE_WRITABLE，报错含目标路径且不落盘", async () => {
+    const dir = tempDir();
+    const outside = tempDir();
+    const target = path.join(outside, "escape.txt");
+    const result = await dispatch(toolsWith(dir), "write", { path: target, content: "x" });
+    expect(result.isError).toBe(true);
+    expect(result.error?.code).toBe("PATH_OUTSIDE_WRITABLE");
+    expect(String(result.content)).toContain(target);
+    expect(existsSync(target)).toBe(false);
+  });
+
   it("参数坏 → isError INVALID_ARGUMENTS（path 缺失 / content 非字符串）", async () => {
-    const registry = new ToolRegistry();
-    registerBuiltinTools(registry);
+    const registry = toolsWith(tempDir());
     const noPath = await dispatch(registry, "write", { content: "x" });
     expect(noPath.error?.code).toBe("INVALID_ARGUMENTS");
     const badContent = await dispatch(registry, "write", { path: "a.txt", content: 42 });
@@ -109,8 +132,7 @@ describe("write 工具", () => {
 
 describe("bash 工具（T-4-05 回填后：执行经 ExecutionEnv）", () => {
   it("参数校验：command 缺失 / timeout 非法即拒", async () => {
-    const registry = new ToolRegistry();
-    registerBuiltinTools(registry);
+    const registry = toolsWith(tempDir());
     const noCmd = await dispatch(registry, "bash", { timeout: 5 });
     expect(noCmd.error?.code).toBe("INVALID_ARGUMENTS");
     const badTimeout = await dispatch(registry, "bash", { command: "ls", timeout: 0 });
@@ -120,17 +142,33 @@ describe("bash 工具（T-4-05 回填后：执行经 ExecutionEnv）", () => {
   });
 
   it("缺 ExecutionEnv → isError EXECUTION_ENV_MISSING（装配缺失的明确报错）", async () => {
-    const registry = new ToolRegistry();
-    registerBuiltinTools(registry);
+    const registry = toolsWith(tempDir());
     const stub = await dispatch(registry, "bash", { command: "echo hi" });
     expect(stub.isError).toBe(true);
     expect(stub.error?.code).toBe("EXECUTION_ENV_MISSING");
   });
 
+  it("路径边界（T-6-01）：重定向写越界 → isError PATH_OUTSIDE_WRITABLE 且命令未启动", async () => {
+    const dir = tempDir();
+    const outside = tempDir();
+    const target = path.join(outside, "x.txt").split(path.sep).join("/");
+    const calls: string[] = [];
+    const fakeEnv = {
+      exec: async (cmd: string) => {
+        calls.push(cmd);
+        return { stdout: "ok", stderr: "", exitCode: 0 };
+      },
+    } as unknown as NodeExecutionEnv;
+    const denied = await dispatch(toolsWith(dir, fakeEnv), "bash", { command: `echo hi > ${target}` });
+    expect(denied.isError).toBe(true);
+    expect(denied.error?.code).toBe("PATH_OUTSIDE_WRITABLE");
+    expect(calls).toHaveLength(0); // 被拒命令未启动
+  });
+
   it("经 env 真执行：stdout 回显（回填验收：stdout/exit code）", async () => {
-    const registry = new ToolRegistry({ env: new NodeExecutionEnv() });
-    registerBuiltinTools(registry);
-    const ok = await dispatch(registry, "bash", { command: "echo aegent-bash-ok" });
+    const ok = await dispatch(toolsWith(tempDir(), new NodeExecutionEnv()), "bash", {
+      command: "echo aegent-bash-ok",
+    });
     expect(ok.isError).toBeUndefined();
     // 输出原样转述（含尾换行不 trim）；截断属 T-4-06
     expect(ok.content).toBe("aegent-bash-ok\n");
@@ -138,8 +176,7 @@ describe("bash 工具（T-4-05 回填后：执行经 ExecutionEnv）", () => {
   }, 10_000);
 
   it("非零退出码 → isError + [exit code N] + meta.exitCode；空输出 → (no output)", async () => {
-    const registry = new ToolRegistry({ env: new NodeExecutionEnv() });
-    registerBuiltinTools(registry);
+    const registry = toolsWith(tempDir(), new NodeExecutionEnv());
     const failed = await dispatch(registry, "bash", { command: "echo oops >&2; exit 7" });
     expect(failed.isError).toBe(true);
     expect(failed.content).toContain("oops");
@@ -151,8 +188,7 @@ describe("bash 工具（T-4-05 回填后：执行经 ExecutionEnv）", () => {
   }, 10_000);
 
   it("timeout 超时 → isError TOOL_TIMEOUT（J22 词汇贯穿）", async () => {
-    const registry = new ToolRegistry({ env: new NodeExecutionEnv() });
-    registerBuiltinTools(registry);
+    const registry = toolsWith(tempDir(), new NodeExecutionEnv());
     const slow = await dispatch(registry, "bash", { command: "sleep 5", timeout: 1 });
     expect(slow.isError).toBe(true);
     expect(slow.error?.code).toBe("TOOL_TIMEOUT");
@@ -163,10 +199,8 @@ describe("edit 工具", () => {
   it("唯一匹配替换成功并落盘（newText 原样写入，$& 等不被解释）", async () => {
     const dir = tempDir();
     const file = path.join(dir, "code.txt");
-    writeFileSync(file, "const a = 1;\nconst b = 2;\n", "utf8");
-    const registry = new ToolRegistry();
-    registerBuiltinTools(registry);
-    const result = await dispatch(registry, "edit", {
+    seedTextFile(file, "const a = 1;\nconst b = 2;\n");
+    const result = await dispatch(toolsWith(dir), "edit", {
       path: file,
       oldText: "const a = 1;",
       newText: 'const a = "$&"; // keep',
@@ -178,9 +212,8 @@ describe("edit 工具", () => {
   it("oldText 不唯一 → NOT_UNIQUE；未找到 → NOT_FOUND（均 isError 不落盘）", async () => {
     const dir = tempDir();
     const file = path.join(dir, "dup.txt");
-    writeFileSync(file, "x\nx\ny\n", "utf8");
-    const registry = new ToolRegistry();
-    registerBuiltinTools(registry);
+    seedTextFile(file, "x\nx\ny\n");
+    const registry = toolsWith(dir);
     const notUnique = await dispatch(registry, "edit", {
       path: file,
       oldText: "x",
@@ -198,9 +231,22 @@ describe("edit 工具", () => {
     expect(readFileSync(file, "utf8")).toBe("x\nx\ny\n");
   });
 
+  it("路径边界（T-6-01）：工作区外 edit → isError PATH_OUTSIDE_WRITABLE（读之前被拒）", async () => {
+    const dir = tempDir();
+    const outside = tempDir();
+    const target = path.join(outside, "e.txt");
+    const result = await dispatch(toolsWith(dir), "edit", {
+      path: target,
+      oldText: "a",
+      newText: "b",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.error?.code).toBe("PATH_OUTSIDE_WRITABLE");
+    expect(existsSync(target)).toBe(false);
+  });
+
   it("参数坏（oldText 空 / newText 缺失）→ isError INVALID_ARGUMENTS", async () => {
-    const registry = new ToolRegistry();
-    registerBuiltinTools(registry);
+    const registry = toolsWith(tempDir());
     const empty = await dispatch(registry, "edit", { path: "a.txt", oldText: "", newText: "x" });
     expect(empty.error?.code).toBe("INVALID_ARGUMENTS");
     const noNew = await dispatch(registry, "edit", { path: "a.txt", oldText: "x" });
@@ -211,13 +257,12 @@ describe("edit 工具", () => {
 describe("glob 工具", () => {
   it("嵌套目录按模式匹配，输出绝对路径字母序（*.ts 与 ** 跨段与 ?）", async () => {
     const dir = tempDir();
-    writeFileSync(path.join(dir, "a.ts"), "", "utf8");
+    seedTextFile(path.join(dir, "a.ts"), "");
     mkdirSync(path.join(dir, "sub", "deep"), { recursive: true });
-    writeFileSync(path.join(dir, "sub", "b.ts"), "", "utf8");
-    writeFileSync(path.join(dir, "sub", "deep", "c.ts"), "", "utf8");
-    writeFileSync(path.join(dir, "note.md"), "", "utf8");
-    const registry = new ToolRegistry();
-    registerBuiltinTools(registry);
+    seedTextFile(path.join(dir, "sub", "b.ts"), "");
+    seedTextFile(path.join(dir, "sub", "deep", "c.ts"), "");
+    seedTextFile(path.join(dir, "note.md"), "");
+    const registry = toolsWith(dir);
 
     const tsFiles = await dispatch(registry, "glob", { pattern: "**/*.ts", path: dir });
     expect(tsFiles.content).toBe(
@@ -237,13 +282,12 @@ describe("glob 工具", () => {
 
   it("无匹配空输出；超上限截断提示（默认 100）", async () => {
     const dir = tempDir();
-    const registry = new ToolRegistry();
-    registerBuiltinTools(registry);
+    const registry = toolsWith(dir);
     const none = await dispatch(registry, "glob", { pattern: "*.nope", path: dir });
     expect(none.content).toBe("No files found");
 
     for (let i = 0; i < 101; i++) {
-      writeFileSync(path.join(dir, `f${String(i).padStart(3, "0")}.ts`), "", "utf8");
+      seedTextFile(path.join(dir, `f${String(i).padStart(3, "0")}.ts`), "");
     }
     const many = await dispatch(registry, "glob", { pattern: "f*.ts", path: dir });
     const lines = String(many.content).split("\n");
@@ -256,10 +300,9 @@ describe("grep 工具（P0 纯 JS 实现）", () => {
   it("嵌套目录多文件搜索，行号与内容正确；include 按 glob 过滤", async () => {
     const dir = tempDir();
     mkdirSync(path.join(dir, "src"), { recursive: true });
-    writeFileSync(path.join(dir, "src", "one.ts"), "const a = 1;\nconst b = alpha;\n", "utf8");
-    writeFileSync(path.join(dir, "two.md"), "# alpha\n", "utf8");
-    const registry = new ToolRegistry();
-    registerBuiltinTools(registry);
+    seedTextFile(path.join(dir, "src", "one.ts"), "const a = 1;\nconst b = alpha;\n");
+    seedTextFile(path.join(dir, "two.md"), "# alpha\n");
+    const registry = toolsWith(dir);
 
     const all = await dispatch(registry, "grep", { pattern: "alpha", path: dir });
     expect(String(all.content).split("\n")).toEqual([
@@ -280,9 +323,8 @@ describe("grep 工具（P0 纯 JS 实现）", () => {
   it("单文件搜索；正则语法；非法正则 isError；无匹配 No matches found", async () => {
     const dir = tempDir();
     const file = path.join(dir, "nums.txt");
-    writeFileSync(file, "n 1\nn 22\nn 333\n", "utf8");
-    const registry = new ToolRegistry();
-    registerBuiltinTools(registry);
+    seedTextFile(file, "n 1\nn 22\nn 333\n");
+    const registry = toolsWith(dir);
 
     const single = await dispatch(registry, "grep", { pattern: "\\d{3}", path: file });
     expect(String(single.content)).toBe(`${file}:3: n 333`);

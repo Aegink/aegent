@@ -51,6 +51,7 @@
 | 2026-09-25 | T-5-14 | C27/C28/C29 | `3cfb85b` | `npx vitest run src/policy/shell-semantics.test.ts` | 11 passed；B 档扫描器（&&/;/管道/重定向/cd 五种）拆虚拟操作，rm -rf 段命中危险库拒绝；cd $VAR → cwdUnknown 保守 ask、eval/$() 判不确定；重定向写 .git 直接 deny（C46 bash 旁路关闭）；LIMITATIONS 8 条注释+文档双载体逐字一致 |
 | 2026-09-25 | T-5-15 | N6 | `4131a10` | `npx vitest run src/session/owner-port.test.ts` | 6 passed；审批请求经通道 → respond_permission 回传 → C5 Deferred 唤醒（T-5-04 联测）；lease 最小版（重复 acquire LeaseBusy、旧句柄按 leaseId 令牌失效、非持有者 NotLeaseHolder）；命令闭集 assertNever 穷尽 + 结果回传原样上抛 |
 | 2026-09-25 | T-5-16 | L2 | `428bd03` | `npx vitest run src/policy/audit-fields.test.ts` | 5 passed；完整审批流后可检索 {surface:"cli", approver:"user"}（带 requestId/tool）；超时流 approver=timeout；T-5-15 通道回复走同一审计面；两字段闭集无默认值、缺字段构造即编译失败；pending 宣告 settled/timed-out 增量补 tool |
+| 2026-09-25 | T-6-01 | C7/D1 | （本卡） | `npx vitest run src/sandbox/path-guard.test.ts` + grep 证伪 | 21 passed/1 skipped（符号链接用例无特权跳过）；场景④越界写拒且报错含目标路径不落盘；白名单/孪生目录不误放/受限读面/MSYS+大小写归一；bash 越界重定向拒且命令未启动、cd 后相对目标 fail-closed；builtin/ 裸 fs 写字面量 0 行（无旁路）；全量 356 passed |
 
 ---
 
@@ -105,6 +106,7 @@
 | J2（部分） | 真实厂商连通性需要 API key；单测只覆盖 mock 流 | 用户提供一个真实端点跑一次会话，确认流式与 usage 正常 |
 | T9 冷启动 | 「<500ms」依赖本机负载 | 看 T-3-06 完成记录里的实测数字，超标则进待澄清 |
 | D3 弱承诺 | 「网络策略只管工具层」是声明不是代码属性 | 读 T-6-03 产出的 README 声明是否醒目 |
+| T-6-01 符号链接逃逸 | 本机无创建符号链接特权（Windows 需开发者模式），逃逸用例自动跳过（LIMITATIONS #1） | 有特权环境跑 `npx vitest run src/sandbox/path-guard.test.ts` 应 22 全过；realpath 归一逻辑已有"最近存在祖先"路径的确定性用例覆盖 |
 | §6.2 常驻内存 | 任务管理器观察（需求原文如此） | 用户空闲时目测 <150MB |
 
 ## 阻塞

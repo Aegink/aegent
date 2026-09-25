@@ -3,13 +3,14 @@
  * pi harness/tools/write.ts：`{ path, content }`；父目录不存在自动创建
  * （pi 同款）。成功返回写入字节数。
  *
- * 写串行化（B4）：T-4-04 的写队列落地后，本工具的落盘动作经队列执行
- * （同路径 FIFO）；本卡先直写（依赖顺序：队列卡依赖本卡）。
- * 路径边界同 read：工具本体不做校验（阶段 5/6 的链层与沙箱负责）。
+ * 写串行化（B4）：落盘动作经 T-4-04 写队列执行（同路径 FIFO）。
+ * 路径边界（T-6-01/C7/D1）：落盘经沙箱守卫的唯一入口（先断言后 I/O，
+ * 父目录创建也在守卫内）——本文件不含任何裸 fs 写；工厂类型上必收守卫
+ * 实例，无旁路由构造保证。执行前审批由阶段 5 的 toolCall 链负责。
  */
 
-import { mkdir, writeFile } from "node:fs/promises";
 import * as path from "node:path";
+import { PathGuard, PathGuardError } from "../../../sandbox/path-guard.js";
 import type { ToolExecutionResult } from "../../loop.js";
 import type { ToolDef } from "../registry.js";
 import type { WriteQueue } from "../write-queue.js";
@@ -20,8 +21,12 @@ export interface WriteArgs {
   content: string;
 }
 
-export function createWriteTool(options?: { writeQueue?: WriteQueue }): ToolDef {
-  const queue = options?.writeQueue;
+export function createWriteTool(options: {
+  writeQueue?: WriteQueue;
+  pathGuard: PathGuard;
+}): ToolDef {
+  const queue = options.writeQueue;
+  const guard = options.pathGuard;
   return {
     name: "write",
     async execute(args) {
@@ -35,9 +40,11 @@ export function createWriteTool(options?: { writeQueue?: WriteQueue }): ToolDef 
       const abs = path.resolve(filePath);
       const doWrite = async (): Promise<ToolExecutionResult> => {
         try {
-          await mkdir(path.dirname(abs), { recursive: true });
-          await writeFile(abs, content, "utf8");
+          await guard.write(abs, content);
         } catch (e) {
+          if (e instanceof PathGuardError) {
+            return toolError("WriteError", e.code, e.message);
+          }
           return toolError(
             "WriteError",
             (e as NodeJS.ErrnoException).code ?? "IO_ERROR",

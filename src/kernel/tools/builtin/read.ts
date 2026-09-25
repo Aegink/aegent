@@ -4,14 +4,15 @@
  * 行时附 pi 同款导航提示（Use offset=N to continue）。输出为文件原文，不带
  * 行号前缀（编辑引用由 T-4-03 edit 的"旧串→新串"语义自足）。
  *
- * P0 边界：路径相对进程 cwd 解析；工作区边界（D8/D9）由阶段 6 沙箱负责、
- * 执行前审批由阶段 5 的 toolCall 链负责——工具本体不做路径校验。
+ * 路径边界（T-6-01/C7/D1）：本工具不直接接触文件系统——读取经沙箱守卫
+ * 的唯一入口（先校验后 I/O）。P0 读面不限（与 C46 出口 read 不拦一致），
+ * 读断言按装配配置生效；执行前审批仍由阶段 5 的 toolCall 链负责。
  * 不做图片/二进制检测（pi 的 imageProcessor 分支，P1）；超限截断
  * （B5/B10/B11）由 T-4-06 在工具出口统一接入。
  */
 
-import { readFile } from "node:fs/promises";
 import * as path from "node:path";
+import { PathGuard, PathGuardError } from "../../../sandbox/path-guard.js";
 import type { ToolDef } from "../registry.js";
 import { toolError } from "./util.js";
 
@@ -21,7 +22,7 @@ export interface ReadArgs {
   limit?: number;
 }
 
-export function createReadTool(): ToolDef {
+export function createReadTool(options: { pathGuard: PathGuard }): ToolDef {
   return {
     name: "read",
     async execute(args) {
@@ -45,8 +46,11 @@ export function createReadTool(): ToolDef {
       }
       let text: string;
       try {
-        text = await readFile(path.resolve(filePath), "utf8");
+        text = await options.pathGuard.read(path.resolve(filePath));
       } catch (e) {
+        if (e instanceof PathGuardError) {
+          return toolError("ReadError", e.code, e.message);
+        }
         return toolError(
           "ReadError",
           (e as NodeJS.ErrnoException).code ?? "IO_ERROR",

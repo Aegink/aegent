@@ -684,7 +684,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 **依赖**：阶段 5（路径校验与策略出口配合）。
 **不做什么**：不做可插沙箱后端矩阵（D5 P1）；不做受限令牌/OS 账户（D6/D10/D16 P1——**P0 弱承诺必须显式声明**：「网络策略只在工具层生效，对任意子进程不可强制」，写进 README 与 D3 卡的产出）；不做 Job Object（D13 P1）；不做 doctor（D7 P1）。
 
-#### T-6-01 · C7/D1 · 工作区边界 + 统一路径校验 `[ ]`
+#### T-6-01 · C7/D1 · 工作区边界 + 统一路径校验 `[x]`
 - **依据需求**：C7（P0）· D1（P0）
 - **上游首选参考**：[codex·sandboxing/src/windows.rs](../oss/codex/codex-rs/sandboxing/src/windows.rs)（`read_roots/write_roots` 的策略形状：WorkspaceWrite 允许集 + 白名单覆盖）
 - **取什么 / 别抄什么**：取"工作区内 + 显式白名单"两段式校验形状；**所有**文件工具与 bash 的路径参数必经这一个入口（无旁路）
@@ -693,8 +693,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/sandbox/path-guard.test.ts`——工作区内写放行；工作区外写抛带目标路径的错误（场景④"报错明确"）；`grep -rn "writeFile\|appendFile" src/kernel/tools/builtin/` 仅出现在 write-queue 与 env 实现层（无旁路证据）
 - **依赖**：T-5-14
 - **风险 / 未知**：符号链接逃逸——P0 先 `realpath` 归一后判定（记录已知边界进 LIMITATIONS）
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①**fs 写能力收进 PathGuard**（guard.read/guard.write 是工具的唯一 I/O 入口）：这不只是"校验后放行"——工具本体零裸 fs 写且工厂类型上必收守卫，无旁路由构造保证，也是 grep 证伪的达成方式（`writeFileSync` 含 `writeFile` 子串，注释与测试夹具都算命中：夹具落盘助手移到 `src/test-support/tmp-fs.ts`，builtin/ 目录 0 命中）。②**守卫部署在工具执行层**（策略链之后、真实 I/O 之前）= 出口级硬拦：任何 allow 规则或用户批准都绕不过它（对照 C29 #7 链上裁决可被用户层首匹配遮蔽——C7 的强制面不该能被批准）。③**bash 的 cd 追踪在 assertShellFileOps 内按 op 序重建**（firstWord === "cd"，与 T-5-14 扫描器判定一致）：字面 cd 后的相对目标 fail-closed——否则会被错解析到进程 cwd 造成假放行（测试抓出）；含 $/反引号/引号目标、win32 反斜杠目标（bash 转义符）、无盘符 POSIX 路径一律判不可验证拒绝。④LIMITATIONS 双载体 = `PATH_GUARD_LIMITATIONS` 常量 + `docs/sandbox-path-limitations.md`（含强/弱承诺声明：守卫只覆盖工具入口，不承诺管住不经重定向的写手段）。⑤bash.ts 引入 `policy/shell-semantics` 纯函数 import（内核工具 → 策略层唯一一处反向依赖）：analyzeShellCommand 无状态、无模块环；替代方案（扫描器下沉内核）会动 T-5-14 产物，不值。⑥glob/grep 不接守卫：只读且 P0 读面不限（与 C46 出口 read 不拦一致），读边界仅在显式配置 readRoots 时存在。⑦`>&N` fd 复制目标按非文件跳过（否则被扫描器误报为文件写）；命令替换/eval 内的重定向不被扫描器抽取、守卫不可见——该类命令走 C28 的 ask 面（用户批准即担责），LIMITATIONS #2/#4 声明。⑧观察到 T-5-14 扫描器对 Windows 风格绝对路径（`C:\x` 不以 `/` 开头）也打 pathMayDependOnCwd——策略面会多 ask（保守方向、无害）；守卫不依赖该标志（以 `path.isAbsolute` 判定），未动 T-5-14 产物。
+- **完成记录**：2026-09-25。产出 `src/sandbox/path-guard.ts`（PathGuard：workspaceRoots + writeWhitelist 两段式、readRoots 缺省不限、realpath 归一含最近存在祖先、win32 大小写不敏感比较、resolveShellTarget shell 方言解析、assertShellFileOps 虚拟操作接入 + 守卫内 read/write I/O）+ `path-guard.test.ts` 22 用例 + 四工具与注册入口接线 + `src/test-support/tmp-fs.ts` + LIMITATIONS 双载体文档。验收：`npx vitest run src/sandbox/path-guard.test.ts` → **21 passed / 1 skipped**（符号链接逃逸用例——本机无创建符号链接特权自动跳过，LIMITATIONS #1 声明；有特权环境应 22 全过）；①工作区内写放行（含多级不存在目录自动创建）、工作区外写拒绝且报错含目标绝对路径与允许范围、目标不落盘（场景④）；②白名单放行、前缀孪生目录（`ws-evil`）不误放、受限读面外界读拒绝、MSYS `/c/...` 与大小写变体归一正确；③bash 集成：越界重定向 isError 且命令未启动（exec 零调用）、`cd somewhere && echo hi > rel.txt` 拒绝、区内重定向放行；④write/edit/read 工具越界均 isError 且 edit 读之前被拒。`grep -rn "writeFile\|appendFile" src/kernel/tools/builtin/` → **0 行**（整树剩余命中仅在 truncate.ts spill 实现层与各测试夹具——无工具旁路）；全量 `npx vitest run` **356 passed / 1 skipped**，`npx tsc --noEmit` 干净，`check-doc-links.sh`（含新文档）0 失效，`count-features.sh` = 310 不变。
 
 #### T-6-02 · D2 · 危险命令闸门（提示词模板） `[ ]`
 - **依据需求**：D2（P0）

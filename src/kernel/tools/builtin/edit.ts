@@ -6,12 +6,12 @@
  *
  * 不做换行规范化（pi 的 normalizeToLF/restoreLineEndings 不取）：按字节面
  * 精确匹配，CRLF 文件需模型给出的 oldText 含同样的 CRLF——方言/风险已记
- * 卡面。写回动作与 write 同款：T-4-04 队列落地后经队列执行（头注释声明
- * 接入点）。路径边界同 read（阶段 5/6 负责）。
+ * 卡面。写回动作与 write 同款：整个"读-校验-替换-写回"进 T-4-04 队列，
+ * 读与落盘都经沙箱守卫唯一入口（T-6-01/C7/D1，本文件不含裸 fs 写）。
  */
 
-import { readFile, writeFile } from "node:fs/promises";
 import * as path from "node:path";
+import { PathGuard, PathGuardError } from "../../../sandbox/path-guard.js";
 import type { ToolExecutionResult } from "../../loop.js";
 import type { ToolDef } from "../registry.js";
 import type { WriteQueue } from "../write-queue.js";
@@ -34,8 +34,12 @@ function countOccurrences(text: string, needle: string): number {
   return count;
 }
 
-export function createEditTool(options?: { writeQueue?: WriteQueue }): ToolDef {
-  const queue = options?.writeQueue;
+export function createEditTool(options: {
+  writeQueue?: WriteQueue;
+  pathGuard: PathGuard;
+}): ToolDef {
+  const queue = options.writeQueue;
+  const guard = options.pathGuard;
   return {
     name: "edit",
     async execute(args) {
@@ -50,12 +54,25 @@ export function createEditTool(options?: { writeQueue?: WriteQueue }): ToolDef {
         return toolError("EditError", "INVALID_ARGUMENTS", "edit 需要 newText（字符串）");
       }
       const abs = path.resolve(filePath);
+      // T-6-01：写断言前置（fail fast）——越界目标在读之前就被拒，模型拿到
+      // 边界错误而非"文件不存在"（guard.write 内会再断言一次，双保险）
+      try {
+        await guard.assertWritable(abs);
+      } catch (e) {
+        if (e instanceof PathGuardError) {
+          return toolError("EditError", e.code, e.message);
+        }
+        throw e;
+      }
       // B4：整个"读-校验-替换-写回"进队列（读改写必须原子，防并发写交错）
       const doEdit = async (): Promise<ToolExecutionResult> => {
         let text: string;
         try {
-          text = await readFile(abs, "utf8");
+          text = await guard.read(abs);
         } catch (e) {
+          if (e instanceof PathGuardError) {
+            return toolError("EditError", e.code, e.message);
+          }
           return toolError(
             "EditError",
             (e as NodeJS.ErrnoException).code ?? "IO_ERROR",
@@ -80,8 +97,11 @@ export function createEditTool(options?: { writeQueue?: WriteQueue }): ToolDef {
         // 函数形式的替换串不经 $& 等 special pattern 解释（newText 原样落盘）
         const next = text.replace(oldText, () => newText);
         try {
-          await writeFile(abs, next, "utf8");
+          await guard.write(abs, next);
         } catch (e) {
+          if (e instanceof PathGuardError) {
+            return toolError("EditError", e.code, e.message);
+          }
           return toolError(
             "EditError",
             (e as NodeJS.ErrnoException).code ?? "IO_ERROR",

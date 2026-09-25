@@ -5,6 +5,12 @@
  * spawn 在 env 实现层）——本文件不含任何裸进程 API 词汇。
  * shell 选择：P0 用 bash（Git Bash 存在于本机），跨壳留 P1 D11。
  *
+ * 路径边界（T-6-01/C7/D1）：重定向的文件目标经 T-5-14 的虚拟文件操作
+ * （file-write/file-read）在执行前逐个过沙箱守卫——这是出口级硬拦（策略
+ * 链的批准绕不过它）；不可静态验证的目标 fail-closed 拒绝执行，覆盖面与
+ * 方言边界见 path-guard 头注释 LIMITATIONS。守卫拒绝发生在 env 启动命令
+ * 之前（被拒命令未启动——D15 的幂等前提）。
+ *
  * 语义：退出码非 0 → isError（模型可感知失败）；超时 → TOOL_TIMEOUT
  * （J22/T-2-04 词汇，env 实现层 kill）；退出码同时落 meta.exitCode
  * （tool/result.meta 既有形状，不造第二套词汇）。
@@ -13,6 +19,8 @@
 import type { ExecResult } from "../env.js";
 import type { ToolExecutionResult } from "../../loop.js";
 import { TimeoutError } from "../../timeout.js";
+import { analyzeShellCommand } from "../../../policy/shell-semantics.js";
+import { PathGuard, PathGuardError } from "../../../sandbox/path-guard.js";
 import type { ToolContext } from "../context.js";
 import type { ToolDef } from "../registry.js";
 import { toolError } from "./util.js";
@@ -38,7 +46,7 @@ function toResult(result: ExecResult): ToolExecutionResult {
   };
 }
 
-export function createBashTool(): ToolDef {
+export function createBashTool(options: { pathGuard: PathGuard }): ToolDef {
   return {
     name: "bash",
     async execute(args, ctx: ToolContext) {
@@ -59,6 +67,15 @@ export function createBashTool(): ToolDef {
           "INVALID_ARGUMENTS",
           `timeout 上限 ${String(MAX_TIMEOUT_SECONDS)} 秒`,
         );
+      }
+      // T-6-01：重定向目标先过守卫（经 T-5-14 虚拟文件操作），拒绝时不启动命令
+      try {
+        await options.pathGuard.assertShellFileOps(analyzeShellCommand(command).ops);
+      } catch (e) {
+        if (e instanceof PathGuardError) {
+          return toolError("BashError", e.code, e.message);
+        }
+        throw e;
       }
       if (!ctx.env) {
         return toolError(
