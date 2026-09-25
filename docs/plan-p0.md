@@ -651,7 +651,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①按卡面纪律先写 LIMITATIONS（8 条，注释 + docs/shell-semantics-limitations.md 各一份，代码侧载体 SHELL_ANALYSIS_LIMITATIONS 冻结导出，测试断言两处逐字一致防漂移）再写解析器。②扫描器形状：引号/转义感知分段（&& || ; | 换行，$( ) 区域不透明跳过并判 uncertain）→ 段内抽取引号外重定向（>/>>/<；fd 重定向 2> 按 LIMITATIONS #5 不抽取原样保留）→ cd 状态跨段传播（动态目标→cwdUnknown，字面/无参→pathMayDependOnCwd）。③虚拟操作三态 command/file-write/file-read（qwen ShellOperation 的 cwdUnknown/pathMayDependOnCwd 字段名照取）。④链上模块裁决序：保留路径重定向写 deny（C46 经 C27 关 bash 旁路）→ uncertain ask → 危险模式 ask（复用 C10 findDangerousCommand，与危险库模块二选一装配即可）→ cwd 保守 ask。⑤已知边界：虚拟操作裁决受首匹配层序影响非出口硬拦（LIMITATIONS #7，C46 出口级组合留 P1）。
 - **完成记录**：2026-09-25。产出 `src/policy/shell-semantics.ts`（VirtualOp/ShellAnalysis + SHELL_ANALYSIS_LIMITATIONS 8 条 + analyzeShellCommand B 档扫描器 + createShellSemanticsModule）+ `docs/shell-semantics-limitations.md`（同源拷贝）+ `shell-semantics.test.ts` 11 用例。验收：`npx vitest run src/policy/shell-semantics.test.ts` → **11 passed**；①`echo hi && rm -rf /x` 产出两个 command 操作、gate 集成下第二段命中 recursive-delete 拒绝；②`cd $SOMEWHERE && cat x` → cwdUnknown 且模块 ask（C28 按危险处理），字面 cd 只标 pathMayDependOnCwd；③`eval "$(…)"` → uncertain → ask，$(/source 同判、单引号内不误判；④LIMITATIONS ≥5 且文档逐字同步。附：>/>>/< 三种重定向抽取、相对路径目标标 pathMayDependOnCwd、重定向写 .git 直接 deny、管道分段。全量 `npx vitest run` **320 passed**，`npx tsc --noEmit` 干净，check-doc-links 新文档 0 失效。
 
-#### T-5-15 · N6 · owner + lease + 类型化 owner 命令通道 `[ ]`
+#### T-5-15 · N6 · owner + lease + 类型化 owner 命令通道 `[x]`
 - **依据需求**：N6（P0）
 - **上游首选参考**：[zcode·sessionRealtimePort.ts](../oss/zcode/packages/services/src/session/sessionRealtimePort.ts)（`TaskRunLease*` + `TaskOwnerCommandRequest` 闭集：`stop_generation` / `respond_permission` / `respond_elicitation` / `respond_workspace_hook_review`——审批/elicitation/hook 复核共用一条通道）
 - **取什么 / 别抄什么**：取"一条命令通道 + 命令闭集 + 结果回传"；P0 单端：CLI 即 owner，lease 语义做最小版（acquire/release + 持有者才能发命令），多端 host（N7）P1
@@ -660,8 +660,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/session/owner-port.test.ts`——审批请求经通道 → reply 命令回传 → C5 的 Deferred 被唤醒（与 T-5-04 联测）；非持有 lease 的调用方发命令被拒
 - **依赖**：T-5-04
 - **风险 / 未知**：与 C5 的 Deferred 对接是两套抽象的缝合点——命令结果回传即 `reply(id, verdict)` 的封装，不重造挂起机制
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①命令闭集 P0 落两个变体（respond_permission / stop_generation）——elicitation / hook 复核变体随对应功能加入联合，assertNever 穷尽 switch 保证漏分支编译失败（闭集是类型面强制非文档约定）；handler 由装配注入（respondPermission→pending.reply，stopGeneration→loop.cancel），端口层不依赖 policy 具体实现。②lease 句柄带 leaseId 序号令牌——同一 owner 释放重获后旧句柄的 release 与 requestOwnerCommand 均失效（仅比 ownerId 字符串会让旧句柄复活）。③结果回传 = requestOwnerCommand 的 promise：handler 成功/类型化失败（Stale/Unknown）原样上抛，端口层不改写。④LeaseBusy/NotLeaseHolder 带 code（C50 同款错误纪律）。
+- **完成记录**：2026-09-25。产出 `src/session/owner-port.ts`（OwnerCommand 闭集 + LeaseHandle + LeaseBusyError/NotLeaseHolderError + OwnerCommandPort）+ `owner-port.test.ts` 6 用例。验收：`npx vitest run src/session/owner-port.test.ts` → **6 passed**；①T-5-04 联测：pending.ask 挂起 → owner 发 respond_permission → C5 Deferred 唤醒（发起端 resolves 审批裁决）；②非持有 lease 发命令被拒（NotLeaseHolderError code=OWNER_NOT_LEASE_HOLDER）、重复 acquire 抛 LeaseBusy（heldBy 可见）、释放重获后旧句柄 release no-op 且发命令失效；③stop_generation 到达 handler；④迟到/未知答复的类型化错误原样回传。全量 `npx vitest run` **326 passed**，`npx tsc --noEmit` 干净。
 
 #### T-5-16 · L2 · 发起端 + 审批人记录 `[ ]`
 - **依据需求**：L2（P0）
