@@ -135,7 +135,7 @@ describe("C46 · 硬拦出口（规则不得授权）", () => {
     expect(blocked.action).toBe("deny");
   });
 
-  it("只拦写：read 触及 .git 不拦（git 日常要读元数据），bash 不在本拦面（T-5-14 虚拟操作接入）", () => {
+  it("只拦写：read 触及 .git 不拦（git 日常要读元数据），bash 无重定向写目标出口不动", () => {
     const readVerdict = enforceProtectedPaths(
       { action: "allow", reason: "r" },
       { tool: "read", args: { path: "/repo/.git/HEAD" } },
@@ -145,6 +145,6 @@ describe("C46 · 硬拦出口（规则不得授权）", () => {
       { action: "allow", reason: "r" },
       bashCall("rm -rf /repo/.git"),
     );
-    expect(bashVerdict.action).toBe("allow"); // T-5-14 后由虚拟操作拦
+    expect(bashVerdict.action).toBe("allow"); // rm 非重定向写（B 档 LIMITATIONS #6），链上危险模式升 ask 兜底；bash 重定向写 .git 的出口拦截见 exit-guard.test
   });
 });

@@ -27,7 +27,7 @@
 
 ## 卡序（13 张，按依赖排序）
 
-#### T-P1-01 · C46 · 出口级元数据路径硬拦（关闭 shell 虚拟操作层序旁路） `[ ]`
+#### T-P1-01 · C46 · 出口级元数据路径硬拦（关闭 shell 虚拟操作层序旁路） `[x]`
 - **依据需求**：C46（P1 接线；P0 已落 withProtectedPaths 于链上模块）
 - **上游首选参考**：[codex·permissions.rs:35-40](../oss/codex/codex-rs/protocol/src/permissions.rs#L35)（`PROTECTED_METADATA_{GIT,AGENTS,CODEX}_PATH_NAME` 常量 + "Top-level workspace metadata paths that stay protected under writable roots" 注释——硬拦在出口，不在规则层）
 - **取什么 / 别抄什么**：取"受保护路径是出口属性、规则不得授权"的结构位置；我方已有 `aggregate.ts` 的 `withProtectedPaths`（T-5-06）与 `.git/.agents/.codex` 清单，**本卡只移位置不改清单**——把硬拦从链上模块（可被用户层 allow 先匹配压过，T-5-14 LIMITATIONS #7）升为执行出口的最终组合（gate 输出 / registry.dispatch 执行点，与 C57 revalidate 同位）
@@ -36,6 +36,8 @@
 - **验收**：`npx vitest run src/policy/exit-guard.test.ts`——①用户层 allow 规则显式匹配 `.git/config` 写操作（含 bash 重定向虚拟操作）→ 仍 deny 且理由含"硬拦"；②同规则对非保护路径不产生新拦截（对照）；③T-5-14 LIMITATIONS #7 描述的"用户 allow 先于语义分析"场景复现用例转绿；④出口级与 C57 重算共存不双重拒绝
 - **依赖**：无（批次 1 首卡）
 - **风险 / 未知**：硬拦位置选 gate 输出还是 dispatch 执行点——两处都过 C57 的权威标识纪律；若与 revalidate 的 guard 钩子职责重叠，以"guard 剥标记、exit-guard 管路径"划界并记卡面
+- **偏离 / 建议**：①清单与段匹配拆出 `protected-names.ts`（唯一权威）——protected-paths（出口）与 shell-semantics（扫描器）各自单向 import，避免出口反向消费扫描器成环；protected-paths re-export 保持既有 import 面；②gate.ts **零改动**——层内自调 enforceProtectedPaths 自动获得 bash 分支；③revalidate.ts 的 createRevalidator 出口补 enforceProtectedPaths（不依赖装配方记得包 withProtectedPaths）；④LIMITATIONS #7 改写且双载体同步：语义裁决（uncertain/危险/cd 保守）仍在链上受层序影响，保留名单硬拦升出口级；⑤aggregate.test 的"bash 不在本拦面"用例注释更新（断言不变：rm 非重定向写，链上危险模式兜底）
+- **完成记录**：2026-09-25。产出 `src/policy/protected-names.ts`（清单唯一权威）+ `protected-paths.ts` 扩 bash 虚拟写出口分支（analyzeShellCommand 的 file-write 目标过段匹配）+ `revalidate.ts` 出口同位 + `exit-guard.test.ts` 10 用例。验收：`npx vitest run src/policy/exit-guard.test.ts` → **10 passed**；③号验收（#7 旁路复现转绿）：用户层 `bash(echo *)` allow 先匹配胜、链裁决 allow、出口压 deny 且理由含"硬拦"；②对照非保护路径透传；④revalidator 链 abstain + .git 重定向 → 拒绝、伪造 approved 标记剥除与硬拦共存。全量 `npx vitest run` **487 passed / 1 skipped**，`npx tsc --noEmit` 干净。
 
 #### T-P1-02 · C22/C24/G5 · 规则作用域四档 + 审批 scope/feedback 通道 `[ ]`
 - **依据需求**：C22（P1）· C24（P1）· G5（P1，自研）

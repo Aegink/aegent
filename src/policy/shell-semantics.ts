@@ -22,8 +22,9 @@
  *      被识别；
  *   6. tee / dd / cp 等以参数（而非重定向）写文件的命令不识别为写操作，
  *      只有命中危险模式的会升 ask；
- *   7. 虚拟操作的裁决发生在链上（受首匹配层序影响），不是出口级硬拦
- *      ——用户层 allow 规则可能先于本模块裁决（C46 出口级组合留 P1）；
+ *   7. 虚拟操作的语义裁决（uncertain/危险模式/cd 保守）在链上受首匹配
+ *      层序影响，可被用户层 allow 压过；保留名单硬拦已升出口级（T-P1-01
+ *      起 protected-paths 消费本扫描器重扫虚拟写目标，不可被规则授权）；
  *   8. 多行命令按换行分段；不模拟 set -e、管道失败与子 shell 语义。
  *
  * 消费纪律（C28）：cwdUnknown / uncertain / pathMayDependOnCwd 是保守
@@ -33,7 +34,7 @@
 
 import type { PolicyCall, PolicyModule, PolicyOutcome } from "./chain.js";
 import { findDangerousCommand } from "./dangerous-commands.js";
-import { findProtectedMetadataSegment } from "./protected-paths.js";
+import { findProtectedMetadataSegment } from "./protected-names.js";
 
 // ---------------------------------------------------------------------------
 // 分析产物
@@ -71,7 +72,7 @@ export const SHELL_ANALYSIS_LIMITATIONS: readonly string[] = Object.freeze([
   "不解析 [[ ]]、$(( ))、heredoc、进程替换、别名/函数与 PATH 解析",
   "带文件描述符的重定向（2>、&>）不抽取为文件操作",
   "tee/dd/cp 等以参数写文件的命令不识别为写操作",
-  "虚拟操作裁决在链上受首匹配层序影响，不是出口级硬拦",
+  "虚拟操作的语义裁决（uncertain/危险模式/cd 保守）在链上受首匹配层序影响，可被用户层 allow 压过；保留名单硬拦已升出口级（protected-paths 消费本扫描器，不可被规则授权）",
   "不模拟 set -e、管道失败与子 shell 语义",
 ] as const);
 

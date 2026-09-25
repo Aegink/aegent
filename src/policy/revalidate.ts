@@ -11,7 +11,8 @@
  *     剥除（closed list 是已知局限——结构保证是重算器从不读它们；
  *     剥除让伪造痕迹可观测，且执行收到的参数干净）；
  *   - createRevalidator：剥标记 → 用 sessionId/source 权威重跑策略链 →
- *     只有 allow 放行。ask/deny/abstain 一律拦——执行点是最后一道闸，
+ *     链裁决后再过 C46 出口级硬拦（T-P1-01）→ 只有 allow 放行。
+ *     ask/deny/abstain 一律拦——执行点是最后一道闸，
  *     fail closed（C51 同款）；ask 的问人流程在 T-5-12 gate 更上游，
  *     批准经批准历史/会话缓存使重算收敛为 allow 后才可能放行。
  *
@@ -22,6 +23,7 @@
 import type { JsonRecord } from "../kernel/events.js";
 import type { PolicyChain } from "./chain.js";
 import type { Verdict } from "./decision.js";
+import { enforceProtectedPaths } from "./protected-paths.js";
 
 /** 决策标记保留键（大小写不敏感剥除；闭集局限同 review-decision.ts）。 */
 const DECISION_MARKER_KEYS: ReadonlySet<string> = new Set([
@@ -82,12 +84,11 @@ export function createRevalidator(options: {
   const { chain, sessionId, source } = options;
   return async (tool, args) => {
     const { args: clean, strippedKeys } = stripDecisionMarkers(args);
-    const verdict = await chain.evaluate({
-      tool,
-      args: clean,
-      sessionId,
-      source,
-    });
+    const call = { tool, args: clean, sessionId, source };
+    let verdict = await chain.evaluate(call);
+    // C46 出口级硬拦与 gate 同位：执行点是最后一道闸，硬拦不依赖装配
+    // 方是否记得用 withProtectedPaths 包链（T-P1-01）。
+    verdict = enforceProtectedPaths(verdict, call);
     return {
       allowed: verdict.action === "allow",
       verdict,

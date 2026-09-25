@@ -71,6 +71,7 @@
 | 2026-09-25 | T-8-03 | L1/L3 | `ccc3370` | `npx vitest run src/obs/usage.test.ts && ls logs/ \|\| echo NO_LOG_DIR` | 3 passed；1002 事件喂入按会话/按轮分列可查（Σinput=1,402,800 逐列断言）、usage 缺失不算 0、totalTokens 显式优先、多会话不串扰；logs/ NO_LOG_DIR（L1 否定性面）；全量 472 passed |
 | 2026-09-25 | T-8-04 | Q5 | `b95fa8b` | `npx vitest run src/session/boot-maintenance.test.ts` | 5 passed；崩溃态对账全闭合、codes=[STEP_INTERRUPTED, TURN_INTERRUPTED] 细分、turn/end{interrupted} append-only 落流；干净 no-op；幂等；杀进程重启 restore→对账→新 prompt 开 turn 2 不续跑（事件流 interrupted/completed 共存）；全量 477 passed |
 | 2026-09-25 | T-8-05 | （汇编卡，§8 十条） | （本次 commit） | 十条逐项执行（见「P0 终验收记录」） | 十条全过：①11 passed+smoke SQLite 复证 ②45 passed ③21 passed/1 skipped（符号链接→人工确认）④8 passed ⑤4 passed+config CLEAN ⑥10.1ms<200ms ⑦冷启动 283.3/273ms、RSS 47.1MB、Token 省 94.3% ⑧17/17 exit 0 ⑨548 链接 0 失效 ⑩310 与 §5 一致 |
+| 2026-09-25 | T-P1-01 | C46 | （本次 commit） | `npx vitest run src/policy/exit-guard.test.ts` | 10 passed；LIMITATIONS #7 旁路复现转绿（用户层 allow 先匹配压过链裁决→出口级仍 deny）；bash 虚拟写通道（>/>>/大小写/$VAR 段命中/cd 相对目标）+ write/edit 回归 + revalidator 出口同位（C46×C57 共存）；protected-names 拆分防循环依赖；全量 487 passed，tsc 干净（P1 批次 1 首卡，卡在 docs/plan-p1.md） |
 
 ---
 
