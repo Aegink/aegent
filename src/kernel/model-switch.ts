@@ -146,6 +146,16 @@ export interface ModelSwitchOptions {
   initial: ModelIdentity;
   /** 会话级模型注册表（装配注册；构造后不可变）。 */
   models: readonly RegisteredModel[];
+  /**
+   * J9 落流通道（T-P1-06，装配注入 store.append）：换模/回滚事实以
+   * `model/switch` 事件承载（词汇表 15），绝不静默改状态。turn 归属由
+   * 装配补（会话级元事件，挂流内最后 turn，空流兜 0）。
+   */
+  emit?: (emission: {
+    from: ModelIdentity;
+    to: ModelIdentity;
+    reason: "user" | "rollback";
+  }) => void;
 }
 
 export class ModelSwitchService {
@@ -156,6 +166,7 @@ export class ModelSwitchService {
   private hasCapturedTurn = false;
   private currentSwitch: SwitchRecord | undefined;
   private currentRollback: ModelRollback | undefined;
+  private readonly emit: ModelSwitchOptions["emit"];
   /** 在途 turn 的捕获（单槽：同时至多一个在途 turn，语义见文件头）。 */
   private currentCapture: { turn: number; model: TurnModel } | undefined;
 
@@ -168,6 +179,7 @@ export class ModelSwitchService {
       throw new ModelNotRegisteredError(options.initial);
     }
     this.configuredId = initial.identity;
+    this.emit = options.emit;
   }
 
   /** configured 当前值：换模受理即更新（deferred 受理除外——见 switch）。 */
@@ -224,6 +236,13 @@ export class ModelSwitchService {
     if (this.phaseId === "pending") {
       this.configuredId = entry.identity;
     }
+    // J9：受理即落流（deferred 受理也算——用户选择的事实先持久化，进程
+    // 崩溃后重启仍可按流重建；deferred 应用不重复落事件，最新 to 已权威）。
+    this.emit?.({
+      from: { ...prev },
+      to: { ...entry.identity },
+      reason: "user",
+    });
   }
 
   /**
@@ -273,6 +292,12 @@ export class ModelSwitchService {
       failureCode: failure.code,
       turn,
     };
+    // J9：回滚本身落事件（T-P1-05 偏离③的兑现——与换模事件同一词汇）。
+    this.emit?.({
+      from: { ...record.target },
+      to: { ...record.prev },
+      reason: "rollback",
+    });
     return true;
   }
 }

@@ -103,6 +103,43 @@ export function truncatingSummarizer(maxChars = 2000): Summarizer {
   };
 }
 
+/**
+ * J14 回放保护 + J10 两存储位分离（T-P1-06）：装配时的初始模型身份按
+ * 优先级解析——流内最新 model/switch 的 to（会话级选择，权威事实源）>
+ * initialIdentity（会话装配参数）> 注册表首项。会话级选择与全局默认
+ * （globalDefaultIdentity）不一致时 warn 不静默、保留会话级选择；流内
+ * 选择不在注册表 = 装配失败（ModelSwitchService 构造抛 ModelNotRegistered
+ * Error，fail-closed，绝不静默回退全局默认）。
+ */
+function resolveInitialIdentity(
+  options: ChildAssemblyOptions,
+  store: SessionStore,
+  sessionId: string,
+  logger: Logger | undefined,
+): ModelIdentity {
+  const fallback =
+    options.initialIdentity ?? options.models![0]!.identity;
+  const events = store.load(sessionId);
+  for (let i = events.length - 1; i >= 0; i--) {
+    const ev = events[i]!;
+    if (ev.type !== "model/switch") continue;
+    const globalDefault = options.globalDefaultIdentity;
+    if (
+      globalDefault !== undefined &&
+      (ev.to.provider !== globalDefault.provider ||
+        ev.to.modelId !== globalDefault.modelId)
+    ) {
+      logger?.warn(
+        `J10/J14：会话级模型选择 ${ev.to.provider}:${ev.to.modelId} 与全局默认 ` +
+          `${globalDefault.provider}:${globalDefault.modelId} 不一致——` +
+          "保留会话级选择（重启/回放不静默覆盖用户选择）",
+      );
+    }
+    return ev.to;
+  }
+  return fallback;
+}
+
 /** 事件流中最新 compaction 的 seq（预算 windowId：压缩后即换窗）。 */
 function latestCompactionSeq(events: readonly SessionEvent[]): number | undefined {
   let latest: number | undefined;
@@ -144,6 +181,12 @@ export interface ChildAssemblyOptions {
    * 首项。只提供本字段而不提供 models = 装配自相矛盾，拒绝启动。
    */
   initialIdentity?: ModelIdentity;
+  /**
+   * J10 全局默认模型（配置面的存储位；会话级选择存流内 model/switch
+   * 事件——两存储位显式分离）。与流内选择不一致时 warn 不静默、保留
+   * 会话级选择（J14 回放保护）。
+   */
+  globalDefaultIdentity?: ModelIdentity;
   /** git 仓库根（E11 代码检查点）：提供时每轮开始前打 git stash 检查点、
    * /revert 双回退（对话态 + 代码态）。缺省不启用（非 git 场景零开销）。
    */
@@ -412,8 +455,23 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
   const modelSwitch =
     options.models && options.models.length > 0
       ? new ModelSwitchService({
-          initial: options.initialIdentity ?? options.models[0]!.identity,
+          initial: resolveInitialIdentity(options, store, sessionId, logger),
           models: options.models,
+          emit: (emission) => {
+            // J9 落流：会话级元事件挂流内最后 turn（session/revert 同款），
+            // 空流兜 0；经 ForwardingStore 自然转发为协议 event 行。
+            const events = store.load(sessionId);
+            const turn = events.length > 0 ? events[events.length - 1]!.turn : 0;
+            store.append(sessionId, [
+              {
+                type: "model/switch",
+                turn,
+                from: { ...emission.from },
+                to: { ...emission.to },
+                reason: emission.reason,
+              },
+            ]);
+          },
         })
       : undefined;
   const handleModelSwitch = modelSwitch

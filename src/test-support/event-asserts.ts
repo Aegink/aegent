@@ -25,17 +25,17 @@ import { TimeoutError, withTimeout } from "../kernel/timeout.js";
 
 /**
  * turn 作用域不变量：turn 从 1 连续编号、不嵌套、不悬挂；turn 作用域事件
- * 归属当前开启的轮；轮内 step 从 1 连续递增。session/revert 是会话级元事件，
- * 不参与本检查；compaction / checkpoint / request/header 只声明 turn 归属、
- * 不要求轮开启（与投影器 applyValidation 的判定一致——压缩合法地落在轮外，
- * 如 turn 收尾后的 PreTurn 压缩）。
+ * 归属当前开启的轮；轮内 step 从 1 连续递增。session/revert 与 model/switch
+ * 是会话级元事件，不参与本检查；compaction / checkpoint / request/header
+ * 只声明 turn 归属、不要求轮开启（与投影器 applyValidation 的判定一致——
+ * 压缩合法地落在轮外，如 turn 收尾后的 PreTurn 压缩）。
  */
 export function expectTurnScoped(events: readonly SessionEvent[]): void {
   let expectedTurn = 0;
   let openTurn: number | null = null;
   const stepCounters = new Map<number, number>();
   for (const e of events) {
-    if (e.type === "session/revert") continue;
+    if (e.type === "session/revert" || e.type === "model/switch") continue;
     if (e.type === "turn/start") {
       if (openTurn !== null) {
         throw new Error(

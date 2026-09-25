@@ -23,11 +23,12 @@ import {
   ModelSwitchService,
   ModelSwitchStateError,
   nextSwitchPhase,
+  type ModelSwitchOptions,
   type RegisteredModel,
 } from "./model-switch.js";
 import { AgentLoop } from "./loop.js";
-import { createChildAssembly } from "./assembly.js";
-import type { LlmFailure } from "./events.js";
+import { createChildAssembly, type ChildAssembly } from "./assembly.js";
+import type { LlmFailure, SessionEvent } from "./events.js";
 import { runAgentChildStdio, type AgentChildOptions } from "./agent-process.js";
 import {
   decodeMessage,
@@ -35,9 +36,13 @@ import {
   type AgentRequest,
 } from "./agent-protocol.js";
 import type { ModelProvider } from "../models/provider.js";
-import type { SessionEvent } from "./events.js";
 import { InMemoryEventStorage, SessionStore } from "../session/store.js";
-import { drainUntil, recvWithTimeout } from "../test-support/event-asserts.js";
+import { project } from "../session/project.js";
+import {
+  drainUntil,
+  expectTurnScoped,
+  recvWithTimeout,
+} from "../test-support/event-asserts.js";
 
 const identityA = { provider: "p", modelId: "m1" };
 const identityB = { provider: "p", modelId: "m2" };
@@ -393,6 +398,179 @@ describe("J11 装配与 loop 接线 —— 失败观测到回滚的闭环", () =
 });
 
 // ---------------------------------------------------------------------------
+// T-P1-06（J9/J10/J14）：换模进事件流 + 会话级/全局分离 + 回放保护
+// ---------------------------------------------------------------------------
+
+/** emit 落流的装配同款实现（turn 挂流内最后事件，空流兜 0）。 */
+function emitToStore(store: SessionStore, sessionId: string): NonNullable<ModelSwitchOptions["emit"]> {
+  return (emission) => {
+    const events = store.load(sessionId);
+    const turn = events.length > 0 ? events[events.length - 1]!.turn : 0;
+    store.append(sessionId, [
+      {
+        type: "model/switch",
+        turn,
+        from: { ...emission.from },
+        to: { ...emission.to },
+        reason: emission.reason,
+      },
+    ]);
+  };
+}
+
+const isModelSwitch = (
+  e: SessionEvent,
+): e is Extract<SessionEvent, { type: "model/switch" }> => e.type === "model/switch";
+
+describe("J9 换模进事件流（T-P1-06 验收①）", () => {
+  it("受理与回滚都落 model/switch 事件：seq 连续、可投影、事实源可查", () => {
+    const store = new SessionStore(new InMemoryEventStorage());
+    const service = new ModelSwitchService({
+      initial: identityA,
+      models: [
+        { identity: identityA, provider: scriptedProvider("A") },
+        { identity: identityB, provider: scriptedProvider("B") },
+      ],
+      emit: emitToStore(store, "s0"),
+    });
+    service.captureForTurn(1);
+    service.switch(identityB); // 受理 → reason="user"
+    expect(
+      service.reportRequestFailure(1, { code: "MODEL_INCOMPATIBLE" }),
+    ).toBe(true); // 回滚 → reason="rollback"
+
+    const events = store.load("s0");
+    const switches = events.filter(isModelSwitch);
+    expect(switches).toHaveLength(2);
+    expect(switches[0]).toMatchObject({ from: identityA, to: identityB, reason: "user" });
+    expect(switches[1]).toMatchObject({ from: identityB, to: identityA, reason: "rollback" });
+    // seq 连续（store 权威分配）+ 可投影 + 流内最新 to 即事实源
+    const proj = project(events);
+    expect(proj.modelSwitches).toHaveLength(2);
+    expect(proj.modelSwitches[proj.modelSwitches.length - 1]!.to).toEqual(identityA);
+    // 事件可过 O7 断言器（会话级元事件豁免面）——不因轮外落盘误报
+    expectTurnScoped(events);
+  });
+
+  it("协议级：model/switch 事件经子进程转发为 event 行（ForwardingStore 通道）", async () => {
+    const h = harnessWithRegistry();
+    await h.recv(isReady, "ready");
+    h.send({ type: "prompt", messageId: "a", content: "甲" });
+    await h.drain(isTurnEnd, "turn/end(a)");
+    h.send({ type: "model/switch", identity: { provider: "echo", modelId: "m2" } });
+    h.send({ type: "prompt", messageId: "b", content: "乙" });
+    const turn2 = await h.drain(isTurnEnd, "turn/end(b)");
+    const switchEvent = eventsOf(turn2.items).find(isModelSwitch);
+    expect(switchEvent).toMatchObject({
+      from: { provider: "echo", modelId: "m1" },
+      to: { provider: "echo", modelId: "m2" },
+      reason: "user",
+    });
+    await h.stop();
+  }, 30_000);
+});
+
+describe("J10/J14 两存储位分离与回放保护（T-P1-06 验收②③）", () => {
+  function assemblyWith(
+    store: SessionStore,
+    opts: {
+      globalDefaultIdentity?: { provider: string; modelId: string };
+      initialIdentity?: { provider: string; modelId: string };
+    },
+  ): ChildAssembly {
+    const workspaceRoot = mkdtempSync(path.join(tmpdir(), "model-switch-"));
+    tmpRoots.push(workspaceRoot);
+    return createChildAssembly({
+      sessionId: "s0",
+      store,
+      workspaceRoot,
+      contextWindow: 100_000,
+      approvalTimeoutMs: 5_000,
+      models: [
+        { identity: identityA, provider: scriptedProvider("A") },
+        { identity: identityB, provider: scriptedProvider("B") },
+        { identity: identityC, provider: scriptedProvider("C") },
+      ],
+      ...opts,
+    });
+  }
+
+  it("验收②：会话级选择存在时全局默认变更不改变本会话（保留用户选择）", () => {
+    // 上一会话的用户选择：A → B（落流）
+    const store = new SessionStore(new InMemoryEventStorage());
+    store.append("s0", [
+      { type: "model/switch", turn: 0, from: identityA, to: identityB, reason: "user" },
+    ]);
+    // 新装配：全局默认改回 A——会话级选择（流内 B）必须原样保留
+    const a = assemblyWith(store, { globalDefaultIdentity: identityA });
+    expect(a.modelForTurn!(1)!.identity).toEqual(identityB);
+  });
+
+  it("验收③：杀进程重启（restore 同 store 重建装配）后模型仍是用户选的那个", () => {
+    const store = new SessionStore(new InMemoryEventStorage());
+    store.append("s0", [
+      { type: "model/switch", turn: 0, from: identityA, to: identityC, reason: "user" },
+    ]);
+    // 全新装配（生产等价：SQLite restore 后重跑 createChildAssembly），
+    // 不传 initialIdentity——初始身份只由流内事实源决定
+    const a = assemblyWith(store, {});
+    expect(a.modelForTurn!(1)!.identity).toEqual(identityC);
+  });
+
+  it("对照：无流内选择时回退装配初始身份；流内选择不在注册表 → 装配失败不静默", () => {
+    // 无事件 → initialIdentity（缺省注册表首项）
+    const empty = assemblyWith(new SessionStore(new InMemoryEventStorage()), {
+      initialIdentity: identityB,
+    });
+    expect(empty.modelForTurn!(1)!.identity).toEqual(identityB);
+
+    // 流内选择不在本次装配的注册表 → fail-closed（绝不静默回退全局默认）
+    const stale = new SessionStore(new InMemoryEventStorage());
+    stale.append("s0", [
+      {
+        type: "model/switch",
+        turn: 0,
+        from: identityA,
+        to: { provider: "gone", modelId: "ghost" },
+        reason: "user",
+      },
+    ]);
+    const workspaceRoot = mkdtempSync(path.join(tmpdir(), "model-switch-"));
+    tmpRoots.push(workspaceRoot);
+    expect(
+      () =>
+        createChildAssembly({
+          sessionId: "s0",
+          store: stale,
+          workspaceRoot,
+          contextWindow: 100_000,
+          approvalTimeoutMs: 5_000,
+          globalDefaultIdentity: identityA,
+          models: [{ identity: identityA, provider: scriptedProvider("A") }],
+        }),
+    ).toThrow(ModelNotRegisteredError);
+  });
+});
+
+/** 双模型注册表 harness（echo 前缀 A/B 区分身份；工作区走临时目录）。 */
+function harnessWithRegistry(): ReturnType<typeof startChildHarness> {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), "model-switch-"));
+  tmpRoots.push(workspaceRoot);
+  return startChildHarness({
+    assembly: {
+      workspaceRoot,
+      contextWindow: 100_000,
+      approvalTimeoutMs: 5_000,
+      initialIdentity: { provider: "echo", modelId: "m1" },
+      models: [
+        { identity: { provider: "echo", modelId: "m1" }, provider: labeledEcho("A") },
+        { identity: { provider: "echo", modelId: "m2" }, provider: labeledEcho("B") },
+      ],
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // 协议级：model/switch 经 agent-process 全链（内存流，零 mock 管道）
 // ---------------------------------------------------------------------------
 
@@ -492,23 +670,6 @@ function eventsOf(items: readonly AgentMessage[]): SessionEvent[] {
 }
 
 describe("model/switch 协议命令 —— agent-process 全链", () => {
-  function harnessWithRegistry(): ReturnType<typeof startChildHarness> {
-    const workspaceRoot = mkdtempSync(path.join(tmpdir(), "model-switch-"));
-    tmpRoots.push(workspaceRoot);
-    return startChildHarness({
-      assembly: {
-        workspaceRoot,
-        contextWindow: 100_000,
-        approvalTimeoutMs: 5_000,
-        initialIdentity: { provider: "echo", modelId: "m1" },
-        models: [
-          { identity: { provider: "echo", modelId: "m1" }, provider: labeledEcho("A") },
-          { identity: { provider: "echo", modelId: "m2" }, provider: labeledEcho("B") },
-        ],
-      },
-    });
-  }
-
   it("换模立即受理、下一 turn 生效：turn1 用 m1，model/switch 后 turn2 用 m2", async () => {
     const h = harnessWithRegistry();
     expect(await h.recv(isReady, "ready")).toEqual({ type: "ready" });

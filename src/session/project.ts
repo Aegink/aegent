@@ -65,6 +65,15 @@ export interface SessionProjection {
   compactions: Array<{ seq: number; summary: string; retainedTail: number; tokensBefore: number }>;
   /** 非 null 时有效投影只含 seq ≤ revertedTo 的效果（E4：最新 session/revert 标记生效）。 */
   revertedTo: number | null;
+  /**
+   * 换模事件记录（T-P1-06）：`modelSelection` 的事实源序列——有效视窗内
+   * 最新一条的 to 即当前会话级模型选择（J14 回放保护）。
+   */
+  modelSwitches: Array<{
+    seq: number;
+    to: { provider: string; modelId: string };
+    reason: "user" | "rollback";
+  }>;
 }
 
 function emptyProjection(): SessionProjection {
@@ -81,6 +90,7 @@ function emptyProjection(): SessionProjection {
     lastUsageSeq: null,
     compactions: [],
     revertedTo: null,
+    modelSwitches: [],
   };
 }
 
@@ -194,6 +204,7 @@ export class Projector {
       case "compaction":
       case "checkpoint":
       case "request/header":
+      case "model/switch":
         break;
       case "session/revert":
         // 会话级元事件：不要求 turn/step 上下文。revert 的目标点不能在未来。
@@ -301,6 +312,15 @@ export class Projector {
       case "checkpoint":
       case "request/header":
         break; // 词汇表占位事件：P0 投影不消费
+      case "model/switch":
+        // J14：会话级模型选择的事实源 = 流内最新本事件的 to（有效视窗内
+        // 最新——effectiveProjection 按 seq 切割）。
+        s.modelSwitches.push({
+          seq: event.seq,
+          to: event.to,
+          reason: event.reason,
+        });
+        break;
       case "session/revert":
         s.revertedTo = event.phase === "revert" ? event.targetSeq : null;
         break;
@@ -322,6 +342,7 @@ export class Projector {
       toolCalls: new Map([...s.toolCalls].filter(([, v]) => v.seq <= cut)),
       toolResults: new Map([...s.toolResults].filter(([, v]) => v.seq <= cut)),
       compactions: s.compactions.filter((c) => c.seq <= cut),
+      modelSwitches: s.modelSwitches.filter((m) => m.seq <= cut),
       openTurn: s.openTurn && s.openTurn.seq <= cut ? s.openTurn : null,
     };
   }

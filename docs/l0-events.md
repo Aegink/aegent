@@ -123,7 +123,7 @@ interface EventBase {
 **`seq` / `ts` 由 store 分配**，照 pi 的 `NewEntry = Omit<Entry, "seq" | "timestamp">`（`types.ts:67`）。
 调用方给不出正确的 seq —— 它给一个就多一个不权威的顺序来源。
 
-### 3.2 事件联合（L0，共 **13** 个）
+### 3.2 事件联合（L0，正式计数 **15** 个）
 
 | # | 事件 | 载荷 | 覆盖需求 |
 | --- | --- | --- | --- |
@@ -140,9 +140,13 @@ interface EventBase {
 | 11 | `compaction` | `{turn, summary, retainedTail, tokensBefore, usage?}` | **F9**（原草稿缺） |
 | 12 | `checkpoint` | `{turn, provider: string, ref: JsonValue}` | **E11**（原草稿缺） |
 | 13 | `request/header` | `{config, tools?, reason}` | **J4**（**Q12 定：进 L0，不再是 log-only**） |
+| 14 | `session/revert` | `{targetSeq, phase: "revert"\|"undo"}` | E4（T-1-05 追加，✅ 已追认——落地记录 2） |
+| 15 | `model/switch` | `{from: {provider, modelId}, to: {provider, modelId}, reason: "user"\|"rollback"}` | J9/J10/J14（T-P1-06 追加——落地记录 3） |
 
 `user/message.source` 必须是联合：照 DSH 的 `types.ts:309` 注释，人类 prompt、注入上下文、
 目标续跑**三者都逐字投影 content，靠 `source` 区分**。没有 `source` 就再也分不开。
+`session/revert` 与 `model/switch` 是**会话级元事件**：不要求 turn/step 开合上下文，
+`turn` 挂流内最后轮（空流兜 0）。
 
 ### 3.3 `TurnEndReason`（封闭联合，L0 取 6）
 
@@ -280,3 +284,4 @@ type CancelCause =
 - **上一行声明已履行**：§5、§7 的建议经你确认后已落到 `requirements.md`。
 - **落地记录（2026-09-25，T-1-01 执行会话）**：① §8 曾声明"未验证 LlmFailure 形状"——P0 已定最小形状并落在 `src/kernel/events.ts`：`{code, message, status?, providerRetryAfterMs?}`（取 DSH `packages/llm/llm/src/types.ts:41` 的前四字段；`requestId`/`offloadImages` 暂不引入，待有真实消费者再加）。② `assistant/message` / `assistant/attempt` 的 `stream` 落为 `TimedStreamChunk[]`（带原始时间戳的 chunk 定时序列）——**不抄** DSH 的 delta-run 打包（`assistant-stream.ts:20`，属压缩优化），P0 只需无损。③ `request/header.reason` 取 DSH 四值 `initial|resume|change|series`；`user/message.source` 三值定名 `user|injected|resume`。
 - **落地记录 2（2026-09-25，T-1-05 执行会话；✅ 已追认）**：词汇表 13→14——E4 revert 需要"追加标记事件"（plan-p0.md T-1-05 明文），但 §3.2 的 13 事件没有回退标记的落点。已新增 `session/revert {targetSeq, phase: "revert"|"undo"}`（会话级元事件，不要求 turn/step 上下文，最新标记生效；undo 约定 targetSeq=0）。理由：append-only 流不可截断（不变量 1），revert 是状态变更就必须有事件承载。已同步 events.ts / EVENT_TYPES / 投影校验，`plan-p0-progress.md` 待澄清表已立案供追认。**用户追认于 2026-09-25（"词汇表 13→14，允许"），此案关闭，§3.2 的正式计数为 14 事件。**
+- **落地记录 3（2026-09-25，T-P1-06 执行会话；⏳ 待澄清表已立案供追认）**：词汇表 14→15——J9 要求"换模以持久事件承载、非静默改状态"（plan-p1.md T-P1-06 明文），14 事件没有换模落点。已新增 `model/switch {from: {provider, modelId}, to: {provider, modelId}, reason: "user"|"rollback"}`（会话级元事件，session/revert 同款纪律：不要求 turn/step 开合上下文、turn 挂流内最后轮空流兜 0）。reason 值域两值：`user`（owner 经协议/端口换模受理，**含 deferred 受理**——受理即用户选择的事实落流，进程崩溃后重启仍可按流重建；deferred 应用不重复落事件，最新 to 已权威）与 `rollback`（J11 不兼容回滚，from=被回滚目标、to=恢复的 prev——T-P1-05 偏离③的兑现）。会话级选择的事实源 = 流内最新本事件的 to（J14 回放保护：restore/重启按流重建，不以全局默认覆盖；投影 modelSwitches 在有效视窗内取最新）。同步面：events.ts（ModelSwitchEvent / EVENT_TYPES / _EVENT_TYPES_EXACT 编译闸门）/ project.ts（validation 豁免 + 投影记录 + revert 切点切割）/ event-asserts.ts（O7 会话级元事件豁免面）/ model-switch.ts（emit 注入）/ assembly.ts（emit 落流 + J10 globalDefaultIdentity 分离存储）。若不追认，回退面 = events.ts 一条链（events/project/event-asserts/model-switch/assembly 各一处分支，约 1-2 小时；换模回退为 T-P1-04/05 的进程内存状态形态）。

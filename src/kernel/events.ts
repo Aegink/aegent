@@ -1,6 +1,7 @@
 /**
- * L0 事件词汇表 —— `docs/l0-events.md` §3 定稿的落地（13 事件 + E4 的 session/revert 标记
- * 共 14 个 + 6 结束原因 + 5 取消原因；13→14 的裁决记录见 l0-events.md §8 落地记录）。
+ * L0 事件词汇表 —— `docs/l0-events.md` §3 定稿的落地（13 事件 + E4 的
+ * session/revert 标记 14 个 + T-P1-06 的 model/switch 共 15 个 + 6 结束原因
+ * + 5 取消原因；13→14 与 14→15 的裁决记录见 l0-events.md §8 落地记录）。
  *
  * 词汇表是 Q9 的单向门：定完再改的代价见
  * `oss/deepseek-harness/.agents/notes/rejected/architecture/2026-06-16-typed-event-schemas.md`。
@@ -332,6 +333,25 @@ export interface SessionRevertEvent extends EventBase {
   phase: "revert" | "undo";
 }
 
+/**
+ * 换模事件（J9/J10/J14，T-P1-06）：换模/回滚以持久事件承载，绝不静默改
+ * 状态（pi·agent-harness SpecialEventPayload 纪律）。会话级元事件：不要求
+ * turn/step 开合上下文（session/revert 同款）。reason 值域："user"（owner
+ * 经协议/端口换模受理——含 deferred 受理，受理即用户选择的事实落流）|
+ * "rollback"（J11 不兼容回滚，from=被回滚的目标、to=恢复的 prev）。
+ * 会话级选择的事实源 = 流内最新本事件的 to（J14 回放保护：restore/回放
+ * 按流重建，不以全局默认覆盖——grok user_model_preference 的 replay 纪律）。
+ * 词汇表 14→15 的裁决记录见 l0-events.md §8 落地记录 3 与待澄清表（供追认）。
+ */
+export interface ModelSwitchEvent extends EventBase {
+  type: "model/switch";
+  /** 受理/回滚前的模型身份（内联形状，events.ts 不依赖 models 层）。 */
+  from: { provider: string; modelId: string };
+  /** 受理/回滚后的模型身份——流内最新本事件的 to 即会话级选择事实源。 */
+  to: { provider: string; modelId: string };
+  reason: "user" | "rollback";
+}
+
 export type SessionEvent =
   | TurnStartEvent
   | TurnEndEvent
@@ -346,9 +366,10 @@ export type SessionEvent =
   | CompactionEvent
   | CheckpointEvent
   | RequestHeaderEvent
-  | SessionRevertEvent;
+  | SessionRevertEvent
+  | ModelSwitchEvent;
 
-/** 14 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
+/** 15 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
 export const EVENT_TYPES = [
   "turn/start",
   "turn/end",
@@ -364,6 +385,7 @@ export const EVENT_TYPES = [
   "checkpoint",
   "request/header",
   "session/revert",
+  "model/switch",
 ] as const;
 
 export type SessionEventType = (typeof EVENT_TYPES)[number];

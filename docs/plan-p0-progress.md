@@ -75,7 +75,8 @@
 | 2026-09-25 | T-P1-02 | C22/C24/G5 | `2fcf0e4` | `npx vitest run src/policy/rule-scope.test.ts src/cli/cli.test.ts` | rule-scope 4 passed（turn-override endTurn 失效）+ CLI 级联 2 用例（--session 同规则免再问/once 对照再问）+ feedback 落 L2 审计；createSessionApprovalModule 装配接线（T-8-01 偏离⑤关闭）；证伪 grep 写文件 0 行；全量 494 passed，tsc 干净 |
 | 2026-09-25 | T-P1-03 | C49/C45 | `cd6c29c` | `npx vitest run src/policy/ceiling-exit.test.ts` | 9 passed；enforceCeiling 出口级（gate/revalidator 同位，用户 allow 被上限收窄→零执行）+ intersectAllProfiles 折叠（opaque 即抛拒启动）+ linter 装配常开（policy-lint 警告可检索）；无 profiles 默认装配零行为变化；全量 503 passed，tsc 干净——**C22/C46 权限聚合组（3 卡）收官** |
 | 2026-09-25 | T-P1-04 | J6/J7 | `ca3bba5` | `npx vitest run src/kernel/model-switch.test.ts` | 9 passed；①turn1 流中途换模→在途两 step request/header 全旧身份、turn2 新模型（captured 事件侧面断言）；②未注册 MODEL_NOT_REGISTERED 类型化错误且 configured 不动；③configured/captured 分别观测；协议级全链 3 用例（合法换模下一 turn 生效/未注册 error 行/未装配 UNAVAILABLE）+ 闭集型证；全量 515 passed，tsc 干净——**J6 换模组首卡** |
-| 2026-09-25 | T-P1-05 | J8/J11 | （本次 commit） | `npx vitest run src/kernel/model-switch.test.ts` | 19 passed（+10）；①迁移守卫纯函数合法表逐条+非法组合 ModelSwitchStateError；②deferred 暂存 configured 不变→首个 turn 捕获即应用；③回滚恢复 prev 且 lastRollback 可观测（无关码/无事务对照不回滚）；④A→B→C 同事务修订 prev 保持 A；loop 新 hook onTurnError 接装配（failTurn 透传 LlmFailure）；T-P1-04 用例零改动全绿；全量 525 passed，tsc 干净 |
+| 2026-09-25 | T-P1-05 | J8/J11 | `be30e4a` | `npx vitest run src/kernel/model-switch.test.ts` | 19 passed（+10）；①迁移守卫纯函数合法表逐条+非法组合 ModelSwitchStateError；②deferred 暂存 configured 不变→首个 turn 捕获即应用；③回滚恢复 prev 且 lastRollback 可观测（无关码/无事务对照不回滚）；④A→B→C 同事务修订 prev 保持 A；loop 新 hook onTurnError 接装配（failTurn 透传 LlmFailure）；T-P1-04 用例零改动全绿；全量 525 passed，tsc 干净 |
+| 2026-09-25 | T-P1-06 | J9/J10/J14 | （本次 commit） | `npx vitest run src/kernel/model-switch.test.ts src/kernel/events.test.ts` | 37 passed（24+13）；①换模/回滚落 model/switch 事件 seq 连续可投影（modelSwitches 事实源）+协议行转发可见；②globalDefault 变更不改变已有会话级选择；③重启重建装配后模型仍是用户选的（J14）；④C16 编译闸门+计数 15；对照：流内选择不在注册表装配失败不静默；**词汇表 14→15 已立案待追认**（执行会话新发现 #2）；全量 530 passed，tsc 干净——**J6 换模组（3 卡）收官** |
 
 ---
 
@@ -122,6 +123,7 @@
 | # | 需求ID | 我看到的（含路径:行） | 与需求文档的矛盾 | 建议 | 裁决与落实 |
 | --- | --- | --- | --- | --- | --- |
 | 1 | E4 | `plan-p0.md` T-1-05 明文"追加 revert 标记事件"，但 `l0-events.md` §3.2 的定稿 13 事件无回退标记落点；`src/kernel/events.ts` 原按 13 实现 | 词汇表定稿与计划卡不一致：不追加事件则 revert 状态变更无事件承载（违反不变量 1"事件是唯一真相"）；追加则词汇表 13→14 | 按计划卡执行：新增 `session/revert {targetSeq, phase}`（会话级元事件，最新标记生效），词汇表 13→14，l0-events.md §8 记落地记录 2，events.test 计数同步改 14 | ✅ **已追认（2026-09-25 用户："词汇表 13→14，允许"）**——案关，§3.2 正式计数为 14 事件 |
+| 2 | J9 | `plan-p1.md` T-P1-06 明文"换模进事件流 + 新增会话级元事件 model/switch"，但词汇表（落地记录 2 后）正式计数为 14，无换模落点 | 同先例 #1 的结构：不追加事件则换模/回滚状态变更无事件承载（J9 纪律"换模是持久事件、非静默改状态"落不了）；追加则词汇表 14→15 | 按计划卡执行：新增 `model/switch {from, to, reason: "user"\|"rollback"}`（会话级元事件，session/revert 同款：不要求 turn/step 上下文、turn 挂流内最后轮空流兜 0），词汇表 14→15，l0-events.md §8 记落地记录 3（含不追认的回退面），events.test 计数同步改 15 | ⏳ **待追认**（2026-09-25 立案） |
 
 ## 人工确认清单
 
