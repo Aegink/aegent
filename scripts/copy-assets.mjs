@@ -23,6 +23,11 @@ const assets = [
     out: path.join(root, "dist", "src", "sandbox", "templates"),
     label: "权限模板",
   },
+  {
+    src: path.join(root, "src", "sandbox", "dpapi"),
+    out: path.join(root, "dist", "src", "sandbox", "dpapi"),
+    label: "DPAPI helper",
+  },
 ];
 
 for (const { src, out, label } of assets) {

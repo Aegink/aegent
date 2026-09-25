@@ -720,7 +720,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①guardedFetch 落为 `createNetworkGuard({policy, fetchImpl?}) → {policy, fetch}`——fetch 与全局同形状（drop-in 注入给期望 fetch 的工具），fetchImpl 可注入（测试/替代实现）。②README 落 `src/sandbox/README.md`（弱承诺声明置顶加粗，即人工确认清单 D3 行的核对对象）；接线纪律写明：网络类工具（P1 B8）必须经 guard.fetch、不得用全局 fetch；**模型接入层（src/models/）不走本守卫**——J 层是内核自身流量，禁网档不断模型连接（"工具层 fetch"的字面语义）。③P0 无网络类工具，本卡只落策略与入口形状，ToolContext 接线等第一个网络工具出现时随其定形（YAGNI，与 T-4-05 的 policy/emit 字段同一逻辑）。④Node 类型面无 RequestInfo 全局名，首参类型用 `Request | URL | string` 结构联合。
 - **完成记录**：2026-09-25。产出 `src/sandbox/network.ts`（NetworkPolicy allow|deny + createNetworkGuard + NetworkDeniedError{code:NETWORK_DENIED, url}）+ `src/sandbox/README.md`（弱承诺置顶：只拦工具层 fetch，不承诺管住子进程/provider 流量/其他入口）+ `network.test.ts` 5 用例。验收：`npx vitest run src/sandbox/network.test.ts` → **5 passed**；①deny 档字符串/URL/Request 三种输入全拒、报错含目标 URL 与政策名、fetchImpl 零调用（被拒请求不发生）；②allow 档对 HttpMock localhost 真端口放行（200/pong）且 init 原样透传；③deny 网络 × PathGuard 允许写组合——写边界不受网络档影响（独立一档的行为表达）；④README 弱承诺声明四要点机验在位。全量 `npx vitest run` **366 passed / 1 skipped**，`npx tsc --noEmit` 干净。
 
-#### T-6-04 · D8 · API Key 用 DPAPI 加密 `[ ]`
+#### T-6-04 · D8 · API Key 用 DPAPI 加密 `[x]`
 - **依据需求**：D8（P0）
 - **上游首选参考**：[codex·windows-sandbox-rs/src/dpapi.rs](../oss/codex/codex-rs/windows-sandbox-rs/src/dpapi.rs)（`CryptProtectData`/`CryptUnprotectData` 极简封装——Apache-2.0，参考列已注明"这段可以直接照写"，摘代码须登记 `THIRD_PARTY.md`）
 - **取什么 / 别抄什么**：TS 侧经子进程调 PowerShell/C# 或自写 Rust helper 走 DPAPI——**跨进程只传可序列化值**（T9）；blob 落配置文件
@@ -729,8 +729,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/sandbox/dpapi.test.ts && grep -rE "sk-[A-Za-z0-9]{20,}" config/ || echo CLEAN`——加解密往返一致；配置目录 grep 无明文 key（需求 §8 第 5 条）
 - **依赖**：T-2-01
 - **风险 / 未知**：Rust helper 是第一个跨语言组件（Q7 边界）——若嫌重，PowerShell `ConvertTo-SecureString` 路线也可，二选一在卡内定并记偏离
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①**路线裁定：PowerShell**（卡内二选一落定）。理由：D8 是冷路径（配置读写非热链路），PowerShell 5.1 系统自带零构建面，P0 不为此引入 Rust 工具链；T9 的"跨语言一律子进程"边界由 PowerShell 子进程同样满足——本卡是第一个跨语言组件，进程边界 + 可序列化协议（argv 动作名 + stdin/stdout base64 文本）在此定形。**未摘 dpapi.rs 任何代码**（ConvertTo/From-SecureString 用户域 DPAPI vs codex 机器域 CRYPTPROTECT_LOCAL_MACHINE，域语义差异记 dpapi.ps1 头注释），THIRD_PARTY.md 无需登记。②**明文不进命令行**（命令行对本机其他进程可见）：载荷走 stdin；全程 base64 绕开控制台代码页（中文载荷实测不乱码）。③**踩坑：PowerShell 5.1 读无 BOM 的 .ps1 用系统 ANSI 代码页（本机 GBK），UTF-8 中文注释按字节错位可破坏解析**（探针文件靠对齐运气通过、正式文件实爆 ParserError）——dpapi.ps1 强制纯 ASCII 注释，解析文档指针到 TS 头注释；此坑与"块注释写 glob 序列"同级别值得进 notes。④配置接线 = SecureKeyStore（setKey/getKey：明文→protect→blob JSON 落盘，读回 unprotect；密钥名白名单校验）；配置文件是装配面产物不进路径守卫范围；P0 配置目录由装配决定（config/ 尚未存在 → 卡面 grep 的 `\|\| echo CLEAN` 分支成立），测试内对落盘文件做同款 sk- 证伪。⑤copy-assets 增 DPAPI helper 清单项（ps1 是运行时伴生资产，缺失即抛 DPAPI_PROTECT_FAILED）。
+- **完成记录**：2026-09-25。产出 `src/sandbox/dpapi/dpapi.ps1`（纯 ASCII；protect/unprotect 两动作；stdin/stdout base64 协议）+ `src/sandbox/dpapi/index.ts`（protect/unprotect + DpapiError 五码：UNSUPPORTED_PLATFORM/PROTECT/UNPROTECT_FAILED/HELPER_TIMEOUT + 超时 kill + stderr 截断 500 字符）+ `src/sandbox/dpapi/secure-config.ts`（SecureKeyStore + assertKeyName 白名单）+ copy-assets 第三清单项 + `src/sandbox/dpapi.test.ts` 4 用例。验收：`npx vitest run src/sandbox/dpapi.test.ts` → **4 passed**（真实 PowerShell 5.1 子进程，无 mock）：①protect→unprotect 往返一致且 blob 不含明文（ASCII+中文混合载荷）；②setKey→落盘 JSON 无明文 key（`sk-[A-Za-z0-9]{20,}` 证伪通过）→getKey 往返、未配置返回 undefined；③损坏 blob → DPAPI_UNPROTECT_FAILED fail-loud；④密钥名非法 rejects。卡面第二段 `grep -rE "sk-…" config/ \|\| echo CLEAN` → **CLEAN**。`npm run build` ps1 进 dist；全量 `npx vitest run` **370 passed / 1 skipped**，`npx tsc --noEmit` 干净。
 
 #### T-6-05 · D9 · 日志脱敏 `[ ]`
 - **依据需求**：D9（P0，自研无上游参考）
