@@ -227,7 +227,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 **依赖**：阶段 1（事件、测试基建）。
 **不做什么**：不做多厂商适配框架（J5 P1）；不做换模/熔断/限流（J6–J20 多为 P1）；不做 OAuth（J17 P2）；不做成本核算（J21 P2）。
 
-#### T-2-01 · J3/J4 · 不透明配置 + 模型身份二元组 `[ ]`
+#### T-2-01 · J3/J4 · 不透明配置 + 模型身份二元组 `[x]`
 - **依据需求**：J3（P0）· J4（P0）
 - **上游首选参考**：[cc-switch·schemas/provider.ts:42](../oss/cc-switch/src/lib/schemas/provider.ts)（`settingsConfig: z.string().superRefine(JSON.parse)`——存不透明字符串只校验语法）；[pi·agent-harness.ts:142](../oss/pi/packages/agent/src/harness/agent-harness.ts#L142)（`ModelIdentity { provider, modelId }`）
 - **取什么 / 别抄什么**：取"配置是字符串、语法错了才报错"；身份键**永远**是 `{provider, modelId}` 不是裸 model 名
@@ -236,8 +236,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/models/`——非法 JSON 被拒且报错含位置；`identity("openai","gpt-4o") !== identity("other","gpt-4o")` 可断言
 - **依赖**：T-1-00
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①未引入 zod——superRefine 的"存字符串只校验语法"用自写校验函数等价落地（一处校验引依赖是过早抽象）；②"报错含位置"不能靠解析 V8 错误文案：实测 Node 22 对顶层 token 错误（`not json`）的 JSON.parse 消息不含位置，故配一个 ~120 行 RFC 8259 语法扫描器自定位行列——JSON.parse 仍是权威裁决，扫描器只管定位（其 bug 最多让位置不准，不会误拒合法配置）；③identityKey 在 provider/modelId 含 ":" 时键有歧义，注释约定机器匹配一律对象字段相等、绝不从 key 反解析
+- **完成记录**：2026-09-25。产出 `src/models/config.ts`（ProviderConfig + ProviderConfigError{code,line?,column?,offset?} + parseProviderConfig + locateJsonError 定位扫描器）+ `src/models/identity.ts`（ModelIdentity + modelIdentity + identityKey）+ 2 测试文件 10 用例。验收：`npx vitest run src/models/` → 10 passed；①非法 JSON 四类形状（尾逗号/顶层 token/未闭合/非法转义）全部拒绝且报错含"第 X 行第 Y 列"，多行配置行号正确；②`identity("openai","gpt-4o") !== identity("other","gpt-4o")`、键不等且同身份键相等；③空字段/非对象形状拒绝。`npx tsc --noEmit` 全量干净。
 
 #### T-2-02 · J1/J2 · 单厂商流式适配 `[ ]`
 - **依据需求**：J1（P0）· J2（P0）
