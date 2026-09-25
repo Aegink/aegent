@@ -849,7 +849,7 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **偏离 / 建议**：①接入点 = CompactionEngine.run 的生命周期第 0 段（deps.rapidRefillGuard 可选注入，先于 pre hook）；②zcode 的 evaluateRapidRefill 纯拟算 + recordCompactSuccess 才落账的分离照搬（阻断时状态冻结不虚增，干活 toolTurnsSinceCompact 涨过阈值自然解锁——"硬失败"不是永久的，真实进展可恢复）；③工具步骤记账 recordCompletedToolStep 的 loop 接线留 T-8 装配（本卡 Guard 单元级 + 引擎接入级双覆盖）
 - **完成记录**：验收 `npx vitest run src/context/rapid-refill.test.ts` → 7 passed（tsc 干净，src/context 58 passed）。①零进展连续压缩 evaluate 拟算 1→2→3，第 3 次 shouldBlock → 引擎入口抛 RapidRefillError，err.consecutiveRapidRefills=3 / err.toolTurnsSinceCompact=0（验收字面全计数），且该次压缩未落盘（只 2 条 compaction）；②干活 3 步骤后 evaluate 归 0 放行（可配 max=2 同验）；③熔断路径状态冻结（拟算 3 抛错后 snapshot 仍 2）；④纯拟算幂等（连续 evaluate 同值）
 
-#### T-7-08 · M10 · 预算是送达的事实 `[ ]`
+#### T-7-08 · M10 · 预算是送达的事实 `[x]`
 - **依据需求**：M10（P0）
 - **上游首选参考**：[codex·rollout_budget.rs:27](../oss/codex/codex-rs/core/src/rollout_budget.rs)（"Last reminder delivered to each thread, so every thread observes crossed thresholds"——送达记账）+ [:62](../oss/codex/codex-rs/core/src/rollout_budget.rs)（`output_tokens * sampling_token_weight + non_cached_input * prefill_token_weight`——**这条同时是 J25 的正确锚点**；`requirements.md` J25 原锚点曾误写 compact_token_budget.rs（其中无权重计算），已回修为此条）
 - **取什么 / 别抄什么**：分级阈值 + 送达记账（写进历史才算送达，取消则重试）+ 换窗重置；预算按加权 token 不按裸数
@@ -858,8 +858,8 @@ P0 共 **104 项需求 → 62 张任务卡 → 8 个阶段**。切分按**依赖
 - **验收**：`npx vitest run src/context/budget.test.ts`——①越档产生提醒且写入历史后不再重复送达；②提醒事件被取消（未写历史）→ 下次仍重发；③换窗后记账清零；④加权计算断言（输出 2x 权重假例）
 - **依赖**：T-7-02
 - **风险 / 未知**：无
-- **偏离 / 建议**：（执行时填）
-- **完成记录**：（执行时填）
+- **偏离 / 建议**：①产出落 `src/context/budget.ts`（与 B14 的 kernel/budget.ts 是两回事——B14 是工具循环次数/时限轴,本文件是 token 预算的送达记账,头注释声明避免混淆）；②deliveries 是 per-thread 单槽（Map insert 覆盖,codex 同款），"换窗重置"语义 = delivery 按 windowId 判定失效（weightedUsed 是会话树累计不清零,codex 同款）；③0 档提醒（尚未越过任何阈值的初始状态提醒）保留 codex 语义；④"写进历史才算送达"的落盘动作在调用方（loop/装配），本类只管记账——契约写在 markReminderDelivered 头注释
+- **完成记录**：验收 `npx vitest run src/context/budget.test.ts` → 8 passed（tsc 干净）。①初始 0 档提醒→送达→越档 index1 重新提醒→送达后同档不再发、越 index2 再发；②未 mark → 同档提醒重发、mark 后归 null；③换 windowId 已送达记录失效重发（含跨窗回访）；④加权公式断言：output×2+input×1=250、cacheRead 折减 230、全缓存输入 0、耗尽后 recordUsage 恒 true
 
 #### T-7-09 · F1/F2 · 系统提示管理 + AGENTS.md 项目指令加载 `[ ]`
 - **依据需求**：F1（P0）· F2（P0）
