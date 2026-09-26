@@ -1,6 +1,6 @@
 # P1 实施计划 · 批次 1
 
-**状态**：v1.6.1 · 批次 1+2+3+4+5 收官（13/13 + 10/10 + 6/6 + 10/10 + 6/6 卡，2026-09-26；批次 5 = 子代理与 fork 大件——E5 + H1–H5 全关，session/fork 词汇表 18→19 ✅ 已追认转正，正式计数 19 事件）· 批次 6 候选占位（loop 治理与准入，A5 A8 A10–A15 A17 + J20 + M9）
+**状态**：v1.7 · 批次 1+2+3+4+5+6 收官（13/13 + 10/10 + 6/6 + 10/10 + 6/6 + 9/9 卡，2026-09-27；批次 6 = loop 治理与准入——11 条全关，promptId 载荷扩展已追认转正 #8 案关，正式计数 19 事件）· 批次 7 卡序已展（工具纪律与超时，B8 残余 + B13/B15/B16/B18/B19/B20/B21 + I3 + M6 + J23/J24/J27）
 **执行协议**：沿用 [`plan-p0.md`](plan-p0.md) §0（取卡 / 做卡 / 验收 / 打勾 / 提交 / 自动继续 / 四种停下情况），本文件不复制。执行进度追加在 [`plan-p0-progress.md`](plan-p0-progress.md)（台账 / 待澄清 / 人工确认清单共用一个文件）。
 **需求来源**：[`requirements.md`](requirements.md) §4 的 P1 项（共 158 条）。P1 不切阶段（§1 尾注），按**批次**组织：本文件当前只含批次 1，后续批次轮到时再展卡追加。
 **批次 1 范围**（用户圈定于 2026-09-25，四组全选，共 26 条）：
@@ -809,3 +809,164 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - 三个真实缺陷在测试中被抓出并修复 ✓：①turn/end 事件转发先于 activeTurn 清位的窗口（steer 误受理开轮 2）→ 清位提前到 closeTurn 开头；②kick 里 draining 后 admit 抛错打断 kick 链致进程不退 → draining 跳过 admit（拒绝面只在 handleRequest）；③A14 看门狗强制收轮的 double terminal 风险 → forcedClosed 闸门（closeTurn 直接返回 + 迟到结果不落盘）。
 - 六面盘点 ✓（详见 T-P1-54 完成记录）：one-at-a-time×gate 拦截不补位（测试钉死）、四套上限边界清单（记档）、admission×Q5 无交互（记档）、PromptGate×C9 命名分域（记档）、messageId×promptId 分工复核（已钉死）、steer 全链快照一条（O21/O22 反哺）。
 - 本批交付面：取消 await 点 11 点盘点与两处显式补检查 · steer 协议通道（expectedTurn 准入 + TURN_NOT_ACTIVE + CLI /steer）· 入队闸门三态（PromptGateVerdict 同构）· 有限队列（QUEUE_FULL）· TurnAdmission（SERVER_DRAINING 收尾闭闸）· ToolClassLimiter（类独立 FIFO）· 两个护栏参数（maxStepsPerTurn + abortTimeoutMs 看门狗）· 重试留痕（onRetry）· 取消退回（prompt_returned）· 关联 id（promptId + 待澄清 #8）· 六面盘点 + steer 快照。
+
+## 批次 7 卡序（11 张，2026-09-27 展卡，按依赖排序；13 条需求 ID：B8 残余（apply_patch/lsp）/B13/B15/B16/B18/B19/B20/B21/I3/M6/J23/J24/J27）
+
+**锚点纪律**：13 条锚点已逐一打开核对（2026-09-27，证据见各卡「证据强度」）：dsh `timeout/index.ts` 全文 190 行（clampTimeout:45-55 三档合并非法抛错 + MAX_TIMER_DELAY_MS:25 = 2^31-1 与 assertTimerDelay:27-31 **抛错而非静默钳** + deadline:91-113 总时长 AbortSignal.any 熔合 TimeoutReason{code,timeoutMs} + idleWatchdog:126-173 可重臂空闲 next() 武装/pulse():162-165 有传输活动重臂/dispose 清定时器）；dsh `guard/timeout-policy` 全文 81 行（TOOL_TIMEOUT:25 双身份 = deadline 分类码 + 结构化错误 code；wrapper:55-81 工具声明 timeoutMs → dispatch 层武装、"without racing or abandoning the tool promise"、finally 恢复上游 signal）；pi-desktop `ADR 0207` 全文 48 行（同路径三次计数失败、第三次 terminate:true + MUTATION_RETRY_BUDGET_EXHAUSTED、可恢复错误码每码一次宽限、计数器 prompt×path 双作用域、成功清空该路径历史）；dsh `escalation.ts` 全文 186 行（WIDER_MODES:28-31 严格更宽表 **"Checked at EXECUTION, never baked into a tool schema"**、schema enum = 封闭 ESCALATION_TARGETS:41、approveEscalation:153 执行期校验 + 审批通道 + fail-closed 抛错）；codex `parallel.rs:44-50`（ToolCallRuntime 持 step_context 快照——:46 "Tool calls may run later, so retain the step whose tool list advertised them"；B17 RwLock :191-195 已在 T-P1-15 落）；kimi `engine.ts:65-88`（stepCompleted 带 timing?/traceId?；retrying 一等事件：step/failedAttempt/nextAttempt/maxAttempts/delayMs/errorName/errorMessage/statusCode）+ `model-requester.ts:23-31`（ModelRequestTiming 七字段：firstTokenLatencyMs/streamDurationMs/requestBuildMs/serverFirstTokenMs/serverDecodeMs/clientConsumeMs/clientBlockedMs）；zcode `turn-output-token-continuation.ts` 全文 150 行（classifyOutputTokenContinuation:27-38 三值 continue/exhausted/none + toolCallCount>0→none + MAX_OUTPUT_TOKEN_CONTINUATIONS=3 + 固定 CONTINUE prompt:12-13 + isOutputTokenLimitFinishReason:40-57 finishReason==="length" || raw∈{max_tokens,max_output_tokens,model_context_window_exceeded}）；codex `session/tests.rs:2056-2109`（refresh_runtime_config 更新可热刷新字段、**静态设置 model/notify/tool_suggest 断言不动**）；opencode `apply_patch.ts` 全文 313 行（V4A patch 语法 *** Begin/End Patch + add/update/delete/move hunks、**先逐 hunk 全量验证再执行**、空 patch 拒绝、edit 权限 patterns=relativePaths 联动、BOM 保真）；opencode `lsp.ts` 全文 113 行（9 操作闭集 :11-21、1-based 行列换算 :64、无 server 类型化错误 :78、权限 lsp 面 :56）；opencode `mcp/index.ts`（1004 行，关键行 :391 getServerCapabilities()?.tools 检测 → McpCatalog.defs 列工具、:623 McpCatalog.toolName 命名空间化、:666 MCP.tools() 缓存面）。**一处锚点勘误（I3）**：requirements §4 所写 `app/src/context/mcp.ts` 是 UI toggle hook（19 行 useMutation），**非客户端本体**——本体在 `packages/opencode/src/mcp/index.ts`，验收要点（可连 server、工具自动注册）全部对应后者，本批卡面已改用正确锚点。
+
+**展卡核对结论（我方现状 × 13 条）**：
+1. **超时四面一张卡统一定形**（研究文档指令 + 用户指令）：B18（参数三档合并）+ M6（每工具可配超时策略）+ J23（三种超时：总时长/空闲/可重臂空闲）+ J24（setTimeout 2^31-1 上限守卫）同主题——dsh `timeout/index.ts` 一文件承载 B18/J23/J24 三条，我方 `src/kernel/timeout.ts`（J22 在位：TOOL_TIMEOUT/TimeoutError/withTimeout）扩库一次到位。我方 bash.ts 已有 timeout 参数（秒）+ MAX_TIMEOUT_SECONDS 上限 = 单档提示雏形，本卡升级三档。
+2. **J27 与 T-P1-51 的关系**：T-P1-51（A5）落的是 onRetry 钩子 + logger.warn——"留记录"面；J27 要求"重试在**事件流里**可见"（kimi retrying 是 engine 事件）。现状 provider 层重试对事件流完全不可见（未产出 chunk 的失败尝试）。实卡：新事件 `assistant/retrying`（19→20）走待澄清立案——词汇表高风险点之一。
+3. **B20 可续跑事件**：我方 StreamChunk **无 finishReason 概念**（mapWireChunk 丢弃 wire 的 finish_reason 字段）——需先接信号（done chunk 扩可选 finishReason，载荷级扩展走立案）；续跑落 user/message source="injected"（既有注入语义，零新事件）。词汇表高风险点之二。
+4. **B13 与 bash-retry-guard 语义不同不混**：T-6-06/D15 的 bash-retry-guard 是"已启动不自动重试"的幂等边界（单次执行）；B13 是"同一路径 mutation 反复失败"的**预算守卫**（跨多次调用按 prompt×path 计数）——计数器服务新落，edit 与 apply_patch 两个消费者。
+5. **B16 在 I3 前落**：MCP 动态注册进 B1（I3）会让 registry 中途变化——"在途 step 用当初的清单"快照机制是动态注册的安全网，先落快照再落注册。
+6. **B8b lsp 不拆期**：评估结论——我方无 workspace/语言服务层，但最小闭环（stdio LSP 客户端：initialize 握手 + 9 操作闭集 + 按扩展名选 server + 无 server 类型化错误）单卡可落；多 server 并存/语言自动检测/诊断流记 LIMITATIONS 留后续批次。
+
+**词汇表预判（中影响，两处载荷/事件扩展均走立案）**：①**J27 新事件 `assistant/retrying`**（19→20，kimi retrying 同构载荷）——待澄清立案；②**B20 done chunk 扩可选 finishReason**（StreamChunk 载荷扩展，事件计数 19/20 不变）+ 续跑指令 user/message source="injected" 既有语义——待澄清立案；③**B19 step/end 载荷扩展**（timing + traceId 可选字段，ModelRequestTiming 最小面）——待澄清立案；④其余预判零扩展——B18/M6/J23/J24 超时面全 logger + 结构化错误（tool/result isError code=TOOL_TIMEOUT 既有形状，bash 同款）、B13 终止面 TurnEndReason 既有 blocked 槽位 + logger.warn（T-P1-50 同款）、B15 类型化错误 + 审批通道既有面、B16/B21 零事件、B8/I3 工具既有事件面。执行中每处新增事件必须先立案。
+
+**本批特有约束**：
+1. **超时家族分层纪律**（M6 × A14 看门狗 × B14 预算三轴已定形，本卡不得越界）：工具超时（TOOL_TIMEOUT）是"单次工具执行的 deadline"，看门狗（abortTimeoutMs）是"取消后收尾"，B14 是"step 级工具调用数与墙钟"——withTimeout 既有纪律"内层 promise 绝不抛弃"在 M6 wrapper 同样适用（dsh "without racing or abandoning"）。
+2. **B13 计数作用域 = prompt（A12 的 promptId）× path**：promptId 已在位（T-P1-53）——计数器按当前 promptId + 规范化路径双键；terminate 落 turn/end{blocked}（显式护栏终止非 completed，T-P1-50 同款）+ logger.warn。
+3. **B15 escalation 不新开审批通道**：复用既有 ApprovalService 面（C5/C6 在位），sandbox_permissions + justification 参数配对校验（dsh validateEscalationArgs 同构）在执行期，schema 只 advertise 封闭目标词汇。
+4. **I3 手写最小 MCP 客户端，不引运行时依赖**：仓库运行时依赖只有 better-sqlite3——JSON-RPC over stdio（initialize → notifications/initialized → tools/list → tools/call）手写，协议版本协商与能力面最小化，完整协议（sampling/resources/prompts/HTTP transport）记 LIMITATIONS。
+5. **B21 静态/热刷新两闭集**：静态 = 会话构造时捕获不可热改（模型身份、权限规则、工具清单、沙箱配置）；可热刷新 = 显式白名单闭集起步（provider 配置类）——热刷新经显式方法（协议命令 config/refresh），绝不静默改静态面。
+
+#### T-P1-55 · B18+J24+J23+M6 · 超时统一定形（三档合并 + 三种超时 + 每工具可配） `[x]`
+- **依据需求**：B18（P1："超时参数三档合并（提示/默认/上限），非法值抛错，上限不可关闭"）· J24（P1："setTimeout 上限 2^31-1（超出被静默钳到 1ms）"）· J23（P1："区分三种超时：总时长/空闲/可重臂空闲（有传输活动则续期）"）· M6（P1："每工具可配超时；超时是可观测事件（TOOL_TIMEOUT）而非静默失败"）——同主题四面一张卡（研究文档指令 + 用户指令）
+- **上游首选参考**：[dsh·timeout/index.ts:45-55](../oss/deepseek-harness/packages/util/timeout/src/index.ts#L45)（clampTimeout：requested 非正/非有限抛错、`min(requested ?? def, max)` 三档合并、零不是禁用哨兵）+ [:25-31](../oss/deepseek-harness/packages/util/timeout/src/index.ts#L25)（MAX_TIMER_DELAY_MS = 2_147_483_647 + assertTimerDelay **主动抛错**——Node 的静默钳 1ms 是要防的坑，不是要模仿的行为）+ [:91-113](../oss/deepseek-harness/packages/util/timeout/src/index.ts#L91)（deadline：总时长，TimeoutReason{code,timeoutMs}）+ [:126-173](../oss/deepseek-harness/packages/util/timeout/src/index.ts#L126)（idleWatchdog：next() outstanding 期间武装定时器——消费者思考时间不计入空闲、pulse() 重臂、dispose 清理）；[dsh·timeout-policy:55-81](../oss/deepseek-harness/packages/guard/timeout-policy/src/index.ts#L55)（工具声明 timeoutMs → dispatch 层武装 deadline、"without racing or abandoning the tool promise"、超时以结构化 isError 结果替换——TOOL_TIMEOUT 双身份）
+- **取什么 / 别抄什么**：取 clampTimeout 三档形状、"上限不可关闭"（max 恒生效）、三种超时的库级区分（总时长 deadline / 空闲 idle / 可重臂 idleWatchdog.pulse）与"工具声明预算、派发层武装"的结构位置；不抄其 AbortSignal.any 熔合形状（我方 promise 风格，withTimeout 纪律已定形）与 cordis 插件体系
+- **证据强度**：`读了代码`（dsh timeout 全文 190 行 + timeout-policy 全文 81 行；我方 timeout.ts 全文/bash.ts 超时参数面/registry.dispatch 现状）
+- **要产出**：①`src/kernel/timeout.ts` 扩库：`MAX_TIMER_DELAY_MS` + `assertTimerDelayMs`（J24——所有 setTimeout 武装点过闸）+ `clampTimeout(requested, def, max, name)`（B18）+ `idleTimeout`（空闲超时，重置式）与 `rearmableIdleTimeout`（可重臂空闲，pulse 续期）（J23 两面——总时长 withTimeout 已有）；②M6：ToolDef 加可选 `timeoutMs` 声明 + registry.dispatch 层武装（withTimeout 包装 execute、超时 → 结构化 isError `TOOL_TIMEOUT` 结果——工具照跑到底不弃 promise，迟到结果按既有纪律处理）；③bash.ts timeout 参数迁移 clampTimeout 三档（提示=模型给的 / 默认=装配 / 上限=硬编码不可关）；④每工具超时声明落 builtin 清单初值（bash 从现值迁移，其余按需）
+- **验收**：`npx vitest run src/kernel/timeout.test.ts src/kernel/tools/registry.test.ts src/kernel/tools/builtin/builtin.test.ts`（扩）——①clampTimeout：非法值（0/负/NaN/Infinity）抛错、requested 超上限被钳到 max、缺省用 def、**max 不可经 requested 关闭**；②三种超时各一用例：总时长到期触发 / 空闲到期触发（有活动不触发）/ 可重臂到期触发 + pulse 续期后不触发；③J24：超上限 delay 抛错不落 setTimeout（证伪静默钳）；④工具声明 timeoutMs → 挂死工具被结构化 TOOL_TIMEOUT 结果终止（isError + code）且工具 promise 自然结算零 unhandled rejection；⑤未声明 timeoutMs 的工具零行为变化（回归）
+- **依赖**：无（批次 7 首卡——apply_patch/lsp 都吃超时基建）
+- **风险 / 未知**：idle/rearmable 两形状是否都要落——按需求验收面落（J23 明确"区分三种"），最小实现不做 AbortSignal 面（promise 风格对齐 withTimeout）
+- **偏离 / 建议**：（留白）
+- **完成记录**：2026-09-27。产出：①`timeout.ts` 扩库四件——`MAX_TIMER_DELAY_MS = 2_147_483_647` + `assertTimerDelayMs`（J24：非正/非有限/超上限抛错；**withTimeout 内部武装点同步过闸**——超上限预算立刻抛错而非静默武装，dsh assertTimerDelay 同款主动暴露坏输入）+ `clampTimeout(requested, def, max, name)`（B18：非法提示抛错、`min(requested ?? def, max)`、0 不是禁用哨兵、上限不可经任何输入关闭、抛错信息带字段名）+ `IdleWatchdog`（J23：arm() 开等待窗口 / disarm() 自然结算 / touch() 有活动重置（**空闲**用法）/ pulse() 仅窗口内续期（**可重臂空闲**用法——dsh pulse 同构无窗口 no-op）/ dispose 幂等；onExpire 一次性 TimeoutError{code, ms}；**总时长**面 withTimeout 已有——三种超时闭合）；②M6：ToolDef 加 `timeoutMs?` 声明 + registry.dispatch 层武装（`withTimeout(TOOL_TIMEOUT, …)` 包 execute——超时 catch 转**结构化 isError 结果** `{name:"ToolTimeoutError", code:TOOL_TIMEOUT}`（dsh toolTimeoutResult 同构：模型看到可路由错误码非静默失败），工具 promise 不被抛弃（withTimeout 既有纪律），**J22 code 作用域判据**：内层自有码 TimeoutError 不误捕原样上抛）；③bash 三档迁移：`defaultTimeoutSeconds` 装配默认档（registerBuiltinTools `bash` 选项透传）——提示档（模型 timeout 参数）缺省用默认档、恒被 MAX_TIMEOUT_SECONDS 收口；**"无默认档且无提示 = 不武装"**（timeoutMs 缺省透传 env——现状语义保持；不把上限值展开传 env：2^31-1 秒换毫秒恰好顶到 setTimeout 可靠上限即 J24 陷阱）；参数校验面保持 isError 分层（T-4-03 验收不破坏，clampTimeout 的 throw 用于装配级编程错误）。验收：`npx vitest run src/kernel/timeout.test.ts src/kernel/tools/registry.test.ts src/kernel/tools/builtin/builtin.test.ts` → **63 passed**（timeout 17 +12 新：clampTimeout 五态/J24 边界 2^31-1 合法超限抛错/IdleWatchdog 空闲·touch 重置·pulse 窗口内续期窗口外 no-op·一次性·dispose 幂等；registry 15 +4 新：挂死工具结构化 TOOL_TIMEOUT/迟到结算零 unhandled rejection/未声明零行为变化/J22 作用域不误捕；builtin 31 +3 新：默认档 7000ms/提示档覆盖默认档/无默认无提示不武装）。全量 `npx vitest run` **846 passed / 1 skipped**（827 → 净增 19），`npx tsc --noEmit` 干净。**记档**：M6 的 error 结构体保持既有 `{name, code, reason?}` 闭集形状（timeoutMs 数值进 content 文本——不扩 error 面）；builtin 工具暂无一声明 timeoutMs（bash 有 env 内部 kill 机制，外层兜底声明按需——机制面 + 测试消费者已钉死）。
+
+#### T-P1-56 · B8a · apply_patch 工具（V4A patch 语法） `[ ]`
+- **依据需求**：B8（P1："扩展工具 apply_patch lsp webfetch todo question"）残余——webfetch/todo/question 已在 T-P1-20/21/T-P1-10 落，本卡 + T-P1-60 收尾
+- **上游首选参考**：[opencode·apply_patch.ts](../oss/opencode/packages/opencode/src/tool/apply_patch.ts)（全文 313 行：parsePatch 先行 → 逐 hunk 全量验证（add/update/delete/move、update 需文件存在、外部目录断言）→ **验证全部通过后才执行** → 权限 ask({permission:"edit", patterns: relativePaths}) → 应用 → 汇总 `A/M/D <相对路径>` 行；空 patch（仅 Begin/End）拒绝；BOM 保真 split/join）
+- **取什么 / 别抄什么**：取"先解析验证、后执行"的两阶段纪律与 V4A patch 语法语义（add/update/delete/move hunks、上下文匹配容错）；不抄 Effect 体系 / LSP 联动（lsp 归 T-P1-60）/ 事件总线（我方事件流既有面）；patch 解析器自写（V4A 语法无现成 npm 依赖，opencode 的 Patch 模块是内部实现——按语法语义重写）
+- **证据强度**：`读了代码`（apply_patch.ts 全文 + apply_patch.txt 描述文件；我方 builtin/edit.ts 写执行类工具现状、write-queue/B17 并发纪律）
+- **要产出**：①`src/kernel/tools/builtin/apply-patch.ts`：V4A patch 解析（*** Begin/End Patch、*** Add File/Update File/Delete File/Move to、@@ 定位与上下文 hunks）+ 逐 hunk 验证（目标存在性/上下文匹配/外部目录）+ 两阶段执行（全量验证通过才动文件）+ 权限联动（write/edit 类，isWriteExecuteTool 写执行类判定在位）+ 结果汇总；②V4A 语法描述进工具 description；③独立单测（B8 验收要点"各工具独立单测"）
+- **验收**：`npx vitest run src/kernel/tools/builtin/apply-patch.test.ts`——①add/update/delete/move 各一（含 move 的写新删旧）；②上下文不匹配 / 目标不存在 / 空 patch → 类型化错误**不执行**（零文件变更）；③多 hunk patch 中第二个 hunk 失败 → 整体拒绝（验证先行，不落半态）；④权限：patch 涉及路径逐个过策略（写执行类 ask）；⑤超时/取消语义与写队列（B4）兼容
+- **依赖**：T-P1-55（超时基建）
+- **风险 / 未知**：V4A 上下文匹配容错度（opencode 用模糊匹配）——本卡定形"精确行匹配 + 单一候选模糊匹配"两级，宽松度记卡面；patch 解析器是本卡最大工作量
+- **偏离 / 建议**：（留白）
+- **完成记录**：
+
+#### T-P1-57 · B13 · mutation 重试预算（prompt × path 双作用域） `[ ]`
+- **依据需求**：B13（P1："重试预算：同路径 3 次，按 prompt × path 双作用域"）
+- **上游首选参考**：[pi-desktop·ADR 0207](../oss/pi-desktop/docs/adr/0207-three-mutation-recovery-failures.md)（全文 48 行：三次计数失败 → 第三次 `terminate: true` + MUTATION_RETRY_BUDGET_EXHAUSTED 终止轮；"recoverable error codes each receive one per-code grace"；"counters are scoped to the prompt and path"；"a successful mutation clears that path's failure history"；"Provider retry budgets … are unaffected"）
+- **取什么 / 别抄什么**：取四个预算规则（3 次 terminate / per-code 宽限一次 / prompt×path 双键 / 成功清空）与"终止是显式预算耗尽非错误"的语义；terminate 落我方 turn/end{blocked} 既有槽位（T-P1-50 同款：显式护栏终止）——不抄其 Edit 工具绑定（我方消费者是 edit + apply_patch 两个 mutation 工具）
+- **证据强度**：`读了代码`（ADR 全文；我方 loop.ts blocked 收轮路径、promptId 分配器（T-P1-53）、edit.ts/apply-patch 失败返回形状）
+- **要产出**：①`src/kernel/tools/mutation-budget.ts`：MutationRetryBudget 服务（record(promptId, path, errorCode) → {exhausted, terminate}；成功 clear(promptId, path)；per-code 宽限记账）；②接线：edit 与 apply_patch 的 isError 结果且可提取目标路径时上报（工具层或 dispatch 层择一，卡内定形记档）；③exhausted+terminate → loop 收 turn/end{blocked} + logger.warn（MUTATION_RETRY_BUDGET_EXHAUSTED 可检索）；④新 turn（新 promptId）预算自然归零（双键作用域的结构保证）
+- **验收**：`npx vitest run src/kernel/tools/mutation-budget.test.ts src/kernel/loop.test.ts`（扩）——①同 promptId 同路径 3 次失败 → 第 3 次 terminate（blocked 收轮）；②不同路径各自计数（互不干扰）；③不同 promptId 同路径互不影响（新输入重置预算）；④中间成功 → 计数清空后再 3 次；⑤per-code 宽限：同一可恢复错误码一次宽限不计数（或按 ADR 语义卡内定形记档）；⑥terminated 轮的事件流配平（single-terminal）
+- **依赖**：T-P1-56（apply_patch 失败路径）· T-P1-53（promptId，在位）
+- **风险 / 未知**："路径"提取的规范化（相对/绝对、move 的双路径）——卡内定形记档；"可恢复错误码"清单起步只含明确分类（ENOENT/上下文不匹配等），未知错误保守计数
+- **偏离 / 建议**：（留白）
+- **完成记录**：
+
+#### T-P1-58 · B15 · 沙箱升级执行期校验（escalation 词位落地） `[ ]`
+- **依据需求**：B15（P1："每次调用不同的约束不得进工具 schema（schema 是全局的，有效模式是每调用真相）"；requirements §7 追记：D15 的"沙箱升级严格更宽"并入本条）
+- **上游首选参考**：[dsh·escalation.ts](../oss/deepseek-harness/packages/sandbox/sandbox/src/escalation.ts)（全文 186 行：WIDER_MODES 严格更宽表 :28-31——"Checked at EXECUTION, never baked into a tool schema"；schema enum = 封闭 ESCALATION_TARGETS:41；validateEscalationArgs:51-61 配对校验（sandbox_permissions 与 justification 同行、justification 非空）；approveEscalation:153-186——重复有效模式免审批直返、严格更宽走审批、非更宽/无通道/非授予 fail-closed 抛错）
+- **取什么 / 别抄什么**：取"schema 只 advertise 封闭目标词汇、有效约束执行期判定、升级必须审批且仅本调用生效"三条纪律与配对校验；不抄 Effect/ApprovalOutcome 类型映射（我方审批面 C5/C6 在位）；我方 sandbox/backend.ts:14 的 escalation 词位注释（批次 3 留）兑现
+- **证据强度**：`读了代码`（escalation.ts 全文；我方 sandbox/backend.ts+path-guard.ts 沙箱模式现状、审批通道 owner-port 现状）
+- **要产出**：①bash（及写类工具）执行期 sandbox 升级参数：被沙箱拒绝的操作，模型可带 `{sandboxPermissions, justification}` 重发（**新调用**非自动重试——D15 幂等边界保持）；②执行期校验：目标模式 ∈ 封闭升级目标集、严格更宽（WIDER_MODES 同构表）、配对校验、审批通过仅本调用生效；③schema 面只 advertise 封闭目标词汇（不 advertise 当前有效模式——per-call 真相）；④拒绝路径 fail-closed 类型化错误
+- **验收**：`npx vitest run src/sandbox/escalation.test.ts src/kernel/tools/builtin/builtin.test.ts`（扩）——①重复当前模式免审批；②严格更宽走审批（approve → 本调用放行、下一调用回原模式——一次性断言）；③非更宽目标 / 缺 justification / 空白 justification → 执行前类型化拒绝；④schema 断言：升级参数的枚举是封闭目标集不含"当前模式"字面量；⑤审批拒绝 → fail-closed 且原沙箱约束不变
+- **依赖**：无硬依赖（按域排在 apply_patch 后；审批面在位）
+- **风险 / 未知**：我方沙箱模式词汇（backend.ts 的 mode 档位）与 dsh SandboxMode 三档的映射——卡内定形记档；升级参数进 bash schema 的 F13 缓存锚影响（schema 变化作废前缀——一次性 advertise 不逐调用变，记档）
+- **偏离 / 建议**：（留白）
+- **完成记录**：
+
+#### T-P1-59 · B16 · 工具声明元数据按 step 快照（在途 step 隔离） `[ ]`
+- **依据需求**：B16（P1："工具声明的元数据按 step 快照保留，执行期用当初的清单"）
+- **上游首选参考**：[codex·parallel.rs:44-50](../oss/codex/codex-rs/core/src/tools/parallel.rs#L44)（ToolCallRuntime 持 `step_context: Arc<StepContext>`——:46 "Tool calls may run later, so retain the step whose tool list advertised them"；dispatch 用 step_context.tool_router 而非全局当前路由）
+- **取什么 / 别抄什么**：取"工具调用可能晚跑，保留 advertise 它们的那一步的清单"的结构；不抄 Arc/tokio（我方 step 开始时解析一次即可）；落点 = loop.runStep 开始快照 name→def 元数据（isParallel 判定 / contract 投影输入 / 超时声明），dispatch 期用快照
+- **证据强度**：`读了代码`（parallel.rs:44-50 与 dispatch 路径；我方 loop.ts runStep/dispatchTool/toolsProvider 现状、registry.ts defs 直查现状）
+- **要产出**：①runStep 开始快照：工具清单元数据 Map（name → {isParallel, timeoutMs, contract 投影所需输入}）——toolsProvider 每请求现取（F12/F14）的值在 step 内固定；②dispatchTool 执行期从快照解析执行策略（registry 直查仅作 handler 定位——def 对象引用不可变，新增/替换条目不影响已解析引用）；③测试：step 进行中动态注册/替换同名工具 → 在途 step 的并行判定与投影用旧声明
+- **验收**：`npx vitest run src/kernel/loop.test.ts src/kernel/tools/registry.test.ts`（扩）——①step 中途 registerTool 替换同名 def 的 isParallel 声明 → 在途 step 仍按旧声明判定读写锁；②中途撤销工具 → 在途 step 已派发调用照常执行；③下一 step 用新声明（快照不跨 step）；④无 toolsProvider 的静态装配零行为变化（回归）
+- **依赖**：无硬依赖（在 I3 前——动态注册的安全网）
+- **风险 / 未知**：registry.dispatch 内部 guard/投影的输入面是否全部可快照——卡内定形最小快照集（执行策略三元组），handler 定位保持 registry 直查（def 引用不可变即安全）
+- **偏离 / 建议**：（留白）
+- **完成记录**：
+
+#### T-P1-60 · B8b · lsp 工具（最小 LSP 客户端 + 9 操作闭集） `[ ]`
+- **依据需求**：B8 残余第二半（同 B8a 卡）
+- **上游首选参考**：[opencode·lsp.ts](../oss/opencode/packages/opencode/src/tool/lsp.ts)（全文 113 行：operations 9 值闭集 :11-21（goToDefinition/findReferences/hover/documentSymbol/workspaceSymbol/goToImplementation/prepareCallHierarchy/incomingCalls/outgoingCalls）、1-based 行列换算 :64（position = line-1/character-1）、`lsp.hasClients(file)` 无 server → "No LSP server available for this file type." :77-78、权限 ask({permission:"lsp"}) :56、结果空 → "No results found" :108）
+- **取什么 / 别抄什么**：取 9 操作闭集、1-based → LSP 0-based 换算、无 server 类型化错误与"按文件可用性判定"；不抄 Effect 体系与 opencode 的多 server 管理层；LSP 客户端最小面自写（JSON-RPC over stdio：initialize 握手 + textDocument 同步 + 泛化 request）
+- **证据强度**：`读了代码`（lsp.ts 全文 + lsp.txt 描述；我方 builtin 工具注册面、外部目录断言 external-directory 在位）
+- **要产出**：①`src/kernel/tools/builtin/lsp.ts`：9 操作参数闭集校验 + 1-based 换算 + 无 server 类型化错误 + 权限面；②`src/lsp/client.ts`：最小 stdio LSP 客户端（initialize/initialized 握手、Content-Length 分帧、request/response id 配对、shutdown/exit 生命周期）+ 按扩展名映射语言 server（可配注册表，缺省仅显式注册的 server）；③9 操作到 LSP method 的映射（textDocument/definition 等）；④独立单测（假 LSP server 子进程——stdio 双向桩）
+- **验收**：`npx vitest run src/kernel/tools/builtin/lsp.test.ts src/lsp/client.test.ts`——①假 server 下 9 操作各一往返（参数 0-based 换算断言）；②无 server 文件类型 → 类型化错误；③未初始化时调用 → 类型化错误（握手先行）；④server 崩溃 → 类型化错误不挂 loop；⑤外部目录路径拒绝（断言既有面）
+- **依赖**：T-P1-55（超时——LSP 请求带超时）
+- **风险 / 未知**：**拆期评估结论（卡序头⑥）：不拆期**——最小闭环单卡可落；多 server 并存/语言自动检测/诊断流/watch 文件同步记 LIMITATIONS；真语言 server 的 E2E 依赖环境（TS server 等），单测用桩 server 钉协议面
+- **偏离 / 建议**：（留白）
+- **完成记录**：
+
+#### T-P1-61 · B19+J27 · step 可观测事件（timing/traceId 载荷扩展 + retrying 一等事件） `[ ]`
+- **依据需求**：B19（P1："每步上报 timing 与 traceId"）· J27（P1："retrying 作为一等事件，带 failedAttempt"）——两处词汇表影响一张卡一次立案（卡序头词汇表预判①③）
+- **上游首选参考**：[kimi·engine.ts:65-74](../oss/kimi-code/packages/agent-core-v2/src/agent/loop/machine/engine.ts#L65)（stepCompleted 事件带 `timing?: ModelRequestTiming` 与 `traceId?: string`）+ [:77-88](../oss/kimi-code/packages/agent-core-v2/src/agent/loop/machine/engine.ts#L77)（retrying 事件：step/failedAttempt/nextAttempt/maxAttempts/delayMs/errorName/errorMessage/statusCode）+ [model-requester.ts:23-31](../oss/kimi-code/packages/agent-core-v2/src/llm-adapter/model/model-requester.ts#L23)（ModelRequestTiming 七字段——firstTokenLatencyMs/streamDurationMs 为核心两字段）
+- **取什么 / 别抄什么**：取"step 终态事件携带耗时与关联 id"与"重试尝试在事件流可见、载荷结构化"；timing 取最小面（firstTokenLatencyMs/streamDurationMs——我方 TimedStreamChunk 已有逐 chunk 时间可推导，七字段全量留扩展位）；traceId 取"每次模型请求一个关联 id"语义（生成 `r<序数>` 会话内单调，promptId 同族）；不抄其 provider 内部字段
+- **证据强度**：`读了代码`（engine.ts 事件联合 + model-requester timing 形状；我方 events.ts step/end 与 assistant/attempt 载荷、retry.ts onRetry（T-P1-51）、loop.ts callModel 现状）
+- **要产出**：①**step/end 载荷扩展**：可选 `timing?: {firstTokenLatencyMs, streamDurationMs}` + `traceId?: string`（有模型请求的 step 才带——纯工具收尾 step 不带）；②**新事件 `assistant/retrying`**（19→20）：`{turn, step, attempt, delayMs, error:{name,message,status?}}`（kimi retrying 同构最小面）——provider 层 onRetry 钩子升级为可落流（装配注入 emit，T-P1-06 model/switch 先例）；缺省装配仍 logger.warn（T-P1-51 行为保持）+ 事件落流；③词汇表双立案（§8 落地记录 + 待澄清）：step/end 载荷扩展 + 新事件 19→20
+- **验收**：`npx vitest run src/kernel/loop.test.ts src/kernel/events.test.ts src/session/project.test.ts src/models/retry.test.ts`（扩）——①step/end 带 timing（首 chunk 时间推导断言）与 traceId（单调性）；②429×2 重试 → assistant/retrying 恰 2 条、attempt 递增、delayMs 与退避一致、error 三字段齐；③无重试路径零 retrying 事件；④旧流（无 timing/traceId）前向兼容（migration-asserts）；⑤C16：新事件进 assertNever（events.test 计数断言 20）+ C14 JSON 安全
+- **依赖**：T-P1-51（onRetry 在位）
+- **风险 / 未知**：新事件 19→20 需用户追认（走待澄清立案，session/fork 先例）；retrying 事件的落流时点在 provider 层回调中（store.append 的重入安全性——append 同步 API 在位，记档）
+- **偏离 / 建议**：（留白）
+- **完成记录**：
+
+#### T-P1-62 · B20 · 输出 token 上限可续跑（触顶不终轮） `[ ]`
+- **依据需求**：B20（P1："输出 token 上限应作为'可续跑事件'，不是回合终态"）
+- **上游首选参考**：[zcode·turn-output-token-continuation.ts](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/turn-output-token-continuation.ts)（全文 150 行：classifyOutputTokenContinuation:27-38 三值 continue/exhausted/none——toolCallCount>0 → none（有工具调用不续跑）、`finishReason === "length" || OUTPUT_LIMIT_RAW_REASONS.has(rawFinishReason)`、MAX_OUTPUT_TOKEN_CONTINUATIONS=3；OUTPUT_TOKEN_CONTINUE_PROMPT:12-13 固定续跑指令（"Resume directly — no apology, no recap…"）；appendOutputTokenContinuation:139 追加续跑条目 + 计数）
+- **取什么 / 别抄什么**：取三值决策（continue/exhausted/none）、"有工具调用不续跑"（工具调用是正常延展，续跑只服务纯文本被截断）、上限 3 次防循环、固定续跑指令注入；续跑落我方 user/message source="injected"（注入上下文既有语义——零新事件）；**done chunk 扩可选 finishReason 是 StreamChunk 载荷扩展**（词汇表文件，走立案——卡序头预判②）
+- **证据强度**：`读了代码`（zcode 全文 150 行；我方 openai-compat.ts mapWireChunk（wire finish_reason 现被丢弃）/loop.ts runStep 收轮路径现状）
+- **要产出**：①openai-compat：解析 wire `choices[0].finish_reason` → done chunk 扩 `finishReason?: string`（可选，缺省兼容）；②loop：step 结束无工具调用且 finishReason ∈ 触顶集（length + 厂商 raw 变体闭集起步）且本 turn 续跑计数 < 3 → 落固定续跑指令 user/message（source="injected"）+ 继续 next step；计数达限或判定 none → 照旧收轮（触顶未续跑成功时 turn/end 正常完成语义不变）；③续跑计数每 turn 重置；④词汇表立案（done 载荷扩展）
+- **验收**：`npx vitest run src/models/openai-compat.test.ts src/kernel/loop.test.ts`（扩）——①纯文本触顶 → 注入续跑指令 + 新 step 继续（消息序断言：assistant 截断消息 → injected user → 下次请求）；②触顶 + 工具调用 → 不续跑正常延展；③连续触顶 3 次后 → 停止续跑收轮（防死循环）；④finishReason 缺省（旧 wire）零行为变化；⑤C14：finishReason 进 JSON 安全载荷 + migration-asserts 前向兼容
+- **依赖**：无硬依赖（在 B19 卡后——同为流载荷面）
+- **风险 / 未知**：续跑指令的落流可见性（它是 injected user/message——A12 promptId 关联区间语义自然覆盖，记档）；触顶集的厂商变体闭集起步（length + max_output_tokens 两值，冻结只追加 C10 先例）
+- **偏离 / 建议**：（留白）
+- **完成记录**：
+
+#### T-P1-63 · B21 · 配置两类（可热刷新字段 vs 会话内静态设置） `[ ]`
+- **依据需求**：B21（P1："配置分两类：可热刷新字段 vs 会话内静态设置"）
+- **上游首选参考**：[codex·session/tests.rs:2056-2109](../oss/codex/codex-rs/core/src/session/tests.rs#L2056)（`refresh_runtime_config_updates_runtime_refreshable_fields_and_keeps_session_static_settings`：热刷新后 `config.model == original.model`、notify 与 tool_suggest.disabled_tools 不变——可热刷新字段生效、会话内静态设置被保持的双面断言）
+- **取什么 / 别抄什么**：取"热刷新只动白名单字段、静态设置断言不动"的两类分法与测试形状；不抄其 config layer stack（我方配置面是装配 options + 结构化 provider 配置，无 toml 层栈）；白名单闭集起步
+- **证据强度**：`读了代码`（tests.rs 刷新用例原文；我方 assembly.ts options 面/models/config.ts parseProviderConfig/agent-process 协议闭集现状）
+- **要产出**：①会话级配置分层：`SessionStaticConfig`（构造捕获：模型身份、权限规则、工具清单、沙箱配置——热刷新不得触碰）+ `RuntimeRefreshableConfig`（白名单闭集起步：审批超时、队列上限、工具类上限、每工具超时缺省——均为装配既有可配项的运行时面）；②刷新通道：协议命令 `config/refresh`（REQUEST_TYPES 闭集扩员 + owner-port 变体——model/switch 同款）+ 非白名单字段到达 → 类型化拒绝（不静默改静态）；③热刷新生效即观测（logger.info 或既有面）+ 在途 turn 不受影响（生效点语义卡内定形记档）
+- **验收**：`npx vitest run src/kernel/agent-protocol.test.ts src/kernel/agent-process.test.ts src/kernel/model-switch.test.ts`（扩）——①白名单字段热刷新生效（下一观测可见）；②静态字段（模型身份等）出现在刷新载荷 → 类型化拒绝且零变化；③热刷新后的在途 turn 行为不变；④缺省未刷新路径零行为变化（回归）
+- **依赖**：无硬依赖（按域排超时卡后——可热刷新白名单引用其产出）
+- **风险 / 未知**：白名单字段的"生效点"（立即 vs 下 turn）——保守定形"立即生效于新构造、在途消费方持旧值"（与 capturedModel 同构），记档
+- **偏离 / 建议**：（留白）
+- **完成记录**：
+
+#### T-P1-64 · I3 · MCP 客户端（工具自动注册进 B1） `[ ]`
+- **依据需求**：I3（P1："可连 MCP server，工具自动注册进 B1"）
+- **上游首选参考**：[opencode·mcp/index.ts](../oss/opencode/packages/opencode/src/mcp/index.ts)（1004 行——**requirements 所写 app/src/context/mcp.ts 是 UI toggle 弱锚点，已勘误改指此处**：:391 `mcpClient.getServerCapabilities()?.tools` 有 tools 能力才列工具 → McpCatalog.defs(mcpClient, timeout)；:623 `McpCatalog.toolName(name, tool.name)`——**server 名命名空间化**防跨 server 冲突；:666-679 MCP.tools() 已连接 server 的缓存面）
+- **取什么 / 别抄什么**：取"能力检测 → 工具列举 → 命名空间化注册进工具注册表"三步与 server 级命名空间纪律；**不引 @modelcontextprotocol/sdk**（仓库运行时依赖只有 better-sqlite3——卡序头约束 4）：JSON-RPC over stdio 最小客户端手写（initialize → notifications/initialized → tools/list → tools/call）；不抄其 catalog/oauth/HTTP transport 面（记 LIMITATIONS）
+- **证据强度**：`读了代码`（mcp/index.ts 关键段；我方 registry.registerTool 动态注册面、T-P1-59 step 快照（安全网）、B17 RwLock 并发纪律）
+- **要产出**：①`src/mcp/client.ts`：最小 stdio MCP 客户端（协议版本协商 initialize、能力面只认 tools、JSON-RPC id 配对、子进程生命周期管理）；②`src/mcp/registry-bridge.ts`：连接 → tools/list → 工具映射为 ToolDef（name = `<server>__<tool>` 命名空间化、inputSchema 透传、execute → tools/call）→ registry.registerTool（B1 注册面）；③装配选项：MCP servers 配置入口（命令 + 参数）；④工具超时/权限/快照与 builtin 同轨（M6/B16 既有面自动覆盖）
+- **验收**：`npx vitest run src/mcp/client.test.ts src/mcp/registry-bridge.test.ts src/kernel/tools/registry.test.ts`（扩）——①假 MCP server（stdio 桩）握手 + tools/list → 工具注册进 registry（name 命名空间断言）；②注册的 MCP 工具经 dispatch 可执行（tools/call 往返、结果投影）；③server 无 tools 能力 → 零注册不报错；④server 进程崩溃 → 已注册工具类型化失败不挂 loop；⑤B16 快照联动：注册发生在 step 进行中 → 在途 step 不受影响、下一 step 可见
+- **依赖**：T-P1-59（快照安全网）· T-P1-55（超时）
+- **风险 / 未知**：MCP 协议细节（initialize 的 protocolVersion 协商、cursor 分页）——最小面定形：协议版本回退取 server 响应值、分页全部取尽（cursor 循环）；完整协议面记 LIMITATIONS
+- **偏离 / 建议**：（留白）
+- **完成记录**：
+
+#### T-P1-65 · 收口 · 工具纪律与超时冲突盘点 + 快照 `[ ]`
+- **依据需求**：批次 7 收口（照批次 4/5/6 收口先例；无独立需求 ID）
+- **上游首选参考**：批次 6 T-P1-54 先例（逐面盘点 + 测试钉死或记档）
+- **取什么 / 别抄什么**：六面盘点：①超时四轴终局清单——工具 timeoutMs（M6）/ 空闲与可重臂（J23）/ B14 step 预算 / A14 abortTimeoutMs 看门狗的边界与互斥；②B13 预算 × D15 幂等边界 × A5 provider 重试——三层"重试"语义分域（mutation 失败预算 / 已启动不自动重试 / provider 网络重试）；③B15 escalation × C 策略链——升级参数经策略链的次序（先策略裁决还是先升级判定）；④B16 快照 × I3 动态注册——动态注册在快照机制下的可见性时点；⑤B21 热刷新 × J7 capturedModel——两类"生效点"语义对齐复核；⑥快照即规格：apply_patch 两阶段验证一条快照（O21/O22 反哺）
+- **证据强度**：`读了代码`（本批全部新产交叉核对）
+- **要产出**：六面盘点结论（每面：现状/定形/测试或记档理由）+ 快照一条 + 全量回归
+- **验收**：`npx vitest run`（全量回归——含批次 7 全部新测试）+ 盘点清单入完成记录；发现真冲突 → 升级待澄清不硬落
+- **依赖**：T-P1-55 ~ 64 全部（本批最后一张）
+- **偏离 / 建议**：（留白）
+- **完成记录**：
+
+## 批次 7 完成定义
+
+- 11 张卡全部打勾，每勾附「命令 + 结果摘要」；`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 0 失效、`license-audit.sh` 通过。
+- B8 五工具族收官（webfetch/todo/question 已在前批，apply_patch/lsp 本批）；超时四面统一定形（B18/J23/J24/M6）。
+- 词汇表三处扩展全部走待澄清立案（J27 新事件 19→20 / B20 done.finishReason / B19 step.end 载荷），先立案后落流，用户追认前不擅自转正。
+- 超时家族分层红线：工具超时不弃 promise（迟到结果按既有纪律）、看门狗/预算/工具超时三轴互不越界（批次 6 盘点②延续）。
+- B16 快照在 I3 动态注册前落位（安全网次序不可倒置）。
+- 六面盘点结论落批次报告（T-P1-65）。

@@ -78,6 +78,8 @@ export function registerBuiltinTools(
      * task 工具；缺省不注册（无子代理运行面的装配零新工具——P0 行为不变）。
      */
     task?: TaskToolDeps;
+    /** B18/T-P1-55 bash 超时三档的默认档（秒）；缺省无默认超时（pi 同款）。 */
+    bash?: { defaultTimeoutSeconds?: number };
   } = {},
 ): void {
   const guard = options.pathGuard ?? PathGuard.forWorkspace(process.cwd());
@@ -86,7 +88,7 @@ export function registerBuiltinTools(
   for (const def of [
     createReadTool({ pathGuard: guard }),
     createWriteTool({ writeQueue, pathGuard: guard }),
-    createBashTool({ pathGuard: guard }),
+    createBashTool({ pathGuard: guard, ...options.bash }),
     // D11（T-P1-28）：PowerShell 一等 shell——与 bash 平行注册（dsh
     // tool-bash/tool-pwsh 同构；Windows 沙箱态宿主正路，见 win32-backend）
     createPwshTool({ pathGuard: guard }),

@@ -24,6 +24,7 @@ import path from "node:path";
 import type { ChatTool } from "../../models/provider.js";
 import type { JsonRecord, JsonValue } from "../events.js";
 import type { ToolExecutionResult } from "../loop.js";
+import { TOOL_TIMEOUT, TimeoutError, withTimeout } from "../timeout.js";
 import { isContractResult, projectResult, type ContractResult } from "./contract.js";
 import type { ToolContext } from "./context.js";
 import type { ExecutionEnv } from "./env.js";
@@ -69,6 +70,16 @@ export interface ToolDef {
    * 不动已声明占位——前缀稳定（pi-mono cache scar 的位置性追加同款）。
    */
   deferrable?: boolean;
+
+  /**
+   * M6 工具级超时预算（毫秒）：声明后 dispatch 层武装 deadline——超时以
+   * 结构化 isError 结果（code=TOOL_TIMEOUT）返回，**工具 promise 不被抛弃**
+   * （dsh timeout-policy "without racing or abandoning the tool promise"：
+   * 迟到的自然结算被静默丢弃，零 unhandled rejection）。缺省 undefined =
+   * 不武装（零行为变化）。工具内部的细粒度超时（如 bash env 层 kill）不受
+   * 此影响——本预算是外层兜底，与内层机制经 J22 code 作用域判据互不误读。
+   */
+  timeoutMs?: number;
 }
 
 /** 工具执行前置守卫（C57 执行点重算的接线面）：政策层实现，registry 在
@@ -283,7 +294,29 @@ export class ToolRegistry {
       ...(call.report ? { reportProgress: call.report } : {}),
       ...(call.signal ? { signal: call.signal } : {}),
     };
-    const executed = await def.execute(args, ctx);
+    // M6：工具声明 timeoutMs 则在执行外包总预算——超时转结构化 isError
+    // 结果（code=TOOL_TIMEOUT，dsh toolTimeoutResult 同构：模型看到的是
+    // 可路由的错误码而非静默失败）。内层工具 promise 不被抛弃（withTimeout
+    // 纪律），迟到结算被丢弃且零 unhandled rejection；code 判据保持 J22
+    // 作用域纪律——内层自有码的超时不在此误捕。
+    const raw =
+      def.timeoutMs !== undefined
+        ? withTimeout(TOOL_TIMEOUT, def.timeoutMs, Promise.resolve(def.execute(args, ctx)))
+        : def.execute(args, ctx);
+    let executed: ToolExecution;
+    try {
+      executed = await raw;
+    } catch (e) {
+      if (def.timeoutMs !== undefined && e instanceof TimeoutError && e.code === TOOL_TIMEOUT) {
+        executed = {
+          content: `工具执行在 ${String(e.timeoutMs)}ms 内未完成，已被终止`,
+          isError: true,
+          error: { name: "ToolTimeoutError", code: TOOL_TIMEOUT },
+        };
+      } else {
+        throw e;
+      }
+    }
     // B12：契约富值（含 value/render）在此投影成落盘形状——富值不出本函数
     const result = isContractResult(executed)
       ? await projectResult(args, executed)

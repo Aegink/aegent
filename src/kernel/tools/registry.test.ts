@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ToolRegistry, type ToolDef } from "./registry.js";
+import { withTimeout } from "../timeout.js";
 import { createToolLoadTool } from "./builtin/tool-load.js";
 
 const tmpDirs: string[] = [];
@@ -247,5 +248,73 @@ describe("工具 schema 延迟加载（F12+F14 / T-P1-17）", () => {
     const after = a.toChatTools();
     expect(after.slice(0, before.length)).toEqual(before);
     expect(after.length).toBe(before.length + 1);
+  });
+});
+
+describe("M6 工具级超时预算（ToolDef.timeoutMs）", () => {
+  const unhandled: unknown[] = [];
+  const onUnhandled = (reason: unknown) => void unhandled.push(reason);
+  afterEach(() => {
+    process.off("unhandledRejection", onUnhandled);
+    unhandled.length = 0;
+  });
+
+  it("声明 timeoutMs 的挂死工具：超时 → 结构化 isError 结果（code=TOOL_TIMEOUT + timeoutMs）", async () => {
+    process.on("unhandledRejection", onUnhandled);
+    const registry = new ToolRegistry();
+    registry.registerTool({
+      name: "hang",
+      timeoutMs: 30,
+      execute: () => new Promise(() => {}), // 永不结算
+    });
+    const result = await registry.dispatch({ callId: "c1", name: "hang", arguments: "{}" });
+    expect(result.isError).toBe(true);
+    expect(result.error).toMatchObject({ name: "ToolTimeoutError", code: "TOOL_TIMEOUT" });
+    expect(result.content).toContain("30ms");
+  });
+
+  it("超时后工具 promise 迟到结算被丢弃：零 unhandled rejection（不弃 promise 纪律）", async () => {
+    process.on("unhandledRejection", onUnhandled);
+    const registry = new ToolRegistry();
+    registry.registerTool({
+      name: "late",
+      timeoutMs: 20,
+      execute: () =>
+        new Promise<{ content: string }>((resolve, reject) => {
+          setTimeout(() => reject(new Error("late-crash")), 80);
+        }),
+    });
+    const result = await registry.dispatch({ callId: "c1", name: "late", arguments: "{}" });
+    expect(result.error).toMatchObject({ code: "TOOL_TIMEOUT" });
+    await new Promise((r) => setTimeout(r, 120));
+    expect(unhandled).toEqual([]);
+  });
+
+  it("未声明 timeoutMs 的工具零行为变化（含失败透传 loop 兜底的既有路径）", async () => {
+    const registry = new ToolRegistry();
+    registry.registerTool({
+      name: "boom",
+      execute: () => {
+        throw new Error("infra-crash");
+      },
+    });
+    await expect(
+      registry.dispatch({ callId: "c1", name: "boom", arguments: "{}" }),
+    ).rejects.toThrow("infra-crash");
+  });
+
+  it("J22 作用域：内层自有 code 的 TimeoutError 不被外层武装误捕（原样上抛）", async () => {
+    const registry = new ToolRegistry();
+    registry.registerTool({
+      name: "inner-timeout",
+      timeoutMs: 5_000,
+      execute: () =>
+        withTimeout("INNER_SCOPE", 10, new Promise<string>(() => {})).then((v) => ({
+          content: v,
+        })),
+    });
+    await expect(
+      registry.dispatch({ callId: "c1", name: "inner-timeout", arguments: "{}" }),
+    ).rejects.toMatchObject({ code: "INNER_SCOPE" });
   });
 });

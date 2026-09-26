@@ -27,9 +27,13 @@ function tempDir(): string {
  * 装配内置工具 + 守卫工作区（T-6-01）：四个文件工具类型上必收守卫——
  * 夹具目录即守卫工作区（写面限制在工作区内正是被测语义）。
  */
-function toolsWith(dir: string, env?: NodeExecutionEnv): ToolRegistry {
+function toolsWith(
+  dir: string,
+  env?: NodeExecutionEnv,
+  builtinOptions?: Parameters<typeof registerBuiltinTools>[1],
+): ToolRegistry {
   const registry = new ToolRegistry(env !== undefined ? { env } : undefined);
-  registerBuiltinTools(registry, { pathGuard: PathGuard.forWorkspace(dir) });
+  registerBuiltinTools(registry, { pathGuard: PathGuard.forWorkspace(dir), ...builtinOptions });
   return registry;
 }
 
@@ -504,5 +508,41 @@ describe("webfetch（B8a / T-P1-20）", () => {
       networkGuard: createNetworkGuard({ policy: "deny" }),
     });
     expect(withGuard.has("webfetch")).toBe(true);
+  });
+});
+
+describe("bash 超时三档合并（B18/T-P1-55）", () => {
+  /** fakeEnv 捕获 exec 收到的 timeoutMs，验证三档合并结果（不真执行） */
+  function capturingEnv(captured: Array<number | undefined>) {
+    return {
+      exec: async (cmd: string, options?: { timeoutMs?: number }) => {
+        captured.push(options?.timeoutMs);
+        return { stdout: "ok", stderr: "", exitCode: 0 };
+      },
+    } as unknown as NodeExecutionEnv;
+  }
+
+  it("默认档：timeout 参数缺省时 env 收到 defaultTimeoutSeconds 换算的毫秒", async () => {
+    const captured: Array<number | undefined> = [];
+    const registry = toolsWith(tempDir(), capturingEnv(captured), { bash: { defaultTimeoutSeconds: 7 } });
+    await dispatch(registry, "bash", { command: "echo hi" });
+    expect(captured).toEqual([7_000]);
+  });
+
+  it("提示档覆盖默认档；提示恒被上限收口（不可经输入关闭）", async () => {
+    const captured: Array<number | undefined> = [];
+    const registry = toolsWith(tempDir(), capturingEnv(captured), { bash: { defaultTimeoutSeconds: 60 } });
+    await dispatch(registry, "bash", { command: "echo hi", timeout: 3 });
+    expect(captured).toEqual([3_000]);
+    await dispatch(registry, "bash", { command: "echo hi", timeout: 1e12 - 1e9 });
+    // 1e12 秒远超上限 → 已在参数校验层拒绝，这里不再到达 env
+    expect(captured).toHaveLength(1);
+  });
+
+  it("无默认档且无提示 = 不武装超时（timeoutMs 缺省透传 env，现状语义保持）", async () => {
+    const captured: Array<number | undefined> = [];
+    const registry = toolsWith(tempDir(), capturingEnv(captured));
+    await dispatch(registry, "bash", { command: "echo hi" });
+    expect(captured).toEqual([undefined]);
   });
 });

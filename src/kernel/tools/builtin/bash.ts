@@ -24,7 +24,7 @@
 
 import type { ExecResult } from "../env.js";
 import type { ToolExecutionResult } from "../../loop.js";
-import { TimeoutError } from "../../timeout.js";
+import { TimeoutError, clampTimeout } from "../../timeout.js";
 import { analyzeShellCommand } from "../../../policy/shell-semantics.js";
 import { PathGuard, PathGuardError } from "../../../sandbox/path-guard.js";
 import { isSpawnFailure, markStarted } from "../bash-retry-guard.js";
@@ -53,7 +53,12 @@ export function toResult(result: ExecResult): ToolExecutionResult {
   };
 }
 
-export function createBashTool(options: { pathGuard: PathGuard }): ToolDef {
+export function createBashTool(options: {
+  pathGuard: PathGuard;
+  /** B18 三档的"默认档"（秒）：timeout 参数缺省时生效。缺省 undefined =
+   * 无默认超时（pi 同款行为保持）。上限档恒为 MAX_TIMEOUT_SECONDS，不可关。 */
+  defaultTimeoutSeconds?: number;
+}): ToolDef {
   return {
     name: "bash",
     async execute(args, ctx: ToolContext) {
@@ -75,6 +80,20 @@ export function createBashTool(options: { pathGuard: PathGuard }): ToolDef {
           `timeout 上限 ${String(MAX_TIMEOUT_SECONDS)} 秒`,
         );
       }
+      // B18 三档合并：提示（模型 timeout 参数）缺省用默认档，恒被上限收口
+      // （clampTimeout——上限不可经任何输入关闭）。无默认档且无提示 = 无超时
+      // （现状语义保持——"禁用"由不武装表达，不用 0 哨兵；也不把上限值展开
+      // 传给 env——2^31-1 秒换毫秒恰好顶到 setTimeout 可靠上限，J24 陷阱）。
+      const effectiveSeconds = clampTimeout(
+        timeout,
+        options.defaultTimeoutSeconds ?? MAX_TIMEOUT_SECONDS,
+        MAX_TIMEOUT_SECONDS,
+        "bash timeout",
+      );
+      const armedSeconds =
+        timeout !== undefined || options.defaultTimeoutSeconds !== undefined
+          ? effectiveSeconds
+          : undefined;
       // T-6-01：重定向目标先过守卫（经 T-5-14 虚拟文件操作），拒绝时不启动命令
       try {
         await options.pathGuard.assertShellFileOps(analyzeShellCommand(command).ops);
@@ -94,14 +113,14 @@ export function createBashTool(options: { pathGuard: PathGuard }): ToolDef {
       // B7 进度示范（T-P1-16）：启动前上报一次——长任务的最早可见事实，
       // 与 D15 的 started 标记同语义立场（"命令已启动"是工具的诚实陈述）
       ctx.reportProgress?.(
-        timeout !== undefined
-          ? `命令已启动（超时 ${String(timeout)}s）`
+        armedSeconds !== undefined
+          ? `命令已启动（超时 ${String(armedSeconds)}s）`
           : "命令已启动",
       );
       try {
         const result = await ctx.env.exec(
           command,
-          timeout !== undefined ? { timeoutMs: timeout * 1000 } : undefined,
+          armedSeconds !== undefined ? { timeoutMs: armedSeconds * 1000 } : undefined,
         );
         // D15：命令已启动——成功结果同样标记（自动重发会产生重复副作用）
         return markStarted(toResult(result));
@@ -112,7 +131,7 @@ export function createBashTool(options: { pathGuard: PathGuard }): ToolDef {
             toolError(
               "BashError",
               e.code,
-              `命令在 ${String(timeout ?? "?")} 秒内未完成，已被终止`,
+              `命令在 ${String(armedSeconds ?? "?")} 秒内未完成，已被终止`,
               "execution timed out",
             ),
           );
