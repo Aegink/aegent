@@ -202,4 +202,115 @@ export class SessionStore {
     this.buffer.set(sessionId, []);
     return rows;
   }
+
+  // -------------------------------------------------------------------------
+  // fork 分支会话（E5，T-P1-40）
+  // -------------------------------------------------------------------------
+
+  /**
+   * fork 分支会话（E5/T-P1-40）：把源会话已完结历史复制到新 sessionId
+   * （seq 从 1 重编号；ts 保留原值——复制的是历史事实，不是新事件），
+   * 紧随落一条 `session/fork` lineage 标记（子流头部，log-only 不进模型
+   * 历史）。切点语义（pi·fork-policy selectBranchFork 同构）：
+   * position "after"（缺省）= 新流含 atSeq 处的事件，"before" = 不含
+   * （cutSeq = atSeq - 1）；cutSeq = 0 即空分支。
+   *
+   * fail-closed 拒绝面：目标 id 非法/已存在、源会话不存在、源会话有
+   * 未闭合 turn（只从 idle 会话分叉——Q5 对账口径）、atSeq 非法。
+   * 新流的 write-behind buffer 立即待 flush（fork 是持久操作）。
+   */
+  fork(
+    sourceId: string,
+    options: ForkOptions,
+  ): { sessionId: string; cutSeq: number; eventCount: number } {
+    const { target, position = "after", atSeq } = options;
+    if (typeof target !== "string" || target === "" || target === sourceId) {
+      throw new ForkError("FORK_BAD_TARGET", `fork 目标会话 id 非法：${String(target)}`);
+    }
+    if (this.events.has(target)) {
+      throw new ForkError("FORK_TARGET_EXISTS", `fork 目标会话 ${target} 已存在——拒绝覆盖`);
+    }
+    const source = this.events.get(sourceId);
+    if (!source || source.length === 0) {
+      throw new ForkError("FORK_SOURCE_MISSING", `源会话 ${sourceId} 不存在或为空流（先 restore/load）`);
+    }
+    // 只从 idle 会话分叉：存在未闭合 turn 即拒绝（未闭合 turn 的"已完结历史"
+    // 边界不清——运行态事件复制出去就是半态）。
+    const openTurns = new Set<number>();
+    for (const e of source) {
+      if (e.type === "turn/start") openTurns.add(e.turn);
+      else if (e.type === "turn/end") openTurns.delete(e.turn);
+    }
+    if (openTurns.size > 0) {
+      throw new ForkError(
+        "FORK_SOURCE_BUSY",
+        `源会话 ${sourceId} 存在未闭合 turn（${[...openTurns].sort((a, b) => a - b).join(",")}）——只从 idle 会话分叉`,
+      );
+    }
+    const lastSeq = source[source.length - 1]!.seq;
+    let cutSeq: number;
+    if (atSeq === undefined) {
+      cutSeq = lastSeq;
+    } else {
+      if (!Number.isInteger(atSeq) || atSeq < 1 || atSeq > lastSeq) {
+        throw new ForkError("FORK_BAD_ATSEQ", `atSeq=${String(atSeq)} 越界（合法范围 1..${lastSeq}）`);
+      }
+      cutSeq = position === "before" ? atSeq - 1 : atSeq;
+    }
+    const copied = source
+      .filter((e) => e.seq <= cutSeq)
+      .map((e, i) => ({ ...e, seq: i + 1 }) as SessionEvent);
+    const lastTurn = cutSeq === 0 ? 0 : copied[cutSeq - 1]!.turn;
+    const newEvents: SessionEvent[] = [
+      ...copied,
+      {
+        type: "session/fork",
+        parentSessionId: sourceId,
+        position,
+        cutSeq,
+        seq: cutSeq + 1,
+        ts: Date.now(),
+        turn: lastTurn,
+      },
+    ];
+    // 整体先过投影校验（E16：损坏/非法在这里被拒），然后一次落齐内存序 +
+    // buffer + 投影——fork 要么完整出现，要么不出现（appendBatch 原子纪律同构）。
+    const projector = Projector.fold(newEvents);
+    this.events.set(target, newEvents);
+    this.buffer.set(target, [...newEvents]);
+    this.projectors.set(target, projector);
+    this.nextSeqBySession.set(target, newEvents.length + 1);
+    this.lastSeq.set(target, newEvents.length);
+    this.lastFlushedSeq.set(target, 0);
+    this.flushChains.set(target, Promise.resolve());
+    return { sessionId: target, cutSeq, eventCount: newEvents.length };
+  }
+}
+
+/** fork 失败的类型化错误码（fail-closed 面：每类拒绝原因一个码）。 */
+export type ForkErrorCode =
+  | "FORK_BAD_TARGET"
+  | "FORK_TARGET_EXISTS"
+  | "FORK_SOURCE_MISSING"
+  | "FORK_SOURCE_BUSY"
+  | "FORK_BAD_ATSEQ";
+
+export class ForkError extends Error {
+  constructor(
+    readonly code: ForkErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ForkError";
+  }
+}
+
+/** fork 的调用方选项（切点语义见 SessionStore.fork 注释）。 */
+export interface ForkOptions {
+  /** 新会话 id（调用方指定——会话 id 用户可见；不得与源/既有会话冲突）。 */
+  target: string;
+  /** "before"=切点前缀（不含 atSeq）、"after"=含 atSeq；缺省 "after"。 */
+  position?: "before" | "after";
+  /** 切点参照 seq（1..源流最后 seq）；缺省 = 源流最新。 */
+  atSeq?: number;
 }

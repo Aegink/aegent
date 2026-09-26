@@ -115,6 +115,44 @@ describe("agent-protocol —— T9 可序列化协议", () => {
     expect(decodeRequest(JSON.stringify(req))).toEqual(req);
   });
 
+  it("decodeRequest：session/fork（E5/T-P1-40）targetId 必填 + position 闭集 + atSeq 正整数", () => {
+    // 合法形状：全参数 / 仅 targetId / 带 position / 带 atSeq
+    expect(decodeRequest('{"type":"session/fork","targetId":"f1"}')).toEqual({
+      type: "session/fork",
+      targetId: "f1",
+    });
+    expect(
+      decodeRequest('{"type":"session/fork","targetId":"f1","position":"before","atSeq":7}'),
+    ).toEqual({ type: "session/fork", targetId: "f1", position: "before", atSeq: 7 });
+    // 外部输入逐项校验：缺 targetId / 空 targetId / position 闭集外 / atSeq 非正整数
+    expect(() => decodeRequest('{"type":"session/fork"}')).toThrow(/targetId/);
+    expect(() => decodeRequest('{"type":"session/fork","targetId":""}')).toThrow(/targetId/);
+    expect(() =>
+      decodeRequest('{"type":"session/fork","targetId":"f1","position":"middle"}'),
+    ).toThrow(/position/);
+    expect(() =>
+      decodeRequest('{"type":"session/fork","targetId":"f1","atSeq":0}'),
+    ).toThrow(/atSeq/);
+    expect(() =>
+      decodeRequest('{"type":"session/fork","targetId":"f1","atSeq":2.5}'),
+    ).toThrow(/atSeq/);
+  });
+
+  it("decodeMessage：forked 回执（E5）sessionId/cutSeq/eventCount 校验", () => {
+    expect(
+      decodeMessage('{"type":"forked","sessionId":"f1","cutSeq":12,"eventCount":13}'),
+    ).toEqual({ type: "forked", sessionId: "f1", cutSeq: 12, eventCount: 13 });
+    expect(() =>
+      decodeMessage('{"type":"forked","sessionId":"","cutSeq":0,"eventCount":1}'),
+    ).toThrow(/sessionId/);
+    expect(() =>
+      decodeMessage('{"type":"forked","sessionId":"f","cutSeq":-1,"eventCount":1}'),
+    ).toThrow(/cutSeq/);
+    expect(() =>
+      decodeMessage('{"type":"forked","sessionId":"f","cutSeq":0,"eventCount":0}'),
+    ).toThrow(/eventCount/);
+  });
+
   it("decodeMessage：error 校验与未知类型拒绝", () => {
     expect(decodeMessage('{"type":"error","code":"X","message":"m"}')).toEqual({
       type: "error",

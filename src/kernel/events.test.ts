@@ -100,15 +100,23 @@ const SAMPLES: NewSessionEvent[] = [
     deadline: 1_800_000_000_000,
     status: "active",
   },
+  // T-P1-40 的 fork lineage 标记（词汇表 18→19，见 l0-events.md §8 落地记录 8）
+  {
+    type: "session/fork",
+    turn: 1,
+    parentSessionId: "s0",
+    position: "after",
+    cutSeq: 12,
+  },
 ];
 
 describe("事件词汇表（l0-events.md §3 定稿）", () => {
-  it("联合成员恰 18 个（13 定稿 + session/revert + model/switch + todo/update + goal/set + tool/progress），且与 EVENT_TYPES 严格一致（验收①：Exclude 遍历断言的运行时面）", () => {
-    expect(EVENT_TYPES).toHaveLength(18);
+  it("联合成员恰 19 个（13 定稿 + session/revert + model/switch + todo/update + goal/set + tool/progress + session/fork），且与 EVENT_TYPES 严格一致（验收①：Exclude 遍历断言的运行时面）", () => {
+    expect(EVENT_TYPES).toHaveLength(19);
     const declared = new Set<string>(EVENT_TYPES);
     // 每个联合成员都能按其必填载荷构造，且 type 互不相同、并集等于 EVENT_TYPES。
     const constructed = SAMPLES.map((e) => e.type);
-    expect(new Set(constructed)).toHaveLength(18);
+    expect(new Set(constructed)).toHaveLength(19);
     expect(new Set(constructed)).toEqual(declared);
     // 编译期等价断言在 events.ts 的 _EVENT_TYPES_EXACT（tsc --noEmit 时生效）。
   });

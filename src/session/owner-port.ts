@@ -40,6 +40,14 @@ export type OwnerCommand =
        * handler 由装配的 ModelSwitchService 承接（未注册模型类型化错误）。 */
       readonly type: "model/switch";
       readonly identity: ModelIdentity;
+    }
+  | {
+      /** E5/T-P1-40 fork 分支会话：源 = 当前会话，target 是新会话 id；
+       * handler 由装配的 store.fork 承接（类型化 ForkError 原样上抛）。 */
+      readonly type: "session/fork";
+      readonly target: string;
+      readonly position?: "before" | "after";
+      readonly atSeq?: number;
     };
 
 // ---------------------------------------------------------------------------
@@ -83,6 +91,12 @@ export interface OwnerPortHandlers {
   readonly stopGeneration?: (reason?: string) => Promise<void>;
   /** J6 换模处理（T-P1-04 装配注入；未启用换模的装配可不提供）。 */
   readonly modelSwitch?: (identity: ModelIdentity) => Promise<void> | void;
+  /** E5 fork 处理（T-P1-40 装配注入 store.fork；未启用的装配可不提供）。 */
+  readonly sessionFork?: (options: {
+    target: string;
+    position?: "before" | "after";
+    atSeq?: number;
+  }) => Promise<void> | void;
 }
 
 export class OwnerCommandPort {
@@ -133,6 +147,12 @@ export class OwnerCommandPort {
         return this.handlers.stopGeneration?.(command.reason);
       case "model/switch":
         return this.handlers.modelSwitch?.(command.identity);
+      case "session/fork":
+        return this.handlers.sessionFork?.({
+          target: command.target,
+          ...(command.position !== undefined ? { position: command.position } : {}),
+          ...(command.atSeq !== undefined ? { atSeq: command.atSeq } : {}),
+        });
       default:
         return assertNever(command, "owner 命令闭集出现未知变体");
     }

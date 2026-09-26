@@ -253,6 +253,20 @@ export class Projector {
           throw new ProjectError("undo 标记约定 targetSeq=0");
         }
         break;
+      case "session/fork":
+        // 会话级元事件（E5/T-P1-40，落子流头部）：载荷基本形状校验——
+        // parentSessionId 非空、position 闭集、cutSeq 非负整数（cutSeq 相对
+        // 父流，本流校验不了其范围——越界在 store.fork 生成时已拒绝）。
+        if (typeof event.parentSessionId !== "string" || event.parentSessionId === "") {
+          throw new ProjectError("session/fork 需要 parentSessionId 非空字符串");
+        }
+        if (event.position !== "before" && event.position !== "after") {
+          throw new ProjectError(`session/fork 的 position 非法：${String(event.position)}`);
+        }
+        if (!Number.isInteger(event.cutSeq) || event.cutSeq < 0) {
+          throw new ProjectError(`session/fork 的 cutSeq 非法：${String(event.cutSeq)}`);
+        }
+        break;
       default:
         throw new ProjectError(`未知事件类型 ${(event as { type: string }).type}`);
     }
@@ -373,6 +387,8 @@ export class Projector {
       case "session/revert":
         s.revertedTo = event.phase === "revert" ? event.targetSeq : null;
         break;
+      case "session/fork":
+        break; // E5 lineage 是子流头部事实：投影不消费（读流头部即可查）
       case "tool/progress":
         break; // B7 进度是瞬态事实：投影不消费（事实在事件流本身，按 callId+seqInCall 可查）
     }

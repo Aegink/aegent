@@ -164,7 +164,37 @@ export async function runCli(options: RunCliOptions): Promise<void> {
       connection.send({ type: "question/answer", requestId, answer: rest.slice(1).join(" ") });
       return;
     }
-    out(`未知命令 ${String(name)}。可用：/revert <seq> /cancel /approve <id> allow|deny [理由] [--session] [--feedback 文本] /answer <id> <答复> /exit`);
+    if (name === "/fork") {
+      // E5 fork 分支会话：/fork <新会话id> [before|after] [atSeq]——
+      // 缺省 after + 最新；新会话的后续对话由新进程打开（本连接不动）。
+      const targetId = rest[0];
+      if (!targetId) {
+        out("用法：/fork <新会话id> [before|after] [atSeq]（缺省 after + 最新切点）");
+        return;
+      }
+      const position = rest[1];
+      if (position !== undefined && position !== "before" && position !== "after") {
+        out("用法：/fork <新会话id> [before|after] [atSeq]（position 只接受 before|after）");
+        return;
+      }
+      const atSeqRaw = rest[2];
+      let atSeq: number | undefined;
+      if (atSeqRaw !== undefined) {
+        atSeq = Number(atSeqRaw);
+        if (!Number.isInteger(atSeq) || atSeq < 1) {
+          out("用法：/fork <新会话id> [before|after] [atSeq]（atSeq 必须是正整数）");
+          return;
+        }
+      }
+      connection.send({
+        type: "session/fork",
+        targetId,
+        ...(position !== undefined ? { position } : {}),
+        ...(atSeq !== undefined ? { atSeq } : {}),
+      });
+      return;
+    }
+    out(`未知命令 ${String(name)}。可用：/revert <seq> /cancel /approve <id> allow|deny [理由] [--session] [--feedback 文本] /answer <id> <答复> /fork <新会话id> [before|after] [atSeq] /exit`);
   };
 
   // idle 观测（对象属性承载——TS 不跨闭包窄化可变捕获）
@@ -204,6 +234,10 @@ export async function runCli(options: RunCliOptions): Promise<void> {
               ? `◆ 会话与代码已回退到 seq=${msg.targetSeq}`
               : `◆ 会话回退 → seq=${msg.targetSeq}（本会话无代码检查点，仅对话态）`,
           );
+          break;
+        case "forked":
+          // E5：fork 回执——新会话已创建（后续对话由新进程打开，本连接不动）
+          out(`⑂ 已分支到新会话 ${msg.sessionId}（切点 seq=${msg.cutSeq}，复制 ${msg.eventCount} 条事件）`);
           break;
         case "error":
           out(`! [${msg.code}] ${oneLine(msg.message)}`);

@@ -420,6 +420,25 @@ export interface GoalSetEvent extends EventBase {
   status: GoalStatus;
 }
 
+/**
+ * fork 分支标记（E5，T-P1-40）：本会话由哪个父会话的哪个切点分出——
+ * **落子流头部**（store.fork 在复制完父流历史后紧随追加），是子流 lineage
+ * 的事实源（不变量 1：重启后仍可按流重建父子关系）。log-only：不进模型
+ * 历史（模型请求消息装配不消费它），跨 compaction 保留（dsh·subagent
+ * descriptor "The descriptor is log-only — a session event absent from
+ * model history" 同构纪律）。cutSeq 是父流中"复制到的最后一条事件 seq"
+ * （单值表达：position "before" 时 cutSeq = atSeq - 1、"after" 时 = atSeq；
+ * cutSeq = 0 即空分支）。会话级元事件：session/revert / model/switch 同款
+ * 纪律，不要求 turn/step 开合上下文。
+ * 词汇表 18→19 的裁决记录见 l0-events.md §8 落地记录 8 与待澄清表（供追认）。
+ */
+export interface SessionForkEvent extends EventBase {
+  type: "session/fork";
+  parentSessionId: string;
+  position: "before" | "after";
+  cutSeq: number;
+}
+
 export type SessionEvent =
   | TurnStartEvent
   | TurnEndEvent
@@ -438,9 +457,10 @@ export type SessionEvent =
   | SessionRevertEvent
   | ModelSwitchEvent
   | TodoUpdateEvent
-  | GoalSetEvent;
+  | GoalSetEvent
+  | SessionForkEvent;
 
-/** 18 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
+/** 19 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
 export const EVENT_TYPES = [
   "turn/start",
   "turn/end",
@@ -460,6 +480,7 @@ export const EVENT_TYPES = [
   "model/switch",
   "todo/update",
   "goal/set",
+  "session/fork",
 ] as const;
 
 export type SessionEventType = (typeof EVENT_TYPES)[number];

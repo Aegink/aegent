@@ -67,6 +67,15 @@ export type AgentRequest =
       requestId: string;
       answer: string;
     }
+  | {
+      /** E5/T-P1-40 fork 分支会话：源 = 本子进程当前会话（不传——wire 面
+       * 无需回显），target 是新会话 id。position/atSeq 语义见
+       * SessionStore.fork（缺省 after + 最新）。 */
+      type: "session/fork";
+      targetId: string;
+      position?: "before" | "after";
+      atSeq?: number;
+    }
   | { type: "dispose" };
 
 /** 子 → 父。 */
@@ -91,6 +100,14 @@ export type AgentMessage =
       timeoutMs: number;
     }
   | { type: "reverted"; targetSeq: number; codeRestored: boolean }
+  | {
+      /** E5/T-P1-40：fork 成功回执——新会话 id 与切点（lineage 标记已落
+       * 子流头部）。新会话的后续对话由新进程/新装配打开，本连接不动。 */
+      type: "forked";
+      sessionId: string;
+      cutSeq: number;
+      eventCount: number;
+    }
   | { type: "idle" }
   | { type: "error"; code: string; message: string };
 
@@ -111,6 +128,7 @@ const REQUEST_TYPES = new Set([
   "approve",
   "model/switch",
   "question/answer",
+  "session/fork",
   "dispose",
 ]);
 const CANCEL_KINDS = new Set(["user", "parent", "disposed", "hook", "legacy"]);
@@ -148,6 +166,9 @@ export function decodeRequest(line: string): AgentRequest {
     feedback?: unknown;
     identity?: unknown;
     answer?: unknown;
+    targetId?: unknown;
+    position?: unknown;
+    atSeq?: unknown;
   };
   if (!REQUEST_TYPES.has(req.type)) {
     throw new ProtocolError("PROTOCOL_UNKNOWN_REQUEST", `未知请求类型 ${req.type}`);
@@ -242,6 +263,26 @@ export function decodeRequest(line: string): AgentRequest {
     }
     return { type: "question/answer", requestId: req.requestId, answer: req.answer };
   }
+  if (req.type === "session/fork") {
+    // E5/T-P1-40：targetId 非空必填；position 闭集；atSeq 正整数可缺省
+    // （越界等语义错误在 store.fork 里类型化拒绝——wire 面只做形状校验）。
+    if (typeof req.targetId !== "string" || req.targetId === "") {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "session/fork 需要 targetId 非空字符串");
+    }
+    if (req.position !== undefined && req.position !== "before" && req.position !== "after") {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "session/fork 的 position 只接受 before|after");
+    }
+    if (req.atSeq !== undefined && (typeof req.atSeq !== "number" || !Number.isInteger(req.atSeq) || req.atSeq < 1)) {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "session/fork 的 atSeq 必须是正整数");
+    }
+    const atSeq: number | undefined = typeof req.atSeq === "number" ? req.atSeq : undefined;
+    return {
+      type: "session/fork",
+      targetId: req.targetId,
+      ...(req.position !== undefined ? { position: req.position } : {}),
+      ...(atSeq !== undefined ? { atSeq } : {}),
+    };
+  }
   return { type: "dispose" };
 }
 
@@ -270,6 +311,9 @@ export function decodeMessage(line: string): AgentMessage {
     targetSeq?: unknown;
     codeRestored?: unknown;
     question?: unknown;
+    sessionId?: unknown;
+    cutSeq?: unknown;
+    eventCount?: unknown;
   };
   switch (msg.type) {
     case "ready":
@@ -347,6 +391,19 @@ export function decodeMessage(line: string): AgentMessage {
         throw new ProtocolError("PROTOCOL_MALFORMED", "reverted 需要 codeRestored 布尔");
       }
       return { type: "reverted", targetSeq: msg.targetSeq, codeRestored: msg.codeRestored };
+    }
+    case "forked": {
+      // fork 完成回执（E5/T-P1-40：新会话 id + 切点事实）
+      if (typeof msg.sessionId !== "string" || msg.sessionId === "") {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "forked 需要非空 sessionId");
+      }
+      if (typeof msg.cutSeq !== "number" || !Number.isInteger(msg.cutSeq) || msg.cutSeq < 0) {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "forked 需要非负整数 cutSeq");
+      }
+      if (typeof msg.eventCount !== "number" || !Number.isInteger(msg.eventCount) || msg.eventCount < 1) {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "forked 需要正整数 eventCount（lineage 标记至少 1 条）");
+      }
+      return { type: "forked", sessionId: msg.sessionId, cutSeq: msg.cutSeq, eventCount: msg.eventCount };
     }
     case "error":
       if (typeof msg.code !== "string" || typeof msg.message !== "string") {

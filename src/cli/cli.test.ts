@@ -426,6 +426,28 @@ describe("aegent CLI（T-8-01）", () => {
     expect(reminders.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("/fork 分支会话（E5/T-P1-40）：forked 回执可见；目标冲突得类型化错误行", async () => {
+    const lines = await runScriptedSession(
+      {
+        assembly: {
+          workspaceRoot: mkdtempSync(path.join(tmpdir(), "aegent-cli-fork-")),
+          contextWindow: 200_000,
+          approvalTimeoutMs: 5_000,
+        },
+      },
+      async function* ({ waitFor }) {
+        yield "第一句话";
+        await waitFor((line) => line.includes("── turn 1 结束（completed）"));
+        yield "/fork f-branch";
+        await waitFor((line) => line.includes("⑂ 已分支到新会话 f-branch"));
+        yield "/fork f-branch";
+        await waitFor((line) => line.includes("[FORK_TARGET_EXISTS]"));
+      },
+    );
+    expect(lines.some((l) => l.includes("⑂ 已分支到新会话 f-branch") && l.includes("切点 seq="))).toBe(true);
+    expect(lines.some((l) => l.includes("[FORK_TARGET_EXISTS]"))).toBe(true);
+  });
+
   it("/revert 对话态回退（session/revert 事件经协议转发）", async () => {
     const lines = await runScriptedSession(
       {

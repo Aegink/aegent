@@ -31,7 +31,7 @@ import {
 import type { ApprovalAnnouncement } from "../policy/pending.js";
 import type { ChatRequest, ModelProvider } from "../models/provider.js";
 import type { ModelIdentity } from "../models/identity.js";
-import { InMemoryEventStorage, type EventStorage, SessionStore } from "../session/store.js";
+import { ForkError, InMemoryEventStorage, type EventStorage, SessionStore } from "../session/store.js";
 import { Projector } from "../session/project.js";
 import { createChildAssembly, createTodoUpdateEmitter, type ChildAssembly, type ChildAssemblyOptions } from "./assembly.js";
 import { ModelNotRegisteredError } from "./model-switch.js";
@@ -422,6 +422,33 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
               e instanceof ModelNotRegisteredError
                 ? e.code
                 : "MODEL_SWITCH_FAILED",
+            message: e instanceof Error ? e.message : String(e),
+          });
+        }
+        return;
+      }
+      case "session/fork": {
+        // E5/T-P1-40：fork 只动 store（新会话落独立流 + lineage 标记），
+        // 本连接与在途轮不动——新会话的后续对话由新进程/新装配打开。
+        try {
+          const result = store.fork(sessionId, {
+            target: req.targetId,
+            ...(req.position !== undefined ? { position: req.position } : {}),
+            ...(req.atSeq !== undefined ? { atSeq: req.atSeq } : {}),
+          });
+          void store.flush(result.sessionId).catch(() => {
+            // flush 失败不回滚 fork（内存序已权威）；落库失败留给 Q5 对账
+          });
+          send({
+            type: "forked",
+            sessionId: result.sessionId,
+            cutSeq: result.cutSeq,
+            eventCount: result.eventCount,
+          });
+        } catch (e) {
+          send({
+            type: "error",
+            code: e instanceof ForkError ? e.code : "FORK_FAILED",
             message: e instanceof Error ? e.message : String(e),
           });
         }

@@ -144,6 +144,90 @@ describe("agent-process —— T9 agent 出进程", () => {
     await running;
   }, 30_000);
 
+  it("session/fork（E5/T-P1-40）：完整轮后 fork → forked 回执带切点；非法目标 → 类型化 error 行", async () => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    let exitCode: number | null = null;
+    let resolveExit: (code: number) => void = () => {};
+    const exited = new Promise<number>((resolve) => {
+      resolveExit = resolve;
+    });
+
+    const running = runAgentChildStdio({
+      input,
+      output,
+      exit: (code) => {
+        if (exitCode === null) {
+          exitCode = code;
+          resolveExit(code);
+        }
+      },
+    });
+
+    const items: AgentMessage[] = [];
+    const waiters: ((r: IteratorResult<AgentMessage>) => void)[] = [];
+    let buf = "";
+    output.setEncoding("utf-8");
+    output.on("data", (chunk: string) => {
+      buf += chunk;
+      for (;;) {
+        const nl = buf.indexOf("\n");
+        if (nl < 0) break;
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        const msg = decodeMessage(line);
+        const w = waiters.shift();
+        if (w) w({ value: msg, done: false });
+        else items.push(msg);
+      }
+    });
+    const iter = {
+      [Symbol.asyncIterator]() {
+        return {
+          next: () => {
+            const item = items.shift();
+            if (item) return Promise.resolve({ value: item, done: false });
+            return new Promise<IteratorResult<AgentMessage>>((resolve) =>
+              waiters.push(resolve),
+            );
+          },
+        };
+      },
+    };
+    const next = async () => (await iter[Symbol.asyncIterator]().next()).value;
+
+    expect(await next()).toEqual({ type: "ready" });
+    input.write(JSON.stringify({ type: "prompt", messageId: "a", content: "甲" }) + "\n");
+    for (;;) {
+      const m = await next();
+      if (m.type === "event" && m.event.type === "turn/end") break;
+    }
+
+    // fork 合法路径：forked 回执（sessionId/cutSeq/eventCount）
+    input.write(JSON.stringify({ type: "session/fork", targetId: "f1" }) + "\n");
+    const forked = await next();
+    expect(forked).toEqual({
+      type: "forked",
+      sessionId: "f1",
+      cutSeq: expect.any(Number),
+      eventCount: expect.any(Number),
+    });
+    if (forked.type === "forked") {
+      expect(forked.eventCount).toBe(forked.cutSeq + 1); // 复制前缀 + lineage 标记
+    }
+
+    // fork 非法路径：目标 id 冲突 → 类型化 error 行（连接不断）
+    input.write(JSON.stringify({ type: "session/fork", targetId: "f1" }) + "\n");
+    const err = await next();
+    expect(err).toEqual({ type: "error", code: "FORK_TARGET_EXISTS", message: expect.any(String) });
+
+    input.write(JSON.stringify({ type: "dispose" }) + "\n");
+    expect(await exited).toBe(0);
+    input.end();
+    await running;
+  }, 30_000);
+
   it("Q3 会话关闭触发 spill 清理（T-P1-14）：dispose 退出前清掉本会话自动可删文件", async () => {
     const spillDir = mkdtempSync(path.join(tmpdir(), "aegent-spill-wire-"));
     const writeSpill = (sessionId: string, deletable: "manual" | "after-session-end"): string => {

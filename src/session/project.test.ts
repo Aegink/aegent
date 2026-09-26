@@ -99,6 +99,34 @@ describe("fold 即校验（E16）", () => {
     expect(() => projector.append([ghost])).toThrow(/未知事件类型/);
   });
 
+  it("session/fork（E5/T-P1-40）：合法 lineage 标记放行（会话级元事件），坏载荷三路类型化拒绝", () => {
+    const projector = Projector.fresh();
+    const mark = {
+      type: "session/fork",
+      seq: 1,
+      ts: 0,
+      turn: 0,
+      parentSessionId: "s0",
+      position: "after",
+      cutSeq: 12,
+    } as unknown as SessionEvent;
+    expect(() => projector.append([mark])).not.toThrow();
+
+    // 坏载荷：空 parentSessionId / position 闭集外 / cutSeq 非法——全部在 append 前拒
+    const bads = [
+      { parentSessionId: "", position: "after", cutSeq: 1 },
+      { parentSessionId: "s0", position: "middle", cutSeq: 1 },
+      { parentSessionId: "s0", position: "before", cutSeq: -1 },
+      { parentSessionId: "s0", position: "before", cutSeq: 2.5 },
+    ];
+    let seq = 2;
+    for (const bad of bads) {
+      const p2 = Projector.fresh();
+      const badEvent = { type: "session/fork", seq: seq++, ts: 0, turn: 0, ...bad } as unknown as SessionEvent;
+      expect(() => p2.append([badEvent])).toThrow(ProjectError);
+    }
+  });
+
   it("批内配对可查：同批 [turn/start…turn/end] 合法；同批双开 turn 拒绝", () => {
     const projector = Projector.fresh();
     expect(() => projector.append(oneTurn(1, 1))).not.toThrow(); // 批内开合完整
