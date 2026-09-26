@@ -29,6 +29,7 @@ interface ChildCliArgs {
   workspace?: string;
   contextWindow?: number;
   approvalTimeoutMs?: number;
+  network?: string;
   apiKey?: string;
   baseUrl?: string;
   model?: string;
@@ -52,12 +53,16 @@ function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv): ChildCliArg
       args.contextWindow = Number(argv[++i]);
     else if (a === "--approval-timeout" && i + 1 < argv.length)
       args.approvalTimeoutMs = Number(argv[++i]);
+    else if (a === "--network" && i + 1 < argv.length) args.network = argv[++i];
   }
   return args;
 }
 
 async function main(): Promise<void> {
   const cli = parseArgs(process.argv.slice(2), process.env);
+  if (cli.network !== undefined && cli.network !== "allow" && cli.network !== "deny") {
+    throw new Error(`--network 只接受 allow|deny，收到：${cli.network}`);
+  }
 
   // 存储：指定 --db 时动态 import SQLite（原生模块不进缺省冷启动路径）
   let storage;
@@ -100,6 +105,12 @@ async function main(): Promise<void> {
             checkpointRepoRoot: cli.workspace ?? process.cwd(),
             contextWindow: cli.contextWindow ?? 200_000,
             approvalTimeoutMs: cli.approvalTimeoutMs ?? 120_000,
+            // B8a/T-P1-20：网络档（--network allow|deny）——提供时装配创建
+            // NetworkGuard 并注册 webfetch；缺省无网络工具（fail-closed；
+            // 非法值已在 main 入口拒绝）
+            ...(cli.network === "allow" || cli.network === "deny"
+              ? { networkPolicy: cli.network }
+              : {}),
             // G1/G7 plan 模式（测试/实测开关：AEGENT_PLAN=1）——G4 计划
             // artifact 父目录 .aegent/sessions（savePlanArtifact 内部按
             // <dir>/<sessionId>/plan.md 落盘；untracked 不入 git stash，

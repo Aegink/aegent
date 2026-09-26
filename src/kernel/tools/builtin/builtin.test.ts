@@ -361,3 +361,147 @@ describe("内置工具注册入口", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// webfetch（B8a / T-P1-20）：NetworkPolicy 对接 + 文本化 + 截断落 spill
+// ---------------------------------------------------------------------------
+
+import { createServer, type Server } from "node:http";
+import { createNetworkGuard } from "../../../sandbox/network.js";
+
+/** 起一个真端口 HTTP 服务（返回 body 后关闭由调用方负责）。 */
+function httpServer(body: string, contentType = "text/plain; charset=utf-8"): Promise<{
+  server: Server;
+  url: (path?: string) => string;
+  close: () => Promise<void>;
+}> {
+  return new Promise((resolve) => {
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { "content-type": contentType });
+      res.end(body);
+    });
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address !== null ? address.port : 0;
+      resolve({
+        server,
+        url: (p = "/") => `http://127.0.0.1:${String(port)}${p}`,
+        close: () =>
+          new Promise<void>((resolveClose) => {
+            server.close(() => resolveClose());
+          }),
+      });
+    });
+  });
+}
+
+describe("webfetch（B8a / T-P1-20）", () => {
+  it("验收①：allow 档 localhost 放行（真端口），文本回喂带 meta", async () => {
+    const http = await httpServer("hello from localhost");
+    try {
+      const registry = new ToolRegistry();
+      registerBuiltinTools(registry, {
+        networkGuard: createNetworkGuard({ policy: "allow" }),
+      });
+      const result = await dispatch(registry, "webfetch", { url: http.url("/page") });
+      expect(result.isError).toBeUndefined();
+      expect(result.content).toBe("hello from localhost");
+      expect(result.meta).toMatchObject({ status: 200, url: http.url("/page") });
+    } finally {
+      await http.close();
+    }
+  });
+
+  it("验收②：deny 档拒绝且 NETWORK_DENIED 含目标 URL（D3 语义复用，零真实 I/O）", async () => {
+    const registry = new ToolRegistry();
+    registerBuiltinTools(registry, {
+      networkGuard: createNetworkGuard({ policy: "deny" }),
+    });
+    const target = "http://example.invalid/path";
+    const result = await dispatch(registry, "webfetch", { url: target });
+    expect(result.isError).toBe(true);
+    expect((result.error as { code: string }).code).toBe("NETWORK_DENIED");
+    expect(result.content).toContain(target);
+  });
+
+  it("验收③：超长响应走 B5 出口截断落 spill（T-P1-14 联动），完整原文在 spill 文件", async () => {
+    const spillDir = tempDir();
+    const bigBody = Array.from({ length: 2500 }, (_, i) => `row-${String(i)}`).join("\n");
+    const http = await httpServer(bigBody);
+    try {
+      const registry = new ToolRegistry({ sessionId: "s-wf", spillDir });
+      registerBuiltinTools(registry, {
+        networkGuard: createNetworkGuard({ policy: "allow" }),
+      });
+      const result = await dispatch(registry, "webfetch", { url: http.url("/big") });
+      expect(result.meta).toMatchObject({ truncated: true });
+      const spillPath = String((result.meta as Record<string, unknown>)["spillPath"]);
+      expect(spillPath).not.toBe("");
+      // spill 首行 = Q13 标记，其后是完整原文
+      const spill = readFileSync(spillPath, "utf8");
+      expect(JSON.parse(spill.split("\n")[0]!)).toMatchObject({
+        kind: "aegent/tool-output-spill",
+        tool: "webfetch",
+      });
+      expect(spill.slice(spill.indexOf("\n\n") + 2)).toBe(bigBody);
+      // 模型可见面：保留头 + 截断提示
+      expect(result.content).toContain("[Output truncated");
+      expect(result.content).toContain(`完整输出在 ${spillPath}`);
+    } finally {
+      await http.close();
+    }
+  });
+
+  it("URL 校验与非 2xx 状态：协议/域名错误 isError 可自修", async () => {
+    const registry = new ToolRegistry();
+    registerBuiltinTools(registry, {
+      networkGuard: createNetworkGuard({ policy: "allow" }),
+    });
+    const badScheme = await dispatch(registry, "webfetch", { url: "ftp://example.com/x" });
+    expect(badScheme.isError).toBe(true);
+    expect((badScheme.error as { code: string }).code).toBe("INVALID_ARGUMENTS");
+
+    const http = await httpServer("gone", "text/plain");
+    try {
+      // 覆写为 404 响应的第二个服务
+      const notFound = await new Promise<{ server: Server; url: () => string; close: () => Promise<void> }>(
+        (resolve) => {
+          const server = createServer((_req, res) => {
+            res.writeHead(404, { "content-type": "text/plain" });
+            res.end("nope");
+          });
+          server.listen(0, "127.0.0.1", () => {
+            const address = server.address();
+            const port = typeof address === "object" && address !== null ? address.port : 0;
+            resolve({
+              server,
+              url: () => `http://127.0.0.1:${String(port)}/`,
+              close: () => new Promise<void>((c) => server.close(() => c())),
+            });
+          });
+        },
+      );
+      try {
+        const result = await dispatch(registry, "webfetch", { url: notFound.url() });
+        expect(result.isError).toBe(true);
+        expect((result.error as { code: string }).code).toBe("HTTP_STATUS");
+        expect(result.content).toContain("404");
+      } finally {
+        await notFound.close();
+      }
+    } finally {
+      await http.close();
+    }
+  });
+
+  it("未提供 networkGuard 时 webfetch 不注册（fail-closed：无守卫无网络工具）", () => {
+    const registry = new ToolRegistry();
+    registerBuiltinTools(registry);
+    expect(registry.has("webfetch")).toBe(false);
+    const withGuard = new ToolRegistry();
+    registerBuiltinTools(withGuard, {
+      networkGuard: createNetworkGuard({ policy: "deny" }),
+    });
+    expect(withGuard.has("webfetch")).toBe(true);
+  });
+});

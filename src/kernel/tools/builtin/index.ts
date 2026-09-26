@@ -19,8 +19,10 @@ import { createReadTool } from "./read.js";
 import { createSkillLoadTool } from "./skill.js";
 import { createTodoWriteTool } from "./todo.js";
 import { createToolLoadTool } from "./tool-load.js";
+import { createWebfetchTool } from "./webfetch.js";
 import { createWriteTool } from "./write.js";
 import type { PlanModeService } from "../../plan-mode.js";
+import type { NetworkGuard } from "../../../sandbox/network.js";
 
 /** 内置工具名清单（C45 linter 的 unknown-tool 判定缺省面；与
  * registerBuiltinTools 的注册清单同步维护，新增工具两处都加）。
@@ -37,6 +39,7 @@ export const BUILTIN_TOOL_NAMES = [
   "plan_enter",
   "plan_exit",
   "tool_load",
+  "webfetch",
 ] as const;
 
 export function registerBuiltinTools(
@@ -54,6 +57,11 @@ export function registerBuiltinTools(
     planMode?: PlanModeService;
     /** G4 计划落盘出口（装配注入，plan_exit 的 plan 参数生效面）。 */
     savePlanArtifact?: (plan: string) => { path: string };
+    /**
+     * B8a/T-P1-20 网络守卫（D3 唯一网络入口）：提供时注册 webfetch——
+     * 无守卫不注册（网络类工具不得直用全局 fetch，能力面绑定装配）。
+     */
+    networkGuard?: NetworkGuard;
   } = {},
 ): void {
   const guard = options.pathGuard ?? PathGuard.forWorkspace(process.cwd());
@@ -94,6 +102,11 @@ export function registerBuiltinTools(
     // F12/F14 检索柄（T-P1-17）：常驻清单且自身不可 deferrable——没有
     // deferrable 工具时调用它幂等无害（claude-official ToolSearch 常驻同款）
     createToolLoadTool({ registry }),
+    // B8a webfetch（T-P1-20）：networkGuard 提供时才注册（D3 唯一入口，
+    // 无守卫的网络工具是骗局）
+    ...(options.networkGuard !== undefined
+      ? [createWebfetchTool({ guard: options.networkGuard })]
+      : []),
   ]) {
     registry.registerTool(def);
   }

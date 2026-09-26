@@ -36,6 +36,7 @@ import { loadedRuleMatch, loadedRuleText, loadRules } from "../policy/rule-loade
 import { createRuleSetModule } from "../policy/rules.js";
 import { BUILTIN_TOOL_NAMES, registerBuiltinTools } from "./tools/builtin/index.js";
 import { ToolRegistry } from "./tools/registry.js";
+import { createNetworkGuard } from "../sandbox/network.js";
 import { createChildAssembly } from "./assembly.js";
 import { InMemoryEventStorage, SessionStore } from "../session/store.js";
 import {
@@ -214,22 +215,27 @@ describe("注册面与提示词独立文件（验收⑤）", () => {
     }
   });
 
-  it("planMode 提供时注册 plan_enter/plan_exit；缺省不注册（全配置 = BUILTIN_TOOL_NAMES 11）", () => {
+  it("planMode 提供时注册 plan_enter/plan_exit；缺省不注册（全配置 = BUILTIN_TOOL_NAMES 12）", () => {
     const withPlan = new ToolRegistry();
     registerBuiltinTools(withPlan, { planMode: createPlanModeService() });
     expect(withPlan.names()).toContain("plan_enter");
     expect(withPlan.names()).toContain("plan_exit");
     // todoEmit 未传时 todo_write 不注册（各能力面独立启用）
     expect(withPlan.names()).not.toContain("todo_write");
+    // networkGuard 未传时 webfetch 不注册（同款能力面绑定装配）
+    expect(withPlan.names()).not.toContain("webfetch");
     expect(withPlan.names()).toHaveLength(10);
 
     const full = new ToolRegistry();
     registerBuiltinTools(full, {
       todoEmit: () => undefined,
       planMode: createPlanModeService(),
+      // BUILTIN_TOOL_NAMES 是"可注册清单"（webfetch 随守卫条件注册）——
+      // 全集等价断言需带齐各能力面的装配件
+      networkGuard: createNetworkGuard({ policy: "deny" }),
     });
     expect(full.names()).toEqual([...BUILTIN_TOOL_NAMES]);
-    expect(BUILTIN_TOOL_NAMES).toHaveLength(11);
+    expect(BUILTIN_TOOL_NAMES).toHaveLength(12);
 
     const withoutPlan = new ToolRegistry();
     registerBuiltinTools(withoutPlan);

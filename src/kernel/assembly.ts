@@ -44,6 +44,7 @@ import {
 import { type HookRegistry } from "./hooks.js";
 import type { SessionEvent, LlmFailure } from "./events.js";
 import type { PrefixChange } from "../context/prefix-anchor.js";
+import { createNetworkGuard } from "../sandbox/network.js";
 import type { SessionStore } from "../session/store.js";
 import { RevertService } from "../session/revert.js";
 import {
@@ -268,6 +269,12 @@ export interface ChildAssemblyOptions {
     provider: import("../models/provider.js").ModelProvider;
     identity: ModelIdentity;
   };
+  /**
+   * B8a/T-P1-20 网络档（D3）：提供时装配创建 NetworkGuard（工具层唯一
+   * 网络入口）并注册 webfetch 工具；缺省 undefined = 无网络工具（P0
+   * 装配零变化，fail-closed——没配网络档就没有网络能力）。
+   */
+  networkPolicy?: import("../sandbox/network.js").NetworkPolicy;
   /** 压缩 pre/post hook 透传（测试观测用）。 */
   compactionPreHook?: (
     invocation: CompactionInvocation,
@@ -285,6 +292,11 @@ export interface ChildAssembly {
   beforeFirstModelRequest(turn: number): Promise<void>;
   /** step 收尾记账（loop 的 onToolStepCompleted hook → 抖动断路器）。 */
   onToolStepCompleted(turn: number, step: number): void;
+  /**
+   * B8a/T-P1-20 网络守卫（D3 唯一网络入口；networkPolicy 装配选项提供时
+   * 存在）——agent-process 传给 registerBuiltinTools 注册 webfetch。
+   */
+  networkGuard?: import("../sandbox/network.js").NetworkGuard;
   /**
    * F6/F13/T-P1-19 缓存锚变化观测（loop 的 onCacheAnchorChange hook）：
    * rewritten = 前缀作废（换模 + rewritten 即违背 F13）落 warn；
@@ -711,6 +723,13 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
         });
       }
     },
+    // B8a/T-P1-20：networkPolicy 提供时创建守卫（工具层唯一网络入口）；
+    // 缺省 undefined = 无网络工具（P0 装配零变化）
+    ...(options.networkPolicy !== undefined
+      ? {
+          networkGuard: createNetworkGuard({ policy: options.networkPolicy }),
+        }
+      : {}),
     beforeFirstModelRequest: async (turn) => {
       completedModelSteps = 0;
       // G3 goal 提醒注入（T-P1-12，同 PreTurn 压缩位）：到期判定 + 配置

@@ -179,6 +179,9 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
             ...(assembly.savePlanArtifact
               ? { savePlanArtifact: assembly.savePlanArtifact }
               : {}),
+            // B8a/T-P1-20：networkPolicy 装配选项提供时注册 webfetch
+            //（D3 唯一入口随守卫注入，无守卫不注册）
+            ...(assembly.networkGuard ? { networkGuard: assembly.networkGuard } : {}),
           }
         : {}),
     },
