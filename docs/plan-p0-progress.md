@@ -859,16 +859,15 @@ checkpointRepoRoot 先例），"重启不重放"按 Q5 对账口径。不要问�
 - **下一批提示词**：
 
 ```
-继续 aegent P1 批次 3 的实施。批次 2 已全部完成（10/10 卡，655 passed），
-词汇表两案已追认转正（待澄清 #5/#6 案关，§3.2 正式计数 18 事件）。
-先与用户圈定批次 3 范围（候选：H1–H5 子代理族独立成批 · B8 的
-apply_patch/lsp · E5/E6 fork 与会话树 · Q2 会话查询）。展卡格式照
-docs/plan-p1.md，锚点逐一核对 oss/SOURCES.lock；执行协议沿用
-docs/plan-p0.md §0。上一批报告在 docs/plan-p0-progress.md（批次 2 报告）。
-本批特有的注意：1) H 族子代理会放大会话树与事件流（E5/E6/Q2 大概率同批），
-展卡前先读 20260926_P2研究_批次圈定建议.md 的依赖路线；2) 真实厂商三面
-复测结果见人工确认清单批次 2 行（多端点容错 J15 仍欠第二端点）。
-不要问要不要继续。
+继续 aegent P1 批次 3 的实施（沙箱 Windows 深化）。批次 3 尚未展卡：先按
+docs/20260926_P1剩余批次全量圈定研究.md 批次 3 条目（D5 D6 D7 D10 D11 D13
+D14 D16）逐条锚点核对 requirements.md §4，照 plan-p1.md 批次 2 展卡先例
+把卡序追加进 plan-p1.md，然后按 docs/plan-p0.md §0 协议执行。上一批报告
+在 docs/plan-p0-progress.md（批次 2 报告）。本批特有的注意：1) D6/D13/D16
+是 Rust 子进程件（T9：跨 TS↔Rust 一律子进程、只传可序列化值）；2) D11
+PowerShell 一等 shell 动 ExecutionEnv，注意 bash-retry-guard 等 bash 语义
+依赖面；3) D14 在疑似顺带覆盖清单（T-6-06/D15 相邻语义），展卡时先核对
+证据可提请关闭。全量基线 656 passed / 1 skipped。不要问要不要继续。
 ```
 
 ---
