@@ -11,6 +11,7 @@ import {
 } from "./loop.js";
 import { PromptQueue } from "./queue.js";
 import { MutationRetryBudget } from "./tools/mutation-budget.js";
+import { ToolRegistry, type ToolDef } from "./tools/registry.js";
 import { ScriptedProvider, makeLoop } from "./loop.test-utils.js";
 import { RwLock } from "./rw-lock.js";
 import type { PrefixChange } from "../context/prefix-anchor.js";
@@ -1152,6 +1153,89 @@ describe("mutation 重试预算（B13/T-P1-57）", () => {
     // 第二轮会累计到 4 次 → blocked
     expect(await loop.runTurn("第一轮")).toEqual({ kind: "completed" });
     expect(await loop.runTurn("第二轮")).toEqual({ kind: "completed" });
+  });
+});
+
+describe("工具声明元数据按 step 快照（B16/T-P1-59）", () => {
+  it("step 进行中替换 timeoutMs 声明：在途 step 用旧值，下一 step 用新值", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([
+      { type: "text-delta", text: "一" },
+      { type: "tool-call-delta", id: "c1", name: "slowish", argsDelta: "{}" },
+      { type: "done" },
+    ]);
+    provider.mount([
+      { type: "text-delta", text: "二" },
+      { type: "tool-call-delta", id: "c2", name: "slowish", argsDelta: "{}" },
+      { type: "done" },
+    ]);
+    provider.mount([{ type: "text-delta", text: "结束" }, { type: "done" }]);
+    // 真 registry：工具声明 timeoutMs=5000（宽）；执行体内替换为 50（紧）
+    const registry = new ToolRegistry();
+    let replaced = false;
+    registry.registerTool({
+      name: "slowish",
+      timeoutMs: 5000,
+      execute: async () => {
+        if (!replaced) {
+          replaced = true;
+          // 第一次执行中替换声明——本 step 已按快照（5000）武装，不受影响
+          registry.registerTool; // 保持引用面
+          (registry as unknown as { defs: Map<string, ToolDef> }).defs.set(
+            "slowish",
+            {
+              name: "slowish",
+              timeoutMs: 50,
+              execute: async () => {
+                await new Promise((r) => setTimeout(r, 150));
+                return { content: "slow v2" };
+              },
+            },
+          );
+        }
+        await new Promise((r) => setTimeout(r, 150));
+        return { content: "slow v1" };
+      },
+    });
+    const { loop, store } = makeLoop(provider, {
+      executeTool: (call) => registry.dispatch(call),
+      toolRuntimeMeta: (name) => registry.runtimeMeta(name),
+    });
+
+    // step1：快照 5000 → 150ms 工具正常完成（若误用新值 50 会在中途超时）
+    // step2：快照 50（替换后）→ 仍 150ms 的执行 → TOOL_TIMEOUT isError
+    expect(await loop.runTurn("逐步")).toEqual({ kind: "completed" });
+    const results = store
+      .load("s1")
+      .filter((e) => e.type === "tool/result")
+      .map((e) => e as { error?: { code: string }; message: { content: string } });
+    expect(results).toHaveLength(2);
+    expect(results[0]!.error).toBeUndefined();
+    expect(results[0]!.message.content).toBe("slow v1");
+    expect(results[1]!.error?.code).toBe("TOOL_TIMEOUT");
+  });
+
+  it("parallel 判定来自 step 快照：runParallelTools 不再逐调用现查 isParallelTool", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([
+      { type: "text-delta", text: "一" },
+      { type: "tool-call-delta", id: "c1", name: "ro", argsDelta: "{}" },
+      { type: "tool-call-delta", id: "c2", name: "ro", argsDelta: "{}" },
+      { type: "done" },
+    ]);
+    provider.mount([{ type: "text-delta", text: "结束" }, { type: "done" }]);
+    const isParallelCalls: string[] = [];
+    const { loop } = makeLoop(provider, {
+      toolExecution: "parallel",
+      isParallelTool: (name) => {
+        isParallelCalls.push(name);
+        return true;
+      },
+      executeTool: async (call) => ({ content: `ran ${call.callId}` }),
+    });
+    await loop.runTurn("并行");
+    // 快照查询发生在 step 开始（每名恰一次）；并行执行期的判定走快照
+    expect(isParallelCalls).toEqual(["ro"]);
   });
 });
 

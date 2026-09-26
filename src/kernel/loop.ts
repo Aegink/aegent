@@ -109,6 +109,12 @@ export interface ToolCallPayload {
    * 消费（task 用它联动子循环取消）；经 registry 转进 ToolContext.signal。
    */
   signal?: AbortSignal;
+  /**
+   * B16/T-P1-59：本 step 的执行策略快照（step 开始时固化的 parallel 声明
+   * 与 M6 超时预算）——经链透传到 registry.dispatch，提供时 timeoutMs 以
+   * 快照为准（在途 step 用 advertise 它们的那一步的声明）。
+   */
+  runtimeMeta?: { parallel?: boolean; timeoutMs?: number };
 }
 
 /** toolCall 点位的产物（形状 = ToolResultEvent 的消息侧载荷）。 */
@@ -295,6 +301,12 @@ export interface AgentLoopDeps {
    */
   maxStepsPerTurn?: number;
   /**
+   * B16/T-P1-59：工具执行策略快照源（装配注入 registry.runtimeMeta 同名
+   * 包装）——loop 在 step 开始按广告清单固化声明。缺省 undefined = parallel
+   * 判定落回 isParallelTool 现查、timeoutMs 用 def 现值（零行为变化）。
+   */
+  toolRuntimeMeta?: (name: string) => { parallel: boolean; timeoutMs: number | undefined } | undefined;
+  /**
    * B13/T-P1-57 mutation 重试预算（prompt × path 双作用域）：edit/apply_patch
    * 失败结果（meta.mutationPaths）按当前 promptId 上报记账，同一路径第 3 次
    * 计数失败 → 本 step 收尾 turn/end{blocked}（显式护栏终止）。缺省 undefined
@@ -429,6 +441,9 @@ export class AgentLoop {
 
   /** B13/T-P1-57：本 step 内 mutation 预算耗尽的命中记录（收尾统一检查）。 */
   private mutationTerminate: { path: string; errorCode: string } | null = null;
+
+  /** B16/T-P1-59：当前 step 的工具执行策略快照（runStep 开始时固化）。 */
+  private stepToolMeta = new Map<string, { parallel: boolean; timeoutMs?: number }>();
 
   private nextPromptId(): string {
     this.promptCounter += 1;
@@ -701,6 +716,20 @@ export class AgentLoop {
     // B14：每个 step 的工具分发循环一份预算（tick=派发、progress=执行完回环）
     const budget = new ParseBudget(this.deps.toolBudget ?? {});
     const parallel = this.deps.toolExecution === "parallel";
+    // B16/T-P1-59：本 step 的执行策略快照——模型响应里广告的工具在 step
+    // 开始时固化声明（parallel 判定 + M6 超时预算），step 进行中 registry
+    // 动态注册/替换不影响在途 step（codex "retain the step whose tool list
+    // advertised them" 同构）。
+    const toolMeta = new Map<string, { parallel: boolean; timeoutMs?: number }>();
+    for (const call of output.toolCalls) {
+      if (toolMeta.has(call.name)) continue;
+      const meta = this.deps.toolRuntimeMeta?.(call.name);
+      toolMeta.set(call.name, {
+        parallel: meta !== undefined ? meta.parallel : this.deps.isParallelTool?.(call.name) === true,
+        ...(meta?.timeoutMs !== undefined ? { timeoutMs: meta.timeoutMs } : {}),
+      });
+    }
+    this.stepToolMeta = toolMeta;
     // preflight（取消/预算检查 + tool/call 落流）两种模式共用，顺序执行；
     // sequential 在此内联执行到底（P0 原路径，逐字节行为不变），
     // parallel 收集派发批、循环结束后并发执行（pi "preflight … then execute
@@ -845,6 +874,10 @@ export class AgentLoop {
         ...(this.cancelController
           ? { signal: this.cancelController.signal }
           : {}),
+        // B16/T-P1-59：本 step 的执行策略快照（超时预算在途 step 固化）
+        ...(this.stepToolMeta.has(call.name)
+          ? { runtimeMeta: this.stepToolMeta.get(call.name) }
+          : {}),
       });
       // B13/T-P1-57：mutation 工具的成败上报预算（结果 meta.mutationPaths
       // 是工具声明的目标路径——isError 计账、成功清历史）。
@@ -911,7 +944,8 @@ export class AgentLoop {
     const byCallId = new Map<string, ToolExecutionResult>();
     await Promise.all(
       calls.map(async (call) => {
-        const release = await (this.deps.isParallelTool?.(call.name) === true
+        // B16/T-P1-59：并行判定用 step 快照（step 中途声明替换不影响在途 step）
+        const release = await (this.stepToolMeta.get(call.name)?.parallel === true
           ? this.toolLock.read()
           : this.toolLock.write());
         try {

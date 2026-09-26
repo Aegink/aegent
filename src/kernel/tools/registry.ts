@@ -110,6 +110,13 @@ export interface ToolDispatchCall {
    * 工具拿得到。缺省 undefined = 该调用无取消信号（工具自行决定是否消费）。
    */
   signal?: AbortSignal;
+  /**
+   * B16/T-P1-59：本 step 的执行策略快照（loop 从 step 开始时的声明固化）。
+   * 提供时 timeoutMs 以快照为准（在途 step 用 advertise 它们的那一步的
+   * 声明，中途 registerTool 替换不影响）；缺省 undefined = 按 def 现值
+   * （零行为变化）。
+   */
+  runtimeMeta?: { parallel?: boolean; timeoutMs?: number };
 }
 
 export class ToolRegistry {
@@ -179,6 +186,18 @@ export class ToolRegistry {
    */
   isParallelDeclared(name: string): boolean {
     return this.defs.get(name)?.parallel === true;
+  }
+
+  /**
+   * B16/T-P1-59：工具执行策略快照（parallel 声明 + M6 超时预算）。loop 在
+   * step 开始时按广告清单逐名取值固化——"工具调用可能晚跑，用 advertise
+   * 它们的那一步的声明"（codex parallel.rs step_context 快照同构）；step
+   * 进行中 registerTool 替换声明不影响在途 step。
+   */
+  runtimeMeta(name: string): { parallel: boolean; timeoutMs: number | undefined } | undefined {
+    const def = this.defs.get(name);
+    if (def === undefined) return undefined;
+    return { parallel: def.parallel === true, timeoutMs: def.timeoutMs };
   }
 
   /**
@@ -298,16 +317,18 @@ export class ToolRegistry {
     // 结果（code=TOOL_TIMEOUT，dsh toolTimeoutResult 同构：模型看到的是
     // 可路由的错误码而非静默失败）。内层工具 promise 不被抛弃（withTimeout
     // 纪律），迟到结算被丢弃且零 unhandled rejection；code 判据保持 J22
-    // 作用域纪律——内层自有码的超时不在此误捕。
+    // 作用域纪律——内层自有码的超时不在此误捕。B16：call.runtimeMeta 是
+    // step 开始时的快照——提供时优先于 def 现值。
+    const effectiveTimeoutMs = call.runtimeMeta?.timeoutMs ?? def.timeoutMs;
     const raw =
-      def.timeoutMs !== undefined
-        ? withTimeout(TOOL_TIMEOUT, def.timeoutMs, Promise.resolve(def.execute(args, ctx)))
+      effectiveTimeoutMs !== undefined
+        ? withTimeout(TOOL_TIMEOUT, effectiveTimeoutMs, Promise.resolve(def.execute(args, ctx)))
         : def.execute(args, ctx);
     let executed: ToolExecution;
     try {
       executed = await raw;
     } catch (e) {
-      if (def.timeoutMs !== undefined && e instanceof TimeoutError && e.code === TOOL_TIMEOUT) {
+      if (effectiveTimeoutMs !== undefined && e instanceof TimeoutError && e.code === TOOL_TIMEOUT) {
         executed = {
           content: `工具执行在 ${String(e.timeoutMs)}ms 内未完成，已被终止`,
           isError: true,

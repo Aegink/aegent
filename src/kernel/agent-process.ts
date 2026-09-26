@@ -301,6 +301,9 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
           isParallelTool: (name: string) => toolRegistry.isParallelDeclared(name),
         }
       : {}),
+    // B16/T-P1-59：执行策略快照源（loop 在 step 开始固化 parallel/timeoutMs
+    // 声明——step 中途 registerTool 替换不影响在途 step）
+    toolRuntimeMeta: (name: string) => toolRegistry.runtimeMeta(name),
     ...(assembly
       ? {
           layers: assembly.layers,
