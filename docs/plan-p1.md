@@ -1,6 +1,6 @@
 # P1 实施计划 · 批次 1
 
-**状态**：v1.4.1 · 批次 1+2+3+4 收官（13/13 卡 + 10/10 卡 + 6/6 卡 + 10/10 卡，2026-09-26；词汇表 18 事件零扩展延续；批次 4 = 测试与诊断基建——O12–O26 全关，O17/O20 核对结论已追认关闭）· 批次 5 候选占位（子代理与 fork 大件，E5 + H1–H5）
+**状态**：v1.5 · 批次 1+2+3+4 收官（13/13 卡 + 10/10 卡 + 6/6 卡 + 10/10 卡，2026-09-26；词汇表 18 事件零扩展延续；批次 4 = 测试与诊断基建——O12–O26 全关，O17/O20 核对结论已追认关闭）· 批次 5 已展卡（子代理与 fork 大件，E5 + H1–H5 → 6 卡：T-P1-40 ~ 45）
 **执行协议**：沿用 [`plan-p0.md`](plan-p0.md) §0（取卡 / 做卡 / 验收 / 打勾 / 提交 / 自动继续 / 四种停下情况），本文件不复制。执行进度追加在 [`plan-p0-progress.md`](plan-p0-progress.md)（台账 / 待澄清 / 人工确认清单共用一个文件）。
 **需求来源**：[`requirements.md`](requirements.md) §4 的 P1 项（共 158 条）。P1 不切阶段（§1 尾注），按**批次**组织：本文件当前只含批次 1，后续批次轮到时再展卡追加。
 **批次 1 范围**（用户圈定于 2026-09-25，四组全选，共 26 条）：
@@ -565,3 +565,94 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - O17 核对结论：EventStorage 接口 + InMemory/Sqlite(:memory:) 双实现 P0 已落、单测全走内存或 mkdtemp 夹具——已覆盖，✅ 用户追认关闭（2026-09-26）。
 - 本批交付面：不变量检查服务（O12）· mock 计数先行访问器（O13/O20）· 上下文/事件流双渲染器（O14/O24/O23）· 录制回放 provider + 六具名故障剧本 + mock:llm 独立入口（O15/O16，真实厂商回归基建——RecordingProvider 可 wrap 真实网关 provider 先录后测）· doctor 全域 + JSON 导出（O18）· 迁移断言基建（O19，批次 10 Q1 消费方）· 快照即规格 Scenario + compaction 四相位快照（O21/O22）· 进程全局隔离锁 + env RAII（O25）· 测试名规格收口（O26）。
 - 真机验证：`npm run doctor` 8 行报告 0 error / 3 warning / 5 ok；`npm run mock:llm` CLI 冒烟（ready 行 + 429/503 + 请求记录 JSONL）；`--json` 导出脱敏证伪通过。
+
+## 批次 5 卡序（6 张，2026-09-26 展卡，按依赖排序；6 条需求 ID：E5 + H1–H5）
+
+**锚点纪律**：6 条锚点已逐一打开核对（2026-09-26，证据见各卡「证据强度」）：pi `fork-policy.ts:8-37`（selectBranchFork——entryId 沿祖先链定位 + `position === "before" ? parentId : entryId` 定 destinationTip + "Fork entry … is not on source branch" 抛错）+ `session/types.ts:562-583`（ForkOptions：scope branch/tree + position `before|at`——**requirements 写 "before/after"，当前版本为 "before|at"，语义等价（切点是否包含选中条目），展卡记录注明**）；opencode `tool/task.ts` 全文 371 行（:24 id="task"、:106-117 深度限制沿 parentID 回溯计数 `subagent_depth ?? 1`、:119-129 task 自身过 `ctx.ask`、:139-172 deriveSubagentSessionPermission + `sessions.create({parentID})`、:200-225 runTask=ops.prompt 起子循环、:213-224 失败判定、:70-79 renderOutput `<task_result>/<task_error>`、:321-357 前台 raceFirst 等待 + abort 取消联动）；dsh `subagent` 包（README:59 one-shot "settle with a single result"、:67 "a crashed or misbehaving child cannot corrupt the parent's session"、:107 "on failure the provider rolls back every unpublished resource"、:150 结算通知 = user-role 消息 + closing message；run-settlement.ts:43-63 runOutcome stopReason 闭集 completed/aborted/error/max-tokens/refusal；child-agent.ts:50-59 resolveChildDepth、:246-253 captureDelegatedPolicyOverrides first-await 前同步捕获、:264-277 appendDelegatedPolicyOverrides source:'delegation' 落子流、:172-176 SUBAGENT_DELEGATION_CONTEXT "permission scope was fixed … cannot be widened from inside this session"）；opencode `agent/subagent-permissions.ts:14-27` 全文（deriveSubagentSessionPermission：父规则 filter `external_directory || deny` + 默认 deny todowrite/task）。**零内容勘误**；唯一漂移 = E5 的 position 词形（如上）。
+
+**两项展卡定形（研究文档 §三批次 5 要点指令）**：
+1. **H1 定形：子代理 = 进程内隔离 + 独立子会话**（opencode 同款）——task 工具在同内核进程内起子循环（AgentLoop 递归构造），子会话是同一 SessionStore 下的新 sessionId（独立事件流），不是独立 OS 进程。理由：①H6 五种后端（ACP/CC/Codex/DSH-SDK/进程外 fork）是 P2，进程外形态届时以可插后端接入；②我方 loop/store/policy 链全是进程内对象，"内核起子循环"的最短路径就是进程内；③H4 隔离语义由"独立 sessionId + 独立事件流"结构保证（父会话投影只读父流），H2"父会话读不到半成品"同构成立。
+2. **H4 定形：子代理 = 独立新会话，E5 fork 是独立的会话分支功能**——两者不混。opencode 的 task 就是 `sessions.create({parentID})` 全新会话（prompt 即任务描述，不继承父对话历史）；pi 的 fork 是"从现有流切点分出新会话"（用户级分支操作）。E5 落 session/fork 机制（数据面 + 元事件 + 协议面），H4 落 task 工具的子会话创建面。
+
+**词汇表高影响预判（每处走待澄清立案管线）**：①**E5 预判扩 1 个会话级元事件 `session/fork {parentSessionId, position, cutSeq}`**（落子流头部；log-only 不进模型历史——dsh descriptor "The descriptor is log-only — a session event absent from model history" 同构先例；session/revert/model/switch/todo/goal 会话级元事件族同款）——18→19 走立案；②**task 派发/结算预判零扩展**：前台 task 模式下 tool/call + tool/result 天然承载派发与结算（结算通知 = tool result 内容，opencode 前台同款），lineage（子 sessionId）放 result.meta——执行中若后台模式或独立结算事实需要新事件，再立案；③H3 的"delegation 事实落子流"优先以"降级规则装配参数 + 系统提示段"重建（零扩展），不够再立案。
+
+**本批特有约束**：
+1. **H5 的 external_directory 维度在我方无对应物**：C 族无此条目（grep 证伪），我方工作区外访问由 PathGuard（批次 3 sandbox）结构性拒——降级算法落"只继承 deny"，external_directory 维度以注释记档说明（不发明对应物，YAGNI）。
+2. **H3/H5 分工**：H5 是算法（规则层纯函数，T-P1-41），H3 是面（策略链装配 + 审批 auto-deny + 模型面声明，T-P1-44）；降级绝不继承授权（allow/ask 全不传），审批在子代理内确定性拒绝（DenyPermissionBroker 在位可复用，broker.ts:41）。
+3. **子代理默认禁用 task（不可再分）与 todowrite**：不注册（结构性）+ 显式 deny（fail-closed 双保险，H5 验收原文）。
+4. **前台 task only**：后台模式（opencode background=true / dsh continuable）不做——需要独立词汇与注入面，P1 边界外；task_id resume 语义不做（P2 continuable 面）。
+5. **O15 录制回放反哺**：子代理的模型调用走同一 provider 接口——RecordingProvider 可包子代理请求面（真实厂商回归先录后测），批次终验人工确认清单核对。
+
+#### T-P1-40 · E5 · fork 分支会话（切点复制 + session/fork 元事件 + 协议面） `[ ]`
+- **依据需求**：E5（P1：fork（分支），`position: before/after` 定切点）
+- **上游首选参考**：[pi·fork-policy.ts:8-37](../oss/pi/packages/agent/src/harness/session/fork-policy.ts#L8)（selectBranchFork：entryId 缺省 tip、沿 getParent 祖先链回溯定位、`destinationTip = position === "before" ? parentId : entryId`、不在分支上抛错）；[pi·session/types.ts:562-583](../oss/pi/packages/agent/src/harness/session/types.ts#L562)（ForkOptions：position `"before"|"at"`——before=不含选中条目、at=含；**requirements 的 "before/after" 语义等价，我方采用 before/after 词形贴 requirements**）
+- **取什么 / 别抄什么**：取"切点由 position 显式给出、非法切点即抛错"与"fork 产物是完整独立会话（历史复制、运行状态新鲜）"的边界；不抄 pi 的 AgentLane/Branch/Lane 多轨结构与 tree scope（E6 是 P2，"同一套抽象不写两套"的抽象面等 E6 展卡时再核）
+- **证据强度**：`读了代码`（fork-policy.ts 全文 67 行 + types.ts:562-583；我方 store.ts/revert.ts/project.ts 现状——session/revert 是同会话有效视窗收缩，fork 是新会话分支，语义不混）
+- **要产出**：①`SessionStore.fork(sourceId, {position, atSeq?})`：复制已完结事件到新 sessionId（seq 从 1 重编号），position `"before"`=切点前缀（不含 atSeq）、`"after"`=含 atSeq，缺省 atSeq=最新；②词汇表扩展 **`session/fork {parentSessionId, position, cutSeq}` 会话级元事件**（落子流头部，log-only 不进模型历史——走待澄清立案 18→19）；③fork 前置检查：父会话存在未闭合 turn → 拒绝（fail-closed——只从 idle 会话分叉，Q5 对账口径）；atSeq 越界/非正 → 类型化错误；④协议 + owner-port 命令 `session/fork`（CLI 面最小接入）；⑤单测
+- **验收**：`npx vitest run src/session/store.test.ts src/session/fork.test.ts`（扩/新）——①fork 后新会话事件与父流前缀逐字节等价（seq 重编号）且投影一致（消息面）；②before/after 切点语义正确（before=atSeq 前缀、after=含 atSeq）；③原会话零影响（事件数与投影不变）；④session/fork 落子流头部、restore 后 lineage 可查（重启等价）；⑤未闭合 turn 拒绝 + atSeq 非法类型化错误；⑥新会话可独立继续对话（append/投影正常）
+- **依赖**：无（批次 5 首卡）
+- **风险 / 未知**：切点粒度按 seq（pi 的 entry 同粒度最直接）——turn 级切点由协议参数换算（UI 层职责）；checkpoint 事件的 ref 在 fork 后语义（文件可共享只读、git stash 归父会话）卡内定形记档
+- **偏离 / 建议**：①fork 只复制已完结历史——运行时派生态（model-switch captured、goal 提醒注入点、plan 模式态）由子流重建（goalFromEvents/planModeFromEvents 既有机制零额外代码）；②词汇表 18→19 立案供追认；③`project.ts` 的 validation 对 session/fork 豁免（会话级元事件、不进消息投影）+ O7 断言器豁免面同步（event-asserts 三断言器先例）
+
+#### T-P1-41 · H5 · 权限降级算法（只继承 deny，绝不继承授权） `[ ]`
+- **依据需求**：H5（P1："权限降级算法：只继承 deny 与 external_directory，不继承授权"）
+- **上游首选参考**：[opencode·subagent-permissions.ts:14-27](../oss/opencode/packages/opencode/src/agent/subagent-permissions.ts#L14)（deriveSubagentSessionPermission：父规则 filter `permission === "external_directory" || action === "deny"` + 子代理自身规则未显式允许时补默认 deny todowrite/task——降级 = 过滤 + 默认 deny 两段）
+- **取什么 / 别抄什么**：取"降级 = 过滤 + 默认 deny"两段结构与"默认禁用可被显式放开"的参数面；**external_directory 是 opencode 特有规则类别**，我方工作区外访问由 PathGuard 结构性拒——该维度注释记档不发明对应物；不抄 PermissionV1.Ruleset 形状（我方 RuleSource/编译规则集已在）
+- **证据强度**：`读了代码`（subagent-permissions.ts 全文 27 行；我方 rules.ts/rule-loader.ts/gate.ts 规则动作闭集 allow/ask/deny 现状）
+- **要产出**：`src/policy/subagent-rules.ts`——`deriveSubagentRules(parentRules, opts?)` 纯函数：①只保留 deny 动作规则（allow/ask 全部丢弃 = 不继承授权）；②默认禁用清单 task/todowrite 追加显式 deny（opts 未显式放开时——opencode canTask/canTodo 同语义）；③返回值供子代理装配构造用户层规则集；单测
+- **验收**：`npx vitest run src/policy/subagent-rules.test.ts`——①父规则 allow/ask 不进子代理规则集、deny 全保留；②task/todowrite 默认 deny 在位；③显式放开可移除默认 deny 但 allow 仍不可恢复（"绝不继承授权"）；④空规则集 → 仅默认 deny；⑤产出规则形状经既有 gate 评估路径可执行（与 gate.test 规则形状一致）
+- **依赖**：无
+- **风险 / 未知**：我方规则是 bash(pattern)/tool(pattern) 行文本形状，与 opencode permission 类目不同构——降级按"动作"维度（deny 保留）而非"类别"维度，映射在卡内定形记档
+- **偏离 / 建议**：①"子代理自身规则集再授权"面 P1 不暴露（无 agent 类型注册表）——opts 预留默认全禁；②ask→deny 的审批面落 T-P1-44 策略链（本卡只做规则层算法）；③"默认禁用 task/todowrite"在 T-P1-42 的落法 = 不注册（结构性）+ 本卡显式 deny（fail-closed 双保险）
+
+#### T-P1-42 · H1+H4 · task 工具（进程内子代理 + 独立子会话 + 深度限制） `[ ]`
+- **依据需求**：H1（P1："子代理做成 task 工具——自动继承权限/审批/事件，无需新抽象"）· H4（P1："子代理隔离上下文"）——展卡定形见卡序头（进程内 + 独立子会话）
+- **上游首选参考**：[opencode·task.ts:106-117](../oss/opencode/packages/opencode/src/tool/task.ts#L106)（深度限制：沿 parentID 回溯计数，`depth >= (cfg.subagent_depth ?? 1)` 拒绝——默认不可再分）；[:139-172](../oss/opencode/packages/opencode/src/tool/task.ts#L139)（deriveSubagentSessionPermission + `sessions.create({parentID: ctx.sessionID, title, agent, permission})`）；[:200-225](../oss/opencode/packages/opencode/src/tool/task.ts#L200)（runTask = ops.prompt 起子循环——子代理就是一次普通 prompt 轮）；[:213-224](../oss/opencode/packages/opencode/src/tool/task.ts#L213)（失败判定：最后 assistant 带 error 或最后 tool part error）；[dsh·child-agent.ts:50-59](../oss/deepseek-harness/packages/subagent/subagent/src/child-agent.ts#L50)（resolveChildDepth：childDepth = parent+1，超 cap 抛 SubagentDepthError——"persisted parent header is the monotone floor"）
+- **取什么 / 别抄什么**：取"task 是普通工具（过注册表/权限链/出口），执行 = 内核起子循环跑独立子会话，prompt 即任务描述不继承父历史"的全链形状与"深度默认 1"；不抄 Effect/BackgroundJob/background 模式/task_id resume（P1 前台 only）；模型继承父会话当前捕获身份（dsh parentAgentOptionsForDelegation:69-86 同语义）
+- **证据强度**：`读了代码`（task.ts 全文 371 行 + child-agent.ts 深度面；我方 loop.ts 的 AgentLoop 构造面/assembly.ts 的 ChildAssembly/registry.ts 的 ToolDef 现状）
+- **要产出**：①`src/kernel/tools/builtin/task.ts`——task 工具（参数 description/prompt；subagent_type 收敛掉——我方无 agent 注册表，P2 H6 后端选择面再开）；②子装配工厂（复用 createChildAssembly 骨架：降级规则（T-P1-41）+ DenyPermissionBroker + 不注册 task/todowrite/question + 新 sessionId + 同 store 同 provider 同 workspaceRoot）；③深度记账（父深度+1，默认 cap 1 = 子代理不可再调 task）；④BUILTIN_TOOL_NAMES 扩 task；⑤单测
+- **验收**：`npx vitest run src/kernel/tools/builtin/task.test.ts`——①task 调用产出独立子会话（新 sessionId；父会话流不含子代理任何中间事件——H4 结构断言）；②子代理 final 输出以 tool/result 落父流；③深度限制：子代理上下文中 task 类型化拒绝（默认深度 1）；④子代理工具面继承（read/bash 可用）且无 task/todowrite/question；⑤task 自身过权限链（默认 ask）
+- **依赖**：T-P1-41（降级算法）
+- **风险 / 未知**：子循环 loop deps 构造面——AgentLoop 需要 store/layers/registry 全套，子装配工厂是"递归装配"首例；registry/WriteQueue/PathGuard 实例共享 vs 独立在卡内定形（写队列共享 = 同进程写互斥是正确语义，B4 写队列纪律延伸）
+- **偏离 / 建议**：①"自动继承权限/审批/事件，无需新抽象"的我方落法：事件天然继承（同一 store 流协议），权限/审批**降级继承**（H3/H5——不是复制），"无需新抽象" = task 就是 ToolDef + 子装配是既有 createChildAssembly 的参数化变体；②子会话 sessionId 命名带父关联（`<parent>/task/<n>` 式或 uuid——卡内定形）；③系统提示 delegation 段落 T-P1-44（本卡最小面先通）
+
+#### T-P1-43 · H2 · 结算栅栏（原子并入 + 取消联动 + 失败结算） `[ ]`
+- **依据需求**：H2（P1："结算栅栏——子代理产出原子并入父会话，父会话读不到半成品"）
+- **上游首选参考**：[dsh·subagent README:59,67](../oss/deepseek-harness/packages/subagent/subagent/README.md)（"One-shot children run once and settle with a single result"；"Children are isolated: a crashed or misbehaving child cannot corrupt the parent's session"）；[dsh·run-settlement.ts:43-63](../oss/deepseek-harness/packages/subagent/subagent/src/run-settlement.ts#L43)（runOutcome：stopReason 闭集 completed/aborted/error/max-tokens/refusal → completed/killed/failed；"local cancellation (aborted without a diagnostic) is killed"；"Result and disposal failures become failed; when both fail, both details survive"）；[opencode·task.ts:340](../oss/opencode/packages/opencode/src/tool/task.ts#L340)（取消结算 "Task cancelled"）
+- **取什么 / 别抄什么**：取"结算 = 子活动终结后产出一次性并入；失败/取消是类型化结算不是悬挂；父子隔离崩溃不传染"；原子性我方落法：子循环跑到终态才落 tool/result，父会话唯一可见面就是该 result；不抄 dsh 的 Jobs/Task 机制（我方工具结果通道即结算通道）
+- **证据强度**：`读了代码`（run-settlement.ts 全文 + README 关键段 + task.ts 结算面；我方 loop.ts runStep 工具执行路径/loop.cancel.test 取消语义现状）
+- **要产出**：task 执行路径结算语义四件：①成功 = 子循环正常终态 → final 文本落 tool/result（meta 含子 sessionId 与 stopReason:"completed"）；②失败 = 子循环 LlmFailure/工具致命错 → isError result + 失败详情（stopReason 同构词汇）；③取消联动 = 父 turn 取消 → 子 turn 取消（取消槽延伸）→ isError result "Task cancelled"；④结算前子流 flush 完成（E10 纪律——结算指向的子流事实已落库）；单测
+- **验收**：`npx vitest run src/kernel/tools/builtin/task.test.ts`（扩）——①成功：子流含终态 + 父流 tool/result 文本 = final 输出 + meta.lineage；②失败：子模型调用失败 → 父流 isError result（不悬挂不炸父 turn）；③取消：父 turn 中途取消 → 子 turn 中断终态 + 父流 result isError；④半成品证伪：子代理多 step 中间事件零出现在父会话投影；⑤结算前子流已 flush（storage 断言）
+- **依赖**：T-P1-42
+- **风险 / 未知**：取消联动通道——task 工具执行处于父 step"已派发照完成"保护下（T-3-04），子循环要能被父取消中断：AbortSignal 或共享取消槽延伸，卡内定形
+- **偏离 / 建议**：①结算词汇（completed/failed/cancelled）放 result.meta.stopReason——tool result 是结算通道，词汇表预判零扩展兑现；②task 在 parallel 声明缺省 false（排他）——原子并入的并发面由排他语义保证；③父会话预算轴（B14）对子循环消耗的记账口径在 T-P1-45 收口盘点
+
+#### T-P1-44 · H3 · 子代理权限面收口（审批确定性拒绝 + delegation 声明 + 端到端） `[ ]`
+- **依据需求**：H3（P1："权限降级——子代理不得拥有高于父会话的权限"）
+- **上游首选参考**：[dsh·child-agent.ts:246-253](../oss/deepseek-harness/packages/subagent/subagent/src/child-agent.ts#L246)（captureDelegatedPolicyOverrides：**first await 前同步捕获**——"a later parent switch belongs to the parent's future, not to this child"；approvalPolicy 钉死 'never'——"a delegated child acts only within the sandbox scope fixed at delegation, so its asks are rejected deterministically"）；[:264-277](../oss/deepseek-harness/packages/subagent/subagent/src/child-agent.ts#L264)（appendDelegatedPolicyOverrides：source:'delegation' 事件落子流——"the child's effective policy is reconstructable from its log alone"）；[:172-176](../oss/deepseek-harness/packages/subagent/subagent/src/child-agent.ts#L172)（SUBAGENT_DELEGATION_CONTEXT："your permission scope was fixed when you were started and cannot be widened from inside this session — operations that require approval are rejected automatically. … state the limitation in your reply"）
+- **取什么 / 别抄什么**：取三纪律：①审批在子代理内确定性拒绝（approvalPolicy 'never' 同构）；②子代理有效策略可从子流/装配参数重建；③模型面显式声明降级范围（delegation 声明进子代理系统提示，文案同构中文化）；不抄 dsh 的 Cordis scope/permissionPresets/Auto 审查分级（P2 C42 判官域）
+- **证据强度**：`读了代码`（child-agent.ts:172-277 原文；我方 broker.ts DenyPermissionBroker:41/assembly.ts/system-prompt.ts 现状）
+- **要产出**：①子代理审批面定形（DenyPermissionBroker 复用或薄包装——code/reason 带子代理语义，类型化可自修）；②子代理系统提示 delegation 段（启用 task 装配时渲染）；③核心层出口复用核对（C46 硬拦/C57 重算/plan-guard 在子链同效——降级不是绕过出口）；④端到端：CLI 级 task 全链（父审批 task → 子循环 → 降级断言 → 结算回喂）；⑤单测
+- **验收**：`npx vitest run src/kernel/tools/builtin/task.test.ts src/cli/cli.test.ts`（扩）——①子代理 bash 默认 ask → 审批确定性拒绝、类型化错误回喂模型可自修（不悬挂）；②父会话显式 allow 的命令在子代理被拒（"不继承授权"端到端）；③delegation 声明进子代理首请求 system（可断言）；④C46 硬拦在子代理同效（.git 写拒绝）；⑤子代理有效策略可重建（装配参数/流内事实断言）
+- **依赖**：T-P1-42（子装配在位）· T-P1-41（算法）
+- **风险 / 未知**：task 工具自身的审批已由父链覆盖（opencode task.ts:119-129 ctx.ask(permission:"task") 同款——task 默认 ask）；子内 auto-deny 是第二道（纵深）
+- **偏离 / 建议**：①"delegation 事实落子流"优先以装配参数 + 系统提示重建（词汇表零扩展优先）；不够再立案；②captureDelegatedPolicyOverrides 的"first await 前同步捕获"纪律映射：子装配构造在 task 工具执行体内同步完成（降级规则快照取自构造时点的父规则集——父规则后续变化不影响已在跑的子代理）
+
+#### T-P1-45 · 收口 · 子代理/fork 与既有机制冲突面盘点 + 观测面 `[ ]`
+- **依据需求**：批次 5 收口（研究文档"允许裂为 7-8 卡"余量的落点；无独立需求 ID——照批次 4 T-P1-39 收口盘点先例）
+- **上游首选参考**：批次 4 T-P1-39 先例（收口盘点卡：逐面盘点 + 测试钉死或记档）；[dsh·subagent README Known Limitations](../oss/deepseek-harness/packages/subagent/subagent/README.md)（隔离边界清单的盘点同构）
+- **取什么 / 别抄什么**：盘点六面：①plan 模式下 task 可用性（plan 硬关是父会话状态——子代理全新会话无 plan 事实，不继承 plan 态；plan_guard 对 task 的类别判定核对）；②goal 在子会话（goal 装配选项是父的——子会话不继承 goal 注入；goalFromEvents 对子流空事实返回空）；③budget 轴（父 turn 预算是否含子循环消耗——卡内定形：子循环独立记账或父预算延伸，取结构简单者并测试钉死）；④checkpoint 联动（父 turn git checkpoint 与子代理文件写入时序——回退语义核对）；⑤doctor 扩展（子代理/fork 配置可见性一行）；⑥快照即规格消费（O21/O22 反哺：task 全链一条快照——Scenario 头行）
+- **证据强度**：`读了代码`（我方 plan-mode.ts/goal.ts/budget.ts/git-checkpoint.ts 与批次 5 新面交叉核对）
+- **要产出**：六面盘点结论（每面：现状/定形/测试或记档理由）+ doctor 小补 + 快照一条 + 全量回归
+- **验收**：`npx vitest run`（全量回归——含批次 5 全部新测试）+ 盘点清单入完成记录（六面各有结论）；发现真冲突 → 升级待澄清不硬落
+- **依赖**：T-P1-40 ~ 44 全部（本批最后一张）
+- **风险 / 未知**：面多但每面浅——"有冲突就测试钉死，无冲突就注释记档"
+- **偏离 / 建议**：①快照消费是 O21/O22 "扩展随批次自然发生"的预言兑现；②budget 面若发现与 B14 在位语义冲突，以"子循环消耗计入父 turn 预算"为默认（防失控优先）并记档
+
+## 批次 5 完成定义
+
+- 6 张卡全部打勾，每勾附「命令 + 结果摘要」；`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 0 失效、`license-audit.sh` 通过。
+- 两项展卡定形（H1 进程内 + H4 独立会话）落卡序头并照执行；E5 position 词形漂移（before/after vs before/at）落展卡记录。
+- 词汇表预判：session/fork 一处扩展（18→19）走待澄清立案；task 派发/结算与 delegation 预判零扩展——执行中每处新增事件必须先立案。
+- H3/H5 降级红线：子代理规则集只含 deny（+默认禁用清单），审批确定性拒绝，allow 零继承——每处有测试钉死。
+- 子代理/fork 与既有机制六面冲突盘点结论落批次报告（T-P1-45）。

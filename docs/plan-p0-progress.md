@@ -1016,3 +1016,8 @@ docs/plan-p0-progress.md（批次 4 报告）。本批特有的注意：1) H1 ta
 的第一张 [ ] 任务卡开始。上一阶段报告在 docs/plan-p0-progress.md。
 本阶段特有的注意：<1–3 条>。不要问要不要继续。
 ```
+
+## 批次 5 展卡记录（2026-09-26，执行会话自展）
+
+> 用户提示词指示：先按圈定研究批次 5 条目（E5 + H1–H5）逐条锚点核对 requirements.md §4，照 plan-p1 批次 4 展卡先例把卡序追加进 plan-p1.md，再按 plan-p0 §0 执行。**6 条锚点逐一开文件核实，零内容勘误**（pi fork-policy.ts:8-37 + session/types.ts:562-583、opencode tool/task.ts 全文 371 行、opencode agent/subagent-permissions.ts:14-27 全文、dsh subagent 包 README + run-settlement.ts + child-agent.ts；**唯一漂移 = E5 的 position 词形**：requirements 写 "before/after"、pi 当前版本为 `position?: "before" | "at"`——语义等价（切点是否包含选中条目：before=父级不含选中、at/after=含选中），我方采用 before/after 词形贴 requirements）。**两项展卡定形（研究文档 §三批次 5 要点指令）**：①**H1 = 进程内隔离 + 独立子会话**（opencode 同款——task 在同内核进程起子循环、子会话是同一 SessionStore 的新 sessionId；H6 五后端是 P2 再插进程外形态）；②**H4 = 独立新会话，E5 fork 是独立的会话分支功能**（opencode task 就是 sessions.create({parentID}) 全新会话不继承父历史；pi fork 是用户级分支操作——两者不混，E5 落数据面+元事件+协议面、H4 落 task 工具创建面）。**词汇表高影响预判**：session/fork 一处扩展（18→19）走立案；task 派发/结算与 delegation 预判零扩展（tool/call+result 承载结算、lineage 放 meta；delegation 以装配参数+系统提示重建）。**external_directory 维度**：C 族无此条目（grep 证伪），我方由 PathGuard 结构性覆盖——降级算法落"只继承 deny"，该维度注释记档不发明对应物。预估 6-7 卡实展 6 张（H1+H4 并卡、H2/H3 各一张、E5/H5 各一张、收口盘点一张）。
+
