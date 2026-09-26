@@ -15,6 +15,9 @@
  * （T-P1-13 计划落盘依赖此读取面）。
  */
 
+import { mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
 import type { SessionEvent } from "./events.js";
 
 export interface PlanModeService {
@@ -64,4 +67,51 @@ export function planModeFromEvents(events: readonly SessionEvent[]): boolean {
     }
   }
   return active;
+}
+
+/**
+ * 计划 artifact 落盘（G4，T-P1-13）——"计划是持久 artifact"（pi-desktop
+ * ADR 0053 纪律）：plan_exit 批准结算时把计划文本写入会话目录（plan.md）。
+ * 只写文件不落事件；checkpoint{provider:"plan"} 事件由装配闭包在落盘成功
+ * 后 append（路径进 ref，事件与文件一个事务方向：文件失败则不记 checkpoint，
+ * 绝不产生指向不存在文件的引用）。
+ *
+ * 与代码 checkpoint（E11）互不干扰的结构保证：artifact 是 untracked 新
+ * 文件——`git stash create` 不含 untracked（git-checkpoint.ts 头注释的
+ * pi 同款边界），/revert 的代码回退不动它。
+ */
+export function savePlanArtifact(
+  dir: string,
+  sessionId: string,
+  plan: string,
+): { path: string } {
+  const sessionDir = path.join(dir, sessionId);
+  mkdirSync(sessionDir, { recursive: true });
+  const filePath = path.join(sessionDir, "plan.md");
+  writeFileSync(filePath, plan, "utf8");
+  return { path: filePath };
+}
+
+/**
+ * 流内最新 plan checkpoint 的 artifact 路径（G4 重启恢复读取面：重启后
+ * 计划可见——按流找 ref.path 再读文件；"不续跑"由 Q5 启动对账闭合，
+ * 本函数只管"计划还在哪里"）。
+ */
+export function planArtifactFromEvents(
+  events: readonly SessionEvent[],
+): string | null {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i]!;
+    if (e.type !== "checkpoint" || e.provider !== "plan") continue;
+    const ref = e.ref;
+    if (
+      ref !== null &&
+      typeof ref === "object" &&
+      !Array.isArray(ref) &&
+      typeof (ref as { path?: unknown }).path === "string"
+    ) {
+      return (ref as { path: string }).path;
+    }
+  }
+  return null;
 }

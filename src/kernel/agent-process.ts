@@ -156,7 +156,11 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
             // I2 技能根 = 工作区根（skill_load 的扫描面）
             skillsRoot: options.assembly?.workspaceRoot ?? process.cwd(),
             // G1 plan 模式工具面（planMode 启用时装配提供同一服务实例）
+            // + G4 计划落盘出口（planArtifactDir 提供时存在）
             ...(assembly.planMode ? { planMode: assembly.planMode } : {}),
+            ...(assembly.savePlanArtifact
+              ? { savePlanArtifact: assembly.savePlanArtifact }
+              : {}),
           }
         : {}),
     },

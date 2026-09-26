@@ -5,7 +5,7 @@
  * 续跑（场景⑤的前半）。
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -150,6 +150,48 @@ describe("reconcileBootState（T-8-04 · Q5）", () => {
       .filter((e) => e.type === "turn/end")
       .map((e) => (e.type === "turn/end" ? e.reason.kind : ""));
     expect(reasons).toEqual(["interrupted", "completed"]);
+    storage2.db.close();
+  });
+
+  it("T-P1-13 G4：plan 会话崩溃重启——对账 interrupted、不自动重放，计划 artifact 仍可读", async () => {
+    const artifactDir = mkdtempSync(path.join(tmpdir(), "aegent-planart-"));
+    const artifactPath = path.join(artifactDir, "s0", "plan.md");
+    mkdirSync(path.dirname(artifactPath), { recursive: true });
+    writeFileSync(artifactPath, "# 批准的计划\n只读研究已完成", "utf8");
+
+    // "上一个进程"：plan 会话（checkpoint 记 artifact 路径）+ 崩溃孤儿 turn
+    const storage = SqliteEventStorage.open({ path: path.join(dir, "plan-events.db") });
+    const crashed = new SessionStore(storage);
+    crashed.append("s0", [
+      { type: "checkpoint", turn: 0, provider: "plan", ref: { path: artifactPath } },
+      { type: "turn/start", turn: 1 },
+      { type: "user/message", turn: 1, message: { content: "继续按计划实施" }, source: "user" },
+      { type: "step/start", turn: 1, step: 1 },
+    ]);
+    await crashed.flush("s0");
+    storage.db.close(); // 杀进程（实施中途崩溃）
+
+    // "新进程"：restore → 对账 → 计划可见、旧工作不重放
+    const storage2 = SqliteEventStorage.open({ path: path.join(dir, "plan-events.db") });
+    const store = new SessionStore(storage2);
+    await store.restore("s0");
+    const report = reconcileBootState(store, "s0");
+    expect(report.codes).toEqual([STEP_INTERRUPTED_CODE, TURN_INTERRUPTED_CODE]);
+    // 计划 artifact 按流找回且可读（G4：重启后计划仍在）
+    const events = store.load("s0");
+    const planCheckpoint = events.find(
+      (e): e is Extract<typeof e, { type: "checkpoint" }> =>
+        e.type === "checkpoint" && e.provider === "plan",
+    );
+    expect(planCheckpoint).toBeDefined();
+    const ref = planCheckpoint!.ref as { path: string };
+    expect(readFileSync(ref.path, "utf8")).toContain("只读研究已完成");
+    // 崩溃的执行轮按 Q5 闭合为 interrupted——不自动续跑，绝不重放旧 host 的工作
+    expect(
+      events.filter((e) => e.type === "turn/end").map((e) => (e as { reason: { kind: string } }).reason.kind),
+    ).toEqual(["interrupted"]);
+    // 流内 plan 模式事实（无 plan_enter/exit 工具调用 → 普通模式）不受崩溃影响
+    expect(events.filter((e) => e.type === "tool/call" && e.name === "plan_enter")).toHaveLength(0);
     storage2.db.close();
   });
 });

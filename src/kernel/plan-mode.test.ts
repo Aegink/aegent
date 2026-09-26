@@ -1,12 +1,20 @@
 /**
- * plan 模式测试（G1/G7，T-P1-11）——服务进出幂等 / 流重建（验收④：
+ * plan 模式测试（G1/G7/G4，T-P1-11/13）——服务进出幂等 / 流重建（验收④：
  * 进出动作落事件可投影——tool/call+result 即事实，不扩词汇表）/ 出口级
  * 硬关（验收①规则压不过、②读类不限、③退出恢复）/ gate 集成（激活时
- * bash 不进 broker 直接拒）/ 注册面与提示词独立文件（验收⑤零 .ts diff）。
- * CLI 级联测（审批进出 + 硬关端到端）在 cli.test.ts。
+ * bash 不进 broker 直接拒）/ 注册面与提示词独立文件（验收⑤零 .ts diff）/
+ * G4 计划 artifact（批准退出落盘 + 重启可读 + 与 E11 代码 checkpoint 互不
+ * 干扰）。CLI 级联测（审批进出 + 硬关端到端）在 cli.test.ts。
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -15,7 +23,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { NewSessionEvent, SessionEvent } from "./events.js";
 import {
   createPlanModeService,
+  planArtifactFromEvents,
   planModeFromEvents,
+  savePlanArtifact,
 } from "./plan-mode.js";
 import { enforcePlanMode } from "../policy/plan-guard.js";
 import { assemblePolicyChain, type PolicyCall } from "../policy/chain.js";
@@ -26,6 +36,12 @@ import { loadedRuleMatch, loadedRuleText, loadRules } from "../policy/rule-loade
 import { createRuleSetModule } from "../policy/rules.js";
 import { BUILTIN_TOOL_NAMES, registerBuiltinTools } from "./tools/builtin/index.js";
 import { ToolRegistry } from "./tools/registry.js";
+import { createChildAssembly } from "./assembly.js";
+import { InMemoryEventStorage, SessionStore } from "../session/store.js";
+import {
+  GitCheckpointService,
+  createGitRunner,
+} from "../session/git-checkpoint.js";
 
 const mk = (event: NewSessionEvent, seq: number): SessionEvent =>
   ({ ...event, seq, ts: 0 } as SessionEvent);
@@ -233,5 +249,122 @@ describe("注册面与提示词独立文件（验收⑤）", () => {
     // 改文件零 .ts diff：描述每次直读不缓存，重读即变
     writeFileSync(path.join(dir, "plan_enter.txt"), "B 版描述", "utf8");
     expect(registry.description("plan_enter")).toBe("B 版描述");
+  });
+});
+
+describe("G4 · 计划 artifact（T-P1-13）", () => {
+  const tmpRoots: string[] = [];
+  afterEach(() => {
+    for (const dir of tmpRoots.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  /** 带计划落盘能力的完整装配 + 手工工具注册表（生产接线的装配级等价）。 */
+  function makePlanHarness(store: SessionStore, artifactDir: string) {
+    const workspaceRoot = mkdtempSync(path.join(tmpdir(), "aegent-planart-"));
+    tmpRoots.push(workspaceRoot);
+    const assembly = createChildAssembly({
+      sessionId: "s-plan-art",
+      store,
+      workspaceRoot,
+      contextWindow: 200_000,
+      approvalTimeoutMs: 5_000,
+      planMode: true,
+      planArtifactDir: artifactDir,
+    });
+    const registry = new ToolRegistry();
+    registerBuiltinTools(registry, {
+      ...(assembly.planMode ? { planMode: assembly.planMode } : {}),
+      ...(assembly.savePlanArtifact ? { savePlanArtifact: assembly.savePlanArtifact } : {}),
+    });
+    return { assembly, registry };
+  }
+
+  it("验收①：plan_exit 批准提交计划 → artifact 落盘 + checkpoint 事件，重启后可读", async () => {
+    const store = new SessionStore();
+    const artifactDir = mkdtempSync(path.join(tmpdir(), "aegent-plan-dir-"));
+    tmpRoots.push(artifactDir);
+    const { registry } = makePlanHarness(store, artifactDir);
+    store.append("s-plan-art", [{ type: "turn/start", turn: 1 }]);
+    const result = await registry.dispatch({
+      callId: "c-exit",
+      name: "plan_exit",
+      arguments: JSON.stringify({ plan: "# 实施计划\n1. 落词汇表\n2. 收官" }),
+    });
+    expect(result.isError).toBeFalsy();
+    expect(result.content).toContain("计划已落盘");
+    // 流内 checkpoint{provider:"plan"} 记路径，重启后按流找回并读取
+    const artifactPath = planArtifactFromEvents(store.load("s-plan-art"));
+    expect(artifactPath).not.toBeNull();
+    expect(readFileSync(artifactPath!, "utf8")).toContain("2. 收官");
+    // 重启等价：同 store 新装配（流内 plan 模式事实已随 plan_exit 结算关闭）
+    expect(planModeFromEvents(store.load("s-plan-art"))).toBe(false);
+    expect(existsSync(artifactPath!)).toBe(true);
+  });
+
+  it("无 planArtifactDir：plan 参数不落盘（仅随工具结果可见），不记 plan checkpoint", async () => {
+    const store = new SessionStore();
+    const workspaceRoot = mkdtempSync(path.join(tmpdir(), "aegent-planart-"));
+    tmpRoots.push(workspaceRoot);
+    const assembly = createChildAssembly({
+      sessionId: "s-plan-noart",
+      store,
+      workspaceRoot,
+      contextWindow: 200_000,
+      approvalTimeoutMs: 5_000,
+      planMode: true,
+    });
+    const registry = new ToolRegistry();
+    registerBuiltinTools(registry, { planMode: assembly.planMode! });
+    store.append("s-plan-noart", [{ type: "turn/start", turn: 1 }]);
+    const result = await registry.dispatch({
+      callId: "c-exit",
+      name: "plan_exit",
+      arguments: JSON.stringify({ plan: "只存在于会话流的计划" }),
+    });
+    expect(result.content).toContain("计划未落盘");
+    expect(planArtifactFromEvents(store.load("s-plan-noart"))).toBeNull();
+  });
+
+  it("验收③：计划 artifact 与代码 checkpoint（E11）互不干扰——/revert 代码回退不动 artifact", async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), "aegent-plan-git-"));
+    tmpRoots.push(repo);
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    writeFileSync(path.join(repo, "baseline.txt"), "改前", "utf8");
+    execFileSync("git", ["add", "-A"], { cwd: repo });
+    execFileSync(
+      "git",
+      ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init"],
+      { cwd: repo },
+    );
+    const artifactDir = mkdtempSync(path.join(tmpdir(), "aegent-plan-dir-"));
+    tmpRoots.push(artifactDir);
+    const store = new SessionStore();
+    const checkpoint = new GitCheckpointService({
+      sessionId: "s-plan-git",
+      store,
+      runGit: createGitRunner(repo),
+      onWarn: () => undefined,
+    });
+    // 轮开始前打点（E11）→ plan_exit 落 artifact（untracked 新文件）
+    await checkpoint.capture(1);
+    const written = savePlanArtifact(artifactDir, "s-plan-git", "重启后仍要可读的计划");
+    // 代码回退（/revert 的 E11 路径）：stash apply 只还原跟踪文件
+    await checkpoint.restoreCodeTo(store.load("s-plan-git")[0]!.seq);
+    // artifact 仍在且内容不变——两套 checkpoint 互不干扰
+    expect(readFileSync(written.path, "utf8")).toBe("重启后仍要可读的计划");
+  });
+
+  it("planArtifactFromEvents：无 plan checkpoint → null；provider 其他值不误读", () => {
+    const mk = (event: NewSessionEvent, seq: number): SessionEvent =>
+      ({ ...event, seq, ts: 0 } as SessionEvent);
+    const events = [
+      mk({ type: "checkpoint", turn: 1, provider: "git", ref: { commit: "abc" } }, 1),
+      mk({ type: "checkpoint", turn: 1, provider: "plan", ref: { path: "/p/plan.md" } }, 2),
+    ];
+    expect(planArtifactFromEvents(events)).toBe("/p/plan.md");
+    expect(planArtifactFromEvents([events[0]!])).toBeNull();
+    expect(planArtifactFromEvents([])).toBeNull();
   });
 });

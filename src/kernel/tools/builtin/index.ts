@@ -50,6 +50,8 @@ export function registerBuiltinTools(
     /** G1 plan 模式服务（装配注入）；缺省不注册 plan 工具——plan 硬关
      * 的出口联动只在 gate 在位的装配生效，单独的工具面是骗局。 */
     planMode?: PlanModeService;
+    /** G4 计划落盘出口（装配注入，plan_exit 的 plan 参数生效面）。 */
+    savePlanArtifact?: (plan: string) => { path: string };
   } = {},
 ): void {
   const guard = options.pathGuard ?? PathGuard.forWorkspace(process.cwd());
@@ -78,7 +80,13 @@ export function registerBuiltinTools(
     ...(options.planMode !== undefined
       ? [
           createPlanEnterTool({ planMode: options.planMode }),
-          createPlanExitTool({ planMode: options.planMode }),
+          // G4：savePlanArtifact 注入 plan_exit（缺省仅退出、plan 参数不落盘）
+          createPlanExitTool({
+            planMode: options.planMode,
+            ...(options.savePlanArtifact !== undefined
+              ? { savePlanArtifact: options.savePlanArtifact }
+              : {}),
+          }),
         ]
       : []),
   ]) {

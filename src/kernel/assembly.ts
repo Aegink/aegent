@@ -97,7 +97,7 @@ import {
   type RegisteredModel,
   type TurnModel,
 } from "./model-switch.js";
-import { createPlanModeService, type PlanModeService } from "./plan-mode.js";
+import { createPlanModeService, savePlanArtifact, type PlanModeService } from "./plan-mode.js";
 import {
   createGoalService,
   goalFromEvents,
@@ -241,6 +241,13 @@ export interface ChildAssemblyOptions {
    */
   planMode?: boolean;
   /**
+   * G4 计划 artifact 目录（T-P1-13，planMode 启用时生效）：plan_exit 经
+   * 用户批准携带计划文本时落盘 <dir>/<sessionId>/plan.md 并记
+   * checkpoint{provider:"plan", ref:{path}} 事件；缺省 = plan 参数仅随
+   * 工具结果可见、不落盘。
+   */
+  planArtifactDir?: string;
+  /**
    * G3/G6 会话目标（T-P1-12）：提供时构造 GoalService——新会话（流内无
    * goal 事实）以此落初始 goal/set 事件；已有 goal 事实的会话按流重建
    * （goalFromEvents，流内权威——J14 回放保护同款），选项初始值不落。
@@ -308,6 +315,8 @@ export interface ChildAssembly {
    * 传 registerBuiltinTools）+ gate 出口活查询的同一个实例。
    */
   planMode?: PlanModeService;
+  /** G4 计划落盘出口（planArtifactDir 提供时存在；agent-process 传工具注册）。 */
+  savePlanArtifact?: (plan: string) => { path: string };
   /** G3 goal 服务（goal 选项启用时存在；tick 与事实面供测试/owner 通道观测）。 */
   goal?: GoalService;
   /** 工具注册的面（PathGuard 由装配定形，注册处必收）。 */
@@ -582,6 +591,20 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
   // —— G1/G7 plan 模式（T-P1-11）：服务在此构造，gate 出口活查询与工具
   // 注册共用同一实例（agent-process 取 assembly.planMode 注册工具面）。
   const planModeService = options.planMode ? createPlanModeService() : undefined;
+  // —— G4 计划落盘（T-P1-13）：文件成功才记 checkpoint 事件（绝不产生
+  // 指向不存在文件的引用；写失败上抛交 registry 兜底 isError）。
+  const savePlanArtifactFn =
+    options.planMode && options.planArtifactDir
+      ? (plan: string): { path: string } => {
+          const written = savePlanArtifact(options.planArtifactDir!, sessionId, plan);
+          const events = store.load(sessionId);
+          const turn = events.length > 0 ? events[events.length - 1]!.turn : 0;
+          store.append(sessionId, [
+            { type: "checkpoint", turn, provider: "plan", ref: { path: written.path } },
+          ]);
+          return written;
+        }
+      : undefined;
 
   // —— G3/G6 goal（T-P1-12）：落流出口与 todo/model/switch 同款（会话级
   // 元事件挂流内最后轮空流兜 0）。流内已有 goal 事实 → 按流重建（流内
@@ -717,6 +740,7 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
       : {}),
     ...(checkpoint !== undefined ? { checkpoint } : {}),
     ...(planModeService !== undefined ? { planMode: planModeService } : {}),
+    ...(savePlanArtifactFn !== undefined ? { savePlanArtifact: savePlanArtifactFn } : {}),
     ...(goalService !== undefined ? { goal: goalService } : {}),
     pathGuard,
     dispose: () => {
