@@ -17,7 +17,8 @@
     "check": "tsc --noEmit",
     "build:sandbox-helper": "cd src/sandbox/win32-helper && cargo build --release",
     "doctor": "npm run build && node dist/src/cli/doctor.js",
-    "sandbox:provision": "npm run build && node dist/src/cli/provision.js"
+    "sandbox:provision": "npm run build && node dist/src/cli/provision.js",
+    "mock:llm": "npm run build && node dist/src/cli/mock-llm-run.js"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

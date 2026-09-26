@@ -30,12 +30,55 @@ export interface SseScript {
   status?: number;
   events: unknown[];
   includeDone?: boolean;
+  /** 只写前 N 条 events 后直接断开连接（半流交付——O16 恢复类故障面）。 */
+  truncateAfter?: number;
 }
 
-export type MockScript = RawScript | SseScript;
+/** 连接重置脚本：不写任何响应字节，直接断开（O16 "resets"）。 */
+export interface ResetScript {
+  destroy: true;
+}
+
+/** 挂起脚本：stallMs 到点后恢复 200（不传 = 永挂，由客户端超时收尾——O16 "stalls"）。 */
+export interface StallScript {
+  stall: true;
+  stallMs?: number;
+}
+
+export type MockScript = RawScript | SseScript | ResetScript | StallScript;
 
 function isSseScript(script: MockScript): script is SseScript {
   return "events" in script;
+}
+
+function writeSse(script: SseScript, res: ServerResponse): void {
+  res.writeHead(script.status ?? 200, {
+    "content-type": "text/event-stream",
+    "cache-control": "no-cache",
+    connection: "keep-alive",
+  });
+  const events = script.truncateAfter !== undefined ? script.events.slice(0, script.truncateAfter) : script.events;
+  if (script.truncateAfter !== undefined) {
+    // 半流交付：写完前 N 条（等 flush 回调，防 destroy 丢缓冲）后不写 [DONE]
+    // 直接断开——消费方在流中途收到连接错误
+    let pending = events.length;
+    if (pending === 0) {
+      res.socket?.destroy();
+      return;
+    }
+    for (const event of events) {
+      res.write(`data: ${JSON.stringify(event)}\n\n`, () => {
+        pending -= 1;
+        if (pending === 0) res.socket?.destroy();
+      });
+    }
+    return;
+  }
+  for (const event of events) {
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  }
+  if (script.includeDone !== false) res.write("data: [DONE]\n\n");
+  res.end();
 }
 
 export class HttpMock {
@@ -45,10 +88,13 @@ export class HttpMock {
   private readonly recorded: RecordedRequest[] = [];
   private baseUrl = "";
 
-  /** 起服务器（127.0.0.1 随机端口），返回 base URL。 */
-  async start(): Promise<string> {
+  /** 起服务器（127.0.0.1；port 缺省 0 = 随机端口），返回 base URL。 */
+  async start(port = 0): Promise<string> {
     this.server = createServer((req, res) => this.handle(req, res));
-    await new Promise<void>((resolve) => this.server!.listen(0, "127.0.0.1", resolve));
+    await new Promise<void>((resolve, reject) => {
+      this.server!.once("error", reject);
+      this.server!.listen(port, "127.0.0.1", resolve);
+    });
     const addr = this.server!.address() as AddressInfo;
     this.baseUrl = `http://127.0.0.1:${addr.port}`;
     return this.baseUrl;
@@ -81,17 +127,23 @@ export class HttpMock {
         res.end(JSON.stringify({ error: { message: `no scripted response for call #${this.callIndex}` } }));
         return;
       }
+      if ("destroy" in script) {
+        res.socket?.destroy();
+        return;
+      }
+      if ("stall" in script) {
+        if (script.stallMs === undefined) return; // 永挂——由客户端超时/abort 收尾
+        setTimeout(() => {
+          if (res.writableEnded || res.destroyed) return;
+          res.writeHead(200, { "content-type": "text/event-stream" });
+          res.write("data: {\"recovered\":true}\n\n");
+          res.write("data: [DONE]\n\n");
+          res.end();
+        }, script.stallMs).unref();
+        return;
+      }
       if (isSseScript(script)) {
-        res.writeHead(script.status ?? 200, {
-          "content-type": "text/event-stream",
-          "cache-control": "no-cache",
-          connection: "keep-alive",
-        });
-        for (const event of script.events) {
-          res.write(`data: ${JSON.stringify(event)}\n\n`);
-        }
-        if (script.includeDone !== false) res.write("data: [DONE]\n\n");
-        res.end();
+        writeSse(script, res);
         return;
       }
       res.writeHead(script.status, { "content-type": "application/json", ...script.headers });
