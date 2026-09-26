@@ -805,7 +805,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 
 - 9/9 卡打勾附验收 ✓（T-P1-46 ~ 54，11 条需求 ID：A5/A8/A10/A11/A12/A13/A14/A15/A17/J20/M9 全关，其中 A15 记档关闭于 T-P1-47、A17 部分覆盖实卡补缺）；全量 `npx vitest run` **827 passed / 1 skipped**（批次 5 收官 791 → 净增 36），`npx tsc --noEmit` 全程干净，`count-features.sh` = 310 不变，`check-doc-links.sh` 548 链接 0 失效，`license-audit.sh` exit 0。
 - 四项展卡核对结论照执行 ✓：A17 部分覆盖 + decideTurn→closeTurn 窗口缺口实卡修复（取消不再被 completed 吞）；A11 半边结构成立双层钉死（loop 层工具挂起时序 + 进程层流挂起时序）；A8 队列保留结构成立补"退回输入框"可见面（prompt_returned + ⮐ 回显）；A13+M9 拆两面（T-P1-48 队列面 / T-P1-49 并发面）。
-- 词汇表：**一处载荷扩展**（user/message.promptId，待澄清 #8 立案供追认，19 计数不变）——A13 拦截面 logger、A5 重试面 logger、A14 护栏面 TurnEndReason 既有槽位、J20/M9 拒绝面类型化错误，四处预判零扩展全部兑现。
+- 词汇表：**一处载荷扩展**（user/message.promptId，✅ 已追认 2026-09-27"认可"，待澄清 #8 案关，19 计数不变）——A13 拦截面 logger、A5 重试面 logger、A14 护栏面 TurnEndReason 既有槽位、J20/M9 拒绝面类型化错误，四处预判零扩展全部兑现。
 - 三个真实缺陷在测试中被抓出并修复 ✓：①turn/end 事件转发先于 activeTurn 清位的窗口（steer 误受理开轮 2）→ 清位提前到 closeTurn 开头；②kick 里 draining 后 admit 抛错打断 kick 链致进程不退 → draining 跳过 admit（拒绝面只在 handleRequest）；③A14 看门狗强制收轮的 double terminal 风险 → forcedClosed 闸门（closeTurn 直接返回 + 迟到结果不落盘）。
 - 六面盘点 ✓（详见 T-P1-54 完成记录）：one-at-a-time×gate 拦截不补位（测试钉死）、四套上限边界清单（记档）、admission×Q5 无交互（记档）、PromptGate×C9 命名分域（记档）、messageId×promptId 分工复核（已钉死）、steer 全链快照一条（O21/O22 反哺）。
 - 本批交付面：取消 await 点 11 点盘点与两处显式补检查 · steer 协议通道（expectedTurn 准入 + TURN_NOT_ACTIVE + CLI /steer）· 入队闸门三态（PromptGateVerdict 同构）· 有限队列（QUEUE_FULL）· TurnAdmission（SERVER_DRAINING 收尾闭闸）· ToolClassLimiter（类独立 FIFO）· 两个护栏参数（maxStepsPerTurn + abortTimeoutMs 看门狗）· 重试留痕（onRetry）· 取消退回（prompt_returned）· 关联 id（promptId + 待澄清 #8）· 六面盘点 + steer 快照。
