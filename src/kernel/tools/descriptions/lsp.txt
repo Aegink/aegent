@@ -1,0 +1,19 @@
+连接语言服务器查询代码结构（定义跳转、引用查找、悬浮文档、符号检索、调用层级）。参数：
+
+- operation：操作名（见下）
+- filePath：文件路径
+- line / character：1-based 行列（位置类操作必填）
+- query：workspaceSymbol 的检索词
+
+操作闭集：
+- goToDefinition —— 跳转到定义
+- findReferences —— 查找引用
+- hover —— 悬浮文档
+- documentSymbol —— 文件内符号
+- workspaceSymbol —— 工作区符号检索（配 query）
+- goToImplementation —— 跳转到实现
+- prepareCallHierarchy —— 准备调用层级项
+- incomingCalls —— 谁调用了我
+- outgoingCalls —— 我调用了谁
+
+需要装配处为对应语言配置 LSP server；未配置的文件类型返回无 server 错误。

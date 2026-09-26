@@ -17,6 +17,7 @@ import { createBashTool } from "./bash.js";
 import { createEditTool } from "./edit.js";
 import { createGlobTool } from "./glob.js";
 import { createGrepTool } from "./grep.js";
+import { createLspTool, type LspClientFor } from "./lsp.js";
 import { createPlanEnterTool, createPlanExitTool } from "./plan.js";
 import { createPwshTool } from "./pwsh.js";
 import { createQuestionTool, type QuestionToolDeps } from "./question.js";
@@ -40,6 +41,7 @@ export const BUILTIN_TOOL_NAMES = [
   "pwsh",
   "edit",
   "apply_patch",
+  "lsp",
   "glob",
   "grep",
   "skill_load",
@@ -93,6 +95,8 @@ export function registerBuiltinTools(
       sessionId?: string;
       approvalTimeoutMs?: number;
     };
+    /** B8b/T-P1-60 lsp 的 server 解析面（按文件路径返回客户端）；缺省无 server。 */
+    lspClientFor?: LspClientFor;
   } = {},
 ): void {
   const guard = options.pathGuard ?? PathGuard.forWorkspace(process.cwd());
@@ -113,6 +117,9 @@ export function registerBuiltinTools(
     // B8 残余（T-P1-56）：V4A patch 多文件编辑——write/edit 同款写队列
     // 与守卫注入（delete/move 的删除面走 guard.remove）
     createApplyPatchTool({ writeQueue, pathGuard: guard }),
+    // B8b（T-P1-60）：语言服务查询——clientFor 缺省 undefined = 无 server
+    //（工具恒注册，执行时类型化报错；装配提供按扩展名解析的 client 面）
+    createLspTool({ pathGuard: guard, ...(options.lspClientFor ? { clientFor: options.lspClientFor } : {}) }),
     createGlobTool(),
     createGrepTool(),
     // I2 技能面：skillsRoot = 工作区根（agent-process 传 assembly 的
