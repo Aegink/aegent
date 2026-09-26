@@ -98,6 +98,12 @@ describe("task 工具与子代理 runner（H1/H4/T-P1-42）", () => {
     expect(store.pendingCount(lineage!.sessionId)).toBe(0);
     // 模型身份继承（子代理请求走 runner 注入的 provider/identity）
     expect(provider.requests.length).toBe(1);
+    // T-P1-44 验收③：delegation 声明进子代理首请求 system（dsh
+    // SUBAGENT_DELEGATION_CONTEXT 同构——范围定死/审批自动拒绝/上报限制）
+    const systemMsg = provider.requests[0]!.messages.find((m) => m.role === "system");
+    expect(systemMsg?.content).toContain("委派子代理声明");
+    expect(systemMsg?.content).toContain("无法从本会话内部放宽");
+    // 父会话提示零变化由 system-prompt.test 的缺省断言钉死（delegation 缺省不渲染）
     // 子会话消息投影的 final assistant 与 result 内容一致
     const childMessages = project(childEvents).messages;
     expect(childMessages.at(-1)?.content).toBe("整理结果：aegent 的事件流是唯一真相");
@@ -483,5 +489,41 @@ describe("task 工具与子代理 runner（H1/H4/T-P1-42）", () => {
     );
     expect(parentTurnEnd?.reason.kind).toBe("aborted");
     expect(parentTurnEnd?.seq ?? 0).toBeGreaterThan(resultIdx);
+  });
+
+  it("T-P1-44 验收④：C46 出口级硬拦在子代理同效——.git/config 写在子 gate 被硬拦（降级不是绕过出口）", async () => {
+    const { store, registry } = makeFixture({
+      scripts: [
+        [
+          {
+            type: "tool-call-delta",
+            id: "w1",
+            name: "write",
+            argsDelta: '{"path":".git/config","content":"evil"}',
+          },
+          { type: "done" },
+        ],
+        [{ type: "text-delta", text: "写不进去，我说明限制" }, { type: "done" }],
+      ],
+    });
+
+    const result = await registry.dispatch({
+      callId: "c1",
+      name: "task",
+      arguments: JSON.stringify({ description: "探硬拦", prompt: "改 git 配置" }),
+    });
+    expect(result.isError).toBeUndefined();
+
+    const childEvents = store.load(
+      (result.meta as { subagent: { sessionId: string } }).subagent.sessionId,
+    );
+    const writeResult = childEvents.find(
+      (e): e is Extract<typeof e, { type: "tool/result" }> =>
+        e.type === "tool/result" && e.callId === "w1",
+    );
+    // 硬拦在出口级（C46/C57 纪律）：规则无法授权的保留元数据路径写
+    expect(writeResult?.message.isError).toBe(true);
+    expect(writeResult?.error?.code).toBe("TOOL_POLICY_DENIED");
+    expect(writeResult?.message.content).toContain("硬拦");
   });
 });

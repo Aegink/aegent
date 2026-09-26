@@ -448,6 +448,48 @@ describe("aegent CLI（T-8-01）", () => {
     expect(lines.some((l) => l.includes("[FORK_TARGET_EXISTS]"))).toBe(true);
   });
 
+  it("T-P1-44 H3 端到端：task 派发经父审批 → 子循环（delegation 声明 + Deny broker）→ 结算回喂", async () => {
+    const provider = scriptedProvider([
+      // 父第 1 次调用：产 task 调用（父 gate 默认 ask → 挂起）
+      [
+        {
+          type: "tool-call-delta",
+          id: "call_1",
+          name: "task",
+          argsDelta: JSON.stringify({ description: "整理要点", prompt: "整理事件流要点" }),
+        },
+        { type: "done" },
+      ],
+      // 子代理第 1 次调用：直接产出最终答复（子轮 completed）
+      [{ type: "text-delta", text: "子代理的整理结果：事件流是唯一真相" }, { type: "done" }],
+      // 父第 2 次调用：拿到 task_result 收尾
+      [{ type: "text-delta", text: "子代理完成了。" }, { type: "done" }],
+    ]);
+    const lines = await runScriptedSession(
+      {
+        provider,
+        assembly: {
+          workspaceRoot: mkdtempSync(path.join(tmpdir(), "aegent-cli-task-")),
+          contextWindow: 200_000,
+          approvalTimeoutMs: 5_000,
+          subagent: {},
+        },
+      },
+      async function* ({ waitFor }) {
+        yield "派个活";
+        // task 无用户规则 → 链 abstain → gate 默认 ask → 父审批挂起
+        await waitFor((line) => line.includes("⏸ 待审批 [call_1]") && line.includes("task"));
+        yield "/approve call_1 allow";
+        await waitFor((line) => line.includes("── turn 1 结束（completed）"));
+      },
+    );
+    // 子代理结算经 tool/result 回喂（task_result 渲染可见）且父轮正常收尾
+    expect(lines.some((l) => l.startsWith("→ task"))).toBe(true);
+    expect(
+      lines.some((l) => l.includes("←") && l.includes("task_result") && l.includes("唯一真相")),
+    ).toBe(true);
+  });
+
   it("/revert 对话态回退（session/revert 事件经协议转发）", async () => {
     const lines = await runScriptedSession(
       {

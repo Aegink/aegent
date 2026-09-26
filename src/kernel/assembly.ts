@@ -301,6 +301,12 @@ export interface ChildAssemblyOptions {
    * 拒绝（dsh approvalPolicy 钉死 'never' 同构，见 subagent.ts）。
    */
   broker?: PermissionBrokerPort;
+  /**
+   * 子代理 delegation 声明（H3/T-P1-44）：子代理装配置 true——系统提示
+   * 渲染降级范围声明段（system-prompt 的 delegation 段）。缺省 false =
+   * 父会话提示零变化。
+   */
+  delegation?: boolean;
 }
 
 export interface ChildAssembly {
@@ -498,6 +504,7 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
         cwd: options.workspaceRoot,
         ...(skillLoad.skills.length > 0 ? { skills: skillLoad.skills } : {}),
         ...(planModeService ? { planMode: true } : {}),
+        ...(options.delegation ? { delegation: true } : {}),
       });
       store.append(sessionId, [
         {

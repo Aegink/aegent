@@ -141,6 +141,12 @@ export interface SystemPromptDeps {
    * 不加段（零行为变化）。
    */
   planMode?: boolean;
+  /**
+   * 子代理 delegation 声明（H3/T-P1-44）：渲染降级范围声明段——子代理的
+   * 权限范围在派发时定死、不可从内部放宽，需审批的操作被自动拒绝。
+   * dsh SUBAGENT_DELEGATION_CONTEXT 同构（文案中文化，语义逐句对应）。
+   */
+  delegation?: boolean;
   /** fs 注入面（测试假 fs；缺省 node:fs 同步读取）。 */
   existsFile?: (p: string) => boolean;
   readFile?: (p: string) => string;
@@ -177,9 +183,27 @@ export async function assembleSystemPrompt(deps: SystemPromptDeps): Promise<stri
   // 5. plan 模式机制段（G1/T-P1-11）：启用才渲染（零行为变化）
   const planSection = deps.planMode ? renderPlanSection() : "";
 
-  return [base, permissions, agents, planSection, skillsSection]
+  // 6. 子代理 delegation 声明段（H3/T-P1-44）：子代理装配才渲染
+  const delegationSection = deps.delegation ? renderDelegationSection() : "";
+
+  return [base, permissions, agents, planSection, delegationSection, skillsSection]
     .filter((part) => part.trim() !== "")
     .join("\n\n");
+}
+
+/**
+ * 子代理 delegation 声明（H3/T-P1-44）——dsh SUBAGENT_DELEGATION_CONTEXT
+ * 同构中文化（child-agent.ts:172-176 的三句语义逐句对应：范围定死 /
+ * 审批自动拒绝 / 不重试而是上报限制）。
+ */
+function renderDelegationSection(): string {
+  return [
+    "## 委派子代理声明",
+    "你是一个被委派的子代理：你的权限范围在启动时即已固定，",
+    "无法从本会话内部放宽——需要审批的操作会被自动拒绝。",
+    "当任务需要超出该范围的访问时，不要重试被拒绝的操作；",
+    "在回复中说明该限制，由委派你的 agent 处理。",
+  ].join("\n");
 }
 
 function renderPlanSection(): string {

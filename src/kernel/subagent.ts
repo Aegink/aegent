@@ -149,6 +149,7 @@ export function createSubagentRunner(
         ...(canDelegateFurther ? { allowTools: ["task"] } : {}),
       }),
       broker: new DenyPermissionBroker(),
+      delegation: true,
       ...(deps.logger ? { logger: deps.logger } : {}),
     });
 
