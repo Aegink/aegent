@@ -349,6 +349,26 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
         queue.enqueue(req.content);
         kick();
         return;
+      case "steer": {
+        // A10/T-P1-47：steer 带目标轮准入——目标必须是当前活动轮。
+        // 不匹配（含 idle）类型化拒绝且不入队（不武装队列）；匹配则入
+        // 同一队列、由在途轮的 step 边界消费（A11），kick 幂等无害。
+        const active = loop.activeTurn;
+        if (active === null || active !== req.expectedTurn) {
+          send({
+            type: "error",
+            code: "TURN_NOT_ACTIVE",
+            message:
+              active === null
+                ? `steer 目标轮 ${req.expectedTurn} 不是当前活动轮（当前无在途轮）`
+                : `steer 目标轮 ${req.expectedTurn} 不是当前活动轮（当前活动轮 ${active}）`,
+          });
+          return;
+        }
+        queue.enqueue(req.content);
+        kick();
+        return;
+      }
       case "cancel":
         loop.cancel(req.cause as CancelCause);
         return;

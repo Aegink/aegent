@@ -76,6 +76,19 @@ export type AgentRequest =
       position?: "before" | "after";
       atSeq?: number;
     }
+  | {
+      /** A10/T-P1-47 steer（重定向在途轮，pi-desktop·active-turn-steering
+       * 的 additive agent/steer 同构）：expectedTurn 必填——目标不是当前
+       * 活动轮时类型化拒绝（TURN_NOT_ACTIVE，AGENT_BUSY 同构），不武装
+       * 队列。steer 与 follow-up（prompt）分通道：prompt idle 时开新轮、
+       * busy 时排队；steer 只对在途轮，受理后入同一 PromptQueue、由
+       * step 边界消费（A11：下一次模型请求才见它）。受理无专用回执
+       * （revert/approve 同款——事实经 user/message 落流可见，A9 纪律）。
+       */
+      type: "steer";
+      expectedTurn: number;
+      content: string;
+    }
   | { type: "dispose" };
 
 /** 子 → 父。 */
@@ -129,6 +142,7 @@ const REQUEST_TYPES = new Set([
   "model/switch",
   "question/answer",
   "session/fork",
+  "steer",
   "dispose",
 ]);
 const CANCEL_KINDS = new Set(["user", "parent", "disposed", "hook", "legacy"]);
@@ -169,6 +183,7 @@ export function decodeRequest(line: string): AgentRequest {
     targetId?: unknown;
     position?: unknown;
     atSeq?: unknown;
+    expectedTurn?: unknown;
   };
   if (!REQUEST_TYPES.has(req.type)) {
     throw new ProtocolError("PROTOCOL_UNKNOWN_REQUEST", `未知请求类型 ${req.type}`);
@@ -282,6 +297,21 @@ export function decodeRequest(line: string): AgentRequest {
       ...(req.position !== undefined ? { position: req.position } : {}),
       ...(atSeq !== undefined ? { atSeq } : {}),
     };
+  }
+  if (req.type === "steer") {
+    // A10/T-P1-47：expectedTurn 正整数必填（轮号从 1 起）、content 非空；
+    // 目标校验在 agent-process（对 loop.activeTurn 权威面）——wire 面只做形状。
+    if (
+      typeof req.expectedTurn !== "number" ||
+      !Number.isInteger(req.expectedTurn) ||
+      req.expectedTurn < 1
+    ) {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "steer 需要 expectedTurn 正整数（目标轮号）");
+    }
+    if (typeof req.content !== "string" || req.content === "") {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "steer 需要 content 非空字符串");
+    }
+    return { type: "steer", expectedTurn: req.expectedTurn, content: req.content };
   }
   return { type: "dispose" };
 }

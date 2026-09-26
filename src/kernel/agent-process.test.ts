@@ -228,6 +228,115 @@ describe("agent-process —— T9 agent 出进程", () => {
     await running;
   }, 30_000);
 
+  it("steer（A10/T-P1-47）：在途轮目标受理→step 边界消费；轮已结束 TURN_NOT_ACTIVE 拒绝且不入队", async () => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    let exitCode: number | null = null;
+    let resolveExit: (code: number) => void = () => {};
+    const exited = new Promise<number>((resolve) => {
+      resolveExit = resolve;
+    });
+
+    // 挂起 provider：第一次调用产 toolCall（decideTurn continue）后挂起
+    // （steer 到达窗口），放行后收束；第二次调用直接收束（step 边界注入后的续步）。
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const requests: { messages: { content: string }[] }[] = [];
+    let call = 0;
+    const provider = {
+      async *streamChat(req: { messages: { content: string }[] }) {
+        requests.push(req);
+        call += 1;
+        if (call === 1) {
+          yield { type: "tool-call-delta" as const, id: "c1", name: "read", argsDelta: '{"path":"a.txt"}' };
+          await gate;
+          yield { type: "done" as const };
+        } else {
+          yield { type: "text-delta" as const, text: "续步收束" };
+          yield { type: "done" as const };
+        }
+      },
+    };
+
+    const running = runAgentChildStdio({
+      input,
+      output,
+      provider: provider as never,
+      exit: (code) => {
+        if (exitCode === null) {
+          exitCode = code;
+          resolveExit(code);
+        }
+      },
+    });
+
+    const items: AgentMessage[] = [];
+    const waiters: ((r: IteratorResult<AgentMessage>) => void)[] = [];
+    let buf = "";
+    output.setEncoding("utf-8");
+    output.on("data", (chunk: string) => {
+      buf += chunk;
+      for (;;) {
+        const nl = buf.indexOf("\n");
+        if (nl < 0) break;
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        const msg = decodeMessage(line);
+        const w = waiters.shift();
+        if (w) w({ value: msg, done: false });
+        else items.push(msg);
+      }
+    });
+    const iter = {
+      [Symbol.asyncIterator]() {
+        return {
+          next: () => {
+            const item = items.shift();
+            if (item) return Promise.resolve({ value: item, done: false });
+            return new Promise<IteratorResult<AgentMessage>>((resolve) =>
+              waiters.push(resolve),
+            );
+          },
+        };
+      },
+    };
+    const next = async () => (await iter[Symbol.asyncIterator]().next()).value;
+
+    expect(await next()).toEqual({ type: "ready" });
+    input.write(JSON.stringify({ type: "prompt", messageId: "a", content: "甲" }) + "\n");
+    expect(await next()).toEqual({ type: "accepted", messageId: "a" });
+    // 等到 request/header（首次模型请求已发出、流在挂起中）——在途轮窗口
+    for (;;) {
+      const m = await next();
+      if (m.type === "event" && m.event.type === "request/header") break;
+    }
+    // 流挂起期间 steer 到达：目标 = 活动轮 1 → 受理（无专用回执，A9 纪律）
+    input.write(JSON.stringify({ type: "steer", expectedTurn: 1, content: "边跑边补充" }) + "\n");
+    release();
+
+    for (;;) {
+      const m = await next();
+      if (m.type === "event" && m.event.type === "turn/end") break;
+    }
+    // 受理路径零 error 行；steer 内容出现在下一次模型请求（A11），首轮请求不含
+    expect(items.filter((m) => m.type === "error")).toEqual([]);
+    expect(requests[0]!.messages.map((m) => m.content)).not.toContain("边跑边补充");
+    expect(requests[1]!.messages.map((m) => m.content)).toContain("边跑边补充");
+
+    // 轮已结束：steer 目标 1 不是活动轮 → TURN_NOT_ACTIVE 类型化拒绝
+    input.write(JSON.stringify({ type: "steer", expectedTurn: 1, content: "迟到的补充" }) + "\n");
+    const err = await next();
+    expect(err).toEqual({ type: "error", code: "TURN_NOT_ACTIVE", message: expect.any(String) });
+
+    input.write(JSON.stringify({ type: "dispose" }) + "\n");
+    expect(await exited).toBe(0);
+    input.end();
+    await running;
+  }, 30_000);
+
   it("Q3 会话关闭触发 spill 清理（T-P1-14）：dispose 退出前清掉本会话自动可删文件", async () => {
     const spillDir = mkdtempSync(path.join(tmpdir(), "aegent-spill-wire-"));
     const writeSpill = (sessionId: string, deletable: "manual" | "after-session-end"): string => {

@@ -355,6 +355,16 @@ export class AgentLoop {
   }
 
   /**
+   * A10（T-P1-47）steer 准入的权威面：当前在途轮号；idle 时 null。
+   * runTurn 开始置位、closeTurn 清位（T-3-05"尾部唯一归位点"——completed/
+   * blocked/aborted/error 全路径必经，收尾阶段的 steer 自然落"无活动轮"拒绝）。
+   */
+  private activeTurnNumber: number | null = null;
+  get activeTurn(): number | null {
+    return this.activeTurnNumber;
+  }
+
+  /**
    * 跑一个用户轮：turn/start → user/message → N 个 step → turn/end。
    * 返回结束原因（硬退出的 error 也不抛——终态在事件流里，pi 同款
    * "error responses remain hard exits"）。
@@ -365,6 +375,8 @@ export class AgentLoop {
     // busy 停留，由恢复路径归位。
     this.deps.runState?.markBusy(sessionId);
     const turn = this.nextTurnNumber();
+    // A10（T-P1-47）：steer 准入权威面置位（closeTurn 清位）
+    this.activeTurnNumber = turn;
     // 新 turn 一份新信号：丢弃 idle 期迟到的取消（不武装本 turn 之前的工作）
     this.cancelCause = null;
     this.cancelController = new AbortController();
@@ -828,6 +840,10 @@ export class AgentLoop {
   }
 
   private async closeTurn(turn: number, reason: TurnEndReason): Promise<void> {
+    // A10（T-P1-47）：steer 准入权威面在收轮开始即清位——turn/end 事件
+    // 转发先于收尾完成（flush/turnEnd 链还在跑），此窗口内的 steer 不能
+    // 再被受理（终态已落盘，无可重定向的在途工作）。
+    this.activeTurnNumber = null;
     const outcome = await this.turnEndChain.run(this.$, { turn, reason });
     if (outcome.truncated) {
       // turnEnd 截断 = turn/end 没落盘，turn 保持未闭合（与崩溃残留同待遇）。

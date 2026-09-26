@@ -426,6 +426,51 @@ describe("aegent CLI（T-8-01）", () => {
     expect(reminders.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("/steer 重定向在途轮（A10/T-P1-47）：审批窗口受理无拒绝；轮结束后 TURN_NOT_ACTIVE", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-steer-"));
+    const target = path.join(workspace, "note.txt");
+    const provider = scriptedProvider([
+      // 第 1 次调用：产 read 调用（无规则 ask → 审批挂起 = 在途轮窗口）
+      [
+        {
+          type: "tool-call-delta",
+          id: "call_1",
+          name: "read",
+          argsDelta: JSON.stringify({ path: target }),
+        },
+        { type: "done" },
+      ],
+      // 第 2 次调用：拿到 read 结果收束（step 边界已注入 steer 内容）
+      [{ type: "text-delta", text: "读完了，已并入你的补充。" }, { type: "done" }],
+    ]);
+    const lines = await runScriptedSession(
+      {
+        provider,
+        assembly: {
+          workspaceRoot: workspace,
+          contextWindow: 200_000,
+          approvalTimeoutMs: 5_000,
+        },
+      },
+      async function* ({ waitFor }) {
+        yield `读一下 ${target}`;
+        // 审批挂起（在途轮窗口）期间 /steer 到达——expectedTurn 由 CLI 从
+        // turn/start 事件流自动跟踪，受理无专用回执（user/message 落流，
+        // 用户原声展示静默）
+        yield "/steer 顺便把行号也报一下";
+        await waitFor((line) => line.includes("⏸ 待审批 [call_1]") && line.includes("read"));
+        yield "/approve call_1 allow";
+        await waitFor((line) => line.includes("── turn 1 结束（completed）"));
+        // 轮已结束：/steer → TURN_NOT_ACTIVE 类型化拒绝
+        yield "/steer 迟到的补充";
+        await waitFor((line) => line.includes("[TURN_NOT_ACTIVE]"));
+      },
+    );
+    expect(lines.some((l) => l.includes("── turn 1 结束（completed）"))).toBe(true);
+    // 受理路径零拒绝：[TURN_NOT_ACTIVE] 恰一次（只有轮结束后那次）
+    expect(lines.filter((l) => l.includes("[TURN_NOT_ACTIVE]"))).toHaveLength(1);
+  });
+
   it("/fork 分支会话（E5/T-P1-40）：forked 回执可见；目标冲突得类型化错误行", async () => {
     const lines = await runScriptedSession(
       {

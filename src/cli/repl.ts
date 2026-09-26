@@ -103,6 +103,9 @@ export interface RunCliOptions {
 export async function runCli(options: RunCliOptions): Promise<void> {
   const { connection, out } = options;
   let messageId = 0;
+  // A10/T-P1-47：最新已见轮号（turn/start 事件流观察——/steer 的
+  // expectedTurn 来源；未见过任何轮时 null）
+  let lastTurn: number | null = null;
 
   const handleCommand = (command: string): void => {
     const [name, ...rest] = command.split(/\s+/);
@@ -164,6 +167,21 @@ export async function runCli(options: RunCliOptions): Promise<void> {
       connection.send({ type: "question/answer", requestId, answer: rest.slice(1).join(" ") });
       return;
     }
+    if (name === "/steer") {
+      // A10/T-P1-47：steer 重定向在途轮——expectedTurn 由 CLI 从已见事件流
+      // 取最新轮号（turn 级定位是 UI 层职责，用户不手输轮号）。
+      const content = rest.join(" ");
+      if (content === "") {
+        out("用法：/steer <补充指令>（重定向当前在途轮；无在途轮时会被拒绝）");
+        return;
+      }
+      if (lastTurn === null) {
+        out("! 尚未见到任何轮（先发一条消息开启对话，再 /steer 重定向）");
+        return;
+      }
+      connection.send({ type: "steer", expectedTurn: lastTurn, content });
+      return;
+    }
     if (name === "/fork") {
       // E5 fork 分支会话：/fork <新会话id> [before|after] [atSeq]——
       // 缺省 after + 最新；新会话的后续对话由新进程打开（本连接不动）。
@@ -194,7 +212,7 @@ export async function runCli(options: RunCliOptions): Promise<void> {
       });
       return;
     }
-    out(`未知命令 ${String(name)}。可用：/revert <seq> /cancel /approve <id> allow|deny [理由] [--session] [--feedback 文本] /answer <id> <答复> /fork <新会话id> [before|after] [atSeq] /exit`);
+    out(`未知命令 ${String(name)}。可用：/revert <seq> /cancel /steer <补充指令> /approve <id> allow|deny [理由] [--session] [--feedback 文本] /answer <id> <答复> /fork <新会话id> [before|after] [atSeq] /exit`);
   };
 
   // idle 观测（对象属性承载——TS 不跨闭包窄化可变捕获）
@@ -213,6 +231,8 @@ export async function runCli(options: RunCliOptions): Promise<void> {
           idle.waiter?.();
           break;
         case "event": {
+          // A10/T-P1-47：跟踪最新轮号（/steer 的 expectedTurn 来源）
+          if (msg.event.type === "turn/start") lastTurn = msg.event.turn;
           const line = renderEventSummary(msg.event);
           if (line !== null) out(line);
           break;

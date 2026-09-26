@@ -138,6 +138,27 @@ describe("agent-protocol —— T9 可序列化协议", () => {
     ).toThrow(/atSeq/);
   });
 
+  it("decodeRequest：steer（A10/T-P1-47）expectedTurn 正整数必填 + content 非空", () => {
+    // 合法形状
+    expect(decodeRequest('{"type":"steer","expectedTurn":3,"content":"改走 B 路线"}')).toEqual({
+      type: "steer",
+      expectedTurn: 3,
+      content: "改走 B 路线",
+    });
+    // 外部输入逐项校验：缺 expectedTurn / 非正整数 / 缺 content / 空 content
+    expect(() => decodeRequest('{"type":"steer","content":"x"}')).toThrow(/expectedTurn/);
+    expect(() => decodeRequest('{"type":"steer","expectedTurn":0,"content":"x"}')).toThrow(
+      /expectedTurn/,
+    );
+    expect(() => decodeRequest('{"type":"steer","expectedTurn":1.5,"content":"x"}')).toThrow(
+      /expectedTurn/,
+    );
+    expect(() => decodeRequest('{"type":"steer","expectedTurn":1}')).toThrow(/content/);
+    expect(() => decodeRequest('{"type":"steer","expectedTurn":1,"content":""}')).toThrow(
+      /content/,
+    );
+  });
+
   it("decodeMessage：forked 回执（E5）sessionId/cutSeq/eventCount 校验", () => {
     expect(
       decodeMessage('{"type":"forked","sessionId":"f1","cutSeq":12,"eventCount":13}'),

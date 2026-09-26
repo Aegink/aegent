@@ -9,6 +9,7 @@ import {
   type ToolExecutionResult,
   type TurnDecision,
 } from "./loop.js";
+import { PromptQueue } from "./queue.js";
 import { ScriptedProvider, makeLoop } from "./loop.test-utils.js";
 import { RwLock } from "./rw-lock.js";
 import type { PrefixChange } from "../context/prefix-anchor.js";
@@ -291,6 +292,60 @@ describe("AgentLoop —— A1/A6 显式停止条件与两级生命周期", () =>
       "step/end",
       "turn/end",
     ]);
+  });
+
+  it("A11/T-P1-47：已启动工具先跑完——工具执行期间到达的 steer 不打断在途工具，下一次模型请求才消费", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([
+      { type: "text-delta", text: "先跑工具" },
+      { type: "tool-call-delta", id: "c1", name: "bash", argsDelta: '{"cmd":"ls"}' },
+      { type: "done" },
+    ]);
+    provider.mount([{ type: "text-delta", text: "已收到补充" }, { type: "done" }]);
+    const queue = new PromptQueue("one-at-a-time");
+    // 工具挂起 = steer 到达窗口（在途工具尚未结算）
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    let steered = false;
+    const executeTool: AgentLoopDeps["executeTool"] = async () => {
+      if (!steered) {
+        steered = true;
+        queue.enqueue("工具跑完再补充");
+      }
+      await gate;
+      return { content: "工具完成" };
+    };
+    const { loop, store } = makeLoop(provider, { queue, executeTool });
+
+    const done = loop.runTurn("开工");
+    // 让 dispatchTool 真正跑到挂起点后再放行（事件循环翻转）
+    await new Promise<void>((r) => setTimeout(r, 0));
+    release();
+    const reason = await done;
+    expect(reason).toEqual({ kind: "completed" });
+
+    const events = store.load("s1");
+    // 在途工具不被打断：tool/result 完整落盘
+    const result = events.find((e) => e.type === "tool/result") as {
+      turn: number;
+      message: { content: string };
+    };
+    expect(result.message.content).toBe("工具完成");
+    expect(result.turn).toBe(1);
+    // steer 注入在 step 边界（工具所在 step 收尾后）、与开场同轮
+    const injected = events.find(
+      (e) => e.type === "user/message" && (e as { message: { content: string } }).message.content === "工具跑完再补充",
+    ) as { turn: number };
+    expect(injected.turn).toBe(1);
+    // 第一次请求（steer 到达前发出）不含 steer 内容；下一次请求才见它
+    expect(provider.requestAt(0, "工具挂起前的首次请求").messages.map((m) => m.content)).not.toContain(
+      "工具跑完再补充",
+    );
+    expect(provider.requestAt(1, "step 边界注入后的第二次请求").messages.map((m) => m.content)).toContain(
+      "工具跑完再补充",
+    );
   });
 });
 
