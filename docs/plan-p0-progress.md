@@ -117,7 +117,8 @@
 | 2026-09-27 | T-P1-50 | A14 | `d31b341` | `npx vitest run src/kernel/loop.test.ts src/kernel/loop.cancel.test.ts` | 33 passed（+4）；maxStepsPerTurn（缺省 0 不限，超限 blocked+warn）+ abortTimeoutMs 看门狗（强制收轮补 step/end+turn/end{aborted}+迟到结果闸门防 double terminal）+ 正常路径 disarm；B14×A14 三轴边界记档；全量 817 passed / 1 skipped |
 | 2026-09-27 | T-P1-51 | A5 | `8d55224` | `npx vitest run src/models/retry.test.ts` | 12 passed（+2）；withRetry onRetry 钩子（attempt/delayMs/retryErrorFields 同构三字段）+ agent-child openai 装配缺省 warn 留痕；429×2 留痕恰 2 次 attempt 递增 delay 一致、400 零留痕；零事件扩展兑现；全量 819 passed / 1 skipped |
 | 2026-09-27 | T-P1-52 | A8 | `6a3e87b` | `npx vitest run src/kernel/agent-process.test.ts src/cli/cli.test.ts src/kernel/queue.test.ts src/kernel/agent-protocol.test.ts` | 41 passed（+2）；aborted 轮后队列未消费输入经 prompt_returned 全量退回（drainAll）不自动续跑（pi-desktop Stop 同构）+ REPL ⮐ 回显；completed 续开不变；审批挂起不响应 cancel 的边界记档（C50 既有语义）；全量 821 passed / 1 skipped |
-| 2026-09-27 | T-P1-53 | A12 | （本次 commit） | `npx vitest run src/kernel/loop.test.ts src/session/project.test.ts src/test-support/migration-asserts.test.ts src/kernel/events.test.ts` | 54 passed（+4）；user/message 载荷扩可选 promptId（loop 分配 p<序数>、恢复从流重建基线、关联区间按流推导、A9 复证）；project 校验空串拒/缺省兼容；落地记录 9 + **待澄清 #8 立案供追认**（19 计数不变）；全量 825 passed / 1 skipped（偶发 flaky 二次记档，3 连跑全绿） |
+| 2026-09-27 | T-P1-53 | A12 | `5befd74` | `npx vitest run src/kernel/loop.test.ts src/session/project.test.ts src/test-support/migration-asserts.test.ts src/kernel/events.test.ts` | 54 passed（+4）；user/message 载荷扩可选 promptId（loop 分配 p<序数>、恢复从流重建基线、关联区间按流推导、A9 复证）；project 校验空串拒/缺省兼容；落地记录 9 + **待澄清 #8 立案供追认**（19 计数不变）；全量 825 passed / 1 skipped（偶发 flaky 二次记档，3 连跑全绿） |
+| 2026-09-27 | T-P1-54 | （收口，无独立 ID） | （本次 commit） | `npx vitest run`（全量） | 827 passed / 1 skipped（+2）；六面盘点（one-at-a-time×gate 拦截不补位测试钉死 + 四套上限清单 + admission×Q5 无交互 + PromptGate×C9 分域 + 双 id 分工复核 + steer 全链快照）；count-features 310、check-doc-links 548 链接 0 失效、license-audit exit 0——**批次 6 全部 9 卡完成，P1 批次 6 收官** |
 
 ---
 
@@ -1053,6 +1054,69 @@ T-3-04 部分覆盖（取消槽 + await 边界检查已落）——展卡先核�
 预判低影响（A12 关联 id 或扩 user/message 载荷）——有扩展走待澄清立案。
 上批遗留：session/fork 词汇表 18→19 待澄清 #7 仍待追认。全量基线
 791 passed / 1 skipped。不要问要不要继续。
+```
+
+---
+
+## 批次 6 展卡记录（2026-09-27，执行会话自展）
+
+> 用户提示词指示：先按圈定研究批次 6 条目（A5 A8 A10–A15 A17 + J20 + M9）逐条锚点核对 requirements.md §4，照 plan-p1 批次 5 展卡先例把卡序追加进 plan-p1.md，再按 plan-p0 §0 执行。**11 条锚点逐一开文件核实，零内容勘误**（kimi retry.ts 全文 75 行 + machine.ts:57 PromptGateVerdict 及消费点/改写测试用例 + engine.ts abortTimeoutMs + configSection.ts maxStepsPerTurn、pi-desktop active-turn-steering ADR 全文 45 行、grok agent.rs:758 in_flight_prompt/do_cancel_turn rewind、claude-official claude-code.d.ts prompt_id、zcode turn-loop.ts 三排空点与 throwIfTurnAborted 四点位、codex turn_admission.rs 全文 87 行、pi-desktop ADR 0041 全文 55 行；**唯一漂移 = A14 的行号**：requirements 写 engine.ts:303、abortTimeoutMs 实际在 :125，文件演进、参数名逐字命中）。**四项展卡核对结论**（研究文档疑似顺带覆盖清单 + 批次 6 要点指令）：①A17 部分覆盖 + decideTurn→closeTurn 窗口真实缺口（取消被 completed 吞）→ 实卡 T-P1-46；②A11 半边结构成立（drainQueue step 边界注入）→ 并入 T-P1-47 断言钉死；③A8 队列保留结构成立、缺"退回输入框"可见面 → 实卡 T-P1-52；④A13+M9 合并拆两面（队列面 T-P1-48 / 并发面 T-P1-49）。预估 7-8 卡实展 9 张（A10+A11 成对、A13+M9 拆两面、收口盘点照批次 4/5 先例单列）。
+
+---
+
+## 批次 6 报告（完成于 2026-09-27）
+
+- **打勾情况**：9 / 9（T-P1-46 ~ T-P1-54 全部完成，无未完成项）——**P1 批次 6 全部收官**（11 条需求 ID：A5/A8/A10/A11/A12/A13/A14/A15/A17/J20/M9 全关；A15 记档关闭于 T-P1-47——三类输入三排空点在 loop 结构成立）
+- **产出的文件**：
+  - `src/kernel/loop.ts` 扩——A17 两处显式取消检查（decideTurn 后 + beforeFirstModelRequest 后，11 点 await 盘点清单落卡）+ `activeTurn` 只读权威面（closeTurn 开头清位）+ drainQueue 异步化 × promptGate 三态裁决 × promptId 分配（nextPromptId + 流重建基线）+ 两个护栏（maxStepsPerTurn 循环头检查 / abortTimeoutMs 看门狗 + forcedClosed 闸门 + forceCloseTurn）——T-P1-46/47/48/50/53
+  - `src/kernel/agent-protocol.ts` 扩——steer 请求（expectedTurn 正整数必填 + content 非空）+ prompt_returned 回执——T-P1-47/52
+  - `src/kernel/agent-process.ts` 扩——steer case（TURN_NOT_ACTIVE 准入校验）+ prompt/steer 的 QUEUE_FULL 与 SERVER_DRAINING 类型化 error 行 + kick 的 TurnAdmission 接线与 aborted 退回（prompt_returned）+ executeTool 的 ToolClassLimiter 包装 + 收尾路径 beginDrain——T-P1-47/48/49/52
+  - `src/kernel/prompt-gate.ts` + 测试——A13 三态类型（kimi PromptGateVerdict 同构）+ normalizePromptVerdict 归一化——T-P1-48
+  - `src/kernel/admission.ts` + 测试——TurnAdmission（admit/Permit 幂等 release/beginDrain/SERVER_DRAINING）+ ToolClassLimiter（类独立 FIFO 排队、名额转交、缺省 Infinity）——T-P1-49
+  - `src/kernel/queue.ts` 扩——maxSize 有限队列（缺省 64）+ QueueFullError + drainAll——T-P1-48/52
+  - `src/kernel/events.ts` 扩——UserMessageEvent.promptId 可选载荷（A12 关联区间语义注释）——T-P1-53
+  - `src/models/retry.ts` 扩——RetryOptions.onRetry（RetryObservation：attempt/delayMs/retryErrorFields 同构三字段）+ agent-child openai 装配缺省 warn 留痕——T-P1-51
+  - `src/cli/repl.ts` 扩——/steer 命令（expectedTurn 从事件流自动跟踪）+ prompt_returned ⮐ 回显 + lastTurn 跟踪——T-P1-47/52
+  - `src/session/project.ts` 扩——user/message 的 promptId validation（空串拒/缺省放行）——T-P1-53
+  - `src/kernel/steer.snapshot.test.ts`——steer 全链规格快照一条（O21/O22 反哺）——T-P1-54
+  - `docs/l0-events.md`——§3.2 user/message 行 + §8 落地记录 9（含不追认回退面）——T-P1-53
+- **验收台账**：9 卡 9 命令全部通过（见台账表）；全量 `npx vitest run` **827 passed / 1 skipped**（批次 5 收官 791 → 净增 36），`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 548 链接 0 失效、`license-audit.sh` exit 0
+- **词汇表扩展**：**一处载荷扩展**（user/message.promptId，事件计数 19 不变——落地记录 9 + 待澄清 #8 立案供追认）；研究文档"低影响"预判命中——A13 拦截面 logger、A5 重试面 logger、A14 护栏面 TurnEndReason 既有槽位、J20/M9 拒绝面类型化错误，四处预判零扩展全部兑现
+- **三个真实缺陷在测试中被抓出并修复**（本批质量亮点）：
+  1. **T-P1-47**：turn/end 事件转发（append 即发）先于 activeTurn 清位（flush/turnEnd 链还在跑）——窗口内 steer 被误受理并入队，轮收尾后 kick 开了轮 2 → 修复 = 清位提前到 closeTurn 开头（收轮开始即无可重定向的在途工作）
+  2. **T-P1-49**：kick 里 admission.admit() 在 draining 后抛 ServerDrainingError 无人接 → unhandled rejection 且 kick 链断裂、进程不退 → 修复 = draining 时 kick 跳过 admit（admit 的拒绝面只在 handleRequest 的新请求；存量队列照常跑完 = EOF 语义）
+  3. **T-P1-50**：看门狗强制收轮与自然收尾路径的 double terminal 风险 → forcedClosed 闸门（closeTurn 直接返回 + 迟到的工具结果不落盘 + warn 记档）——协作式纪律"不弃在途 promise"保持，强制的只是事件流终态与状态归位
+- **偏离计划的地方**（逐卡详见卡面完成记录）：
+  1. **T-P1-47**：CLI /steer 的 expectedTurn 由 REPL 从 turn/start 事件流自动跟踪（turn 级定位是 UI 层职责，用户不手输轮号——卡面风险栏"切点换算属 UI 层"同款决策）
+  2. **T-P1-48**：PromptQueue 缺省 maxSize 64（"宽松但有限"卡内定形；超限 fail-closed 不静默丢）
+  3. **T-P1-49**：ToolClassLimiter 的工具类判定函数构造注入（kernel 不开第二处 → policy 反向依赖；agent-process 已依赖 protected-names 故顺路注入）
+  4. **T-P1-52**：A8 的"未发出 prompt"落法 = aborted 轮后队列未消费输入全量退回 + 不自动续跑（pi-desktop·Stop "retains accepted input without independently replaying" 同构）——completed 路径续开行为不变
+- **新发现的约束或坑**：
+  - **事件转发时序与内存权威面的窗口**：turn/end 事件转发 ≠ 轮收尾完成——任何"以事件到达为信号立即发请求"的准入判定都要与 loop 内存权威面（activeTurn）对齐时点（修复①的教训，K3 多端时会再遇到）
+  - **审批挂起不响应 cancel 信号**：C5 Deferred 只认答复/超时（C50 既有语义）——取消在审批挂起时的收轮要等 approvalTimeoutMs 结算 isError 后由派发循环取消检查接管（T-P1-52 测试记档，非缺陷）
+  - **vitest 全量偶发 flaky**：批次 6 执行期间出现两次"首跑 1 failed 未复现"（T-P1-48/T-P1-53 各一次，连跑 3 次全绿）——93 worker 并行下既有环境偶发（WAL/文件句柄竞态先例），非批次 6 引入面；后续批次的收口卡建议连跑 2 次确认
+- **遗留风险与未知**（→ 人工确认清单批次 6 行）：
+  - ~~待澄清 #8（A12 promptId 载荷扩展）~~ ⏳ **立案中待追认**（不追认回退面约 1 小时，落地记录 9 详列）
+  - 真实厂商端到端的 steer/取消退回回归（/steer 在真实模型的在途轮中重定向、TURN_NOT_ACTIVE 自修）——下一批真实网关实测时顺带确认
+  - abortTimeoutMs 缺省 10s 是装配层决策值（kimi 同款）——CLI 参数面暴露随 CLI 批次
+  - M9 的全局/会话两级上限结构、J20 的多会话 host 级准入 → K3（批次 12）
+- **批次完成定义核对**：9 卡打勾附验收 ✓；tsc 干净 ✓；count-features 310 ✓；check-doc-links 0 失效 ✓；license-audit 通过 ✓；四项展卡定形照执行 ✓；词汇表一处载荷扩展走立案 ✓；三个真实缺陷修复各有测试钉死 ✓；六面盘点结论落卡 ✓
+- **下一批**：批次 7 = 工具纪律与超时（B8 残余 apply_patch/lsp + B13 B15 B16 B18 B19 B20 B21 + I3 + M6 + J23 J24 J27，13 条，预估 8 卡；B18 三档超时 ↔ M6 工具超时 ↔ J23 三种超时同主题三面建议统一定形；B20 可续跑事件与 J27 retrying 一等事件是词汇表高风险点；I3 独立中件）
+- **下一批提示词**：
+
+```
+继续 aegent P1 批次 7 的实施（工具纪律与超时）。批次 7 尚未展卡：先按
+docs/20260926_P1剩余批次全量圈定研究.md 批次 7 条目（B8 残余 + B13 B15 B16
+B18 B19 B20 B21 + I3 + M6 + J23 J24 J27）逐条锚点核对 requirements.md §4，
+照 plan-p1.md 批次 6 展卡先例把卡序追加进 plan-p1.md，然后按
+docs/plan-p0.md §0 协议执行。上一批报告在 docs/plan-p0-progress.md（批次 6
+报告）。本批特有的注意：1) B18 参数三档合并 + M6 工具超时策略 + J23 三种
+超时（总时长/空闲/可重臂空闲）是同主题三面，展卡时建议一张卡统一定形；
+2) B20 可续跑事件与 J27 retrying 一等事件是词汇表高风险点——每处走待澄清
+立案；3) B8 残余的 apply_patch（补丁语法）与 lsp（语言服务）各自独立小件，
+lsp 依赖 workspace 语义展卡时评估是否拆期。上批遗留：A12 promptId 词汇表
+载荷扩展待澄清 #8 仍待追认。全量基线 827 passed / 1 skipped。不要问要不要
+继续。
 ```
 
 ---

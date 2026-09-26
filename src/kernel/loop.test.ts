@@ -808,6 +808,37 @@ describe("prompt 入队闸门（A13/T-P1-48）", () => {
       .map((e) => (e as { message: { content: string } }).message.content);
     expect(contents).toEqual(["开场", "原样乙"]);
   });
+
+  it("one-at-a-time × gate（收口面①）：拦截不补位——被拦条目丢弃、下一条等下一个边界", async () => {
+    const provider = new ScriptedProvider();
+    for (let i = 1; i <= 4; i += 1) {
+      provider.mount([{ type: "text-delta", text: `s${i}` }, { type: "done" }]);
+    }
+    const queue = new PromptQueue("one-at-a-time");
+    let decided = 0;
+    const decideTurn: DecideTurn = () => {
+      decided += 1;
+      if (decided === 1) {
+        queue.enqueue("第一条被拦");
+        queue.enqueue("第二条放行");
+      }
+      return decided < 4 ? { action: "continue" } : { action: "end" };
+    };
+    const { loop, store } = makeLoop(provider, {
+      decideTurn,
+      queue,
+      promptGate: async (m) => m.content !== "第一条被拦",
+    });
+
+    expect(await loop.runTurn("开场")).toEqual({ kind: "completed" });
+    const contents = store
+      .load("s1")
+      .filter((e) => e.type === "user/message")
+      .map((e) => (e as { message: { content: string } }).message.content);
+    // 边界一：drain 出"第一条被拦"→ 拦截 → 该边界零注入；边界二：drain
+    // 出"第二条放行"→ 注入——one-at-a-time 的每边界一条节奏不被拦截扰动
+    expect(contents).toEqual(["开场", "第二条放行"]);
+  });
 });
 
 describe("循环护栏（A14/T-P1-50）", () => {

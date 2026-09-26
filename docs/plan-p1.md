@@ -782,7 +782,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **偏离 / 建议**：（留白）
 - **完成记录**：2026-09-27。产出：①`UserMessageEvent.promptId?: string` 可选载荷（events.ts 注释落完整语义：关联区间 = 本条后至下一条 user/message 前按流顺序归属——**仅扩起点一处不逐事件打 id**；🔴 专有仓只学语义零代码摘取）；②loop 分配器：`nextPromptId()`（`p<序数>` 会话内单调）+ **构造时从流重建基线**（数已有 user/message 条数——恢复路径不重号）+ runTurn 首条与 drainQueue 注入两处落盘点；③project.ts validation：promptId present 时必须非空字符串、缺省放行（旧流前向兼容）；④**词汇表立案兑现**：零事件数扩展（19 不变）、l0-events.md §3.2 user/message 行 + §8 落地记录 9 + 待澄清 #8 立案供追认；⑤A9 复证钉死：promptId 无 finished() 配对（与 messageId 分工注释进 events.ts）。验收：`npx vitest run src/kernel/loop.test.ts src/session/project.test.ts src/test-support/migration-asserts.test.ts src/kernel/events.test.ts` → **54 passed**（loop 28 + project 19 + migration 5 + events 13，+4 新）：①首条 p1 + steer 注入 p2/p3；②关联区间 seq 切片推导（两输入之间事件非 user/message 且非空）；③恢复重建不重号（同 store 新 loop 拿 p2）；④空串 promptId 拒绝 + 旧流缺省兼容。全量 `npx vitest run` **825 passed / 1 skipped**（821 → 净增 4），`npx tsc --noEmit` 干净，check-doc-links 97 链接 0 失效。**记档**：全量首跑又出现一次未复现 flaky（与 T-P1-48 同形态，连跑 3 次全绿）——判定为 93 worker 并行下既有环境偶发（WAL/文件句柄竞态先例），非批次 6 引入面。
 
-#### T-P1-54 · 收口 · loop 治理面与既有机制冲突盘点 + 快照 `[ ]`
+#### T-P1-54 · 收口 · loop 治理面与既有机制冲突盘点 + 快照 `[x]`
 - **依据需求**：批次 6 收口（照批次 4 T-P1-39 / 批次 5 T-P1-45 收口盘点先例；无独立需求 ID）
 - **上游首选参考**：批次 5 T-P1-45 先例（逐面盘点 + 测试钉死或记档）
 - **取什么 / 别抄什么**：六面盘点：①A2 queueMode（all/one-at-a-time）× A13 gate——one-at-a-time 下拦截后下一条补位语义（T-P1-48 预留）定形或记档；②A14 护栏 × B14 预算 × M10 预算——三套上限（turn 内 step 数/跨 turn 工具数与墙钟/送达记账）边界清单化；③J20 admission × A3 run-state × Q5 对账——draining 后崩溃重启的对账口径（busy 停留 + admission 状态是进程内存不持久——重启即新 admission，记档）；④A13 PromptGate × C9 策略 gate——两个 gate 命名与职责边界（prompt 准入 vs 工具执行裁决）文档记档；⑤A12 promptId × A2/A9 messageId——两 id 体系分工记档（T-P1-53 已落，此处复核）；⑥快照即规格：steer 准入全链一条快照（O21/O22 反哺——Scenario 头行）
@@ -791,6 +791,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **验收**：`npx vitest run`（全量回归——含批次 6 全部新测试）+ 盘点清单入完成记录；发现真冲突 → 升级待澄清不硬落
 - **依赖**：T-P1-46 ~ 53 全部（本批最后一张）
 - **偏离 / 建议**：（留白）
+- **完成记录**：2026-09-27。**六面盘点结论**（每面：现状/定形/测试或记档）：①**A2 queueMode × A13 gate**：one-at-a-time 下拦截不补位——每边界本就只 drain 一条，被拦条目丢弃后同边界零注入、下一条等下一个边界（one-at-a-time 节奏不被拦截扰动）；all 模式被拦条目丢弃、其余照注。**测试钉死**（loop.test 收口用例：边界一拦截零注入、边界二注入下一条）。②**A14 护栏 × B14 预算 × M10 预算——三套上限边界清单**：`maxStepsPerTurn` = 单 turn 内 step 数上限（每 turn 重置，防模型无限 continue）；`B14 maxTicks/timeoutMs` = 每 step 的工具调用数与墙钟预算（ParseBudget 在 runStep 内构造，防单 step 工具风暴）；`M10 预算` = token 阈值送达记账（完全不同面——"要送达的事实"非限制）；`abortTimeoutMs` = 取消后收尾看门狗（与前三者无重叠）。四轴各管一段互不替代（记档）。③**J20 admission × A3 run-state × Q5 对账**：admission/draining 是进程内存态不持久——崩溃重启即全新 admission，与对账无交互；Q5 对账只认事件流事实（busy 停留 → 恢复路径归位）；draining 后收尾路径 cancel 在途轮 → busy 归位走 runFlushPoint 正常路径（记档，无冲突）。④**A13 PromptGate × C9 策略 gate**：命名分域清晰——`kernel/prompt-gate.ts` 管"用户输入准入"（入队裁决、三态、放行/拦截/改写），`policy/gate.ts` 管"工具执行裁决"（C9 策略链挂 toolCall 点位）；两者可在同一装配共存互不感知（记档）。⑤**A12 promptId × A2/A9 messageId**：两 id 体系分工已在 events.ts 注释 + T-P1-53 用例钉死（messageId=q<序数> 仅队列通道收执；promptId=p<序数> 关联键含 runTurn 首条）——复核确认无需新代码（记档）。⑥**快照即规格**（O21/O22 反哺）：`src/kernel/steer.snapshot.test.ts` steer 全链一条（Scenario 头行：准入 → 工具照常结算 → step 边界注入 → 下一次请求消费；派生断言钉 promptId p1/p2、注入位置在 tool/result 后、终态恰一 completed）。验收：全量 `npx vitest run` **827 passed / 1 skipped**（825 → 净增 2），`npx tsc --noEmit` 干净，`count-features.sh` = 310 不变，`check-doc-links.sh` 548 链接 0 失效，`license-audit.sh` exit 0（LEAK 未命中）。
 
 ## 批次 6 完成定义
 
@@ -799,3 +800,12 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - 词汇表预判：A12 一处载荷扩展（user/message.promptId）走待澄清立案（19 计数不变）；其余零扩展——执行中每处新增事件必须先立案。
 - 取消/护栏语义红线：取消优先于 completed（A17）、看门狗不弃 promise 只闸落盘（A14）、draining 后准入类型化拒绝（J20）——每处有测试钉死。
 - 六面盘点结论落批次报告（T-P1-54）。
+
+## 批次 6 完成核对（2026-09-27）
+
+- 9/9 卡打勾附验收 ✓（T-P1-46 ~ 54，11 条需求 ID：A5/A8/A10/A11/A12/A13/A14/A15/A17/J20/M9 全关，其中 A15 记档关闭于 T-P1-47、A17 部分覆盖实卡补缺）；全量 `npx vitest run` **827 passed / 1 skipped**（批次 5 收官 791 → 净增 36），`npx tsc --noEmit` 全程干净，`count-features.sh` = 310 不变，`check-doc-links.sh` 548 链接 0 失效，`license-audit.sh` exit 0。
+- 四项展卡核对结论照执行 ✓：A17 部分覆盖 + decideTurn→closeTurn 窗口缺口实卡修复（取消不再被 completed 吞）；A11 半边结构成立双层钉死（loop 层工具挂起时序 + 进程层流挂起时序）；A8 队列保留结构成立补"退回输入框"可见面（prompt_returned + ⮐ 回显）；A13+M9 拆两面（T-P1-48 队列面 / T-P1-49 并发面）。
+- 词汇表：**一处载荷扩展**（user/message.promptId，待澄清 #8 立案供追认，19 计数不变）——A13 拦截面 logger、A5 重试面 logger、A14 护栏面 TurnEndReason 既有槽位、J20/M9 拒绝面类型化错误，四处预判零扩展全部兑现。
+- 三个真实缺陷在测试中被抓出并修复 ✓：①turn/end 事件转发先于 activeTurn 清位的窗口（steer 误受理开轮 2）→ 清位提前到 closeTurn 开头；②kick 里 draining 后 admit 抛错打断 kick 链致进程不退 → draining 跳过 admit（拒绝面只在 handleRequest）；③A14 看门狗强制收轮的 double terminal 风险 → forcedClosed 闸门（closeTurn 直接返回 + 迟到结果不落盘）。
+- 六面盘点 ✓（详见 T-P1-54 完成记录）：one-at-a-time×gate 拦截不补位（测试钉死）、四套上限边界清单（记档）、admission×Q5 无交互（记档）、PromptGate×C9 命名分域（记档）、messageId×promptId 分工复核（已钉死）、steer 全链快照一条（O21/O22 反哺）。
+- 本批交付面：取消 await 点 11 点盘点与两处显式补检查 · steer 协议通道（expectedTurn 准入 + TURN_NOT_ACTIVE + CLI /steer）· 入队闸门三态（PromptGateVerdict 同构）· 有限队列（QUEUE_FULL）· TurnAdmission（SERVER_DRAINING 收尾闭闸）· ToolClassLimiter（类独立 FIFO）· 两个护栏参数（maxStepsPerTurn + abortTimeoutMs 看门狗）· 重试留痕（onRetry）· 取消退回（prompt_returned）· 关联 id（promptId + 待澄清 #8）· 六面盘点 + steer 快照。
