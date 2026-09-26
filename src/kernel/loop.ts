@@ -92,6 +92,8 @@ export interface ModelStepOutput {
   timing?: { firstTokenLatencyMs: number; streamDurationMs: number };
   /** B19/T-P1-61：本次模型请求的关联 id（`r<序数>` 会话内单调）。 */
   traceId?: string;
+  /** B20/T-P1-62：厂商 finishReason（done chunk 透传——触顶续跑判定面）。 */
+  finishReason?: string;
 }
 
 /** toolCall 点位：包住"单次工具执行"（载荷与 tool/call 事件同源）。 */
@@ -129,6 +131,24 @@ export interface ToolExecutionResult {
   /** 工具私有展示载荷，对内核不透明；append 时由 assertJsonSafe 兜底（C14）。 */
   meta?: JsonValue;
 }
+
+/**
+ * B20/T-P1-62 输出 token 触顶的 finishReason 闭集（zcode OUTPUT_LIMIT_RAW_
+ * REASONS 同构，冻结只追加——C10 先例）：纯文本被截断且无工具调用时判定
+ * "可续跑"。
+ */
+export const OUTPUT_TOKEN_LIMIT_FINISH_REASONS: ReadonlySet<string> = new Set([
+  "length",
+  "max_tokens",
+  "max_output_tokens",
+]);
+
+/** B20/T-P1-62 续跑指令（zcode OUTPUT_TOKEN_CONTINUE_PROMPT 同款语义）。 */
+export const OUTPUT_TOKEN_CONTINUE_PROMPT =
+  "Output token limit hit. Resume directly — no apology, no recap of what you were doing. Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces.";
+
+/** B20/T-P1-62 每 turn 续跑上限（zcode MAX_OUTPUT_TOKEN_CONTINUATIONS=3 同值）。 */
+export const MAX_OUTPUT_TOKEN_CONTINUATIONS = 3;
 
 /** turnEnd 点位：包住"落 turn/end"。reason 由 loop 定，层只观察（P0）。 */
 export interface TurnEndPayload {
@@ -458,6 +478,9 @@ export class AgentLoop {
   /** B16/T-P1-59：当前 step 的工具执行策略快照（runStep 开始时固化）。 */
   private stepToolMeta = new Map<string, { parallel: boolean; timeoutMs?: number }>();
 
+  /** B20/T-P1-62：本 turn 的输出触顶续跑计数（每 turn 重置，上限 3）。 */
+  private outputTokenContinuations = 0;
+
   private nextPromptId(): string {
     this.promptCounter += 1;
     this.currentPromptId = `p${this.promptCounter}`;
@@ -546,6 +569,8 @@ export class AgentLoop {
     // B13/T-P1-57：新 turn 复位预算耗尽标记（计数作用域按 promptId，本就
     // 不会跨 prompt 生效——此处清的是异常半途残留）
     this.mutationTerminate = null;
+    // B20/T-P1-62：新 turn 复位输出触顶续跑计数
+    this.outputTokenContinuations = 0;
     // 新 turn 一份新信号：丢弃 idle 期迟到的取消（不武装本 turn 之前的工作）
     this.cancelCause = null;
     this.cancelController = new AbortController();
@@ -601,6 +626,10 @@ export class AgentLoop {
         const result = await this.runStep(turn, step);
         if (result.kind === "blocked") return { kind: "blocked" };
         if (result.kind === "cancelled") break;
+        // B20/T-P1-62：输出触顶续跑——内核护栏行为（不受 decideTurn 裁决，
+        // 否则默认"无工具即 end"会立即终结轮——正是 B20 要防的"结束回合"），
+        // 直接进下一 step（续跑指令已作为 injected user/message 入流）。
+        if (result.kind === "continue") continue;
         // A1：end 必须由 DecideTurn 显式给出；continue 则同轮进下一个 step。
         const decision = await this.deps.decideTurn(result.record);
         // A17/T-P1-46：decideTurn await 后显式检查——取消发生在裁决之后
@@ -674,6 +703,7 @@ export class AgentLoop {
     { kind: "completed"; record: StepRecord }
     | { kind: "blocked" }
     | { kind: "cancelled" }
+    | { kind: "continue" }
   > {
     const { store, sessionId } = this.deps;
     this.currentStepNumber = step;
@@ -741,6 +771,29 @@ export class AgentLoop {
         ...(output.usage ? { usage: output.usage } : {}),
       },
     ]);
+    // B20/T-P1-62：输出 token 触顶可续跑——纯文本（无工具调用）且
+    // finishReason ∈ 触顶闭集且本 turn 续跑未达上限 → 落固定续跑指令
+    // （user/message source="injected"，注入上下文既有语义——零新事件），
+    // 下一 step 继续请求；触顶不终结轮（"可续跑事件"不是回合终态）。
+    if (
+      output.toolCalls.length === 0 &&
+      output.finishReason !== undefined &&
+      OUTPUT_TOKEN_LIMIT_FINISH_REASONS.has(output.finishReason) &&
+      this.outputTokenContinuations < MAX_OUTPUT_TOKEN_CONTINUATIONS
+    ) {
+      this.outputTokenContinuations += 1;
+      store.append(sessionId, [
+        {
+          type: "user/message",
+          turn,
+          message: { content: OUTPUT_TOKEN_CONTINUE_PROMPT },
+          source: "injected",
+          promptId: this.nextPromptId(),
+        },
+        { type: "step/end", turn, step, ...(output.timing ? { timing: output.timing } : {}), ...(output.traceId ? { traceId: output.traceId } : {}) },
+      ]);
+      return { kind: "continue" };
+    }
     const toolResults: StepRecord["toolResults"] = [];
     // B14：每个 step 的工具分发循环一份预算（tick=派发、progress=执行完回环）
     const budget = new ParseBudget(this.deps.toolBudget ?? {});
@@ -1089,6 +1142,7 @@ export class AgentLoop {
     const traceId = this.nextTraceId();
     const streamStart = Date.now();
     let firstChunkAt: number | undefined;
+    let finishReason: string | undefined;
     try {
       for await (const chunk of this.turnModel.provider.streamChat({
         identity: payload.identity,
@@ -1115,6 +1169,7 @@ export class AgentLoop {
             usage = chunk.usage;
             break;
           case "done":
+            finishReason = chunk.finishReason;
             break;
         }
         // A7 协作式中断：已到达的 chunk 已如实记录，其后不再消费
@@ -1146,6 +1201,7 @@ export class AgentLoop {
           }
         : {}),
       traceId,
+      ...(finishReason !== undefined ? { finishReason } : {}),
       ...(this.cancelCause ? { interrupted: true as const } : {}),
     };
   }

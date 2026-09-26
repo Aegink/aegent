@@ -145,7 +145,16 @@ export type StreamChunk =
   | { type: "reasoning-delta"; text: string }
   | { type: "tool-call-delta"; id: string; name?: string; argsDelta: string }
   | { type: "usage"; usage: TokenUsage }
-  | { type: "done" };
+  | {
+      type: "done";
+      /**
+       * B20/T-P1-62：厂商 stop/finish reason（OpenAI wire 的 choices[0]
+       * .finish_reason，此前被丢弃）。可选——旧流/部分适配器缺省。
+       * loop 据此判定"输出 token 触顶可续跑"（OUTPUT_TOKEN_LIMIT_FINISH_
+       * REASONS 闭集）；走待澄清 #10 载荷扩展立案（C14 JSON 安全）。
+       */
+      finishReason?: string;
+    };
 
 /** 带原始时间戳的流记录：E14（原始分片入日志，P1）启用分片重放时的依据。 */
 export interface TimedStreamChunk {

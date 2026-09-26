@@ -1270,5 +1270,68 @@ describe("step 可观测事件（B19/T-P1-61：timing/traceId）", () => {
   });
 });
 
+describe("输出 token 触顶可续跑（B20/T-P1-62）", () => {
+  it("纯文本触顶 → 注入续跑指令（injected user/message）+ 新 step 继续，不终结轮", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([
+      { type: "text-delta", text: "写到一半" },
+      { type: "done", finishReason: "length" },
+    ]);
+    provider.mount([
+      { type: "text-delta", text: "接上文继续" },
+      { type: "done" },
+    ]);
+    const { loop, store } = makeLoop(provider);
+
+    expect(await loop.runTurn("长文")).toEqual({ kind: "completed" });
+    const contents = store
+      .load("s1")
+      .filter((e) => e.type === "user/message")
+      .map((e) => (e as { message: { content: string }; source: string }));
+    // 续跑指令以 injected user/message 落流（A12 promptId 关联语义覆盖）
+    expect(contents).toHaveLength(2);
+    expect(contents[1]!.source).toBe("injected");
+    expect(contents[1]!.message.content).toContain("Output token limit hit");
+    // 第二次模型请求包含续跑指令（消息序：截断消息 → 续跑指令）
+    const second = provider.requests[1]!.messages;
+    expect(second.at(-1)).toMatchObject({ role: "user" });
+    // 触顶未终结轮——assistant 消息照常落盘
+    expect(
+      store.load("s1").filter((e) => e.type === "assistant/message"),
+    ).toHaveLength(2);
+  });
+
+  it("连续触顶 3 次后停止续跑（防死循环）——第 4 次触顶照旧收轮", async () => {
+    const provider = new ScriptedProvider();
+    for (let i = 0; i < 4; i++) {
+      provider.mount([{ type: "text-delta", text: `段${i}` }, { type: "done", finishReason: "length" }]);
+    }
+    const { loop, store } = makeLoop(provider);
+
+    expect(await loop.runTurn("超长")).toEqual({ kind: "completed" });
+    const injected = store
+      .load("s1")
+      .filter((e) => e.type === "user/message" && (e as { source: string }).source === "injected");
+    expect(injected).toHaveLength(3); // MAX_OUTPUT_TOKEN_CONTINUATIONS
+  });
+
+  it("触顶但有工具调用 → 不续跑（工具调用是正常延展）；非触顶 finishReason 照常", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([
+      { type: "tool-call-delta", id: "c1", name: "bash", argsDelta: "{}" },
+      { type: "done", finishReason: "length" },
+    ]);
+    provider.mount([{ type: "text-delta", text: "完成" }, { type: "done" }]);
+    const { loop, store } = makeLoop(provider);
+
+    expect(await loop.runTurn("工具轮")).toEqual({ kind: "completed" });
+    expect(
+      store
+        .load("s1")
+        .filter((e) => e.type === "user/message" && (e as { source: string }).source === "injected"),
+    ).toHaveLength(0);
+  });
+});
+
 // 类型引用保持（防止误删导出的编译期契约）
 void ({} as AgentLoop | AgentLoopDeps | TurnDecision | undefined);

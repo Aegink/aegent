@@ -197,3 +197,58 @@ describe("openai-compat 流式适配 —— J1/J2", () => {
     ).toThrow(ProviderConfigError);
   });
 });
+
+
+describe("finish_reason 解析（B20/T-P1-62）", () => {
+  let mock: HttpMock;
+  beforeEach(async () => {
+    mock = new HttpMock();
+    await mock.start();
+  });
+  afterEach(async () => {
+    await mock.stop();
+  });
+
+  function makeProvider(): ModelProvider {
+    return createOpenAiCompatProvider(
+      parseProviderConfig({
+        name: "mock",
+        settingsConfig: JSON.stringify({ baseUrl: mock.url("/v1"), apiKey: "sk-test" }),
+      }),
+    );
+  }
+
+  async function collect(req: ChatRequest): Promise<StreamChunk[]> {
+    const out: StreamChunk[] = [];
+    for await (const c of makeProvider().streamChat(req)) out.push(c);
+    return out;
+  }
+
+  it("wire finish_reason 随最后一帧出现 → done chunk 携带（此前被丢弃）", async () => {
+    mock.mountSseSequence([
+      { events: [wireChunk({ content: "写到一半" }), { id: "x", choices: [{ index: 0, delta: {}, finish_reason: "length" }] }] },
+      { events: ["[DONE]"] },
+    ]);
+    const chunks = await collect({
+      identity: modelIdentity("mock", "gpt-test"),
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const done = chunks.at(-1) as { type: string; finishReason?: string };
+    expect(done.type).toBe("done");
+    expect(done.finishReason).toBe("length");
+  });
+
+  it("无 finish_reason 的流 → done 缺省该字段（前向兼容）", async () => {
+    mock.mountSseSequence([
+      { events: [wireChunk({ content: "ok" })] },
+      { events: ["[DONE]"] },
+    ]);
+    const chunks = await collect({
+      identity: modelIdentity("mock", "gpt-test"),
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const done = chunks.at(-1) as { type: string; finishReason?: string };
+    expect(done.type).toBe("done");
+    expect(done.finishReason).toBeUndefined();
+  });
+});

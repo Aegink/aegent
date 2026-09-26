@@ -99,6 +99,7 @@ async function* streamChatOpenAi(
   const decoder = new TextDecoder();
   let buffer = "";
   const openToolCalls = new Map<number, { id: string }>();
+  const finishState: { reason: string | undefined } = { reason: undefined };
   try {
     for (;;) {
       const { done, value } = await reader.read();
@@ -108,9 +109,16 @@ async function* streamChatOpenAi(
       while ((frameEnd = buffer.indexOf("\n\n")) !== -1) {
         const frame = buffer.slice(0, frameEnd);
         buffer = buffer.slice(frameEnd + 2);
-        const chunk = parseSseFrame(frame, openToolCalls);
+        const chunk = parseSseFrame(frame, openToolCalls, finishState);
+        if (chunk !== null && chunk !== "done") {
+          yield chunk;
+          continue;
+        }
         if (chunk === "done") {
-          yield { type: "done" };
+          yield {
+            type: "done",
+            ...(finishState.reason !== undefined ? { finishReason: finishState.reason } : {}),
+          };
           return;
         }
         if (chunk !== null) yield chunk;
@@ -125,6 +133,7 @@ async function* streamChatOpenAi(
 function parseSseFrame(
   frame: string,
   openToolCalls: Map<number, { id: string }>,
+  finishState: { reason: string | undefined },
 ): StreamChunk | "done" | null {
   const dataLines: string[] = [];
   for (const rawLine of frame.split("\n")) {
@@ -142,12 +151,14 @@ function parseSseFrame(
   } catch {
     throw new Error(`MODEL_WIRE_ERROR: SSE data 载荷不是合法 JSON（前 120 字符：${data.slice(0, 120)}）`);
   }
-  return mapWireChunk(wire, openToolCalls);
+  const chunk = mapWireChunk(wire, openToolCalls, finishState);
+  return chunk;
 }
 
 function mapWireChunk(
   wire: unknown,
   openToolCalls: Map<number, { id: string }>,
+  finishState: { reason: string | undefined },
 ): StreamChunk | null {
   if (wire === null || typeof wire !== "object") return null;
   const rec = wire as { [key: string]: unknown };
@@ -159,6 +170,12 @@ function mapWireChunk(
   if (!Array.isArray(choices) || choices.length === 0) return null;
   const choice = choices[0];
   if (choice === null || typeof choice !== "object") return null;
+  // B20/T-P1-62：记最近的 finish_reason（OpenAI wire 语义——随最后一个
+  // choices 帧出现、在 [DONE] 之前），供 done chunk 携带（此前被丢弃）
+  const finishReason = (choice as { [key: string]: unknown })["finish_reason"];
+  if (typeof finishReason === "string" && finishReason !== "") {
+    finishState.reason = finishReason;
+  }
   const delta = (choice as { [key: string]: unknown })["delta"];
   if (delta === null || typeof delta !== "object") return null;
 
