@@ -1,9 +1,16 @@
-//! 受限 spawn + 等待 + stdio 管道收集（D6 执行面）。
+//! 受限 spawn + **kill-on-close Job 管辖**（T-P1-26 · D13）+ stdio 管道收集。
 //!
-//! CreateProcessAsUserW（restricted token）+ 匿名管道捕获 stdout/stderr +
-//! stdin 挂 NUL 设备（dsh 语义：ignored stdin 用 null 设备描述符）。
-//! 等待支持超时：超时 → TerminateProcess 回收（D13 卡升级为 Job 全树
-//! 回收）→ 结算 TIMEOUT。
+//! dsh subprocess-native-containment 的 Windows 纪律：
+//!   - 目标 **CREATE_SUSPENDED 创建 → AssignProcessToJobObject → resume**——
+//!     进程进入 Job 前没有可逃逸的窗口；
+//!   - Job 为 unnamed kill-on-close 且 **不设 BREAKAWAY_OK/SILENT_BREAKAWAY_OK**
+//!     （disallow breakaway——"setsid/重挂父进程/活过父进程仍被管住"的
+//!     Windows 对应面：Job 成员关系不随父子关系断裂而丢失）；
+//!   - **结算 = 目标退出 && Job 活动数归 0**（"a PID does not name the
+//!     complete managed range"——后代不空不算结算完）；
+//!   - 超时 → **TerminateJobObject 全树回收 → 等 Job 清空 → 才报 TIMEOUT**
+//!     （"超时子进程先回收再释放许可"）；
+//!   - helper 退出（含崩溃）时 Job 句柄关闭 → kill-on-close 兜底全灭。
 //!
 //! windows-sys 0.48 类型约定：HANDLE = isize（null = 0）。
 
@@ -19,16 +26,24 @@ use windows_sys::Win32::Foundation::GENERIC_READ;
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
 };
+use windows_sys::Win32::System::JobObjects::{
+    AssignProcessToJobObject, CreateJobObjectW, QueryInformationJobObject, SetInformationJobObject,
+    TerminateJobObject, JOBOBJECTINFOCLASS, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+    JobObjectBasicAccountingInformation, JobObjectExtendedLimitInformation,
+    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+};
 use windows_sys::Win32::System::Pipes::CreatePipe;
 use windows_sys::Win32::System::Threading::{
-    CreateProcessAsUserW, GetExitCodeProcess, TerminateProcess, WaitForSingleObject,
-    PROCESS_INFORMATION, STARTF_USESTDHANDLES, STARTUPINFOW,
+    CreateProcessAsUserW, GetExitCodeProcess, ResumeThread, TerminateProcess, WaitForSingleObject,
+    PROCESS_INFORMATION, PROCESS_CREATION_FLAGS, STARTF_USESTDHANDLES, STARTUPINFOW, CREATE_SUSPENDED,
 };
 
 pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 pub const INFINITE: u32 = 0xFFFF_FFFF;
 pub const WAIT_OBJECT_0: u32 = 0;
 pub const WAIT_TIMEOUT: u32 = 0x102;
+/// Job 清空轮询间隔（dsh 同量级 50ms）。
+const JOB_DRAIN_POLL_MS: u32 = 50;
 
 struct Pipe {
     read: isize,
@@ -94,8 +109,38 @@ fn drain_to_string(handle: isize, done: mpsc::Sender<Vec<u8>>) {
     let _ = done.send(buf);
 }
 
-/// 以受限令牌 spawn 目标并等待；返回 (exitCode, stdout, stderr)。
-/// 超时 → TerminateProcess 回收后报 TIMEOUT。
+/// Job 活动进程数（0 = 范围已空，可结算）。
+fn job_active_processes(job: isize) -> u32 {
+    let mut info: windows_sys::Win32::System::JobObjects::JOBOBJECT_BASIC_ACCOUNTING_INFORMATION =
+        unsafe { std::mem::zeroed() };
+    let ok = unsafe {
+        QueryInformationJobObject(
+            job,
+            JobObjectBasicAccountingInformation as JOBOBJECTINFOCLASS,
+            &mut info as *mut _ as *mut core::ffi::c_void,
+            std::mem::size_of::<windows_sys::Win32::System::JobObjects::JOBOBJECT_BASIC_ACCOUNTING_INFORMATION>() as u32,
+            std::ptr::null_mut(),
+        )
+    };
+    if ok == 0 {
+        // 查询失败保守按"仍有活动"（绝不提前宣称范围空）。
+        return u32::MAX;
+    }
+    info.ActiveProcesses
+}
+
+/// 等 Job 活动数归 0（范围空证明；dsh"active-process quiescence"）。
+fn wait_job_drained(job: isize) {
+    loop {
+        if job_active_processes(job) == 0 {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(JOB_DRAIN_POLL_MS as u64));
+    }
+}
+
+/// 以受限令牌 spawn 目标（入 kill-on-close Job）并等待**范围**结算。
+/// 超时 → TerminateJobObject 全树回收 → 等 Job 清空 → 报 TIMEOUT。
 pub fn spawn_and_wait(
     token: isize,
     program: &str,
@@ -103,6 +148,32 @@ pub fn spawn_and_wait(
     cwd: &str,
     timeout_ms: Option<u64>,
 ) -> Result<(u32, String, String)> {
+    // kill-on-close Job（unnamed）；不设 BREAKAWAY_OK → 后代无法脱离。
+    let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+    if job == 0 {
+        return Err(HelperError::new(
+            super::SPAWN_FAILED,
+            format!("CreateJobObjectW 失败（win32 code {}）", unsafe { GetLastError() }),
+        ));
+    }
+    let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    let ok = unsafe {
+        SetInformationJobObject(
+            job,
+            JobObjectExtendedLimitInformation as JOBOBJECTINFOCLASS,
+            &mut limits as *mut _ as *mut core::ffi::c_void,
+            std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        )
+    };
+    if ok == 0 {
+        close_handle(job);
+        return Err(HelperError::new(
+            super::SPAWN_FAILED,
+            format!("SetInformationJobObject 失败（win32 code {}）", unsafe { GetLastError() }),
+        ));
+    }
+
     let out_pipe = make_pipe()?;
     let err_pipe = make_pipe()?;
 
@@ -138,6 +209,8 @@ pub fn spawn_and_wait(
     startup.hStdError = err_pipe.write;
     let mut process: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
 
+    let creation_flags: PROCESS_CREATION_FLAGS =
+        (CREATE_NO_WINDOW | CREATE_SUSPENDED) as PROCESS_CREATION_FLAGS;
     let ok = unsafe {
         CreateProcessAsUserW(
             token,
@@ -149,7 +222,7 @@ pub fn spawn_and_wait(
             std::ptr::null(),
             std::ptr::null(),
             1, // bInheritHandles
-            CREATE_NO_WINDOW,
+            creation_flags,
             std::ptr::null(),
             wide_cwd.as_ptr(),
             &startup,
@@ -160,9 +233,9 @@ pub fn spawn_and_wait(
         close_handle(stdin_handle);
     }
     if ok == 0 {
-        // 父进程侧的读端也要收，防止句柄泄漏。
         close_handle(out_pipe.read);
         close_handle(err_pipe.read);
+        close_handle(job); // kill-on-close：Job 已空，无成员可杀
         return Err(HelperError::new(
             super::SPAWN_FAILED,
             format!("CreateProcessAsUserW({program}) 失败（win32 code {}）", unsafe {
@@ -170,6 +243,24 @@ pub fn spawn_and_wait(
             }),
         ));
     }
+
+    // suspended 状态入 Job，入妥后才 resume（无可逃逸窗口，dsh 纪律）。
+    let assigned = unsafe { AssignProcessToJobObject(job, process.hProcess) };
+    if assigned == 0 {
+        let code = unsafe { GetLastError() };
+        // 已创建但未 resume 的进程：回收（TerminateProcess 对挂起进程有效）。
+        unsafe { TerminateProcess(process.hProcess, 1) };
+        close_handle(process.hThread);
+        close_handle(process.hProcess);
+        close_handle(out_pipe.read);
+        close_handle(err_pipe.read);
+        close_handle(job);
+        return Err(HelperError::new(
+            super::SPAWN_FAILED,
+            format!("AssignProcessToJobObject 失败（win32 code {code}）——目标已回收，绝不入无管辖运行"),
+        ));
+    }
+    unsafe { ResumeThread(process.hThread) };
 
     // 父进程侧立即关写端副本（否则读端永远等不到 EOF）。
     close_handle(out_pipe.write);
@@ -187,15 +278,20 @@ pub fn spawn_and_wait(
     let wait_result = unsafe { WaitForSingleObject(process.hProcess, wait_ms) };
     let timed_out = wait_result == WAIT_TIMEOUT;
     if timed_out {
-        // 先回收再结算（D13 的"先回收再释放许可"最小面：直接杀目标进程，
-        // 全树 Job 回收在 D13 卡升级）。
-        unsafe { TerminateProcess(process.hProcess, 1) };
-        unsafe { WaitForSingleObject(process.hProcess, INFINITE) };
+        // 先回收再释放许可：Job 全树回收 → 等 Job 清空 → 才结算。
+        unsafe { TerminateJobObject(job, 1) };
+        wait_job_drained(job);
+    } else {
+        // 目标已退：后代（重挂父进程/活过目标的）仍被 Job 持有——
+        // 等范围空才算结算完（超时预算不再适用：后代自然跑完）。
+        wait_job_drained(job);
     }
     let mut exit_code: u32 = 0;
     let got_code = unsafe { GetExitCodeProcess(process.hProcess, &mut exit_code) };
     close_handle(process.hThread);
     close_handle(process.hProcess);
+    // kill-on-close 兜底防线：结算完关 Job 句柄（若仍有漏网成员则全灭）。
+    close_handle(job);
 
     let stdout = rx_out.recv().unwrap_or_default();
     let stderr = rx_err.recv().unwrap_or_default();
@@ -208,7 +304,7 @@ pub fn spawn_and_wait(
     Err(HelperError::new(
         super::TIMEOUT,
         if timed_out {
-            format!("目标进程在 {wait_ms}ms 超时后已被回收")
+            format!("目标进程树在 {wait_ms}ms 超时后已被 Job 回收（范围已空）")
         } else {
             "等待目标进程结算失败".to_string()
         },

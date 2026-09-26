@@ -120,4 +120,34 @@ describe.skipIf(!helperReady)("Win32SandboxBackend 真机集成（受限令牌 +
       }),
     ).rejects.toBeInstanceOf(TimeoutError);
   });
+
+  it("⑤D13：后代活过宿主仍被 Job 持有——结算等到范围空（后代睡 3s，宿主立即退）", async () => {
+    const backend = makeBackend();
+    const started = Date.now();
+    const result = await backend.spawn({
+      // 宿主立即退出，派生的后代独立睡 3s（重挂父进程/活过宿主场景）。
+      command: `Start-Process powershell -ArgumentList '-Command','Start-Sleep 3' -WindowStyle Hidden; Write-Output host-exit`,
+      mode: "read-only",
+    });
+    const elapsed = Date.now() - started;
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("host-exit");
+    // 结算发生在后代跑完之后（Job 持有活过宿主的后代，范围空才算完）。
+    expect(elapsed).toBeGreaterThanOrEqual(2800);
+  }, 20_000);
+
+  it("⑤D13：超时全树回收——宿主与后代均被 TerminateJobObject（不等后代 30s）", async () => {
+    const backend = makeBackend();
+    const started = Date.now();
+    await expect(
+      backend.spawn({
+        command: `Start-Process powershell -ArgumentList '-Command','Start-Sleep 30' -WindowStyle Hidden; Start-Sleep 30`,
+        mode: "read-only",
+        timeoutMs: 2500,
+      }),
+    ).rejects.toBeInstanceOf(TimeoutError);
+    const elapsed = Date.now() - started;
+    // 全树回收即时生效（~2.5s），绝不等 30s 的后代自然跑完。
+    expect(elapsed).toBeLessThan(15_000);
+  }, 20_000);
 });

@@ -18,6 +18,9 @@ out/
 .nuxt/
 .cache/
 *.tsbuildinfo
+src/sandbox/win32-helper/target/
+src/sandbox/win32-helper/Cargo.lock.bak
+
 
 # Python
 __pycache__/

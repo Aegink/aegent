@@ -32,6 +32,9 @@ mod spawn;
 mod token;
 
 pub use err::{BAD_REQUEST, GRANT_FAILED, SPAWN_FAILED, TIMEOUT, TOKEN_FAILED};
+
+#[cfg(test)]
+mod mechanism_tests;
 use err::{HelperError, Result};
 
 /// 请求的文件效果档位（与 TS 侧 SandboxMode 对齐）。
