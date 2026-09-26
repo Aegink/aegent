@@ -150,7 +150,7 @@
 
 | 需求ID | 为什么不能机验 | 人工要怎么确认 |
 | --- | --- | --- |
-| 批次 2 三面（B6/B7/F6） | 并行/进度/缓存的行为证据与真实厂商缓存行为（命中率、F6"token 省 ≥ 30%"口径、T-P1-23 多端点容错）需要真实网关与真实模型流量 | 用户提供 OpenAI 兼容网关后同批次 1 终验口径复测：① parallel 模式真实模型工具调用（B6 行为可观测）；② question/answer 与进度事件在真实流的表现（B7/B8b）；③ 真实会话 Σinput 对比批次 1 基线 64.5k（缓存族 F6/F13/F15 的省算口径 + UsageRow.cacheHitRate 实测值）；④ 多端点容错（J15）需第二端点。key 不落盘，证据落库 |
+| 批次 2 三面（B6/B7/F6） | ~~需要真实网关~~ **已实测（2026-09-26，用户提供网关 cline-pass/deepseek-v4.1-flash，key 不落盘）**：三场景真实会话（tmp 驱动脚本不入库，toolExecution=parallel 装配 + 审批自动放行 + question 自动答复）——**B7 进度**：2 条 `tool/progress`（bash「命令已启动」，seqInCall=1、落流有序）；**B8b question 全链**：真实模型自发调 question（args 恰为指定问题）→ 自动答复「写总结」→ tool/result「用户答复：写总结」→ 模型确认并继续；**B6 并行**：parallel 装配全 session 无异常；**F6 缓存**：网关回 `cached_tokens`——cacheRead 逐轮增长（1024→2048→2176→2176→2304→2432），Σinput=14,272 / ΣcacheRead=12,160 → **cacheHitRate≈85.2%**（远超 F6「省 ≥30%」口径；未缓存增量输入 6 请求合计仅 2,112）。42 事件 seq 连续、3/3 轮 completed、3 tool/call = 3 tool/result 配平 | **多端点容错（J15）仍开放**：需第二个网关/端点做故障转移实测（熔断开路切第二家），单端点无法机验 |
 | J2（部分） | ~~真实厂商连通性需要 API key~~ **已实测（2026-09-25，用户提供 OpenAI 兼容端点，deepseek-v4.1-flash）**：流式 192 块（reasoning-delta/text-delta/usage/done）、usage 落库（input 2196/output 191/total 2387/reasoningTokens 175）、L3 视图可查；真实模型 tool_call 流式分片拼接正确（arguments 完整 JSON）、审批挂起→超时→isError 回喂→模型自适应重试→诚实收尾，27 事件配平落库。系统提示生效（模型自称 aegent）。**剩：不同厂商 wire 差异的多端点复测**（同一端点已闭环） | **复测已关闭（2026-09-26，P1 批次 1 终验）**：不同接入路径实测通过（用户网关 <redacted-endpoint>，模型 cline-pass/deepseek-v4.1-flash，OpenAI Chat Completions 协议）——五场景审批放行全链路 + 128 事件 seq 连续 + 15/15 配平 + reasoningTokens 映射有效（见下方「批次 1 终验收记录」） |
 | T9 冷启动 | 「<500ms」依赖本机负载 | T-8-05 终验收已实测两形态：echo 模式 median 283.3ms、SQLite 模式 median 273ms，达标收口（T-3-06 基线 109.6ms 的上浮源于子进程装配扩容，见 T-8-05 偏离①） |
 | D3 弱承诺 | 「网络策略只管工具层」是声明不是代码属性 | **已关闭（2026-09-25 用户目检裁决："可以"）**——`src/sandbox/README.md` 置顶加粗的弱承诺段（只拦工具层 fetch，不承诺 bash 子进程/模型接入层/OS 级，deny 档 ≠ 网络隔离）获用户认可 |
@@ -849,8 +849,8 @@ checkpointRepoRoot 先例），"重启不重放"按 Q5 对账口径。不要问�
   - registerBuiltinTools 的 BUILTIN_TOOL_NAMES 是"**可注册**清单"而非"缺省注册清单"（webfetch/question 条件注册）——全集等价断言必须带齐各能力面装配件（plan-mode.test 两轮适配）
   - makeLoop 测试 harness 的 opts 面随 loop deps 增长（本批加 toolExecution/isParallelTool/toolsProvider/onCacheAnchorChange/modelForTurn 五槽位）——loop 测试基建的维护成本信号，暂不重构
 - **遗留风险与未知**：
-  - **词汇表两案待追认**（待澄清 #5 tool/progress、#6 reason 扩值+CompactionEvent.title）——不追认回退面见落地记录 6/7
-  - **真实厂商端到端复测未做**（并行/进度/缓存三面行为证据 + F6"token 省 ≥ 30%"口径 + T-P1-23 多端点容错）——已列人工确认清单，需用户网关（同批次 1 终验口径）
+  - **词汇表两案已追认转正**（待澄清 #5/#6 案关，§3.2 正式计数 18 事件——2026-09-26 用户裁决）
+  - ~~真实厂商端到端复测未做~~ **已完成（2026-09-26）**：三面证据见人工确认清单批次 2 行（B7 进度 2 条落流 / B8b question 真实模型全链 / F6 cacheHitRate≈85.2% 远超 30% 口径）；**仅 J15 多端点容错开放**（需第二端点）
   - spill 默认目录（系统 tmp aegent-tool-spill）在多版本共存时旧 manual 文件不被 GC（人工面保留——设计如此）
   - cli.test 的 question 用例 ~1.4s（审批/问答往返），测试面继续变厚后注意超时配置
 - **批次完成定义核对**：10 卡打勾附验收 ✓；tsc 干净 ✓；count-features 310 ✓；check-doc-links 0 失效 ✓；license-audit 通过 ✓；词汇表扩展走既有管线 ✓；缓存族锚逐字节断言就位 ✓；真实厂商复测 → 人工确认清单（下项）
