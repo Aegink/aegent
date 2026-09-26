@@ -15,7 +15,9 @@
     "test": "vitest run",
     "build": "tsc && node scripts/copy-assets.mjs",
     "check": "tsc --noEmit",
-    "build:sandbox-helper": "cd src/sandbox/win32-helper && cargo build --release"
+    "build:sandbox-helper": "cd src/sandbox/win32-helper && cargo build --release",
+    "doctor": "npm run build && node dist/src/cli/doctor.js",
+    "sandbox:provision": "npm run build && node dist/src/cli/provision.js"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
