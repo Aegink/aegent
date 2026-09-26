@@ -413,3 +413,134 @@
 | **14** | UI 端 | K2 K5 | 4-6 |
 
 P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权限 / 插件生态与远程后端 / 端与自动化 / 观测与工程纪律 P2——细展卡待 P1 收口。依赖与逐批要点、疑似顺带覆盖核对清单（A11/A17/C23/C41/D14/F25/O20）见研究文档。
+
+## 批次 4 卡序（10 张，2026-09-26 展卡，按依赖排序；15 条需求 ID：O12–O26）
+
+**锚点纪律**：15 条锚点已逐一打开核对（2026-09-26，证据见各卡「证据强度」）：dsh `schedule/src/invariant.ts`（包自有不变量 + invariants 服务 inject）、codex `tests/common/responses.rs`（ResponseMock 请求记录 + single_request 计数 panic）、codex `tests/common/context_snapshot.rs`（"first request retains all its input; later requests retain their suffix index" + group_requests 新窗判定）、dsh `test-support/llm-replay`（录制 JSONL + first-call 序 + override sidecar）与 `llm-mock-server`（具名故障剧本 + startMockLlmServer 捕获请求）、codex `cli/src/doctor/` 全目录、kimi `migration-legacy`（fixtures + runMigration + marker + resume 集成测试）、codex `tests/suite/compact.rs`（计数断言原文三处命中）+ `tests/suite/snapshots/all__suite__compact__*.snap`（8 条快照核实）、kimi `snapshots.ts:119-198`（[emit]/[wire] 前缀 + padEnd + formatGenerateInput 变化检测）、pi-desktop `plugins/tests.rs:10-27`（MARKET_ENV_LOCK + `unwrap_or_else(|e| e.into_inner())` 中毒处理 + RAII 守卫 + 进程全局注释）、codex `session/tests.rs:1655`（`user_shell_commands_do_not_inherit_managed_network_proxy` 原名命中）。**行号漂移注明**：O20/O21/O22 的 `compact.rs:423` 实际断言在 2361/3342/3466（文件演进漂移），断言原文与验收要点逐字命中，内容级零勘误。
+
+**两项展卡核对结论（走 J25/L10/M5 先例的顺带关闭流程，供用户追认）**：
+1. **O17 持久化内存替换：已覆盖，提请关闭，不占卡**——P0 E2（T-1-02）已落 `EventStorage` 接口 + `InMemoryEventStorage` + `SqliteEventStorage`（`:memory:` 支持在 `OpenDbOptions`），全部单测默认内存 store；测试中出现的磁盘仅两类：mkdtemp 临时目录夹具（`boot-maintenance.test.ts` 的 Q5 杀进程语义必须真 WAL 落盘，属测试夹具不是"碰生产磁盘"）与 tmp-fs 种子文件——"单测不碰真磁盘"的验收要点实质满足。
+2. **O20 先断言模型调用次数：部分覆盖，访问器面与 O13 合并实卡**——T-2-03 的计数断言纪律已在用（`fault-tolerance.test.ts` 的 `expect(a.calls()).toBe(3)`、http-mock `calls` 计数、mountSequence"请求多于脚本即报错"的结构性计数断言），但"带说明"的访问器形态没有：裸 `expect` 无失败说明，也无 `single_request` 式"数量错了给可读失败"的取值访问器——T-P1-31 补齐。
+
+**本批特有约束**：
+1. **测试基建全部落 `src/test-support/`（不入运行时路径）**；仅两个运行时面例外：O12 不变量服务（`src/kernel/`，装配可选挂载）与 O18 诊断报告（`src/diagnostics/` + cli 聚合）。
+2. **词汇表影响预判：低（零扩展）**——本批全是测试/诊断基建，不新增事件；校验/诊断失败走 logger 与测试断言（D3 弱承诺先例）。
+3. **不做什么**（本批次）：不做 O28 测试政策文档（P2 段 15e）；不做 O27 长行截断 / O29 显式忽略臂 / O30 跨组件因果断言（P2）；不做 kimi migration-legacy 的产品级迁移功能（Q1 迁移链在批次 10，T-P1-36 只落断言基建与首个真实消费面）；不做 dsh test-support 的包组拆分（我方单包目录足够）；O15/O16 不做 dsh 的 Cordis 装配与 Messages 兼容 wire（我方 ModelProvider 接口 + openai-compat 已定形，测试基建挂既有接口）。
+
+#### T-P1-30 · O12 · 不变量检查服务（包自有不变量 + 统一注册面） `[ ]`
+- **依据需求**：O12（P1："包自己拥有不变量，可自动断言防回归"）
+- **上游首选参考**：[dsh·invariant.ts](../oss/deepseek-harness/packages/schedule/schedule/src/invariant.ts)（`validate(events, fail)` 包自有不变量 + `inject: ['invariants']` 服务化安装 + append 前/replay 时双跑）
+- **取什么 / 别抄什么**：取"不变量属于拥有它的域、由统一服务安装执行"的结构与 `validate(events, fail)` 签名；不抄 Cordis ctx 注入架构（我方装配直接传参）；event-asserts 的三个断言器（O7 产物）是第一批"包自有不变量"，本卡把"逐个手工调"升级为"注册后一键全跑"
+- **证据强度**：`读了代码`（invariant.ts 全文 56 行；我方 event-asserts.ts 三断言器 + store.ts 现状）
+- **要产出**：`src/kernel/invariants.ts`（`InvariantRegistry`：`register(name, validate)` / `check(events, {onFailure})` 全量执行收集失败 / 重复名拒绝）+ event-asserts 三断言器注册为服务内建（既有导出签名零变化）+ 装配可选接线（restore 后跑一轮，失败落 logger.warn——运行时默认关闭，测试面显式启用）+ 单测
+- **验收**：`npx vitest run src/kernel/invariants.test.ts src/test-support/event-asserts.test.ts`（扩）——①注册表对坏流（孤儿 result / 双终态）逐不变量收集失败且互不吞错；②event-asserts 三断言器经注册表可跑（既有用例零改动）；③装配未启用零行为变化（回归）；④重复注册名拒绝、未知不变量不存在（fail-closed 面）
+- **依赖**：无（批次 4 首卡）
+- **风险 / 未知**：运行时每次 append 跑全量不变量的开销——本卡不做 append 前 hook（dsh 的 pre-append 是插件可选拉起），只做显式 `check()` 调用点（restore 后 / 测试面），开销面记卡内定形
+- **偏离 / 建议**：①失败收集器 `fail(message)` 签名照 dsh `InvariantFailure`，收集后统一报（不首错即抛）——测试要的是全部失败清单；②"包自有"在我方单包结构落为"不变量定义在域内文件、注册在服务"（event-asserts 留在 test-support 供测试直调，注册表内建复用同一实现——不搬文件不复制代码）
+
+#### T-P1-31 · O13+O20 · mock 请求记录访问器（计数先行 + 带说明可读失败） `[ ]`
+- **依据需求**：O13（P1："mock 记录全部请求 + 断言请求数量的访问器"）· O20（P1：先断言模型调用次数，带说明——展卡核对结论：部分覆盖，访问器面实卡）
+- **上游首选参考**：[codex·responses.rs:39-83](../oss/codex/codex-rs/core/tests/common/responses.rs)（`single_request()` 数量非 1 即 `panic!("expected 1 request, got {}")` + `requests()` / `last_request()` / `saw_function_call()` 记录面）；[codex·compact.rs:2361](../oss/codex/codex-rs/core/tests/suite/compact.rs#L2361)（`assert_eq!(requests.len(), 3, "expected user, compact, and follow-up requests")` 带说明原文）
+- **取什么 / 别抄什么**：取"访问器先断言数量、结构错了给可读失败（说明期待什么 + 实际几条）"的纪律；我方 http-mock 的 `calls`/`requests()` 记录面已在（O13 上半），本卡只补访问器下半
+- **证据强度**：`读了代码`（responses.rs:39-83 原文；我方 http-mock.ts / loop.test-utils.ts ScriptedProvider 现状；T-2-03 计数断言用法核对）
+- **要产出**：http-mock.ts 扩 `expectCalls(n, why)` / `singleRequest(why)` / `lastRequest(why)` / `requestAt(i, why)`（数量不符 → Error 含 why + 期待 n + 实际 m）；ScriptedProvider 扩同款最小面（`requestAt`）；`http-mock.test.ts` 扩用例 + 既有测试挑 1-2 处裸计数断言迁移为带说明访问器（示范）
+- **验收**：`npx vitest run src/test-support/http-mock.test.ts`（扩）——①数量对：返回请求体可继续断言；数量错：错误消息含 why 原文 + "expected N, got M"（O13 验收原文语义）；②lastRequest 空记录时给可读失败（非 undefined 潜越）；③ScriptedProvider.requestAt 同语义；④迁移示范处回归绿
+- **依赖**：无
+- **风险 / 未知**：访问器签名与既有 `requests()` 并存不冲突（读面加宽不改旧面）——P0 测试零改动
+- **偏离 / 建议**：①`why` 是必填参数——不带说明的计数断言编译期就不许写（O20"带说明"的字面兑现）；②不做 `saw_function_call` 式谓词访问器（我方工具调用在 StreamChunk 词汇里，测试直接断言 chunk，无第二套谓词需求——YAGNI）
+
+#### T-P1-32 · O14+O24 · 上下文快照渲染（窗口差分 + 变化才打印） `[ ]`
+- **依据需求**：O14（P1："窗口内差分快照：首条全量、后续只留新增后缀"）· O24（P1："system prompt / tools 只在变化时打印；等于默认值折叠成标签——使缓存前缀稳定性（F13）可测"）
+- **上游首选参考**：[codex·context_snapshot.rs:50,262-295](../oss/codex/codex-rs/core/tests/common/context_snapshot.rs#L262)（"A new window starts when a request no longer extends its predecessor's input or changes request settings" + `suffix_start` + 首条全量）；[kimi·snapshots.ts:153-198](../oss/kimi-code/packages/agent-core-v2/test/harness/snapshots.ts#L153)（`formatGenerateInput`：systemPrompt 不同才打印 / tools 深等才打印 / `isMessagePrefix` 前缀关系成立只打 addedMessages）
+- **取什么 / 别抄什么**：取 codex 的窗口分组判据（前缀关系 + settings 变化开新窗）与 kimi 的单请求变化折叠（unchanged 标签 + 后缀消息）；两者是同一渲染面的两层（多请求分窗 + 窗内逐请求折叠），合成一个渲染器；不抄 codex 的 Rust 快照文件协议（insta）
+- **证据强度**：`读了代码`（context_snapshot.rs 关键行 + snapshots.ts:153-198；我方 snapshots.ts 的 GenerateCallSnapshot{system, tools, messages} 与 previous 字段现状）
+- **要产出**：`src/test-support/render.ts`——`formatGenerateInput(input, previous)`（system/tools 与 previous 深等 → `[unchanged]` 标签行；messages 是前缀关系 → 只渲染后缀并标 `+N messages`；非前缀 → 全量渲染并标分叉点）+ `formatRequestWindow(requests)`（按 codex 判据分窗：settings（system/tools/identity）变 or 消息非前缀 → 新窗；窗内首请求全量、后续请求按 O14 只渲染 suffix；窗头记录新窗原因——O10 whyEnded 的同构）+ 单测
+- **验收**：`npx vitest run src/test-support/render.test.ts`——①窗口分组：settings 不变 + 消息追加 → 同窗；settings 变 → 新窗（codex 判据原文语义）；②窗内首条全量、后续只含后缀消息且前缀折叠为标签行；③system/tools 未变 → `[unchanged]`（O24 验收原文）；④分叉（中间插入消息）→ 全量渲染不误折叠；⑤渲染输出多行文本可读断言（含窗头与新窗原因）
+- **依赖**：无（消费既有 GenerateCallSnapshot 形状）
+- **风险 / 未知**：identity 变化算不算"settings 变"——算（J6 换模开新窗是 F13 语义），进卡内定形
+- **偏离 / 建议**：①渲染器是纯函数（快照对象进、文本出），不落文件不接 insta 类快照库（我方 vitest 快照 + 手写断言够用）；②F13 联动验收留给 T-P1-37 的 compaction 相位快照消费（本卡只交付渲染器本体）
+
+#### T-P1-33 · O23 · 事件流快照渲染（列对齐 + 单行 JSON + 同流交错） `[ ]`
+- **依据需求**：O23（P1："事件流快照列对齐 + 单行 JSON；domain 与 RPC/wire 事件同流交错"）
+- **上游首选参考**：[kimi·snapshots.ts:119-120](../oss/kimi-code/packages/agent-core-v2/test/harness/snapshots.ts#L119)（`const prefix = v['type'] === '[rpc]' ? '[emit]' : '[wire]'; return \`${prefix} ${String(v['event']).padEnd(maxEventLength, ' ')} ${stringifyCompact(v['args'])}\``）
+- **取什么 / 别抄什么**：取三纪律：`[emit]`/`[wire]` 前缀分源、事件名 `padEnd` 列对齐、载荷单行 JSON；我方 wire 面 = agent-protocol 协议行（ForwardingStore 逐事件转发），同流交错 = 渲染器接受任意来源行序列保序输出
+- **证据强度**：`读了代码`（snapshots.ts:119-120 原文；我方 agent-protocol.ts 协议行形状 + ForwardingStore 现状）
+- **要产出**：`src/test-support/render.ts` 扩 `renderEventStream(lines)`（输入 `{source: "emit"|"wire", type, payload}` 序列 → `[emit] <type>.padEnd <单行JSON>` / `[wire] <type>.padEnd <单行JSON>` 保序输出；多行载荷强制单行化并标注截断）+ 单测
+- **验收**：`npx vitest run src/test-support/render.test.ts`（扩）——①列对齐：所有行的 JSON 起始列相同（padEnd 断言）；②单行：输出无内嵌换行（含嵌套对象载荷）；③emit/wire 混合序列保序交错、前缀正确；④长载荷单行化 + 截断标记
+- **依赖**：T-P1-32（同文件，渲染器族）
+- **风险 / 未知**：单行 JSON 的键序——复用 normalize 的 `stableStringify`（键序排序已在），归一化接入（易变值占位符）作为可选参数
+- **偏离 / 建议**：①与 O11 的 previous 差分渲染（T-P1-32）分工：T-P1-32 管"模型上下文"轴、本卡管"事件流"轴，两渲染器同文件不同入口；②截断标记复用 O27 的 P2 前身形态但不做 160 字符政策（P2 边界不越）——本卡只做"必须单行"的最小截断
+
+#### T-P1-34 · O15+O16 · 录制/回放 provider + 故障注入服务器（真实模型流可测性） `[ ]`
+- **依据需求**：O15（P1："录制/回放真实模型流——避免手写 mock 漂移"）· O16（P1："故障注入服务器——恢复类逻辑必须能注入故障才可测"）
+- **上游首选参考**：[dsh·llm-replay](../oss/deepseek-harness/packages/test-support/llm-replay)（"replaying model streams from recorded Session JSONL fixtures / Each parent and subagent session receives its recorded script in first-call order / A replay.override.json sidecar represents pre-chunk failures, cancellation, hangs"）；[dsh·llm-mock-server](../oss/deepseek-harness/packages/test-support/llm-mock-server)（"Each accepted request consumes the next scripted behavior, including resets, stalls, malformed chunks, rate limits, server errors, completions / startMockLlmServer, which returns captured requests for assertions / a ready record carries the base URL"）
+- **取什么 / 别抄什么**：O15 取"录制 JSONL fixture + first-call 序消费 + override sidecar 注入故障"三件，挂我方 `ModelProvider` 接口（ScriptedProvider 的录制/回放升级，杜绝手写剧本与真实流漂移）；O16 取"具名故障剧本库 + 每请求消费下一个行为 + 捕获请求可断言"，挂我方 HttpMock（RawScript 已是故障雏形，本卡把故障行为具名词汇化 + 独立可运行入口）；不抄 dsh 的 Cordis 装配 / Messages 兼容 wire / seeded random
+- **证据强度**：`读了代码`（两包 README 全文 + llm-replay src/index.ts 结构；我方 http-mock.ts / provider.ts / fault-tolerance.test.ts 现状）
+- **要产出**：①`src/test-support/llm-replay.ts`——`RecordingProvider`（wrap 任意 ModelProvider：ChatRequest + StreamChunk 序列逐调用追加写 JSONL）+ `ReplayProvider`（读 fixture 按 first-call 序回放、请求多于剧本可读报错；`override` 参数接受预挂故障剧本——录制成功的流 + 注入失败面 = dsh override sidecar 语义）+ 夹具读写测试；②`src/test-support/fault-server.ts`——具名故障剧本库（`reset`（连接中断）/ `stall`（挂起不响应）/ `malformedChunk`（坏 SSE）/ `rateLimit`（429）/ `serverError`（5xx）/ `partialThenSuccess`（半流断后成功）），每剧本产 MockScript 序列 + 消费即推进 + HttpMock 集成；③`src/cli/mock-llm.ts` 独立入口（`npm run mock:llm`：ready 行带 base URL + 请求/结果记录到 stdout——dsh JSONL 记录形状）+ npm script
+- **验收**：`npx vitest run src/test-support/llm-replay.test.ts src/test-support/fault-server.test.ts`——①录制→回放：同一 loop 分别跑真 provider 与 ReplayProvider（回放其录制），事件流快照逐字节相等（"避免手写 mock 漂移"验收语义）；②override 注入：回放中第 N 次调用注入 rateLimit → 可读失败（恢复类逻辑可测）；③故障剧本库：六剧本各自产出的 wire 行为可断言（429 带 Retry-After / stall 超时 / malformed 触发解析错）；④独立入口起服 → ready 行 → 真请求消费剧本 → stdout 记录含请求与所选行为
+- **依赖**：无（ModelProvider 与 HttpMock 在位）；fault-tolerance.test 既有剧本语义是六剧本的校对源
+- **风险 / 未知**：ReplayProvider 的请求匹配粒度——按序消费不按内容匹配（dsh first-call order 同款；内容漂移 = 测试该失败，正是录制回放要抓的）；stall 剧本在测试里必须配超时消费（挂住 = O8 教训）
+- **偏离 / 建议**：①fixture 形状：`{request: ChatRequest, chunks: StreamChunk[]}[]` JSONL（每行一调用），易变值（ts 等）录制时归一化占位（normalize 复用）；②本批"批次 1/2 真实网关实测剧本可复用"落为：RecordingProvider 可 wrap 真实 openai-compat provider——真实厂商回归时先录后测（网络抖动不进测试面），完整录制剧本随批次终验人工确认
+
+#### T-P1-35 · O18 · 运行时诊断报告（doctor 全域扩展 + 一键导出） `[ ]`
+- **依据需求**：O18（P1："一键导出环境/配置/沙箱可用性"——D7 已落沙箱域，本卡扩全域）
+- **上游首选参考**：[codex·cli/src/doctor/](../oss/codex/codex-rs/cli/src/doctor)（目录面：sandbox/network 之外有 disk/system/git/security 等全域 check + `output.rs` 的 CheckStatus 报告形状——每行 status + details + remediation）
+- **取什么 / 别抄什么**：取"全域 check 逐行报告（status/details/remediation）+ 独立命令"的形状；新增环境/配置/存储三组检查；不抄 codex 的更新检查/遥测/桌面域；沙箱组复用 D7 `runDoctorChecks` 零改动
+- **证据强度**：`读了代码`（doctor 目录清单 24 文件；D7 时已读 sandbox.rs/network.rs/output.rs；我方 doctor.ts/cli/doctor.ts 现状）
+- **要产出**：①`src/diagnostics/doctor.ts`——运行时三组 check（**环境**：node 版本 / platform / cwd / workspace 根存在性；**配置**：模型注册表身份清单（脱敏，无 key）/ 网络策略现值 / 内置工具清单 / 技能目录；**存储**：sessions 目录可写 / schema 版本 / 各会话事件数）——依赖全注入可测（DoctorDeps 同 D7 先例）；②`src/cli/doctor.ts` 扩展聚合（沙箱组 + 运行时组一次报告 + 汇总计数）+ `--json <path>` 导出（结构化报告落盘，敏感值脱敏断言面）；③单测
+- **验收**：`npx vitest run src/diagnostics/doctor.test.ts src/cli/doctor.test.ts`（如 cli 拆分则对应文件）——①三组 check 各行 status/details 结构完整、注入构造态可断言（workspace 缺失 → warn、sessions 目录不可写 → error）；②真机 `npm run doctor` 全量报告（沙箱 4 行 + 运行时 3 组）与 `npm run doctor -- --json` 导出文件可解析；③导出 JSON 无 key/密码字面值（脱敏证伪 grep/断言）；④D7 沙箱组输出与既有 doctor.test 断言零变化
+- **依赖**：批次 3 D7 doctor（在位）
+- **风险 / 未知**：模型注册表/技能目录在 CLI 独立模式下可能未装配——诊断报告按"有则报、无则 warn 不 error"（诊断不是运行时前置条件）
+- **偏离 / 建议**：①`--json` 导出的敏感面：只输出身份与计数，凭证字段结构性不进报告（不是"过滤"而是"从未收集"）；②codex doctor 的 disk/security 域不展开（我方 P1 无对应面，YAGNI）
+
+#### T-P1-36 · O19 · 迁移断言基建（旧流可读 / 版本闸门 / 迁移可恢复） `[ ]`
+- **依据需求**：O19（P1："迁移断言：旧字段不再被读 / 旧入口已退役 / 迁移后可恢复"）
+- **上游首选参考**：[kimi·migration-legacy](../oss/kimi-code/packages/migration-legacy)（src：detect/run-migration/marker/atomic-write；test：integration（fixtures 端到端金样）/ resume.integration（迁移中断重跑可恢复）/ golden——"迁移后旧数据可恢复"与"中断重跑幂等"两类测试齐备）
+- **取什么 / 别抄什么**：取三断言语义到我方迁移面：①"旧字段不再被读"→ **前向兼容**（词汇表加可选字段后，旧形状事件流 restore/投影不炸且语义不变——新代码不依赖新字段存在于旧流）；②"旧入口已退役"→ **版本闸门**（DB schema 版本高于当前 → 拒绝打开 fail-closed，绝不静默读未知 schema）；③"迁移后可恢复"→ 迁移原子性断言面（db.ts 迁移链是批次 10 Q1 的真实消费方，本卡落断言工具与首个真实用例）；不抄 kimi 的产品迁移逻辑（detect/marker/workdir-bucket 是 kimi-cli 旧版迁移域）
+- **证据强度**：`读了代码`（migration-legacy test 目录两集成测试结构 + resume 语义；我方 db.ts 的 CURRENT_SCHEMA_VERSION/migrate + store.ts restore 路径现状）
+- **要产出**：`src/test-support/migration-asserts.ts`——`assertForwardCompatibleStream(restore: (events) => T)` 夹具（构造"旧形状流"：缺全部可选字段的 compaction/model-switch/todo 等事件 → restore + 投影全跑）+ `assertSchemaVersionGate(open: (version) => unknown)`（构造超当前版本的 DB → 断言类型化拒绝）+ `assertMigrationAtomic(migrate: () => void, assert: () => void)` 模板（迁移闭包抛错后可恢复面）+ store.test/db.test 扩用例
+- **验收**：`npx vitest run src/test-support/migration-asserts.test.ts src/session/db.test.ts src/session/store.test.ts`（扩）——①旧形状流（无 title/reason 等新增可选字段的历史事件）restore 后消息/投影与逐字节期望一致（前向兼容语义）；②schema 版本 v+1 的 DB 打开 → 类型化错误（拒绝面，fail-closed 原文语义）；③迁移原子模板：注入中途失败 → 断言"库仍可打开 + 数据未半写"（T-1-02 单事务语义的消费用例）
+- **依赖**：无（db.ts/store.ts 在位）；批次 10 Q1 迁移链是断言工具的既定消费方
+- **风险 / 未知**：我方尚无真实 v0→v1 迁移历史（CURRENT_SCHEMA_VERSION=1）——"迁移后可恢复"的真实迁移用例在批次 10 落，本卡断言面以注入闭包演练（卡内定形，记录边界）
+- **偏离 / 建议**：①三断言命名避开 kimi 的 migration 词汇（我方无"旧版产品迁移"域），用 forward-compatibility/version-gate/atomicity——语义映射在头注释写明对应关系；②"旧字段不再被读"的静态 grep 断言不做（可维护性差，前向兼容运行时断言已覆盖其风险面——旧流读不出新字段即不会依赖）
+
+#### T-P1-37 · O21+O22 · 快照即规格（Scenario 一句话 + 每相位一快照） `[ ]`
+- **依据需求**：O21（P1："快照里写 Scenario: 一句自然语言——快照本身即规格"）· O22（P1："每个相位/每个原因各有一条快照——compact 共 8 条快照，全仓 43 条"）
+- **上游首选参考**：[codex·compact.rs](../oss/codex/codex-rs/core/tests/suite/compact.rs)（快照测试形状）；[codex·tests/suite/snapshots/all__suite__compact__*.snap](../oss/codex/codex-rs/core/tests/suite/snapshots)（8 条 compact 快照文件核实：cold_resume/manual×2/mid_turn/pre_sampling_model_switch/pre_turn×3——相位全覆盖）
+- **取什么 / 别抄什么**：取"快照头写一句自然语言场景 + 每个相位一条快照"的纪律；我方相位清单 = compaction 的 kind/reason 全集（local-overflow / provider-overflow / model-downshift / pre-hook aborted——四个相位起步，codex 8 条是其相位全集的同构）
+- **证据强度**：`读了代码`（compact 快照 8 文件名与 codex 相位对照；我方 compaction.ts 的 kind/reason 枚举 + snapshots.ts SnapshotHeader 现状）
+- **要产出**：①snapshots.ts 的 `SnapshotHeader` 扩 `scenario: string` 必填（缺省值大声提醒同 whyEnded 先例；渲染时首行输出 `Scenario: <一句话>`）+ `snapshotToString` 头行渲染；②`src/context/compaction.snapshot.test.ts`——每相位一条快照断言（4 相位 × 用 T-P1-32 渲染器出"模型上下文"文本 + scenario 头行），相位清单从 compaction.ts 枚举派生（新相位出现 → 清单断言失败强制补快照——O22 的防回归语义）
+- **验收**：`npx vitest run src/context/compaction.snapshot.test.ts src/test-support/snapshots.test.ts`（扩）——①四相位快照各就位，读渲染输出第一行即知场景（Scenario 断言）；②新相位清单派生断言（枚举加值而快照缺位 → 测试红）；③scenario 缺省 → 提醒文案（编译面 O10 同款）；④渲染器消费回归（T-P1-32 用例零改动）
+- **依赖**：T-P1-32（渲染器在位）
+- **风险 / 未知**：compaction 相位的"一条快照"以测试内嵌文本断言落（vitest toMatchSnapshot 也可——卡内定形：显式文本断言，diff 可读性更好且不产生 .snap 文件管理负担）
+- **偏离 / 建议**：①`scenario` 必填是对既有测试的破坏面——既有快照构造零改动（scenario 可选、缺省提醒文案），新相位快照全带 scenario（渐进收口，与 O26 同策略）；②"全仓 43 条"的广度不做（codex 全仓纪律，我方以 compaction 域 + 派生断言起步，扩展随批次自然发生）
+
+#### T-P1-38 · O25 · 进程全局状态隔离（锁 + RAII 守卫 + 中毒处理） `[ ]`
+- **依据需求**：O25（P1："进程全局状态必须有隔离机制，且注释写明故障机制"）
+- **上游首选参考**：[pi-desktop·plugins/tests.rs:10-27](../oss/pi-desktop/crates/host-core/src/plugins/tests.rs#L10)（`MARKET_ENV_LOCK` 静态锁 + `lock().unwrap_or_else(|e| e.into_inner())` 中毒处理 + `with_local_market` RAII 守卫 + "The marketplace source is process-global, so two tests … read each other's value" 故障机制注释）
+- **取什么 / 别抄什么**：取四件：串行化锁 + RAII 守卫 + **中毒不扩散**（锁持有人抛错不毒化后续测试——我方 promise 链的 finally 恢复即同构）+ 故障机制注释；**单进程假设的冲突面盘点**：我方 agent 架构本就多进程（T9 helper/agent-child），测试的进程级状态只在同 worker 进程内冲突——vitest 每文件独立 worker 跨文件天然隔离，冲突面 = 同文件内测试共享的模块级状态与 process.env
+- **证据强度**：`读了代码`（tests.rs:10-60 原文含注释；我方盘点：env.ts:129 `pwshHostCache` 模块级缓存、logger 无全局 sink（warned 是闭包内）、process.env 消费点 grep）
+- **要产出**：①`src/test-support/isolation.ts`——`serializeGlobal(name, fn)`（promise 链串行化 + 前序抛错不断链——中毒处理）+ `withEnv(vars, fn)`（RAII：设置 → fn → finally 恢复快照；fn 抛错 env 仍恢复）+ 头注释写明故障机制（pi-desktop 注释同构：谁在什么条件下互踩）；②`env.ts` 加 `resetPwshHostCacheForTests()`（模块级缓存的显式重置面——隔离机制的一部分）；③全局状态盘点清单落卡面 + isolation.test.ts
+- **验收**：`npx vitest run src/test-support/isolation.test.ts src/kernel/tools/env.test.ts`（扩）——①两段 env 修改经 serializeGlobal 串行（结果序断言，并发提交不互踩）；②fn 抛错：env 快照已恢复 + 后续 serializeGlobal 调用正常执行（中毒不扩散断言）；③withEnv 恢复面：嵌套/未声明的既有值还原逐字节；④pwshHostCache 重置后探针重跑（缓存前/后行为可断言）
+- **依赖**：无
+- **风险 / 未知**：跨文件并行 worker 的共享文件系统面（tmp 目录互踩）——mkdtemp 唯一化已在用（P0 夹具纪律），不入本卡面；process.cwd() 修改不做（我方测试无此需求，出现时再扩）
+- **偏离 / 建议**：①锁实现用 promise 链而非 Mutex 类（JS 单线程无真并发，链式 enqueue 即串行语义）；②盘点结论：除 pwshHostCache 外无模块级可变全局（logger/registry/guard 均实例注入）——"隔离机制"主战场就是 process.env 与该缓存，卡面记录盘点证据
+
+#### T-P1-39 · O26 · 测试名写成完整行为规格（收口盘点） `[ ]`
+- **依据需求**：O26（P1："测试名写成完整行为规格，把安全边界写进名字"）
+- **上游首选参考**：[codex·session/tests.rs:1655](../oss/codex/codex-rs/core/src/session/tests.rs#L1655)（`user_shell_commands_do_not_inherit_managed_network_proxy`——主语 + 行为 + 安全边界一句话；12880 行测试文件命名一致性即规格）
+- **取什么 / 别抄什么**：取"名字即规格"纪律：读测试名清单应能读出被钉死的行为与边界；我方现状已大量是中文行为规格（`"模型调用失败是硬退出：assistant/attempt 落盘、step 闭合、turn/end{error}"`），本卡是收口不是重建
+- **证据强度**：`读了代码`（tests.rs 具名测试 + 我方 loop.test.ts / cli.test.ts / exit-guard.test.ts 命名抽样）
+- **要产出**：①全仓测试名盘点（grep 提取 it/test 名单 → 三类：行为规格 / 带"验收N："前缀的行为规格 / 弱名（无行为语义））；②弱名改造（逐个改写为行为句——预期极少）；③安全边界测试名抽查（exit-guard/plan-guard/retry-guard/network：deny/硬拦语义必须在名字里）；④盘点结论与命名纪律一句话落批次完成定义（O28 政策文档 P2 不越界）
+- **验收**：`npx vitest run`（全量回归——改名不改行为）+ 盘点清单入完成记录（三类计数 + 改名清单 + 边界抽查结论）；弱名数量为 0 或逐条给出不改的理由
+- **依赖**：本批最后一张（盘点含批次 4 新增测试）
+- **风险 / 未知**："验收①："前缀是否算违规——**不算**（编号可追溯卡面验收，行为句在后，信息增益为正）；纯编号无行为句才算弱名——卡内定形
+- **偏离 / 建议**：①我方中文测试名与 codex 蛇形英文不同构，但"名字即规格"语义同构——不英文化（仓库规范中文优先）；②改名只动 it() 字符串，不动 describe 结构与测试体（精准修改）
+
+## 批次 4 完成定义
+
+- 10 张卡全部打勾，每勾附「命令 + 结果摘要」；`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 0 失效、`license-audit.sh` 通过。
+- O17（已覆盖）/ O20（部分覆盖实卡）两项展卡核对结论落档，供用户追认。
+- 词汇表零扩展（预判）——若执行中确需新事件，走待澄清立案管线。
+- 测试基建零运行时泄漏：src/test-support/ 与 src/diagnostics/ 之外无测试专用代码入 kernel/tools/policy 生产路径（O12 不变量服务与 O18 doctor 是声明的两个例外）。
+- 全量基线 701 passed / 1 skipped，本批净增预期 40-60 用例（渲染器与剧本库是纯函数测试大户）。
