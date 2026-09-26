@@ -162,7 +162,7 @@
 | 5 | B7 | `plan-p1.md` T-P1-16 明文"词汇表 17→18 预判（`tool/progress {turn, step, callId, seq-in-call, message}`）"，但词汇表（落地记录 5 后）正式计数为 17，无进度落点 | 同先例 #1~#4 的结构：进度在事件源架构下必须落事件（不变量 1），无落点则 B7"按序到达可观测"落不了；追加则词汇表 17→18。与先例两点差异：①它是 **turn 域事件**非会话级元事件（与 tool/call 同域，校验要求所属调用未闭合）；②卡面 `seq-in-call` 落为 camelCase `seqInCall`（代码库标识符风格一致） | 按计划卡执行：新增 `tool/progress {turn, step, callId, seqInCall, message}`（turn 域事件；seqInCall 调用内 1 起单调；单调用条数上限 10 卡内定形——超限静默丢弃不反压执行），词汇表 17→18，l0-events.md §8 记落地记录 6（含不追认的回退面），events.test 计数同步改 18 | ✅ **已追认（2026-09-26 用户："两件事都按照你的建议来"）**——案关，词汇表 17→18 转正，§3.2 正式计数 18 事件 |
 | 6 | F5 | `plan-p1.md` T-P1-18 验收②"摘要提示词进 request/header 可观测"：压缩摘要的模型副调用落 request/header 时，`RequestHeaderReason` 现有四值（initial/resume/change/series，DSH 同款）无一语义匹配——用任何一个都是流内谎言 | 词汇表**载荷枚举**扩展（事件计数不变）：RequestHeaderReason 四值→五值（+`"compaction"`）；另 `CompactionEvent` 加可选 `title?`（首摘要定名，卡面"优先复用既有载荷"，T-7-06 加可选 reason 字段同款先例） | 按验收要求执行：reason 扩 `"compaction"`（副调用头可区分主轮）+ compaction 载荷加可选 title；l0-events.md §8 记落地记录 7（含不追认的回退面） | ✅ **已追认（2026-09-26 用户："两件事都按照你的建议来"）**——案关，reason 扩值与 CompactionEvent.title 转正 |
 
-| 7 | E5 | `plan-p1.md` T-P1-40 明文"词汇表扩展 session/fork {parentSessionId, position, cutSeq} 会话级元事件（落子流头部，log-only 不进模型历史——走待澄清立案 18→19）"，但词汇表（落地记录 7 后）正式计数为 18，无 fork lineage 落点 | 同先例 #1~#4 的结构：分叉出的新会话必须有自己的流内事实承载父子关系（不变量 1：重启后 lineage 仍可按流重建；内存元数据随进程消失）；追加则词汇表 18→19。词形采用 requirements 的 before/after（pi 当前版本为 `position?: "before"\|"at"`，语义等价——切点是否包含选中条目，展卡记录已注明） | 按计划卡执行：新增 `session/fork {parentSessionId, position: "before"\|"after", cutSeq}`（会话级元事件，session/revert 同款：不要求 turn/step 上下文；**落子流头部**、**log-only 不进模型历史**——dsh descriptor 同构先例；cutSeq = 父流复制到的最后一条 seq，0 即空分支），词汇表 18→19，l0-events.md §3.2 表格 + §8 记落地记录 8（含不追认的回退面），events.test 计数同步改 19 | ⏳ 待追认（2026-09-26 立案） |
+| 7 | E5 | `plan-p1.md` T-P1-40 明文"词汇表扩展 session/fork {parentSessionId, position, cutSeq} 会话级元事件（落子流头部，log-only 不进模型历史——走待澄清立案 18→19）"，但词汇表（落地记录 7 后）正式计数为 18，无 fork lineage 落点 | 同先例 #1~#4 的结构：分叉出的新会话必须有自己的流内事实承载父子关系（不变量 1：重启后 lineage 仍可按流重建；内存元数据随进程消失）；追加则词汇表 18→19。词形采用 requirements 的 before/after（pi 当前版本为 `position?: "before"\|"at"`，语义等价——切点是否包含选中条目，展卡记录已注明） | 按计划卡执行：新增 `session/fork {parentSessionId, position: "before"\|"after", cutSeq}`（会话级元事件，session/revert 同款：不要求 turn/step 上下文；**落子流头部**、**log-only 不进模型历史**——dsh descriptor 同构先例；cutSeq = 父流复制到的最后一条 seq，0 即空分支），词汇表 18→19，l0-events.md §3.2 表格 + §8 记落地记录 8（含不追认的回退面），events.test 计数同步改 19 | ✅ **已追认（2026-09-26 用户："认可"）**——案关，词汇表 18→19 转正，§3.2 正式计数 19 事件 |
 
 ## 人工确认清单
 
@@ -1066,7 +1066,7 @@ T-3-04 部分覆盖（取消槽 + await 边界检查已落）——展卡先核�
 本阶段特有的注意：<1–3 条>。不要问要不要继续。
 ```
 
-| 批次 5 三件（E5/H2/H3） | **session/fork 词汇表 18→19**：事件词汇表扩展属用户裁决面（先例 13→14~17→18 五案流程）——已在待澄清 #7 立案。**真实厂商 task 回归**：task 派发/子代理行为对真实模型的遵守度（delegation 声明遵守、SUBAGENT_DEPTH_EXCEEDED 自修）未实测——O15 录制回放基建可反哺（RecordingProvider wrap 父与子代理请求面先录后测）。**plan×task 防绕过**：单测钉死（子代理写文件被 Deny broker 拒），plan 模式真机全链未实测 | **①session/fork 待用户追认**（待澄清 #7；不追认回退面已落 l0-events.md 落地记录 8）；②真实厂商回归在下一批真实网关实测时顺带确认 |
+| 批次 5 三件（E5/H2/H3） | **session/fork 词汇表 18→19**：事件词汇表扩展属用户裁决面（先例 13→14~17→18 五案流程）——已在待澄清 #7 立案。**真实厂商 task 回归**：task 派发/子代理行为对真实模型的遵守度（delegation 声明遵守、SUBAGENT_DEPTH_EXCEEDED 自修）未实测——O15 录制回放基建可反哺（RecordingProvider wrap 父与子代理请求面先录后测）。**plan×task 防绕过**：单测钉死（子代理写文件被 Deny broker 拒），plan 模式真机全链未实测 | **①~~session/fork 待用户追认~~ ✅ 已追认关闭（2026-09-26 用户："认可"，待澄清 #7 案关）**；②真实厂商回归在下一批真实网关实测时顺带确认 |
 
 ## 批次 5 展卡记录（2026-09-26，执行会话自展）
 
