@@ -511,7 +511,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **偏离 / 建议**：①三断言命名避开 kimi 的 migration 词汇（我方无"旧版产品迁移"域），用 forward-compatibility/version-gate/atomicity——语义映射在头注释写明对应关系；②"旧字段不再被读"的静态 grep 断言不做（可维护性差，前向兼容运行时断言已覆盖其风险面——旧流读不出新字段即不会依赖）
 - **完成记录**：2026-09-26。产出 `src/test-support/migration-asserts.ts` + 测试 5 用例：`legacyShapeStream()`（旧形状事件流夹具——当前词汇表**全部可选字段缺席**：goal/set 无 deadline、compaction 无 title、tool/result 无 isError、assistant/message 无 usage，清单注释要求新可选字段出现时补进——O22 派生断言同思路）+ `assertForwardCompatibleStream`（restore+投影全跑，async 签名支持 storage 路径）+ `assertSchemaVersionGate`（构造 user_version=CURRENT+1 的库，断言 open 类型化拒绝且错误文案含"拒绝用旧代码打开新库"——非该文案也报错防吞）+ `assertMigrationAtomic`（注入中途失败迁移 → 恢复断言；不抛错即模板误用）。验收：`npx vitest run src/test-support/migration-asserts.test.ts` → **5 passed**：①旧形状流经 SessionStore.restore（预置桩 storage）+ project 全跑，投影 goals/messages 语义完整；②goalFromEvents 重建不依赖 deadline/title（undefined 如实）；③版本闸门 fail-closed + 正常库对照；④批次 PK 冲突整批回滚无半写（T-1-02 单事务消费用例）+ 模板误用自检。全量 `npx vitest run` **749 passed / 1 skipped**（744 → 净增 5），`npx tsc --noEmit` 干净。**边界落档**：本仓尚无真实 v0→vN 迁移历史（CURRENT_SCHEMA_VERSION=1），"迁移后可恢复"以注入闭包演练，真实迁移链的既定消费方 = 批次 10 Q1。
 
-#### T-P1-37 · O21+O22 · 快照即规格（Scenario 一句话 + 每相位一快照） `[ ]`
+#### T-P1-37 · O21+O22 · 快照即规格（Scenario 一句话 + 每相位一快照） `[x]`
 - **依据需求**：O21（P1："快照里写 Scenario: 一句自然语言——快照本身即规格"）· O22（P1："每个相位/每个原因各有一条快照——compact 共 8 条快照，全仓 43 条"）
 - **上游首选参考**：[codex·compact.rs](../oss/codex/codex-rs/core/tests/suite/compact.rs)（快照测试形状）；[codex·tests/suite/snapshots/all__suite__compact__*.snap](../oss/codex/codex-rs/core/tests/suite/snapshots)（8 条 compact 快照文件核实：cold_resume/manual×2/mid_turn/pre_sampling_model_switch/pre_turn×3——相位全覆盖）
 - **取什么 / 别抄什么**：取"快照头写一句自然语言场景 + 每个相位一条快照"的纪律；我方相位清单 = compaction 的 kind/reason 全集（local-overflow / provider-overflow / model-downshift / pre-hook aborted——四个相位起步，codex 8 条是其相位全集的同构）
@@ -521,6 +521,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **依赖**：T-P1-32（渲染器在位）
 - **风险 / 未知**：compaction 相位的"一条快照"以测试内嵌文本断言落（vitest toMatchSnapshot 也可——卡内定形：显式文本断言，diff 可读性更好且不产生 .snap 文件管理负担）
 - **偏离 / 建议**：①`scenario` 必填是对既有测试的破坏面——既有快照构造零改动（scenario 可选、缺省提醒文案），新相位快照全带 scenario（渐进收口，与 O26 同策略）；②"全仓 43 条"的广度不做（codex 全仓纪律，我方以 compaction 域 + 派生断言起步，扩展随批次自然发生）
+- **完成记录**：2026-09-26。产出：①snapshots.ts 的 `SnapshotHeader` 扩 `scenario?`（可选项 + 缺省大声提醒文案同 whyEnded 先例——既有快照构造零改动、缺省输出零变化）+ `snapshotToString` 首行渲染 `Scenario: <一句话>`；②`src/context/compaction.snapshot.test.ts` **四相位快照**（local-overflow / provider-overflow / model-downshift 三 reason 的 compacted + pre-hook aborted——每相位一条渲染快照：Scenario 头行 + `[emit]` 单行 JSON 事件流 + 摘要行）+ **派生断言**（事件面 reason 全集 `{context_limit, model_downshift, pre-hook-aborted}` 与快照覆盖清单相等——新原因/结算形态出现而快照缺位即红）。验收：`npx vitest run src/context/compaction.snapshot.test.ts` → **5 passed**：①三 reason 快照各就位且读 Scenario 行知意图；②aborted 快照无 compaction 事件行（中止显式结算）；③派生断言红面 = 快照缺位即测试失败。全量 `npx vitest run` **754 passed / 1 skipped**（749 → 净增 5），`npx tsc --noEmit` 干净。**卡内定形**：两种溢出源在**事件面共用 `context_limit`**（compactionReasonOf 词表纪律，区分在 request 类型上）——快照的人话区分由 Scenario 行承担，事件 reason 断言按词表值不走请求 reason 名。
 
 #### T-P1-38 · O25 · 进程全局状态隔离（锁 + RAII 守卫 + 中毒处理） `[ ]`
 - **依据需求**：O25（P1："进程全局状态必须有隔离机制，且注释写明故障机制"）

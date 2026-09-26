@@ -26,9 +26,13 @@ export interface GenerateCallSnapshot {
 /**
  * 快照窗口头（O10，T-3-07）：记录"窗口为何在此结束"——settings 变了 /
  * 输入在第 N 条分叉 / 轮终态。缺省值会大声提醒作者补写（O10 是"必须记录"）。
+ * O21（T-P1-37）：`scenario` 一句自然语言场景描述——快照本身即规格，读
+ * 快照第一行即知测试意图；可选项 + 缺省提醒（既有快照零改动，新快照全带）。
  */
 export interface SnapshotHeader {
   whyEnded: string;
+  /** 一句自然语言场景（O21）——缺省提醒文案进渲染输出。 */
+  scenario?: string;
   /** 切点位置（最后保留事件的 seq / step 等，可 JSON 化）。 */
   cutAt?: JsonValue;
 }
@@ -61,6 +65,7 @@ export function createSnapshotter(options: NormalizeOptions = {}): Snapshotter {
     return {
       header: {
         whyEnded: header?.whyEnded ?? "（快照作者未说明窗口为何在此结束——O10 要求写明）",
+        scenario: header?.scenario ?? "（快照作者未写场景——O21：一句话说明该快照钉死什么行为）",
         ...(header?.cutAt !== undefined ? { cutAt: header.cutAt } : {}),
       },
       input: normalizeValue(input, opts) as GenerateCallSnapshot,
@@ -76,5 +81,8 @@ export { StableLabels } from "./normalize.js";
 
 /** 快照的稳定文本（键序排序 + 归一化后逐字节比较的载体）。 */
 export function snapshotToString(snapshot: GenerateInputSnapshot): string {
-  return stableStringify(snapshot);
+  // O21：Scenario 头行先行——读快照第一行即知测试意图（场景在场景字段缺席
+  // 时输出缺省提醒，与 whyEnded 同款大声提醒纪律）
+  const scenarioLine = `Scenario: ${snapshot.header.scenario ?? "（未写场景——O21 要求一句自然语言）"}`;
+  return `${scenarioLine}\n${stableStringify(snapshot)}`;
 }
