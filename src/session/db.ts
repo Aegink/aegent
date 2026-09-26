@@ -16,7 +16,7 @@ import Database from "better-sqlite3";
 import type { SessionEvent } from "../kernel/events.js";
 import type { EventStorage } from "./store.js";
 
-const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 1;
 
 export interface OpenDbOptions {
   /** 文件路径；":memory:" 时全内存。 */
