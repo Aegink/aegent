@@ -143,8 +143,8 @@
 | 2 | J9 | `plan-p1.md` T-P1-06 明文"换模进事件流 + 新增会话级元事件 model/switch"，但词汇表（落地记录 2 后）正式计数为 14，无换模落点 | 同先例 #1 的结构：不追加事件则换模/回滚状态变更无事件承载（J9 纪律"换模是持久事件、非静默改状态"落不了）；追加则词汇表 14→15 | 按计划卡执行：新增 `model/switch {from, to, reason: "user"\|"rollback"}`（会话级元事件，session/revert 同款：不要求 turn/step 上下文、turn 挂流内最后轮空流兜 0），词汇表 14→15，l0-events.md §8 记落地记录 3（含不追认的回退面），events.test 计数同步改 15 | ✅ **已追认（2026-09-25 用户："可以"）**——案关，§3.2 正式计数为 15 事件 |
 | 3 | G2 | `plan-p1.md` T-P1-10 明文"新增事件 todo/update {items}（会话级元事件，走词汇表扩展流程 15→16）"，但词汇表（落地记录 3 后）正式计数为 15，无 todo 落点 | 同先例 #1/#2 的结构：不追加事件则 todo 状态变更无事件承载（G2"todo 变更 = 事件、状态 = 投影"落不了，违反不变量 1）；追加则词汇表 15→16 | 按计划卡执行：新增 `todo/update {items: Array<{content, status: "pending"\|"in_progress"\|"completed"}>}`（会话级元事件，session/revert / model/switch 同款：不要求 turn/step 上下文、turn 挂流内最后轮空流兜 0；items 为变更后完整清单——E12 整值），词汇表 15→16，l0-events.md §8 记落地记录 4（含不追认的回退面），events.test 计数同步改 16 | ✅ **已追认（2026-09-26 用户："全部认可"）**——案关，词汇表 15→16 转正 |
 | 4 | G3 | `plan-p1.md` T-P1-12 明文"新增事件 goal/set {text, deadline?}（词汇表 16→17，走扩展流程）"，但词汇表（落地记录 4 后）正式计数为 16，无 goal 落点 | 同先例 #1/#2/#3 的结构：goal 跨轮保持与重启恢复（验收④）需流内事实承载（不变量 1）；追加则词汇表 16→17。另：卡面载荷形状无 status，但状态机四动作（设定/达成/放弃/续期）都是状态变更，无 status 则达成/放弃无表达面 | 按计划卡执行：新增 `goal/set {text, deadline?, status: "active"\|"achieved"\|"abandoned"}`（会话级元事件，同款纪律；载荷补必填 status——E12 整值，终态保留 text/deadline 终值），词汇表 16→17，l0-events.md §8 记落地记录 5（含不追认的回退面），events.test 计数同步改 17 | ✅ **已追认（2026-09-26 用户："全部认可"）**——案关，词汇表 16→17 转正，§3.2 正式计数 17 事件 |
-| 5 | B7 | `plan-p1.md` T-P1-16 明文"词汇表 17→18 预判（`tool/progress {turn, step, callId, seq-in-call, message}`）"，但词汇表（落地记录 5 后）正式计数为 17，无进度落点 | 同先例 #1~#4 的结构：进度在事件源架构下必须落事件（不变量 1），无落点则 B7"按序到达可观测"落不了；追加则词汇表 17→18。与先例两点差异：①它是 **turn 域事件**非会话级元事件（与 tool/call 同域，校验要求所属调用未闭合）；②卡面 `seq-in-call` 落为 camelCase `seqInCall`（代码库标识符风格一致） | 按计划卡执行：新增 `tool/progress {turn, step, callId, seqInCall, message}`（turn 域事件；seqInCall 调用内 1 起单调；单调用条数上限 10 卡内定形——超限静默丢弃不反压执行），词汇表 17→18，l0-events.md §8 记落地记录 6（含不追认的回退面），events.test 计数同步改 18 | ⏳ **待用户追认** |
-| 6 | F5 | `plan-p1.md` T-P1-18 验收②"摘要提示词进 request/header 可观测"：压缩摘要的模型副调用落 request/header 时，`RequestHeaderReason` 现有四值（initial/resume/change/series，DSH 同款）无一语义匹配——用任何一个都是流内谎言 | 词汇表**载荷枚举**扩展（事件计数不变）：RequestHeaderReason 四值→五值（+`"compaction"`）；另 `CompactionEvent` 加可选 `title?`（首摘要定名，卡面"优先复用既有载荷"，T-7-06 加可选 reason 字段同款先例） | 按验收要求执行：reason 扩 `"compaction"`（副调用头可区分主轮）+ compaction 载荷加可选 title；l0-events.md §8 记落地记录 7（含不追认的回退面） | ⏳ **待用户追认** |
+| 5 | B7 | `plan-p1.md` T-P1-16 明文"词汇表 17→18 预判（`tool/progress {turn, step, callId, seq-in-call, message}`）"，但词汇表（落地记录 5 后）正式计数为 17，无进度落点 | 同先例 #1~#4 的结构：进度在事件源架构下必须落事件（不变量 1），无落点则 B7"按序到达可观测"落不了；追加则词汇表 17→18。与先例两点差异：①它是 **turn 域事件**非会话级元事件（与 tool/call 同域，校验要求所属调用未闭合）；②卡面 `seq-in-call` 落为 camelCase `seqInCall`（代码库标识符风格一致） | 按计划卡执行：新增 `tool/progress {turn, step, callId, seqInCall, message}`（turn 域事件；seqInCall 调用内 1 起单调；单调用条数上限 10 卡内定形——超限静默丢弃不反压执行），词汇表 17→18，l0-events.md §8 记落地记录 6（含不追认的回退面），events.test 计数同步改 18 | ✅ **已追认（2026-09-26 用户："两件事都按照你的建议来"）**——案关，词汇表 17→18 转正，§3.2 正式计数 18 事件 |
+| 6 | F5 | `plan-p1.md` T-P1-18 验收②"摘要提示词进 request/header 可观测"：压缩摘要的模型副调用落 request/header 时，`RequestHeaderReason` 现有四值（initial/resume/change/series，DSH 同款）无一语义匹配——用任何一个都是流内谎言 | 词汇表**载荷枚举**扩展（事件计数不变）：RequestHeaderReason 四值→五值（+`"compaction"`）；另 `CompactionEvent` 加可选 `title?`（首摘要定名，卡面"优先复用既有载荷"，T-7-06 加可选 reason 字段同款先例） | 按验收要求执行：reason 扩 `"compaction"`（副调用头可区分主轮）+ compaction 载荷加可选 title；l0-events.md §8 记落地记录 7（含不追认的回退面） | ✅ **已追认（2026-09-26 用户："两件事都按照你的建议来"）**——案关，reason 扩值与 CompactionEvent.title 转正 |
 
 ## 人工确认清单
 
@@ -858,18 +858,16 @@ checkpointRepoRoot 先例），"重启不重放"按 Q5 对账口径。不要问�
 - **下一批提示词**：
 
 ```
-继续 aegent P1 批次 3 的实施。批次 2 已全部完成（10/10 卡，655 passed）。
-先与用户确认批次 3 范围（候选：H1–H5 子代理族独立成批 · B8 的
-apply_patch/lsp · E5/E6 fork 与会话树 · Q2 会话查询），并对批次 2 的词汇表
-两案（待澄清 #5 tool/progress 17→18、#6 reason 扩 compaction+title）追认
-——允许则把 l0-events.md §3.2/§8 与待澄清表转正（§3.2 正式计数 18 事件），
-不允许则按落地记录 6/7 回退面回修。展卡格式照 docs/plan-p1.md，锚点逐一
-核对 oss/SOURCES.lock；执行协议沿用 docs/plan-p0.md §0。上一批报告在
-docs/plan-p0-progress.md（批次 2 报告）。本批特有的注意：1) H 族子代理会
-放大会话树与事件流（E5/E6/Q2 大概率同批），展卡前先读
-20260926_P2研究_批次圈定建议.md 的依赖路线；2) 真实厂商复测欠账（并行/
-进度/缓存三面 + token 省 30% 口径 + 多端点容错）在人工确认清单，有网关时
-随批补测。不要问要不要继续。
+继续 aegent P1 批次 3 的实施。批次 2 已全部完成（10/10 卡，655 passed），
+词汇表两案已追认转正（待澄清 #5/#6 案关，§3.2 正式计数 18 事件）。
+先与用户圈定批次 3 范围（候选：H1–H5 子代理族独立成批 · B8 的
+apply_patch/lsp · E5/E6 fork 与会话树 · Q2 会话查询）。展卡格式照
+docs/plan-p1.md，锚点逐一核对 oss/SOURCES.lock；执行协议沿用
+docs/plan-p0.md §0。上一批报告在 docs/plan-p0-progress.md（批次 2 报告）。
+本批特有的注意：1) H 族子代理会放大会话树与事件流（E5/E6/Q2 大概率同批），
+展卡前先读 20260926_P2研究_批次圈定建议.md 的依赖路线；2) 真实厂商三面
+复测结果见人工确认清单批次 2 行（多端点容错 J15 仍欠第二端点）。
+不要问要不要继续。
 ```
 
 ---
