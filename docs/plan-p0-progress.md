@@ -94,6 +94,12 @@
 | 2026-09-26 | T-P1-21 | B8b | `9de6b86` | `npx vitest run src/cli/cli.test.ts` | 13 passed（10 既有+3 新）；①question_asked 分型行可见（零 ⏸ 审批面冒用）；②/answer 后答复回喂+turn completed；③400ms 超时 isError 回喂（C50）+turn completed；+plan 模式可提问（meta-ops 白名单放行，出口硬关不误伤）；同一 PendingApprovals 挂起（协议分型 question/answer+question_asked）；REPL /answer 命令；BUILTIN_TOOL_NAMES 12→13；全量 645 passed / 1 skipped，tsc 干净，count-features 310 |
 | 2026-09-26 | T-P1-22 | J12 | `fbb7815` | `npx vitest run src/kernel/model-switch.test.ts` | 28 passed（24 既有+4 新）；①去重（声明优先于发现）；②每厂商上限 200+当前模型豁免；③http-mock 404 剧本兜底声明行 + 200 剧本增量并入；④listSwitchableModels 查询+声明条目 switch 受理（deferred 语义）+discovered-only 拒绝（fail-closed）；catalog 新模块+openai-compat /models 发现函数；全量 649 passed / 1 skipped，tsc 干净，count-features 310 |
 | 2026-09-26 | T-P1-23 | J15/J19/J18 | （本次 commit） | `npx vitest run src/models/` | 31 passed（25 既有+6 新）；①阈值 3 三败开路+第 4 请求零发出+双计数证明（maxAttempts=3 单请求 3 调用只计 1 失败）；②冷却后半开探测成功 closed/再败 open 重计时；③[a,b,c] 队列序转移+开路跳过+粘住+ALL_BACKENDS_FAILED；④terminal 不计数但换家；⑤限流桶 70%→85% 上穿告警恰一次+resetInSeconds 随钟衰减；fault-tolerance 新模块（classifyProviderFailure 复用 J26+CircuitBreaker+RateLimitTracker+createFailoverProvider）；全量 655 passed / 1 skipped，tsc 干净，count-features 310——**批次 2 全部 10 卡（T-P1-14~23）完成** |
+| 2026-09-26 | T-P1-24 | D5 | `b7a22a8` | `npx vitest run src/sandbox/backend.test.ts` | 5 passed；①danger-full-access 真命令跑通（echo/cat 真 cwd/exit 3 如实）；②read-only/workspace-write 双档拒绝且 env 调用计数 0（"instead of running unconfined"）；③假后端多态注入（接口不被 local 实现绑死）；④supportedModes 能力自述；SandboxBackend 接口+createLocalBackend+SANDBOX_UNAVAILABLE fail-closed 语义；全量 661 passed / 1 skipped，tsc 干净，count-features 310——**P1 批次 3 首卡** |
+| 2026-09-26 | T-P1-25 | D6/D10 | `87c11a1` | `npx vitest run src/sandbox/workspace-sid.test.ts src/sandbox/win32-backend.test.ts` | 11 passed（SID 4+backend 7 含真机集成 5）；Rust helper crate（main/grant/token/spawn/err 五模块，windows-sys 0.48）；受限令牌 WRITE_RESTRICTED+restricting 清单按 mode+默认 DACL grant+Low integrity；grant 三件套（capability SID 写 ACE+Everyone FILE_DELETE_CHILD deny+Low 标签）exact-ACE 幂等；真机写隔离 4 场景全过（workspace-write 写内成功/写外拒、read-only 写内拒/读内 ok）；TOKEN_GROUPS offset 8 padding 首版被真机抓出修正；**msys bash 与受限令牌结构性不兼容（NtCreateDirectoryObject 0xC0000022）记 LIMITATIONS——PowerShell 是 Windows 沙箱态宿主正路**；全量 672 passed，tsc 干净，count-features 310 |
+| 2026-09-26 | T-P1-26 | D13/D14 | `cc9aa02` | `npx vitest run src/sandbox/containment.test.ts src/sandbox/win32-backend.test.ts` | 13 passed（containment 4+backend 9）+cargo test 1 passed；helper 升级 Job 管辖（suspended 创建→AssignProcessToJobObject→resume 无逃逸窗口、结算=目标退出&&Job 活动数归 0、超时 TerminateJobObject 全树回收→等清空才报 TIMEOUT）；真机：后代活过宿主结算 4.2s（等范围空）、超时全树回收 2.6s（不等 30s 后代）；D14 createContainedBackend 工厂——helper 缺席降级 warn 恰一次（provider 生命周期）+弱兜底受限 mode 报 SANDBOX_UNAVAILABLE；LimitFlags 机制 cargo test 钉死；**target/ 误入库发现后移除并 gitignore**；全量 678 passed，tsc 干净，count-features 310 |
+| 2026-09-26 | T-P1-27 | D16 | `230430c` | `npx vitest run src/sandbox/offline-network.test.ts` | 7 passed（身份联动 3+账户名闭集 2+未 provision 类型化失败真机 1+probe 非特权可读 1）+cargo test 1 passed；helper 扩 wfp.rs（WFP persistent 三件套我方 GUID 命名空间+ALE_USER_ID 出站 BLOCK（FWP_SECURITY_DESCRIPTOR_TYPE 条件值=账户 SD，BuildSecurityDescriptorW 构造 codex 同构）+delete-then-add 幂等+probe 按 key）+account.rs（NetUserAdd aegent-sbx-<6hex>+LsaAddAccountRights SeBatchLogonRight+幂等）+run-offline（**CreateProcessWithLogonW seclogon 路径无需 SE_TCB**、密码 stdin 传明文不进命令行）；resolveNetworkIdentity（codex from_permissions 同构）；三动作错误路径真机冒烟全对（probe 无特权可读 provisioned=false、provision 非 admin net code 5、run-offline NETWORK_SANDBOX_NOT_PROVISIONED）；elevated provision+offline 联网被拒 → 人工确认清单；全量 685 passed，tsc 干净，count-features 310 |
+| 2026-09-26 | T-P1-28 | D11 | `b430fd4` | `npx vitest run src/kernel/tools/pwsh.test.ts` | 9 passed（pwsh 真命令 1.3s+bash 缺省/显式零变化回归+cwd 透传+dispatch 面 started 标记+sandbox 态经 env 抽象多态+出口硬拦外拒内放+plan 硬关清单含 pwsh）；env.ts 扩 ShellKind（pwsh 宿主优先 pwsh Core 缺失回落 powershell.exe 进程级缓存；本机无 Core 实测回落）；builtin/pwsh.ts 平行 bash（重定向字面解析跨方言有效过 PathGuard+D15 started+TOOL_TIMEOUT+进度示范+PwshError 分型）；BUILTIN_TOOL_NAMES 13→14+WRITE_EXECUTE_TOOLS +pwsh+descriptions/pwsh.txt；LIMITATIONS 双载体扩 pwsh 方言边界节 #9-12（参数式写 cmdlet 边界/只误报不误放行/**退出码宿主语义**（dsh 同款决策，卡面"一致"预期记偏离）/**msys bash 受限令牌不兼容**）；注册面三处计数更新（14/11/9）；全量 694 passed，tsc 干净，count-features 310 |
+| 2026-09-26 | T-P1-29 | D7 | `7c8fd4e` | `npx vitest run src/sandbox/doctor.test.ts` | 7 passed（真机四行报告与 helper 在场性一致、helper 缺席 error+remediation 指 build:sandbox-helper、未 provision warn+弱承诺+D3 现值、已 provision ok、probe 不可得/抛异常→warn"未知"、渲染含标记与汇总计数）；doctor.ts（runDoctorChecks 依赖全注入判定面无 I/O+formatDoctorReport codex 风格）+cli/doctor.ts 独立入口（不起 agent 循环，退出码 0/1）+cli/provision.ts（密码打印一次提示 DPAPI 落盘）+npm scripts doctor/sandbox:provision；**真机独立运行 npm run doctor → 0 error / 1 warning / 3 ok**（helper 三行 ok+D16 未 provision warn+弱承诺文案与修复提示在位）；全量 701 passed / 1 skipped，tsc 干净，count-features 310——**批次 3 全部 6 卡（T-P1-24~29）完成，P1 批次 3 收官** |
 
 ---
 
@@ -152,6 +158,7 @@
 | --- | --- | --- |
 | 批次 2 三面（B6/B7/F6） | ~~需要真实网关~~ **已实测（2026-09-26，用户提供网关 cline-pass/deepseek-v4.1-flash，key 不落盘）**：三场景真实会话（tmp 驱动脚本不入库，toolExecution=parallel 装配 + 审批自动放行 + question 自动答复）——**B7 进度**：2 条 `tool/progress`（bash「命令已启动」，seqInCall=1、落流有序）；**B8b question 全链**：真实模型自发调 question（args 恰为指定问题）→ 自动答复「写总结」→ tool/result「用户答复：写总结」→ 模型确认并继续；**B6 并行**：parallel 装配全 session 无异常；**F6 缓存**：网关回 `cached_tokens`——cacheRead 逐轮增长（1024→2048→2176→2176→2304→2432），Σinput=14,272 / ΣcacheRead=12,160 → **cacheHitRate≈85.2%**（远超 F6「省 ≥30%」口径；未缓存增量输入 6 请求合计仅 2,112）。42 事件 seq 连续、3/3 轮 completed、3 tool/call = 3 tool/result 配平 | **已关闭（2026-09-26）** |
 | J15 多端点容错 | 熔断开路切第二家需要第二真实端点 | **已实测（2026-09-26，用户提供第二端点 <redacted-endpoint-2> / deepseek-v4.1-flash-free，key 不落盘）**：队列 [primary=死端口（模拟主端点宕机，retryable）, backup=第二端点（真实模型）]——**sanity 即换家并粘住**（primary 拒连 → backup 真实出话「深度求索的服务」→ current=backup），后续请求 primary 零发出（不再重复探测死端点）；req2 备端点也抖动（免费端点 ECONNRESET）→ **ALL_BACKENDS_FAILED 类型化错误**列明两家失败原因且 primary 熔断 open；恢复后 req3/req4 backup 真实出话（「我是助手，由深度」）。**实测发现并修复一个真实缺陷（本次 commit）**：消费方在 done 即 break 会中止 failover 生成器，recordSuccess 与"粘住"簿记全部丢失（每次请求都重新探测死端点）——簿记移入 finally（增量已交付 = 接管成功照样记账），回归测试钉死；该缺陷在批次 2 验收时未暴露（单测自然流终 + loop 不提前 break），真实消费方提前收尾场景才触发 |
+| 批次 3 三面（D16/D10/D8） | **D16 elevated provision**：NetUserAdd+SeBatchLogonRight+WFP persistent 出站 BLOCK 需要**管理员权限**（本环境非管理员已核实 net session）——自动化面已过（probe 非特权可读 provisioned=false、provision 非 admin net code 5、run-offline NETWORK_SANDBOX_NOT_PROVISIONED）。**人工确认方式**：管理员 shell 跑 `npm run sandbox:provision`（记下打印的账户与密码并立即加密落盘）→ `npm run doctor` 应报 network-isolation ok → 以沙箱账户跑 `powershell -Command "Invoke-WebRequest github.com"` 应联网被拒。**D10 grant 完整行为**：deny delete ACE 挡"跨 grant 根删除"未单独断言（Low integrity + 写隔离主语义已真机验证：workspace-write 写内成功/写外拒、read-only 写内拒/读内 ok、Job 后代管辖/超时全树回收）。**D8 机器级扩展**：沙箱账户密码 DPAPI 加密落盘未接线（协议面已通，随 CLI 批次 SecureKeyStore） | 待人工实测（有管理员权限时） |
 | J2（部分） | ~~真实厂商连通性需要 API key~~ **已实测（2026-09-25，用户提供 OpenAI 兼容端点，deepseek-v4.1-flash）**：流式 192 块（reasoning-delta/text-delta/usage/done）、usage 落库（input 2196/output 191/total 2387/reasoningTokens 175）、L3 视图可查；真实模型 tool_call 流式分片拼接正确（arguments 完整 JSON）、审批挂起→超时→isError 回喂→模型自适应重试→诚实收尾，27 事件配平落库。系统提示生效（模型自称 aegent）。**剩：不同厂商 wire 差异的多端点复测**（同一端点已闭环） | **复测已关闭（2026-09-26，P1 批次 1 终验）**：不同接入路径实测通过（用户网关 <redacted-endpoint>，模型 cline-pass/deepseek-v4.1-flash，OpenAI Chat Completions 协议）——五场景审批放行全链路 + 128 事件 seq 连续 + 15/15 配平 + reasoningTokens 映射有效（见下方「批次 1 终验收记录」） |
 | T9 冷启动 | 「<500ms」依赖本机负载 | T-8-05 终验收已实测两形态：echo 模式 median 283.3ms、SQLite 模式 median 273ms，达标收口（T-3-06 基线 109.6ms 的上浮源于子进程装配扩容，见 T-8-05 偏离①） |
 | D3 弱承诺 | 「网络策略只管工具层」是声明不是代码属性 | **已关闭（2026-09-25 用户目检裁决："可以"）**——`src/sandbox/README.md` 置顶加粗的弱承诺段（只拦工具层 fetch，不承诺 bash 子进程/模型接入层/OS 级，deny 档 ≠ 网络隔离）获用户认可 |
@@ -868,6 +875,58 @@ D14 D16）逐条锚点核对 requirements.md §4，照 plan-p1.md 批次 2 展�
 PowerShell 一等 shell 动 ExecutionEnv，注意 bash-retry-guard 等 bash 语义
 依赖面；3) D14 在疑似顺带覆盖清单（T-6-06/D15 相邻语义），展卡时先核对
 证据可提请关闭。全量基线 656 passed / 1 skipped。不要问要不要继续。
+```
+
+## 批次 3 展卡记录（2026-09-26，执行会话自展）
+
+> 用户提示词指示：先按圈定研究批次 3 条目（D5/D6/D7/D10/D11/D13/D14/D16）逐条锚点核对 requirements.md §4，照批次 2 先例展卡，再按 plan-p0 §0 执行。**8 条锚点逐一开文件核实，零勘误**（dsh packages/sandbox 契约 + sandbox-windows-acl 含 workspace-sid.ts 派生公式、codex setup.rs:740 SandboxNetworkIdentity + token.rs/acl.rs/wfp.rs、codex doctor sandbox.rs/network.rs、dsh containment 文档）。**两项展卡裁决**：①**D14 疑似顺带覆盖核对结论：不等价，实卡**——T-6-06/bash-retry-guard 是 D15 重试幂等边界（started 标记），D14 是"强管辖不可用时 provider 生命周期一次性告警"，相邻不同义且我方现状无管辖告警面；②**D10 裁决并入 D6 卡**——取 codex Rust helper 路线（T9 纪律），dsh 的 Koffi TS 进程内 FFI 不取，D10 的 grant 三件套语义并入验收。预估 5 卡实展 6 张（批次 1 有 13 vs 14 的弹性先例）：D16（OS 账户+WFP provision）与 D11（四象限）各自独立成卡比硬塞清晰。
+
+---
+
+## 批次 3 报告（完成于 2026-09-26）
+
+- **打勾情况**：6 / 6（T-P1-24 ~ T-P1-29 全部完成，无未完成项）——**P1 批次 3 全部收官**（8 条需求 ID：D5/D6/D7/D10/D11/D13/D14/D16）
+- **产出的文件**：
+  - `src/sandbox/backend.ts`（SandboxBackend 接口 + SandboxMode 三值 + SANDBOX_UNAVAILABLE fail-closed + createLocalBackend）——D5 可插后端（T-P1-24）
+  - **`src/sandbox/win32-helper/` Rust crate**（main/grant/token/spawn/err/wfp/account/mechanism_tests 八模块，windows-sys 0.48 + serde；动作闭集 run/provision-network/probe-network/run-offline）——D6/D10/D13/D16 的全部 Win32 面（T-P1-25/26/27）
+  - `src/sandbox/workspace-sid.ts`（S-1-4-x-y sha256 派生 + temp 域分离 + canonicalize）+ `src/sandbox/win32-backend.ts`（Win32SandboxBackend：helper 协议、SANDBOX_UNAVAILABLE、TOOL_TIMEOUT 透传、powershell 缺省宿主）——D6/D10 TS 面（T-P1-25）
+  - `src/sandbox/containment.ts`（createContainedBackend 装配工厂 + D14 一次性告警）——D13 兜底面 + D14（T-P1-26）
+  - `src/sandbox/offline-network.ts`（resolveNetworkIdentity + OfflineNetworkExecutor + probeNetworkProvisioned + 账户名闭集）——D16 TS 面（T-P1-27）
+  - `env.ts` 扩 ShellKind（pwsh/bash 两态，缺省零变化）+ `builtin/pwsh.ts`（平行 bash 工具）+ `descriptions/pwsh.txt` + WRITE_EXECUTE_TOOLS +pwsh + `docs/shell-semantics-limitations.md` 扩 pwsh 方言边界节（#9-12）——D11（T-P1-28）
+  - `src/sandbox/doctor.ts`（runDoctorChecks 注入面 + formatDoctorReport）+ `src/cli/doctor.ts`（独立入口）+ `src/cli/provision.ts`（D16 provision 入口）+ npm scripts `doctor`/`sandbox:provision`/`build:sandbox-helper`——D7（T-P1-29）
+- **验收台账**：6 卡 6 命令全部通过（见台账表）；全量 `npx vitest run` **701 passed / 1 skipped**（批次 2 收官 656 → 净增 45），`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 0 失效、`license-audit.sh` 通过；Rust `cargo test` 1 passed（Job LimitFlags 机制）
+- **词汇表扩展**：**零**（研究文档预判"低"命中）——D14 告警走 logger.warn（D3 弱承诺先例），未新增事件
+- **T9 纪律**：helper 协议全部 stdin/stdout JSON 可序列化值；TS 侧证伪 `grep -rn child_process src/kernel/tools/`（除 env.ts）0 行、tools/+policy/ 零 windows-sys/koffi/CreateRestrictedToken 词汇
+- **偏离计划的地方**（逐卡详见卡面完成记录）：
+  1. **T-P1-25**：TOKEN_GROUPS 数组 offset 8（GroupCount 后 4 字节 padding）首版写 offset 4 被真机测试抓出修正；CreateProcessAsUserW 用 applicationName=null（按命令行解析+PATH 搜索，对齐 execFile 语义）；**真机发现 msys bash 与 WRITE_RESTRICTED 受限令牌结构性不兼容**（NtCreateDirectoryObject 0xC0000022）——cmd/powershell 正常，Windows 沙箱态宿主正路是 PowerShell（dsh 同款决策），LIMITATIONS #12 落档
+  2. **T-P1-26**：后代存活期间无额外超时（宿主退出后等 Job 清空无预算——后代自然跑完，硬回收只由 timeoutMs 触发）；**cargo target/ 误入库发现后 git rm --cached + gitignore + amend**（P1 构建产物不入库）
+  3. **T-P1-27**：LogonUser 路线不取（需 SE_TCB）——**CreateProcessWithLogonW 的 seclogon 路径**是普通进程可用的账户 spawn 通道；windows-sys 0.48 缺失的 WFP/LSA 符号（FWP_ACTION_BLOCK/FWP_E_*/UNICODE_STRING 位置等）自定义常量/换位补齐；密码 DPAPI 加密落盘由 provision 调用方执行（D8 机器级扩展位随 CLI 批次装配）
+  4. **T-P1-28**：卡面"pwsh 退出码语义与 bash 一致"记偏离——实际为**宿主语义**（对齐需尾包装 `exit $LASTEXITCODE`，cmdlet 场景引入残留值误报，比差异更糟，dsh 同款决策，LIMITATIONS #11）；pwsh 语义分析器完整版不做（YAGNI：重定向字面解析跨方言有效 + 危险库误报方向保守）
+  5. **T-P1-29**：helper 路径缺省为仓库相对路径（非仓库根运行会 miss——路径在报告可见，绝对路径解析随 CLI 批次装配）
+- **新发现的约束或坑**：
+  - **windows-sys 0.48 的 feature 门控极碎**（FwpmEngineOpen0 需 Win32_System_Rpc、LSA 常量在 Authentication_Identity、OBJECT_ATTRIBUTES 在 WindowsProgramming）且 WFP 常量不全（0.49+ 才生成）——缺失的微软固定值以 const 自定义并注明出处
+  - **msys2 运行时是受限令牌的死穴**（NtCreateDirectoryObject 命名空间对象在 pass-2 被拒）——Git Bash 的 bin/bash.exe wrapper 与 usr/bin/bash.exe 双路径实测复现
+  - TOKEN_GROUPS 的 Groups 数组 offset 是 8 不是 4（GroupCount 后 4 字节 padding 对齐 PSID）——Win32 结构体 padding 在指针成员前的教训
+  - gitignore 之前没有 cargo target 规则——**新语言工具链入库前先补构建产物排除**
+- **遗留风险与未知**（→ 人工确认清单批次 3 行）：
+  - **D16 elevated provision + offline 进程联网被拒的真机验证**（本环境非管理员，net session 已核实；probe 非特权可读已实测 provisioned=false）
+  - **Low integrity label + deny delete ACE 的完整行为**（本卡实现且主语义验证过，但"跨 grant 根删除被 deny 挡住"未单独断言）
+  - 密码 DPAPI 机器级加密落盘未接线（协议面已通，随 CLI 批次 SecureKeyStore 装配）
+  - T-6-01 符号链接用例沿用（本机无特权，skipIf 先例）
+- **批次完成定义核对**：6 卡打勾附验收 ✓；tsc 干净 ✓；count-features 310 ✓；check-doc-links 0 失效 ✓；license-audit 通过 ✓；词汇表零扩展 ✓；T9 证伪 ✓；cargo test + 构建脚本 ✓；D14/D10 裁决落档 ✓
+- **下一批**：批次 4 = 测试与诊断基建（O12–O26，15 条，预估 9 卡；O15/O16 真实厂商回归基建反哺后续批次）
+- **下一批提示词**：
+
+```
+继续 aegent P1 批次 4 的实施（测试与诊断基建）。批次 4 尚未展卡：先按
+docs/20260926_P1剩余批次全量圈定研究.md 批次 4 条目（O12–O26）逐条锚点
+核对 requirements.md §4，照 plan-p1.md 批次 3 展卡先例把卡序追加进
+plan-p1.md，然后按 docs/plan-p0.md §0 协议执行。上一批报告在
+docs/plan-p0-progress.md（批次 3 报告）。本批特有的注意：1) O15/O16 是
+真实厂商回归可持续性的基建（批次 1/2 的真实网关实测剧本可复用）；2)
+O20 在疑似顺带覆盖清单（T-2-03 mock.calls 计数断言），展卡先核对证据可
+提请关闭；3) O25 进程全局状态隔离注意与现有单进程假设的冲突面。全量
+基线 701 passed / 1 skipped。不要问要不要继续。
 ```
 
 ---

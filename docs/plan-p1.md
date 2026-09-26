@@ -1,6 +1,6 @@
 # P1 实施计划 · 批次 1
 
-**状态**：v1.3.0 · 批次 1+2 收官（13/13 卡 + 10/10 卡，2026-09-26；词汇表 18 事件已追认转正——待澄清 #5/#6 案关）· 批次 3 已展卡（6 卡 T-P1-24 ~ 29，沙箱 Windows 深化，2026-09-26）
+**状态**：v1.3.1 · 批次 1+2+3 收官（13/13 卡 + 10/10 卡 + 6/6 卡，2026-09-26；词汇表 18 事件；批次 3 = 沙箱 Windows 深化——D5/D6/D7/D10/D11/D13/D14/D16 全关，Rust helper `src/sandbox/win32-helper/` 在位）· 批次 4 候选占位（测试与诊断基建 O12–O26）
 **执行协议**：沿用 [`plan-p0.md`](plan-p0.md) §0（取卡 / 做卡 / 验收 / 打勾 / 提交 / 自动继续 / 四种停下情况），本文件不复制。执行进度追加在 [`plan-p0-progress.md`](plan-p0-progress.md)（台账 / 待澄清 / 人工确认清单共用一个文件）。
 **需求来源**：[`requirements.md`](requirements.md) §4 的 P1 项（共 158 条）。P1 不切阶段（§1 尾注），按**批次**组织：本文件当前只含批次 1，后续批次轮到时再展卡追加。
 **批次 1 范围**（用户圈定于 2026-09-25，四组全选，共 26 条）：
@@ -384,6 +384,14 @@
 - 词汇表零扩展（预判）——若执行中确需新事件，走待澄清立案管线。
 - Rust helper：cargo test 通过 + 构建脚本入 package.json；真机特权面（ACL 完整行为、WFP/账户 provision）验证不足部分列人工确认清单。
 - D14 核对结论（不等价 D15，实卡）与 D10 裁决（D6 路线覆盖）在展卡记录与本报告落档。
+
+## 批次 3 完成核对（2026-09-26）
+
+- 6/6 卡打勾附验收 ✓（T-P1-24 ~ 29，8 条需求 ID：D5/D6/D7/D10/D11/D13/D14/D16 全关）；全量 `npx vitest run` **701 passed / 1 skipped**（批次 2 收官 656 → 净增 45），`npx tsc --noEmit` 全程干净，`count-features.sh` = 310 不变，`check-doc-links.sh` 0 失效，`license-audit.sh` 通过。
+- T9 证伪 ✓：`grep -rn child_process src/kernel/tools/`（除 env.ts）0 行、tools/+policy/ 零 windows-sys/koffi/CreateRestrictedToken 词汇——跨 TS↔Rust 只走 helper 子进程协议（stdin/stdout JSON）。
+- 词汇表零扩展 ✓（研究文档预判"低"命中）。
+- Rust helper：cargo test 1 passed（Job LimitFlags 机制）+ `npm run build:sandbox-helper` + Cargo.lock 入库（构建产物 target/ 已 gitignore）。
+- 真机特权面不足部分 → 人工确认清单批次 3 行（elevated provision、offline 进程联网被拒、Low integrity label 完整行为、无特权符号链接用例沿用）。
 
 ## 批次 3-14 全量圈定（2026-09-26 用户裁决，依据 [`20260926_P1剩余批次全量圈定研究.md`](20260926_P1剩余批次全量圈定研究.md)）
 
