@@ -1,10 +1,12 @@
-//! win32-sandbox-helper —— aegent 的受限令牌沙箱 helper（D6/D10）。
+//! win32-sandbox-helper —— aegent 的沙箱 helper（D6/D10 受限令牌 · D13
+//! Job 管辖 · D16 网络隔离）。
 //!
-//! 协议（T9：只传可序列化值）：argv `--action run`，stdin 一行 JSON 请求，
-//! stdout 一行 JSON 结果。TS 侧只负责调用与协议编解码，全部 Win32 面在本
-//! crate。纪律（对齐 dsh sandbox-windows-acl 与 codex windows-sandbox-rs
-//! 的失败处理教训）：**每个 Win32 调用都检查，任何失败都在目标进程
-//! spawn 之前报错**——绝不降级为不受限运行（fail-closed，D5 同款语义）。
+//! 协议（T9：只传可序列化值）：argv `--action <action>`，stdin 一行 JSON
+//! 请求，stdout 一行 JSON 结果。TS 侧只负责调用与协议编解码，全部 Win32
+//! 面在本 crate。纪律（对齐 dsh sandbox-windows-acl 与 codex
+//! windows-sandbox-rs 的失败处理教训）：**每个 Win32 调用都检查，任何
+//! 失败都在目标进程 spawn 之前报错**——绝不降级为不受限运行（fail-closed，
+//! D5 同款语义）。
 //!
 //! 受限机制（dsh POC 语义，Win11 验证过的 restricting 清单形状）：
 //!   - read-only：       restricting = [logon SID, Everyone]
@@ -21,23 +23,31 @@
 //!     受限令牌新建对象（匿名管道等）的 DACL 不含 restricting SID，
 //!     pass-2 会在对象创建时拒绝（孙进程 spawn EPERM）。
 //!   - 令牌完整性降到 Low（S-1-16-4096）与目录标签匹配。
+//!
+//! 动作闭集（T9 fail-closed）：run / provision-network / probe-network /
+//! run-offline——未知动作 BAD_REQUEST 退出。
 #![cfg_attr(not(windows), allow(dead_code))]
 
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 
+mod account;
 mod err;
 mod grant;
 mod spawn;
 mod token;
+mod wfp;
 
-pub use err::{BAD_REQUEST, GRANT_FAILED, SPAWN_FAILED, TIMEOUT, TOKEN_FAILED};
+pub use err::{
+    BAD_REQUEST, GRANT_FAILED, NETWORK_SANDBOX_NOT_PROVISIONED, PROVISION_FAILED, SPAWN_FAILED,
+    TIMEOUT, TOKEN_FAILED,
+};
 
 #[cfg(test)]
 mod mechanism_tests;
 use err::{HelperError, Result};
 
-/// 请求的文件效果档位（与 TS 侧 SandboxMode 对齐）。
+/// run 动作请求的文件效果档位（与 TS 侧 SandboxMode 对齐）。
 #[derive(Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub enum Mode {
@@ -85,17 +95,27 @@ pub struct RunErr {
 }
 
 fn main() {
-    // argv 形状：[exe, --action, run]（len == 3）；未知动作 BAD_REQUEST 退出。
+    // argv 形状：[exe, --action, <action>]（len == 3）。
     let args: Vec<String> = std::env::args().collect();
-    if args.len() != 3 || args[1] != "--action" || args[2] != "run" {
-        fail(BAD_REQUEST, "用法：win32-sandbox-helper --action run（请求经 stdin JSON）");
+    if args.len() != 3 || args[1] != "--action" {
+        fail(BAD_REQUEST, "用法：win32-sandbox-helper --action <run|provision-network|probe-network|run-offline>（请求经 stdin JSON）");
     }
-
     let mut input = String::new();
     if std::io::stdin().read_to_string(&mut input).is_err() {
         fail(BAD_REQUEST, "读取 stdin 失败");
     }
-    let request: RunRequest = match serde_json::from_str(&input) {
+    match args[2].as_str() {
+        "run" => action_run(&input),
+        "provision-network" => action_provision_network(&input),
+        "probe-network" => action_probe_network(),
+        "run-offline" => action_run_offline(&input),
+        other => fail(BAD_REQUEST, format!("未知动作「{other}」（T9：动作名闭集，fail-closed）")),
+    }
+}
+
+/// run 动作（D6 受限令牌）。
+fn action_run(input: &str) {
+    let request: RunRequest = match serde_json::from_str(input) {
         Ok(r) => r,
         Err(e) => fail(BAD_REQUEST, format!("请求 JSON 解析失败：{e}")),
     };
@@ -111,12 +131,102 @@ fn main() {
     }
 
     match run(&request) {
-        Ok((exit_code, stdout, stderr)) => {
-            let ok = RunOk { ok: true, exit_code, stdout, stderr };
-            println!("{}", serde_json::to_string(&ok).unwrap_or_default());
+        Ok((exit_code, stdout, stderr)) => emit_ok(exit_code, stdout, stderr),
+        Err(e) => fail(e.code, e.message),
+    }
+}
+
+/// provision-network 动作（D16，需管理员）：账户 + WFP persistent 三件套。
+/// 幂等（账户已存在复用、filter delete-then-add）；自动生成的密码在响应
+/// 回传给调用方（DPAPI 加密落盘，明文不进命令行——D8 argv 纪律同款）。
+fn action_provision_network(input: &str) {
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ProvisionRequest {
+        /// 账户名（缺省自动生成；已存在则复用）。
+        account: Option<String>,
+        /// 账户密码（缺省自动生成）。
+        password: Option<String>,
+    }
+    let request: ProvisionRequest = match serde_json::from_str(input) {
+        Ok(r) => r,
+        Err(e) => fail(BAD_REQUEST, format!("请求 JSON 解析失败：{e}")),
+    };
+    let account = request.account.unwrap_or_else(account::generate_account_name);
+    let generated = request.password.is_none();
+    let password = request.password.unwrap_or_else(account::generate_password);
+    if let Err(e) = account::create_sandbox_account(&account, &password) {
+        fail(e.code, e.message);
+    }
+    match wfp::provision_network_filters(&account) {
+        Ok(detail) => {
+            let payload = serde_json::json!({
+                "ok": true,
+                "account": account,
+                "passwordGenerated": generated,
+                "password": if generated { password } else { String::new() },
+                "detail": detail,
+            });
+            println!("{payload}");
         }
         Err(e) => fail(e.code, e.message),
     }
+}
+
+/// probe-network 动作（D16 探针，doctor 消费）：WFP filter 在位性。
+fn action_probe_network() {
+    let filter_present = match wfp::probe_network_filter() {
+        Ok(v) => v,
+        Err(e) => fail(e.code, e.message),
+    };
+    let payload = serde_json::json!({
+        "ok": true,
+        "filterPresent": filter_present,
+        "provisioned": filter_present,
+    });
+    println!("{payload}");
+}
+
+/// run-offline 动作（D16）：以沙箱账户 spawn（seclogon 路径），其网络被
+/// WFP 的 persistent BLOCK 拦截。密码经 stdin JSON 传（明文不进命令行）。
+fn action_run_offline(input: &str) {
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct OfflineRunRequest {
+        account: String,
+        /// DPAPI 解密后的密码（由 TS 侧读取加密配置并解密）。
+        password: String,
+        program: String,
+        args: Vec<String>,
+        cwd: String,
+        timeout_ms: Option<u64>,
+    }
+    let request: OfflineRunRequest = match serde_json::from_str(input) {
+        Ok(r) => r,
+        Err(e) => fail(BAD_REQUEST, format!("请求 JSON 解析失败：{e}")),
+    };
+    if request.account.trim().is_empty() || request.password.is_empty() {
+        fail(BAD_REQUEST, "account 与 password 必填");
+    }
+    if request.args.is_empty() || request.program.trim().is_empty() {
+        fail(BAD_REQUEST, "program 与 args 不得为空");
+    }
+    match spawn::spawn_offline_and_wait(
+        &request.account,
+        &request.password,
+        &request.program,
+        &request.args,
+        &request.cwd,
+        request.timeout_ms,
+    ) {
+        Ok((exit_code, stdout, stderr)) => emit_ok(exit_code, stdout, stderr),
+        Err(e) => fail(e.code, e.message),
+    }
+}
+
+fn emit_ok(exit_code: u32, stdout: String, stderr: String) {
+    let ok = RunOk { ok: true, exit_code, stdout, stderr };
+    println!("{}", serde_json::to_string(&ok).unwrap_or_default());
 }
 
 /// 结构化失败：单行 JSON 到 stdout + 非零退出（绝不 spawn 目标）。

@@ -314,3 +314,135 @@ pub fn spawn_and_wait(
 fn lossy(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
+
+// ── run-offline（D16）：以沙箱账户身份 spawn（seclogon 路径）─────────────
+
+/// CreateProcessWithLogonW 请求的 LOGON_TYPE：批处理登录（账户已被授予
+/// SeBatchLogonRight——account.rs 的 provision 面）。
+const LOGON32_LOGON_BATCH: u32 = 4;
+const LOGON32_PROVIDER_DEFAULT: u32 = 0;
+
+/// 以沙箱账户 spawn（CreateProcessWithLogonW——Secondary Logon Service，
+/// **不需要 SE_TCB 特权**，与 LogonUser 路线的本质差别）。目标进程以该
+/// 账户身份运行，其出站流量被 WFP persistent BLOCK（wfp.rs）拦截。
+/// stdin 挂 NUL、管道收集、超时 Job 回收语义与受限路径一致——
+/// 但离线账户进程**不入受限令牌 Job**（账户即身份边界），超时直接
+/// TerminateProcess 目标。
+pub fn spawn_offline_and_wait(
+    account: &str,
+    password: &str,
+    program: &str,
+    args: &[String],
+    cwd: &str,
+    timeout_ms: Option<u64>,
+) -> Result<(u32, String, String)> {
+    use windows_sys::Win32::System::Threading::CreateProcessWithLogonW;
+
+    let out_pipe = make_pipe()?;
+    let err_pipe = make_pipe()?;
+
+    let nul = wide("NUL");
+    let stdin_handle = unsafe {
+        CreateFileW(
+            nul.as_ptr(),
+            GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            std::ptr::null(),
+            OPEN_EXISTING,
+            0,
+            0,
+        )
+    };
+    let stdin_ok = stdin_handle != 0 && stdin_handle != INVALID_HANDLE_VALUE;
+    let command_line: Vec<u16> = {
+        let mut line = quote_arg(program);
+        for arg in args {
+            line.push(' ');
+            line.push_str(&quote_arg(arg));
+        }
+        wide(&line)
+    };
+    let account_w = wide(account);
+    let password_w = wide(password);
+    let wide_cwd = wide(cwd);
+
+    let mut startup: STARTUPINFOW = unsafe { std::mem::zeroed() };
+    startup.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
+    startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdInput = if stdin_ok { stdin_handle } else { 0 };
+    startup.hStdOutput = out_pipe.write;
+    startup.hStdError = err_pipe.write;
+    let mut process: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
+
+    let ok = unsafe {
+        CreateProcessWithLogonW(
+            account_w.as_ptr(),
+            std::ptr::null(), // 域：null = 本机
+            password_w.as_ptr(),
+            LOGON32_LOGON_BATCH,
+            std::ptr::null(), // applicationName：按命令行解析（同 run 路径）
+            command_line.as_ptr() as *mut u16,
+            CREATE_NO_WINDOW as u32,
+            std::ptr::null(),
+            wide_cwd.as_ptr(),
+            &startup,
+            &mut process,
+        )
+    };
+    // 密码缓冲即用即清（防 helper 内存驻留明文）。
+    drop(password_w);
+    if stdin_ok {
+        close_handle(stdin_handle);
+    }
+    if ok == 0 {
+        close_handle(out_pipe.read);
+        close_handle(err_pipe.read);
+        return Err(HelperError::new(
+            super::NETWORK_SANDBOX_NOT_PROVISIONED,
+            format!(
+                "CreateProcessWithLogonW({account}) 失败（win32 code {}）——沙箱账户未 provision 或未授予批处理登录权",
+                unsafe { GetLastError() }
+            ),
+        ));
+    }
+
+    close_handle(out_pipe.write);
+    close_handle(err_pipe.write);
+
+    let (tx_out, rx_out) = mpsc::channel();
+    let (tx_err, rx_err) = mpsc::channel();
+    let t_out = std::thread::spawn(move || drain_to_string(out_pipe.read, tx_out));
+    let t_err = std::thread::spawn(move || drain_to_string(err_pipe.read, tx_err));
+
+    let wait_ms: u32 = match timeout_ms {
+        Some(ms) => ms.min(u64::from(INFINITE)) as u32,
+        None => INFINITE,
+    };
+    let wait_result = unsafe { WaitForSingleObject(process.hProcess, wait_ms) };
+    let timed_out = wait_result == WAIT_TIMEOUT;
+    if timed_out {
+        unsafe { TerminateProcess(process.hProcess, 1) };
+        unsafe { WaitForSingleObject(process.hProcess, INFINITE) };
+    }
+    let mut exit_code: u32 = 0;
+    let got_code = unsafe { GetExitCodeProcess(process.hProcess, &mut exit_code) };
+    close_handle(process.hThread);
+    close_handle(process.hProcess);
+
+    let stdout = rx_out.recv().unwrap_or_default();
+    let stderr = rx_err.recv().unwrap_or_default();
+    let _ = t_out.join();
+    let _ = t_err.join();
+
+    if !timed_out && got_code != 0 && wait_result == WAIT_OBJECT_0 {
+        return Ok((exit_code, lossy(&stdout), lossy(&stderr)));
+    }
+    Err(HelperError::new(
+        super::TIMEOUT,
+        if timed_out {
+            format!("离线账户进程在 {wait_ms}ms 超时后已被回收")
+        } else {
+            "等待离线账户进程结算失败".to_string()
+        },
+    ))
+}

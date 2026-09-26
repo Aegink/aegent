@@ -25,5 +25,10 @@ windows-sys = { version = "0.48", features = [
     "Win32_System_Memory",
     "Win32_System_Diagnostics_Debug",
     "Win32_System_JobObjects",
+    "Win32_NetworkManagement_NetManagement",
+    "Win32_NetworkManagement_WindowsFilteringPlatform",
+    "Win32_Security_Authentication_Identity",
+    "Win32_System_WindowsProgramming",
+    "Win32_System_Rpc",
     "Win32_Storage_FileSystem",
 ] }
