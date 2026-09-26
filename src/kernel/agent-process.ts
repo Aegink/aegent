@@ -21,6 +21,8 @@ import { spawn } from "node:child_process";
 import type { CancelCause } from "./events.js";
 import { AgentLoop, type AgentLoopDeps, type ToolExecutionMode } from "./loop.js";
 import { PromptQueue, QueueFullError } from "./queue.js";
+import { ToolClassLimiter, TurnAdmission } from "./admission.js";
+import { isWriteExecuteTool } from "../policy/protected-paths.js";
 import {
   type AgentMessage,
   type AgentRequest,
@@ -95,6 +97,12 @@ export interface AgentChildOptions {
    * 超限 prompt → QUEUE_FULL error 行（收执不发、消息不入队）。
    */
   queueMaxSize?: number;
+  /**
+   * J20+M9/T-P1-49 有界准入与工具类并发上限。缺省 undefined = 不限
+   * （零行为变化）。工具类判定由 WRITE_EXECUTE_TOOLS 注入（本文件已依赖
+   * policy 层的 protected-names，不新增反向依赖路径）。
+   */
+  toolClassLimits?: { writeExecuteMax?: number; readOnlyMax?: number };
   /** 事件存储（T-8-01：CLI 的 SQLite 落库走此注入）。缺省 InMemory——
    * 原生模块不进 echo 模式冷启动路径（Q16 <500ms 的结构性前提）。
    */
@@ -264,7 +272,17 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
     // F12/F14（T-P1-17）：每请求现取工具清单——tool_load 索取后 deferrable
     // 工具的真 schema 才进后续请求（request/header.tools 同步如实记录）
     toolsProvider: () => toolRegistry.toChatTools(),
-    executeTool: (call) => toolRegistry.dispatch(call),
+    executeTool: async (call) => {
+      // M9/T-P1-49：工具类并发上限（缺省不配 = 直通零行为变化）——
+      // 类级排队在外层、B17 RwLock 在 loop 内层照旧。
+      if (!toolLimiter) return toolRegistry.dispatch(call);
+      const release = await toolLimiter.acquire(call.name);
+      try {
+        return await toolRegistry.dispatch(call);
+      } finally {
+        release();
+      }
+    },
     decideTurn: assembly ? assembly.wrapDecideTurn(decideTurnBase) : decideTurnBase,
     queue,
     // A13/T-P1-48：入队闸门与拦截留痕（缺省 undefined = 全放行零行为变化）
@@ -299,6 +317,18 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
   let inflight: Promise<void> | null = null;
   let disposing = false;
 
+  // J20/T-P1-49 有界准入：draining 后新 prompt/steer 类型化拒绝；在途轮
+  // 持 admit 名额（active = 在途轮数，可观测）。
+  const admission = new TurnAdmission();
+  // M9/T-P1-49 工具类并发上限（缺省不配 = 不限，零行为变化）：
+  // 类级排队 → loop 派发 → B17 RwLock，三层各司其职。
+  const toolLimiter =
+    options.toolClassLimits !== undefined
+      ? new ToolClassLimiter(options.toolClassLimits, (name) =>
+          isWriteExecuteTool(name) ? "write" : "read",
+        )
+      : null;
+
   // Q3 会话关闭触发（T-P1-14）：退出前清掉本会话的自动可删 spill 文件
   // （manual 声明者与其他会话的文件由 spill-gc 保留）。exit 缺省是
   // process.exit——挂起的 unlink 会被切断，所以清理必须 await 完再退。
@@ -328,6 +358,11 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
       send({ type: "idle" });
       return;
     }
+    // J20/T-P1-49：轮跑动期间持 admit 名额（active = 在途轮数）。
+    // draining 后 admit 不再计数（admit 的拒绝面只对 handleRequest 的新
+    // 请求）——存量队列照常跑完（EOF"处理完剩余工作"语义），进程将退，
+    // 计数无消费方。
+    const permit = admission.draining ? null : admission.admit();
     inflight = (async () => {
       // E11 代码检查点：每轮开始前打点（pi turn_start "before LLM makes
       // changes" 的等价时点——此刻工作区就是"改前"状态，场景①的恢复依据）。
@@ -350,6 +385,7 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
         exit(1);
       })
       .finally(() => {
+        permit?.release();
         inflight = null;
         kick(); // 收尾后再踢一次——轮跑动期间入队的 prompt 从这里续开新轮
       });
@@ -358,6 +394,15 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
   const handleRequest = (req: AgentRequest): void => {
     switch (req.type) {
       case "prompt":
+        // J20/T-P1-49：draining 后不受理新轮（类型化拒绝，连接不断）
+        if (admission.draining) {
+          send({
+            type: "error",
+            code: "SERVER_DRAINING",
+            message: "进程正在收尾——不再受理新 prompt（存量队列照常跑完）",
+          });
+          return;
+        }
         // A9：先收执、再入队/开轮——accepted 只证明 admission。
         // M9/T-P1-48：队列满（有限队列）类型化拒绝——收执不发、消息不入队。
         try {
@@ -376,6 +421,14 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
         // A10/T-P1-47：steer 带目标轮准入——目标必须是当前活动轮。
         // 不匹配（含 idle）类型化拒绝且不入队（不武装队列）；匹配则入
         // 同一队列、由在途轮的 step 边界消费（A11），kick 幂等无害。
+        if (admission.draining) {
+          send({
+            type: "error",
+            code: "SERVER_DRAINING",
+            message: "进程正在收尾——不再受理 steer",
+          });
+          return;
+        }
         const active = loop.activeTurn;
         if (active === null || active !== req.expectedTurn) {
           send({
@@ -542,6 +595,9 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
       }
       case "dispose":
         disposing = true;
+        // J20/T-P1-49：收尾即闭闸——其后到达的 prompt/steer 被 SERVER_DRAINING
+        // 拒绝（存量队列照常跑完 = EOF"处理完剩余工作"语义不变）。
+        admission.beginDrain();
         loop.cancel({ kind: "disposed" });
         assembly?.dispose(); // 挂起审批按超时语义拒绝——gate 落 isError 后轮可收
         if (!inflight) void finish();
@@ -583,6 +639,7 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
   // stdin 关闭或输出断开：视作 dispose（父进程先行离场时不留悬挂轮）
   if (!disposing) {
     disposing = true;
+    admission.beginDrain();
     loop.cancel({ kind: "disposed" });
     assembly?.dispose();
   }

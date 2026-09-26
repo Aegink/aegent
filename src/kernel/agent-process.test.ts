@@ -440,6 +440,84 @@ describe("agent-process —— T9 agent 出进程", () => {
     await running;
   }, 30_000);
 
+  it("J20/T-P1-49 收尾闭闸：dispose 后 prompt/steer → SERVER_DRAINING 类型化拒绝（连接不断）", async () => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    let exitCode: number | null = null;
+    let resolveExit: (code: number) => void = () => {};
+    const exited = new Promise<number>((resolve) => {
+      resolveExit = resolve;
+    });
+
+    const running = runAgentChildStdio({
+      input,
+      output,
+      exit: (code) => {
+        if (exitCode === null) {
+          exitCode = code;
+          resolveExit(code);
+        }
+      },
+    });
+
+    const items: AgentMessage[] = [];
+    const waiters: ((r: IteratorResult<AgentMessage>) => void)[] = [];
+    let buf = "";
+    output.setEncoding("utf-8");
+    output.on("data", (chunk: string) => {
+      buf += chunk;
+      for (;;) {
+        const nl = buf.indexOf("\n");
+        if (nl < 0) break;
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        const msg = decodeMessage(line);
+        const w = waiters.shift();
+        if (w) w({ value: msg, done: false });
+        else items.push(msg);
+      }
+    });
+    const iter = {
+      [Symbol.asyncIterator]() {
+        return {
+          next: () => {
+            const item = items.shift();
+            if (item) return Promise.resolve({ value: item, done: false });
+            return new Promise<IteratorResult<AgentMessage>>((resolve) =>
+              waiters.push(resolve),
+            );
+          },
+        };
+      },
+    };
+    const next = async () => (await iter[Symbol.asyncIterator]().next()).value;
+
+    expect(await next()).toEqual({ type: "ready" });
+    // dispose（空闲时立即收尾）——闭闸后新输入被类型化拒绝
+    input.write(JSON.stringify({ type: "dispose" }) + "\n");
+    // 闭闸后紧接两条请求：prompt 与 steer 都得 SERVER_DRAINING（在 finish
+    // 退出前到达——error 行先于进程退出写入）
+    input.write(JSON.stringify({ type: "prompt", messageId: "late", content: "迟到的输入" }) + "\n");
+    const err1 = await next();
+    expect(err1).toEqual({
+      type: "error",
+      code: "SERVER_DRAINING",
+      message: expect.any(String),
+    });
+    input.write(JSON.stringify({ type: "steer", expectedTurn: 1, content: "迟到的 steer" }) + "\n");
+    const err2 = await next();
+    expect(err2).toEqual({
+      type: "error",
+      code: "SERVER_DRAINING",
+      message: expect.any(String),
+    });
+
+    expect(await exited).toBe(0);
+    input.end();
+    await running;
+  }, 30_000);
+
   it("Q3 会话关闭触发 spill 清理（T-P1-14）：dispose 退出前清掉本会话自动可删文件", async () => {
     const spillDir = mkdtempSync(path.join(tmpdir(), "aegent-spill-wire-"));
     const writeSpill = (sessionId: string, deletable: "manual" | "after-session-end"): string => {
