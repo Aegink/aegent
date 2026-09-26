@@ -523,7 +523,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **偏离 / 建议**：①`scenario` 必填是对既有测试的破坏面——既有快照构造零改动（scenario 可选、缺省提醒文案），新相位快照全带 scenario（渐进收口，与 O26 同策略）；②"全仓 43 条"的广度不做（codex 全仓纪律，我方以 compaction 域 + 派生断言起步，扩展随批次自然发生）
 - **完成记录**：2026-09-26。产出：①snapshots.ts 的 `SnapshotHeader` 扩 `scenario?`（可选项 + 缺省大声提醒文案同 whyEnded 先例——既有快照构造零改动、缺省输出零变化）+ `snapshotToString` 首行渲染 `Scenario: <一句话>`；②`src/context/compaction.snapshot.test.ts` **四相位快照**（local-overflow / provider-overflow / model-downshift 三 reason 的 compacted + pre-hook aborted——每相位一条渲染快照：Scenario 头行 + `[emit]` 单行 JSON 事件流 + 摘要行）+ **派生断言**（事件面 reason 全集 `{context_limit, model_downshift, pre-hook-aborted}` 与快照覆盖清单相等——新原因/结算形态出现而快照缺位即红）。验收：`npx vitest run src/context/compaction.snapshot.test.ts` → **5 passed**：①三 reason 快照各就位且读 Scenario 行知意图；②aborted 快照无 compaction 事件行（中止显式结算）；③派生断言红面 = 快照缺位即测试失败。全量 `npx vitest run` **754 passed / 1 skipped**（749 → 净增 5），`npx tsc --noEmit` 干净。**卡内定形**：两种溢出源在**事件面共用 `context_limit`**（compactionReasonOf 词表纪律，区分在 request 类型上）——快照的人话区分由 Scenario 行承担，事件 reason 断言按词表值不走请求 reason 名。
 
-#### T-P1-38 · O25 · 进程全局状态隔离（锁 + RAII 守卫 + 中毒处理） `[ ]`
+#### T-P1-38 · O25 · 进程全局状态隔离（锁 + RAII 守卫 + 中毒处理） `[x]`
 - **依据需求**：O25（P1："进程全局状态必须有隔离机制，且注释写明故障机制"）
 - **上游首选参考**：[pi-desktop·plugins/tests.rs:10-27](../oss/pi-desktop/crates/host-core/src/plugins/tests.rs#L10)（`MARKET_ENV_LOCK` 静态锁 + `lock().unwrap_or_else(|e| e.into_inner())` 中毒处理 + `with_local_market` RAII 守卫 + "The marketplace source is process-global, so two tests … read each other's value" 故障机制注释）
 - **取什么 / 别抄什么**：取四件：串行化锁 + RAII 守卫 + **中毒不扩散**（锁持有人抛错不毒化后续测试——我方 promise 链的 finally 恢复即同构）+ 故障机制注释；**单进程假设的冲突面盘点**：我方 agent 架构本就多进程（T9 helper/agent-child），测试的进程级状态只在同 worker 进程内冲突——vitest 每文件独立 worker 跨文件天然隔离，冲突面 = 同文件内测试共享的模块级状态与 process.env
@@ -533,6 +533,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **依赖**：无
 - **风险 / 未知**：跨文件并行 worker 的共享文件系统面（tmp 目录互踩）——mkdtemp 唯一化已在用（P0 夹具纪律），不入本卡面；process.cwd() 修改不做（我方测试无此需求，出现时再扩）
 - **偏离 / 建议**：①锁实现用 promise 链而非 Mutex 类（JS 单线程无真并发，链式 enqueue 即串行语义）；②盘点结论：除 pwshHostCache 外无模块级可变全局（logger/registry/guard 均实例注入）——"隔离机制"主战场就是 process.env 与该缓存，卡面记录盘点证据
+- **完成记录**：2026-09-26。产出：①`src/test-support/isolation.ts`（**故障机制头注释**——"vitest 每文件独立 worker 跨文件隔离，同文件内测试串行共享进程：A 改 env/触热缓存 → B 读到残留，顺序耦合单跑绿全跑红"；四件隔离机制 pi-desktop 同构：`serializeGlobal(name, fn)` promise 链排队（`prev.then(fn, fn)`——前序失败不传递**中毒不扩散**）、`withEnv(vars, fn)` RAII 守卫（设置 → fn → finally 快照恢复，fn 崩溃照样还原）、`withEnvSerialized` 组合形态、模块级缓存显式重置面）②`env.ts` 加 `resetPwshHostCacheForTests()`（pwshHostCache 是本模块唯一进程级可变全局，注释写明重置理由）③`isolation.test.ts` 7 用例。**盘点结论落档**：grep 模块级 `let`/可变全局——pwshHostCache（env.ts:131）是唯一可变全局；logger 的 warned 是闭包内非模块级；registry/guard/policy 链全部构造注入；process.env 消费点（AEGENT_DB/AEGENT_PLAN/AEGENT_GOAL）在启动期读取——主战场 = env 修改与 pwsh 缓存两处。验收：`npx vitest run src/test-support/isolation.test.ts src/kernel/tools/env.test.ts` → **isolation 7 passed + env 回归全绿**：①并发提交排队序不重叠；②持有人抛错自身失败 + 后续排队者正常（中毒不扩散）；③不同锁名互不阻塞；④env 设置/恢复逐字节 + 新键删除；⑤fn 抛错 env 已恢复；⑥withEnvSerialized 两段竞争不互踩；⑦pwshHostCache 重置面幂等。全量 `npx vitest run` **761 passed / 1 skipped**（754 → 净增 7），`npx tsc --noEmit` 干净。**单进程假设冲突面结论**：agent 架构本就多进程（T9 helper/agent-child），子进程不共享模块状态（天然隔离）——本卡只管同 worker 进程内共享面，与单进程假设无冲突。
 
 #### T-P1-39 · O26 · 测试名写成完整行为规格（收口盘点） `[ ]`
 - **依据需求**：O26（P1："测试名写成完整行为规格，把安全边界写进名字"）

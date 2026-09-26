@@ -128,6 +128,15 @@ export class NodeExecutionEnv implements ExecutionEnv {
 
 let pwshHostCache: string | undefined;
 
+/**
+ * 测试隔离面（O25，T-P1-38）：pwshHostCache 是本模块唯一的进程级可变全局——
+ * 探测结果跨测试残留会让"宿主回落"用例在前一用例已缓存时失效。显式重置
+ * 面替代"改模块内部变量"的黑盒探测（配合 serializeGlobal 串行化使用）。
+ */
+export function resetPwshHostCacheForTests(): void {
+  pwshHostCache = undefined;
+}
+
 /** pwsh 宿主解析（进程级缓存）：pwsh Core 探测，缺失回落 powershell.exe。 */
 async function resolvePwshHost(): Promise<string> {
   if (pwshHostCache !== undefined) return pwshHostCache;
