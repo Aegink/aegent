@@ -281,6 +281,26 @@ describe("todo 投影（G2 / T-P1-10）", () => {
 });
 
 describe("与 SessionStore 的接线（E16 写入前校验）", () => {
+  it("A12/T-P1-53：user/message 的 promptId 载荷校验——合法值放行、空串拒绝、缺省前向兼容", () => {
+    // 合法 promptId：投影/校验通过
+    const ok = Projector.fresh();
+    ok.append(oneTurn(1, 1).map((e) =>
+      e.type === "user/message" ? { ...e, promptId: "p1" } : e,
+    ));
+    // 空串：拒绝
+    const bad = Projector.fresh();
+    expect(() =>
+      bad.append(
+        oneTurn(2, 1).map((e) =>
+          e.type === "user/message" ? { ...e, promptId: "" } : e,
+        ),
+      ),
+    ).toThrow(/promptId 非法/);
+    // 缺省（旧流形状）：前向兼容照常通过
+    const legacy = Projector.fresh();
+    legacy.append(oneTurn(3, 1));
+  });
+
   it("store.append 对非法流抛 ProjectError，内存序零提交", () => {
     const store = new SessionStore();
     store.append("s1", [

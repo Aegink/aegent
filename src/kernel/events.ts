@@ -232,6 +232,19 @@ export interface UserMessageEvent extends EventBase {
   type: "user/message";
   message: { content: string };
   source: UserMessageSource;
+  /**
+   * A12/T-P1-53 关联 id（claude-official prompt_id 行为同构——🔴 专有仓
+   * 只学语义零代码摘取）：用户输入的关联键，其效力区间 = 本条 user/message
+   * 之后、**下一条 user/message 之前**的全部事件（按流顺序归属——事件流
+   * 的顺序即关联结构，区间内事件不逐个带 id，投影/消费面按 seq 切片推导）。
+   * loop 在落 user/message 时统一分配（runTurn 首条与 steer 注入每条各
+   * 一枚，格式 `p<序数>` 会话内单调、恢复路径从流重建保证不重号）。
+   * 与 A9 纪律一致：promptId 是关联键**不是完成句柄**——没有 finished()
+   * 配对、没有 per-prompt 完成语义；与 queue 的 messageId（q<序数>，
+   * inbox admission 收执，仅队列通道）分工明确。旧流缺省该字段（前向兼容，
+   * 走待澄清 #8 载荷扩展立案——事件计数 19 不变）。
+   */
+  promptId?: string;
 }
 
 export interface SystemMessageEvent extends EventBase {

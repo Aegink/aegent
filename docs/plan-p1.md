@@ -770,7 +770,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **偏离 / 建议**：（留白）
 - **完成记录**：2026-09-27。产出：①`PromptQueue.drainAll()`（无视 QueueMode 全量取出——退回专用）；②协议 AgentMessage 加 `prompt_returned {contents: string[]}`（wire 面数组校验；**不进词汇表**——协议消息非会话事件）；③agent-process kick 收尾：`.then` 捕获本轮 `TurnEndReason` → aborted 且队列非空 → drainAll 全量退回 + send（**不自动续跑**——pi-desktop·Stop "retains accepted input as history without independently replaying it" 同构）→ kick 照旧（队列已空 → idle 宣告/disposing → finish，EOF 语义零破坏）；completed 路径续开行为不变（既有"轮后自动续开"用例零改动全绿）；④REPL `⮐ 待处理输入：<内容>` 回显。**语义对齐记档**：已消费进历史的不退（drain 后即出队）、gate 拦截的未入队不退（T-P1-48 衔接）、队列本身不清（completed 后照旧消费）。验收：`npx vitest run src/kernel/agent-process.test.ts src/cli/cli.test.ts src/kernel/queue.test.ts src/kernel/agent-protocol.test.ts` → **41 passed**（process 8 + cli 17 + queue 8 + protocol 9，+2 新）：①aborted 轮后 prompt_returned 携带排队两条（FIFO ["乙","丙"]）+ 不自动续开（call=1）+ idle 照常宣告 + exit 0；②CLI /cancel 后 ⮐ 行可见 + 首条（已进历史）不回显 + 零第二轮。**测试中发现并记档**：审批挂起不响应 cancel 信号（C5 Deferred 只认答复/超时）——取消在审批挂起时的收轮要等 approvalTimeoutMs 结算 isError 后由派发循环的取消检查接管（既有 C50 语义，非本卡缺陷；CLI 用例以 400ms 超时驱动全链）。全量 `npx vitest run` **821 passed / 1 skipped**（819 → 净增 2），`npx tsc --noEmit` 干净。
 
-#### T-P1-53 · A12 · 用户输入关联 id（promptId 载荷扩展） `[ ]`
+#### T-P1-53 · A12 · 用户输入关联 id（promptId 载荷扩展） `[x]`
 - **依据需求**：A12（P1："用户输入携带关联 id，关联该输入之后、下一次输入之前的所有事件；仍不提供 per-prompt 完成语义（与 A9 一致）"）
 - **上游首选参考**：[claude-official·claude-code.d.ts:588](../refs/claude-official/mods/types/claude-code.d.ts#L588)（BaseHookInput.prompt_id："UUID correlating a user prompt with all subsequent events until the next prompt. Same value emitted on OpenTelemetry events as the `prompt.id` attribute… Absent until the first user input of the process lifetime"）——🔴 专有仓：只学行为语义，零代码摘取
 - **取什么 / 别抄什么**：取"关联 id 标记用户输入、其效力区间 = 本输入后到下一输入前"与"不提供完成语义"；**不取逐事件打 id**（claude 在 hook 输入逐个带 prompt_id——我方事件流顺序即关联结构：user/message 是区间起点，区间内事件按流顺序归属，投影/消费面推导即可，事件载荷只扩起点一处）；id 分配方 = loop 落 user/message 时（首条与 steer 注入每条各分配）
@@ -780,6 +780,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **依赖**：无
 - **风险 / 未知**：revert 切割后 promptId 区间跨切点的归属（有效视窗内推导自然成立，记档）
 - **偏离 / 建议**：（留白）
+- **完成记录**：2026-09-27。产出：①`UserMessageEvent.promptId?: string` 可选载荷（events.ts 注释落完整语义：关联区间 = 本条后至下一条 user/message 前按流顺序归属——**仅扩起点一处不逐事件打 id**；🔴 专有仓只学语义零代码摘取）；②loop 分配器：`nextPromptId()`（`p<序数>` 会话内单调）+ **构造时从流重建基线**（数已有 user/message 条数——恢复路径不重号）+ runTurn 首条与 drainQueue 注入两处落盘点；③project.ts validation：promptId present 时必须非空字符串、缺省放行（旧流前向兼容）；④**词汇表立案兑现**：零事件数扩展（19 不变）、l0-events.md §3.2 user/message 行 + §8 落地记录 9 + 待澄清 #8 立案供追认；⑤A9 复证钉死：promptId 无 finished() 配对（与 messageId 分工注释进 events.ts）。验收：`npx vitest run src/kernel/loop.test.ts src/session/project.test.ts src/test-support/migration-asserts.test.ts src/kernel/events.test.ts` → **54 passed**（loop 28 + project 19 + migration 5 + events 13，+4 新）：①首条 p1 + steer 注入 p2/p3；②关联区间 seq 切片推导（两输入之间事件非 user/message 且非空）；③恢复重建不重号（同 store 新 loop 拿 p2）；④空串 promptId 拒绝 + 旧流缺省兼容。全量 `npx vitest run` **825 passed / 1 skipped**（821 → 净增 4），`npx tsc --noEmit` 干净，check-doc-links 97 链接 0 失效。**记档**：全量首跑又出现一次未复现 flaky（与 T-P1-48 同形态，连跑 3 次全绿）——判定为 93 worker 并行下既有环境偶发（WAL/文件句柄竞态先例），非批次 6 引入面。
 
 #### T-P1-54 · 收口 · loop 治理面与既有机制冲突盘点 + 快照 `[ ]`
 - **依据需求**：批次 6 收口（照批次 4 T-P1-39 / 批次 5 T-P1-45 收口盘点先例；无独立需求 ID）

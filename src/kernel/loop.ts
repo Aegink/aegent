@@ -344,6 +344,11 @@ export class AgentLoop {
 
   constructor(private readonly deps: AgentLoopDeps) {
     this.$ = { sessionId: deps.sessionId };
+    // A12/T-P1-53 关联 id 计数器：从流重建（恢复路径不重号）——已有
+    // user/message 数即下一枚的序数基线。
+    this.promptCounter = deps.store
+      .load(deps.sessionId)
+      .filter((e) => e.type === "user/message").length;
     // 缺省捕获 = 固定 provider/identity（P0 行为）；runTurn 启动时按
     // modelForTurn 覆盖（J7）。
     this.turnModel = { provider: deps.provider, identity: deps.identity };
@@ -403,6 +408,14 @@ export class AgentLoop {
    */
   private abortWatchdog: ReturnType<typeof setTimeout> | null = null;
   private forcedClosed = false;
+
+  /** A12/T-P1-53 关联 id 分配（会话内单调 p1、p2…；构造时从流重建基线）。 */
+  private promptCounter: number;
+
+  private nextPromptId(): string {
+    this.promptCounter += 1;
+    return `p${this.promptCounter}`;
+  }
 
   private armAbortWatchdog(): void {
     const ms = this.deps.abortTimeoutMs;
@@ -484,8 +497,17 @@ export class AgentLoop {
       ? this.deps.modelForTurn(turn)
       : { provider: this.deps.provider, identity: this.deps.identity };
     store.append(sessionId, [
-      { type: "turn/start", turn },
-      { type: "user/message", turn, message: { content: prompt }, source: "user" },
+      {
+        type: "turn/start",
+        turn,
+      },
+      {
+        type: "user/message",
+        turn,
+        message: { content: prompt },
+        source: "user",
+        promptId: this.nextPromptId(),
+      },
     ]);
     try {
       // PreTurn 压缩挂点（T-8 装配）：新 prompt 已入流、首次模型请求前。
@@ -580,6 +602,8 @@ export class AgentLoop {
           turn,
           message: { content: p.content },
           source: "user",
+          // A12/T-P1-53：steer 注入的每条输入各得一枚关联 id（新输入）
+          promptId: this.nextPromptId(),
         }),
       ),
     );

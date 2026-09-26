@@ -953,5 +953,89 @@ describe("循环护栏（A14/T-P1-50）", () => {
   });
 });
 
+describe("用户输入关联 id（A12/T-P1-53）", () => {
+  it("runTurn 首条带 p1；steer 注入每条各得新 promptId（p2/p3）", async () => {
+    const provider = new ScriptedProvider();
+    for (const text of ["一", "二", "三"]) {
+      provider.mount([{ type: "text-delta", text }, { type: "done" }]);
+    }
+    const queue = new PromptQueue("all");
+    let decided = 0;
+    const decideTurn: DecideTurn = () => {
+      decided += 1;
+      if (decided === 1) {
+        queue.enqueue("补充甲");
+        queue.enqueue("补充乙");
+      }
+      return decided === 1 ? { action: "continue" } : { action: "end" };
+    };
+    const { loop, store } = makeLoop(provider, { decideTurn, queue });
+
+    expect(await loop.runTurn("开场")).toEqual({ kind: "completed" });
+    const inputs = store
+      .load("s1")
+      .filter((e) => e.type === "user/message")
+      .map((e) => e as { promptId?: string; message: { content: string } });
+    expect(inputs.map((e) => e.promptId)).toEqual(["p1", "p2", "p3"]);
+    expect(inputs.map((e) => e.message.content)).toEqual(["开场", "补充甲", "补充乙"]);
+  });
+
+  it("关联区间按流推导：两条输入之间的事件归前一条（seq 切片）", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([
+      { type: "text-delta", text: "一" },
+      { type: "tool-call-delta", id: "c1", name: "bash", argsDelta: "{}" },
+      { type: "done" },
+    ]);
+    provider.mount([{ type: "text-delta", text: "二" }, { type: "done" }]);
+    const queue = new PromptQueue("all");
+    let decided = 0;
+    const decideTurn: DecideTurn = () => {
+      decided += 1;
+      if (decided === 1) queue.enqueue("补充");
+      return decided === 1 ? { action: "continue" } : { action: "end" };
+    };
+    const { loop, store } = makeLoop(provider, { decideTurn, queue });
+
+    await loop.runTurn("开场");
+    const events = store.load("s1");
+    // 关联区间 = 本条 user/message 之后到下一条 user/message 之前：
+    // p1 区间含 step1/tool 事件，p2 区间（流尾）无后续事件
+    const inputs = events.filter((e) => e.type === "user/message");
+    const p1 = inputs[0] as { seq: number; promptId?: string };
+    const p2 = inputs[1] as { seq: number; promptId?: string };
+    expect(p1.promptId).toBe("p1");
+    expect(p2.promptId).toBe("p2");
+    const between = events.filter((e) => e.seq > p1.seq && e.seq < p2.seq);
+    expect(between.length).toBeGreaterThan(0);
+    expect(between.every((e) => e.type !== "user/message")).toBe(true);
+    const afterP2 = events.filter((e) => e.seq > p2.seq);
+    expect(afterP2.every((e) => e.type !== "user/message")).toBe(true);
+  });
+
+  it("恢复重建不重号：同 store 新 AgentLoop 的下一条输入拿 p<已有序数+1>", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([{ type: "text-delta", text: "一" }, { type: "done" }]);
+    const first = makeLoop(provider);
+    await first.loop.runTurn("重启前"); // 占 p1
+    // 同 store 新建 loop（模拟恢复路径）：counter 从流重建
+    const loop2 = new AgentLoop({
+      sessionId: "s1",
+      store: first.store,
+      provider,
+      identity: { provider: "mock", modelId: "m-1" },
+      executeTool: async () => ({ content: "ok" }),
+      decideTurn: () => ({ action: "end" }),
+    });
+    provider.mount([{ type: "text-delta", text: "二" }, { type: "done" }]);
+    await loop2.runTurn("重启后第一条");
+    const inputs = first.store
+      .load("s1")
+      .filter((e) => e.type === "user/message")
+      .map((e) => (e as { promptId?: string }).promptId);
+    expect(inputs).toEqual(["p1", "p2"]);
+  });
+});
+
 // 类型引用保持（防止误删导出的编译期契约）
 void ({} as AgentLoop | AgentLoopDeps | TurnDecision | undefined);

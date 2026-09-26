@@ -207,6 +207,14 @@ export class Projector {
         break;
       case "user/message":
         this.requireOpenTurn(turn);
+        // A12/T-P1-53：promptId 可选载荷校验（present 时必须非空字符串）——
+        // 旧流缺省该字段（前向兼容）。
+        if (
+          event.promptId !== undefined &&
+          (typeof event.promptId !== "string" || event.promptId === "")
+        ) {
+          throw new ProjectError("user/message 的 promptId 非法（须为非空字符串或缺省）");
+        }
         break;
       case "assistant/message":
       case "assistant/attempt":
