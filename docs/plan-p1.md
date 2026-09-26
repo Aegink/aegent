@@ -451,7 +451,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **偏离 / 建议**：①`why` 是必填参数——不带说明的计数断言编译期就不许写（O20"带说明"的字面兑现）；②不做 `saw_function_call` 式谓词访问器（我方工具调用在 StreamChunk 词汇里，测试直接断言 chunk，无第二套谓词需求——YAGNI）
 - **完成记录**：2026-09-26。产出：http-mock.ts 扩四访问器（`expectCalls(n, why)` / `singleRequest(why)` / `lastRequest(why)` / `requestAt(i, why)`——数量不符 Error 含 `「why」——期待 n 次…实际 m 次（expected n, got m）`，codex panic 格式与中文说明并载体；lastRequest 空记录可读失败不 undefined 潜越）+ ScriptedProvider 扩 `requestAt(i, why)` 同语义 + http-mock.test 扩三用例（数量对取值续断言 / 数量错含 why 与 expected/got / 零调用可读失败）+ **迁移示范**：provider.test.ts 请求形状用例的 `mock.requests()[0]` 裸下标改 `mock.requestAt(0, "请求形状测试恰发一次模型调用")`。验收：`npx vitest run src/test-support/http-mock.test.ts`（扩）→ 全绿 + provider.test/loop.test 回归绿。全量 `npx vitest run` **713 passed / 1 skipped**（710 → 净增 3），`npx tsc --noEmit` 干净。**卡内定形**：`requestAt(i)` 只管索引越界（越界消息含"序号 i 越界：实际 m 条记录"），总量断言归 expectCalls——首版把"恰 i+1 次"绑进 requestAt 导致中间请求取值语义错误，测试当场抓出修正（访问器语义分层：总量 = expectCalls/singleRequest，取值 = requestAt/lastRequest）。
 
-#### T-P1-32 · O14+O24 · 上下文快照渲染（窗口差分 + 变化才打印） `[ ]`
+#### T-P1-32 · O14+O24 · 上下文快照渲染（窗口差分 + 变化才打印） `[x]`
 - **依据需求**：O14（P1："窗口内差分快照：首条全量、后续只留新增后缀"）· O24（P1："system prompt / tools 只在变化时打印；等于默认值折叠成标签——使缓存前缀稳定性（F13）可测"）
 - **上游首选参考**：[codex·context_snapshot.rs:50,262-295](../oss/codex/codex-rs/core/tests/common/context_snapshot.rs#L262)（"A new window starts when a request no longer extends its predecessor's input or changes request settings" + `suffix_start` + 首条全量）；[kimi·snapshots.ts:153-198](../oss/kimi-code/packages/agent-core-v2/test/harness/snapshots.ts#L153)（`formatGenerateInput`：systemPrompt 不同才打印 / tools 深等才打印 / `isMessagePrefix` 前缀关系成立只打 addedMessages）
 - **取什么 / 别抄什么**：取 codex 的窗口分组判据（前缀关系 + settings 变化开新窗）与 kimi 的单请求变化折叠（unchanged 标签 + 后缀消息）；两者是同一渲染面的两层（多请求分窗 + 窗内逐请求折叠），合成一个渲染器；不抄 codex 的 Rust 快照文件协议（insta）
@@ -461,6 +461,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **依赖**：无（消费既有 GenerateCallSnapshot 形状）
 - **风险 / 未知**：identity 变化算不算"settings 变"——算（J6 换模开新窗是 F13 语义），进卡内定形
 - **偏离 / 建议**：①渲染器是纯函数（快照对象进、文本出），不落文件不接 insta 类快照库（我方 vitest 快照 + 手写断言够用）；②F13 联动验收留给 T-P1-37 的 compaction 相位快照消费（本卡只交付渲染器本体）
+- **完成记录**：2026-09-26。产出 `src/test-support/render.ts` + `render.test.ts` 9 用例：`formatGenerateInput(input, previous)`（O24 单请求差分——system/tools 与 previous 深等 → `[unchanged]` 标签折叠、消息前缀延伸只渲染 `+K 条` 后缀、非前缀 → 全量渲染并标`分叉于第 i 条`；tool_calls 渲染 `assistant（tool_calls: bash@c1）`、tool 消息渲染 `tool(c1): 结果` 携带身份）+ `formatRequestWindow(requests)`（O14 多请求分窗——codex 判据四路：identity 变更（J6 换模）/system prompt 变更/tools 变更/输入分叉，各自开新窗并记录原因；窗内首请求全量（含 identity/system 字数/tools 名单/messages 全文）、后续只渲染 `+K messages` 后缀）。验收：`npx vitest run src/test-support/render.test.ts` → **9 passed**：①首请求全量无折叠；②system/tools 未变 [unchanged] 且内容不重打、后缀-only；③分叉全量渲染标点；④tool_calls/tool 身份渲染；⑤三追加同窗"窗口 1（3 请求）"；⑥identity 变更新窗带原因与新旧身份；⑦system/tools 各自开新窗（codex 判据原文）；⑧历史改写开新窗标分叉点；⑨空序列占位 + 后缀段不含前缀重复。全量 `npx vitest run` **713 passed / 1 skipped**（无净增——本卡测试全在新文件），`npx tsc --noEmit` 干净。**卡内定形**：前缀判断逐条 JSON 深等（kimi isMessagePrefix 的 isDeepEqual 同语义——消息是值不是引用，首版引用相等被测试当场抓出修正）。
 
 #### T-P1-33 · O23 · 事件流快照渲染（列对齐 + 单行 JSON + 同流交错） `[ ]`
 - **依据需求**：O23（P1："事件流快照列对齐 + 单行 JSON；domain 与 RPC/wire 事件同流交错"）
