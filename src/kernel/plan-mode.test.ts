@@ -37,6 +37,7 @@ import { createRuleSetModule } from "../policy/rules.js";
 import { BUILTIN_TOOL_NAMES, registerBuiltinTools } from "./tools/builtin/index.js";
 import { ToolRegistry } from "./tools/registry.js";
 import { createNetworkGuard } from "../sandbox/network.js";
+import { PendingApprovals } from "../policy/pending.js";
 import { createChildAssembly } from "./assembly.js";
 import { InMemoryEventStorage, SessionStore } from "../session/store.js";
 import {
@@ -230,12 +231,17 @@ describe("注册面与提示词独立文件（验收⑤）", () => {
     registerBuiltinTools(full, {
       todoEmit: () => undefined,
       planMode: createPlanModeService(),
-      // BUILTIN_TOOL_NAMES 是"可注册清单"（webfetch 随守卫条件注册）——
-      // 全集等价断言需带齐各能力面的装配件
+      // BUILTIN_TOOL_NAMES 是"可注册清单"（webfetch/question 随装配条件
+      // 注册）——全集等价断言需带齐各能力面的装配件
       networkGuard: createNetworkGuard({ policy: "deny" }),
+      question: {
+        pending: new PendingApprovals(),
+        sessionId: "s-full",
+        timeoutMs: 1_000,
+      },
     });
     expect(full.names()).toEqual([...BUILTIN_TOOL_NAMES]);
-    expect(BUILTIN_TOOL_NAMES).toHaveLength(12);
+    expect(BUILTIN_TOOL_NAMES).toHaveLength(13);
 
     const withoutPlan = new ToolRegistry();
     registerBuiltinTools(withoutPlan);

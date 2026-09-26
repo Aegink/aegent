@@ -15,6 +15,7 @@ import { createEditTool } from "./edit.js";
 import { createGlobTool } from "./glob.js";
 import { createGrepTool } from "./grep.js";
 import { createPlanEnterTool, createPlanExitTool } from "./plan.js";
+import { createQuestionTool, type QuestionToolDeps } from "./question.js";
 import { createReadTool } from "./read.js";
 import { createSkillLoadTool } from "./skill.js";
 import { createTodoWriteTool } from "./todo.js";
@@ -40,6 +41,7 @@ export const BUILTIN_TOOL_NAMES = [
   "plan_exit",
   "tool_load",
   "webfetch",
+  "question",
 ] as const;
 
 export function registerBuiltinTools(
@@ -62,6 +64,11 @@ export function registerBuiltinTools(
      * 无守卫不注册（网络类工具不得直用全局 fetch，能力面绑定装配）。
      */
     networkGuard?: NetworkGuard;
+    /**
+     * B8b/T-P1-21 question 依赖（与权限审批共用的挂起注册表 + 答复上界）：
+     * 提供时注册 question 工具；缺省不注册（无审批基建的装配无问答面）。
+     */
+    question?: QuestionToolDeps;
   } = {},
 ): void {
   const guard = options.pathGuard ?? PathGuard.forWorkspace(process.cwd());
@@ -106,6 +113,11 @@ export function registerBuiltinTools(
     // 无守卫的网络工具是骗局）
     ...(options.networkGuard !== undefined
       ? [createWebfetchTool({ guard: options.networkGuard })]
+      : []),
+    // B8b question（T-P1-21）：审批基建（PendingApprovals）提供时才注册
+    //（挂起结算复用同一注册表，无基建的装配无问答面）
+    ...(options.question !== undefined
+      ? [createQuestionTool(options.question)]
       : []),
   ]) {
     registry.registerTool(def);

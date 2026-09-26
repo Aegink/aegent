@@ -6,7 +6,8 @@
  * 子进程）；测试 = 内存桥（直连 runAgentChildStdio 的注入流，同一行协议）。
  *
  * 命令（P0 最小集）：/revert <seq>（E4 对话态；代码态随 T-8-02 接入）、
- * /cancel、/approve <requestId> <allow|deny> [理由]、/exit。其余输入作为
+ * /cancel、/approve <requestId> <allow|deny> [理由]、/answer <requestId>
+ * <答复>（B8b question 答复分型）、/exit。其余输入作为
  * prompt 入队（A9：accepted 收执即返回，轮终态经事件流观察）。
  */
 
@@ -152,7 +153,18 @@ export async function runCli(options: RunCliOptions): Promise<void> {
       });
       return;
     }
-    out(`未知命令 ${String(name)}。可用：/revert <seq> /cancel /approve <id> allow|deny [理由] [--session] [--feedback 文本] /exit`);
+    if (name === "/answer") {
+      // B8b question 答复（协议分型：question/answer，不复用 approve）——
+      // 答复文本可空 = 用户跳过（子进程映射 deny 未作答）
+      const requestId = rest[0];
+      if (!requestId) {
+        out("用法：/answer <requestId> <答复文本>（答复文本留空 = 跳过此问题）");
+        return;
+      }
+      connection.send({ type: "question/answer", requestId, answer: rest.slice(1).join(" ") });
+      return;
+    }
+    out(`未知命令 ${String(name)}。可用：/revert <seq> /cancel /approve <id> allow|deny [理由] [--session] [--feedback 文本] /answer <id> <答复> /exit`);
   };
 
   // idle 观测（对象属性承载——TS 不跨闭包窄化可变捕获）
@@ -181,6 +193,10 @@ export async function runCli(options: RunCliOptions): Promise<void> {
           break;
         case "approval_settled":
           out(msg.allowed ? `✔ 审批已放行 ${msg.requestId}` : `✘ 审批已拒绝 ${msg.requestId}`);
+          break;
+        case "question_asked":
+          out(`❓ 模型提问 [${msg.requestId}] ${msg.question}`);
+          out(`  /answer ${msg.requestId} <答复文本>（${Math.round(msg.timeoutMs / 1000)}s 内答复，超时按未获答复结算；答复留空 = 跳过）`);
           break;
         case "reverted":
           out(

@@ -189,6 +189,11 @@ export interface ChildAssemblyOptions {
   contextWindow: number;
   /** 审批等待上界（C50：Manual broker 必填，无默认值）。 */
   approvalTimeoutMs: number;
+  /**
+   * B8b/T-P1-21 question 的答复等待上界（毫秒）；缺省同 approvalTimeoutMs
+   * ——超时按拒结算（C50 语义复用），测试用短上界。
+   */
+  questionTimeoutMs?: number;
   /** 用户层规则（行文本；缺省无规则——bash 走核心层 shell 语义分析）。 */
   rules?: readonly RuleSource[];
   /**
@@ -297,6 +302,17 @@ export interface ChildAssembly {
    * 存在）——agent-process 传给 registerBuiltinTools 注册 webfetch。
    */
   networkGuard?: import("../sandbox/network.js").NetworkGuard;
+  /**
+   * B8b/T-P1-21 question 工具依赖（与权限审批共用的同一个 PendingApprovals
+   * ——不新增第二套挂起注册表）——agent-process 传给 registerBuiltinTools。
+   */
+  question: {
+    pending: PendingApprovals;
+    sessionId: string;
+    timeoutMs: number;
+  };
+  /** 协议 question/answer 的处理（B8b：答复映射 allow+reason=文本 / deny=未作答；迟到/未知类型化错误上抛）。 */
+  handleQuestionAnswer(requestId: string, answer: string): Promise<void>;
   /**
    * F6/F13/T-P1-19 缓存锚变化观测（loop 的 onCacheAnchorChange hook）：
    * rewritten = 前缀作废（换模 + rewritten 即违背 F13）落 warn；
@@ -730,6 +746,20 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
           networkGuard: createNetworkGuard({ policy: options.networkPolicy }),
         }
       : {}),
+    // B8b/T-P1-21：question 依赖（共用 pending 注册表）+ 协议答复处理
+    question: {
+      pending,
+      sessionId,
+      timeoutMs: options.questionTimeoutMs ?? options.approvalTimeoutMs,
+    },
+    handleQuestionAnswer: async (requestId, answer) => {
+      await pending.reply(
+        requestId,
+        answer !== ""
+          ? { action: "allow", reason: answer }
+          : { action: "deny", reason: "用户选择不回答" },
+      );
+    },
     beforeFirstModelRequest: async (turn) => {
       completedModelSteps = 0;
       // G3 goal 提醒注入（T-P1-12，同 PreTurn 压缩位）：到期判定 + 配置

@@ -60,6 +60,13 @@ export type AgentRequest =
       type: "model/switch";
       identity: { provider: string; modelId: string };
     }
+  | {
+      /** B8b/T-P1-21 question 答复（协议分型——不复用 approve 消息名：
+       * question 的"答复"不是"批准"）。answer 为空串 = 用户跳过。 */
+      type: "question/answer";
+      requestId: string;
+      answer: string;
+    }
   | { type: "dispose" };
 
 /** 子 → 父。 */
@@ -75,6 +82,14 @@ export type AgentMessage =
       timeoutMs: number;
     }
   | { type: "approval_settled"; requestId: string; allowed: boolean }
+  | {
+      /** B8b/T-P1-21：模型提问挂起（协议分型——工具名为 question 的
+       * 审批宣告转成此消息，不经 approval_requested 面）。 */
+      type: "question_asked";
+      requestId: string;
+      question: string;
+      timeoutMs: number;
+    }
   | { type: "reverted"; targetSeq: number; codeRestored: boolean }
   | { type: "idle" }
   | { type: "error"; code: string; message: string };
@@ -95,6 +110,7 @@ const REQUEST_TYPES = new Set([
   "revert",
   "approve",
   "model/switch",
+  "question/answer",
   "dispose",
 ]);
 const CANCEL_KINDS = new Set(["user", "parent", "disposed", "hook", "legacy"]);
@@ -131,6 +147,7 @@ export function decodeRequest(line: string): AgentRequest {
     scope?: unknown;
     feedback?: unknown;
     identity?: unknown;
+    answer?: unknown;
   };
   if (!REQUEST_TYPES.has(req.type)) {
     throw new ProtocolError("PROTOCOL_UNKNOWN_REQUEST", `未知请求类型 ${req.type}`);
@@ -215,6 +232,16 @@ export function decodeRequest(line: string): AgentRequest {
       identity: { provider: identity.provider, modelId: identity.modelId },
     };
   }
+  if (req.type === "question/answer") {
+    // B8b：答复分型——answer 允许空串（用户跳过），requestId 必须非空
+    if (typeof req.requestId !== "string" || req.requestId === "") {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "question/answer 需要 requestId 字符串");
+    }
+    if (typeof req.answer !== "string") {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "question/answer 需要 answer 字符串（可为空串）");
+    }
+    return { type: "question/answer", requestId: req.requestId, answer: req.answer };
+  }
   return { type: "dispose" };
 }
 
@@ -242,6 +269,7 @@ export function decodeMessage(line: string): AgentMessage {
     allowed?: unknown;
     targetSeq?: unknown;
     codeRestored?: unknown;
+    question?: unknown;
   };
   switch (msg.type) {
     case "ready":
@@ -291,6 +319,24 @@ export function decodeMessage(line: string): AgentMessage {
         throw new ProtocolError("PROTOCOL_MALFORMED", "approval_settled 需要 allowed 布尔");
       }
       return { type: "approval_settled", requestId: msg.requestId, allowed: msg.allowed };
+    }
+    case "question_asked": {
+      // B8b：模型提问挂起（协议分型消息面）
+      if (typeof msg.requestId !== "string" || msg.requestId === "") {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "question_asked 需要 requestId");
+      }
+      if (typeof msg.question !== "string" || msg.question === "") {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "question_asked 需要 question 非空字符串");
+      }
+      if (typeof msg.timeoutMs !== "number") {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "question_asked 需要 timeoutMs");
+      }
+      return {
+        type: "question_asked",
+        requestId: msg.requestId,
+        question: msg.question,
+        timeoutMs: msg.timeoutMs,
+      };
     }
     case "reverted": {
       // revert 完成回执（E11：对话态 + 代码态双回退后发出；失败走 error 行）

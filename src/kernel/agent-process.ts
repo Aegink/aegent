@@ -122,32 +122,52 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
     }
   })(options.storage ?? new InMemoryEventStorage());
 
-  // T-8-01 生产装配：审批宣告在此转发为协议行（asked → 待审批请求、
-  // settled → 答复落定；timed-out 不走协议——isError 的 tool/result 事件
-  // 已是事件流上的宣告事实）。
+  // 审批宣告分型（B8b/T-P1-21）：question 工具的挂起/结算不是权限审批——
+  // asked 转成 question_asked 协议行、settled 不经 approval_settled 面
+  //（答复事实由 tool/result 事件承载）；timed-out 依旧只走事件流。
+  const forwardApprovalAnnouncement = (announcement: ApprovalAnnouncement): void => {
+    if (announcement.kind === "asked") {
+      if (announcement.request.tool === "question") {
+        send({
+          type: "question_asked",
+          requestId: announcement.request.id,
+          question: String(announcement.request.args["question"] ?? ""),
+          timeoutMs: announcement.timeoutMs,
+        });
+        options.assembly?.onApprovalAnnouncement?.(announcement);
+        return;
+      }
+      send({
+        type: "approval_requested",
+        requestId: announcement.request.id,
+        tool: announcement.request.tool,
+        args: announcement.request.args,
+        timeoutMs: announcement.timeoutMs,
+      });
+    } else if (announcement.kind === "settled") {
+      if (announcement.tool === "question") {
+        // question 结算面：答复内容在 tool/result 事件里，不冒用审批 UI
+        options.assembly?.onApprovalAnnouncement?.(announcement);
+        return;
+      }
+      send({
+        type: "approval_settled",
+        requestId: announcement.id,
+        allowed: announcement.verdict.action === "allow",
+      });
+    }
+    options.assembly?.onApprovalAnnouncement?.(announcement);
+  };
+
+  // T-8-01 生产装配：审批宣告经 forwardApprovalAnnouncement 分型转发
+  //（asked → approval_requested / question_asked、settled → 答复落定；
+  // timed-out 不走协议——isError 的 tool/result 事件已是事件流上的宣告事实）。
   const assembly: ChildAssembly | undefined = options.assembly
     ? createChildAssembly({
         sessionId,
         store,
         ...options.assembly,
-        onApprovalAnnouncement: (announcement: ApprovalAnnouncement) => {
-          if (announcement.kind === "asked") {
-            send({
-              type: "approval_requested",
-              requestId: announcement.request.id,
-              tool: announcement.request.tool,
-              args: announcement.request.args,
-              timeoutMs: announcement.timeoutMs,
-            });
-          } else if (announcement.kind === "settled") {
-            send({
-              type: "approval_settled",
-              requestId: announcement.id,
-              allowed: announcement.verdict.action === "allow",
-            });
-          }
-          options.assembly?.onApprovalAnnouncement?.(announcement);
-        },
+        onApprovalAnnouncement: forwardApprovalAnnouncement,
       })
     : undefined;
 
@@ -182,6 +202,8 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
             // B8a/T-P1-20：networkPolicy 装配选项提供时注册 webfetch
             //（D3 唯一入口随守卫注入，无守卫不注册）
             ...(assembly.networkGuard ? { networkGuard: assembly.networkGuard } : {}),
+            // B8b/T-P1-21：question 工具依赖（共用审批挂起注册表）
+            question: { ...assembly.question },
           }
         : {}),
     },
@@ -348,6 +370,32 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
             send({
               type: "error",
               code: e instanceof Error && "code" in e ? String((e as { code: unknown }).code) : "APPROVE_FAILED",
+              message: e instanceof Error ? e.message : String(e),
+            });
+          });
+        return;
+      }
+      case "question/answer": {
+        // B8b 答复转达：映射 allow+reason=答复文本 / deny=未作答（结算语义
+        // 复用 PendingApprovals）；失败（未装配 / 迟到 / 未知 id）回 error 行
+        //（类型化 code，与 approve 同款分层）。
+        if (!assembly) {
+          send({
+            type: "error",
+            code: "QUESTION_ANSWER_FAILED",
+            message: "子进程未装配会话服务（最小装配无 question 处理）",
+          });
+          return;
+        }
+        assembly
+          .handleQuestionAnswer(req.requestId, req.answer)
+          .catch((e: unknown) => {
+            send({
+              type: "error",
+              code:
+                e instanceof Error && "code" in e
+                  ? String((e as { code: unknown }).code)
+                  : "QUESTION_ANSWER_FAILED",
               message: e instanceof Error ? e.message : String(e),
             });
           });

@@ -16,8 +16,20 @@
 
 import type { PolicyModule } from "./chain.js";
 
-/** 内核元操作白名单（注册表名；冻结只追加）。 */
-export const META_OPS_TOOLS: ReadonlySet<string> = new Set(["todo_write"]);
+/**
+ * 内核元操作白名单（注册表名；冻结只追加）。新成员必须论证"对工作区零副作用"：
+ * - todo_write：只写会话事件流（todo/update 事件，G2/T-P1-10）；
+ * - question：向用户的显式提问（B8b/T-P1-21）——工具的挂起等答复就是它
+ *   自身的语义（答复经协议 question/answer 结算），若走默认 ask 会先弹一次
+ *   权限审批、工具执行时再挂一次，双挂起让问答面不可用。
+ */
+export const META_OPS_TOOLS: ReadonlySet<string> = new Set(["todo_write", "question"]);
+
+/** 各成员的放行理由（C18 可解释性：理由进裁决证据；保留白名单名前缀）。 */
+const META_OPS_REASONS: Readonly<Record<string, string>> = {
+  todo_write: "内核元操作白名单：todo_write 只写会话元状态（todo/update 事件），无工作区副作用",
+  question: "内核元操作白名单：question 是向用户的显式提问（挂起等答复即工具语义），无工作区副作用",
+};
 
 export function createMetaOpsModule(): PolicyModule {
   return {
@@ -26,7 +38,9 @@ export function createMetaOpsModule(): PolicyModule {
       if (!META_OPS_TOOLS.has(call.tool)) return undefined;
       return {
         action: "allow",
-        reason: `内核元操作白名单（${call.tool} 只写会话元状态，无工作区副作用）`,
+        reason:
+          META_OPS_REASONS[call.tool] ??
+          `内核元操作白名单（${call.tool} 无工作区副作用）`,
       };
     },
   };

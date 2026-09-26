@@ -515,3 +515,112 @@ describe("renderEventSummary", () => {
 });
 
 type SessionEventLike = Parameters<typeof renderEventSummary>[0];
+
+// ---------------------------------------------------------------------------
+// question 全链路（B8b / T-P1-21）：提问挂起分型可见 → /answer 答复回喂 →
+// 超时按拒结算
+// ---------------------------------------------------------------------------
+
+describe("question 问答面（B8b / T-P1-21）", () => {
+  it("验收①②：提问挂起可见（question_asked 分型行）→ /answer 答复回喂 → turn 正常收尾", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-question-"));
+    const provider = scriptedProvider([
+      [
+        { type: "tool-call-delta", id: "q1", name: "question", argsDelta: JSON.stringify({ question: "用方案 A 还是方案 B？" }) },
+        { type: "done" },
+      ],
+      [{ type: "text-delta", text: "已按你的选择推进方案 B。" }, { type: "done" }],
+    ]);
+    const lines = await runScriptedSession(
+      {
+        provider,
+        assembly: {
+          workspaceRoot: workspace,
+          contextWindow: 200_000,
+          approvalTimeoutMs: 5_000,
+          questionTimeoutMs: 5_000,
+        },
+      },
+      async function* ({ waitFor }) {
+        yield "继续之前请确认方案";
+        // 验收①：question_asked 协议行 → REPL ❓ 渲染（分型，不走 ⏸ 审批面）
+        await waitFor((line) => line.includes("❓ 模型提问 [q1]"));
+        yield "/answer q1 方案 B";
+        // 验收②：答复作为工具结果回喂，模型收尾、turn completed
+        await waitFor((line) => line.includes("用户答复：方案 B"));
+        await waitFor((line) => line.includes("── turn 1 结束（completed）"));
+      },
+    );
+    expect(lines.some((l) => l.includes("❓ 模型提问 [q1] 用方案 A 还是方案 B？"))).toBe(true);
+    expect(lines.some((l) => l.includes("/answer q1 <答复文本>"))).toBe(true);
+    expect(lines.some((l) => l.includes("← 用户答复：方案 B"))).toBe(true);
+    // 结算面分型：question 不冒用审批 UI（✔ 审批已放行只属于权限审批）
+    expect(lines.some((l) => l.includes("✔ 审批已放行"))).toBe(false);
+    expect(lines.some((l) => l.includes("⏸ 待审批"))).toBe(false);
+  });
+
+  it("验收③：超时按拒结算（C50 语义复用）——无答复时 isError 回喂、turn 正常收尾", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-question-timeout-"));
+    const provider = scriptedProvider([
+      [
+        { type: "tool-call-delta", id: "q2", name: "question", argsDelta: JSON.stringify({ question: "要继续吗？" }) },
+        { type: "done" },
+      ],
+      [{ type: "text-delta", text: "好的，我按默认方案继续。" }, { type: "done" }],
+    ]);
+    const lines = await runScriptedSession(
+      {
+        provider,
+        assembly: {
+          workspaceRoot: workspace,
+          contextWindow: 200_000,
+          approvalTimeoutMs: 5_000,
+          questionTimeoutMs: 400,
+        },
+      },
+      async function* ({ waitFor }) {
+        yield "请确认";
+        await waitFor((line) => line.includes("❓ 模型提问 [q2]"));
+        // 不答复：超时 → tool/result isError（✗）回喂 → 模型自适应收尾
+        await waitFor((line) => line.startsWith("✗") && line.includes("问题超时"));
+        await waitFor((line) => line.includes("── turn 1 结束（completed）"));
+      },
+    );
+    expect(lines.some((l) => l.includes("问题超时（400ms）未获用户答复：要继续吗？"))).toBe(true);
+    expect(lines.some((l) => l.includes("我按默认方案继续"))).toBe(true);
+  });
+
+  it("meta-ops 直过：question 不弹权限审批（挂起即问答本身），plan 模式下仍可提问", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-question-plan-"));
+    const provider = scriptedProvider([
+      [
+        { type: "tool-call-delta", id: "q3", name: "question", argsDelta: JSON.stringify({ question: "计划里先做迁移还是先做 UI？" }) },
+        { type: "done" },
+      ],
+      [{ type: "text-delta", text: "明白了，先做迁移。" }, { type: "done" }],
+    ]);
+    const lines = await runScriptedSession(
+      {
+        provider,
+        assembly: {
+          workspaceRoot: workspace,
+          contextWindow: 200_000,
+          approvalTimeoutMs: 5_000,
+          questionTimeoutMs: 5_000,
+          planMode: true,
+        },
+      },
+      async function* ({ waitFor }) {
+        yield "我们讨论一下计划";
+        await waitFor((line) => line.includes("❓ 模型提问 [q3]"));
+        // plan 模式硬关只拦写/执行类（WRITE_EXECUTE_TOOLS）——question 是
+        // 元交互，meta-ops 白名单放行、出口硬关不误伤
+        yield "/answer q3 先做迁移";
+        await waitFor((line) => line.includes("用户答复：先做迁移"));
+        await waitFor((line) => line.includes("── turn 1 结束（completed）"));
+      },
+    );
+    expect(lines.some((l) => l.includes("← 用户答复：先做迁移"))).toBe(true);
+    expect(lines.some((l) => l.includes("plan 模式硬关"))).toBe(false);
+  });
+});
