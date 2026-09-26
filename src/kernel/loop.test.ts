@@ -706,5 +706,109 @@ describe("工具进度上报（B7 / T-P1-16）", () => {
   });
 });
 
+describe("prompt 入队闸门（A13/T-P1-48）", () => {
+  const collectLogger = () => {
+    const warns: { msg: string; data?: Record<string, unknown> }[] = [];
+    const logger: NonNullable<AgentLoopDeps["logger"]> = {
+      debug() {},
+      info() {},
+      warn: (msg, data) => warns.push({ msg, data }),
+      error() {},
+    };
+    return { logger, warns };
+  };
+
+  it("三态：拦截不落流且 warn 留痕（messageId+理由）；改写落改写后内容；放行原样进历史", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([{ type: "text-delta", text: "一" }, { type: "done" }]);
+    provider.mount([{ type: "text-delta", text: "二" }, { type: "done" }]);
+    const queue = new PromptQueue("all");
+    const { logger, warns } = collectLogger();
+    let decided = 0;
+    const decideTurn: DecideTurn = () => {
+      decided += 1;
+      if (decided === 1) {
+        queue.enqueue("放行甲");
+        queue.enqueue("拦截乙");
+        queue.enqueue("改写丙原文");
+      }
+      return decided === 1 ? { action: "continue" } : { action: "end" };
+    };
+    const { loop, store } = makeLoop(provider, {
+      decideTurn,
+      queue,
+      logger,
+      promptGate: async (m) => {
+        if (m.content === "拦截乙") return { block: true, message: "理由：含危险指令" };
+        if (m.content === "改写丙原文") return { block: false, message: "改写丙" };
+        return true;
+      },
+    });
+
+    expect(await loop.runTurn("开场")).toEqual({ kind: "completed" });
+    const contents = store
+      .load("s1")
+      .filter((e) => e.type === "user/message")
+      .map((e) => (e as { message: { content: string } }).message.content);
+    // 放行原样、改写落改写后文本、拦截零落流（不进模型历史 = 不落盘，A9 自洽）
+    expect(contents).toEqual(["开场", "放行甲", "改写丙"]);
+    expect(contents).not.toContain("拦截乙");
+    expect(contents).not.toContain("改写丙原文");
+    // 拦截事实 warn 留痕：messageId（入队序 q2）+ 理由；内容不进日志
+    expect(warns).toHaveLength(1);
+    expect(warns[0]!.msg).toContain("闸门拦截");
+    expect(warns[0]!.data).toMatchObject({ messageId: "q2", reason: "理由：含危险指令" });
+  });
+
+  it("gate 抛错 → failTurn 收轮 turn/end{error}（装配钩子异常与 hook 崩溃同轨）", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([{ type: "text-delta", text: "一" }, { type: "done" }]);
+    provider.mount([{ type: "text-delta", text: "二" }, { type: "done" }]);
+    const queue = new PromptQueue("all");
+    let decided = 0;
+    const decideTurn: DecideTurn = () => {
+      decided += 1;
+      if (decided === 1) queue.enqueue("触发崩溃的输入");
+      return decided === 1 ? { action: "continue" } : { action: "end" };
+    };
+    const { loop, store } = makeLoop(provider, {
+      decideTurn,
+      queue,
+      promptGate: async () => {
+        throw new Error("gate 崩了");
+      },
+    });
+
+    const reason = await loop.runTurn("开场");
+    expect(reason.kind).toBe("error");
+    expectSingleTerminal(store.load("s1"), 1);
+    const end = store.load("s1").find((e) => e.type === "turn/end") as {
+      reason: { kind: string };
+    };
+    expect(end.reason.kind).toBe("error");
+  });
+
+  it("缺省不装配 gate = 全放行（P0 行为零变化）——queue.test 既有注入用例零改动全绿", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([{ type: "text-delta", text: "一" }, { type: "done" }]);
+    provider.mount([{ type: "text-delta", text: "二" }, { type: "done" }]);
+    const queue = new PromptQueue("all");
+    let decided = 0;
+    const decideTurn: DecideTurn = () => {
+      decided += 1;
+      if (decided === 1) queue.enqueue("原样乙");
+      return decided === 1 ? { action: "continue" } : { action: "end" };
+    };
+    const { loop, store } = makeLoop(provider, { decideTurn, queue });
+
+    expect(await loop.runTurn("开场")).toEqual({ kind: "completed" });
+    const contents = store
+      .load("s1")
+      .filter((e) => e.type === "user/message")
+      .map((e) => (e as { message: { content: string } }).message.content);
+    expect(contents).toEqual(["开场", "原样乙"]);
+  });
+});
+
 // 类型引用保持（防止误删导出的编译期契约）
 void ({} as AgentLoop | AgentLoopDeps | TurnDecision | undefined);

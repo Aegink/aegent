@@ -20,7 +20,7 @@ import { spawn } from "node:child_process";
 
 import type { CancelCause } from "./events.js";
 import { AgentLoop, type AgentLoopDeps, type ToolExecutionMode } from "./loop.js";
-import { PromptQueue } from "./queue.js";
+import { PromptQueue, QueueFullError } from "./queue.js";
 import {
   type AgentMessage,
   type AgentRequest,
@@ -84,7 +84,18 @@ export interface AgentChildOptions {
    */
   toolExecution?: ToolExecutionMode;
   /**
-   * 事件存储（T-8-01：CLI 的 SQLite 落库走此注入）。缺省 InMemory——
+   * A13/T-P1-48 prompt 入队闸门（透传 loop——step 边界注入前逐条裁决）。
+   * 缺省 undefined = 全放行（最小装配零行为变化）。
+   */
+  promptGate?: AgentLoopDeps["promptGate"];
+  /** A13 拦截留痕 logger（透传 loop；缺省不打日志）。 */
+  logger?: AgentLoopDeps["logger"];
+  /**
+   * M9/T-P1-48 有限队列上限（PromptQueue maxSize）：缺省 64（宽松但有限）。
+   * 超限 prompt → QUEUE_FULL error 行（收执不发、消息不入队）。
+   */
+  queueMaxSize?: number;
+  /** 事件存储（T-8-01：CLI 的 SQLite 落库走此注入）。缺省 InMemory——
    * 原生模块不进 echo 模式冷启动路径（Q16 <500ms 的结构性前提）。
    */
   storage?: EventStorage;
@@ -203,7 +214,7 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
       })
     : undefined;
 
-  const queue = new PromptQueue("one-at-a-time");
+  const queue = new PromptQueue("one-at-a-time", options.queueMaxSize);
   // 工具装配（T-4-05 接线，兑现 T-4-02 偏离⑥）：注册表分发就是 toolCall 链的
   // 链底 terminal——executeTool 槽位由 registry.dispatch 充当，不存在旁路。
   // T-8-01：装配提供 PathGuard 时经它构造（写守卫唯一入口，T-6-01）。
@@ -256,6 +267,9 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
     executeTool: (call) => toolRegistry.dispatch(call),
     decideTurn: assembly ? assembly.wrapDecideTurn(decideTurnBase) : decideTurnBase,
     queue,
+    // A13/T-P1-48：入队闸门与拦截留痕（缺省 undefined = 全放行零行为变化）
+    ...(options.promptGate ? { promptGate: options.promptGate } : {}),
+    ...(options.logger ? { logger: options.logger } : {}),
     // J6/J7：装配启用换模时，loop 每轮启动从捕获值取 provider/identity
     //（在途换模生效点在新 turn）；未启用时缺省固定 provider/identity。
     // J11：turn 失败通知 → 装配驱动换模回滚判据。
@@ -344,9 +358,18 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
   const handleRequest = (req: AgentRequest): void => {
     switch (req.type) {
       case "prompt":
-        // A9：先收执、再入队/开轮——accepted 只证明 admission
+        // A9：先收执、再入队/开轮——accepted 只证明 admission。
+        // M9/T-P1-48：队列满（有限队列）类型化拒绝——收执不发、消息不入队。
+        try {
+          queue.enqueue(req.content);
+        } catch (e) {
+          if (e instanceof QueueFullError) {
+            send({ type: "error", code: e.code, message: e.message });
+            return;
+          }
+          throw e;
+        }
         send({ type: "accepted", messageId: req.messageId });
-        queue.enqueue(req.content);
         kick();
         return;
       case "steer": {
@@ -365,7 +388,15 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
           });
           return;
         }
-        queue.enqueue(req.content);
+        try {
+          queue.enqueue(req.content);
+        } catch (e) {
+          if (e instanceof QueueFullError) {
+            send({ type: "error", code: e.code, message: e.message });
+            return;
+          }
+          throw e;
+        }
         kick();
         return;
       }

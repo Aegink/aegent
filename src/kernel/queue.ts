@@ -31,18 +31,42 @@ export interface QueuedPrompt {
   content: string;
 }
 
+/** M9/T-P1-48 有限队列：超限入队类型化拒绝（fail-closed 不静默丢）。 */
+export class QueueFullError extends Error {
+  readonly code = "QUEUE_FULL";
+  constructor(
+    readonly maxSize: number,
+    readonly queuedMode: QueueMode,
+  ) {
+    super(`prompt 队列已满（上限 ${maxSize}，${queuedMode} 模式）——新输入被拒绝而非静默丢弃`);
+    this.name = "QueueFullError";
+  }
+}
+
 export class PromptQueue {
   private readonly items: QueuedPrompt[] = [];
   private counter = 0;
 
-  /** 节奏可配（A2）：默认 all。一个会话一个队列实例。 */
-  constructor(private readonly mode: QueueMode = "all") {}
+  /**
+   * 节奏可配（A2）：默认 all。一个会话一个队列实例。
+   * M9 有限队列：maxSize 上限可配，缺省 64（宽松但有限——pi-desktop·ADR 0041
+   * "the queue is finite"；无界排队会掩盖背压，超限入队走 QueueFullError
+   * 类型化拒绝，调用方（协议层）转 error 行可见）。
+   */
+  constructor(
+    private readonly mode: QueueMode = "all",
+    private readonly maxSize: number = 64,
+  ) {}
 
   /**
    * 入队即收执：同步返回 `{messageId}`，调用方到此为止——没有 promise、
    * 没有回调、没有 per-prompt 结果可等（A9）。
+   * 队列已满时抛 QueueFullError（M9 fail-closed）——消息不收执不排队。
    */
   enqueue(content: string): EnqueueReceipt {
+    if (this.items.length >= this.maxSize) {
+      throw new QueueFullError(this.maxSize, this.mode);
+    }
     const messageId = `q${++this.counter}`;
     this.items.push({ messageId, content });
     return { messageId };

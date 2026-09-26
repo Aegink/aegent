@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { DecideTurn } from "./loop.js";
-import { PromptQueue } from "./queue.js";
+import { PromptQueue, QueueFullError } from "./queue.js";
 import { ScriptedProvider, makeLoop } from "./loop.test-utils.js";
 
 describe("PromptQueue —— A9 turn 只能入队", () => {
@@ -21,6 +21,33 @@ describe("PromptQueue —— A9 turn 只能入队", () => {
     // @ts-expect-error —— A9：入队只有收执，没有完成句柄/完成查询
     void queue.finished;
     expect(queue.size).toBe(0);
+  });
+
+  it("M9/T-P1-48 有限队列：上限可配、超限入队 QueueFullError 类型化拒绝（fail-closed 不静默丢）", () => {
+    const queue = new PromptQueue("all", 2);
+    queue.enqueue("甲");
+    queue.enqueue("乙");
+    // 第 3 条超限：类型化拒绝、消息不入队不收执
+    expect(() => queue.enqueue("丙")).toThrowError(QueueFullError);
+    expect(queue.size).toBe(2);
+    // 错误面带 code 与上限（协议层转 error 行）
+    try {
+      queue.enqueue("丁");
+    } catch (e) {
+      expect((e as QueueFullError).code).toBe("QUEUE_FULL");
+      expect((e as QueueFullError).maxSize).toBe(2);
+      expect((e as Error).message).toContain("上限 2");
+    }
+    // 拒绝不毒化队列：drain 后可继续入队
+    expect(queue.drain().map((p) => p.content)).toEqual(["甲", "乙"]);
+    expect(queue.enqueue("戊")).toEqual({ messageId: expect.any(String) });
+  });
+
+  it("M9/T-P1-48 缺省上限 64：宽松但有限（the queue is finite）", () => {
+    const queue = new PromptQueue();
+    for (let i = 0; i < 64; i += 1) queue.enqueue(`m${i}`);
+    expect(queue.size).toBe(64);
+    expect(() => queue.enqueue("第 65 条")).toThrowError(QueueFullError);
   });
 
   it("drain 的两档节奏：all 全量 FIFO 出；one-at-a-time 只出最旧一条", () => {

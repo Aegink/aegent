@@ -337,6 +337,109 @@ describe("agent-process —— T9 agent 出进程", () => {
     await running;
   }, 30_000);
 
+  it("M9/T-P1-48 有限队列：队列满时 prompt → QUEUE_FULL error 行且无收执、不入队", async () => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    let exitCode: number | null = null;
+    let resolveExit: (code: number) => void = () => {};
+    const exited = new Promise<number>((resolve) => {
+      resolveExit = resolve;
+    });
+
+    // 挂起 provider：轮 1 挂起中制造排队窗口
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    let call = 0;
+    const provider = {
+      async *streamChat() {
+        call += 1;
+        if (call === 1) {
+          yield { type: "tool-call-delta" as const, id: "c1", name: "read", argsDelta: "{}" };
+          await gate;
+          yield { type: "done" as const };
+        } else {
+          yield { type: "text-delta" as const, text: "收束" };
+          yield { type: "done" as const };
+        }
+      },
+    };
+
+    const running = runAgentChildStdio({
+      input,
+      output,
+      provider: provider as never,
+      queueMaxSize: 2,
+      exit: (code) => {
+        if (exitCode === null) {
+          exitCode = code;
+          resolveExit(code);
+        }
+      },
+    });
+
+    const items: AgentMessage[] = [];
+    const waiters: ((r: IteratorResult<AgentMessage>) => void)[] = [];
+    let buf = "";
+    output.setEncoding("utf-8");
+    output.on("data", (chunk: string) => {
+      buf += chunk;
+      for (;;) {
+        const nl = buf.indexOf("\n");
+        if (nl < 0) break;
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        const msg = decodeMessage(line);
+        const w = waiters.shift();
+        if (w) w({ value: msg, done: false });
+        else items.push(msg);
+      }
+    });
+    const iter = {
+      [Symbol.asyncIterator]() {
+        return {
+          next: () => {
+            const item = items.shift();
+            if (item) return Promise.resolve({ value: item, done: false });
+            return new Promise<IteratorResult<AgentMessage>>((resolve) =>
+              waiters.push(resolve),
+            );
+          },
+        };
+      },
+    };
+    const next = async () => (await iter[Symbol.asyncIterator]().next()).value;
+
+    expect(await next()).toEqual({ type: "ready" });
+    input.write(JSON.stringify({ type: "prompt", messageId: "a", content: "甲" }) + "\n");
+    expect(await next()).toEqual({ type: "accepted", messageId: "a" });
+    // 等轮 1 真正开始（request/header 转发 = provider 流已开）再排队
+    for (;;) {
+      const m = await next();
+      if (m.type === "event" && m.event.type === "request/header") break;
+    }
+    // 上限 2：b 入队（size 1）、c 入队（size 2）、d 超限 → QUEUE_FULL
+    input.write(JSON.stringify({ type: "prompt", messageId: "b", content: "乙" }) + "\n");
+    expect(await next()).toEqual({ type: "accepted", messageId: "b" });
+    input.write(JSON.stringify({ type: "prompt", messageId: "c", content: "丙" }) + "\n");
+    expect(await next()).toEqual({ type: "accepted", messageId: "c" });
+    input.write(JSON.stringify({ type: "prompt", messageId: "d", content: "丁" }) + "\n");
+    const err = await next();
+    expect(err).toEqual({ type: "error", code: "QUEUE_FULL", message: expect.any(String) });
+
+    release();
+    for (;;) {
+      const m = await next();
+      if (m.type === "event" && m.event.type === "turn/end") break;
+    }
+    input.write(JSON.stringify({ type: "dispose" }) + "\n");
+    expect(await exited).toBe(0);
+    input.end();
+    await running;
+  }, 30_000);
+
   it("Q3 会话关闭触发 spill 清理（T-P1-14）：dispose 退出前清掉本会话自动可删文件", async () => {
     const spillDir = mkdtempSync(path.join(tmpdir(), "aegent-spill-wire-"));
     const writeSpill = (sessionId: string, deletable: "manual" | "after-session-end"): string => {

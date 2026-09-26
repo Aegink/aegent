@@ -38,6 +38,8 @@ import { Projector } from "../session/project.js";
 import type { SessionStore } from "../session/store.js";
 import { computeCacheAnchor, type PrefixChange } from "../context/prefix-anchor.js";
 import { BudgetExceededError, ParseBudget } from "./budget.js";
+import { normalizePromptVerdict, type PromptGate } from "./prompt-gate.js";
+import type { Logger } from "./logger.js";
 import {
   type ChainExecutor,
   type ChainLayer,
@@ -273,6 +275,15 @@ export interface AgentLoopDeps {
    * 解锁抖动断路器）。纯通知，loop 不关心返回。
    */
   onToolStepCompleted?(turn: number, step: number): void;
+  /**
+   * A13/T-P1-48 prompt 入队闸门：step 边界注入前逐条裁决（kimi
+   * promptGateActor 出队裁决同构）——放行进历史 / 拦截不落流（warn 留痕）/
+   * 改写放行。缺省 undefined = 全放行（P0 行为零变化）。gate 抛错沿
+   * runTurn 的 catch 走 failTurn 收轮（装配钩子异常与 hook 崩溃同轨）。
+   */
+  promptGate?: PromptGate;
+  /** A13 拦截留痕（结构化 warn 可检索）；缺省 undefined = 不打日志。 */
+  logger?: Logger;
 }
 
 export class AgentLoop {
@@ -407,7 +418,7 @@ export class AgentLoop {
         if (this.cancelCause) break;
         // A2：step 边界是注入点——按 QueueMode 排空队列（含第一步前），
         // steer 消息落 user/message 后经投影自然进入本次请求。
-        this.drainQueue(turn);
+        await this.drainQueue(turn);
         const result = await this.runStep(turn, step);
         if (result.kind === "blocked") return { kind: "blocked" };
         if (result.kind === "cancelled") break;
@@ -432,15 +443,39 @@ export class AgentLoop {
   // step：step/start → 模型调用 → 工具分发 → step/end
   // -------------------------------------------------------------------------
 
-  /** step 边界注入（A2）：排空队列、按序落 user/message（不丢不重）。 */
-  private drainQueue(turn: number): void {
+  /**
+   * step 边界注入（A2）：排空队列、按序落 user/message（不丢不重）。
+   * A13/T-P1-48：注入前逐条过入队闸门（缺省不装配 = 全放行）——拦截不落流
+   * （warn 留痕）、改写落改写后内容、放行原样进历史。
+   */
+  private async drainQueue(turn: number): Promise<void> {
     const queue = this.deps.queue;
     if (!queue) return;
     const drained = queue.drain();
     if (drained.length === 0) return;
+    const gate = this.deps.promptGate;
+    const admitted: typeof drained = [];
+    for (const p of drained) {
+      if (!gate) {
+        admitted.push(p);
+        continue;
+      }
+      const verdict = normalizePromptVerdict(await gate(p));
+      if (verdict.block) {
+        // 拦截：不进模型历史 = 不落盘（A9 纪律自洽）；拦截事实 warn 留痕
+        // （D14 告警先例——内容不进日志，只带 messageId 与理由）
+        this.deps.logger?.warn("prompt 入队闸门拦截", {
+          messageId: p.messageId,
+          ...(verdict.message !== undefined ? { reason: verdict.message } : {}),
+        });
+        continue;
+      }
+      admitted.push(verdict.message !== undefined ? { ...p, content: verdict.message } : p);
+    }
+    if (admitted.length === 0) return;
     this.deps.store.append(
       this.deps.sessionId,
-      drained.map(
+      admitted.map(
         (p): NewSessionEvent => ({
           type: "user/message",
           turn,

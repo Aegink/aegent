@@ -69,6 +69,8 @@ export function makeLoop(
     onCacheAnchorChange?: AgentLoopDeps["onCacheAnchorChange"];
     modelForTurn?: AgentLoopDeps["modelForTurn"];
     beforeFirstModelRequest?: AgentLoopDeps["beforeFirstModelRequest"];
+    promptGate?: AgentLoopDeps["promptGate"];
+    logger?: AgentLoopDeps["logger"];
   },
 ): Harness {
   const store = new SessionStore();
@@ -106,6 +108,8 @@ export function makeLoop(
     ...(opts?.beforeFirstModelRequest
       ? { beforeFirstModelRequest: opts.beforeFirstModelRequest }
       : {}),
+    ...(opts?.promptGate ? { promptGate: opts.promptGate } : {}),
+    ...(opts?.logger ? { logger: opts.logger } : {}),
   });
   return { store, loop, decideCalls };
 }
