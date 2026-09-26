@@ -92,20 +92,42 @@ export interface SubagentRunnerDeps {
  * 唯一，Date.now 后缀防跨进程重启撞名）。返回的 run 是 task 工具 deps
  * 的 runSubagent——深度检查在入口（先于任何状态创建），拒绝是纯函数式
  * 的：不产生半态子会话。
+ *
+ * 第三个参数 opts.signal（T-P1-43 取消联动）：父 turn 的取消信号——
+ *   - 已 abort（父取消先于派发）：不起子轮，直接 cancelled 结算
+ *     （零子会话零模型调用——"迟到的取消不武装后续工作"的子代理面）；
+ *   - 运行中 abort：联动 subLoop.cancel({kind: "parent"})（CancelCause
+ *     "parent"——"子代理被父级取消"槽位的真用），子 loop 在 await 边界
+ *     收轮 aborted，结算 cancelled（dsh activation stop 传播 /
+ *     opencode ctx.abort.addEventListener 同构）。
  */
 export function createSubagentRunner(
   deps: SubagentRunnerDeps,
-): (prompt: string, description: string) => Promise<SubagentRunResult> {
+): (
+  prompt: string,
+  description: string,
+  opts?: { signal?: AbortSignal },
+) => Promise<SubagentRunResult> {
   let counter = 0;
   const maxDepth = deps.maxDepth ?? 1;
 
   const run = async (
     prompt: string,
     description: string,
+    opts?: { signal?: AbortSignal },
   ): Promise<SubagentRunResult> => {
     const childDepth = deps.depth + 1;
     if (!Number.isSafeInteger(childDepth) || childDepth > maxDepth) {
       throw new SubagentDepthError(childDepth, maxDepth);
+    }
+    // 取消先于派发：不起子轮（无半态——深度检查与取消检查同位）
+    if (opts?.signal?.aborted) {
+      return {
+        sessionId: "",
+        stopReason: "cancelled",
+        output: "",
+        error: "父轮在派发前已取消——子代理未启动",
+      };
     }
 
     const childSessionId =
@@ -166,6 +188,15 @@ export function createSubagentRunner(
       onToolStepCompleted: (turn, step) => subAssembly.onToolStepCompleted(turn, step),
       ...(deps.modelForTurn ? { modelForTurn: deps.modelForTurn } : {}),
     });
+
+    // T-P1-43 取消联动：父 turn 取消 → 子 loop 取消（CancelCause "parent"）。
+    // listener 随 signal 生命周期回收（per-turn controller 被 loop 替换后
+    // 不可达）——turn 活动期间取消在子 loop 的 await 边界收轮。
+    if (opts?.signal) {
+      const onAbort = () => subLoop.cancel({ kind: "parent" });
+      opts.signal.addEventListener("abort", onAbort, { once: true });
+      if (opts.signal.aborted) onAbort();
+    }
 
     let reason: TurnEndReason;
     try {

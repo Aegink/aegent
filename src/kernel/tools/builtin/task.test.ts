@@ -12,6 +12,7 @@ import { PathGuard } from "../../../sandbox/path-guard.js";
 import { ToolRegistry } from "../registry.js";
 import { registerBuiltinTools } from "./index.js";
 import { ScriptedProvider } from "../../loop.test-utils.js";
+import { AgentLoop } from "../../loop.js";
 import { createSubagentRunner, SubagentDepthError } from "../../subagent.js";
 import type { ModelIdentity } from "../../../models/identity.js";
 
@@ -298,5 +299,189 @@ describe("task 工具与子代理 runner（H1/H4/T-P1-42）", () => {
     );
     expect(turnEnd?.reason.kind).toBe("error");
     expect(store.pendingCount(lineage!.sessionId)).toBe(0);
+  });
+
+  it("T-P1-43 取消联动（先于派发）：signal 已 abort → 不起子轮直接 cancelled 结算（零子会话零模型调用）", async () => {
+    const { store, provider, registry } = makeFixture({
+      scripts: [[{ type: "text-delta", text: "不该到达" }, { type: "done" }]],
+    });
+    const controller = new AbortController();
+    controller.abort();
+
+    const result = await registry.dispatch({
+      callId: "c1",
+      name: "task",
+      arguments: JSON.stringify({ description: "迟到", prompt: "别跑" }),
+      signal: controller.signal,
+    });
+    expect(result.isError).toBe(true);
+    expect(result.error?.code).toBe("SUBAGENT_CANCELLED");
+    expect(result.content).toContain("派发前已取消");
+    expect(provider.requests.length).toBe(0);
+    // 零子会话（无半态）
+    expect(store.load("s0::task-1")).toHaveLength(0);
+  });
+
+  it("T-P1-43 取消联动（运行中）：父取消 → 子轮 CancelCause=parent 收轮 aborted → cancelled 结算 + 子流已 flush", async () => {
+    const root = makeTmpRoot();
+    const store = new SessionStore();
+    // GatedProvider：首次模型调用挂起等放行——测试在挂起期间注入取消
+    class GatedProvider {
+      readonly requests: number[] = [];
+      private release!: () => void;
+      readonly gate = new Promise<void>((resolve) => {
+        this.release = resolve;
+      });
+      letRelease() {
+        this.release();
+      }
+      async *streamChat(): AsyncIterable<StreamChunk> {
+        this.requests.push(this.requests.length + 1);
+        await this.gate;
+        yield { type: "text-delta", text: "子代理收尾输出" };
+        yield { type: "done" };
+      }
+    }
+    const gated = new GatedProvider();
+    const runner = createSubagentRunner({
+      parentSessionId: "s0",
+      store,
+      provider: gated as unknown as Parameters<typeof createSubagentRunner>[0]["provider"],
+      identity,
+      workspaceRoot: root,
+      contextWindow: 200_000,
+      parentRules: [],
+      depth: 0,
+      approvalTimeoutMs: 5_000,
+    });
+
+    const controller = new AbortController();
+    const pending = runner("长任务", "慢慢做", { signal: controller.signal });
+    // 等子代理进入模型调用（挂起中）
+    for (let i = 0; i < 200 && gated.requests.length === 0; i++) {
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    expect(gated.requests.length).toBe(1);
+
+    // 父取消：signal abort → 联动 subLoop.cancel({kind:"parent"})
+    controller.abort();
+    gated.letRelease(); // 放行在途流——协作式收轮（不 race 弃掉在途 promise）
+
+    const result = await pending;
+    expect(result.stopReason).toBe("cancelled");
+    expect(result.error).toContain("parent");
+    // 子流落了 aborted 终态且已 flush（取消也要有干净的结算事实）
+    const childEvents = store.load(result.sessionId);
+    const turnEnd = childEvents.find(
+      (e): e is Extract<typeof e, { type: "turn/end" }> => e.type === "turn/end",
+    );
+    expect(turnEnd?.reason.kind).toBe("aborted");
+    if (turnEnd?.reason.kind === "aborted") {
+      expect(turnEnd.reason.cause.kind).toBe("parent");
+    }
+    expect(store.pendingCount(result.sessionId)).toBe(0);
+  });
+
+  it("T-P1-43 端到端：父 loop cancel → ctx.signal abort → 子轮 parent 取消 → 父流 isError result 落盘后父轮 aborted（原子并入栅栏全链）", async () => {
+    const root = makeTmpRoot();
+    const store = new SessionStore();
+
+    // 子 provider：挂起等放行（时序控制点）
+    class GatedProvider {
+      readonly requests: number[] = [];
+      private release!: () => void;
+      readonly gate = new Promise<void>((resolve) => {
+        this.release = resolve;
+      });
+      letRelease() {
+        this.release();
+      }
+      async *streamChat(): AsyncIterable<StreamChunk> {
+        this.requests.push(this.requests.length + 1);
+        await this.gate;
+        yield { type: "text-delta", text: "不会到达（已取消）" };
+        yield { type: "done" };
+      }
+    }
+    const gated = new GatedProvider();
+    const runner = createSubagentRunner({
+      parentSessionId: "s1",
+      store,
+      provider: gated as unknown as Parameters<typeof createSubagentRunner>[0]["provider"],
+      identity,
+      workspaceRoot: root,
+      contextWindow: 200_000,
+      parentRules: [],
+      depth: 0,
+      approvalTimeoutMs: 5_000,
+    });
+    // 父 registry：只注册 task（经 dispatch 走真实 ToolContext 注入面）
+    const parentRegistry = new ToolRegistry({ sessionId: "s1" });
+    registerBuiltinTools(parentRegistry, { task: { runSubagent: runner } });
+
+    // 父 provider：第 1 次调用派 task，第 2 次调用收尾（在取消后不可达——
+    // 父轮在 tool/result 落盘后的边界收 aborted）
+    const parentProvider = new ScriptedProvider();
+    parentProvider.mount([
+      { type: "tool-call-delta", id: "p1", name: "task", argsDelta: '{"description":"长活","prompt":"干活"}' },
+      { type: "done" },
+    ]);
+    parentProvider.mount([{ type: "text-delta", text: "不该到达" }, { type: "done" }]);
+
+    // 直接构造父 loop（makeLoop 内部自建 store——runner 需要与父 loop
+    // 共享同一 SessionStore 才能断言父子两流的栅栏事实）
+    const parentLoop = new AgentLoop({
+      sessionId: "s1",
+      store,
+      provider: parentProvider,
+      identity: { provider: "mock", modelId: "m-1" },
+      executeTool: (call) => parentRegistry.dispatch(call),
+      decideTurn: (record) =>
+        record.toolCalls.length > 0 ? { action: "continue" } : { action: "end" },
+    });
+
+    const pending = parentLoop.runTurn("派个活");
+    // 等子代理进入模型调用（挂起中）→ 父取消
+    for (let i = 0; i < 200 && gated.requests.length === 0; i++) {
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    expect(gated.requests.length).toBe(1);
+    parentLoop.cancel({ kind: "user" });
+    gated.letRelease();
+
+    const reason = await pending;
+    expect(reason.kind).toBe("aborted");
+
+    // 栅栏全链断言：
+    // ②先取父流 result（isError, SUBAGENT_CANCELLED）与其 meta 的子会话 id
+    const parentEvents = store.load("s1");
+    const taskResult = parentEvents.find(
+      (e): e is Extract<typeof e, { type: "tool/result" }> =>
+        e.type === "tool/result" && e.callId === "p1",
+    );
+    expect(taskResult?.message.isError).toBe(true);
+    expect(taskResult?.error?.code).toBe("SUBAGENT_CANCELLED");
+    const childSessionId = (
+      taskResult?.meta as { subagent?: { sessionId?: string } } | undefined
+    )?.subagent?.sessionId;
+    expect(childSessionId).toBeTruthy();
+    // ①子流 aborted 终态（cause=parent）+ 已 flush（取消也有干净结算事实）
+    const childEvents = store.load(childSessionId!);
+    const childTurnEnd = childEvents.find(
+      (e): e is Extract<typeof e, { type: "turn/end" }> => e.type === "turn/end",
+    );
+    expect(childTurnEnd?.reason.kind).toBe("aborted");
+    if (childTurnEnd?.reason.kind === "aborted") {
+      expect(childTurnEnd.reason.cause.kind).toBe("parent");
+    }
+    expect(store.pendingCount(childSessionId!)).toBe(0);
+    // ③父流：tool/result 先于 turn/end 落盘（原子并入——取消的子代理产出
+    // 是类型化失败事实，不是半成品）
+    const resultIdx = taskResult?.seq ?? 0;
+    const parentTurnEnd = parentEvents.find(
+      (e): e is Extract<typeof e, { type: "turn/end" }> => e.type === "turn/end",
+    );
+    expect(parentTurnEnd?.reason.kind).toBe("aborted");
+    expect(parentTurnEnd?.seq ?? 0).toBeGreaterThan(resultIdx);
   });
 });

@@ -100,6 +100,11 @@ export interface ToolCallPayload {
    * ToolContext.reportProgress。链层替换载荷时丢失即无进度（best-effort）。
    */
   report?: (message: string) => void;
+  /**
+   * T-P1-43：本 turn 的取消信号（A7 槽位的 AbortSignal 面）——工具可选
+   * 消费（task 用它联动子循环取消）；经 registry 转进 ToolContext.signal。
+   */
+  signal?: AbortSignal;
 }
 
 /** toolCall 点位的产物（形状 = ToolResultEvent 的消息侧载荷）。 */
@@ -279,6 +284,15 @@ export class AgentLoop {
    */
   private cancelCause: CancelCause | null = null;
   /**
+   * A7 信号联动（T-P1-43）：per-turn 的 AbortController——cancel() 置槽
+   * 同时 abort 信号，已派发工具可经 ToolContext.signal 观察取消（协作式：
+   * 工具自行决定如何响应；task 工具用它联动子循环取消，dsh activation
+   * stop 传播 / opencode ctx.abort.addEventListener 同构）。每个 turn
+   * 一份新 controller：runTurn 开始替换（idle 期迟到取消 abort 的是旧
+   * controller，无消费者——"迟到的取消不武装后续工作"的信号面同构）。
+   */
+  private cancelController: AbortController | null = null;
+  /**
    * 本 turn 的捕获值（J7）：runTurn 启动时从 modelForTurn 取（缺省退化为
    * 固定 provider/identity），本 turn 全程不变——runStep/callModel 只读它，
    * 不回读 deps.provider/identity。
@@ -335,6 +349,9 @@ export class AgentLoop {
   cancel(cause: CancelCause): void {
     if (this.cancelCause) return;
     this.cancelCause = cause;
+    // T-P1-43 信号联动：已派发工具经 ctx.signal 观察取消（协作式——
+    // 工具自行决定如何响应；task 用它联动子循环）。
+    this.cancelController?.abort();
   }
 
   /**
@@ -350,6 +367,7 @@ export class AgentLoop {
     const turn = this.nextTurnNumber();
     // 新 turn 一份新信号：丢弃 idle 期迟到的取消（不武装本 turn 之前的工作）
     this.cancelCause = null;
+    this.cancelController = new AbortController();
     // J7 捕获：turn 启动即定本 turn 的模型（此后在途换模只影响后续 turn）。
     // 捕获在 turn/start 落盘前——装配侧坏状态在此爆出，不污染事件流。
     this.turnModel = this.deps.modelForTurn
@@ -594,6 +612,11 @@ export class AgentLoop {
         name: call.name,
         arguments: call.arguments,
         report: this.createProgressReporter(turn, step, call.id),
+        // T-P1-43：本 turn 的取消信号（A7 槽位的 AbortSignal 面）——
+        // 工具可选消费；链层 spread 载荷时保留。
+        ...(this.cancelController
+          ? { signal: this.cancelController.signal }
+          : {}),
       });
       return outcome.value;
     } catch (e) {

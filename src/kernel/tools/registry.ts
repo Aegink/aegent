@@ -93,6 +93,12 @@ export interface ToolDispatchCall {
    * 执行的工具拿得到。缺省 undefined = 该调用无进度通道（零新事件）。
    */
   report?: (message: string) => void;
+  /**
+   * T-P1-43 取消信号（A7/T-P1-16 同款通道纪律）：loop 按调用注入本 turn
+   * 的 AbortSignal，registry 原样转进 ToolContext.signal——只有正在执行的
+   * 工具拿得到。缺省 undefined = 该调用无取消信号（工具自行决定是否消费）。
+   */
+  signal?: AbortSignal;
 }
 
 export class ToolRegistry {
@@ -275,6 +281,7 @@ export class ToolRegistry {
       toolCallId: call.callId,
       ...(this.env !== undefined ? { env: this.env } : {}),
       ...(call.report ? { reportProgress: call.report } : {}),
+      ...(call.signal ? { signal: call.signal } : {}),
     };
     const executed = await def.execute(args, ctx);
     // B12：契约富值（含 value/render）在此投影成落盘形状——富值不出本函数

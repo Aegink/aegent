@@ -36,9 +36,14 @@ function renderTaskOutput(result: SubagentRunResult): string {
 export interface TaskToolDeps {
   /**
    * 子代理运行面（kernel/subagent.ts 的 createSubagentRunner 产物，装配
-   * 注入）。深度检查/子会话创建/降级装配/结算全在这里。
+   * 注入）。深度检查/子会话创建/降级装配/结算全在这里；第三参 signal
+   * （T-P1-43）= 本 turn 取消信号，父轮取消联动子轮取消。
    */
-  readonly runSubagent: (prompt: string, description: string) => Promise<SubagentRunResult>;
+  readonly runSubagent: (
+    prompt: string,
+    description: string,
+    opts?: { signal?: AbortSignal },
+  ) => Promise<SubagentRunResult>;
 }
 
 export function createTaskTool(deps: TaskToolDeps): ToolDef {
@@ -60,7 +65,7 @@ export function createTaskTool(deps: TaskToolDeps): ToolDef {
       },
       required: ["description", "prompt"],
     },
-    async execute(args): Promise<ToolExecutionResult> {
+    async execute(args, ctx): Promise<ToolExecutionResult> {
       const description = args["description"];
       const prompt = args["prompt"];
       if (typeof description !== "string" || description === "") {
@@ -79,7 +84,12 @@ export function createTaskTool(deps: TaskToolDeps): ToolDef {
       }
       let result: SubagentRunResult;
       try {
-        result = await deps.runSubagent(prompt, description);
+        // T-P1-43 取消联动：ctx.signal（本 turn 取消信号）传给 runner——
+        // 父轮取消 → 子轮取消（CancelCause "parent"），子 loop 在 await
+        // 边界收轮，结算 cancelled（dsh activation stop 传播同构）。
+        result = await deps.runSubagent(prompt, description, {
+          ...(ctx.signal ? { signal: ctx.signal } : {}),
+        });
       } catch (err) {
         if (err instanceof SubagentDepthError) {
           return toolError(
