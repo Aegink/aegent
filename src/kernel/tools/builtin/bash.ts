@@ -39,9 +39,9 @@ export interface BashArgs {
 }
 
 /** setTimeout 约束换算的秒数上限（pi bash.ts 同款）。 */
-const MAX_TIMEOUT_SECONDS = 2_147_483_647 / 1000;
+export const MAX_TIMEOUT_SECONDS = 2_147_483_647 / 1000;
 
-function toResult(result: ExecResult): ToolExecutionResult {
+export function toResult(result: ExecResult): ToolExecutionResult {
   const output = [result.stdout, result.stderr].filter((s) => s !== "").join("\n");
   const failed = result.exitCode !== 0;
   let content = output !== "" ? output : "(no output)";

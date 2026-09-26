@@ -9,12 +9,18 @@
  * 由工具直接走 node:fs（P0 无沙箱面）；阶段 6 沙箱（D8/D9）落地时把 fs 收进
  * 本接口，工具零改动换 env 实现（抽象的意义）。
  *
- * shell 选择：实现层固定用 bash（Git Bash 在本机存在；卡面风险栏的 P0 决定），
- * 跨壳（cmd/PowerShell）留 P1 D11。
+ * shell 选择（D11 · T-P1-28）：`"bash" | "pwsh"` 两态，缺省 bash（P0 逐字节
+ * 零行为变化）。pwsh 宿主 = PowerShell（优先 pwsh Core、缺失回落
+ * powershell.exe——本机无 Core，实测回落面）；**退出码为宿主语义**（bash 的
+ * 原生命令传播语义不同，dsh pwsh-local 同款决策——对齐需尾包装
+ * `exit $LASTEXITCODE`，cmdlet 场景会引入残留值误报，比差异更糟），方言
+ * 边界见 docs/shell-semantics-limitations.md。
  */
 
 import { execFile } from "node:child_process";
 import { TOOL_TIMEOUT, TimeoutError } from "../timeout.js";
+
+export type ShellKind = "bash" | "pwsh";
 
 export interface ExecOptions {
   /** 超时毫秒：超时 kill 进程并 reject TimeoutError{code: TOOL_TIMEOUT}（J22 词汇）。 */
@@ -38,16 +44,61 @@ export interface ExecutionEnv {
 /** exec 输出缓冲上限（B5 的输出截断在 T-4-06 工具出口做，这里只防崩）。 */
 const MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 
+/** pwsh 宿主参数（dsh pwsh-local：fresh `pwsh -Command` 进程）。 */
+const PWSH_PROGRAMS = ["pwsh", "powershell.exe"] as const;
+
 export class NodeExecutionEnv implements ExecutionEnv {
+  private readonly shell: ShellKind;
+
+  constructor(options?: { shell?: ShellKind }) {
+    this.shell = options?.shell ?? "bash";
+  }
+
   async exec(command: string, options?: ExecOptions): Promise<ExecResult> {
     const timeoutMs = options?.timeoutMs;
-    return await new Promise<ExecResult>((resolve, reject) => {
+    if (this.shell === "pwsh") {
+      return this.execPwsh(command, timeoutMs, options?.cwd);
+    }
+    return this.execBash(command, timeoutMs, options?.cwd);
+  }
+
+  /** bash 通道（P0 原路径，零行为变化）。 */
+  private execBash(
+    command: string,
+    timeoutMs: number | undefined,
+    cwd: string | undefined,
+  ): Promise<ExecResult> {
+    return this.spawnAwait("bash", ["-c", command], timeoutMs, cwd);
+  }
+
+  /** pwsh 通道：优先 pwsh Core，缺失回落 powershell.exe（探针缓存）。 */
+  private async execPwsh(
+    command: string,
+    timeoutMs: number | undefined,
+    cwd: string | undefined,
+  ): Promise<ExecResult> {
+    const program = await resolvePwshHost();
+    return this.spawnAwait(
+      program,
+      ["-NoProfile", "-NonInteractive", "-Command", command],
+      timeoutMs,
+      cwd,
+    );
+  }
+
+  private spawnAwait(
+    program: string,
+    args: string[],
+    timeoutMs: number | undefined,
+    cwd: string | undefined,
+  ): Promise<ExecResult> {
+    return new Promise<ExecResult>((resolve, reject) => {
       execFile(
-        "bash",
-        ["-c", command],
+        program,
+        args,
         {
           ...(timeoutMs !== undefined ? { timeout: timeoutMs } : {}),
-          ...(options?.cwd !== undefined ? { cwd: options.cwd } : {}),
+          ...(cwd !== undefined ? { cwd } : {}),
           windowsHide: true,
           maxBuffer: MAX_BUFFER_BYTES,
           encoding: "utf8",
@@ -73,4 +124,33 @@ export class NodeExecutionEnv implements ExecutionEnv {
       );
     });
   }
+}
+
+let pwshHostCache: string | undefined;
+
+/** pwsh 宿主解析（进程级缓存）：pwsh Core 探测，缺失回落 powershell.exe。 */
+async function resolvePwshHost(): Promise<string> {
+  if (pwshHostCache !== undefined) return pwshHostCache;
+  for (const candidate of PWSH_PROGRAMS) {
+    const available = await probeHost(candidate);
+    if (available) {
+      pwshHostCache = candidate;
+      return candidate;
+    }
+  }
+  // 两个宿主都探测失败仍回落 powershell.exe（系统自带；真缺失时 spawn
+  // ENOENT 按既有错误路径报 SHELL_NOT_FOUND）。
+  pwshHostCache = "powershell.exe";
+  return pwshHostCache;
+}
+
+function probeHost(program: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    execFile(
+      program,
+      program === "pwsh" ? ["--version"] : ["/c", "ver"],
+      { windowsHide: true, timeout: 5000, encoding: "utf8" },
+      (error) => resolve(error === null),
+    );
+  });
 }

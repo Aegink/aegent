@@ -342,13 +342,14 @@ describe("grep 工具（P0 纯 JS 实现）", () => {
 });
 
 describe("内置工具注册入口", () => {
-  it("registerBuiltinTools 挂上八个内置工具（无装配选项时），且描述文件在位（B2；skill_load 为 T-P1-08 新增、tool_load 为 T-P1-17 新增）", () => {
+  it("registerBuiltinTools 挂上九个内置工具（无装配选项时），且描述文件在位（B2；skill_load 为 T-P1-08 新增、tool_load 为 T-P1-17 新增、pwsh 为 T-P1-28 新增）", () => {
     const registry = new ToolRegistry();
     registerBuiltinTools(registry);
     expect(registry.names()).toEqual([
       "read",
       "write",
       "bash",
+      "pwsh",
       "edit",
       "glob",
       "grep",

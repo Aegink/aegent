@@ -52,6 +52,7 @@ export const WRITE_EXECUTE_TOOLS: ReadonlySet<string> = new Set([
   "write",
   "edit",
   "bash",
+  "pwsh",
   "todo_write",
 ]);
 

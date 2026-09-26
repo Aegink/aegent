@@ -15,6 +15,7 @@ import { createEditTool } from "./edit.js";
 import { createGlobTool } from "./glob.js";
 import { createGrepTool } from "./grep.js";
 import { createPlanEnterTool, createPlanExitTool } from "./plan.js";
+import { createPwshTool } from "./pwsh.js";
 import { createQuestionTool, type QuestionToolDeps } from "./question.js";
 import { createReadTool } from "./read.js";
 import { createSkillLoadTool } from "./skill.js";
@@ -32,6 +33,7 @@ export const BUILTIN_TOOL_NAMES = [
   "read",
   "write",
   "bash",
+  "pwsh",
   "edit",
   "glob",
   "grep",
@@ -78,6 +80,9 @@ export function registerBuiltinTools(
     createReadTool({ pathGuard: guard }),
     createWriteTool({ writeQueue, pathGuard: guard }),
     createBashTool({ pathGuard: guard }),
+    // D11（T-P1-28）：PowerShell 一等 shell——与 bash 平行注册（dsh
+    // tool-bash/tool-pwsh 同构；Windows 沙箱态宿主正路，见 win32-backend）
+    createPwshTool({ pathGuard: guard }),
     createEditTool({ writeQueue, pathGuard: guard }),
     createGlobTool(),
     createGrepTool(),
