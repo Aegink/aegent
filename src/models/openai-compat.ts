@@ -17,6 +17,7 @@
  */
 
 import type { StreamChunk } from "../kernel/events.js";
+import type { ModelIdentity } from "./identity.js";
 import { ProviderConfigError, type ProviderConfig } from "./config.js";
 import {
   ProviderHttpError,
@@ -256,4 +257,39 @@ function extractErrorMessage(body: string, status: number): string {
     // 非 JSON 错误体，落到下面用状态码
   }
   return `模型端点返回 ${status}`;
+}
+
+// ---------------------------------------------------------------------------
+// /models 实时发现（J12，T-P1-22）——模型目录的 discovery 回调实现
+// ---------------------------------------------------------------------------
+
+/**
+ * 探测 OpenAI 兼容端点的 `GET /models`，返回该端点可服务的身份清单
+ * （provider = 配置名）。**失败上抛不兜底**：404（端点无 /models 路由）、
+ * 网络错、非 JSON 体都由调用方（buildModelCatalog 的兜底纪律）统一捕获
+ * ——发现是增量面，失败只影响增量不吞声明行。
+ */
+export async function discoverOpenAiCompatModels(
+  config: ProviderConfig,
+  fetchImpl?: typeof fetch,
+): Promise<ModelIdentity[]> {
+  const settings = parseOpenAiCompatSettings(config);
+  const res = await (fetchImpl ?? fetch)(`${settings.baseUrl}/models`, {
+    headers: { authorization: `Bearer ${settings.apiKey}` },
+  });
+  if (!res.ok) {
+    throw new ProviderHttpError(res.status, `GET /models 返回 ${String(res.status)}`);
+  }
+  const body = (await res.json()) as { data?: unknown };
+  if (!Array.isArray(body.data)) {
+    throw new ProviderHttpError(res.status, "GET /models 响应缺少 data 数组");
+  }
+  const identities: ModelIdentity[] = [];
+  for (const row of body.data) {
+    if (row === null || typeof row !== "object") continue;
+    const id = (row as { [key: string]: unknown })["id"];
+    if (typeof id !== "string" || id === "") continue;
+    identities.push({ provider: config.name, modelId: id });
+  }
+  return identities;
 }

@@ -210,6 +210,16 @@ export class ModelSwitchService {
   }
 
   /**
+   * J12/T-P1-22 选择器查询面：注册表内**可换模**的声明清单（构造序）。
+   * 目录（buildModelCatalog）的 discovered-only 条目不在此列——它们没有
+   * 装配绑定的 provider 实例，switch 到会抛 ModelNotRegisteredError
+   * （J6 fail-closed：换模只能切到装配注册过的模型）。
+   */
+  listSwitchableModels(): ModelIdentity[] {
+    return [...this.registry.values()].map((m) => m.identity);
+  }
+
+  /**
    * 换模请求受理（事务化）：
    * - 未注册模型抛 ModelNotRegisteredError（不静默，且不进入任何态）；
    * - 会话未建立（无 turn 捕获）→ deferred：暂存 {target, prev}，configured

@@ -721,3 +721,153 @@ describe("model/switch 协议命令 —— agent-process 全链", () => {
     await h.stop();
   }, 30_000);
 });
+
+// ---------------------------------------------------------------------------
+// 模型目录与选择器（J12 / T-P1-22）：去重 + 每厂商上限 + discovery 兜底
+// ---------------------------------------------------------------------------
+
+import { buildModelCatalog, MAX_MODELS_PER_PROVIDER } from "../models/catalog.js";
+import { discoverOpenAiCompatModels } from "../models/openai-compat.js";
+import { parseProviderConfig } from "../models/config.js";
+import { HttpMock } from "../test-support/http-mock.js";
+import { identityKey } from "../models/identity.js";
+
+describe("模型目录与选择器（J12 / T-P1-22）", () => {
+  const id = (provider: string, modelId: string) => ({ provider, modelId });
+
+  it("验收①去重：同身份只一行（声明内重复 + 发现重叠都归一），声明行优先", async () => {
+    const catalog = await buildModelCatalog({
+      declared: [id("p", "m1"), id("p", "m1"), id("p", "m2"), id("q", "m1")],
+      discover: async () => [id("p", "m2"), id("p", "m3")],
+    });
+    expect(catalog.map((e) => `${e.identity.provider}:${e.identity.modelId}`)).toEqual([
+      "p:m1",
+      "p:m2",
+      "q:m1",
+      "p:m3",
+    ]);
+    expect(catalog.find((e) => e.identity.modelId === "m2")?.source).toBe("declared");
+    expect(catalog.find((e) => e.identity.modelId === "m3")?.source).toBe("discovered");
+  });
+
+  it("验收②每厂商上限：声明先于发现被保留，超限裁剪；当前模型豁免（hermes fallback insert）", async () => {
+    const declared = [id("p", "m1"), id("p", "m2"), id("p", "m3")];
+    const discover = async () => [id("p", "m4"), id("p", "m5")];
+    // 上限 3：声明行全保留、发现行全裁
+    const capped = await buildModelCatalog({ declared, discover, maxPerProvider: 3 });
+    expect(capped.map((e) => e.identity.modelId)).toEqual(["m1", "m2", "m3"]);
+    // 上限 2 + 当前模型 m3：m1/m2 保留、m3 豁免（current is always kept）
+    const withCurrent = await buildModelCatalog({
+      declared,
+      discover,
+      maxPerProvider: 2,
+      current: id("p", "m3"),
+    });
+    expect(withCurrent.map((e) => e.identity.modelId)).toEqual(["m1", "m2", "m3"]);
+    // 缺省上限常量在位（hermes ACP_MAX_MODELS_PER_PROVIDER 同款）
+    expect(MAX_MODELS_PER_PROVIDER).toBe(200);
+  });
+
+  it("验收③discovery 兜底：/models 404 剧本（假 provider）时声明模型仍可用；200 剧本增量并入", async () => {
+    const config = parseProviderConfig({
+      name: "openai",
+      settingsConfig: JSON.stringify({ baseUrl: "placeholder", apiKey: "k", model: "m" }),
+    });
+    // 404 剧本：discoverOpenAiCompatModels 上抛（不兜底），目录层兜底声明行
+    const mock404 = new HttpMock();
+    const base404 = await mock404.start();
+    mock404.mountSequence([{ status: 404, body: "no /models route" }]);
+    try {
+      await expect(
+        discoverOpenAiCompatModels(
+          parseProviderConfig({
+            name: "openai",
+            settingsConfig: JSON.stringify({ baseUrl: base404, apiKey: "k", model: "m" }),
+          }),
+        ),
+      ).rejects.toMatchObject({ status: 404 });
+
+      const declared = [id("openai", "declared-a"), id("openai", "declared-b")];
+      const catalog = await buildModelCatalog({
+        declared,
+        discover: (provider) =>
+          provider === "openai"
+            ? discoverOpenAiCompatModels(
+                parseProviderConfig({
+                  name: "openai",
+                  settingsConfig: JSON.stringify({ baseUrl: base404, apiKey: "k", model: "m" }),
+                }),
+              )
+            : Promise.resolve([]),
+      });
+      // 兜底：声明清单原样可用（hermes "declared models survive a failed discovery"）
+      expect(catalog.map((e) => `${e.source}:${e.identity.modelId}`)).toEqual([
+        "declared:declared-a",
+        "declared:declared-b",
+      ]);
+    } finally {
+      await mock404.stop();
+    }
+
+    // 200 剧本：/models 的 data[].id 增量并入（同身份去重、归属按 provider）
+    const mock200 = new HttpMock();
+    const base200 = await mock200.start();
+    mock200.mountSequence([
+      {
+        status: 200,
+        body: JSON.stringify({ data: [{ id: "declared-a" }, { id: "live-x" }, { id: "" }, "junk"] }),
+      },
+    ]);
+    try {
+      const live = await discoverOpenAiCompatModels(
+        parseProviderConfig({
+          name: "openai",
+          settingsConfig: JSON.stringify({ baseUrl: base200, apiKey: "k", model: "m" }),
+        }),
+      );
+      expect(live).toEqual([
+        { provider: "openai", modelId: "declared-a" },
+        { provider: "openai", modelId: "live-x" },
+      ]);
+      const catalog = await buildModelCatalog({
+        declared: [id("openai", "declared-a")],
+        discover: () => Promise.resolve(live),
+      });
+      expect(catalog.map((e) => `${e.source}:${e.identity.modelId}`)).toEqual([
+        "declared:declared-a",
+        "discovered:live-x",
+      ]);
+    } finally {
+      await mock200.stop();
+    }
+  });
+
+  it("验收④选择结果可换模（J6 联动）：声明条目 switch 成功；discovered-only 拒绝（fail-closed）", async () => {
+    const provider: ModelProvider = { streamChat: async function* () {} };
+    const service = new ModelSwitchService({
+      initial: id("p", "m1"),
+      models: [
+        { identity: id("p", "m1"), provider },
+        { identity: id("p", "m2"), provider },
+      ],
+    });
+    // 选择器查询面：注册表内可换模清单
+    expect(service.listSwitchableModels().map((m) => identityKey(m))).toEqual([
+      "p:m1",
+      "p:m2",
+    ]);
+    // 目录声明条目 → switch 成功（J6 联动）
+    const catalog = await buildModelCatalog({
+      declared: service.listSwitchableModels(),
+      discover: () => Promise.resolve([id("p", "m3")]),
+    });
+    const declaredEntry = catalog.find((e) => e.source === "declared" && e.identity.modelId === "m2")!;
+    service.switch(declaredEntry.identity);
+    // 新服务无捕获 turn → deferred 受理（J8 语义：configured 不变、目标暂存）
+    expect(service.phase).toBe("deferred");
+    expect(service.lastSwitch?.target).toMatchObject({ provider: "p", modelId: "m2" });
+    // discovered-only 条目没有 provider 实例——switch 拒绝（fail-closed）
+    const discoveredEntry = catalog.find((e) => e.source === "discovered")!;
+    expect(() => service.switch(discoveredEntry.identity)).toThrow(ModelNotRegisteredError);
+  });
+});
