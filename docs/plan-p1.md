@@ -595,7 +595,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **风险 / 未知**：切点粒度按 seq（pi 的 entry 同粒度最直接）——turn 级切点由协议参数换算（UI 层职责）；checkpoint 事件的 ref 在 fork 后语义（文件可共享只读、git stash 归父会话）卡内定形记档
 - **偏离 / 建议**：①fork 只复制已完结历史——运行时派生态（model-switch captured、goal 提醒注入点、plan 模式态）由子流重建（goalFromEvents/planModeFromEvents 既有机制零额外代码）；②词汇表 18→19 立案供追认；③`project.ts` 的 validation 对 session/fork 豁免（会话级元事件、不进消息投影）+ O7 断言器豁免面同步（event-asserts 三断言器先例）
 
-#### T-P1-41 · H5 · 权限降级算法（只继承 deny，绝不继承授权） `[ ]`
+#### T-P1-41 · H5 · 权限降级算法（只继承 deny，绝不继承授权） `[x]`
 - **依据需求**：H5（P1："权限降级算法：只继承 deny 与 external_directory，不继承授权"）
 - **上游首选参考**：[opencode·subagent-permissions.ts:14-27](../oss/opencode/packages/opencode/src/agent/subagent-permissions.ts#L14)（deriveSubagentSessionPermission：父规则 filter `permission === "external_directory" || action === "deny"` + 子代理自身规则未显式允许时补默认 deny todowrite/task——降级 = 过滤 + 默认 deny 两段）
 - **取什么 / 别抄什么**：取"降级 = 过滤 + 默认 deny"两段结构与"默认禁用可被显式放开"的参数面；**external_directory 是 opencode 特有规则类别**，我方工作区外访问由 PathGuard 结构性拒——该维度注释记档不发明对应物；不抄 PermissionV1.Ruleset 形状（我方 RuleSource/编译规则集已在）
@@ -603,7 +603,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **要产出**：`src/policy/subagent-rules.ts`——`deriveSubagentRules(parentRules, opts?)` 纯函数：①只保留 deny 动作规则（allow/ask 全部丢弃 = 不继承授权）；②默认禁用清单 task/todowrite 追加显式 deny（opts 未显式放开时——opencode canTask/canTodo 同语义）；③返回值供子代理装配构造用户层规则集；单测
 - **验收**：`npx vitest run src/policy/subagent-rules.test.ts`——①父规则 allow/ask 不进子代理规则集、deny 全保留；②task/todowrite 默认 deny 在位；③显式放开可移除默认 deny 但 allow 仍不可恢复（"绝不继承授权"）；④空规则集 → 仅默认 deny；⑤产出规则形状经既有 gate 评估路径可执行（与 gate.test 规则形状一致）
 - **依赖**：无
-- **风险 / 未知**：我方规则是 bash(pattern)/tool(pattern) 行文本形状，与 opencode permission 类目不同构——降级按"动作"维度（deny 保留）而非"类别"维度，映射在卡内定形记档
+- **完成记录**：2026-09-26。产出 `src/policy/subagent-rules.ts`——`deriveSubagentRules(parentRules, opts?)` 纯函数两段结构（opencode deriveSubagentSessionPermission 同构）：①父规则**动作维度过滤**只保留 deny（allow/ask 全部丢弃——绝不继承授权；external_directory 维度头注释记档：我方无该授权面，工作区外访问由 PathGuard 结构性拒，不发明对应物）；②默认禁用清单 `SUBAGENT_DEFAULT_DENIED_TOOLS = [task, todo_write]`（冻结只追加，C10 先例；H5 验收原文 todowrite 在我方 BUILTIN_TOOL_NAMES 的映射）追加显式 deny——`allowTools` 选项可放开（opencode canTask/canTodo 同语义）但语义是"不加默认 deny"而非"继承授权"（验收③双断言钉死）。产物是 RuleSource[]（rule-loader 加载输入形状）——子代理装配经既有 loadRules→gate 路径生效，零第二评估路径。验收：`npx vitest run src/policy/subagent-rules.test.ts` → **5 passed**：①allow/ask 零继承 + deny 原文原样保留（含样例/行号字段）；②task/todo_write 默认 deny 在位；③放开移除默认 deny 但父 allow 仍不复活（全放开 = 仅剩父 deny 两条）；④空规则集仅默认 deny；⑤产出经 loadRules→loadedRuleMatch 评估路径可执行（task/todo_write 裸规则 deny 命中、bash(rm *) 模式结构完好、read allow 不在产物）。`npx tsc --noEmit` 干净。**卡内定形**：默认 deny 放继承 deny 之后（首匹配胜语义下动作相同结果一致，顺序只影响 verdict.rule 回显）。，与 opencode permission 类目不同构——降级按"动作"维度（deny 保留）而非"类别"维度，映射在卡内定形记档
 - **偏离 / 建议**：①"子代理自身规则集再授权"面 P1 不暴露（无 agent 类型注册表）——opts 预留默认全禁；②ask→deny 的审批面落 T-P1-44 策略链（本卡只做规则层算法）；③"默认禁用 task/todowrite"在 T-P1-42 的落法 = 不注册（结构性）+ 本卡显式 deny（fail-closed 双保险）
 
 #### T-P1-42 · H1+H4 · task 工具（进程内子代理 + 独立子会话 + 深度限制） `[ ]`
