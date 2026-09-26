@@ -80,10 +80,10 @@
 | 2026-09-26 | T-P1-07 | I1/I13 | `11a8d33` | `npx vitest run src/kernel/hooks.test.ts src/kernel/chain.test.ts` | 27 passed（chain 14 + hooks 13）；①hook 嵌套序=注册序、前 hook 截断不调 next（loop 级工具不执行、tool/result 落 hook 值）；②trace 完整层序（namedLayer）+budget 墙钟衰减可断言（500→380/超支 -150）；③L10 链底无人应答抛错点名事件；④崩溃双轨：untrusted before→隔离 isError（HOOK_FAILED）、trusted→上抛（T-5-01 同款）、after 段一律上抛、modelRequest→blocked、turnEnd→吞错继续；hook 层挂 gate 外层；全量 548 passed，tsc 干净，count-features 310 |
 | 2026-09-26 | T-P1-08 | I2 | `219af6d` | `npx vitest run src/kernel/skills.test.ts` | 8 passed；①递归发现含嵌套源；②缺损/坏行/重复名产诊断码不抛（invalid_metadata/parse_failed/duplicate_name）；③skill_load 按名取正文、未知名 SKILL_NOT_FOUND；④改 SKILL.md 零 .ts diff 机验（清单+正文跟文件走）；集成：system/message 首落带清单、诊断落 skill-lint 日志；copy-assets 整目录拷贝自动跟上（工具描述 7→8）；BUILTIN_TOOL_NAMES 6→7；全量 556 passed，tsc 干净，count-features 310 |
 | 2026-09-26 | T-P1-09 | I6/I9 | `8ec9cbb` | `npx vitest run src/kernel/hooks.test.ts src/kernel/plugin-manifest.test.ts` | 22 passed（14+8）；①分轨：layer 只含 trusted（内核 trace 零 untracked 感知）、untrustedLayer 独立观察轨（next 哨兵=能力越界抛错、崩溃轨内隔离+报告可检索）；②未实现能力拒绝且列明缺哪项；③闭集外字段/坏 point/重复声明拒绝；④trusted 安装后内核链直调、untrusted 观察轨可用、声明未实现 handler 拒绝且回滚无半态、uninstall 摘净；全量 565 passed，tsc 干净，count-features 310——**I 层扩展面组（3 卡）收官** |
-| 2026-09-26 | T-P1-10 | G2 | （本次 commit） | `npx vitest run src/kernel/tools/builtin/todo.test.ts src/session/project.test.ts` | 18 passed（7+11）；①todo_write 落 todo/update（会话级元事件、整值、投影 todos 可查）；②CLI 级 meta-ops 白名单直过无审批、进度行整幅可见（cli.test 扩）；③词汇表 15→16 编译闸门+计数；④todo_write 过出口级硬拦透传 + WRITE_EXECUTE_TOOLS 归类（plan 硬关铺垫，exit-guard.test 扩 3）；连带 logger.ts 时钟注入缺口修复（跨日 flaky）；全量 579 passed，tsc 干净，count-features 310——**词汇表 15→16 已立案待追认（新发现 #3）** |
-| 2026-09-26 | T-P1-11 | G1/G7 | （本次 commit） | `npx vitest run src/kernel/plan-mode.test.ts src/policy/exit-guard.test.ts` | 24 passed（11+13）；①plan 激活写/执行类出口硬关、用户 allow 规则压不过（gate 集成不进 broker 直接拒）；②读类透传；③退出后恢复（CLI 端到端：进出经审批、硬关无审批弹窗、退出后 bash 回到 ask）；④planModeFromEvents 流重建（被拒申请不改状态）；⑤提示词独立文件零 .ts diff + 注册面 7/8/9/10 四档；plan-guard 消费 T-P1-10 的 WRITE_EXECUTE_TOOLS 唯一权威；全量 591 passed，tsc 干净，count-features 310 |
-| 2026-09-26 | T-P1-12 | G3/G6 | （本次 commit） | `npx vitest run src/kernel/goal.test.ts` | 13 passed；①goal 跨 5 轮 tick 保持；②每轮注入提醒（装配级 injected 落流 + CLI"（注入）[目标提醒]"可见）；③到期三动作可断言（abandon 终态/report 持续催办/renew 自动续期）；④goal/set 落流、同 store 重建装配后 goal 仍在且不重复落初始事实；⑤词汇表 16→17 编译闸门+投影 goals+revert 切割+迁移守卫非法表穷举；全量 605 passed，tsc 干净，count-features 310——**词汇表 16→17 已立案待追认（新发现 #4）** |
-| 2026-09-26 | T-P1-13 | G4 | （本次 commit） | `npx vitest run src/kernel/plan-mode.test.ts src/session/boot-maintenance.test.ts` | 21 passed（15+6）；①plan_exit 批准提交计划 → artifact 落盘 + checkpoint{provider:"plan"} 事件、planArtifactFromEvents 按流找回重启可读；②plan 会话崩溃重启：对账 interrupted、不自动重放（Q5 口径）、artifact 可读；③真 git 仓验证与 E11 互不干扰（untracked 不入 stash，/revert 代码回退不动 artifact）；checkpoint 槽位复核够用未扩词汇表；全量 610 passed，tsc 干净，count-features 310——**G 层 Planning 组（4 卡）收官，P1 批次 1 全部 13 卡完成** |
+| 2026-09-26 | T-P1-10 | G2 | `7f6893c` | `npx vitest run src/kernel/tools/builtin/todo.test.ts src/session/project.test.ts` | 18 passed（7+11）；①todo_write 落 todo/update（会话级元事件、整值、投影 todos 可查）；②CLI 级 meta-ops 白名单直过无审批、进度行整幅可见（cli.test 扩）；③词汇表 15→16 编译闸门+计数；④todo_write 过出口级硬拦透传 + WRITE_EXECUTE_TOOLS 归类（plan 硬关铺垫，exit-guard.test 扩 3）；连带 logger.ts 时钟注入缺口修复（跨日 flaky）；全量 579 passed，tsc 干净，count-features 310——**词汇表 15→16 已立案待追认（新发现 #3）** |
+| 2026-09-26 | T-P1-11 | G1/G7 | `ff56b82` | `npx vitest run src/kernel/plan-mode.test.ts src/policy/exit-guard.test.ts` | 24 passed（11+13）；①plan 激活写/执行类出口硬关、用户 allow 规则压不过（gate 集成不进 broker 直接拒）；②读类透传；③退出后恢复（CLI 端到端：进出经审批、硬关无审批弹窗、退出后 bash 回到 ask）；④planModeFromEvents 流重建（被拒申请不改状态）；⑤提示词独立文件零 .ts diff + 注册面 7/8/9/10 四档；plan-guard 消费 T-P1-10 的 WRITE_EXECUTE_TOOLS 唯一权威；全量 591 passed，tsc 干净，count-features 310 |
+| 2026-09-26 | T-P1-12 | G3/G6 | `d0a162f` | `npx vitest run src/kernel/goal.test.ts` | 13 passed；①goal 跨 5 轮 tick 保持；②每轮注入提醒（装配级 injected 落流 + CLI"（注入）[目标提醒]"可见）；③到期三动作可断言（abandon 终态/report 持续催办/renew 自动续期）；④goal/set 落流、同 store 重建装配后 goal 仍在且不重复落初始事实；⑤词汇表 16→17 编译闸门+投影 goals+revert 切割+迁移守卫非法表穷举；全量 605 passed，tsc 干净，count-features 310——**词汇表 16→17 已立案待追认（新发现 #4）** |
+| 2026-09-26 | T-P1-13 | G4 | `d41239a` | `npx vitest run src/kernel/plan-mode.test.ts src/session/boot-maintenance.test.ts` | 21 passed（15+6）；①plan_exit 批准提交计划 → artifact 落盘 + checkpoint{provider:"plan"} 事件、planArtifactFromEvents 按流找回重启可读；②plan 会话崩溃重启：对账 interrupted、不自动重放（Q5 口径）、artifact 可读；③真 git 仓验证与 E11 互不干扰（untracked 不入 stash，/revert 代码回退不动 artifact）；checkpoint 槽位复核够用未扩词汇表；全量 610 passed，tsc 干净，count-features 310——**G 层 Planning 组（4 卡）收官，P1 批次 1 全部 13 卡完成** |
 
 ---
 
@@ -699,6 +699,55 @@ plan 模式对照用例为 T-P1-11 铺垫，T-P1-11 硬关复用 exit-guard（pr
 names 唯一权威同款结构），提示词独立文件进 copy-assets 的 descriptions
 清单；3) T-P1-13 依赖 T-P1-11 plan 模式与 E11 checkpoint（装配
 checkpointRepoRoot 先例），"重启不重放"按 Q5 对账口径。不要问要不要继续。
+```
+
+---
+
+## 批次 1 · 第四组报告（G 层 Planning，完成于 2026-09-26）
+
+- **打勾情况**：4 / 4（T-P1-10 ~ T-P1-13 全部完成，无未完成项）——**G 层 Planning 组收官，P1 批次 1 全部 13 卡完成**（C22/C46 聚合 3 卡 + J6 换模 3 卡 + I 层扩展面 3 卡 + G 层 Planning 4 卡）
+- **产出的文件**：
+  - `src/kernel/events.ts`——词汇表 15→17 两连扩：`todo/update {items}`（T-P1-10）与 `goal/set {text, deadline?, status}`（T-P1-12），均会话级元事件 + E12 整值；⏳ 两案待用户追认（待澄清 #3/#4，落地记录 4/5 含回退面）
+  - `src/kernel/tools/builtin/todo.ts` + `descriptions/todo_write.txt`——todo_write 工具（整值提交、fail-closed 校验 50 项/500 字符上限、emit 落流）；BUILTIN_TOOL_NAMES 7→8（T-P1-10）
+  - `src/policy/meta-ops.ts`——内核元操作白名单（todo_write 核心层显式放行；不变量 3 的"显式例外"落链上模块，冻结只追加）（T-P1-10）
+  - `src/policy/protected-paths.ts`——`WRITE_EXECUTE_TOOLS`/`isWriteExecuteTool` 写执行类唯一权威（write/edit/bash/todo_write，plan 硬关判定面）（T-P1-10 铺垫）
+  - `src/kernel/plan-mode.ts`——PlanModeService（进出幂等 + isActive 活查询）+ `planModeFromEvents` 流重建 + G4 的 `savePlanArtifact`/`planArtifactFromEvents`（T-P1-11/13）
+  - `src/kernel/tools/builtin/plan.ts` + `descriptions/{plan_enter,plan_exit}.txt`——plan 双工具（默认 ask 用户批准）；plan_exit 加可选 plan 参数（批准结算落盘）（T-P1-11/13）
+  - `src/policy/plan-guard.ts`——`enforcePlanMode` 出口级硬关（gate.ts / revalidate.ts 同位接线，规则不得授权）（T-P1-11）
+  - `src/kernel/goal.ts`——GoalService（set/renew/achieve/abandon + 迁移守卫 `nextGoalState` 纯函数 + `tickBeforeTurn` 轮边界到期判定 + `goalFromEvents` 流重建 + 到期动作 abandon/report/renew 可配）（T-P1-12）
+  - `src/kernel/assembly.ts`——createTodoUpdateEmitter 落流出口 + core 层挂 meta-ops + `planMode`/`planArtifactDir`/`goal` 装配选项（缺省全零行为变化）+ beforeFirstModelRequest 注入 goal 提醒 + plan_checkpoint 落流
+  - `src/cli/repl.ts`——todo/update 进度整幅渲染（`◆ 任务清单（n/m 完成）`+ ☐/▶/✓）
+  - `src/kernel/logger.ts`——连带修：落盘文件名日期改用注入时钟（与 ts 同源）
+  - 测试：todo.test 7、plan-mode.test 15、goal.test 13；project.test +3、exit-guard.test +3、events.test 计数 17、cli.test +3（todo 进度 / plan 端到端 / goal 提醒）、boot-maintenance.test +1（plan 崩溃重启）
+- **验收台账**：4 卡 4 命令全过（见台账表）；全量 `npx vitest run` **610 passed / 1 skipped**（第三组收官 565 → 净增 45），`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 548 链接 0 失效
+- **偏离计划的地方**：
+  1. **todo_write 走 meta-ops 白名单直过**（卡面未写）：内核元状态写入对工作区零副作用，走默认 ask 则每次清单更新挂起审批、G2 进度可见等于不可用；白名单是链上显式模块（C18 证据可解释），plan 硬关在出口级压过它——"plan 模式下 todo 不可写"不依赖链上收口
+  2. **plan 进出/重启均不扩词汇表**（全局约束 2 只给 T-P1-06/10/12 预留）：进出事实 = plan 工具自身的 tool/call+result；计划落盘 = `checkpoint{provider:"plan", ref:{path}}`（词汇表 checkpoint 槽位复核够用，卡面"不够再走扩展流程"的"不够"未发生）
+  3. **goal/set 载荷补必填 status**（卡面形状 `{text, deadline?}`）：设定/达成/放弃/续期都是状态变更（不变量 1），无 status 则达成/放弃无表达面；终态保留 text/deadline 终值
+  4. **plan_enter/plan_exit 默认 ask**：进出都经用户批准（opencode plan_exit 的 question.ask 同语义）——退出通道由用户控制，硬关不可被模型单方面解除
+  5. **goal 到期判定在轮边界 tick** 而非 kimi 式 schedule 定时器：无后台时钟依赖，驱动节奏与轮生命周期一致
+- **新发现的约束或坑**：
+  - **logger 落盘文件名跨日 flaky（已修）**：T-6-05 的 clock 注入只覆盖 ts 字段、文件名日期用裸 `new Date()`——注入值=真实值时巧合通过，跨日（26 号跑 25 号写的测试）即翻车。修复 = defaultSink 收同一时钟。教训：凡"注入时钟"的组件，所有时间面必须同源
+  - **vitest 全量跑 SQLite 子进程用例时 cli.test 的 plan 端到端 ~1.4s**：脚本 provider 四轮剧本 + 审批往返，测试面变厚后注意 timeout 配置（当前 5s 审批上限够用）
+  - **meta-ops 白名单与 WRITE_EXECUTE_TOOLS 的张力是结构性的**：链上放行（体验）与出口硬关（安全）分层工作——后者永远压过前者，新增"默认放行但 plan 下要关"的工具照此双清单落
+- **遗留风险与未知**：
+  - **词汇表 15→16（todo/update）与 16→17（goal/set）待用户追认**（待澄清 #3/#4 已立案；不追认回退面各约 2 小时，均为新增面）
+  - plan_exit 的 plan 参数是自由文本（无结构化计划 schema）——G4 的 artifact 是"计划文本存档"，结构化计划（分步骤/可勾选）属 B8/M8 后续
+  - goal 的设定/续期面 P1 是装配选项 + 服务 API；owner 通道协议命令与 CLI UX（/goal）未接
+  - execution epoch 完整机制（M8）未做："重启不重放"完全复用 Q5 对账，无自动续跑路径可拦
+  - REPL `/model` 命令仍欠（J6 组遗留）；untrusted 观察轨无生产触发方（K3/K4）
+- **下一批**：批次 1 全部收官（13/13 卡）。待用户追认词汇表两案后进批次 2：候选 = F5 摘要质量 + 递归摘要 · Q3 spill 清理 · B6/B7（并行/进度）· B8 其余扩展工具 · F6/F13/F14/F15 缓存族 · J12/J15/J16/J18/J19 模型运维族 · H1–H5 子代理族
+- **下一组提示词**：
+
+```
+继续 aegent P1 的实施。批次 1 已全部完成（13/13 卡，610 passed）。用户对
+待澄清 #3/#4 的追认结论已给出：<在此回填"允许"/"不允许"结论>——若允许，
+先把 docs/l0-events.md §3.2 计数与 §8 落地记录 4/5、进度文件待澄清表 #3/#4
+按"已追认"转正（§3.2 正式计数 17 事件），再与用户一起圈定批次 2 范围并
+按 docs/plan-p0.md §0 协议展卡执行（展卡格式照 docs/plan-p1.md，锚点逐一
+核对 oss/SOURCES.lock）；若不允许，先按落地记录 4/5 的回退面回修再圈定。
+上一组报告在 docs/plan-p0-progress.md（批次 1 · 第四组报告）。不要问要不要
+继续。
 ```
 
 ---
