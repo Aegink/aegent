@@ -189,7 +189,7 @@
 
 **锚点纪律**：15 条锚点已逐一打开核对到行号级（2026-09-26，核对证据见各卡「证据强度」）；Q3 与 §3 决策编号 Q3（IM 平台）同名异义已辨析。B7 的 `tool_execution_update` 事件名在 pi types.ts 未直接定位——mode 锚（types.ts:47,307-313）已核实，进度事件形状按验收要点自研（§2.5 以语义为准）。
 
-#### T-P1-14 · Q3 · spill 清理（落盘文件生命周期） `[ ]`
+#### T-P1-14 · Q3 · spill 清理（落盘文件生命周期） `[x]`
 - **依据需求**：Q3（P1；P0 的 B10/B11 打标记 + Q13 deletable 是它的地基）
 - **上游首选参考**：[dsh·packages/spill/](../oss/deepseek-harness/packages/spill)（spill 包——落盘文件生命周期）
 - **取什么 / 别抄什么**：取"截断产生的临时文件有清理策略、不无限堆积"；我方 truncate.ts 的 spillPath/deletable 标记（T-4-06）已就位，本卡只做消费端
@@ -197,6 +197,7 @@
 - **要产出**：spill GC（会话关闭 / 超龄 / 超量三触发任一定形，KISS 优先会话关闭 + 超量）+ 清理只认自己打过标记的文件（deletable 纪律）+ 单测
 - **验收**：`npx vitest run src/kernel/tools/truncate.test.ts`（扩）——①N 次截断后 spill 文件数有界（不无限堆积）；②清理不误删非 spill 文件（证伪）；③会话关闭触发清理可断言
 - **依赖**：无（批次 2 热身件）
+- **完成记录**：2026-09-26。产出 `src/kernel/tools/spill-gc.ts`（`SPILL_FILE_RE` 文件名精确形状——dsh "EXACT shape not bare prefix" 同款，形状不匹配的外来文件连首行都不读 + `readSpillMarker` 首行标记读取（4KB 上限 + kind 校验，任何失败当外来文件）+ `sweepSessionSpill` 会话关闭触发 + `enforceSpillQuota` 超量触发（own-marker 总数超限按 createdAt 最老先删、只删自动可删者、Infinity 显式关闭）+ `SpillGcReport`；lstat 不跟随符号链接、单文件失败收集报告不中断、unlink ENOENT=成功——dsh sweep 三纪律）+ `truncate.ts` 扩（`SpillMarker.deletable` 联合扩 `"manual" | "after-session-end"`——T-4-06 偏离④预留的扩展点兑现，boundedOutput 写 after-session-end；`DEFAULT_SPILL_DIR` 单一权威导出）+ `registry.ts` 接超量配额（`spillMaxFiles` 选项缺省 `DEFAULT_SPILL_MAX_FILES`=1000，**spill 发生点即配额执行点**，boundOutput 在 spilled 后 await）+ `agent-process.ts` 会话关闭接线（`finish()` 收尾：await sweepSessionSpill 再 exit——process.exit 会切断挂起的 unlink；dispose 无在途轮 / kick 收轮后 / stdin 关闭尾部三处 exit(0) 换 finish；`AgentChildOptions.spillDir?` + sessionId/spillDir 传进 ToolRegistry——此前生产标记恒 "unknown-session" 无法按会话清理）。验收：`npx vitest run src/kernel/tools/truncate.test.ts` → **11 passed**（6 既有 + 新 5）：①12 次截断（上限 5）后 spill 恰 5 个且幸存者 callId=c7..c11（最老先删）；②证伪：notes.txt / 形状相近无标记文件 / 名字形状命中的目录在会话清理 + 上限 0 配额双触发下原样保留；③`spill-gc.test` 未另立——③用 `sweepSessionSpill(dir,"s1")` 删 s1 自动可删者、s1 manual / s2 / 外来全留断言（+manual 即使最老也不被超量驱逐）。wiring：`agent-process.test.ts` 扩用例——预置 s0 自动可删/manual/s1/外来四类文件 → prompt → dispose → exit 0 落定时 s0 自动可删已清、其余原样（finish 在 exit 前 await 清理）。全量 `npx vitest run` **616 passed / 1 skipped**（610 → 净增 6），`npx tsc --noEmit` 干净，`count-features.sh` = 310 不变。**偏离**：①deletable 恒 "manual" 改为写 "after-session-end"（本卡即 T-4-06 预告的"清理策略定义"卡）；P0 时代旧 manual 文件 GC 永不碰（人工面保留）；②会话清理挂 agent-child 退出三路径（dispose/stdin 关闭/EPIPE）共享 finish，CLI 父进程零改动；③超龄触发不做（卡面三选二 KISS 既定）——AGENT_LOOP_CRASH 的 exit(1) 不扫，残留由下次 spill 的超量配额兜底。
 
 #### T-P1-15 · B17+B6 · 工具并发（RwLock 前提 + 并行可配） `[ ]`
 - **依据需求**：B17（P1）· B6（P1）

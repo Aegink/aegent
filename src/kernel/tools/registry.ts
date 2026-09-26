@@ -27,7 +27,8 @@ import type { ToolExecutionResult } from "../loop.js";
 import { isContractResult, projectResult, type ContractResult } from "./contract.js";
 import type { ToolContext } from "./context.js";
 import type { ExecutionEnv } from "./env.js";
-import { boundedOutput } from "./truncate.js";
+import { DEFAULT_SPILL_DIR, boundedOutput } from "./truncate.js";
+import { DEFAULT_SPILL_MAX_FILES, enforceSpillQuota } from "./spill-gc.js";
 
 /** 工具执行体的两种返回：已投影值，或契约富值（B12，dispatch 统一投影）。 */
 export type ToolExecution =
@@ -78,6 +79,7 @@ export class ToolRegistry {
   private readonly env: ExecutionEnv | undefined;
   private readonly sessionId: string | undefined;
   private readonly spillDir: string | undefined;
+  private readonly spillMaxFiles: number;
   private readonly guard:
     | ((name: string, args: JsonRecord) => Promise<ToolGuardOutcome>)
     | undefined;
@@ -89,7 +91,10 @@ export class ToolRegistry {
    * @param env 执行环境（D4）：装配处注入 NodeExecutionEnv；缺省 undefined
    * 时执行型工具（bash）落 EXECUTION_ENV_MISSING。
    * @param sessionId / spillDir 喂给 B5/B10 的出口截断（Q13 标记需要会话
-   * 身份）；缺省时标记记 "unknown-session"、spill 落系统临时目录。
+   * 身份）；缺省时标记记 "unknown-session"、spill 落 DEFAULT_SPILL_DIR。
+   * @param spillMaxFiles 超量触发上限（Q3/T-P1-14）：spill 发生点即配额
+   * 执行点，最老先删且只删自动可删者；传 Infinity 显式关闭。缺省
+   * DEFAULT_SPILL_MAX_FILES。
    * @param guard 执行前置守卫（C57/T-5-11）：阶段 5 权限层注入，缺省无
    * 守卫（纯工具层单测装配）。
    */
@@ -98,6 +103,7 @@ export class ToolRegistry {
     env?: ExecutionEnv;
     sessionId?: string;
     spillDir?: string;
+    spillMaxFiles?: number;
     guard?: (name: string, args: JsonRecord) => Promise<ToolGuardOutcome>;
   }) {
     this.descriptionsDir =
@@ -106,6 +112,7 @@ export class ToolRegistry {
     this.env = options?.env;
     this.sessionId = options?.sessionId;
     this.spillDir = options?.spillDir;
+    this.spillMaxFiles = options?.spillMaxFiles ?? DEFAULT_SPILL_MAX_FILES;
     this.guard = options?.guard;
   }
 
@@ -226,6 +233,13 @@ export class ToolRegistry {
       ...(this.spillDir !== undefined ? { spillDir: this.spillDir } : {}),
     });
     if (!bounded.truncated) return result;
+    // Q3 超量触发（T-P1-14）：spill 发生点即配额执行点——N 次截断后目录内
+    // own-marker 文件数有界（最老先删、只删自动可删者）。删除失败收集进
+    // 报告不抛：不掩盖本次截断结果，配额缺口留给下次 spill 再收。
+    await enforceSpillQuota(
+      this.spillDir ?? DEFAULT_SPILL_DIR,
+      this.spillMaxFiles,
+    );
     const baseMeta: JsonRecord =
       result.meta !== undefined &&
       typeof result.meta === "object" &&

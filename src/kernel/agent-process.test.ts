@@ -1,4 +1,6 @@
 import { execSync } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -140,5 +142,69 @@ describe("agent-process —— T9 agent 出进程", () => {
     expect(await exited).toBe(0);
     input.end();
     await running;
+  }, 30_000);
+
+  it("Q3 会话关闭触发 spill 清理（T-P1-14）：dispose 退出前清掉本会话自动可删文件", async () => {
+    const spillDir = mkdtempSync(path.join(tmpdir(), "aegent-spill-wire-"));
+    const writeSpill = (sessionId: string, deletable: "manual" | "after-session-end"): string => {
+      const filePath = path.join(
+        spillDir,
+        `spill-${Date.now()}-${process.pid}-${Math.random().toString(36).slice(2, 8)}.txt`,
+      );
+      const marker = {
+        kind: "aegent/tool-output-spill",
+        sessionId,
+        tool: "fake",
+        callId: "c",
+        createdAt: new Date().toISOString(),
+        deletable,
+        truncatedBy: "bytes",
+      };
+      writeFileSync(filePath, `${JSON.stringify(marker)}\n\n原文`, "utf8");
+      return filePath;
+    };
+    // 预置四类：本会话自动可删（应清）/ 本会话 manual（留）/ 其他会话（留）/ 外来（留）
+    const s0Auto = writeSpill("s0", "after-session-end");
+    const s0Manual = writeSpill("s0", "manual");
+    const s1File = writeSpill("s1", "after-session-end");
+    const foreign = path.join(spillDir, "notes.txt");
+    writeFileSync(foreign, "keep", "utf8");
+
+    const input = new PassThrough();
+    const output = new PassThrough();
+    let exitCode: number | null = null;
+    let resolveExit: (code: number) => void = () => {};
+    const exited = new Promise<number>((resolve) => {
+      resolveExit = resolve;
+    });
+    const running = runAgentChildStdio({
+      input,
+      output,
+      exit: (code) => {
+        if (exitCode === null) {
+          exitCode = code;
+          resolveExit(code);
+        }
+      },
+      sessionId: "s0",
+      spillDir,
+    });
+    output.resume(); // 本用例不消费协议消息，防 PassThrough 背压积压
+    try {
+      // 一轮完整对话确认子进程服务正常，随后 dispose 触发会话关闭清理
+      input.write(`${JSON.stringify({ type: "prompt", messageId: "m1", content: "问" })}\n`);
+      // 无消息消费需求：等 exit（dispose → finish 内的 sweep 完成后才 exit）
+      input.write(`${JSON.stringify({ type: "dispose" })}\n`);
+      expect(await exited).toBe(0);
+      input.end();
+      await running;
+      // finish() 在 exit 前 await 清理——exit 码 0 落定时删除已结算
+      expect(existsSync(s0Auto)).toBe(false);
+      expect(existsSync(s0Manual)).toBe(true);
+      expect(existsSync(s1File)).toBe(true);
+      expect(existsSync(foreign)).toBe(true);
+    } finally {
+      rmSync(spillDir, { recursive: true, force: true });
+    }
   }, 30_000);
 });

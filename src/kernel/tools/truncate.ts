@@ -23,6 +23,12 @@ export const DEFAULT_MAX_BYTES = 51_200;
 /** pi truncated-tool 同款：2000 行。 */
 export const DEFAULT_MAX_LINES = 2000;
 
+/**
+ * spill 目录缺省值（Q3 单一权威）：生产者（boundedOutput）与消费者
+ * （spill-gc 的会话清理）必须指同一处，缺省装配不改此值。
+ */
+export const DEFAULT_SPILL_DIR = path.join(tmpdir(), "aegent-tool-spill");
+
 /** Q13 归属标记：spill 文件首行（可解析 JSON）。 */
 export interface SpillMarker {
   kind: "aegent/tool-output-spill";
@@ -31,8 +37,13 @@ export interface SpillMarker {
   callId: string;
   /** ISO 时间。 */
   createdAt: string;
-  /** Q13 的"何时可删"声明；P1 清理器消费，P0 恒 manual（等人工/后续策略）。 */
-  deletable: "manual";
+  /**
+   * Q13 的"何时可删"声明，spill-gc（T-P1-14）按此执行：
+   * - "after-session-end"：会话关闭即可删——boundedOutput 的缺省（spill 的
+   *   消费者就是活会话，会话结束即失效；超量驱逐也只碰这一类）；
+   * - "manual"：只有人工决定才能删，GC 永不碰（T-4-06 偏离④预留的扩展点）。
+   */
+  deletable: "manual" | "after-session-end";
   /** 最后生效的截断触发点。 */
   truncatedBy: "bytes" | "lines";
 }
@@ -107,14 +118,14 @@ async function spill(
   options: BoundedOutputOptions,
   limits: { maxBytes: number; maxLines: number },
 ): Promise<BoundedOutput> {
-  const spillDir = options.spillDir ?? path.join(tmpdir(), "aegent-tool-spill");
+  const spillDir = options.spillDir ?? DEFAULT_SPILL_DIR;
   const marker: SpillMarker = {
     kind: "aegent/tool-output-spill",
     sessionId: options.sessionId,
     tool: options.tool,
     callId: options.callId,
     createdAt: new Date().toISOString(),
-    deletable: "manual",
+    deletable: "after-session-end",
     truncatedBy,
   };
   const fileName = `spill-${String(Date.now())}-${String(process.pid)}-${Math.random().toString(36).slice(2, 8)}.txt`;

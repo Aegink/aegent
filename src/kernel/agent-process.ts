@@ -38,6 +38,8 @@ import { ModelNotRegisteredError } from "./model-switch.js";
 import { registerBuiltinTools } from "./tools/builtin/index.js";
 import { NodeExecutionEnv } from "./tools/env.js";
 import { ToolRegistry } from "./tools/registry.js";
+import { DEFAULT_SPILL_DIR } from "./tools/truncate.js";
+import { sweepSessionSpill } from "./tools/spill-gc.js";
 
 // ---------------------------------------------------------------------------
 // echo provider（P0 子进程内置：回声最后一条 user 消息；协议与进程全真）
@@ -70,6 +72,11 @@ export interface AgentChildOptions {
   output?: NodeJS.WritableStream;
   /** dispose 或 stdin 关闭后退出（测试注入以免真实退出进程）。默认 process.exit。 */
   exit?: (code: number) => void;
+  /**
+   * spill 文件目录（Q3/T-P1-14）：工具出口截断的落盘位与会话关闭清理的
+   * 目标位；缺省 DEFAULT_SPILL_DIR（系统临时目录 aegent-tool-spill）。
+   */
+  spillDir?: string;
   /**
    * 事件存储（T-8-01：CLI 的 SQLite 落库走此注入）。缺省 InMemory——
    * 原生模块不进 echo 模式冷启动路径（Q16 <500ms 的结构性前提）。
@@ -143,7 +150,13 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
   // 工具装配（T-4-05 接线，兑现 T-4-02 偏离⑥）：注册表分发就是 toolCall 链的
   // 链底 terminal——executeTool 槽位由 registry.dispatch 充当，不存在旁路。
   // T-8-01：装配提供 PathGuard 时经它构造（写守卫唯一入口，T-6-01）。
-  const toolRegistry = new ToolRegistry({ env: new NodeExecutionEnv() });
+  // Q3（T-P1-14）：sessionId/spillDir 传进注册表——spill 标记带真实会话身份，
+  // 会话关闭清理才能按身份命中（缺省标记记 unknown-session 无法清理）。
+  const toolRegistry = new ToolRegistry({
+    env: new NodeExecutionEnv(),
+    sessionId,
+    ...(options.spillDir !== undefined ? { spillDir: options.spillDir } : {}),
+  });
   registerBuiltinTools(
     toolRegistry,
     {
@@ -195,12 +208,28 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
   let inflight: Promise<void> | null = null;
   let disposing = false;
 
+  // Q3 会话关闭触发（T-P1-14）：退出前清掉本会话的自动可删 spill 文件
+  // （manual 声明者与其他会话的文件由 spill-gc 保留）。exit 缺省是
+  // process.exit——挂起的 unlink 会被切断，所以清理必须 await 完再退。
+  // AGENT_LOOP_CRASH 的 exit(1) 不在此列：异常路径保持即时退出，残留文件
+  // 由下次 spill 的超量配额兜底。
+  let finishing = false;
+  const finish = async (): Promise<void> => {
+    if (finishing) return;
+    finishing = true;
+    try {
+      await sweepSessionSpill(options.spillDir ?? DEFAULT_SPILL_DIR, sessionId);
+    } finally {
+      exit(0);
+    }
+  };
+
   const kick = (): void => {
     if (inflight) return;
     const next = queue.drain()[0];
     if (!next) {
       if (disposing) {
-        exit(0);
+        void finish();
         return;
       }
       // T-8-01：宣告空闲（无在途轮且队列空）——CLI 的 EOF 语义据此等
@@ -334,7 +363,7 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
         disposing = true;
         loop.cancel({ kind: "disposed" });
         assembly?.dispose(); // 挂起审批按超时语义拒绝——gate 落 isError 后轮可收
-        if (!inflight) exit(0);
+        if (!inflight) void finish();
         return;
     }
   };
@@ -376,9 +405,12 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
     loop.cancel({ kind: "disposed" });
     assembly?.dispose();
   }
-  if (!inflight) exit(0);
+  if (!inflight) {
+    await finish();
+    return;
+  }
   await inflight;
-  exit(0);
+  await finish();
 }
 
 // ---------------------------------------------------------------------------
