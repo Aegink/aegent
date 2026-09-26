@@ -175,4 +175,45 @@ describe("usage_rollup（T-8-03 · L3）", () => {
       storage.db.close();
     }
   });
+
+  it("缓存命中率按会话可查（F6/T-P1-19）：cacheRead/input（OpenAI cached ⊆ prompt 语义），input=0 缺席", async () => {
+    const fixture = await makeFixture(2);
+    try {
+      const s = fixture.usage()[0]!;
+      // 会话级：ΣcacheRead=10，Σinput=300 → 10/300（从聚合和现算，非均值）
+      expect(s.cacheHitRate).toBeCloseTo(10 / 300, 10);
+      const rows = fixture.byTurn();
+      expect(rows[0]!.cacheHitRate).toBeCloseTo(5 / 100, 10);
+      expect(rows[1]!.cacheHitRate).toBeCloseTo(5 / 200, 10);
+    } finally {
+      fixture.close();
+    }
+
+    // input=0（无计量不算 0 的同款纪律）：命中率缺席
+    const storage = SqliteEventStorage.open({ path: path.join(dir, "zero.db") });
+    try {
+      const db = storage.db;
+      const store = new SessionStore(storage);
+      store.append("s-zero", [
+        { type: "turn/start", turn: 1 },
+        { type: "user/message", turn: 1, message: { content: "hi" }, source: "user" },
+        { type: "step/start", turn: 1, step: 1 },
+        {
+          type: "assistant/message",
+          turn: 1,
+          step: 1,
+          message: { content: "yo" },
+          stream: [],
+          usage: { inputTokens: 0, outputTokens: 3, cacheReadTokens: 2 },
+        },
+        { type: "step/end", turn: 1, step: 1 },
+        { type: "turn/end", turn: 1, reason: { kind: "completed" } },
+      ]);
+      await store.flush("s-zero");
+      ensureUsageView(db);
+      expect(usageBySession(db, "s-zero")[0]!.cacheHitRate).toBeUndefined();
+    } finally {
+      storage.db.close();
+    }
+  });
 });

@@ -215,6 +215,8 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
           beforeFirstModelRequest: assembly.beforeFirstModelRequest,
           onToolStepCompleted: (turn: number, step: number) =>
             assembly.onToolStepCompleted(turn, step),
+          // F6/F13/T-P1-19：逐请求缓存锚检测 → 装配观测（rewritten 告警）
+          onCacheAnchorChange: assembly.onCacheAnchorChange,
         }
       : {}),
   };

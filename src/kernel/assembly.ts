@@ -43,6 +43,7 @@ import {
 } from "./chain.js";
 import { type HookRegistry } from "./hooks.js";
 import type { SessionEvent, LlmFailure } from "./events.js";
+import type { PrefixChange } from "../context/prefix-anchor.js";
 import type { SessionStore } from "../session/store.js";
 import { RevertService } from "../session/revert.js";
 import {
@@ -284,6 +285,12 @@ export interface ChildAssembly {
   beforeFirstModelRequest(turn: number): Promise<void>;
   /** step 收尾记账（loop 的 onToolStepCompleted hook → 抖动断路器）。 */
   onToolStepCompleted(turn: number, step: number): void;
+  /**
+   * F6/F13/T-P1-19 缓存锚变化观测（loop 的 onCacheAnchorChange hook）：
+   * rewritten = 前缀作废（换模 + rewritten 即违背 F13）落 warn；
+   * appended = 位置性追加落 info。
+   */
+  onCacheAnchorChange(change: PrefixChange): void;
   /** 决策包装（预算记账 + 提醒注入；决策语义仍由 base 给出）。 */
   wrapDecideTurn(base: DecideTurn): DecideTurn;
   /** 协议 approve 请求的处理（C5 挂起唤醒 + C24 scope/feedback：session 作用域落批准缓存、feedback 落审计；Stale/Unknown 类型化错误上抛）。 */
@@ -690,6 +697,20 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
 
   return {
     layers,
+    // F6/F13/T-P1-19：锚变化观测——rewritten 落 warn（前缀作废，换模时
+    // 即违背 F13）；appended 落 info（位置性追加，F13 允许形态）。
+    onCacheAnchorChange: (change) => {
+      if (change.kind === "rewritten") {
+        logger?.warn(
+          `缓存锚前缀作废（${change.modelSwitched ? "伴随换模" : "同模型"}）——已缓存前缀本次失效`,
+        );
+      } else {
+        logger?.info("cache-anchor", {
+          kind: change.kind,
+          modelSwitched: change.modelSwitched,
+        });
+      }
+    },
     beforeFirstModelRequest: async (turn) => {
       completedModelSteps = 0;
       // G3 goal 提醒注入（T-P1-12，同 PreTurn 压缩位）：到期判定 + 配置

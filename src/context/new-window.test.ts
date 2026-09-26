@@ -228,3 +228,90 @@ describe("多次压缩与 revert", () => {
     );
   });
 });
+// ---------------------------------------------------------------------------
+// 缓存锚与前缀保真（F6/F13/F15 / T-P1-19）：换模锚不变 + 压缩 cache-safe
+// ---------------------------------------------------------------------------
+
+import { ScriptedProvider, makeLoop } from "../kernel/loop.test-utils.js";
+import {
+  computeCacheAnchor,
+  type PrefixChange,
+} from "./prefix-anchor.js";
+
+describe("缓存锚与前缀保真（F6/F13 / T-P1-19）", () => {
+  const TOOLS = [
+    { name: "read", description: "读文件", parameters: { type: "object", properties: {} } },
+  ];
+
+  it("验收①锚稳定：换模前后 system/tools 块逐字节不变（锚检测零通知）", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([{ type: "text-delta", text: "答一" }, { type: "done" }]);
+    provider.mount([{ type: "text-delta", text: "答二" }, { type: "done" }]);
+    const changes: PrefixChange[] = [];
+    const { loop, store } = makeLoop(provider, {
+      // 换模：turn 2 用 m-1、turn 3 用 m-2（J6 modelForTurn 捕获面）
+      modelForTurn: (turn) => ({
+        provider,
+        identity:
+          turn === 2
+            ? { provider: "mock", modelId: "m-1" }
+            : { provider: "mock", modelId: "m-2" },
+      }),
+      onCacheAnchorChange: (c) => changes.push(c),
+    });
+    // 预置 turn 1（含 system 消息，锚的一部分在流内）→ runTurn 从 turn 2 起
+    store.append("s1", [
+      { type: "turn/start", turn: 1 },
+      { type: "step/start", turn: 1, step: 1 },
+      { type: "system/message", turn: 1, step: 1, message: { content: "你是代码助手" } },
+      { type: "step/end", turn: 1, step: 1 },
+      { type: "turn/end", turn: 1, reason: { kind: "completed" } },
+    ]);
+
+    await loop.runTurn("问一"); // turn 2 · m-1
+    await loop.runTurn("问二"); // turn 3 · m-2（换模发生）
+
+    // 换模但锚逐字节不变 → 零通知（identical 静默——F13 换模不作废前缀）
+    expect(changes).toEqual([]);
+    // wire 级逐字节：两次请求 system 消息与 tools 完全一致，身份确实切换
+    const [r1, r2] = provider.requests;
+    expect(r1!.identity).toEqual({ provider: "mock", modelId: "m-1" });
+    expect(r2!.identity).toEqual({ provider: "mock", modelId: "m-2" });
+    expect(r1!.messages.find((m) => m.role === "system")).toEqual(
+      r2!.messages.find((m) => m.role === "system"),
+    );
+    expect(r1!.tools).toEqual(r2!.tools);
+  });
+
+  it("验收②压缩 cache-safe：新窗口保留锚（system+tools 逐字节不变，摘要只替换中段）", async () => {
+    const store = run();
+    store.append(SESSION, [
+      { type: "turn/start", turn: 1 },
+      { type: "step/start", turn: 1, step: 1 },
+      { type: "system/message", turn: 1, step: 1, message: { content: "你是代码助手" } },
+      { type: "user/message", turn: 1, message: { content: "长任务开始" }, source: "user" },
+      { type: "assistant/message", turn: 1, step: 1, message: { content: "进展 A" }, stream: [] },
+      { type: "step/end", turn: 1, step: 1 },
+      { type: "turn/end", turn: 1, reason: { kind: "completed" } },
+    ]);
+    store.append(SESSION, turnEvents(2, "第二轮", "进展 B"));
+    // 压缩前的请求锚（system + tools）
+    const beforeMessages = buildChatMessages(store.load(SESSION));
+    const beforeAnchor = computeCacheAnchor(
+      beforeMessages.find((m) => m.role === "system")?.content,
+      TOOLS,
+    );
+
+    await compact(store, 2);
+    const afterMessages = startNewContextWindow(store.load(SESSION));
+    const afterAnchor = computeCacheAnchor(
+      afterMessages.find((m) => m.role === "system")?.content,
+      TOOLS,
+    );
+    // F15"压缩不作废缓存"：锚逐字节不变——system 原文保留在首位，摘要
+    // 只替换会话体中段（锚不含会话体）
+    expect(afterAnchor).toBe(beforeAnchor);
+    expect(afterMessages[0]).toMatchObject({ role: "system", content: "你是代码助手" });
+    expect(afterMessages[1]!.content).toContain("会话压缩摘要");
+  });
+});

@@ -52,6 +52,8 @@ export function makeLoop(
     toolExecution?: AgentLoopDeps["toolExecution"];
     isParallelTool?: AgentLoopDeps["isParallelTool"];
     toolsProvider?: AgentLoopDeps["toolsProvider"];
+    onCacheAnchorChange?: AgentLoopDeps["onCacheAnchorChange"];
+    modelForTurn?: AgentLoopDeps["modelForTurn"];
   },
 ): Harness {
   const store = new SessionStore();
@@ -82,6 +84,10 @@ export function makeLoop(
     ...(opts?.toolExecution ? { toolExecution: opts.toolExecution } : {}),
     ...(opts?.isParallelTool ? { isParallelTool: opts.isParallelTool } : {}),
     ...(opts?.toolsProvider ? { toolsProvider: opts.toolsProvider } : {}),
+    ...(opts?.onCacheAnchorChange
+      ? { onCacheAnchorChange: opts.onCacheAnchorChange }
+      : {}),
+    ...(opts?.modelForTurn ? { modelForTurn: opts.modelForTurn } : {}),
   });
   return { store, loop, decideCalls };
 }

@@ -55,18 +55,28 @@ export interface UsageRow {
   cacheReadTokens: number;
   cacheCreationTokens: number;
   totalTokens: number;
+  /**
+   * 缓存命中率（F6/T-P1-19）：cacheReadTokens / inputTokens——OpenAI 语义
+   * cached_tokens ⊆ prompt_tokens（toTokenUsage 的映射关系），命中率按
+   * input 口径。inputTokens 为 0 时缺席（"无计量不算 0"的同款纪律）。
+   * 按会话行可查（J2 实测 Σinput 64.5k 的优化观测面）。
+   */
+  cacheHitRate?: number;
 }
 
 function toRow(raw: Record<string, unknown>): UsageRow {
+  const inputTokens = raw["input_tokens"] as number;
+  const cacheReadTokens = raw["cache_read_tokens"] as number;
   return {
     sessionId: raw["session_id"] as string,
     turn: raw["turn"] as number,
     requests: raw["requests"] as number,
-    inputTokens: raw["input_tokens"] as number,
+    inputTokens,
     outputTokens: raw["output_tokens"] as number,
-    cacheReadTokens: raw["cache_read_tokens"] as number,
+    cacheReadTokens,
     cacheCreationTokens: raw["cache_creation_tokens"] as number,
     totalTokens: raw["total_tokens"] as number,
+    ...(inputTokens > 0 ? { cacheHitRate: cacheReadTokens / inputTokens } : {}),
   };
 }
 

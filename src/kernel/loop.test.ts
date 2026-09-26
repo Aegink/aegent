@@ -11,6 +11,7 @@ import {
 } from "./loop.js";
 import { ScriptedProvider, makeLoop } from "./loop.test-utils.js";
 import { RwLock } from "./rw-lock.js";
+import type { PrefixChange } from "../context/prefix-anchor.js";
 import { expectPaired, expectSingleTerminal, expectTurnScoped } from "../test-support/event-asserts.js";
 import type { ChatTool, ModelProvider } from "../models/provider.js";
 
@@ -617,6 +618,36 @@ describe("工具进度上报（B7 / T-P1-16）", () => {
     expect(headers[0]!.tools).toHaveLength(1);
     expect(headers[1]!.tools).toHaveLength(2);
     expect(headers[1]!.tools![1]!.name).toBe("big");
+  });
+  it("缓存锚变化检测（F6/F13/T-P1-19）：工具追加 = appended；改写 = rewritten；换模 + 锚不变 = 零通知", async () => {
+    const provider = new ScriptedProvider();
+    for (let i = 0; i < 3; i++) {
+      provider.mount([{ type: "text-delta", text: `答${String(i)}` }, { type: "done" }]);
+    }
+    // 请求 1: [t1]；请求 2: [t1, t2]（追加）；请求 3: [t1b, t2]（改写 t1 描述）
+    const t1: ChatTool = { name: "t1", description: "d1", parameters: { type: "object", properties: {} } };
+    const t2: ChatTool = { name: "t2", description: "d2", parameters: { type: "object", properties: {} } };
+    const t1b: ChatTool = { name: "t1", description: "d1-changed", parameters: { type: "object", properties: {} } };
+    let requests = 0;
+    const changes: PrefixChange[] = [];
+    const { loop } = makeLoop(provider, {
+      toolsProvider: () => {
+        requests++;
+        return requests <= 1 ? [t1] : requests === 2 ? [t1, t2] : [t1b, t2];
+      },
+      onCacheAnchorChange: (c) => changes.push(c),
+    });
+
+    await loop.runTurn("一");
+    await loop.runTurn("二");
+    await loop.runTurn("三");
+    expect(changes).toEqual([
+      { from: changes[0]!.from, to: changes[0]!.to, kind: "appended", modelSwitched: false },
+      { from: changes[1]!.from, to: changes[1]!.to, kind: "rewritten", modelSwitched: false },
+    ]);
+    // appended 的语义：旧锚是新锚的字节前缀（已缓存前缀全部存活）
+    expect(changes[1]!.to.startsWith(changes[1]!.from)).toBe(false);
+    expect(changes[0]!.to.startsWith(changes[0]!.from)).toBe(true);
   });
 });
 

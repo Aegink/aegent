@@ -36,6 +36,7 @@ import {
 import { buildChatMessages, effectiveEvents } from "../session/messages.js";
 import { Projector } from "../session/project.js";
 import type { SessionStore } from "../session/store.js";
+import { computeCacheAnchor, type PrefixChange } from "../context/prefix-anchor.js";
 import { BudgetExceededError, ParseBudget } from "./budget.js";
 import {
   type ChainExecutor,
@@ -218,6 +219,13 @@ export interface AgentLoopDeps {
    * parallel 模式下所有工具都排他（与 sequential 等效但事件序不同）。
    */
   isParallelTool?(name: string): boolean;
+  /**
+   * F6/F13/T-P1-19 缓存锚变化通知（逐请求检测）：锚 = system + tools 字节
+   * 序（computeCacheAnchor）。identical 静默；appended（位置性追加，F13
+   * 允许）与 rewritten（前缀作废——换模时 rewritten 即违背 F13，装配侧
+   * 据此告警）。缺省 undefined = 不检测通知（锚计算本身零开销）。
+   */
+  onCacheAnchorChange?(change: PrefixChange): void;
   /** 三个点位的层。P0 恒空数组；阶段 5/7 的权限/上下文/压缩层从这里进。 */
   layers?: {
     toolCall?: ReadonlyArray<
@@ -607,6 +615,9 @@ export class AgentLoop {
    */
   private readonly toolLock = new RwLock();
 
+  /** F6/F13/T-P1-19：上一次请求的缓存锚与身份（onCacheAnchorChange 在位时才维护）。 */
+  private lastAnchor: { anchor: string; identity: ModelIdentity } | null = null;
+
   private async runParallelTools(
     turn: number,
     step: number,
@@ -662,6 +673,26 @@ export class AgentLoop {
     // F12/F14：toolsProvider 在位时每请求现取（deferrable 工具索取后真
     // schema 才进清单）；缺省回落固定 tools（P0 零行为变化）
     const tools = this.deps.toolsProvider?.() ?? this.deps.tools;
+    // F6/F13/T-P1-19：逐请求缓存锚检测——system + tools 字节序。identical
+    // 静默；appended/rewritten 通知装配观测（换模 + rewritten = 违背 F13
+    // "中途改动不得作废已缓存前缀"的告警信号）。
+    if (this.deps.onCacheAnchorChange) {
+      const systemContent = payload.messages.find((m) => m.role === "system")
+        ?.content;
+      const anchor = computeCacheAnchor(systemContent, tools);
+      const last = this.lastAnchor;
+      if (last !== null && anchor !== last.anchor) {
+        this.deps.onCacheAnchorChange({
+          from: last.anchor,
+          to: anchor,
+          kind: anchor.startsWith(last.anchor) ? "appended" : "rewritten",
+          modelSwitched:
+            payload.identity.provider !== last.identity.provider ||
+            payload.identity.modelId !== last.identity.modelId,
+        });
+      }
+      this.lastAnchor = { anchor, identity: payload.identity };
+    }
     store.append(sessionId, [
       {
         type: "request/header",
