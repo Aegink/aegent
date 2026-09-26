@@ -1,0 +1,28 @@
+[package]
+name = "win32-sandbox-helper"
+version = "0.1.0"
+edition = "2021"
+
+# aegent D6 受限令牌 helper——TS 侧仅调用（T9：跨语言一律子进程、只传
+# 可序列化值）。Win32 面全在本 crate：受限令牌构造、ACL 写授予、受限
+# spawn。构建：cargo build --release（npm run build:sandbox-helper）。
+
+[[bin]]
+name = "win32-sandbox-helper"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.48", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_System_Threading",
+    "Win32_System_Pipes",
+    "Win32_System_Memory",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_Storage_FileSystem",
+] }

@@ -14,7 +14,8 @@
   "scripts": {
     "test": "vitest run",
     "build": "tsc && node scripts/copy-assets.mjs",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "build:sandbox-helper": "cd src/sandbox/win32-helper && cargo build --release"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
