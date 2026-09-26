@@ -317,21 +317,35 @@ export function createFailoverProvider(
           continue;
         }
         let delivered = false;
+        let settled = false;
+        let failed = false;
         try {
           for await (const chunk of withRetry(backend.provider, options.retry).streamChat(req)) {
             delivered = true;
             yield chunk;
           }
+          // 自然流终：接管成功（粘住）
+          settled = true;
           breaker.recordSuccess();
-          currentIndex = index; // 成功后粘住
+          currentIndex = index;
           return;
         } catch (e) {
+          failed = true;
           breaker.recordFailure(classifyProviderFailure(e));
           if (delivered) throw e; // 增量已送达调用方——不换家（流边界）
           failures.push({ backend: backend.name, error: e });
           options.onEvent?.(
             `后端 ${backend.name} 请求失败，按队列序故障转移（${String(classifyProviderFailure(e))}）`,
           );
+        } finally {
+          // 消费方提前断开（done 即 break / return / 取消）：生成器在此被
+          // return() 中止，try 块的簿记不会执行——增量已交付 = 后端活着，
+          // 补记账不让"粘住"随中止丢失（真实厂商复测发现：簿记丢失导致
+          // 每次请求都重新探测死掉的主端点）。失败路径（failed）不补。
+          if (!settled && !failed && delivered) {
+            breaker.recordSuccess();
+            currentIndex = index;
+          }
         }
       }
       throw new AllBackendsFailedError(failures);

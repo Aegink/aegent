@@ -218,3 +218,33 @@ describe("容错层（J15/J18/J19 / T-P1-23）", () => {
     expect(tracker.snapshot("no-such")).toBeUndefined();
   });
 });
+
+describe("容错层簿记（真实厂商复测发现的缺陷回归）", () => {
+  it("消费方提前断开（done 即 break）：接管后端补记账——粘住生效、不再重复探测死端点", async () => {
+    const clock = { now: 1_000_000 };
+    const a = scriptedBackend("a", ["fail-retryable"]);
+    const b = scriptedBackend("b", ["succeed", "succeed"]);
+    const handle = createFailoverProvider([a, b], {
+      failureThreshold: 2,
+      retry: { maxAttempts: 1 },
+      now: () => clock.now,
+    });
+    const req = { identity: { provider: "test", modelId: "m" } as never, messages: [{ role: "user" as const, content: "hi" }] };
+
+    // 消费方在 done 到达即 break（模拟 UI 提前收尾/测试剧本）——修复前
+    // 生成器在此被中止，recordSuccess 与 currentIndex 簿记全部丢失
+    for await (const chunk of handle.provider.streamChat(req)) {
+      if (chunk.type === "done") break;
+    }
+    expect(handle.currentBackend()).toBe("b"); // 粘住 backup（修复前恒为 "a"）
+    expect(handle.breakers.get("b")!.state).toBe("closed");
+    expect(a.calls()).toBe(1);
+
+    // 后续请求直接从 b 开始：死掉的 a 零发出（不再被重复探测）
+    for await (const chunk of handle.provider.streamChat(req)) {
+      if (chunk.type === "done") break;
+    }
+    expect(a.calls()).toBe(1);
+    expect(handle.currentBackend()).toBe("b");
+  });
+});
