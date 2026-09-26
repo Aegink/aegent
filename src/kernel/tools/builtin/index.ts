@@ -10,6 +10,7 @@
 import { PathGuard } from "../../../sandbox/path-guard.js";
 import type { ToolRegistry } from "../registry.js";
 import { WriteQueue } from "../write-queue.js";
+import { createApplyPatchTool } from "./apply-patch.js";
 import { createBashTool } from "./bash.js";
 import { createEditTool } from "./edit.js";
 import { createGlobTool } from "./glob.js";
@@ -36,6 +37,7 @@ export const BUILTIN_TOOL_NAMES = [
   "bash",
   "pwsh",
   "edit",
+  "apply_patch",
   "glob",
   "grep",
   "skill_load",
@@ -93,6 +95,9 @@ export function registerBuiltinTools(
     // tool-bash/tool-pwsh 同构；Windows 沙箱态宿主正路，见 win32-backend）
     createPwshTool({ pathGuard: guard }),
     createEditTool({ writeQueue, pathGuard: guard }),
+    // B8 残余（T-P1-56）：V4A patch 多文件编辑——write/edit 同款写队列
+    // 与守卫注入（delete/move 的删除面走 guard.remove）
+    createApplyPatchTool({ writeQueue, pathGuard: guard }),
     createGlobTool(),
     createGrepTool(),
     // I2 技能面：skillsRoot = 工作区根（agent-process 传 assembly 的

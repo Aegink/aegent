@@ -31,7 +31,8 @@ export {
   findProtectedMetadataSegment,
 } from "./protected-names.js";
 
-/** 写路径工具（注册表名）。bash 不在此列——走下方的虚拟写目标分支。 */
+/** 写路径工具（注册表名）。bash 不在此列——走下方的虚拟写目标分支；
+ * apply_patch 同理——其目标路径藏在 patchText 里，走再下方的 patch 分支。 */
 const WRITE_PATH_TOOLS: ReadonlySet<string> = new Set(["write", "edit"]);
 
 /** 该工具是否为"写路径"类（硬拦与自我修改防线共用的判定面）。 */
@@ -54,6 +55,7 @@ export const WRITE_EXECUTE_TOOLS: ReadonlySet<string> = new Set([
   "bash",
   "pwsh",
   "todo_write",
+  "apply_patch",
 ]);
 
 /** 该工具是否为写/执行类（plan 硬关面；非写执行类 = plan 模式下可用）。 */
@@ -71,6 +73,28 @@ function findProtectedBashWriteTarget(
     if (segment !== undefined) return { path: op.path, segment };
   }
   return undefined;
+}
+
+/**
+ * V4A patch 文本的目标路径提取（T-P1-56 apply_patch 通道的扫描器——
+ * 与 bash 虚拟写目标扫描同构的本地实现，不 import 工具层解析器以免
+ * policy→kernel 反向依赖）。前缀集与工具解析器（apply-patch.ts）一致，
+ * 由 apply-patch.test.ts 的扫描器对齐用例钉死；漏认行进不了工具变更
+ * （工具解析失败整 patch 拒绝），故"扫描器 ⊇ 解析器"的偏置方向安全。
+ * （供 protected-paths 与 self-guard 两个出口共用。）
+ */
+export function extractPatchWritePaths(patchText: string): string[] {
+  const paths: string[] = [];
+  for (const line of patchText.split("\n")) {
+    for (const header of ["*** Add File:", "*** Update File:", "*** Delete File:", "*** Move to:"]) {
+      if (line.startsWith(header)) {
+        const target = line.slice(header.length).trim();
+        if (target !== "") paths.push(target);
+        break;
+      }
+    }
+  }
+  return paths;
 }
 
 /**
@@ -104,6 +128,20 @@ export function enforceProtectedPaths(
           action: "deny",
           reason: `bash 虚拟写目标 "${hit.path}" 含保留元数据目录 "${hit.segment}"，硬拦不可被规则授权（C46 出口级）`,
         };
+      }
+    }
+  }
+  if (call.tool === "apply_patch") {
+    const patchText = call.args.patchText;
+    if (typeof patchText === "string") {
+      for (const target of extractPatchWritePaths(patchText)) {
+        const segment = findProtectedMetadataSegment(target);
+        if (segment !== undefined) {
+          return {
+            action: "deny",
+            reason: `patch 目标 "${target}" 含保留元数据目录 "${segment}"，硬拦不可被规则授权（C46 出口级）`,
+          };
+        }
       }
     }
   }

@@ -1,0 +1,26 @@
+对工作区内的一组文件应用 V4A patch（多文件原子提交语义：先全量验证后执行，任一 hunk 验证失败则整个 patch 不落盘）。patchText 是一个信封：
+
+*** Begin Patch
+[一个或多个文件操作]
+*** End Patch
+
+每个文件操作以如下指令头开始：
+
+*** Add File: <path> - 创建新文件，随后每行以 + 开头（初始内容）。
+*** Delete File: <path> - 删除既有文件，无后续行。
+*** Update File: <path> - 原地修改；可紧跟 *** Move to: <path> 重命名。
+
+Update 区段用 @@ <上下文行> 定位 chunk，行前缀：空格 = 保留行、- = 删除行、+ = 新增行；*** End of File 表示锚定文件尾。匹配按首个命中处前进（精确 → 行尾空白宽松 → 两端空白宽松三级容错）。示例：
+
+*** Begin Patch
+*** Add File: hello.txt
++Hello world
+*** Update File: src/app.py
+*** Move to: src/main.py
+@@ def greet():
+-print("Hi")
++print("Hello, world!")
+*** Delete File: obsolete.txt
+*** End Patch
+
+注意：中间插入内容时必须用 @@ 上下文 + 保留行定位；纯新增 chunk（无保留/删除行）会追加到文件尾。

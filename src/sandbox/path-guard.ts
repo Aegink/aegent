@@ -19,7 +19,7 @@
  * ── 已知边界（LIMITATIONS，docs/sandbox-path-limitations.md 有同源拷贝）──
  */
 
-import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import * as path from "node:path";
 
@@ -236,6 +236,17 @@ export class PathGuard {
     await this.assertWritable(abs);
     await mkdir(path.dirname(abs), { recursive: true });
     await writeFile(abs, content, "utf8");
+  }
+
+  /**
+   * 守卫内的删除入口（T-P1-56 apply_patch 的 delete/move 需要删除能力）：
+   * 删除是写面的否定操作——同一 write 边界断言后才 unlink，工具本体
+   * 不直接接触 fs 删除函数（守卫家族完整性与 write 同理）。
+   */
+  async remove(absPath: string): Promise<void> {
+    const abs = path.resolve(absPath);
+    await this.assertWritable(abs);
+    await unlink(abs);
   }
 
   /**

@@ -18,7 +18,7 @@
 
 import type { PolicyCall } from "./chain.js";
 import type { Verdict } from "./decision.js";
-import { isWritePathTool } from "./protected-paths.js";
+import { extractPatchWritePaths, isWritePathTool } from "./protected-paths.js";
 
 /**
  * 受保护文件名（C35 清单；只能追加不能替换——C36 纪律）。大小写不敏感
@@ -65,6 +65,24 @@ export function enforceSelfGuard(
 ): Verdict {
   if (!ctx.agentInitiated) return verdict;
   if (!isWritePathTool(call.tool)) return verdict;
+  // apply_patch 的目标路径藏在 patchText 里（T-P1-56 通道）——与 args.path
+  // 同防线：任一目标命中受保护文件名即拒绝。
+  if (call.tool === "apply_patch") {
+    const patchText = call.args.patchText;
+    if (typeof patchText !== "string") return verdict;
+    for (const target of extractPatchWritePaths(patchText)) {
+      const segment = findSelfEditProtectedSegment(target);
+      if (segment !== undefined) {
+        return {
+          action: "deny",
+          reason:
+            `patch 目标 "${target}" 含受保护文件 "${segment}"（权限配置/项目指令文件），` +
+            "agent 不得修改自身权限配置与指令上下文（C35）；该文件用户可手动修改",
+        };
+      }
+    }
+    return verdict;
+  }
   const path = call.args.path;
   if (typeof path !== "string") return verdict;
   const segment = findSelfEditProtectedSegment(path);
