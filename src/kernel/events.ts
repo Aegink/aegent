@@ -303,6 +303,12 @@ export interface CompactionEvent extends EventBase {
   type: "compaction";
   /** 压缩摘要文本（P0 由假 provider 剧本生成；摘要质量属 F5 P1）。 */
   summary: string;
+  /**
+   * 会话标题（F5/T-P1-18）：首摘要顺带产出——引擎只在本会话无更早
+   * compaction 事件时记录（标题是会话级元事实，首摘要定名）。可缺省：
+   * 假摘要注入（P0 面）与后续压缩不带标题。
+   */
+  title?: string;
   /** 保留尾部的 seq 边界：新窗口从该 seq 之后的事件重建。 */
   retainedTail: number;
   /** 压缩前完整 token 计数（E12：整值，不是 delta）。 */
@@ -326,8 +332,14 @@ export interface CheckpointEvent extends EventBase {
   ref: JsonValue;
 }
 
-/** 本次请求为何发出（DSH `RequestHeaderReason` 同款四值）。 */
-export type RequestHeaderReason = "initial" | "resume" | "change" | "series";
+/**
+ * 本次请求为何发出（DSH `RequestHeaderReason` 同款四值 + F5/T-P1-18 扩展一值）：
+ * - "initial" 首次请求 / "resume" 续跑 / "change" 配置变更 / "series" 同轮后续 step；
+ * - "compaction" 压缩摘要的副调用（F5/T-P1-18）：摘要请求不是 agent 轮的
+ *   step，用四值中任何一个都是流内谎言——独立值让运维面可区分主轮与副调用。
+ * 词汇载荷枚举扩展的裁决记录见 l0-events.md §8 落地记录 7 与待澄清表。
+ */
+export type RequestHeaderReason = "initial" | "resume" | "change" | "series" | "compaction";
 
 /**
  * 下一次请求的完整头。它是 header 不是消息：参与"重建请求"，不参与"派生历史"

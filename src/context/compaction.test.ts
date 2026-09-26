@@ -272,3 +272,155 @@ describe("tokensBefore 来源与有效视窗", () => {
     expect(result.retainedTail).toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 真 LLM 摘要器（F5 / T-P1-18）：provider 副调用 + request/header 副调用头
+// + 标题首摘要定名 + 截断回退
+// ---------------------------------------------------------------------------
+
+import type { SessionEvent } from "../kernel/events.js";
+import { ScriptedProvider } from "../kernel/loop.test-utils.js";
+import {
+  createLlmSummarizer,
+  parseSummaryOutput,
+} from "./llm-summarizer.js";
+
+describe("真 LLM 摘要器（F5 / T-P1-18）", () => {
+  function setupWithScript(chunks: Parameters<ScriptedProvider["mount"]>[0]): {
+    store: SessionStore;
+    provider: ScriptedProvider;
+    warns: string[];
+  } {
+    const store = new SessionStore();
+    store.append(SESSION, turnEvents(1, "第一轮问题", "第一轮回答", {
+      inputTokens: 700,
+      outputTokens: 100,
+      totalTokens: 800,
+    }));
+    store.append(SESSION, turnEvents(2, "第二轮问题", "第二轮回答"));
+    const provider = new ScriptedProvider();
+    provider.mount(chunks);
+    return { store, provider, warns: [] };
+  }
+
+  function buildEngine(
+    store: SessionStore,
+    provider: ScriptedProvider,
+    warns: string[],
+  ): CompactionEngine {
+    return new CompactionEngine({
+      sessionId: SESSION,
+      store,
+      summarizer: createLlmSummarizer({
+        provider,
+        identity: { provider: "mock", modelId: "m-1" },
+        store,
+        onWarn: (w) => warns.push(w),
+      }),
+      keepRules: { retainedFromEnd: 1 },
+    });
+  }
+
+  it("验收①：真 summarizer 路径（脚本 provider 剧本产出摘要）落 compaction 事件（含标题）", async () => {
+    const { store, provider } = setupWithScript([
+      { type: "text-delta", text: "<title>重构会话</title>\n" },
+      { type: "text-delta", text: "<summary>完成了压缩模块改造。</summary>" },
+      { type: "done" },
+    ]);
+    const engine = buildEngine(store, provider, []);
+    const result = await engine.run({ turn: 2, phase: "PreTurn", request: localOverflowRequest });
+
+    expect(result.kind).toBe("compacted");
+    const compaction = store.load(SESSION).find((e) => e.type === "compaction");
+    if (compaction?.type !== "compaction") throw new Error("缺 compaction 事件");
+    expect(compaction.summary).toBe("完成了压缩模块改造。");
+    expect(compaction.title).toBe("重构会话");
+    expect(compaction.tokensBefore).toBe(800);
+  });
+
+  it("验收②：摘要副调用落 request/header{reason:'compaction'}（可观测）；摘要提示词作为该请求 system 消息进剧本 provider", async () => {
+    const { store, provider } = setupWithScript([
+      { type: "text-delta", text: "<summary>摘要正文</summary>" },
+      { type: "done" },
+    ]);
+    const engine = buildEngine(store, provider, []);
+    await engine.run({ turn: 2, phase: "PreTurn", request: localOverflowRequest });
+
+    const events = store.load(SESSION);
+    // 副调用头：reason 扩展值 "compaction" + 模型身份二元组（J4）
+    const header = events
+      .filter((e): e is Extract<SessionEvent, { type: "request/header" }> => e.type === "request/header")
+      .at(-1);
+    expect(header).toMatchObject({
+      reason: "compaction",
+      config: { provider: "mock", modelId: "m-1" },
+    });
+    // 摘要提示词可观测：system 指令 + 被摘要区间转写
+    const request = provider.requests[0]!;
+    expect(request.messages[0]).toMatchObject({ role: "system" });
+    expect((request.messages[0] as { content: string }).content).toContain("会话摘要员");
+    expect(request.messages[1]).toMatchObject({ role: "user" });
+    expect((request.messages[1] as { content: string }).content).toContain("第一轮问题");
+    // 头在 compaction 事件之前落流（先头后调用再结果的时间序）
+    const compaction = events.find((e) => e.type === "compaction")!;
+    expect(header!.seq < compaction.seq).toBe(true);
+  });
+
+  it("标题只在首摘要记录：第二次压缩的标题被忽略（会话级元事实，首摘要定名）", async () => {
+    const store = new SessionStore();
+    store.append(SESSION, turnEvents(1, "一", "答一", { inputTokens: 700, outputTokens: 100, totalTokens: 800 }));
+    store.append(SESSION, turnEvents(2, "二", "答二"));
+    const provider = new ScriptedProvider();
+    provider.mount([
+      { type: "text-delta", text: "<title>首标题</title><summary>首次摘要</summary>" },
+      { type: "done" },
+    ]);
+    provider.mount([
+      { type: "text-delta", text: "<title>次标题</title><summary>二次摘要</summary>" },
+      { type: "done" },
+    ]);
+    const warns: string[] = [];
+    const engine = buildEngine(store, provider, warns);
+    await engine.run({ turn: 2, phase: "PreTurn", request: localOverflowRequest });
+    await engine.run({ turn: 2, phase: "PreTurn", request: localOverflowRequest });
+
+    const compactions = store
+      .load(SESSION)
+      .filter((e): e is Extract<SessionEvent, { type: "compaction" }> => e.type === "compaction");
+    expect(compactions).toHaveLength(2);
+    expect(compactions[0]!.title).toBe("首标题");
+    expect(compactions[1]!.title).toBeUndefined();
+    expect(compactions[1]!.summary).toBe("二次摘要");
+  });
+
+  it("截断回退：provider 失败（无剧本）→ 回退截断摘要落盘，降级不炸压缩，告警可检索", async () => {
+    const { store, provider, warns } = setupWithScript([]); // 无剧本 → streamChat 抛错
+    const engine = buildEngine(store, provider, warns);
+    const result = await engine.run({ turn: 2, phase: "PreTurn", request: localOverflowRequest });
+
+    expect(result.kind).toBe("compacted");
+    const compaction = store.load(SESSION).find((e) => e.type === "compaction");
+    if (compaction?.type !== "compaction") throw new Error("缺 compaction 事件");
+    // 截断摘要行为：[role] content 拼接
+    expect(compaction.summary).toContain("[user] 第一轮问题");
+    expect(compaction.title).toBeUndefined(); // 回退路径无标题
+    expect(warns).toHaveLength(1);
+    expect(warns[0]).toContain("回退");
+  });
+
+  it("解析回退档（qwen extractRecap 纪律）：开标签截断取其后全部；标签全缺整段直用；空输出 null", () => {
+    expect(parseSummaryOutput("<title>题</title><summary>正文</summary>")).toEqual({
+      summary: "正文",
+      title: "题",
+    });
+    // summary 只有开标签（输出被截断）
+    expect(parseSummaryOutput("<title>题</title><summary>正文被截")).toEqual({
+      summary: "正文被截",
+      title: "题",
+    });
+    // 标签全缺：整段作为摘要、无标题
+    expect(parseSummaryOutput("裸摘要文本")).toEqual({ summary: "裸摘要文本" });
+    // 空输出 → null（上层回退截断摘要）
+    expect(parseSummaryOutput("   ")).toBeNull();
+  });
+});

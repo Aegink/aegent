@@ -136,13 +136,18 @@ export interface CompactionSettled extends CompactionInvocation {
 export type PreCompactOutcome = { action: "proceed" } | { action: "abort"; reason?: string };
 
 /**
- * 摘要生成器（装配注入；P0 测试用假 provider 剧本，真实摘要质量属 F5 P1）。
- * 入参 messages 是被摘要覆盖区间（seq ≤ retainedTail）的模型可见消息。
+ * 摘要生成器（装配注入）：P0 面 = 假摘要注入（测试剧本/截断摘要器，返回
+ * string）；F5/T-P1-18 真摘要 = LLM 生成（llm-summarizer.ts，可带会话标题
+ * 返回对象）。入参 messages 是被摘要覆盖区间（seq ≤ retainedTail）的模型
+ * 可见消息。返回 string（无标题）或 {summary, title?}——string 形状保持
+ * P0 注入面零改动。
  */
+export type SummarizerOutput = string | { summary: string; title?: string };
+
 export type Summarizer = (input: {
   messages: ChatMessage[];
   invocation: CompactionInvocation;
-}) => Promise<string>;
+}) => Promise<SummarizerOutput>;
 
 /**
  * 保留规则（F23 的不可丢消息与配平切点在 T-7-03/T-7-05 细化）：retainedFromEnd
@@ -224,28 +229,40 @@ export class CompactionEngine {
       }
     }
 
-    // 摘要生成（被摘要区间 = 切点之前）。
-    const summary = await this.deps.summarizer({
+    // 摘要生成（被摘要区间 = 切点之前）。F5/T-P1-18：真摘要可带会话标题
+    // （SummarizerOutput 的对象形状）；string 形状 = P0 假摘要注入面。
+    const output = await this.deps.summarizer({
       messages: buildChatMessages(events, { upToSeq: retainedTail }),
       invocation,
     });
+    const generated =
+      typeof output === "string" ? { summary: output } : output;
+    // 标题只在**首摘要**记录（会话级元事实，首摘要定名；卡内定形"优先
+    // 复用既有载荷"——compaction 事件可选 title 字段）。events 是本次压缩
+    // 落盘前的有效视窗——其中无 compaction 事件即本次是首摘要。
+    const isFirstCompaction = !events.some((e) => e.type === "compaction");
+    const title =
+      generated.title !== undefined && isFirstCompaction
+        ? generated.title
+        : undefined;
 
-    // 生命周期第 2 段：compaction 事件落盘（词汇表 §3.2#11：整值载荷；reason
+    // 生命周期第 2 段：compaction 事件落盘（词汇表 §3.2#12：整值载荷；reason
     // 按 codex CompactionReason 词表，F24 的换模压缩可从事件流回放）。
     const [committed] = store.append(sessionId, [
       {
         type: "compaction",
         turn: input.turn,
-        summary,
+        summary: generated.summary,
         retainedTail,
         tokensBefore,
         reason: compactionReasonOf(input.request),
+        ...(title !== undefined ? { title } : {}),
       },
     ]);
     const seq = committed!.seq;
 
     // 生命周期第 3 段：post hook 观察（压缩已落盘，只观察不回滚）。
-    const settled: CompactionSettled = { ...invocation, summary, retainedTail, seq };
+    const settled: CompactionSettled = { ...invocation, summary: generated.summary, retainedTail, seq };
     if (this.deps.postHook) await this.deps.postHook(settled);
 
     // 压缩成功落账抖动计数（拟算值此时才生效；F28）。
@@ -253,7 +270,7 @@ export class CompactionEngine {
       this.deps.rapidRefillGuard.recordCompactSuccess(refillDecision);
     }
 
-    return { kind: "compacted", summary, retainedTail, tokensBefore, seq };
+    return { kind: "compacted", summary: generated.summary, retainedTail, tokensBefore, seq };
   }
 }
 

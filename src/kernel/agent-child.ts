@@ -86,6 +86,11 @@ async function main(): Promise<void> {
     sessionId: process.env["AEGENT_SESSION"] ?? "s0",
     ...(storage ? { storage } : {}),
     ...(provider ? { provider, identity } : {}),
+    // F5/T-P1-18：真实 provider 时启用真摘要（LLM 生成 + 截断回退）——
+    // echo 模式不给（P0 截断摘要，冷启动路径零变化）
+    ...(cli.provider === "openai" && provider && identity
+      ? { summarizerModel: { provider, identity } }
+      : {}),
     ...(cli.provider === "openai" || cli.db || cli.workspace || cli.contextWindow !== undefined
       ? {
           assembly: {

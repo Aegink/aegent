@@ -105,20 +105,12 @@ import {
   type GoalService,
 } from "./goal.js";
 import type { ModelIdentity } from "../models/identity.js";
+import { createLlmSummarizer, truncatingSummarizer } from "../context/llm-summarizer.js";
 
-/** P0 内置摘要器：声明性前缀 + 拼接截断。真实摘要质量属 F5（P1）。 */
-export function truncatingSummarizer(maxChars = 2000): Summarizer {
-  return async ({ messages }) => {
-    const text = messages
-      .map((m) => `[${m.role}] ${m.content}`)
-      .join("\n");
-    return (
-      text.length > maxChars
-        ? `${text.slice(0, maxChars)}…（自动摘要截断）`
-        : text
-    );
-  };
-}
+// truncatingSummarizer（P0 内置摘要器）随 F5/T-P1-18 移入 context/llm-
+// summarizer.ts（context 不反向依赖 kernel/assembly）——此处 re-export
+// 保持既有 import 面。
+export { truncatingSummarizer } from "../context/llm-summarizer.js";
 
 /**
  * G2 todo 落流出口（T-P1-10）：todo_write 工具的 todo/update 事件经此进
@@ -266,6 +258,15 @@ export interface ChildAssemblyOptions {
   budget?: BudgetConfig;
   /** 压缩摘要器；缺省 P0 内置截断摘要。 */
   summarizer?: Summarizer;
+  /**
+   * F5/T-P1-18 真摘要模型：提供且未显式传 summarizer 时，装配构造
+   * createLlmSummarizer（provider 副调用 + request/header{reason:"compaction"}
+   * + 失败回退截断摘要）。缺省 undefined = P0 截断摘要（零行为变化）。
+   */
+  summarizerModel?: {
+    provider: import("../models/provider.js").ModelProvider;
+    identity: ModelIdentity;
+  };
   /** 压缩 pre/post hook 透传（测试观测用）。 */
   compactionPreHook?: (
     invocation: CompactionInvocation,
@@ -400,7 +401,17 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
   const engineDeps: ConstructorParameters<typeof CompactionEngine>[0] = {
     sessionId,
     store,
-    summarizer: options.summarizer ?? truncatingSummarizer(),
+    // F5/T-P1-18：真摘要模型优先（LLM 生成 + 截断回退），缺省 P0 截断摘要
+    summarizer:
+      options.summarizer ??
+      (options.summarizerModel !== undefined
+        ? createLlmSummarizer({
+            provider: options.summarizerModel.provider,
+            identity: options.summarizerModel.identity,
+            store,
+            onWarn: (message) => logger?.warn(message),
+          })
+        : truncatingSummarizer()),
     rapidRefillGuard: guard,
   };
   if (options.compactionPreHook) {
