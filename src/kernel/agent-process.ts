@@ -155,6 +155,8 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
             pathGuard: assembly.pathGuard,
             // I2 技能根 = 工作区根（skill_load 的扫描面）
             skillsRoot: options.assembly?.workspaceRoot ?? process.cwd(),
+            // G1 plan 模式工具面（planMode 启用时装配提供同一服务实例）
+            ...(assembly.planMode ? { planMode: assembly.planMode } : {}),
           }
         : {}),
     },

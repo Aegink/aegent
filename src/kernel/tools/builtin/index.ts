@@ -14,13 +14,16 @@ import { createBashTool } from "./bash.js";
 import { createEditTool } from "./edit.js";
 import { createGlobTool } from "./glob.js";
 import { createGrepTool } from "./grep.js";
+import { createPlanEnterTool, createPlanExitTool } from "./plan.js";
 import { createReadTool } from "./read.js";
 import { createSkillLoadTool } from "./skill.js";
 import { createTodoWriteTool } from "./todo.js";
 import { createWriteTool } from "./write.js";
+import type { PlanModeService } from "../../plan-mode.js";
 
 /** 内置工具名清单（C45 linter 的 unknown-tool 判定缺省面；与
- * registerBuiltinTools 的注册清单同步维护，新增工具两处都加）。 */
+ * registerBuiltinTools 的注册清单同步维护，新增工具两处都加）。
+ * plan_enter/plan_exit 仅在装配启用 plan 模式时注册（T-P1-11）。 */
 export const BUILTIN_TOOL_NAMES = [
   "read",
   "write",
@@ -30,6 +33,8 @@ export const BUILTIN_TOOL_NAMES = [
   "grep",
   "skill_load",
   "todo_write",
+  "plan_enter",
+  "plan_exit",
 ] as const;
 
 export function registerBuiltinTools(
@@ -42,6 +47,9 @@ export function registerBuiltinTools(
     todoEmit?: (
       items: Array<{ content: string; status: "pending" | "in_progress" | "completed" }>,
     ) => void;
+    /** G1 plan 模式服务（装配注入）；缺省不注册 plan 工具——plan 硬关
+     * 的出口联动只在 gate 在位的装配生效，单独的工具面是骗局。 */
+    planMode?: PlanModeService;
   } = {},
 ): void {
   const guard = options.pathGuard ?? PathGuard.forWorkspace(process.cwd());
@@ -64,6 +72,14 @@ export function registerBuiltinTools(
     // 就是"直接改状态不写事件"）
     ...(options.todoEmit !== undefined
       ? [createTodoWriteTool({ emit: options.todoEmit })]
+      : []),
+    // G1 plan 面：planMode 缺省时不注册（plan 硬关出口联动与工具面
+    // 绑定装配——有工具无硬关的 plan 模式不可交付）
+    ...(options.planMode !== undefined
+      ? [
+          createPlanEnterTool({ planMode: options.planMode }),
+          createPlanExitTool({ planMode: options.planMode }),
+        ]
       : []),
   ]) {
     registry.registerTool(def);

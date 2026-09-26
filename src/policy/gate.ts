@@ -13,7 +13,8 @@
  *   2. 策略链权威求值（规则/危险库/批准历史等模块，T-5-13 起陆续挂入）；
  *   3. enforceProtectedPaths（C46 硬拦）+ enforceSelfGuard（C35 防线，
  *      agentInitiated 恒 true——经工具循环的调用都是 agent 发起）；
- *   4. ask / abstain → broker：abstain 按不变量 3 默认落 ask（C3，
+ *   4. enforcePlanMode（G7 plan 硬关，T-P1-11——写/执行类出口不可授权）；
+ *   5. ask / abstain → broker：abstain 按不变量 3 默认落 ask（C3，
  *      "无规则默认询问"），ask 走审批出口（缺省 DenyPermissionBroker，
  *      无人应答即拒绝）；超时（C50）落类型化 isError 不炸轮次。
  *
@@ -36,6 +37,7 @@ import type { JsonRecord } from "../kernel/events.js";
 import type { PolicyCall, PolicyChain } from "./chain.js";
 import type { Verdict } from "./decision.js";
 import { enforceProtectedPaths } from "./protected-paths.js";
+import { enforcePlanMode } from "./plan-guard.js";
 import { enforceCeiling, type CeilingProfile } from "./intersect.js";
 import { enforceSelfGuard } from "./self-guard.js";
 import { stripProposedAmendments } from "./review-decision.js";
@@ -58,6 +60,12 @@ export interface ToolGateOptions {
   readonly onWarning?: (warning: string) => void;
   /** C49 来源上限（多来源交集折叠结果；缺省无上限——单来源装配零行为变化）。 */
   readonly ceiling?: CeilingProfile;
+  /**
+   * G7 plan 模式活查询（T-P1-11）：激活时写/执行类工具出口硬关（规则
+   * 不得授权）。每调用活查询（plan 服务内存态）；缺省 = 未启用，零行为
+   * 变化。
+   */
+  readonly planMode?: () => boolean;
 }
 
 function deniedResult(verdict: Verdict, code: string): ToolExecutionResult {
@@ -110,6 +118,7 @@ export function createToolGateLayer(
     verdict = enforceProtectedPaths(verdict, call);
     verdict = enforceCeiling(verdict, call, options.ceiling);
     verdict = enforceSelfGuard(verdict, call, { agentInitiated: true });
+    verdict = enforcePlanMode(verdict, call, options.planMode?.() ?? false);
 
     if (verdict.action === "allow") {
       return next({ ...e, arguments: JSON.stringify(args) });

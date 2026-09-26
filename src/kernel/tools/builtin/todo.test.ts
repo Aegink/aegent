@@ -12,7 +12,7 @@ import { ToolRegistry } from "../registry.js";
 import { createTodoWriteTool } from "./todo.js";
 import { InMemoryEventStorage, SessionStore } from "../../../session/store.js";
 import { project } from "../../../session/project.js";
-import { BUILTIN_TOOL_NAMES, registerBuiltinTools } from "./index.js";
+import { registerBuiltinTools } from "./index.js";
 
 /** 带 store 落流出口的 registry（生产接线同款：createTodoUpdateEmitter）。 */
 function makeRegistry(store: SessionStore, sessionId = "s0"): ToolRegistry {
@@ -188,14 +188,14 @@ describe("落流（验收①：todo/update 事件 + 投影可查）", () => {
 });
 
 describe("注册面（BUILTIN_TOOL_NAMES 与生产接线同步）", () => {
-  it("带 emit 注册 = 8 工具含 todo_write；缺省不注册（不变量 1：无落流出口的状态写入不暴露）", () => {
+  it("带 emit 注册含 todo_write；缺省不注册（不变量 1：无落流出口的状态写入不暴露）", () => {
     const withEmit = new ToolRegistry();
     registerBuiltinTools(withEmit, {
       todoEmit: () => undefined,
     });
-    expect(withEmit.names()).toEqual([...BUILTIN_TOOL_NAMES]);
     expect(withEmit.names()).toContain("todo_write");
-    expect(BUILTIN_TOOL_NAMES).toHaveLength(8);
+    // 全配置（todoEmit + planMode）= BUILTIN_TOOL_NAMES 全集的等价断言在
+    // plan-mode.test.ts（T-P1-11 起清单含 plan_enter/plan_exit）。
 
     const minimal = new ToolRegistry();
     registerBuiltinTools(minimal);

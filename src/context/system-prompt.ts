@@ -135,6 +135,12 @@ export interface SystemPromptDeps {
    * （正文按名经 skill_load 工具读取）；空/缺省 = 不加段（零行为变化）。
    */
   skills?: readonly { name: string; description: string }[];
+  /**
+   * plan 模式启用（G1/T-P1-11）：渲染计划模式机制说明段（工具用法与硬关
+   * 语义——模式状态本身经 tool/result 即时可见，本段只说明机制）；缺省
+   * 不加段（零行为变化）。
+   */
+  planMode?: boolean;
   /** fs 注入面（测试假 fs；缺省 node:fs 同步读取）。 */
   existsFile?: (p: string) => boolean;
   readFile?: (p: string) => string;
@@ -168,10 +174,24 @@ export async function assembleSystemPrompt(deps: SystemPromptDeps): Promise<stri
   // 4. 技能清单尾段（I2/T-P1-08）：名+描述列给模型，正文按名经 skill_load
   //    读取；空清单不加段。
   const skillsSection = renderSkillsSection(deps.skills);
+  // 5. plan 模式机制段（G1/T-P1-11）：启用才渲染（零行为变化）
+  const planSection = deps.planMode ? renderPlanSection() : "";
 
-  return [base, permissions, agents, skillsSection]
+  return [base, permissions, agents, planSection, skillsSection]
     .filter((part) => part.trim() !== "")
     .join("\n\n");
+}
+
+function renderPlanSection(): string {
+  return [
+    "## 计划模式",
+    "对需要先研究设计的多步任务（多文件改动、架构决策、用户要求先出计划），",
+    "可先调 plan_enter 进入计划模式：该状态下 write/edit/bash/todo_write 等",
+    "写/执行类工具在策略出口被硬关（任何规则都无法授权），read/glob/grep/",
+    "skill_load 不受影响。完成研究并给出计划后，调 plan_exit 退出（需用户批准），",
+    "写/执行工具恢复按权限策略裁决。当前是否处于计划模式以最近的",
+    "plan_enter / plan_exit 工具结果为准。",
+  ].join("\n");
 }
 
 function renderSkillsSection(

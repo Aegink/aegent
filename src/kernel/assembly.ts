@@ -97,6 +97,7 @@ import {
   type RegisteredModel,
   type TurnModel,
 } from "./model-switch.js";
+import { createPlanModeService, type PlanModeService } from "./plan-mode.js";
 import type { ModelIdentity } from "../models/identity.js";
 
 /** P0 内置摘要器：声明性前缀 + 拼接截断。真实摘要质量属 F5（P1）。 */
@@ -227,6 +228,12 @@ export interface ChildAssemblyOptions {
    * 权限重新判定）。无注册的点位不挂层；缺省不提供 = 零行为变化。
    */
   hooks?: HookRegistry;
+  /**
+   * G1/G7 plan 模式（T-P1-11）：启用时构造 PlanModeService + 注册
+   * plan_enter/plan_exit 工具面 + gate 出口硬关联动（写/执行类不可授权）
+   * + 系统提示机制段。缺省不启用 = 零行为变化（不注册工具、gate 无联动）。
+   */
+  planMode?: boolean;
   /** M10 预算配置；缺省不启用预算轴。 */
   budget?: BudgetConfig;
   /** 压缩摘要器；缺省 P0 内置截断摘要。 */
@@ -275,6 +282,11 @@ export interface ChildAssembly {
   onTurnError?(turn: number, failure: LlmFailure): void;
   /** E11 代码检查点服务（checkpointRepoRoot 提供时存在；kick 前打点 + restoreCodeTo）。 */
   checkpoint?: GitCheckpointService;
+  /**
+   * G1 plan 模式服务（planMode 选项启用时存在）：注册工具面（agent-process
+   * 传 registerBuiltinTools）+ gate 出口活查询的同一个实例。
+   */
+  planMode?: PlanModeService;
   /** 工具注册的面（PathGuard 由装配定形，注册处必收）。 */
   pathGuard: PathGuard;
   /** 释放未决审批（dispose 路径：按超时语义拒绝，不悬挂）。 */
@@ -394,6 +406,7 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
         describeWritableRoots: () => pathGuard.describeWritableRoots(),
         cwd: options.workspaceRoot,
         ...(skillLoad.skills.length > 0 ? { skills: skillLoad.skills } : {}),
+        ...(planModeService ? { planMode: true } : {}),
       });
       store.append(sessionId, [
         {
@@ -543,12 +556,17 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
       }
     : undefined;
 
+  // —— G1/G7 plan 模式（T-P1-11）：服务在此构造，gate 出口活查询与工具
+  // 注册共用同一实例（agent-process 取 assembly.planMode 注册工具面）。
+  const planModeService = options.planMode ? createPlanModeService() : undefined;
+
   const toolGateLayer = createToolGateLayer({
     chain: policyChain,
     broker,
     sessionId,
     onWarning: (warning) => logger?.warn("策略警告", { userContent: warning }),
     ...(ceiling !== undefined ? { ceiling } : {}),
+    ...(planModeService ? { planMode: () => planModeService.isActive } : {}),
   });
 
   // —— I1 hooks（T-P1-07）：registry 聚合层挂三点位外层（hooks → gate →
@@ -632,6 +650,7 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
       ? { handleModelSwitch, modelForTurn, ...(onTurnError !== undefined ? { onTurnError } : {}) }
       : {}),
     ...(checkpoint !== undefined ? { checkpoint } : {}),
+    ...(planModeService !== undefined ? { planMode: planModeService } : {}),
     pathGuard,
     dispose: () => {
       pending.dispose();

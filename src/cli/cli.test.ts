@@ -329,6 +329,78 @@ describe("aegent CLI（T-8-01）", () => {
     expect(lines.some((l) => l.includes("☐ 验收"))).toBe(true);
   });
 
+  it("T-P1-11 G1/G7：plan 模式端到端——进出经审批、硬关压过默认 ask、退出后恢复", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-plan-"));
+    const planCall = (id: string, name: string) =>
+      [
+        { type: "tool-call-delta", id, name, argsDelta: "{}" },
+        { type: "done" },
+      ] as StreamChunk[];
+    const bashCall = (id: string) =>
+      [
+        {
+          type: "tool-call-delta",
+          id,
+          name: "bash",
+          argsDelta: JSON.stringify({ command: "echo plan-demo" }),
+        },
+        { type: "done" },
+      ] as StreamChunk[];
+    const tail = (text: string) =>
+      [
+        { type: "text-delta", text },
+        { type: "usage", usage: { inputTokens: 100, outputTokens: 20 } },
+        { type: "done" },
+      ] as StreamChunk[];
+    const provider = scriptedProvider([
+      planCall("call_1", "plan_enter"),
+      tail("已进入计划模式"),
+      bashCall("call_2"),
+      tail("被硬关了"),
+      planCall("call_3", "plan_exit"),
+      tail("已退出计划模式"),
+      bashCall("call_4"),
+      tail("恢复正常"),
+    ]);
+    const lines = await runScriptedSession(
+      {
+        provider,
+        assembly: {
+          workspaceRoot: workspace,
+          contextWindow: 200_000,
+          approvalTimeoutMs: 5_000,
+          planMode: true,
+        },
+      },
+      async function* ({ waitFor }) {
+        yield "先做计划";
+        // 进出都要用户批准（plan_enter 默认 ask）
+        await waitFor((line) => line.includes("⏸ 待审批 [call_1] plan_enter"));
+        yield "/approve call_1 allow";
+        await waitFor((line) => line.includes("── turn 1 结束"));
+        // plan 激活：bash 被出口硬关——直接 ✗，不弹审批（规则/默认 ask 压不过）
+        yield "跑个命令试试";
+        await waitFor((line) => line.includes("── turn 2 结束"));
+        yield "退出计划模式";
+        await waitFor((line) => line.includes("⏸ 待审批 [call_3] plan_exit"));
+        yield "/approve call_3 allow";
+        await waitFor((line) => line.includes("── turn 3 结束"));
+        // 退出后恢复既有裁决：bash 回到默认 ask（弹审批）
+        yield "再跑一次";
+        await waitFor((line) => line.includes("⏸ 待审批 [call_4] bash"));
+        yield "/approve call_4 allow";
+        await waitFor((line) => line.includes("── turn 4 结束"));
+      },
+    );
+    expect(lines.some((l) => l.includes("⏸ 待审批 [call_1] plan_enter"))).toBe(true);
+    expect(lines.some((l) => l.includes("已进入计划模式"))).toBe(true);
+    // 硬关：call_2 直接拒（含"plan 模式硬关"），且全程无 call_2 审批弹窗
+    expect(lines.some((l) => l.startsWith("✗") && l.includes("plan 模式硬关"))).toBe(true);
+    expect(lines.some((l) => l.includes("⏸ 待审批 [call_2]"))).toBe(false);
+    // 退出后恢复：call_4 回到默认 ask
+    expect(lines.some((l) => l.includes("⏸ 待审批 [call_4] bash"))).toBe(true);
+  });
+
   it("/revert 对话态回退（session/revert 事件经协议转发）", async () => {
     const lines = await runScriptedSession(
       {
