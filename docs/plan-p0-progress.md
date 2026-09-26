@@ -138,7 +138,7 @@
 
 | 需求ID | 为什么不能机验 | 人工要怎么确认 |
 | --- | --- | --- |
-| J2（部分） | ~~真实厂商连通性需要 API key~~ **已实测（2026-09-25，用户提供 OpenAI 兼容端点，deepseek-v4.1-flash）**：流式 192 块（reasoning-delta/text-delta/usage/done）、usage 落库（input 2196/output 191/total 2387/reasoningTokens 175）、L3 视图可查；真实模型 tool_call 流式分片拼接正确（arguments 完整 JSON）、审批挂起→超时→isError 回喂→模型自适应重试→诚实收尾，27 事件配平落库。系统提示生效（模型自称 aegent）。**剩：不同厂商 wire 差异的多端点复测**（同一端点已闭环） | 其他厂商端点可复跑同款命令：`node dist/src/cli/index.js --smoke --provider openai --db <库> --workspace <git 仓>` + 环境变量 AEGENT_API_KEY / AEGENT_BASE_URL / AEGENT_MODEL |
+| J2（部分） | ~~真实厂商连通性需要 API key~~ **已实测（2026-09-25，用户提供 OpenAI 兼容端点，deepseek-v4.1-flash）**：流式 192 块（reasoning-delta/text-delta/usage/done）、usage 落库（input 2196/output 191/total 2387/reasoningTokens 175）、L3 视图可查；真实模型 tool_call 流式分片拼接正确（arguments 完整 JSON）、审批挂起→超时→isError 回喂→模型自适应重试→诚实收尾，27 事件配平落库。系统提示生效（模型自称 aegent）。**剩：不同厂商 wire 差异的多端点复测**（同一端点已闭环） | **复测已关闭（2026-09-26，P1 批次 1 终验）**：不同接入路径实测通过（用户网关 <redacted-endpoint>，模型 cline-pass/deepseek-v4.1-flash，OpenAI Chat Completions 协议）——五场景审批放行全链路 + 128 事件 seq 连续 + 15/15 配平 + reasoningTokens 映射有效（见下方「批次 1 终验收记录」） |
 | T9 冷启动 | 「<500ms」依赖本机负载 | T-8-05 终验收已实测两形态：echo 模式 median 283.3ms、SQLite 模式 median 273ms，达标收口（T-3-06 基线 109.6ms 的上浮源于子进程装配扩容，见 T-8-05 偏离①） |
 | D3 弱承诺 | 「网络策略只管工具层」是声明不是代码属性 | **已关闭（2026-09-25 用户目检裁决："可以"）**——`src/sandbox/README.md` 置顶加粗的弱承诺段（只拦工具层 fetch，不承诺 bash 子进程/模型接入层/OS 级，deny 档 ≠ 网络隔离）获用户认可 |
 | T-6-01 符号链接逃逸 | 本机无创建符号链接特权（Windows 需开发者模式），逃逸用例自动跳过（LIMITATIONS #1） | 有特权环境跑 `npx vitest run src/sandbox/path-guard.test.ts` 应 22 全过（终验收实测 21 passed + 1 skipped）；realpath 归一逻辑已有"最近存在祖先"路径的确定性用例覆盖 |
@@ -749,6 +749,50 @@ checkpointRepoRoot 先例），"重启不重放"按 Q5 对账口径。不要问�
 上一组报告在 docs/plan-p0-progress.md（批次 1 · 第四组报告）。不要问要不要
 继续。
 ```
+
+---
+
+## 批次 1 终验收记录（2026-09-26，用户"全部认可 + 像 P0 一样测试一遍"）
+
+### A. 自动化机验（无需用户提供，全部通过）
+
+| # | 项 | 命令 | 结果 |
+| --- | --- | --- | --- |
+| 1 | 全量测试 | `npx tsc --noEmit && npx vitest run` | **610 passed / 1 skipped**，tsc 干净 |
+| 2 | 需求计数 | `bash tools/count-features.sh` | **310** 不变（P0=104/P1=158/P2=48） |
+| 3 | 文档链接 | `bash tools/check-doc-links.sh` | 548 链接 **0 失效** |
+| 4 | 许可审计 | `bash tools/license-audit.sh` | exit 0，17 仓通过 |
+| 5 | 构建+资产 | `npm run build` | 成功；copy-assets 工具描述 10 工具齐进 dist |
+| 6 | 冷启动 | `node scripts/cold-start.mjs` | median **179.6ms** < 500ms（P1 装配扩容后无回退） |
+| 7 | smoke 端到端（echo+SQLite） | `--smoke --db` | REPL 完整；库 9 事件 seq 连续；restore 重启路径复核正常 |
+| 8 | 常驻内存 | WorkingSet64 采样 | agent-child 空闲 **38.7MB** < 150MB |
+| 9 | 词汇表追认转正 | 待澄清 #3/#4 | 用户"全部认可"→ 案关，§3.2 正式计数 **17 事件** |
+
+### B. 真实厂商实测（用户提供 OpenAI 兼容网关，key 不落盘）
+
+**端点形态**：网关 `<redacted-endpoint>`，模型 `cline-pass/deepseek-v4.1-flash`，OpenAI Chat Completions 协议（与 P0 J2 的直连端点不同接入路径——wire 兼容性复测通过，人工确认清单 J2 行关闭）。
+
+**四段 smoke（管道模式）**：
+1. **S1 纯对话**：模型自称 aegent（系统提示装配生效）、流式完整、turn 收尾正常。
+2. **S2 todo 面**：真实模型自发产 `todo_write`（参数 JSON 分片拼接正确）→ **meta-ops 白名单直过（零审批弹窗）** → todo/update 落流 → REPL 进度整幅可见 → 模型确认回喂——G2 全链闭环。
+3. **S3 审批流（P0 J2 复测口径）**：write ask 挂起 → 15s 超时 isError 回喂 → 模型自适应（glob 探查 → bash ls → 绝对路径 write 重试，连续被拦）→ **诚实收尾**（报告"任务未完成"+ 已尝试操作表）→ notes.txt 未落盘（零未授权写入）。另见 isError 自修真实案例：模型首次 write 漏 path 参数 → INVALID_ARGUMENTS 回喂 → 自修重试成功。
+4. **S4 plan/goal 真实行为**：AEGENT_PLAN=1 + AEGENT_GOAL=... → goal 提醒注入可见（"（注入）[目标提醒]…"）→ 系统提示"计划模式"段引导**真实模型自发调 plan_enter**（"I'll start by entering plan mode"）→ 审批挂起超时 → 模型重试后转只读策略——被拒申请不改 plan 状态（planModeFromEvents 语义）在真实流下成立。
+
+**驱动脚本全场景（真实子进程 + 自动放行审批，`scratch` 面 /tmp/j2p1/approve.mjs，不入库）**——补上 P0 当时只能测到"超时拒绝"的**放行面**：
+
+| 场景 | 验证 | 结果 |
+| --- | --- | --- |
+| A | write 审批放行 → 真实落盘 | bash/write/read 放行 → hello.txt 落盘 19 字节，模型回读确认 |
+| B | plan_enter 放行 → 激活 | 模型复述硬关语义（写/执行硬关、只读可用） |
+| C | plan 激活下 write/bash | **出口硬关直接拒**（"plan 模式硬关…不可被规则授权"），不弹审批；模型诚实报告被拒 |
+| D | plan_exit + plan 参数 → artifact | checkpoint{provider:"plan"} 落流，plan.md 落盘 `.aegent/sessions/s0/plan.md` |
+| E | 退出后 write 恢复 | 恢复正常 ask → 放行 → restored.txt 落盘 |
+
+**库内证据（j2p1b.db，128 事件）**：seq 连续；19 条 assistant 带 usage（Σinput=64,503 / Σoutput=2,560 / **Σreasoning=680——reasoning 映射 `delta.reasoning` 变体再次实测有效**）；tool/call 15 = tool/result 15 按 callId 配平；5 轮全 completed；plan checkpoint 1 条路径正确。
+
+**实测发现并修复一个真实缺陷（本次 commit）**：agent-child 的 `planArtifactDir` 拼了 sessionId、savePlanArtifact 内部再拼一次 → artifact 落 `.aegent/sessions/s0/s0/plan.md` 双层目录。修复 = agent-child 只传父目录 `.aegent/sessions`（savePlanArtifact 的 `<dir>/<sessionId>/plan.md` 契约不动），复跑验证单层路径。
+
+**成本口径（供批次 2 参考）**：五场景真实会话 Σinput≈64.5k / Σoutput≈2.6k 加权 token——工具密集会话的 input 占比高（系统提示 + 历史重建），F6/F13 缓存族（批次 2 候选）的优化空间真实存在。
 
 ---
 

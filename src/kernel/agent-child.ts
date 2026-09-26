@@ -96,17 +96,13 @@ async function main(): Promise<void> {
             contextWindow: cli.contextWindow ?? 200_000,
             approvalTimeoutMs: cli.approvalTimeoutMs ?? 120_000,
             // G1/G7 plan 模式（测试/实测开关：AEGENT_PLAN=1）——G4 计划
-            // artifact 落工作区自留目录 .aegent/sessions/<sessionId>（untracked
-            // 新文件不入 git stash，与 E11 互不干扰）
+            // artifact 父目录 .aegent/sessions（savePlanArtifact 内部按
+            // <dir>/<sessionId>/plan.md 落盘；untracked 不入 git stash，
+            // 与 E11 互不干扰）
             ...(process.env["AEGENT_PLAN"] === "1"
               ? {
                   planMode: true,
-                  planArtifactDir: path.join(
-                    cli.workspace ?? process.cwd(),
-                    ".aegent",
-                    "sessions",
-                    process.env["AEGENT_SESSION"] ?? "s0",
-                  ),
+                  planArtifactDir: path.join(cli.workspace ?? process.cwd(), ".aegent", "sessions"),
                 }
               : {}),
             // G3/G6 goal（测试/实测开关：AEGENT_GOAL=<目标文本>；到期动作
