@@ -71,6 +71,8 @@ export function makeLoop(
     beforeFirstModelRequest?: AgentLoopDeps["beforeFirstModelRequest"];
     promptGate?: AgentLoopDeps["promptGate"];
     logger?: AgentLoopDeps["logger"];
+    maxStepsPerTurn?: AgentLoopDeps["maxStepsPerTurn"];
+    abortTimeoutMs?: AgentLoopDeps["abortTimeoutMs"];
   },
 ): Harness {
   const store = new SessionStore();
@@ -110,6 +112,10 @@ export function makeLoop(
       : {}),
     ...(opts?.promptGate ? { promptGate: opts.promptGate } : {}),
     ...(opts?.logger ? { logger: opts.logger } : {}),
+    ...(opts?.maxStepsPerTurn !== undefined
+      ? { maxStepsPerTurn: opts.maxStepsPerTurn }
+      : {}),
+    ...(opts?.abortTimeoutMs !== undefined ? { abortTimeoutMs: opts.abortTimeoutMs } : {}),
   });
   return { store, loop, decideCalls };
 }

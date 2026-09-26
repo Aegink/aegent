@@ -810,5 +810,148 @@ describe("prompt 入队闸门（A13/T-P1-48）", () => {
   });
 });
 
+describe("循环护栏（A14/T-P1-50）", () => {
+  const collectLogger = () => {
+    const warns: { msg: string; data?: Record<string, unknown> }[] = [];
+    const logger: NonNullable<AgentLoopDeps["logger"]> = {
+      debug() {},
+      info() {},
+      warn: (msg, data) => warns.push({ msg, data }),
+      error() {},
+    };
+    return { logger, warns };
+  };
+
+  it("maxStepsPerTurn=2：第 3 个 step 不启动，turn/end{blocked} 收轮 + warn 可检索", async () => {
+    const provider = new ScriptedProvider();
+    for (const text of ["一", "二"]) {
+      provider.mount([
+        { type: "text-delta", text },
+        { type: "tool-call-delta", id: `c${text}`, name: "bash", argsDelta: "{}" },
+        { type: "done" },
+      ]);
+    }
+    const { logger, warns } = collectLogger();
+    // decideTurn 恒 continue（护栏是唯一的收束面）
+    const { loop, store } = makeLoop(provider, {
+      decideTurn: () => ({ action: "continue" }),
+      maxStepsPerTurn: 2,
+      logger,
+    });
+
+    const reason = await loop.runTurn("停不下来");
+    expect(reason).toEqual({ kind: "blocked" });
+    const events = store.load("s1");
+    expect(events.filter((e) => e.type === "step/start")).toHaveLength(2);
+    const end = events.find((e) => e.type === "turn/end") as {
+      reason: { kind: string };
+    };
+    expect(end.reason.kind).toBe("blocked");
+    expectSingleTerminal(events, 1);
+    expect(warns).toHaveLength(1);
+    expect(warns[0]!.msg).toContain("maxStepsPerTurn");
+    expect(warns[0]!.data).toMatchObject({ turn: 1, maxSteps: 2 });
+  });
+
+  it("缺省 0 = 不限（既有恒 continue 行为不受护栏影响）", async () => {
+    const provider = new ScriptedProvider();
+    for (let i = 1; i <= 3; i += 1) {
+      provider.mount([
+        { type: "text-delta", text: `s${i}` },
+        { type: "tool-call-delta", id: `c${i}`, name: "bash", argsDelta: "{}" },
+        { type: "done" },
+      ]);
+    }
+    let decided = 0;
+    const { loop, store } = makeLoop(provider, {
+      decideTurn: () => {
+        decided += 1;
+        return decided < 3 ? { action: "continue" } : { action: "end" };
+      },
+    });
+
+    expect(await loop.runTurn("三步走")).toEqual({ kind: "completed" });
+    expect(store.load("s1").filter((e) => e.type === "step/start")).toHaveLength(3);
+  });
+
+  it("abortTimeoutMs：取消后工具挂起不结算 → 超时强制收轮（aborted 终态 + 迟到结果被闸门丢弃）", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([
+      { type: "text-delta", text: "跑个慢工具" },
+      { type: "tool-call-delta", id: "c1", name: "bash", argsDelta: "{}" },
+      { type: "done" },
+    ]);
+    const { logger, warns } = collectLogger();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const { loop, store } = makeLoop(provider, {
+      executeTool: async () => {
+        await gate; // 挂死（不响应信号的最坏工具）
+        return { content: "迟到的结果" };
+      },
+      abortTimeoutMs: 50,
+      logger,
+    });
+
+    const done = loop.runTurn("取消但工具挂死");
+    await new Promise<void>((r) => setTimeout(r, 0)); // 让工具真正挂上
+    loop.cancel({ kind: "user" });
+    // 看门狗 50ms 超时：强制收轮（本用例不等 runTurn 返回——协作式纪律下
+    // 在途 promise 未结算，runTurn 尚未返回；事件流终态已先落盘）
+    await new Promise<void>((r) => setTimeout(r, 150));
+    const events = store.load("s1");
+    const end = events.find((e) => e.type === "turn/end") as {
+      reason: { kind: string; cause?: { kind: string } };
+    };
+    expect(end).toBeDefined();
+    expect(end.reason.kind).toBe("aborted");
+    expect(end.reason.cause).toEqual({ kind: "user" });
+    expectSingleTerminal(events, 1);
+    // 迟到结果闸门：tool/result 未落盘
+    expect(events.some((e) => e.type === "tool/result")).toBe(false);
+    // 看门狗 warn 已留痕
+    expect(warns.some((w) => w.msg.includes("看门狗"))).toBe(true);
+    // 收尾：放行在途工具 → 自然路径撞 forcedClosed 闸 → 不 double terminal
+    release();
+    await done;
+    const eventsAfter = store.load("s1");
+    expectSingleTerminal(eventsAfter, 1);
+    expect(eventsAfter.some((e) => e.type === "tool/result")).toBe(false);
+    // 迟到丢弃 warn
+    expect(warns.some((w) => w.msg.includes("迟到"))).toBe(true);
+  });
+
+  it("正常结算路径看门狗不触发：取消后工具快速结算 → aborted 正常收轮、零看门狗 warn", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([
+      { type: "text-delta", text: "跑个快工具" },
+      { type: "tool-call-delta", id: "c1", name: "bash", argsDelta: "{}" },
+      { type: "done" },
+    ]);
+    const { logger, warns } = collectLogger();
+    const { loop, store } = makeLoop(provider, {
+      executeTool: async () => {
+        await new Promise<void>((r) => setTimeout(r, 10)); // 10ms 后结算
+        return { content: "及时的结果" };
+      },
+      abortTimeoutMs: 500,
+      logger,
+    });
+
+    const done = loop.runTurn("取消但工具很快");
+    await new Promise<void>((r) => setTimeout(r, 0));
+    loop.cancel({ kind: "user" });
+    const reason = await done;
+    expect(reason).toEqual({ kind: "aborted", cause: { kind: "user" } });
+    const events = store.load("s1");
+    // 正常收轮：tool/result 完整落盘（未过强制收轮时点）
+    expect(events.some((e) => e.type === "tool/result")).toBe(true);
+    expectSingleTerminal(events, 1);
+    expect(warns.some((w) => w.msg.includes("看门狗"))).toBe(false);
+  });
+});
+
 // 类型引用保持（防止误删导出的编译期契约）
 void ({} as AgentLoop | AgentLoopDeps | TurnDecision | undefined);

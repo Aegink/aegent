@@ -284,6 +284,24 @@ export interface AgentLoopDeps {
   promptGate?: PromptGate;
   /** A13 拦截留痕（结构化 warn 可检索）；缺省 undefined = 不打日志。 */
   logger?: Logger;
+  /**
+   * A14/T-P1-50 护栏一：单 turn 内最大 step 数（模型一直 continue 不停的
+   * 强制收束）。缺省 0 = 不限（kimi configSection maxStepsPerTurn optional
+   * 同构）。超限 → logger.warn + turn/end{blocked}（显式护栏终止，非
+   * completed——模型没说完成；与 B14 工具预算轴语义不同：B14 数工具调用
+   * 且跨 turn 持续，本护栏数 step 且每 turn 重置）。
+   */
+  maxStepsPerTurn?: number;
+  /**
+   * A14/T-P1-50 护栏二：取消后等待在途工作收尾的超时（kimi machine.ts:428
+   * `abortTimeout: abortTimeoutMs ?? 10_000` 同构，缺省 10_000）。超时 →
+   * 强制收轮：补闭合未闭合 step + turn/end{aborted} 落盘 + runState 归位 +
+   * 迟到结果闸门（在途工具结算后其结果不再落盘）。协作式纪律不变——看门狗
+   * **不弃在途 promise**（runTurn 的调用栈仍等工具自然结算），强制的只是
+   * 事件流终态与状态归位（LIMITATIONS 记档：挂死的外部进程需 OS 级干预）。
+   * 未配置 = 无看门狗（P0 行为零变化）。
+   */
+  abortTimeoutMs?: number;
 }
 
 export class AgentLoop {
@@ -363,6 +381,8 @@ export class AgentLoop {
     // T-P1-43 信号联动：已派发工具经 ctx.signal 观察取消（协作式——
     // 工具自行决定如何响应；task 用它联动子循环）。
     this.cancelController?.abort();
+    // A14/T-P1-50：取消后武装看门狗（未配置 abortTimeoutMs 则无看门狗）
+    this.armAbortWatchdog();
   }
 
   /**
@@ -373,6 +393,70 @@ export class AgentLoop {
   private activeTurnNumber: number | null = null;
   get activeTurn(): number | null {
     return this.activeTurnNumber;
+  }
+
+  /**
+   * A14/T-P1-50 看门狗句柄与强制收轮标记。forcedClosed 置位后：
+   * closeTurn 直接返回（终态已由看门狗落盘，防 double terminal）、
+   * 迟到的工具结果不再落盘（事件流不变量优先于结果保全）。
+   * 随 runTurn 开始复位（与 cancelCause 同步）。
+   */
+  private abortWatchdog: ReturnType<typeof setTimeout> | null = null;
+  private forcedClosed = false;
+
+  private armAbortWatchdog(): void {
+    const ms = this.deps.abortTimeoutMs;
+    if (ms === undefined || this.abortWatchdog !== null) return;
+    this.abortWatchdog = setTimeout(() => {
+      this.abortWatchdog = null;
+      // 正常路径已收轮（abortTurn 清槽）→ 迟到的看门狗不触发
+      if (this.cancelCause === null) return;
+      this.deps.logger?.warn("abortTimeoutMs 看门狗超时——强制收轮", {
+        timeoutMs: ms,
+        turn: this.activeTurnNumber,
+      });
+      this.forcedClosed = true;
+      this.forceCloseTurn();
+    }, ms);
+    // 看门狗不阻止进程自然退出
+    this.abortWatchdog.unref?.();
+  }
+
+  private disarmAbortWatchdog(): void {
+    if (this.abortWatchdog !== null) {
+      clearTimeout(this.abortWatchdog);
+      this.abortWatchdog = null;
+    }
+  }
+
+  /**
+   * 看门狗超时的强制闭合：补闭合未闭合 step + turn/end{aborted} 落盘 +
+   * turnEnd flush + runState 归位（failTurn 骨架的最小版——不经 turnEnd
+   * 链：压缩层对"工具还挂在途"的轮无合法消费面，大声语义由 warn 承担）。
+   * turn 已闭合（正常收轮先到）则 no-op。
+   */
+  private forceCloseTurn(): void {
+    const { store, sessionId } = this.deps;
+    const cause = this.cancelCause;
+    if (!cause) return;
+    const proj = Projector.fold(store.load(sessionId)).projection;
+    if (!proj.openTurn) return; // 已闭合（竞态防御）
+    const turn = proj.openTurn.turn;
+    const openStep = [...proj.openSteps][0];
+    const events: NewSessionEvent[] = [
+      ...(openStep !== undefined
+        ? [{ type: "step/end" as const, turn, step: openStep }]
+        : []),
+      {
+        type: "turn/end" as const,
+        turn,
+        reason: { kind: "aborted" as const, cause: copyCause(cause) },
+      },
+    ];
+    store.append(sessionId, events);
+    void store.runFlushPoint("turnEnd", sessionId).catch(() => undefined);
+    this.deps.runState?.markIdle(sessionId);
+    this.activeTurnNumber = null;
   }
 
   /**
@@ -388,6 +472,9 @@ export class AgentLoop {
     const turn = this.nextTurnNumber();
     // A10（T-P1-47）：steer 准入权威面置位（closeTurn 清位）
     this.activeTurnNumber = turn;
+    // A14/T-P1-50：新 turn 复位强制收轮标记与残留看门狗（与 cancelCause 同步）
+    this.forcedClosed = false;
+    this.disarmAbortWatchdog();
     // 新 turn 一份新信号：丢弃 idle 期迟到的取消（不武装本 turn 之前的工作）
     this.cancelCause = null;
     this.cancelController = new AbortController();
@@ -416,6 +503,18 @@ export class AgentLoop {
       for (let step = 1; ; step++) {
         // A7 边界检查：step 开始前
         if (this.cancelCause) break;
+        // A14/T-P1-50 护栏：maxStepsPerTurn（缺省 0 = 不限）——超限强制
+        // 收束为 blocked（显式护栏终止，非 completed；模型一直 continue
+        // 不停是 A14 点名的失控面）
+        const maxSteps = this.deps.maxStepsPerTurn ?? 0;
+        if (maxSteps > 0 && step > maxSteps) {
+          this.deps.logger?.warn("maxStepsPerTurn 护栏触发——强制收束", {
+            turn,
+            maxSteps,
+          });
+          await this.closeTurn(turn, { kind: "blocked" });
+          return { kind: "blocked" };
+        }
         // A2：step 边界是注入点——按 QueueMode 排空队列（含第一步前），
         // steer 消息落 user/message 后经投影自然进入本次请求。
         await this.drainQueue(turn);
@@ -585,6 +684,16 @@ export class AgentLoop {
       dispatched.push(call);
       if (parallel) continue;
       const result = await this.dispatchTool(turn, step, call);
+      // A14/T-P1-50 迟到结果闸门：看门狗已强制收轮——结算回来的结果不再
+      // 落盘（事件流终态已闭合，append 会破坏 single-terminal/配平不变量）
+      if (this.forcedClosed) {
+        this.deps.logger?.warn("看门狗强制收轮后迟到的工具结果被丢弃", {
+          turn,
+          step,
+          callId: call.id,
+        });
+        break;
+      }
       toolResults.push({
         callId: call.id,
         content: result.content,
@@ -713,6 +822,15 @@ export class AgentLoop {
         try {
           const result = await this.dispatchTool(turn, step, call);
           byCallId.set(call.id, result);
+          // A14/T-P1-50 迟到结果闸门：强制收轮后不落盘（与 sequential 同闸）
+          if (this.forcedClosed) {
+            this.deps.logger?.warn("看门狗强制收轮后迟到的工具结果被丢弃", {
+              turn,
+              step,
+              callId: call.id,
+            });
+            return;
+          }
           this.deps.store.append(this.deps.sessionId, [
             {
               type: "tool/result",
@@ -875,10 +993,15 @@ export class AgentLoop {
   }
 
   private async closeTurn(turn: number, reason: TurnEndReason): Promise<void> {
+    // A14/T-P1-50：强制收轮已落 turn/end（看门狗）——自然收尾路径到此
+    // 直接返回，防 double terminal（事件流不变量优先）。
+    if (this.forcedClosed) return;
     // A10（T-P1-47）：steer 准入权威面在收轮开始即清位——turn/end 事件
     // 转发先于收尾完成（flush/turnEnd 链还在跑），此窗口内的 steer 不能
     // 再被受理（终态已落盘，无可重定向的在途工作）。
     this.activeTurnNumber = null;
+    // A14/T-P1-50：正常收轮先到 → 拆看门狗（迟到的看门狗不得触发）
+    this.disarmAbortWatchdog();
     const outcome = await this.turnEndChain.run(this.$, { turn, reason });
     if (outcome.truncated) {
       // turnEnd 截断 = turn/end 没落盘，turn 保持未闭合（与崩溃残留同待遇）。
