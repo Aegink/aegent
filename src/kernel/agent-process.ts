@@ -18,7 +18,7 @@
 import { createInterface } from "node:readline";
 import { spawn } from "node:child_process";
 
-import type { CancelCause } from "./events.js";
+import type { CancelCause, TurnEndReason } from "./events.js";
 import { AgentLoop, type AgentLoopDeps, type ToolExecutionMode } from "./loop.js";
 import { PromptQueue, QueueFullError } from "./queue.js";
 import { ToolClassLimiter, TurnAdmission } from "./admission.js";
@@ -363,6 +363,7 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
     // 请求）——存量队列照常跑完（EOF"处理完剩余工作"语义），进程将退，
     // 计数无消费方。
     const permit = admission.draining ? null : admission.admit();
+    let ended: TurnEndReason | undefined;
     inflight = (async () => {
       // E11 代码检查点：每轮开始前打点（pi turn_start "before LLM makes
       // changes" 的等价时点——此刻工作区就是"改前"状态，场景①的恢复依据）。
@@ -374,7 +375,9 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
       }
       return loop.runTurn(next.content);
     })()
-      .then(() => undefined)
+      .then((reason) => {
+        ended = reason;
+      })
       .catch((e: unknown) => {
         // loop 崩溃（异常逃出 runTurn）：会话可能有未闭合 turn，进程不可继续
         send({
@@ -387,7 +390,14 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
       .finally(() => {
         permit?.release();
         inflight = null;
-        kick(); // 收尾后再踢一次——轮跑动期间入队的 prompt 从这里续开新轮
+        // A8/T-P1-52：轮以 aborted 终止且队列非空 → 未消费输入退回父进程
+        // 回显（"退回输入框"），不自动续跑（pi-desktop·Stop 不独立重放）。
+        // 已消费进历史的不退（drain 后即出队）；gate 拦截的未入队也不退。
+        if (ended?.kind === "aborted" && queue.size > 0) {
+          const rest = queue.drainAll();
+          send({ type: "prompt_returned", contents: rest.map((p) => p.content) });
+        }
+        kick(); // 收尾后再踢一次——completed 后队列续开；aborted 退回后队列空 → idle
       });
   };
 

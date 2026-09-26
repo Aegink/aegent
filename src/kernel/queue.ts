@@ -79,6 +79,15 @@ export class PromptQueue {
     return [this.items.shift()!];
   }
 
+  /**
+   * A8/T-P1-52 全量取出（无视 QueueMode）：轮以 aborted 终止时，未消费的
+   * 输入经此退回调用方（"退回输入框"——不独立重放，pi-desktop·Stop
+   * "retains accepted input … without independently replaying it" 同构）。
+   */
+  drainAll(): QueuedPrompt[] {
+    return this.items.splice(0);
+  }
+
   /** 仍在队列里的消息数（可观测；one-at-a-time 下常 > 0 直到轮结束）。 */
   get size(): number {
     return this.items.length;

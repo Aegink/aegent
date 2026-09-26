@@ -758,7 +758,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **偏离 / 建议**：（留白）
 - **完成记录**：2026-09-27。产出：①`RetryOptions.onRetry?` 钩子（`RetryObservation {attempt, delayMs, error: RetryAttemptFields}`——kimi retry.ts:68-74 retryErrorFields 同构三字段 errorName/errorMessage/statusCode）；delayMs 在钩子调用前已定（Retry-After 优先于默认退避的裁决结果如实留痕）；②agent-child openai 装配缺省接线 `onRetry → retryWarnLogger.warn("模型请求重试", {attempt, delayMs, ...error})`（模块级单例 logger 避免句柄膨胀；echo 模式无重试面零行为变化）；③词汇表预判②兑现：**零事件扩展**——provider 内部重试不进模型历史 = 不落流自洽，留记录面 = 结构化日志。验收：`npx vitest run src/models/retry.test.ts` → **12 passed**（+2 新）：①429×2 后成功：onRetry 恰 2 次、attempt 0→1 递增、delayMs [500,1000] 与默认退避一致（rand=0 钉死）、error 字段带 errorName/errorMessage/statusCode=429；②400 一次即抛零 onRetry。全量 `npx vitest run` **819 passed / 1 skipped**（817 → 净增 2），`npx tsc --noEmit` 干净。
 
-#### T-P1-52 · A8 · 取消不丢 prompt（退回输入框） `[ ]`
+#### T-P1-52 · A8 · 取消不丢 prompt（退回输入框） `[x]`
 - **依据需求**：A8（P1："取消可把未发出的 prompt 退回输入框而非丢失"）——展卡核对结论见卡序头③：队列保留结构成立，补可见面
 - **上游首选参考**：[grok·agent.rs:758](../oss/grok-build/crates/codegen/xai-grok-pager/src/app/agent.rs#L758)（in_flight_prompt："captured at send time and cleared once the server emits any activity (chunk, tool call, retry, etc.)" + "Used by do_cancel_turn to 'rewind' a prompt back to the input box if the user cancels before any response arrives" + "None for skill-injected prompts (cannot be reversed)"）
 - **取什么 / 别抄什么**：取"响应到达前取消 → 输入回退可见、不丢"与"已消费进历史的不可逆"；我方语义映射：已落盘 user/message（进模型历史）= 已消费不回退，队列中未消费 = "未发出的 prompt"取消后回显待处理；不抄 Rust 端 BTreeMap 状态机与 composer 语义（CLI 回显即"输入框"对应物）
@@ -768,6 +768,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **依赖**：T-P1-46（取消行为正确）· T-P1-48（gate 拦截衔接）
 - **风险 / 未知**：REPL 回显的交互语义（用户重交 or 编辑）是 UX 面，本卡只做"可见"最小面
 - **偏离 / 建议**：（留白）
+- **完成记录**：2026-09-27。产出：①`PromptQueue.drainAll()`（无视 QueueMode 全量取出——退回专用）；②协议 AgentMessage 加 `prompt_returned {contents: string[]}`（wire 面数组校验；**不进词汇表**——协议消息非会话事件）；③agent-process kick 收尾：`.then` 捕获本轮 `TurnEndReason` → aborted 且队列非空 → drainAll 全量退回 + send（**不自动续跑**——pi-desktop·Stop "retains accepted input as history without independently replaying it" 同构）→ kick 照旧（队列已空 → idle 宣告/disposing → finish，EOF 语义零破坏）；completed 路径续开行为不变（既有"轮后自动续开"用例零改动全绿）；④REPL `⮐ 待处理输入：<内容>` 回显。**语义对齐记档**：已消费进历史的不退（drain 后即出队）、gate 拦截的未入队不退（T-P1-48 衔接）、队列本身不清（completed 后照旧消费）。验收：`npx vitest run src/kernel/agent-process.test.ts src/cli/cli.test.ts src/kernel/queue.test.ts src/kernel/agent-protocol.test.ts` → **41 passed**（process 8 + cli 17 + queue 8 + protocol 9，+2 新）：①aborted 轮后 prompt_returned 携带排队两条（FIFO ["乙","丙"]）+ 不自动续开（call=1）+ idle 照常宣告 + exit 0；②CLI /cancel 后 ⮐ 行可见 + 首条（已进历史）不回显 + 零第二轮。**测试中发现并记档**：审批挂起不响应 cancel 信号（C5 Deferred 只认答复/超时）——取消在审批挂起时的收轮要等 approvalTimeoutMs 结算 isError 后由派发循环的取消检查接管（既有 C50 语义，非本卡缺陷；CLI 用例以 400ms 超时驱动全链）。全量 `npx vitest run` **821 passed / 1 skipped**（819 → 净增 2），`npx tsc --noEmit` 干净。
 
 #### T-P1-53 · A12 · 用户输入关联 id（promptId 载荷扩展） `[ ]`
 - **依据需求**：A12（P1："用户输入携带关联 id，关联该输入之后、下一次输入之前的所有事件；仍不提供 per-prompt 完成语义（与 A9 一致）"）

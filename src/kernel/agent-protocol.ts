@@ -113,6 +113,15 @@ export type AgentMessage =
       timeoutMs: number;
     }
   | { type: "reverted"; targetSeq: number; codeRestored: boolean }
+  | { type: "reverted"; targetSeq: number; codeRestored: boolean }
+  | {
+      /** A8/T-P1-52：取消后未消费输入退回（"退回输入框"）——轮以 aborted
+       * 终止且队列非空时，队列中尚未进入模型历史的 prompt 全量退给父进程
+       * 回显（pi-desktop·Stop "retains accepted input as history without
+       * independently replaying it" 同构；不丢也不自动执行）。 */
+      type: "prompt_returned";
+      contents: string[];
+    }
   | {
       /** E5/T-P1-40：fork 成功回执——新会话 id 与切点（lineage 标记已落
        * 子流头部）。新会话的后续对话由新进程/新装配打开，本连接不动。 */
@@ -344,6 +353,7 @@ export function decodeMessage(line: string): AgentMessage {
     sessionId?: unknown;
     cutSeq?: unknown;
     eventCount?: unknown;
+    contents?: unknown;
   };
   switch (msg.type) {
     case "ready":
@@ -434,6 +444,14 @@ export function decodeMessage(line: string): AgentMessage {
         throw new ProtocolError("PROTOCOL_MALFORMED", "forked 需要正整数 eventCount（lineage 标记至少 1 条）");
       }
       return { type: "forked", sessionId: msg.sessionId, cutSeq: msg.cutSeq, eventCount: msg.eventCount };
+    }
+    case "prompt_returned": {
+      // A8/T-P1-52：取消后未消费输入退回（可为空数组？不——发送方仅在
+      // 队列非空时发；wire 面仍校验数组形状）
+      if (!Array.isArray(msg.contents) || msg.contents.some((c) => typeof c !== "string")) {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "prompt_returned 需要字符串数组 contents");
+      }
+      return { type: "prompt_returned", contents: msg.contents as string[] };
     }
     case "error":
       if (typeof msg.code !== "string" || typeof msg.message !== "string") {

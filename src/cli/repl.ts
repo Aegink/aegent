@@ -259,6 +259,12 @@ export async function runCli(options: RunCliOptions): Promise<void> {
           // E5：fork 回执——新会话已创建（后续对话由新进程打开，本连接不动）
           out(`⑂ 已分支到新会话 ${msg.sessionId}（切点 seq=${msg.cutSeq}，复制 ${msg.eventCount} 条事件）`);
           break;
+        case "prompt_returned":
+          // A8/T-P1-52：取消后未消费输入退回（"退回输入框"——不丢也不自动执行）
+          for (const content of msg.contents) {
+            out(`⮐ 待处理输入：${oneLine(content, 120)}`);
+          }
+          break;
         case "error":
           out(`! [${msg.code}] ${oneLine(msg.message)}`);
           break;

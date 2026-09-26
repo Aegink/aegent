@@ -426,6 +426,50 @@ describe("aegent CLI（T-8-01）", () => {
     expect(reminders.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("/cancel 后未消费输入退回可见（A8/T-P1-52）：⮐ 待处理输入行；不丢也不自动执行", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-return-"));
+    const target = path.join(workspace, "note.txt");
+    const provider = scriptedProvider([
+      // 第 1 次调用：产 read 调用（ask 挂起 = 排队窗口），挂起期间取消
+      [
+        {
+          type: "tool-call-delta",
+          id: "call_1",
+          name: "read",
+          argsDelta: JSON.stringify({ path: target }),
+        },
+        { type: "done" },
+      ],
+      // 第 2 次调用不会被消费（取消后队列退回、无续轮）
+      [{ type: "text-delta", text: "不该出现" }, { type: "done" }],
+    ]);
+    const lines = await runScriptedSession(
+      {
+        provider,
+        assembly: {
+          workspaceRoot: workspace,
+          contextWindow: 200_000,
+          // 审批挂起不响应 cancel 信号（C5 Deferred 只认答复/超时）——
+          // 400ms 超时结算 isError 后，派发循环的取消检查才接管收轮
+          approvalTimeoutMs: 400,
+        },
+      },
+      async function* ({ waitFor }) {
+        yield `读一下 ${target}`;
+        // read 的 ask 审批挂起（在途轮）——第二条 prompt 排队（未消费）
+        yield "排队的第二条";
+        await waitFor((line) => line.includes("⏸ 待审批 [call_1]") && line.includes("read"));
+        yield "/cancel";
+        // aborted → 未消费输入退回可见
+        await waitFor((line) => line.includes("⮐ 待处理输入：排队的第二条"));
+        await waitFor((line) => line.includes("── turn 1 结束（aborted）"));
+      },
+    );
+    expect(lines.some((l) => l.includes("⮐ 待处理输入：排队的第二条"))).toBe(true);
+    // 已消费进历史的首条不退回；退回的排队条目零自动执行（无第二轮）
+    expect(lines.some((l) => l.includes("── turn 2"))).toBe(false);
+  });
+
   it("/steer 重定向在途轮（A10/T-P1-47）：审批窗口受理无拒绝；轮结束后 TURN_NOT_ACTIVE", async () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-steer-"));
     const target = path.join(workspace, "note.txt");

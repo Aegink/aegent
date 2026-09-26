@@ -440,6 +440,118 @@ describe("agent-process —— T9 agent 出进程", () => {
     await running;
   }, 30_000);
 
+  it("A8/T-P1-52 取消退回：aborted 轮后 prompt_returned 携带未消费条目、不自动续开、照常 idle", async () => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    let exitCode: number | null = null;
+    let resolveExit: (code: number) => void = () => {};
+    const exited = new Promise<number>((resolve) => {
+      resolveExit = resolve;
+    });
+
+    // 挂起 provider：轮 1 挂起中制造排队窗口
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    let call = 0;
+    const provider = {
+      async *streamChat() {
+        call += 1;
+        if (call === 1) {
+          yield { type: "tool-call-delta" as const, id: "c1", name: "read", argsDelta: "{}" };
+          await gate;
+          yield { type: "done" as const };
+        } else {
+          yield { type: "text-delta" as const, text: "不该被消费的续轮" };
+          yield { type: "done" as const };
+        }
+      },
+    };
+
+    const running = runAgentChildStdio({
+      input,
+      output,
+      provider: provider as never,
+      exit: (code) => {
+        if (exitCode === null) {
+          exitCode = code;
+          resolveExit(code);
+        }
+      },
+    });
+
+    const items: AgentMessage[] = [];
+    const waiters: ((r: IteratorResult<AgentMessage>) => void)[] = [];
+    let buf = "";
+    output.setEncoding("utf-8");
+    output.on("data", (chunk: string) => {
+      buf += chunk;
+      for (;;) {
+        const nl = buf.indexOf("\n");
+        if (nl < 0) break;
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        const msg = decodeMessage(line);
+        const w = waiters.shift();
+        if (w) w({ value: msg, done: false });
+        else items.push(msg);
+      }
+    });
+    const iter = {
+      [Symbol.asyncIterator]() {
+        return {
+          next: () => {
+            const item = items.shift();
+            if (item) return Promise.resolve({ value: item, done: false });
+            return new Promise<IteratorResult<AgentMessage>>((resolve) =>
+              waiters.push(resolve),
+            );
+          },
+        };
+      },
+    };
+    const next = async () => (await iter[Symbol.asyncIterator]().next()).value;
+
+    expect(await next()).toEqual({ type: "ready" });
+    input.write(JSON.stringify({ type: "prompt", messageId: "a", content: "甲" }) + "\n");
+    expect(await next()).toEqual({ type: "accepted", messageId: "a" });
+    for (;;) {
+      const m = await next();
+      if (m.type === "event" && m.event.type === "request/header") break;
+    }
+    // 轮 1 挂起中排队两条（未消费——尚未进入模型历史）
+    input.write(JSON.stringify({ type: "prompt", messageId: "b", content: "乙" }) + "\n");
+    expect(await next()).toEqual({ type: "accepted", messageId: "b" });
+    input.write(JSON.stringify({ type: "prompt", messageId: "c", content: "丙" }) + "\n");
+    expect(await next()).toEqual({ type: "accepted", messageId: "c" });
+    // 取消当前轮：abort → 队列退回
+    input.write(JSON.stringify({ type: "cancel", cause: { kind: "user" } }) + "\n");
+    release();
+
+    let sawReturned: string[] | null = null;
+    let sawIdle = false;
+    for (;;) {
+      const m = await next();
+      if (m.type === "prompt_returned") sawReturned = m.contents;
+      if (m.type === "idle") {
+        sawIdle = true;
+        break;
+      }
+    }
+    // 未消费的两条全量退回（FIFO）；不丢也不自动执行
+    expect(sawReturned).toEqual(["乙", "丙"]);
+    // 不自动续开：idle 宣告（无在途轮且队列空）而非第二轮事件
+    expect(sawIdle).toBe(true);
+    expect(call).toBe(1);
+
+    input.write(JSON.stringify({ type: "dispose" }) + "\n");
+    expect(await exited).toBe(0);
+    input.end();
+    await running;
+  }, 30_000);
+
   it("J20/T-P1-49 收尾闭闸：dispose 后 prompt/steer → SERVER_DRAINING 类型化拒绝（连接不断）", async () => {
     const input = new PassThrough();
     const output = new PassThrough();
