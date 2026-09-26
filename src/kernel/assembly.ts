@@ -71,7 +71,7 @@ import {
   type ApprovalAnnouncement,
   PendingApprovals,
 } from "../policy/pending.js";
-import { ManualPermissionBroker } from "../policy/broker.js";
+import { ManualPermissionBroker, type PermissionBrokerPort } from "../policy/broker.js";
 import { assemblePolicyChain } from "../policy/chain.js";
 import { createRuleSetModule } from "../policy/rules.js";
 import { type RuleSource, loadRules, loadedRuleMatch, loadedRuleText } from "../policy/rule-loader.js";
@@ -295,6 +295,12 @@ export interface ChildAssemblyOptions {
   logger?: Logger;
   /** 审批宣告的协议转发口（asked/settled 由 agent-process 转发，timed-out 经事件流可见）。 */
   onApprovalAnnouncement?: (announcement: ApprovalAnnouncement) => void;
+  /**
+   * 审批 broker 覆盖（H3/T-P1-42 子代理装配）：缺省 Manual（CLI 审批出口，
+   * C51 零行为变化）；子代理装配传 DenyPermissionBroker——ask 请求确定性
+   * 拒绝（dsh approvalPolicy 钉死 'never' 同构，见 subagent.ts）。
+   */
+  broker?: PermissionBrokerPort;
 }
 
 export interface ChildAssembly {
@@ -388,7 +394,7 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
     audit(announcement);
     options.onApprovalAnnouncement?.(announcement);
   });
-  const broker = new ManualPermissionBroker(pending, options.approvalTimeoutMs);
+  const broker = options.broker ?? new ManualPermissionBroker(pending, options.approvalTimeoutMs);
 
   // —— 权限链（C58 层序常量展开）：用户规则集 > 核心（会话批准历史 +
   // shell 语义分析）。C22：session-runtime 作用域的批准规则由

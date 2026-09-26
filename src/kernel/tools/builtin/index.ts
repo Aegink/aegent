@@ -19,6 +19,7 @@ import { createPwshTool } from "./pwsh.js";
 import { createQuestionTool, type QuestionToolDeps } from "./question.js";
 import { createReadTool } from "./read.js";
 import { createSkillLoadTool } from "./skill.js";
+import { createTaskTool, type TaskToolDeps } from "./task.js";
 import { createTodoWriteTool } from "./todo.js";
 import { createToolLoadTool } from "./tool-load.js";
 import { createWebfetchTool } from "./webfetch.js";
@@ -44,6 +45,7 @@ export const BUILTIN_TOOL_NAMES = [
   "tool_load",
   "webfetch",
   "question",
+  "task",
 ] as const;
 
 export function registerBuiltinTools(
@@ -71,6 +73,11 @@ export function registerBuiltinTools(
      * 提供时注册 question 工具；缺省不注册（无审批基建的装配无问答面）。
      */
     question?: QuestionToolDeps;
+    /**
+     * H1/H4/T-P1-42 task 依赖（kernel/subagent.ts 的 runner）：提供时注册
+     * task 工具；缺省不注册（无子代理运行面的装配零新工具——P0 行为不变）。
+     */
+    task?: TaskToolDeps;
   } = {},
 ): void {
   const guard = options.pathGuard ?? PathGuard.forWorkspace(process.cwd());
@@ -124,6 +131,10 @@ export function registerBuiltinTools(
     ...(options.question !== undefined
       ? [createQuestionTool(options.question)]
       : []),
+    // H1/H4 task（T-P1-42）：子代理运行面（kernel/subagent.ts 的 runner）
+    // 提供时才注册——工具可见但深度超限时执行期类型化拒绝（opencode 深度
+    // 检查同款，模型可自修）；H5 的 deny 规则是第二道（fail-closed 双保险）。
+    ...(options.task !== undefined ? [createTaskTool(options.task)] : []),
   ]) {
     registry.registerTool(def);
   }

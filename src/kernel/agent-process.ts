@@ -35,6 +35,7 @@ import { ForkError, InMemoryEventStorage, type EventStorage, SessionStore } from
 import { Projector } from "../session/project.js";
 import { createChildAssembly, createTodoUpdateEmitter, type ChildAssembly, type ChildAssemblyOptions } from "./assembly.js";
 import { ModelNotRegisteredError } from "./model-switch.js";
+import { createSubagentRunner } from "./subagent.js";
 import { registerBuiltinTools } from "./tools/builtin/index.js";
 import { NodeExecutionEnv } from "./tools/env.js";
 import { ToolRegistry } from "./tools/registry.js";
@@ -91,7 +92,13 @@ export interface AgentChildOptions {
    * T-8-01 生产装配（权限 gate / 压缩 / 预算 / 抖动 / 系统提示）。
    * 缺省 undefined = T-3-06 最小装配（echo + 无权限层），旧测试行为不变。
    */
-  assembly?: Omit<ChildAssemblyOptions, "sessionId" | "store">;
+  assembly?: Omit<ChildAssemblyOptions, "sessionId" | "store"> & {
+    /**
+     * H1/H4/T-P1-42 子代理运行面：提供时构造 task 工具与 runner（进程内
+     * 子代理 + 独立子会话）。maxDepth 缺省 1 = 子代理不可再分。
+     */
+    subagent?: { maxDepth?: number };
+  };
 }
 
 /**
@@ -162,12 +169,37 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
   // T-8-01 生产装配：审批宣告经 forwardApprovalAnnouncement 分型转发
   //（asked → approval_requested / question_asked、settled → 答复落定；
   // timed-out 不走协议——isError 的 tool/result 事件已是事件流上的宣告事实）。
+  // H1/H4/T-P1-42：subagent 选项不进 createChildAssembly（它只驱动 task
+  // 工具注册，见下方 registerBuiltinTools）。
+  const subagentOptions = options.assembly?.subagent;
   const assembly: ChildAssembly | undefined = options.assembly
     ? createChildAssembly({
         sessionId,
         store,
         ...options.assembly,
         onApprovalAnnouncement: forwardApprovalAnnouncement,
+      })
+    : undefined;
+
+  // H1/H4/T-P1-42：子代理 runner（顶层会话 depth=0）。降级规则的输入 =
+  // 装配 rules 选项原样（deriveSubagentRules 在 runner 内对每层子装配
+  // 现算——捕获时点即派发时点，captureDelegatedPolicyOverrides 同构）。
+  const runSubagent = subagentOptions
+    ? createSubagentRunner({
+        parentSessionId: sessionId,
+        store,
+        provider: options.provider ?? echoProvider(),
+        identity: options.identity ?? { provider: "echo", modelId: "echo-1" },
+        workspaceRoot: options.assembly?.workspaceRoot ?? process.cwd(),
+        contextWindow: options.assembly?.contextWindow ?? 200_000,
+        parentRules: options.assembly?.rules ?? [],
+        depth: 0,
+        ...(subagentOptions.maxDepth !== undefined
+          ? { maxDepth: subagentOptions.maxDepth }
+          : {}),
+        ...(options.spillDir !== undefined ? { spillDir: options.spillDir } : {}),
+        approvalTimeoutMs: options.assembly?.approvalTimeoutMs ?? 5_000,
+        ...(assembly?.modelForTurn ? { modelForTurn: assembly.modelForTurn } : {}),
       })
     : undefined;
 
@@ -206,6 +238,9 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
             question: { ...assembly.question },
           }
         : {}),
+      // H1/H4/T-P1-42：task 工具（subagent 选项提供时注册；runner 自带
+      // 深度检查——可见但拒绝，opencode 深度语义同款）
+      ...(runSubagent ? { task: { runSubagent } } : {}),
     },
   );
   const decideTurnBase: AgentLoopDeps["decideTurn"] = (record) =>

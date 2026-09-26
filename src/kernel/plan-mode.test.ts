@@ -216,7 +216,7 @@ describe("注册面与提示词独立文件（验收⑤）", () => {
     }
   });
 
-  it("planMode 提供时注册 plan_enter/plan_exit；缺省不注册（全配置 = BUILTIN_TOOL_NAMES 13）", () => {
+  it("planMode 提供时注册 plan_enter/plan_exit；缺省不注册（全配置 = BUILTIN_TOOL_NAMES 15）", () => {
     const withPlan = new ToolRegistry();
     registerBuiltinTools(withPlan, { planMode: createPlanModeService() });
     expect(withPlan.names()).toContain("plan_enter");
@@ -231,7 +231,7 @@ describe("注册面与提示词独立文件（验收⑤）", () => {
     registerBuiltinTools(full, {
       todoEmit: () => undefined,
       planMode: createPlanModeService(),
-      // BUILTIN_TOOL_NAMES 是"可注册清单"（webfetch/question 随装配条件
+      // BUILTIN_TOOL_NAMES 是"可注册清单"（webfetch/question/task 随装配条件
       // 注册）——全集等价断言需带齐各能力面的装配件
       networkGuard: createNetworkGuard({ policy: "deny" }),
       question: {
@@ -239,9 +239,10 @@ describe("注册面与提示词独立文件（验收⑤）", () => {
         sessionId: "s-full",
         timeoutMs: 1_000,
       },
+      task: { runSubagent: async () => ({ sessionId: "x", stopReason: "completed", output: "" }) },
     });
     expect(full.names()).toEqual([...BUILTIN_TOOL_NAMES]);
-    expect(BUILTIN_TOOL_NAMES).toHaveLength(14);
+    expect(BUILTIN_TOOL_NAMES).toHaveLength(15);
 
     const withoutPlan = new ToolRegistry();
     registerBuiltinTools(withoutPlan);
