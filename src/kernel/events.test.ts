@@ -83,15 +83,23 @@ const SAMPLES: NewSessionEvent[] = [
     turn: 1,
     items: [{ content: "读 plan", status: "in_progress" }],
   },
+  // T-P1-12 的 goal 事实事件（词汇表 16→17，见 l0-events.md §8 落地记录 5）
+  {
+    type: "goal/set",
+    turn: 1,
+    text: "完成批次 1",
+    deadline: 1_800_000_000_000,
+    status: "active",
+  },
 ];
 
 describe("事件词汇表（l0-events.md §3 定稿）", () => {
-  it("联合成员恰 16 个（13 定稿 + session/revert + model/switch + todo/update），且与 EVENT_TYPES 严格一致（验收①：Exclude 遍历断言的运行时面）", () => {
-    expect(EVENT_TYPES).toHaveLength(16);
+  it("联合成员恰 17 个（13 定稿 + session/revert + model/switch + todo/update + goal/set），且与 EVENT_TYPES 严格一致（验收①：Exclude 遍历断言的运行时面）", () => {
+    expect(EVENT_TYPES).toHaveLength(17);
     const declared = new Set<string>(EVENT_TYPES);
     // 每个联合成员都能按其必填载荷构造，且 type 互不相同、并集等于 EVENT_TYPES。
     const constructed = SAMPLES.map((e) => e.type);
-    expect(new Set(constructed)).toHaveLength(16);
+    expect(new Set(constructed)).toHaveLength(17);
     expect(new Set(constructed)).toEqual(declared);
     // 编译期等价断言在 events.ts 的 _EVENT_TYPES_EXACT（tsc --noEmit 时生效）。
   });

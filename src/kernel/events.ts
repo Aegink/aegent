@@ -1,8 +1,8 @@
 /**
  * L0 事件词汇表 —— `docs/l0-events.md` §3 定稿的落地（13 事件 + E4 的
  * session/revert 标记 14 个 + T-P1-06 的 model/switch 15 个 + T-P1-10 的
- * todo/update 共 16 个 + 6 结束原因 + 5 取消原因；13→14、14→15 与 15→16
- * 的裁决记录见 l0-events.md §8 落地记录）。
+ * todo/update 16 个 + T-P1-12 的 goal/set 共 17 个 + 6 结束原因 + 5 取消
+ * 原因；各次扩展的裁决记录见 l0-events.md §8 落地记录）。
  *
  * 词汇表是 Q9 的单向门：定完再改的代价见
  * `oss/deepseek-harness/.agents/notes/rejected/architecture/2026-06-16-typed-event-schemas.md`。
@@ -369,6 +369,25 @@ export interface TodoUpdateEvent extends EventBase {
   items: Array<{ content: string; status: TodoStatus }>;
 }
 
+/** goal 的状态三值（G3/G6，T-P1-12）。 */
+export type GoalStatus = "active" | "achieved" | "abandoned";
+
+/**
+ * goal 事实变更（G3/G6，T-P1-12）：goal 跨轮保持的事实源（不变量 1——
+ * 设定/达成/放弃/续期都是状态变更，各有事件承载）。会话级元事件：
+ * 不要求 turn/step 开合上下文（session/revert / model/switch / todo/update
+ * 同款，落流时 turn 挂流内最后轮空流兜 0）。载荷是变更后的**完整 goal
+ * 事实**（E12 整值）——流内最新本事件即当前 goal；achieved/abandoned 后
+ * text/deadline 保留终值（不抹历史事实）。deadline 为 epoch 毫秒（可缺省
+ * = 无截止）。词汇表 16→17 的裁决记录见 l0-events.md §8 落地记录 5。
+ */
+export interface GoalSetEvent extends EventBase {
+  type: "goal/set";
+  text: string;
+  deadline?: number;
+  status: GoalStatus;
+}
+
 export type SessionEvent =
   | TurnStartEvent
   | TurnEndEvent
@@ -385,9 +404,10 @@ export type SessionEvent =
   | RequestHeaderEvent
   | SessionRevertEvent
   | ModelSwitchEvent
-  | TodoUpdateEvent;
+  | TodoUpdateEvent
+  | GoalSetEvent;
 
-/** 16 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
+/** 17 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
 export const EVENT_TYPES = [
   "turn/start",
   "turn/end",
@@ -405,6 +425,7 @@ export const EVENT_TYPES = [
   "session/revert",
   "model/switch",
   "todo/update",
+  "goal/set",
 ] as const;
 
 export type SessionEventType = (typeof EVENT_TYPES)[number];

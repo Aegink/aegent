@@ -98,6 +98,12 @@ import {
   type TurnModel,
 } from "./model-switch.js";
 import { createPlanModeService, type PlanModeService } from "./plan-mode.js";
+import {
+  createGoalService,
+  goalFromEvents,
+  type GoalExpiryAction,
+  type GoalService,
+} from "./goal.js";
 import type { ModelIdentity } from "../models/identity.js";
 
 /** P0 内置摘要器：声明性前缀 + 拼接截断。真实摘要质量属 F5（P1）。 */
@@ -234,6 +240,21 @@ export interface ChildAssemblyOptions {
    * + 系统提示机制段。缺省不启用 = 零行为变化（不注册工具、gate 无联动）。
    */
   planMode?: boolean;
+  /**
+   * G3/G6 会话目标（T-P1-12）：提供时构造 GoalService——新会话（流内无
+   * goal 事实）以此落初始 goal/set 事件；已有 goal 事实的会话按流重建
+   * （goalFromEvents，流内权威——J14 回放保护同款），选项初始值不落。
+   * 每轮开始（beforeFirstModelRequest）注入 goal 提醒；缺省不启用 =
+   * 零行为变化。
+   */
+  goal?: {
+    text: string;
+    deadline?: number;
+    /** 到期动作（G6 三选一：放弃/上报/续期）；缺省 "report"。 */
+    expiryAction?: GoalExpiryAction;
+    /** "renew" 的续期时长毫秒；缺省 24h。 */
+    renewExtendMs?: number;
+  };
   /** M10 预算配置；缺省不启用预算轴。 */
   budget?: BudgetConfig;
   /** 压缩摘要器；缺省 P0 内置截断摘要。 */
@@ -287,6 +308,8 @@ export interface ChildAssembly {
    * 传 registerBuiltinTools）+ gate 出口活查询的同一个实例。
    */
   planMode?: PlanModeService;
+  /** G3 goal 服务（goal 选项启用时存在；tick 与事实面供测试/owner 通道观测）。 */
+  goal?: GoalService;
   /** 工具注册的面（PathGuard 由装配定形，注册处必收）。 */
   pathGuard: PathGuard;
   /** 释放未决审批（dispose 路径：按超时语义拒绝，不悬挂）。 */
@@ -560,6 +583,39 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
   // 注册共用同一实例（agent-process 取 assembly.planMode 注册工具面）。
   const planModeService = options.planMode ? createPlanModeService() : undefined;
 
+  // —— G3/G6 goal（T-P1-12）：落流出口与 todo/model/switch 同款（会话级
+  // 元事件挂流内最后轮空流兜 0）。流内已有 goal 事实 → 按流重建（流内
+  // 权威，J14 回放保护同款）；新会话 → 选项初始 goal 落事件。
+  const restoredGoal = goalFromEvents(store.load(sessionId));
+  const goalService = options.goal
+    ? createGoalService({
+        emit: (state) => {
+          const events = store.load(sessionId);
+          const turn = events.length > 0 ? events[events.length - 1]!.turn : 0;
+          store.append(sessionId, [
+            {
+              type: "goal/set",
+              turn,
+              text: state.text,
+              ...(state.deadline !== undefined ? { deadline: state.deadline } : {}),
+              status: state.status,
+            },
+          ]);
+        },
+        ...(options.goal.expiryAction !== undefined
+          ? { expiryAction: options.goal.expiryAction }
+          : {}),
+        ...(options.goal.renewExtendMs !== undefined
+          ? { renewExtendMs: options.goal.renewExtendMs }
+          : {}),
+        ...(restoredGoal !== null ? { initial: restoredGoal } : {}),
+      })
+    : undefined;
+  if (goalService !== undefined && restoredGoal === null) {
+    // 新会话：初始 goal 落流（G3 验收④——goal 落事件流才有恢复面）
+    goalService.set(options.goal!.text, options.goal!.deadline);
+  }
+
   const toolGateLayer = createToolGateLayer({
     chain: policyChain,
     broker,
@@ -602,6 +658,16 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
     layers,
     beforeFirstModelRequest: async (turn) => {
       completedModelSteps = 0;
+      // G3 goal 提醒注入（T-P1-12，同 PreTurn 压缩位）：到期判定 + 配置
+      // 动作 + 提醒落流（M10 同款纪律——写进模型可见历史才算送达）。
+      if (goalService) {
+        const reminder = goalService.tickBeforeTurn(Date.now());
+        if (reminder !== null) {
+          store.append(sessionId, [
+            { type: "user/message", turn, message: { content: reminder }, source: "injected" },
+          ]);
+        }
+      }
       const messages = startNewContextWindow(store.load(sessionId));
       const verdict = detectLocalOverflow({ messages, contextWindow });
       if (!verdict.overflow) return;
@@ -651,6 +717,7 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
       : {}),
     ...(checkpoint !== undefined ? { checkpoint } : {}),
     ...(planModeService !== undefined ? { planMode: planModeService } : {}),
+    ...(goalService !== undefined ? { goal: goalService } : {}),
     pathGuard,
     dispose: () => {
       pending.dispose();

@@ -16,6 +16,7 @@
 
 import {
   EVENT_TYPES,
+  type GoalStatus,
   type SessionEvent,
   type TodoStatus,
   type TokenUsage,
@@ -90,6 +91,11 @@ export interface SessionProjection {
    * 当前状态 = 有效视窗内最新一条的 items（revert 切点切割同 modelSwitches）。
    */
   todos: Array<{ seq: number; items: ProjectionTodo[] }>;
+  /**
+   * goal 事实的变更历史（T-P1-12）：每条 goal/set 的完整事实（E12）。
+   * 当前 goal = 有效视窗内最新一条（revert 切点切割同 todos）。
+   */
+  goals: Array<{ seq: number; text: string; deadline?: number; status: GoalStatus }>;
 }
 
 function emptyProjection(): SessionProjection {
@@ -108,6 +114,7 @@ function emptyProjection(): SessionProjection {
     revertedTo: null,
     modelSwitches: [],
     todos: [],
+    goals: [],
   };
 }
 
@@ -223,6 +230,7 @@ export class Projector {
       case "request/header":
       case "model/switch":
       case "todo/update":
+      case "goal/set":
         break;
       case "session/revert":
         // 会话级元事件：不要求 turn/step 上下文。revert 的目标点不能在未来。
@@ -344,6 +352,15 @@ export class Projector {
         //（revert 切点重建依据），当前值 = 有效视窗内最新一条。
         s.todos.push({ seq: event.seq, items: event.items.map((i) => ({ ...i })) });
         break;
+      case "goal/set":
+        // G3：goal 事实整值全记（E12），当前 goal = 有效视窗内最新一条。
+        s.goals.push({
+          seq: event.seq,
+          text: event.text,
+          ...(event.deadline !== undefined ? { deadline: event.deadline } : {}),
+          status: event.status,
+        });
+        break;
       case "session/revert":
         s.revertedTo = event.phase === "revert" ? event.targetSeq : null;
         break;
@@ -367,6 +384,7 @@ export class Projector {
       compactions: s.compactions.filter((c) => c.seq <= cut),
       modelSwitches: s.modelSwitches.filter((m) => m.seq <= cut),
       todos: s.todos.filter((t) => t.seq <= cut),
+      goals: s.goals.filter((g) => g.seq <= cut),
       openTurn: s.openTurn && s.openTurn.seq <= cut ? s.openTurn : null,
     };
   }

@@ -401,6 +401,31 @@ describe("aegent CLI（T-8-01）", () => {
     expect(lines.some((l) => l.includes("⏸ 待审批 [call_4] bash"))).toBe(true);
   });
 
+  it("T-P1-12 G3：goal 跨轮保持——每轮开始注入目标提醒（beforeFirstModelRequest 位）", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-goal-"));
+    const lines = await runScriptedSession(
+      {
+        assembly: {
+          workspaceRoot: workspace,
+          contextWindow: 200_000,
+          approvalTimeoutMs: 5_000,
+          goal: { text: "完成词汇表扩展" },
+        },
+      },
+      async function* ({ waitFor }) {
+        yield "第一轮";
+        await waitFor((line) => line.includes("── turn 1 结束"));
+        yield "第二轮";
+        await waitFor((line) => line.includes("── turn 2 结束"));
+      },
+    );
+    // 初始 goal/set 落流 + 每轮开始注入提醒（injected 渲染为"（注入）"前缀）
+    const reminders = lines.filter(
+      (l) => l.includes("（注入）[目标提醒]") && l.includes("完成词汇表扩展"),
+    );
+    expect(reminders.length).toBeGreaterThanOrEqual(2);
+  });
+
   it("/revert 对话态回退（session/revert 事件经协议转发）", async () => {
     const lines = await runScriptedSession(
       {
