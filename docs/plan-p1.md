@@ -1,6 +1,6 @@
 # P1 实施计划 · 批次 1
 
-**状态**：v1.5 · 批次 1+2+3+4 收官（13/13 卡 + 10/10 卡 + 6/6 卡 + 10/10 卡，2026-09-26；词汇表 18 事件零扩展延续；批次 4 = 测试与诊断基建——O12–O26 全关，O17/O20 核对结论已追认关闭）· 批次 5 已展卡（子代理与 fork 大件，E5 + H1–H5 → 6 卡：T-P1-40 ~ 45）
+**状态**：v1.6 · 批次 1+2+3+4+5 收官（13/13 + 10/10 + 6/6 + 10/10 + 6/6 卡，2026-09-26；批次 5 = 子代理与 fork 大件——E5 + H1–H5 全关，session/fork 词汇表 18→19 立案待追认）· 批次 6 候选占位（loop 治理与准入，A5 A8 A10–A15 A17 + J20 + M9）
 **执行协议**：沿用 [`plan-p0.md`](plan-p0.md) §0（取卡 / 做卡 / 验收 / 打勾 / 提交 / 自动继续 / 四种停下情况），本文件不复制。执行进度追加在 [`plan-p0-progress.md`](plan-p0-progress.md)（台账 / 待澄清 / 人工确认清单共用一个文件）。
 **需求来源**：[`requirements.md`](requirements.md) §4 的 P1 项（共 158 条）。P1 不切阶段（§1 尾注），按**批次**组织：本文件当前只含批次 1，后续批次轮到时再展卡追加。
 **批次 1 范围**（用户圈定于 2026-09-25，四组全选，共 26 条）：
@@ -657,3 +657,12 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - 词汇表预判：session/fork 一处扩展（18→19）走待澄清立案；task 派发/结算与 delegation 预判零扩展——执行中每处新增事件必须先立案。
 - H3/H5 降级红线：子代理规则集只含 deny（+默认禁用清单），审批确定性拒绝，allow 零继承——每处有测试钉死。
 - 子代理/fork 与既有机制六面冲突盘点结论落批次报告（T-P1-45）。
+
+## 批次 5 完成核对（2026-09-26）
+
+- 6/6 卡打勾附验收 ✓（T-P1-40 ~ 45，6 条需求 ID：E5 + H1–H5 全关）；全量 `npx vitest run` **791 passed / 1 skipped**（批次 4 收官 761 → 净增 30），`npx tsc --noEmit` 全程干净，`count-features.sh` = 310 不变，`check-doc-links.sh` 798 链接 0 失效，`license-audit.sh` 通过（LEAK 未命中/CLEAN-ROOM/SOURCEMAP 无，与前批同形态）。
+- 两项展卡定形照执行 ✓：H1 = 进程内隔离 + 独立子会话（createSubagentRunner，同 store 新 sessionId）；H4 = 独立新会话不继承父历史（与 E5 fork 分工清晰——task 的 lineage 在 result.meta、fork 的 lineage 在 session/fork 事件，快照断言钉死分工）。
+- 词汇表：**18→19 一处扩展**（`session/fork` 会话级元事件，待澄清 #7 立案供追认；task 派发/结算与 delegation 两处预判零扩展兑现——tool result 是结算通道、delegation 以装配参数+系统提示段重建）。
+- H3/H5 降级红线测试钉死 ✓：allow/ask 零继承（subagent-rules.test 验收⑤）+ Deny broker 确定性拒绝（read/todo_write/question 行为断言）+ 默认禁用清单 deny 规则（task/todo_write）+ C46 硬拦子代理同效 + maxDepth=2 时递归委派仍被 H3 拦（边界落测试）。
+- 六面盘点 ✓（详见 T-P1-45 完成记录）：plan×task 测试钉死（不属硬关面 + 防绕过）、goal/checkpoint 结构性无冲突（记档）、budget 子循环独立记账（LIMITATIONS 记档：超长子代理靠取消联动人工中断）、doctor 不扩（YAGNI）、快照一条（O21/O22 反哺）。
+- 本批交付面：session/fork 分支会话（store.fork + 元事件 + 协议/owner-port/CLI 面）· deriveSubagentRules 降级算法 · task 工具（进程内子代理 + 深度双保险 + Deny broker 子装配）· 结算栅栏（原子并入 + A7 信号接线 + 父取消联动子轮 CancelCause "parent" 槽位真用）· delegation 声明段（dsh 同构中文化）· 六面收口盘点。

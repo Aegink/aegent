@@ -1001,6 +1001,53 @@ docs/plan-p0-progress.md（批次 4 报告）。本批特有的注意：1) H1 ta
 
 ---
 
+## 批次 5 报告（完成于 2026-09-26）
+
+- **打勾情况**：6 / 6（T-P1-40 ~ T-P1-45 全部完成，无未完成项）——**P1 批次 5 全部收官**（6 条需求 ID：E5 + H1–H5 全关；预估 6-7 卡实展 6 卡，H1+H4 并卡）
+- **产出的文件**：
+  - `src/session/store.ts` 扩 `SessionStore.fork`（切点复制 + seq 重编号 + ts 保留 + ForkError 五码类型化拒绝 + idle 前置检查）+ `ForkError/ForkOptions` 导出——E5（T-P1-40）
+  - `src/kernel/events.ts` 词汇表 18→19：`session/fork {parentSessionId, position, cutSeq}` 会话级元事件（落子流头部、log-only）——E5（T-P1-40，待澄清 #7 供追认）
+  - `src/policy/subagent-rules.ts`（deriveSubagentRules：动作维度过滤只留 deny + SUBAGENT_DEFAULT_DENIED_TOOLS 默认禁用清单 + allowTools 放开不复活授权）——H5（T-P1-41）
+  - `src/kernel/subagent.ts`（createSubagentRunner：深度检查入口 + 独立子会话 + 子装配参数化 + Deny broker + settleFromTurnEnd 三值结算 + signal 取消联动）——H1/H4（T-P1-42）+ H2（T-P1-43）
+  - `src/kernel/tools/builtin/task.ts` + `descriptions/task.txt`（task 工具：task_result/task_error 渲染 + meta.lineage + SUBAGENT_DEPTH_EXCEEDED 类型化拒绝 + BUILTIN_TOOL_NAMES 14→15）——H1/H4（T-P1-42）
+  - `src/kernel/loop.ts`（per-turn cancelController + cancel() abort + dispatchTool 载荷带 signal——A7 信号接线）+ `registry.ts`（ToolDispatchCall.signal → ToolContext.signal，P0 形状先行的槽位真接线）——H2（T-P1-43）
+  - `src/context/system-prompt.ts`（delegation 声明段，dsh SUBAGENT_DELEGATION_CONTEXT 同构中文化）+ assembly.ts（broker 覆盖 + delegation 透传）——H3（T-P1-44）
+  - 协议面：agent-protocol.ts（session/fork 请求 + forked 回执）/ agent-process.ts（fork case + subagent 选项接线）/ owner-port.ts（sessionFork handler）/ repl.ts（/fork 命令 + ⑂ 渲染）——E5（T-P1-40）
+  - 收口盘点六面 + task 全链快照（O21/O22 反哺）——T-P1-45
+- **验收台账**：6 卡 6 命令全部通过（见各卡完成记录）；全量 `npx vitest run` **791 passed / 1 skipped**（批次 4 收官 761 → 净增 30），`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 798 链接 0 失效、`license-audit.sh` 通过（LEAK 未命中/CLEAN-ROOM/SOURCEMAP 无）
+- **词汇表扩展**：**18→19 一处**（`session/fork`，待澄清 #7 立案供追认）——研究文档"高影响"预判收敛为最小面：task 派发/结算零扩展（tool/call+result 承载，stopReason 在 result.meta.subagent）、delegation 零扩展（装配参数 + 系统提示段重建）
+- **偏离计划的地方**（逐卡详见卡面完成记录）：
+  1. **T-P1-40**：fork 复制保留原 ts（复制历史事实非新事件，绕过 append 的 ts 分配）；E5 position 词形采用 requirements 的 before/after（pi 当前为 before|at，语义等价，展卡记录注明）
+  2. **T-P1-42**：task 在子代理注册表**可见但执行被拦**（deny 规则/ask+Deny broker 双道——H5"默认禁用"落法；卡面验收④"无 task"字面调整为可观测的拒绝语义，opencode task.ts:106-117 深度检查同款）；**P1 子代理 = 纯推理代理**（C3 默认 ask + Deny broker 的 H3 红线字面必然——allow 不继承 + 无子代理规则配置面 ⇒ 零默认可用工具）；maxDepth>1 时按深度放开 task 默认 deny（deny 规则是 maxDepth=1 的快路径，深度检查是权威）
+  3. **T-P1-43**：A7 信号真接线（per-turn AbortController → ToolContext.signal）——P0 形状先行槽位兑现；CancelCause "parent" 槽位真用（events.ts 注释"P1 真用上"兑现）
+  4. **T-P1-44**：delegation 声明以 system-prompt 段 + 装配参数重建（词汇表零扩展优先兑现）；C46 硬拦子代理同效（核心层出口与子链同构复用）
+- **新发现的约束或坑**：
+  - **H3 红线下的子代理能力边界**：C3 默认 ask（不变量 3）× DenyPermissionBroker = 子代理内一切无规则操作确定性拒绝——这是"不得拥有高于父会话的权限"的字面必然，不是缺陷；子代理价值面 = 无工作区副作用的推理/整理任务；工具能力面要等 P2 的子代理权限配置面（H6 后端时代）或 C42 判官
+  - **makeLoop 不支持外部 store**——父子两流栅栏断言需要共享 store，端到端测试直接构造 AgentLoop（loop.test-utils 的 harness 局限，未改它——YAGNI）
+  - **超长子代理不受父 B14 时间轴中断**（budget.progress 只在工具执行完回环时查）——LIMITATIONS 记档，人工中断通道 = 取消联动（T-P1-43）
+- **遗留风险与未知**（→ 人工确认清单批次 5 行）：
+  - ~~session/fork 词汇表 18→19 待追认~~ ⏳ **待澄清 #7 立案中**（2026-09-26；不追认的回退面已落 l0-events.md 落地记录 8）
+  - 真实厂商端到端的 task 派发/子代理回归（O15 录制回放基建可反哺：RecordingProvider 可 wrap 父与子代理的请求面先录后测）——批次终验人工确认清单
+  - plan 模式下 task 派发经父审批后子代理写文件被 Deny broker 拒的行为链（防绕过）已单测钉死；真实模型对 delegation 声明的遵守度未实测
+- **批次完成定义核对**：6 卡打勾附验收 ✓；tsc 干净 ✓；count-features 310 ✓；check-doc-links 0 失效 ✓；license-audit 通过 ✓；两项展卡定形照执行 ✓；词汇表一处扩展走立案 ✓；H3/H5 降级红线每处测试钉死 ✓；六面盘点结论落卡 ✓
+- **下一批**：批次 6 = loop 治理与准入（A5 A8 A10 A11 A12 A13 A14 A15 A17 + J20 + M9，预估 7-8 卡；A10/A11 steer 准入成对、A13 闸门 ↔ M9 有界准入合并看待、A17 疑似被 T-3-04 部分覆盖展卡先核对）
+- **下一批提示词**：
+
+```
+继续 aegent P1 批次 6 的实施（loop 治理与准入）。批次 6 尚未展卡：先按
+docs/20260926_P1剩余批次全量圈定研究.md 批次 6 条目（A5 A8 A10–A15 A17 +
+J20 + M9）逐条锚点核对 requirements.md §4，照 plan-p1.md 批次 5 展卡先例
+把卡序追加进 plan-p1.md，然后按 docs/plan-p0.md §0 协议执行。上一批报告
+在 docs/plan-p0-progress.md（批次 5 报告）。本批特有的注意：1) A17 疑似被
+T-3-04 部分覆盖（取消槽 + await 边界检查已落）——展卡先核对再定卡面；
+2) A13 闸门与 M9 有界准入合并看待（"准不准入"与"准入多少"）；3) 词汇表
+预判低影响（A12 关联 id 或扩 user/message 载荷）——有扩展走待澄清立案。
+上批遗留：session/fork 词汇表 18→19 待澄清 #7 仍待追认。全量基线
+791 passed / 1 skipped。不要问要不要继续。
+```
+
+---
+
 ## 阶段 N 报告模板（执行会话每阶段复制一份填写，勿删本模板）
 
 ### 阶段 N 报告（完成于 YYYY-MM-DD）
@@ -1018,6 +1065,8 @@ docs/plan-p0-progress.md（批次 4 报告）。本批特有的注意：1) H1 ta
 的第一张 [ ] 任务卡开始。上一阶段报告在 docs/plan-p0-progress.md。
 本阶段特有的注意：<1–3 条>。不要问要不要继续。
 ```
+
+| 批次 5 三件（E5/H2/H3） | **session/fork 词汇表 18→19**：事件词汇表扩展属用户裁决面（先例 13→14~17→18 五案流程）——已在待澄清 #7 立案。**真实厂商 task 回归**：task 派发/子代理行为对真实模型的遵守度（delegation 声明遵守、SUBAGENT_DEPTH_EXCEEDED 自修）未实测——O15 录制回放基建可反哺（RecordingProvider wrap 父与子代理请求面先录后测）。**plan×task 防绕过**：单测钉死（子代理写文件被 Deny broker 拒），plan 模式真机全链未实测 | **①session/fork 待用户追认**（待澄清 #7；不追认回退面已落 l0-events.md 落地记录 8）；②真实厂商回归在下一批真实网关实测时顺带确认 |
 
 ## 批次 5 展卡记录（2026-09-26，执行会话自展）
 
