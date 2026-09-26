@@ -100,6 +100,16 @@
 | 2026-09-26 | T-P1-27 | D16 | `230430c` | `npx vitest run src/sandbox/offline-network.test.ts` | 7 passed（身份联动 3+账户名闭集 2+未 provision 类型化失败真机 1+probe 非特权可读 1）+cargo test 1 passed；helper 扩 wfp.rs（WFP persistent 三件套我方 GUID 命名空间+ALE_USER_ID 出站 BLOCK（FWP_SECURITY_DESCRIPTOR_TYPE 条件值=账户 SD，BuildSecurityDescriptorW 构造 codex 同构）+delete-then-add 幂等+probe 按 key）+account.rs（NetUserAdd aegent-sbx-<6hex>+LsaAddAccountRights SeBatchLogonRight+幂等）+run-offline（**CreateProcessWithLogonW seclogon 路径无需 SE_TCB**、密码 stdin 传明文不进命令行）；resolveNetworkIdentity（codex from_permissions 同构）；三动作错误路径真机冒烟全对（probe 无特权可读 provisioned=false、provision 非 admin net code 5、run-offline NETWORK_SANDBOX_NOT_PROVISIONED）；elevated provision+offline 联网被拒 → 人工确认清单；全量 685 passed，tsc 干净，count-features 310 |
 | 2026-09-26 | T-P1-28 | D11 | `b430fd4` | `npx vitest run src/kernel/tools/pwsh.test.ts` | 9 passed（pwsh 真命令 1.3s+bash 缺省/显式零变化回归+cwd 透传+dispatch 面 started 标记+sandbox 态经 env 抽象多态+出口硬拦外拒内放+plan 硬关清单含 pwsh）；env.ts 扩 ShellKind（pwsh 宿主优先 pwsh Core 缺失回落 powershell.exe 进程级缓存；本机无 Core 实测回落）；builtin/pwsh.ts 平行 bash（重定向字面解析跨方言有效过 PathGuard+D15 started+TOOL_TIMEOUT+进度示范+PwshError 分型）；BUILTIN_TOOL_NAMES 13→14+WRITE_EXECUTE_TOOLS +pwsh+descriptions/pwsh.txt；LIMITATIONS 双载体扩 pwsh 方言边界节 #9-12（参数式写 cmdlet 边界/只误报不误放行/**退出码宿主语义**（dsh 同款决策，卡面"一致"预期记偏离）/**msys bash 受限令牌不兼容**）；注册面三处计数更新（14/11/9）；全量 694 passed，tsc 干净，count-features 310 |
 | 2026-09-26 | T-P1-29 | D7 | `7c8fd4e` | `npx vitest run src/sandbox/doctor.test.ts` | 7 passed（真机四行报告与 helper 在场性一致、helper 缺席 error+remediation 指 build:sandbox-helper、未 provision warn+弱承诺+D3 现值、已 provision ok、probe 不可得/抛异常→warn"未知"、渲染含标记与汇总计数）；doctor.ts（runDoctorChecks 依赖全注入判定面无 I/O+formatDoctorReport codex 风格）+cli/doctor.ts 独立入口（不起 agent 循环，退出码 0/1）+cli/provision.ts（密码打印一次提示 DPAPI 落盘）+npm scripts doctor/sandbox:provision；**真机独立运行 npm run doctor → 0 error / 1 warning / 3 ok**（helper 三行 ok+D16 未 provision warn+弱承诺文案与修复提示在位）；全量 701 passed / 1 skipped，tsc 干净，count-features 310——**批次 3 全部 6 卡（T-P1-24~29）完成，P1 批次 3 收官** |
+| 2026-09-26 | T-P1-30 | O12 | `6578459` | `npx vitest run src/kernel/invariants.test.ts src/test-support/event-asserts.test.ts` | 15 passed（invariants 7+event-asserts 8 零改动）；InvariantRegistry（register 重复名拒绝/check 逐不变量独立收集——fail 收集/throw 断言器 adaptThrowing/编程错误三路都进失败清单不吞错）+createDefaultRegistry 内建四件（turn-scoped/paired-steps/paired-tool-calls/single-terminal-per-turn 新按轮形态）+装配 invariants 选项缺省关（启用时装配期跑一轮失败落 warn）；三断言器实现迁入 kernel 域+event-asserts re-export 保 import 面；E11 checkpoint 无误报核对；全量 710 passed，tsc 干净——**P1 批次 4 首卡** |
+| 2026-09-26 | T-P1-31 | O13/O20 | `65ca3cf` | `npx vitest run src/test-support/http-mock.test.ts` | http-mock 扩四访问器 expectCalls(n,why)/singleRequest(why)/lastRequest(why)/requestAt(i,why)（数量不符 Error 含「why」+expected/got codex 双载体）+ScriptedProvider.requestAt+迁移示范 provider.test 裸下标改 requestAt；卡内定形：requestAt 只管索引越界、总量归 expectCalls（首版"恰 i+1 次"语义被测试抓出修正）；O20 核对结论=部分覆盖（T-2-03 计数纪律已在用、带说明访问器本卡补齐）；全量 713 passed，tsc 干净 |
+| 2026-09-26 | T-P1-32 | O14/O24 | `8794355` | `npx vitest run src/test-support/render.test.ts` | 9 passed；render.ts：formatGenerateInput（system/tools 深等→[unchanged] 折叠、消息前缀延伸只渲染 +K 后缀、分叉全量渲染标分叉点、tool_calls/tool 身份渲染）+formatRequestWindow（codex 判据四路开窗：identity/system/tools 变更或输入分叉，窗头记原因；首请求全量后续 suffix）；卡内定形：前缀判断逐条 JSON 深等（引用相等被测试抓出）；F13 联动消费留 T-P1-37 |
+| 2026-09-26 | T-P1-33 | O23 | `5a90344` | `npx vitest run src/test-support/render.test.ts` | 14 passed（9+5）；renderEventStream（[emit]/[wire] 前缀+padEnd 全流最长名定列+JSON.stringify 单行结构性转义+normalize 注入+maxLineChars 可选截断+空流占位）；列对齐/单行/保序交错/截断标记/归一化注入五断言 |
+| 2026-09-26 | T-P1-34 | O15/O16 | `867966c` | `npx vitest run src/test-support/llm-replay.test.ts src/test-support/fault-server.test.ts` | 12 passed；llm-replay.ts（RecordingProvider wrap 任意 provider 透传+逐调用记 {request,chunks} JSONL fixture 无时间戳；ReplayProvider first-call 序回放+耗尽可读失败+ReplayOverride{atCall,chunks/error} 注入面；serializeCalls/parseCalls roundtrip）+fault-server.ts 六具名故障行为闭集（reset/stall/malformed-chunk/rate-limit/server-error/partial-then-success，未知值抛错 fail-closed）+http-mock 扩 ResetScript/StallScript(unref 定时恢复)/SseScript.truncateAfter（**flush 回调后才 destroy 防缓冲丢弃**）+cli/mock-llm.ts 库面+mock-llm-run.ts 独立入口+npm script mock:llm+HttpMock.start 可选 port；**录制→回放等价**（同 loop 跑录制与回放，归一化 seq/ts/stream[].time 后逐字节相等）+六行为 wire 各自可断言；**真机 CLI 冒烟**：mock-llm-run --port 18923 → ready 行 → curl 429/503 → stdout 请求记录 JSONL；全量 739 passed，tsc 干净 |
+| 2026-09-26 | T-P1-35 | O18 | `7ffab32` | `npx vitest run src/diagnostics/doctor.test.ts` | 5 passed；diagnostics/doctor.ts（runRuntimeDoctorChecks 依赖全注入四行：environment ok/workspace 缺失 warn/config 模型身份结构性无凭证/storage dbPath 未配置 warn·目录不可写 error·损坏 error+计数）+collectRuntimeDoctorFacts+cli/doctor.ts 聚合两域+--json 导出（脱敏证伪 sk-/api-key/authorization/Bearer 零命中）+db.ts 导出 CURRENT_SCHEMA_VERSION；**真机 npm run doctor → 8 行报告 0 error/3 warning/5 ok exit 0**；Windows db 句柄 EBUSY 竞态 finally 容忍记录；全量 744 passed，tsc 干净 |
+| 2026-09-26 | T-P1-36 | O19 | `b55b935` | `npx vitest run src/test-support/migration-asserts.test.ts` | 5 passed；migration-asserts.ts（legacyShapeStream 旧形状流夹具——当前词汇表全部可选字段缺席清单化+新字段补进纪律；assertForwardCompatibleStream restore+投影全跑 async 签名；assertSchemaVersionGate 构造 user_version=CURRENT+1 断言类型化拒绝含"拒绝用旧代码打开新库"文案；assertMigrationAtomic 注入失败→恢复断言+模板误用自检）；消费用例：旧流经桩 storage restore+project 语义完整/goalFromEvents 不依赖 deadline/PK 冲突整批回滚无半写（T-1-02 单事务消费）；真实 v0→vN 迁移链批次 10 Q1 落地（既定消费方）；全量 749 passed，tsc 干净 |
+| 2026-09-26 | T-P1-37 | O21/O22 | `5892c8d` | `npx vitest run src/context/compaction.snapshot.test.ts` | 5 passed；SnapshotHeader 扩 scenario?（缺省提醒同 whyEnded，既有快照零改动）+snapshotToString 首行渲染 Scenario+compaction.snapshot.test 四相位快照（local-overflow/provider-overflow/model-downshift 三 reason compacted+pre-hook aborted，Scenario 头行+[emit] 单行 JSON 事件流+摘要行）+派生断言（事件面 reason 全集 {context_limit,model_downshift,pre-hook-aborted} 与覆盖清单相等，新形态缺位即红）；卡内定形：事件面两溢出源共用 context_limit（compactionReasonOf 词表），人话区分由 Scenario 承担；全量 754 passed，tsc 干净 |
+| 2026-09-26 | T-P1-38 | O25 | `302fa54` | `npx vitest run src/test-support/isolation.test.ts src/kernel/tools/env.test.ts` | isolation 7 passed+env 回归全绿；isolation.ts（**故障机制头注释**——同文件内测试串行共享进程：A 改 env/触热缓存→B 读残留顺序耦合；四件隔离 pi-desktop 同构：serializeGlobal promise 链 prev.then(fn,fn) 中毒不扩散/withEnv RAII finally 快照恢复/withEnvSerialized 组合/模块级缓存显式重置面）+env.ts resetPwshHostCacheForTests；**盘点结论**：pwshHostCache 是唯一模块级可变全局（logger warned 闭包内/registry·guard 全构造注入/env 消费启动期）——单进程假设无冲突（agent 本就多进程，子进程天然隔离）；全量 761 passed，tsc 干净 |
+| 2026-09-26 | T-P1-39 | O26 | `7d647df` | `npx vitest run`（全量回归，本卡零代码变更） | 全量 761 passed / 1 skipped；**758 个测试名盘点**=行为规格 552+验收前缀行为句 77+启发式弱名命中 129（逐条人工核查零改名——省略主语句由 describe 承载/紧凑行为句 deny-pass 成对/括号内边界注解三理由）；安全边界抽查三处合格（exit-guard 13 名 10+ 带硬拦语义+bash-retry-guard fail-closed 语义+plan-mode 硬关压过）；**弱名数量 0**；命名纪律落批次完成定义——**批次 4 全部 10 卡（T-P1-30~39）完成，P1 批次 4 收官** |
 
 ---
 
@@ -927,6 +937,64 @@ docs/plan-p0-progress.md（批次 3 报告）。本批特有的注意：1) O15/O
 O20 在疑似顺带覆盖清单（T-2-03 mock.calls 计数断言），展卡先核对证据可
 提请关闭；3) O25 进程全局状态隔离注意与现有单进程假设的冲突面。全量
 基线 701 passed / 1 skipped。不要问要不要继续。
+```
+
+---
+
+## 批次 4 展卡记录（2026-09-26，执行会话自展）
+
+> 用户提示词指示：先按圈定研究批次 4 条目（O12–O26）逐条锚点核对 requirements.md §4，照 plan-p1 批次 3 展卡先例把卡序追加进 plan-p1.md，再按 plan-p0 §0 执行。**15 条锚点逐一开文件核实，零内容勘误**（dsh invariant.ts/llm-replay/llm-mock-server/test-support 包组、codex responses.rs/context_snapshot.rs/compact.rs+8 快照文件/doctor 目录/session/tests.rs 具名测试、kimi snapshots.ts:119-198/migration-legacy、pi-desktop plugins/tests.rs:10-27；**行号漂移注明**：compact.rs:423 实际断言在 2361/3342/3466，文件演进漂移、断言原文逐字命中）。**三项展卡核对结论（走 J25/L10/M5 先例，供用户追认）**：①**O17 已覆盖提请关闭不占卡**——EventStorage 接口 + InMemory/Sqlite(:memory:) 双实现 P0 E2 已落，单测全走内存或 mkdtemp 夹具（boot-maintenance 的"杀进程"是真 WAL 语义非生产磁盘）；②**O20 部分覆盖与 O13 并卡**——T-2-03 计数断言纪律已在用（expect(a.calls()).toBe(3) 等），但"带说明"访问器形态缺失，T-P1-31 实卡补齐；③预估 9 卡实展 10 张（O17 关闭后 15 条 → 10 卡 = 1.5 条/卡，批次 2 密度），O13+O20/O14+O24/O15+O16/O21+O22 四组合并。
+
+---
+
+## 批次 4 报告（完成于 2026-09-26）
+
+- **打勾情况**：10 / 10（T-P1-30 ~ T-P1-39 全部完成，无未完成项）——**P1 批次 4 全部收官**（15 条需求 ID：O12–O26，O17 核对关闭 / O20 并卡后实占 10 卡）
+- **产出的文件**：
+  - `src/kernel/invariants.ts`（InvariantRegistry + 内建四件流不变量 + createDefaultRegistry；三断言器从 event-asserts 迁入，re-export 保 import 面）——O12（T-P1-30）
+  - `src/test-support/http-mock.ts` 扩四访问器（expectCalls/singleRequest/lastRequest/requestAt 带 why 可读失败）+ ScriptedProvider.requestAt——O13/O20（T-P1-31）
+  - `src/test-support/render.ts`（formatGenerateInput 单请求差分 + formatRequestWindow 窗口分组 + renderEventStream 事件流列对齐单行交错）——O14/O24/O23（T-P1-32/33）
+  - `src/test-support/llm-replay.ts`（RecordingProvider/ReplayProvider/ReplayOverride + JSONL fixture）+ `fault-server.ts`（六具名故障行为闭集）+ `cli/mock-llm.ts` 库面 + `cli/mock-llm-run.ts` 独立入口 + npm script `mock:llm` + http-mock 扩 Reset/Stall/truncateAfter——O15/O16（T-P1-34）
+  - `src/diagnostics/doctor.ts`（运行时四行检查）+ `cli/doctor.ts` 聚合两域 + `--json` 导出 + db.ts 导出 CURRENT_SCHEMA_VERSION——O18（T-P1-35）
+  - `src/test-support/migration-asserts.ts`（前向兼容流断言 + schema 版本闸门 + 原子性模板）——O19（T-P1-36）
+  - snapshots.ts 扩 `scenario` 头字段 + 首行渲染 + `src/context/compaction.snapshot.test.ts` 四相位快照 + 派生断言——O21/O22（T-P1-37）
+  - `src/test-support/isolation.ts`（serializeGlobal promise 链锁 + withEnv RAII + 中毒不扩散）+ env.ts `resetPwshHostCacheForTests`——O25（T-P1-38）
+  - 全仓 758 测试名盘点 + 安全边界三处抽查 + 命名纪律落档——O26（T-P1-39）
+- **验收台账**：10 卡 10 命令全部通过（见台账表）；全量 `npx vitest run` **761 passed / 1 skipped**（批次 3 收官 701 → 净增 60），`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 385 链接 0 失效、`license-audit.sh` 通过（LEAK 未命中/CLEAN-ROOM/SOURCEMAP 无）
+- **词汇表扩展**：**零**（研究文档预判"低"命中）——18 事件自批次 2 后无变化
+- **测试基建零运行时泄漏** ✓：全部新增面落 test-support/ 与 diagnostics/；两个声明例外 = O12 不变量服务（kernel，装配 invariants 选项缺省关）与 O18 doctor（diagnostics + cli 聚合）
+- **偏离计划的地方**（逐卡详见卡面完成记录）：
+  1. **T-P1-30**：三断言器实现从 event-asserts 迁入 kernel 域（不变量属于拥有流的域）+ event-asserts re-export——kernel→test-support 反向依赖不健康；`single-terminal-per-turn` 新增按轮形态（expectSingleTerminal 的全流形态在多轮流会误报）；E11 git checkpoint turn/start 前落流核对无误报
+  2. **T-P1-31**：requestAt 语义分层（只管索引越界，总量断言归 expectCalls）——首版"恰 i+1 次"绑进取值访问器被测试当场抓出修正
+  3. **T-P1-32/33**：前缀判断逐条 JSON 深等（kimi isDeepEqual 同语义，引用相等首版被测试抓出）；padEnd 列对齐的补位数三处 off-by-one 被测试抓出
+  4. **T-P1-34**：HttpMock 扩 wire 词汇三件（ResetScript/StallScript/SseScript.truncateAfter）——恢复类故障必须能在 wire 表达；**truncateAfter 必须 flush 回调后才 destroy**（立即 destroy 丢缓冲被测试抓出）；HttpMock.start 加可选 port（CLI --port 透传）；partial 测试与 reset 分 mock（undici 连接池复用被断连接会污染后续请求）
+  5. **T-P1-35**：db.ts 导出 CURRENT_SCHEMA_VERSION（doctor 存储行消费）；Windows db 句柄刚 close 就 rmSync 偶发 EBUSY（WAL 短暂锁定）——测试 finally 容忍
+  6. **T-P1-37**：事件面两种溢出源共用 `context_limit`（compactionReasonOf 词表纪律）——快照人话区分由 Scenario 行承担，断言按词表值
+  7. **T-P1-39**：零改名（129 启发式命中逐条核查全有行为语义——三类不改理由落卡面）
+- **新发现的约束或坑**：
+  - **undici 连接池复用被 destroy 的连接**——同 origin 的 reset 故障会污染后续请求（故障注入测试要分 mock 或新连接）
+  - **Node res.write 是异步缓冲**——writeHead+write 后立即 socket.destroy() 会丢未 flush 数据（半流交付要等 write 回调）
+  - **Windows WAL 文件句柄释放竞态**——better-sqlite3 close 后立即 rmSync 偶发 EBUSY（测试 finally 容忍，临时目录系统回收）
+  - vitest 全文件并行（85 worker）下 712→739→761 的回归稳定性依赖测试夹具 mkdtemp 唯一化（P0 纪律持续有效）
+- **遗留风险与未知**（→ 人工确认清单批次 4 行）：
+  - **O17 关闭与 O20 部分覆盖结论待用户追认**（展卡核对结论，J25/L10/M5 先例流程）
+  - O15 录制回放对真实厂商 provider 的端到端演练（RecordingProvider 可 wrap openai-compat provider 先录后测）——批次 5 起的真实厂商回归实跑时确认
+  - `npm run mock:llm` CLI 的 SIGINT 优雅停只验了库面 stop（信号路径未真机断链）
+- **批次完成定义核对**：10 卡打勾附验收 ✓；tsc 干净 ✓；count-features 310 ✓；check-doc-links 0 失效 ✓；license-audit 通过 ✓；词汇表零扩展 ✓；测试基建零运行时泄漏 ✓；O17/O20 核对结论落档 ✓；真机 doctor/mock:llm 冒烟 ✓
+- **下一批**：批次 5 = 子代理与 fork（大件，E5 + H1–H5，预估 6-7 卡；P2 报告预警"内核起子循环 + 权限面重构"的最大件，展卡时允许裂为 7-8 卡；词汇表高影响预判——task 派发/结算事件、fork 元事件）
+- **下一批提示词**：
+
+```
+继续 aegent P1 批次 5 的实施（子代理与 fork 大件）。批次 5 尚未展卡：先按
+docs/20260926_P1剩余批次全量圈定研究.md 批次 5 条目（E5 + H1–H5）逐条锚点
+核对 requirements.md §4，照 plan-p1.md 批次 4 展卡先例把卡序追加进
+plan-p1.md，然后按 docs/plan-p0.md §0 协议执行。上一批报告在
+docs/plan-p0-progress.md（批次 4 报告）。本批特有的注意：1) H1 task 工具
+先定形"子 agent 进程还是进程内隔离"（研究文档 §三批次 5 要点）；2) H3/H5
+权限降级只继承 deny 与 external_directory、绝不继承授权；3) 词汇表高影响
+预判（task 派发/结算、fork 元事件）——每处走待澄清立案管线；O15 录制回放
+基建可反哺本批真实厂商回归。全量基线 761 passed / 1 skipped。不要问要不要
+继续。
 ```
 
 ---

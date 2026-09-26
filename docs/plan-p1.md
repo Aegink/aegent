@@ -1,6 +1,6 @@
 # P1 实施计划 · 批次 1
 
-**状态**：v1.3.1 · 批次 1+2+3 收官（13/13 卡 + 10/10 卡 + 6/6 卡，2026-09-26；词汇表 18 事件；批次 3 = 沙箱 Windows 深化——D5/D6/D7/D10/D11/D13/D14/D16 全关，Rust helper `src/sandbox/win32-helper/` 在位）· 批次 4 候选占位（测试与诊断基建 O12–O26）
+**状态**：v1.4.0 · 批次 1+2+3+4 收官（13/13 卡 + 10/10 卡 + 6/6 卡 + 10/10 卡，2026-09-26；词汇表 18 事件零扩展延续；批次 4 = 测试与诊断基建——O12–O26 全关，O17 核对提请关闭）· 批次 5 候选占位（子代理与 fork 大件，E5 + H1–H5）
 **执行协议**：沿用 [`plan-p0.md`](plan-p0.md) §0（取卡 / 做卡 / 验收 / 打勾 / 提交 / 自动继续 / 四种停下情况），本文件不复制。执行进度追加在 [`plan-p0-progress.md`](plan-p0-progress.md)（台账 / 待澄清 / 人工确认清单共用一个文件）。
 **需求来源**：[`requirements.md`](requirements.md) §4 的 P1 项（共 158 条）。P1 不切阶段（§1 尾注），按**批次**组织：本文件当前只含批次 1，后续批次轮到时再展卡追加。
 **批次 1 范围**（用户圈定于 2026-09-25，四组全选，共 26 条）：
@@ -555,3 +555,13 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - 测试基建零运行时泄漏：src/test-support/ 与 src/diagnostics/ 之外无测试专用代码入 kernel/tools/policy 生产路径（O12 不变量服务与 O18 doctor 是声明的两个例外）。
 - 全量基线 701 passed / 1 skipped，本批净增预期 40-60 用例（渲染器与剧本库是纯函数测试大户）。
 - O26 命名纪律（T-P1-39 落档）：测试名 = 完整行为规格（行为 + 边界）；"验收N："前缀可追溯卡面；纯编号无行为句不允许；安全边界测试名必须携带拒/拦/压过语义。
+
+## 批次 4 完成核对（2026-09-26）
+
+- 10/10 卡打勾附验收 ✓（T-P1-30 ~ 39，15 条需求 ID：O12–O26 全关——O17 经展卡核对结论提请关闭未占卡，O20 部分覆盖与 O13 并卡）；全量 `npx vitest run` **761 passed / 1 skipped**（批次 3 收官 701 → 净增 60），`npx tsc --noEmit` 全程干净，`count-features.sh` = 310 不变，`check-doc-links.sh` 385 链接 0 失效，`license-audit.sh` 通过（LEAK 未命中/CLEAN-ROOM/SOURCEMAP 无，与批次 3 同形态）。
+- 词汇表零扩展 ✓（研究文档预判"低"命中——18 事件自批次 2 后无变化）。
+- 测试基建零运行时泄漏 ✓：新增面全部落 `src/test-support/`（render/llm-replay/fault-server/isolation/migration-asserts）与 `src/diagnostics/`；两个声明的运行时例外 = O12 不变量服务（`src/kernel/invariants.ts`，装配 `invariants` 选项缺省关闭）与 O18 doctor（`src/diagnostics/doctor.ts` + cli 聚合）。
+- O20 核对结论：T-2-03 计数断言纪律已在用，访问器面（expectCalls/singleRequest 等带说明形态）本批补齐——部分覆盖，实卡（T-P1-31）。
+- O17 核对结论：EventStorage 接口 + InMemory/Sqlite(:memory:) 双实现 P0 已落、单测全走内存或 mkdtemp 夹具——已覆盖，提请用户追认关闭。
+- 本批交付面：不变量检查服务（O12）· mock 计数先行访问器（O13/O20）· 上下文/事件流双渲染器（O14/O24/O23）· 录制回放 provider + 六具名故障剧本 + mock:llm 独立入口（O15/O16，真实厂商回归基建——RecordingProvider 可 wrap 真实网关 provider 先录后测）· doctor 全域 + JSON 导出（O18）· 迁移断言基建（O19，批次 10 Q1 消费方）· 快照即规格 Scenario + compaction 四相位快照（O21/O22）· 进程全局隔离锁 + env RAII（O25）· 测试名规格收口（O26）。
+- 真机验证：`npm run doctor` 8 行报告 0 error / 3 warning / 5 ok；`npm run mock:llm` CLI 冒烟（ready 行 + 429/503 + 请求记录 JSONL）；`--json` 导出脱敏证伪通过。
