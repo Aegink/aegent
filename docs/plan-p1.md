@@ -311,7 +311,7 @@
 2. **词汇表影响预判：低**——D14 告警走 logger.warn（D3 弱承诺先例），不新增事件；本批预计零词汇表扩展。
 3. **不做什么**（本批次）：不做 escalation 一次性放行（B15，批次 7）；不做 pwsh 持久会话（dsh tool-*-persistent，P1 无需求）；不做 AppContainer 路线（dsh 决策文档已弃，codex 同）；不做 SSH 远程后端（D12，P2）；不做 Docker/容器级隔离（dsh "same-world only" 边界同理）。
 
-#### T-P1-24 · D5 · 沙箱可插后端（接口 + local 后端 + fail-closed 语义） `[ ]`
+#### T-P1-24 · D5 · 沙箱可插后端（接口 + local 后端 + fail-closed 语义） `[x]`
 - **依据需求**：D5（P1："local 后端先跑通，接口不写死"）
 - **上游首选参考**：[dsh·packages/sandbox/sandbox/README.md](../oss/deepseek-harness/packages/sandbox/sandbox/README.md)（契约三件：mode = `read-only / workspace-write / danger-full-access`；**"If the requested mode cannot be enforced, the call fails with `SANDBOX_UNAVAILABLE` instead of running unconfined"** fail-closed；backend 可插——sandbox-local 挂 ctx.sandbox 后面，消费方只见模式与 enforcement completeness 不见平台 runner）
 - **取什么 / 别抄什么**：取"模式词汇 + 不可强制即报错（绝不静默降级为不受限运行）+ 后端接口与平台实现分离"三纪律；不抄 Cordis ctx 装配与 per-call policy 决策文档（我方 P1 无 escalation——B15 预留注释）
@@ -320,6 +320,7 @@
 - **验收**：`npx vitest run src/sandbox/backend.test.ts`——①danger-full-access 真命令跑通（exitCode/stdout 如实）；②受限 mode 请求报 SANDBOX_UNAVAILABLE 且**零执行**（env 调用计数 0——"instead of running unconfined" 原文语义）；③接口不写死：假后端（测试内实现 SandboxBackend）注入消费方多态可用；④与 PathGuard 分界注释：PathGuard=工具层文件 I/O、SandboxBackend=子进程执行面，互补不重叠
 - **依赖**：无（批次 3 首卡，后续沙箱卡全部挂本接口）
 - **风险 / 未知**：SandboxSpawnResult 是否需要 meta（管辖形态/exitCode）——先与 ExecResult 同形，D13 卡的管辖结算证据再扩
+- **完成记录**：2026-09-26。产出 `src/sandbox/backend.ts`（SandboxMode 三值 + SandboxSpawnRequest/SandboxSpawnResult（与 ExecResult 同形，扩展位在 D13 卡）+ SandboxUnavailableError code=SANDBOX_UNAVAILABLE + SandboxBackend 接口（supportedModes 能力自述 + spawn）+ createLocalBackend（danger-full-access 直通 env.exec；受限 mode 在 spawn 前抛错且零执行；escalation 词位 B15 注释预留））+ `backend.test.ts` 5 用例。验收：`npx vitest run src/sandbox/backend.test.ts` → **5 passed**：①danger-full-access 真命令跑通（echo/cat 真 cwd/exit 3 非零如实）；②read-only 与 workspace-write 双档拒绝且 env 调用计数 0（"instead of running unconfined" 语义）、错误含 mode 与"未执行"；③假后端多态注入（scripted 三档全 supported）；④supportedModes=["danger-full-access"] 自述。全量 `npx vitest run` **661 passed / 1 skipped**（656 → 净增 5），`npx tsc --noEmit` 干净，`count-features.sh` = 310 不变。
 
 #### T-P1-25 · D6+D10 · Windows 受限令牌后端（Rust helper 子进程） `[ ]`
 - **依据需求**：D6（P1："需 Win32 ACL + 能力 SID；TS 侧仅调用"）· D10（P1："与 D6 二选一或互补"——**本卡裁决：取 D6 Rust helper 路线，D10 的 grant 语义并入本卡验收**；dsh 的 Koffi TS 进程内 FFI 路线不取——T9 纪律与依赖最小面）
