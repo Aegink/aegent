@@ -8,6 +8,8 @@
  */
 
 import { PathGuard } from "../../../sandbox/path-guard.js";
+import type { SandboxBackend, SandboxMode } from "../../../sandbox/backend.js";
+import type { PendingApprovals } from "../../../policy/pending.js";
 import type { ToolRegistry } from "../registry.js";
 import { WriteQueue } from "../write-queue.js";
 import { createApplyPatchTool } from "./apply-patch.js";
@@ -82,6 +84,15 @@ export function registerBuiltinTools(
     task?: TaskToolDeps;
     /** B18/T-P1-55 bash 超时三档的默认档（秒）；缺省无默认超时（pi 同款）。 */
     bash?: { defaultTimeoutSeconds?: number };
+    /** B15/T-P1-58 沙箱装配（backend + 会话默认模式 + 升级审批通道）；
+     * 提供时 bash 走 backend.spawn（escalation 生效面），缺省 env 直通。 */
+    bashSandbox?: {
+      backend: SandboxBackend;
+      defaultMode: SandboxMode;
+      approvals?: PendingApprovals;
+      sessionId?: string;
+      approvalTimeoutMs?: number;
+    };
   } = {},
 ): void {
   const guard = options.pathGuard ?? PathGuard.forWorkspace(process.cwd());
@@ -90,7 +101,11 @@ export function registerBuiltinTools(
   for (const def of [
     createReadTool({ pathGuard: guard }),
     createWriteTool({ writeQueue, pathGuard: guard }),
-    createBashTool({ pathGuard: guard, ...options.bash }),
+    createBashTool({
+      pathGuard: guard,
+      ...options.bash,
+      ...(options.bashSandbox !== undefined ? { sandbox: options.bashSandbox } : {}),
+    }),
     // D11（T-P1-28）：PowerShell 一等 shell——与 bash 平行注册（dsh
     // tool-bash/tool-pwsh 同构；Windows 沙箱态宿主正路，见 win32-backend）
     createPwshTool({ pathGuard: guard }),

@@ -547,3 +547,115 @@ describe("bash 超时三档合并（B18/T-P1-55）", () => {
     expect(captured).toEqual([undefined]);
   });
 });
+
+describe("bash 沙箱升级（B15/T-P1-58）", () => {
+  /** 假 backend：记录每次 spawn 的 mode，返回固定结果 */
+  function fakeBackend() {
+    const spawns: Array<{ command: string; mode: string }> = [];
+    const backend = {
+      supportedModes: ["workspace-write", "danger-full-access"],
+      spawn: async (req: { command: string; mode: string }) => {
+        spawns.push({ command: req.command, mode: req.mode });
+        return { stdout: "spawned", stderr: "", exitCode: 0 };
+      },
+    };
+    return { spawns, backend };
+  }
+
+  /** 审批桩：按预案返回 allow/deny，记录收到的请求 */
+  function fakeApprovals(reply: "allow" | "deny") {
+    const asks: Array<{ id: string; args: Record<string, unknown> }> = [];
+    const approvals = {
+      ask: async (req: { id: string; args: Record<string, unknown> }) => {
+        asks.push({ id: req.id, args: req.args });
+        return { action: reply, reason: reply === "allow" ? "批准" : "不允许" };
+      },
+    };
+    return { asks, approvals };
+  }
+
+  function registryWithSandbox(
+    reply: "allow" | "deny",
+  ): {
+    spawns: Array<{ command: string; mode: string }>;
+    registry: ToolRegistry;
+    asks: Array<{ id: string; args: Record<string, unknown> }>;
+  } {
+    const dir = tempDir();
+    const { spawns, backend } = fakeBackend();
+    const { asks, approvals } = fakeApprovals(reply);
+    const registry = new ToolRegistry();
+    registerBuiltinTools(registry, {
+      pathGuard: PathGuard.forWorkspace(dir),
+      bashSandbox: {
+        backend: backend as never,
+        defaultMode: "workspace-write",
+        approvals: approvals as never,
+        sessionId: "s-sandbox",
+        approvalTimeoutMs: 1_000,
+      },
+    });
+    return { spawns, registry, asks };
+  }
+
+  it("审批通过 → 本调用按提升 mode spawn（一次生效），下一调用回默认模式", async () => {
+    const { spawns, registry, asks } = registryWithSandbox("allow");
+    const up = await dispatch(registry, "bash", {
+      command: "echo one",
+      sandboxPermissions: "danger-full-access",
+      justification: "需要写系统缓存",
+    });
+    expect(up.isError).toBeUndefined();
+    expect(spawns[0]).toMatchObject({ command: "echo one", mode: "danger-full-access" });
+    expect(asks[0]!.args).toMatchObject({ escalation: "sandbox → danger-full-access" });
+    // 下一调用不带升级参数 → 回默认模式（仅本调用生效）
+    await dispatch(registry, "bash", { command: "echo two" });
+    expect(spawns[1]).toMatchObject({ command: "echo two", mode: "workspace-write" });
+  });
+
+  it("审批拒绝 → SANDBOX_ESCALATION_DENIED 且命令未启动", async () => {
+    const { spawns, registry } = registryWithSandbox("deny");
+    const denied = await dispatch(registry, "bash", {
+      command: "echo nope",
+      sandboxPermissions: "danger-full-access",
+      justification: "理由充分",
+    });
+    expect(denied.isError).toBe(true);
+    expect(denied.error?.code).toBe("SANDBOX_ESCALATION_DENIED");
+    expect(spawns).toHaveLength(0); // fail-closed：执行前拒绝
+  });
+
+  it("缺 justification / 空白理由 / 无沙箱装配时带升级参数 → fail-closed 不执行", async () => {
+    const { spawns, registry } = registryWithSandbox("allow");
+    const missing = await dispatch(registry, "bash", {
+      command: "echo x",
+      sandboxPermissions: "danger-full-access",
+    });
+    expect(missing.error?.code).toBe("SANDBOX_ESCALATION_INVALID");
+    expect(spawns).toHaveLength(0);
+    const blank = await dispatch(registry, "bash", {
+      command: "echo x",
+      sandboxPermissions: "danger-full-access",
+      justification: "  ",
+    });
+    expect(blank.error?.code).toBe("SANDBOX_ESCALATION_INVALID");
+    // 无沙箱装配：升级参数直接 SANDBOX_UNAVAILABLE（env 直通路径）
+    const plain = toolsWith(tempDir());
+    const noSandbox = await dispatch(plain, "bash", {
+      command: "echo y",
+      sandboxPermissions: "danger-full-access",
+      justification: "没有沙箱也要升",
+    });
+    expect(noSandbox.error?.code).toBe("SANDBOX_UNAVAILABLE");
+  });
+
+  it("schema 面：sandboxPermissions 枚举是封闭目标词汇（不含 read-only）", () => {
+    const { registry } = registryWithSandbox("allow");
+    const chat = registry.toChatTools();
+    const bash = chat.find((t) => t.name === "bash");
+    expect(bash).toBeDefined();
+    const perm = (bash!.parameters as { properties: { sandboxPermissions: { enum: string[] } } })
+      .properties.sandboxPermissions;
+    expect(perm.enum).toEqual(["workspace-write", "danger-full-access"]);
+  });
+});

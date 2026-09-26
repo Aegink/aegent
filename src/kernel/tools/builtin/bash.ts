@@ -27,6 +27,14 @@ import type { ToolExecutionResult } from "../../loop.js";
 import { TimeoutError, clampTimeout } from "../../timeout.js";
 import { analyzeShellCommand } from "../../../policy/shell-semantics.js";
 import { PathGuard, PathGuardError } from "../../../sandbox/path-guard.js";
+import {
+  ESCALATION_TARGETS,
+  SandboxEscalationError,
+  resolveEscalatedMode,
+  validateEscalationArgs,
+} from "../../../sandbox/escalation.js";
+import type { SandboxMode } from "../../../sandbox/backend.js";
+import type { PendingApprovals } from "../../../policy/pending.js";
 import { isSpawnFailure, markStarted } from "../bash-retry-guard.js";
 import type { ToolContext } from "../context.js";
 import type { ToolDef } from "../registry.js";
@@ -36,6 +44,14 @@ export interface BashArgs {
   command: string;
   /** 超时秒数（pi 同款：可选，不设默认超时）。 */
   timeout?: number;
+  /**
+   * B15/T-P1-58 沙箱升级目标（执行期校验，schema enum = 封闭目标词汇）：
+   * 本调用的文件效果档位严格宽于会话默认模式的申请——与 justification
+   * 同行，走审批，**仅本调用生效**。
+   */
+  sandboxPermissions?: string;
+  /** 升级申请的理由（审批提示人可见，非空句）。 */
+  justification?: string;
 }
 
 /** setTimeout 约束换算的秒数上限（pi bash.ts 同款）。 */
@@ -53,14 +69,50 @@ export function toResult(result: ExecResult): ToolExecutionResult {
   };
 }
 
+/** B15/T-P1-58 schema 面：sandboxPermissions 只 advertise 封闭目标词汇。 */
+const SANDBOX_PERMISSIONS_SCHEMA = {
+  type: "string",
+  enum: [...ESCALATION_TARGETS],
+  description:
+    "Sandbox escalation target for this call only. Requires justification; the user is asked for approval.",
+};
+
 export function createBashTool(options: {
   pathGuard: PathGuard;
   /** B18 三档的"默认档"（秒）：timeout 参数缺省时生效。缺省 undefined =
    * 无默认超时（pi 同款行为保持）。上限档恒为 MAX_TIMEOUT_SECONDS，不可关。 */
   defaultTimeoutSeconds?: number;
+  /**
+   * B15/T-P1-58 沙箱装配（缺省 undefined = 命令经 env 直通，升级参数报
+   * SANDBOX_UNAVAILABLE——没有沙箱可升，fail-closed 不静默）。提供时命令
+   * 走 backend.spawn（mode = defaultMode + 本调用升级），审批经 PendingApprovals。
+   */
+  sandbox?: {
+    backend: import("../../../sandbox/backend.js").SandboxBackend;
+    defaultMode: SandboxMode;
+    approvals?: PendingApprovals;
+    sessionId?: string;
+    /** 升级审批答复上界（必填于审批面——C50 纪律）。 */
+    approvalTimeoutMs?: number;
+  };
 }): ToolDef {
+  const sandboxOptions = options.sandbox;
+  const schema: NonNullable<ToolDef["parameters"]> = {
+    type: "object",
+    properties: {
+      command: { type: "string", description: "The shell command to run" },
+      timeout: { type: "number", description: "Timeout in seconds (optional)" },
+      sandboxPermissions: SANDBOX_PERMISSIONS_SCHEMA,
+      justification: {
+        type: "string",
+        description: "Why this call needs a wider sandbox mode (shown to the approver).",
+      },
+    },
+    required: ["command"],
+  };
   return {
     name: "bash",
+    ...(schema ? { parameters: schema } : {}),
     async execute(args, ctx: ToolContext) {
       const { command, timeout } = args as Partial<BashArgs>;
       if (typeof command !== "string" || command === "") {
@@ -103,11 +155,75 @@ export function createBashTool(options: {
         }
         throw e;
       }
-      if (!ctx.env) {
+      // B15/T-P1-58：沙箱升级执行期校验（schema 只 advertise 封闭目标词汇，
+      // 有效模式是每调用真相）。配对校验 → 严格更宽校验 → 审批 → 仅本调用
+      // 生效；任何一步失败 fail-closed 类型化拒绝（执行前，命令未启动）。
+      const { sandboxPermissions, justification } = args as Partial<BashArgs>;
+      if (sandboxPermissions !== undefined || justification !== undefined) {
+        try {
+          validateEscalationArgs(sandboxPermissions, justification);
+        } catch (e) {
+          if (e instanceof SandboxEscalationError) {
+            return toolError("BashError", e.code, e.message);
+          }
+          throw e;
+        }
+      }
+      let effectiveMode: SandboxMode | undefined;
+      if (sandboxPermissions !== undefined) {
+        if (sandboxOptions === undefined) {
+          return toolError(
+            "BashError",
+            "SANDBOX_UNAVAILABLE",
+            "没有沙箱装配在场——sandboxPermissions 无模式可升级（fail-closed 不静默）",
+          );
+        }
+        try {
+          effectiveMode = resolveEscalatedMode(sandboxPermissions, sandboxOptions.defaultMode);
+        } catch (e) {
+          if (e instanceof SandboxEscalationError) {
+            return toolError("BashError", e.code, e.message);
+          }
+          throw e;
+        }
+        const approvals = sandboxOptions.approvals;
+        const timeoutMs = sandboxOptions.approvalTimeoutMs;
+        if (approvals === undefined || timeoutMs === undefined || sandboxOptions.sessionId === undefined) {
+          return toolError(
+            "BashError",
+            "SANDBOX_ESCALATION_DENIED",
+            `升级到 "${sandboxPermissions}" 需要审批，但本装配没有审批通道（fail-closed）`,
+          );
+        }
+        const verdict = await approvals.ask(
+          {
+            id: ctx.toolCallId,
+            sessionId: sandboxOptions.sessionId,
+            tool: "bash",
+            args: {
+              escalation: `sandbox → ${sandboxPermissions}`,
+              ...(justification !== undefined ? { justification } : {}),
+            },
+          },
+          { timeoutMs },
+        );
+        if (verdict.action !== "allow") {
+          return toolError(
+            "BashError",
+            "SANDBOX_ESCALATION_DENIED",
+            verdict.reason !== ""
+              ? `升级到 "${sandboxPermissions}" 被拒绝：${verdict.reason}`
+              : `升级到 "${sandboxPermissions}" 被拒绝`,
+          );
+        }
+      }
+      // B15/T-P1-58：沙箱装配在场时 backend.spawn 替代 env 执行——env 缺席
+      // 不再是错误；两者都缺席才是装配缺失。
+      if (!ctx.env && sandboxOptions === undefined) {
         return toolError(
           "BashError",
           "EXECUTION_ENV_MISSING",
-          "bash 需要执行环境（装配处未注入 ExecutionEnv）",
+          "bash 需要执行环境或沙箱后端（装配处未注入 ExecutionEnv / SandboxBackend）",
         );
       }
       // B7 进度示范（T-P1-16）：启动前上报一次——长任务的最早可见事实，
@@ -118,10 +234,22 @@ export function createBashTool(options: {
           : "命令已启动",
       );
       try {
-        const result = await ctx.env.exec(
-          command,
-          armedSeconds !== undefined ? { timeoutMs: armedSeconds * 1000 } : undefined,
-        );
+        // B15/T-P1-58：沙箱装配在场 → backend.spawn（mode = 本调用升级后
+        // 的有效档，escalation 仅本调用生效——不落任何会话状态）；缺省 env
+        // 直通（P0 行为）。超时 kill 语义由后端实现决定（local 直通等价）。
+        const execOptions =
+          armedSeconds !== undefined ? { timeoutMs: armedSeconds * 1000 } : undefined;
+        let result: ExecResult;
+        if (sandboxOptions !== undefined) {
+          result = await sandboxOptions.backend.spawn({
+            command,
+            mode: effectiveMode ?? sandboxOptions.defaultMode,
+            ...(execOptions ?? {}),
+          });
+        } else {
+          // 前置检查保证：无沙箱装配时 ctx.env 必在场
+          result = await ctx.env!.exec(command, execOptions);
+        }
         // D15：命令已启动——成功结果同样标记（自动重发会产生重复副作用）
         return markStarted(toResult(result));
       } catch (e) {
