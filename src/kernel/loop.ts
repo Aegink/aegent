@@ -384,6 +384,12 @@ export class AgentLoop {
       if (this.deps.beforeFirstModelRequest) {
         await this.deps.beforeFirstModelRequest(turn);
       }
+      // A17/T-P1-46：await 后显式检查（zcode·turn-loop 每 await 后
+      // throwIfTurnAborted 同款时点）——挂点（PreTurn 压缩/goal 提醒）执行
+      // 期间到达的取消在首步前收轮，不留到 step 边界才兜底。
+      if (this.cancelCause) {
+        return await this.abortTurn(turn);
+      }
       for (let step = 1; ; step++) {
         // A7 边界检查：step 开始前
         if (this.cancelCause) break;
@@ -395,6 +401,10 @@ export class AgentLoop {
         if (result.kind === "cancelled") break;
         // A1：end 必须由 DecideTurn 显式给出；continue 则同轮进下一个 step。
         const decision = await this.deps.decideTurn(result.record);
+        // A17/T-P1-46：decideTurn await 后显式检查——取消发生在裁决之后
+        // 不得以 completed 收轮（取消优先于正常终态；decideTurn 期间到达
+        // 的取消此前会被 end 分支的 completed 吞掉）。
+        if (this.cancelCause) break;
         if (decision.action === "end") {
           await this.closeTurn(turn, { kind: "completed" });
           return { kind: "completed" };

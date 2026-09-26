@@ -85,6 +85,49 @@ describe("AgentLoop.cancel —— A7 取消 / 中断当前 turn", () => {
     expectSingleTerminal(events, 1);
   });
 
+  it("decideTurn 裁决后取消：aborted 收轮而非 completed（取消优先于正常终态——A17/T-P1-46）", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([{ type: "text-delta", text: "只此一步" }, { type: "done" }]);
+    const ref = loopRef();
+    const { loop, store, decideCalls } = makeLoop(provider, {
+      decideTurn: async () => {
+        // 取消恰好落在裁决期间（await 边界内）——end 分支此前会把它以
+        // completed 收轮吞掉（缺口复现），显式检查后取消优先。
+        ref.loop!.cancel({ kind: "user" });
+        return { action: "end" };
+      },
+    });
+    ref.loop = loop;
+
+    const reason = await loop.runTurn("裁决前取消");
+    expect(reason).toEqual({ kind: "aborted", cause: { kind: "user" } });
+    const end = store.load("s1").find((e) => e.type === "turn/end") as {
+      reason: { kind: string };
+    };
+    expect(end.reason.kind).toBe("aborted");
+    expectSingleTerminal(store.load("s1"), 1);
+    expect(decideCalls).toHaveLength(1);
+  });
+
+  it("beforeFirstModelRequest 挂点后取消：首步前 aborted 收轮（A17/T-P1-46 await 后显式检查）", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([{ type: "text-delta", text: "不该被请求" }, { type: "done" }]);
+    const ref = loopRef();
+    const { loop, store } = makeLoop(provider, {
+      beforeFirstModelRequest: async () => {
+        ref.loop!.cancel({ kind: "user" });
+      },
+    });
+    ref.loop = loop;
+
+    const reason = await loop.runTurn("挂点后取消");
+    expect(reason).toEqual({ kind: "aborted", cause: { kind: "user" } });
+    // 零 step：挂点期间的取消不等 step 边界兜底
+    expect(store.load("s1").some((e) => e.type === "step/start")).toBe(false);
+    expect(provider.requests).toHaveLength(0);
+    expectSingleTerminal(store.load("s1"), 1);
+  });
+
   it("cause 落盘只拷声明字段：transport 污染的 stack 不进 durable 事件；原对象不冻结", async () => {
     const ref = loopRef();
     const cause: CancelCause = {
