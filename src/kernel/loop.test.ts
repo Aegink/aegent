@@ -12,7 +12,7 @@ import {
 import { ScriptedProvider, makeLoop } from "./loop.test-utils.js";
 import { RwLock } from "./rw-lock.js";
 import { expectPaired, expectSingleTerminal, expectTurnScoped } from "../test-support/event-asserts.js";
-import type { ModelProvider } from "../models/provider.js";
+import type { ChatTool, ModelProvider } from "../models/provider.js";
 
 /**
  * 前置说明（A6 措辞映射，卡面要求写明）：本文件的 "step" 是 l0-events 三级
@@ -578,6 +578,45 @@ describe("工具进度上报（B7 / T-P1-16）", () => {
     >[];
     expect(progress).toHaveLength(10);
     expect(progress.map((e) => e.seqInCall)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  });
+
+  it("toolsProvider 每请求现取（F12/F14 wiring）：工具增减在后续请求可见、request/header.tools 如实记录", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([
+      { type: "tool-call-delta", id: "c1", name: "tool_load", argsDelta: '{"name":"big"}' },
+      { type: "done" },
+    ]);
+    provider.mount([{ type: "text-delta", text: "完成" }, { type: "done" }]);
+    // 模拟注册表面：第一次请求 1 个工具，tool_load 执行"后"清单长出第二个
+    let generation = 0;
+    const handle: ChatTool = {
+      name: "tool_load",
+      description: "检索柄",
+      parameters: { type: "object", properties: {} },
+    };
+    const withBig: ChatTool[] = [
+      handle,
+      {
+        name: "big",
+        description: "大工具",
+        parameters: { type: "object", properties: { q: { type: "string" } } },
+      },
+    ];
+    const { loop, store } = makeLoop(provider, {
+      toolsProvider: () => (generation === 0 ? [handle] : withBig),
+      executeTool: async () => {
+        generation = 1; // tool_load 索取 = 注册表面变化
+        return { content: "已加载" };
+      },
+    });
+
+    await loop.runTurn("延迟加载");
+    const headers = store.load("s1").filter((e) => e.type === "request/header") as unknown as Array<{
+      tools?: Array<{ name: string }>;
+    }>;
+    expect(headers[0]!.tools).toHaveLength(1);
+    expect(headers[1]!.tools).toHaveLength(2);
+    expect(headers[1]!.tools![1]!.name).toBe("big");
   });
 });
 

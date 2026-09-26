@@ -190,7 +190,9 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
     store,
     provider: options.provider ?? echoProvider(),
     identity: options.identity ?? { provider: "echo", modelId: "echo-1" },
-    tools: toolRegistry.toChatTools(),
+    // F12/F14（T-P1-17）：每请求现取工具清单——tool_load 索取后 deferrable
+    // 工具的真 schema 才进后续请求（request/header.tools 同步如实记录）
+    toolsProvider: () => toolRegistry.toChatTools(),
     executeTool: (call) => toolRegistry.dispatch(call),
     decideTurn: assembly ? assembly.wrapDecideTurn(decideTurnBase) : decideTurnBase,
     queue,

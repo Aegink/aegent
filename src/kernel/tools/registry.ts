@@ -60,6 +60,15 @@ export interface ToolDef {
    * fail-closed——持写锁与一切互斥）。写类工具与有状态工具一律缺省。
    */
   parallel?: boolean;
+
+  /**
+   * F12 延迟加载声明：true = 该工具的**真参数 schema 不进默认工具清单**，
+   * wire 上只出现占位（name + 延迟标记描述 + 空 schema）；模型经 tool_load
+   * 按名索取后，后续请求的清单才出现真 schema。缺省 false = 全量进清单
+   * （P0 行为）。F14 纪律：占位首请求即声明（位置稳定），其他工具的增减
+   * 不动已声明占位——前缀稳定（pi-mono cache scar 的位置性追加同款）。
+   */
+  deferrable?: boolean;
 }
 
 /** 工具执行前置守卫（C57 执行点重算的接线面）：政策层实现，registry 在
@@ -93,6 +102,8 @@ export class ToolRegistry {
   private readonly sessionId: string | undefined;
   private readonly spillDir: string | undefined;
   private readonly spillMaxFiles: number;
+  /** F12 已按名索取过真 schema 的 deferrable 工具（会话生命周期）。 */
+  private readonly loadedDeferred = new Set<string>();
   private readonly guard:
     | ((name: string, args: JsonRecord) => Promise<ToolGuardOutcome>)
     | undefined;
@@ -172,13 +183,48 @@ export class ToolRegistry {
     }
   }
 
-  /** 装配给模型请求的 ChatTool 清单（request/header.tools 的来源）。 */
+  /**
+   * 装配给模型请求的 ChatTool 清单（request/header.tools 的来源）。
+   * F12/F14/T-P1-17：deferrable 工具在被索取（requestToolSchema）前只出现
+   * **占位**（name + 延迟标记描述 + 空 schema，形状只从 name/描述派生、
+   * 位置 = 注册序），索取后该位置出现真 schema（原地替换，清单长度不变
+   * ——pi-mono cache scar 的位置性追加纪律：其他工具的增减绝不动已声明
+   * 占位）。非 deferrable 工具与 P0 行为逐字节一致。
+   */
   toChatTools(): ChatTool[] {
-    return [...this.defs.values()].map((def) => ({
-      name: def.name,
-      description: this.description(def.name),
-      parameters: def.parameters ?? { type: "object", properties: {} },
-    }));
+    return [...this.defs.values()].map((def) => {
+      if (def.deferrable !== true || this.loadedDeferred.has(def.name)) {
+        return {
+          name: def.name,
+          description: this.description(def.name),
+          parameters: def.parameters ?? { type: "object", properties: {} },
+        };
+      }
+      return {
+        name: def.name,
+        description: `${this.description(def.name)}\n\n[deferred] 完整参数 schema 未加载——调用 tool_load(name: "${def.name}") 按名索取。`,
+        parameters: { type: "object", properties: {} },
+      };
+    });
+  }
+
+  /**
+   * F12 按名索取（tool_load 的执行面）：deferrable 工具标记为已加载，
+   * 后续 toChatTools 在原位给真 schema。返回值区分两种结果："loaded"
+   * （本次真正加载了）与 "visible"（schema 本就在清单——非 deferrable
+   * 工具或重复索取，幂等 no-op）。调用方（tool_load）负责对未注册名先落
+   * TOOL_NOT_FOUND。
+   */
+  requestToolSchema(name: string): "loaded" | "visible" {
+    const def = this.defs.get(name);
+    if (def === undefined) {
+      throw new Error(`未注册的工具：${name}`);
+    }
+    if (def.deferrable !== true || this.loadedDeferred.has(name)) {
+      return "visible";
+    }
+    this.loadedDeferred.add(name);
+    return "loaded";
   }
 
   /**

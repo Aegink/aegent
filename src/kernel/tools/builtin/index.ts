@@ -18,6 +18,7 @@ import { createPlanEnterTool, createPlanExitTool } from "./plan.js";
 import { createReadTool } from "./read.js";
 import { createSkillLoadTool } from "./skill.js";
 import { createTodoWriteTool } from "./todo.js";
+import { createToolLoadTool } from "./tool-load.js";
 import { createWriteTool } from "./write.js";
 import type { PlanModeService } from "../../plan-mode.js";
 
@@ -35,6 +36,7 @@ export const BUILTIN_TOOL_NAMES = [
   "todo_write",
   "plan_enter",
   "plan_exit",
+  "tool_load",
 ] as const;
 
 export function registerBuiltinTools(
@@ -89,6 +91,9 @@ export function registerBuiltinTools(
           }),
         ]
       : []),
+    // F12/F14 检索柄（T-P1-17）：常驻清单且自身不可 deferrable——没有
+    // deferrable 工具时调用它幂等无害（claude-official ToolSearch 常驻同款）
+    createToolLoadTool({ registry }),
   ]) {
     registry.registerTool(def);
   }

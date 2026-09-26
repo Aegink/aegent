@@ -51,6 +51,7 @@ export function makeLoop(
     toolBudget?: AgentLoopDeps["toolBudget"];
     toolExecution?: AgentLoopDeps["toolExecution"];
     isParallelTool?: AgentLoopDeps["isParallelTool"];
+    toolsProvider?: AgentLoopDeps["toolsProvider"];
   },
 ): Harness {
   const store = new SessionStore();
@@ -80,6 +81,7 @@ export function makeLoop(
     ...(opts?.toolBudget ? { toolBudget: opts.toolBudget } : {}),
     ...(opts?.toolExecution ? { toolExecution: opts.toolExecution } : {}),
     ...(opts?.isParallelTool ? { isParallelTool: opts.isParallelTool } : {}),
+    ...(opts?.toolsProvider ? { toolsProvider: opts.toolsProvider } : {}),
   });
   return { store, loop, decideCalls };
 }

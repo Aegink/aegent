@@ -342,7 +342,7 @@ describe("grep 工具（P0 纯 JS 实现）", () => {
 });
 
 describe("内置工具注册入口", () => {
-  it("registerBuiltinTools 挂上七个内置工具，且描述文件在位（B2；skill_load 为 T-P1-08 新增）", () => {
+  it("registerBuiltinTools 挂上八个内置工具（无装配选项时），且描述文件在位（B2；skill_load 为 T-P1-08 新增、tool_load 为 T-P1-17 新增）", () => {
     const registry = new ToolRegistry();
     registerBuiltinTools(registry);
     expect(registry.names()).toEqual([
@@ -353,6 +353,7 @@ describe("内置工具注册入口", () => {
       "glob",
       "grep",
       "skill_load",
+      "tool_load",
     ]);
     // 描述从真 descriptions/ 目录读出（非空）——内置描述文件的存在性证明
     for (const name of registry.names()) {

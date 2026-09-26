@@ -214,14 +214,14 @@ describe("注册面与提示词独立文件（验收⑤）", () => {
     }
   });
 
-  it("planMode 提供时注册 plan_enter/plan_exit；缺省不注册（全配置 = BUILTIN_TOOL_NAMES 10）", () => {
+  it("planMode 提供时注册 plan_enter/plan_exit；缺省不注册（全配置 = BUILTIN_TOOL_NAMES 11）", () => {
     const withPlan = new ToolRegistry();
     registerBuiltinTools(withPlan, { planMode: createPlanModeService() });
     expect(withPlan.names()).toContain("plan_enter");
     expect(withPlan.names()).toContain("plan_exit");
     // todoEmit 未传时 todo_write 不注册（各能力面独立启用）
     expect(withPlan.names()).not.toContain("todo_write");
-    expect(withPlan.names()).toHaveLength(9);
+    expect(withPlan.names()).toHaveLength(10);
 
     const full = new ToolRegistry();
     registerBuiltinTools(full, {
@@ -229,13 +229,13 @@ describe("注册面与提示词独立文件（验收⑤）", () => {
       planMode: createPlanModeService(),
     });
     expect(full.names()).toEqual([...BUILTIN_TOOL_NAMES]);
-    expect(BUILTIN_TOOL_NAMES).toHaveLength(10);
+    expect(BUILTIN_TOOL_NAMES).toHaveLength(11);
 
     const withoutPlan = new ToolRegistry();
     registerBuiltinTools(withoutPlan);
     expect(withoutPlan.names()).not.toContain("plan_enter");
     expect(withoutPlan.names()).not.toContain("plan_exit");
-    expect(withoutPlan.names()).toHaveLength(7); // P0 六工具 + skill_load
+    expect(withoutPlan.names()).toHaveLength(8); // P0 六工具 + skill_load + tool_load
   });
 
   it("提示词独立文件：改 plan_enter.txt 描述即变，零 .ts diff（T-4-01 基建同款）", () => {

@@ -167,6 +167,12 @@ export interface AgentLoopDeps {
   identity: ModelIdentity;
   /** 本次请求可用的工具清单（阶段 4 注册表接入前可空）。 */
   tools?: ChatTool[];
+  /**
+   * F12/F14/T-P1-17 每请求工具清单源：模型按名索取（tool_load）后 deferrable
+   * 工具的真 schema 才出现——装配传注册表的 toChatTools() 闭包，loop 每次
+   * callModel 现取。缺省 undefined = 固定用 tools（P0 零行为变化）。
+   */
+  toolsProvider?: () => ChatTool[];
   /** 工具执行终端（阶段 4 = 注册表分发；测试注入假实现）。 */
   executeTool(call: {
     callId: string;
@@ -652,7 +658,10 @@ export class AgentLoop {
    * （不为记录失败而伪造模型消息，l0-events.md §2.2），再作硬退出上抛。
    */
   private async callModel(payload: ModelRequestPayload): Promise<ModelStepOutput> {
-    const { store, sessionId, tools } = this.deps;
+    const { store, sessionId } = this.deps;
+    // F12/F14：toolsProvider 在位时每请求现取（deferrable 工具索取后真
+    // schema 才进清单）；缺省回落固定 tools（P0 零行为变化）
+    const tools = this.deps.toolsProvider?.() ?? this.deps.tools;
     store.append(sessionId, [
       {
         type: "request/header",
