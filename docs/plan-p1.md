@@ -1,6 +1,6 @@
 # P1 实施计划 · 批次 1
 
-**状态**：v1.0 · 批次 1 卡面编写完成，未开始执行
+**状态**：v1.1 · 批次 1 收官（13/13 卡 + 终验收）· 批次 2 卡序已展（T-P1-14 ~ 23，2026-09-26，依据 [`20260926_P2研究_批次圈定建议.md`](20260926_P2研究_批次圈定建议.md) 路线一裁决）
 **执行协议**：沿用 [`plan-p0.md`](plan-p0.md) §0（取卡 / 做卡 / 验收 / 打勾 / 提交 / 自动继续 / 四种停下情况），本文件不复制。执行进度追加在 [`plan-p0-progress.md`](plan-p0-progress.md)（台账 / 待澄清 / 人工确认清单共用一个文件）。
 **需求来源**：[`requirements.md`](requirements.md) §4 的 P1 项（共 158 条）。P1 不切阶段（§1 尾注），按**批次**组织：本文件当前只含批次 1，后续批次轮到时再展卡追加。
 **批次 1 范围**（用户圈定于 2026-09-25，四组全选，共 26 条）：
@@ -185,6 +185,113 @@
 - 词汇表扩展（预计 14→17）每处走待澄清立案 + `l0-events.md` §8 落地记录；未被追认的回退面在卡面写明。
 - 新增/修改关键路径全部有最小充分验证；专有仓（claude-official）零代码摘取。
 
-## 批次 2 候选（占位，轮到时展开）
+## 批次 2 卡序（10 张，2026-09-26 展卡，按依赖排序；15 条需求 ID：Q3/B17/B6/B7/F12/F14/F5/F6/F13/F15/B8/J12/J15/J19/J18）
 
-F5 摘要质量 + 递归摘要 · Q3 spill 清理 · B6/B7（并行/进度）· B8 其余扩展工具 · F6/F13/F14/F15 缓存族 · J12/J15/J16/J18/J19 模型运维族 · H1–H5 子代理族。
+**锚点纪律**：15 条锚点已逐一打开核对到行号级（2026-09-26，核对证据见各卡「证据强度」）；Q3 与 §3 决策编号 Q3（IM 平台）同名异义已辨析。B7 的 `tool_execution_update` 事件名在 pi types.ts 未直接定位——mode 锚（types.ts:47,307-313）已核实，进度事件形状按验收要点自研（§2.5 以语义为准）。
+
+#### T-P1-14 · Q3 · spill 清理（落盘文件生命周期） `[ ]`
+- **依据需求**：Q3（P1；P0 的 B10/B11 打标记 + Q13 deletable 是它的地基）
+- **上游首选参考**：[dsh·packages/spill/](../oss/deepseek-harness/packages/spill)（spill 包——落盘文件生命周期）
+- **取什么 / 别抄什么**：取"截断产生的临时文件有清理策略、不无限堆积"；我方 truncate.ts 的 spillPath/deletable 标记（T-4-06）已就位，本卡只做消费端
+- **证据强度**：`读了代码`（spill 包目录结构；我方 truncate.ts 的 spill 标记现状）
+- **要产出**：spill GC（会话关闭 / 超龄 / 超量三触发任一定形，KISS 优先会话关闭 + 超量）+ 清理只认自己打过标记的文件（deletable 纪律）+ 单测
+- **验收**：`npx vitest run src/kernel/tools/truncate.test.ts`（扩）——①N 次截断后 spill 文件数有界（不无限堆积）；②清理不误删非 spill 文件（证伪）；③会话关闭触发清理可断言
+- **依赖**：无（批次 2 热身件）
+
+#### T-P1-15 · B17+B6 · 工具并发（RwLock 前提 + 并行可配） `[ ]`
+- **依据需求**：B17（P1）· B6（P1）
+- **上游首选参考**：[codex·tools/parallel.rs](../oss/codex/codex-rs/core/src/tools/parallel.rs)（tokio RwLock——读并行/写排他）；[pi·types.ts:47,307-313](../oss/pi/packages/agent/src/types.ts#L307)（`ToolExecutionMode = "sequential"|"parallel"` + "preflight tool calls sequentially, then execute allowed tools concurrently"）
+- **取什么 / 别抄什么**：取 codex 的一把 RwLock 纪律（**未声明即不可并行** = fail-closed）与 pi 的"preflight 顺序、执行并发"形状；不抄 tokio（我方 promise 并发）
+- **证据强度**：`读了代码`（parallel.rs 头部 Rust 依赖面；types.ts:43-47,307-313 原文）
+- **要产出**：ToolDef 加并行声明（缺省 false = 排他）；loop 工具执行按声明分组（声明组内并发、跨组与写类排他——B4 写队列语义不变）；装配可配 sequential/parallel（缺省 sequential = P0 行为不变）
+- **验收**：`npx vitest run src/kernel/loop.test.ts`（扩）——①parallel 模式下已声明只读工具组并发（计序断言：完成序 ≠ 提交序）；②未声明工具被排他化（B17 验收原文）；③sequential 缺省零行为变化（回归）；④并行下 tool/call–result 配平不变
+- **依赖**：无
+- **风险 / 未知**：并行下 stderr/超时/预算（B14）归哪个 callId——按 callId 归属既有纪律延伸，预算轴并行累加语义在卡内定
+
+#### T-P1-16 · B7 · 工具进度流式上报 `[ ]`
+- **依据需求**：B7（P1）
+- **上游首选参考**：[pi·types.ts:47](../oss/pi/packages/agent/src/types.ts#L47)（mode 面锚已核实）；进度事件形状按验收要点自研（`tool_execution_update` 事件名在 types.ts 未定位——展卡发现，执行会话以语义为准）
+- **取什么 / 别抄什么**：取"进度按序到达可观测"；我方事件源架构下进度必须落事件（不变量 1）——**词汇表 17→18 预判**（`tool/progress {turn, step, callId, seq-in-call, message}`），走已演练三次的扩展管线
+- **证据强度**：`读了代码`（types.ts mode 面）；`推断`（进度事件形状）
+- **要产出**：词汇表扩展 + ToolContext 加 `reportProgress(message)` 回调（只有正在执行的工具拿得到）+ loop 落 `tool/progress` 事件 + bash/长任务先接一个示范 + 单测
+- **验收**：`npx vitest run src/kernel/loop.test.ts src/kernel/events.test.ts`（扩）——①进度事件按 callId 聚合后 seq 有序（验收原文"按序到达"）；②不调 reportProgress 的工具零新事件（回归）；③C16 编译闸门 + 计数 18
+- **依赖**：无（与 T-P1-15 并行安全）
+- **风险 / 未知**：进度事件是否会撑爆流——单工具进度上限（如 10 条）进卡内决定
+
+#### T-P1-17 · F12+F14 · 工具 schema 延迟加载 `[ ]`
+- **依据需求**：F12（P1）· F14（P1）
+- **上游首选参考**：[claude-official·mods/types/claude-code.d.ts](../refs/claude-official/mods/types/claude-code.d.ts) 🔴 只读（`ToolDeferral` 声明形状）；[pi-mono·claude-bridge-cache-marker-telemetry-scar.md](../oss/pi-mono/docs/claude-bridge-cache-marker-telemetry-scar.md)（真实事故：**延迟加载工具的脚手架在首次请求即声明，后续工具增减不破坏前缀**）
+- **取什么 / 别抄什么**：取 scar 的两条纪律——①占位脚手架首请求即声明（前缀稳定）；②工具增减以"位置性追加"表达。声明形状学 d.ts 的字段名，实现全自研
+- **证据强度**：`读了文档`（scar 全文；d.ts 的 ToolDeferral 字段名）
+- **要产出**：ToolDef 加 deferrable 声明 + toChatTools 对 deferrable 工具产占位 schema（name + "按名索取"描述，无真参数面）+ `tool_load` 面扩展（模型按名索要后该工具 schema 后续请求可见——skill_load 同构）+ 单测
+- **验收**：`npx vitest run src/kernel/tools/registry.test.ts`（扩）——①deferrable 工具首请求只见占位（断言无真 schema）；②按名索取后后续请求带真 schema；③新增/移除其他工具不动已声明占位（前缀稳定断言）
+- **依赖**：无
+- **风险 / 未知**：占位在 wire 的形状（空 schema vs 显式 deferred 标记）——卡内定，与 F13 的"位置性追加"对齐
+
+#### T-P1-18 · F5 · 摘要 / 标题生成 `[ ]`
+- **依据需求**：F5（P1）
+- **上游首选参考**：[qwen·docs/design/session-recap/session-recap-design.md](../oss/qwen-code/docs/design/session-recap/session-recap-design.md)（会话回顾设计文档）
+- **取什么 / 别抄什么**：取"摘要与标题是生成产物、有独立设计面"；我方 P0 的 truncatingSummarizer 假实现换真——**summarizer 消费 provider（模型调用进压缩路径）**，与 P0 假 provider 剧本兼容（测试仍可注入假摘要）
+- **证据强度**：`读了文档`（session-recap-design.md 结构）
+- **要产出**：真 summarizer（装配注入 provider 的摘要提示词 + 截断回退）+ 会话标题生成（首摘要顺带产出，落 compaction 事件或独立元数据——卡内定，优先复用既有载荷）+ 单测
+- **验收**：`npx vitest run src/context/compaction.test.ts`（扩）——①真 summarizer 路径（脚本 provider 剧本产出摘要）落 compaction 事件；②摘要提示词进 request/header 可观测；③假摘要注入测试面保持（P0 用例零改动）
+- **依赖**：模型接入层（J 层在位）
+- **风险 / 未知**：压缩路径的模型调用失败兜底——回退 truncatingSummarizer（降级不炸压缩，F11 是它的扩展位）
+
+#### T-P1-19 · F6+F13+F15 · 缓存族（前缀保真三面） `[ ]`
+- **依据需求**：F6（P1）· F13（P1）· F15（P1）
+- **上游首选参考**：[pi-mono·anthropic-cache-split.ts:2-5](../oss/pi-mono/packages/ai/src/api/anthropic-cache-split.ts#L2)（"System-prompt cache split — THE cache primitive"：稳定块带 `cache_control` + 动态尾不带）；[pi-mono·claude-bridge-cache-marker-telemetry-scar.md](../oss/pi-mono/docs/claude-bridge-cache-marker-telemetry-scar.md)（"stable system/tools cache anchor" + 变更以位置性追加表达）；[pi-mono·cache-retention.ts](../oss/pi-mono/packages/ai/src/utils/cache-retention.ts)（cache-safe 压缩）
+- **取什么 / 别抄什么**：取三个纪律：①稳定前缀（system/tools 锚）与动态尾分离；②中途改动（换模/改工具集——T-P1-06 已落换模）以追加表达不重写；③压缩重放活前缀不冷写整个上下文。不抄 anthropic 专有 cache_control wire（我方 openai-compat，机制按语义落）
+- **证据强度**：`读了代码`（cache-split.ts 头注 + 键序注释）；`读了文档`（scar 全文——cache_creation 高企的真实事故）
+- **要产出**：消息装配的前缀稳定结构（system/tools 锚先落、会话体追加序）+ 前缀破坏检测（换模/工具集变更时断言锚未重写——J2 实测 Σinput 64.5k 的直接对策）+ 压缩 cache-safe 路径（摘要替换中段、锚不动）+ 命中率可观测（TokenUsage.cacheRead 已在——按会话分列进 L3 视图）
+- **验收**：`npx vitest run src/context/new-window.test.ts src/obs/usage.test.ts`（扩）——①锚稳定断言：换模（T-P1-06 联动）前后 system/tools 块逐字节不变；②压缩后新窗口保留锚（cache-safe 断言——F15 验收原文"压缩不作废缓存"）；③命中率按会话可查
+- **依赖**：T-P1-18（真摘要改变压缩产物形态，先定形）
+- **风险 / 未知**：openai-compat 无显式 cache_control wire——"前缀保真"是装配纪律而非 wire 标记，验收以锚逐字节不变为准（真实厂商命中率留人工确认）
+
+#### T-P1-20 · B8a · webfetch 工具 `[ ]`
+- **依据需求**：B8（P1，本卡落 webfetch；apply_patch/lsp 单独择期）
+- **上游首选参考**：[opencode·tool/](../oss/opencode/packages/opencode/src/tool)（webfetch 实现）
+- **取什么 / 别抄什么**：取"URL 抓取 → 文本化回喂"；**必须对接 D3 网络策略**（NetworkPolicy 独立一档——P0 T-6-03 的地基），deny 档拒绝
+- **证据强度**：`读了代码`（opencode tool 目录面）
+- **要产出**：`webfetch` 工具（fetch 经 NetworkPolicy + 响应截断走 B5 通道 + BUILTIN_TOOL_NAMES 10→11）+ 描述 txt + 单测
+- **验收**：`npx vitest run src/kernel/tools/builtin/`（扩）——①allow 档 localhost 放行（真端口）；②deny 档拒绝且 NETWORK_DENIED 含目标 URL（D3 语义复用）；③超长响应截断落 spill（T-P1-14 联动）
+- **依赖**：T-P1-14（spill 清理在位，防 webfetch 大响应堆积）
+
+#### T-P1-21 · B8b · question 工具（模型向用户提问） `[ ]`
+- **依据需求**：B8（P1，本卡落 question）
+- **上游首选参考**：[opencode·tool/](../oss/opencode/packages/opencode/src/tool)（question 形状；plan_exit 的 `question.ask` 交互已在 T-P1-11 读过）
+- **取什么 / 别抄什么**：取"模型显式提问 → 用户答复 → 工具结果回喂"；我方审批基建（PendingApprovals/Manual broker）承载挂起，**不新增第二套挂起注册表**（hermes 迟到通知教训的延伸：结算语义复用）
+- **证据强度**：`读了代码`（opencode question 形状 + 我方 pending.ts 现状）
+- **要产出**：`question` 工具（问题文本 → 审批面挂起 → 用户经协议答复 → 回喂）+ REPL 协议消息扩展 + 单测
+- **验收**：`npx vitest run src/cli/cli.test.ts`（扩）——①提问挂起可见（协议行）；②答复后工具结果回喂、turn 正常收尾；③超时按拒结算（C50 语义复用）
+- **依赖**：无（审批基建在位）
+- **风险 / 未知**：question 与权限审批共用通道的语义边界（question 的"答复"不是"批准"）——协议消息分型，不复用 approve 消息名
+
+#### T-P1-22 · J12 · 模型选择器（去重 + 上限 + discovery 兜底） `[ ]`
+- **依据需求**：J12（P1）
+- **上游首选参考**：[hermes·acp_adapter/model_catalog.py:23-25](../oss/hermes-agent/acp_adapter/model_catalog.py#L23)（"deduplicated `provider:model` rows + refreshed from the live `/models` listing **when available**; discovery fallback——some endpoints have no `/models` route"，slug 用 `custom:<name>`）
+- **取什么 / 别抄什么**：取三纪律：目录去重（provider:model 二元组——J4 既有身份）、每厂商上限、**discovery 兜底（声明清单在 /models 缺失时仍可用）**
+- **证据强度**：`读了代码`（model_catalog.py 头部与 slug 注释原文）
+- **要产出**：模型目录（装配 `models` 注册表的发现面：`/models` 探测 + 声明兜底 + 去重 + 上限）+ 选择器 API（换模注册表的查询面）+ 单测
+- **验收**：`npx vitest run src/kernel/model-switch.test.ts`（扩）——①去重（同身份只一行）；②每厂商上限生效；③端点无 `/models` 路由时声明模型仍可用（验收原文，假 provider 404 剧本）；④选择结果可换模（J6 联动）
+- **依赖**：T-P1-06 换模注册表（批次 1 已在位）
+
+#### T-P1-23 · J15+J19+J18 · 故障转移 / 熔断 / 限流追踪 `[ ]`
+- **依据需求**：J15（P1）· J19（P1）· J18（P1）
+- **上游首选参考**：[cc-switch·database/dao/failover.rs:23-31](../oss/cc-switch/src-tauri/src/database/dao/failover.rs#L23)（故障转移**队列**语义：`ORDER BY COALESCE(sort_index, 999999)` 按后端分区，非开关）；[grok·xai-circuit-breaker/src/retry_policy.rs](../oss/grok-build/crates/common/xai-circuit-breaker/src/retry_policy.rs)（`Disposition{Retryable, AuthRefresh, …}` 状态码→处置映射与熔断）；[hermes·agent/rate_limit_tracker.py:24-41](../oss/hermes-agent/agent/rate_limit_tracker.py#L24)（`RateLimitBucket`：used/usage_pct/remaining_seconds_now——按 provider 追踪、接近配额提前告知）
+- **取什么 / 别抄什么**：三件各取其纪律——J15 的"队列非开关 + sort_index 序"；J19 的"状态码 → 处置映射集中一处 + 连续失败熔断"；J18 的"桶计量 + 提前告知"。不抄其持久层/DI
+- **证据强度**：`读了代码`（三处头部与关键行全部命中）
+- **要产出**：provider 容错层（withRetry 之上）：J18 限流桶（按 provider 计量 + 接近配额告警）→ J19 熔断器（连续失败开路、半开探测恢复、Disposition 判据复用 J26 分类）→ J15 故障转移（开路后按队列序切注册表内下一 provider——J6/J7 换模地基联动）+ 单测
+- **验收**：`npx vitest run src/models/`（扩）——①连续失败 → 熔断 open（后续请求零发出，计数断言）；②半开恢复（探测成功 → closed）；③开路 → 故障转移队列按序切换（J15 验收"按后端分区"）；④限流桶用量/余量可查询、接近配额告警可断言
+- **依赖**：T-P1-22（选择器/注册表面）；J26 重试分类（P0 在位）
+- **风险 / 未知**：熔断与 withRetry 的分层边界（重试在请求内、熔断跨请求）——卡内定，避免双计数
+
+## 批次 2 完成定义
+
+- 10 张卡全部打勾，每勾附「命令 + 结果摘要」；`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变（需求 ID 无新增）、`check-doc-links.sh` 0 失效、`license-audit.sh` 通过。
+- 词汇表扩展（本批预判 17→18 的 tool/progress）走既有管线（assertNever + l0-events §8 落地记录含回退面 + 待澄清立案）。
+- 缓存族（T-P1-19）的锚逐字节不变断言就位；真实厂商端到端复测（同批次 1 终验口径）：并行/进度/缓存三面的行为证据落库。
+
+## 批次 3 候选（占位）
+
+H1–H5 子代理族（大件独立成批）· B8 的 apply_patch/lsp · E5/E6 fork 与会话树 · Q2 会话查询 · P2 层数据生命周期族（M4/Q4/Q6/Q8）。

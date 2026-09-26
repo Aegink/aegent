@@ -472,7 +472,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | J22 | **超时必须带错误码作用域**（多层嵌套时判定"谁超时"不能靠 signal） | P0 | [dsh·timeout-policy](../oss/deepseek-harness/packages/guard/timeout-policy/src/index.ts) | `TOOL_TIMEOUT` 码 + 信号换回不改工具 promise |
 | J23 | **区分三种超时**：总时长 / 空闲 / **可重臂空闲**（有传输活动则续期） | P1 | [dsh·util/timeout](../oss/deepseek-harness/packages/util/timeout/src/index.ts) | `IdleWatchdog.pulse()` |
 | J24| **`setTimeout` 上限 2^31-1**（超出被静默钳到 1ms） | P1| [dsh·util/timeout](../oss/deepseek-harness/packages/util/timeout/src/index.ts) | `MAX_TIMER_DELAY_MS = 2_147_483_647` |
-| J25 | 输出 token 与非缓存输入 token **不同价**，预算按权重计 | P1 | [codex·rollout_budget.rs:62](../oss/codex/codex-rs/core/src/rollout_budget.rs#L62) | 预算不按裸 token 数算 |
+| J25 | 输出 token 与非缓存输入 token **不同价**，预算按权重计 | P1 | [codex·rollout_budget.rs:62](../oss/codex/codex-rs/core/src/rollout_budget.rs#L62) | 预算不按裸 token 数算 | **〔✅ 已由 T-7-08 预算加权覆盖——2026-09-26 用户裁决关闭〕** |
 | J26 | **重试按显式错误分类；未知错误不重试**；退避带 jitter；**尊重服务端 Retry-After** | P0 | [kimi·retry.ts](../oss/kimi-code/packages/agent-core-v2/src/human/llm/requester/retry.ts) | `RETRYABLE_STATUS_CODES` 显式枚举；429/5xx 与未知分开 |
 | J27 | `retrying` 作为**一等事件**，带 `failedAttempt` | P1 | [kimi·engine.ts](../oss/kimi-code/packages/agent-core-v2/src/agent/loop/machine/engine.ts) | 重试在事件流里可见 |
 
@@ -503,7 +503,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | L7 | **命令的调用与裁决也要持久化** | P1 | [dsh·session-projection-and-command-log.md](../oss/deepseek-harness/.agents/notes/proposed/architecture/2026-07-27-session-projection-and-command-log.md) | 不只记工具；否则刷新/换端/fork 后"这条命令执行过"即丢失 |
 | L8 | 压缩作为结构化度量事件，6 维度：trigger/reason/implementation/phase/strategy/status | P1 | [codex·analytics/facts.rs](../oss/codex/codex-rs/analytics/src/facts.rs) | 压缩可统计、可归因 |
 | L9 | 循环内分段计时（mcp / tools 各自打点） | P2 | [zcode·turn-loop.ts](../oss/zcode/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts) | 各段耗时可见 |
-| L10 | 链底"**无人应答的调用抛错并点名事件**" | P1 | [claude-official·mods/README.md](../refs/claude-official/mods/README.md) | C16 的运行时同构物 |
+| L10 | 链底"**无人应答的调用抛错并点名事件**" | P1 | [claude-official·mods/README.md](../refs/claude-official/mods/README.md) | C16 的运行时同构物 | **〔✅ 已由 T-P1-07 链底抛错点名覆盖——2026-09-26 用户裁决关闭〕** |
 
 ### M. 长任务（11 项）
 
@@ -513,7 +513,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | M2| job 注册表 | P1| [dsh·packages/jobs/](../oss/deepseek-harness/packages/jobs) | job 状态可查、可取消 |
 | M3 | 崩溃续跑 | P1 | [codex·daemon_recovery.rs](../oss/codex/codex-rs/core/src/session/daemon_recovery.rs) | 场景⑤：重启后不重复已完成副作用 |
 | M4 | 空闲回收 | P2 | [qwen·session-idle-reaper](../oss/qwen-code/docs/design/session-idle-reaper) | 空闲会话被回收，不常驻内存 |
-| M5 | goal 持久化 | P1 | [dsh·packages/goal/](../oss/deepseek-harness/packages/goal) | 跨重启仍在 |
+| M5 | goal 持久化 | P1 | [dsh·packages/goal/](../oss/deepseek-harness/packages/goal) | 跨重启仍在 | **〔✅ 持久化已由 T-P1-12 事件流承载；跨会话引用并入会话查询域——2026-09-26 用户裁决关闭〕** |
 | M6 | **工具调用超时策略** | P1 | [dsh·guard/timeout-policy](../oss/deepseek-harness/packages/guard/timeout-policy/src/index.ts) | 每工具可配超时；超时是可观测事件（`TOOL_TIMEOUT`）而非静默失败 |
 | M7 | 统一 deadline 库 | P2 | [dsh·util/timeout](../oss/deepseek-harness/packages/util/timeout/src/index.ts) | 超时逻辑集中，不在各工具里重复实现 |
 | M8 | **持久化权威必须分代（generation / execution epoch）** | P1 | [pi-desktop·ADR 0041](../oss/pi-desktop/docs/adr/0041-bounded-host-runtime-and-persistence-outbox.md) | 过期的 host 代不能发通知或接受写入；**重启绝不重放旧进程创建的工作** |
