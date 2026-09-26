@@ -420,11 +420,15 @@ export function createApplyPatchTool(options: {
             return toolError("ApplyPatchError", e.code, e.message);
           }
           if ((e as NodeJS.ErrnoException).code === "ENOENT") {
-            return toolError(
-              "ApplyPatchError",
-              "HUNK_NOT_APPLIED",
-              `Failed to read file to update: ${hunk.path}（文件不存在——Add File 才能创建新文件）`,
-            );
+            return {
+              ...toolError(
+                "ApplyPatchError",
+                "HUNK_NOT_APPLIED",
+                `Failed to read file to update: ${hunk.path}（文件不存在——Add File 才能创建新文件）`,
+              ),
+              // B13/T-P1-57：验证失败声明目标路径（loop 的 mutation 预算按此计账）
+              meta: { mutationPaths: patchHunkPaths(hunk) },
+            };
           }
           return toolError(
             "ApplyPatchError",
@@ -436,7 +440,10 @@ export function createApplyPatchTool(options: {
         try {
           content = deriveUpdatedLines(hunk.path, hunk.chunks, text);
         } catch (e) {
-          return toolError("ApplyPatchError", "HUNK_NOT_APPLIED", (e as Error).message);
+          return {
+            ...toolError("ApplyPatchError", "HUNK_NOT_APPLIED", (e as Error).message),
+            meta: { mutationPaths: patchHunkPaths(hunk) },
+          };
         }
         changes.push({
           kind: "update",
@@ -498,9 +505,16 @@ export function createApplyPatchTool(options: {
       }
 
       const summary = applied.map((a) => `${a.label} ${a.relative}`).join("\n");
-      return {
-        content: `Success. Updated the following files:\n${summary}`,
-      };
+        // B13/T-P1-57：成功结果声明全部涉及路径（loop 的预算清历史面——
+        // ADR "a successful mutation clears that path's failure history"）
+        return {
+          content: `Success. Updated the following files:\n${summary}`,
+          meta: {
+            mutationPaths: changes.flatMap((c) =>
+              c.kind === "update" && c.movePath !== undefined ? [c.path, c.movePath] : [c.path],
+            ),
+          },
+        };
     },
   };
 }

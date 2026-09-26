@@ -12,6 +12,7 @@
 
 import * as path from "node:path";
 import { PathGuard, PathGuardError } from "../../../sandbox/path-guard.js";
+import type { JsonValue } from "../../events.js";
 import type { ToolExecutionResult } from "../../loop.js";
 import type { ToolDef } from "../registry.js";
 import type { WriteQueue } from "../write-queue.js";
@@ -112,7 +113,18 @@ export function createEditTool(options: {
           content: `Edited ${filePath} (1 replacement, ${String(Buffer.byteLength(next, "utf8"))} bytes written)`,
         };
       };
-      return queue ? queue.run(abs, doEdit) : doEdit();
+      const raw = await (queue ? queue.run(abs, doEdit) : doEdit());
+      // B13/T-P1-57：结果声明目标路径（loop 的 mutation 预算按此计账与清
+      // 历史——成败都带，成功才触发 ADR 的"成功清空该路径失败历史"）；
+      // 参数坏（INVALID_ARGUMENTS）不是一次真实的修改尝试，不计。
+      if (raw.error?.code !== "INVALID_ARGUMENTS") {
+        const baseMeta =
+          typeof raw.meta === "object" && raw.meta !== null && !Array.isArray(raw.meta)
+            ? (raw.meta as { [key: string]: JsonValue })
+            : {};
+        return { ...raw, meta: { ...baseMeta, mutationPaths: [filePath] } };
+      }
+      return raw;
     },
   };
 }

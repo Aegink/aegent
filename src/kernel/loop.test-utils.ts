@@ -73,6 +73,7 @@ export function makeLoop(
     logger?: AgentLoopDeps["logger"];
     maxStepsPerTurn?: AgentLoopDeps["maxStepsPerTurn"];
     abortTimeoutMs?: AgentLoopDeps["abortTimeoutMs"];
+    mutationBudget?: AgentLoopDeps["mutationBudget"];
   },
 ): Harness {
   const store = new SessionStore();
@@ -116,6 +117,7 @@ export function makeLoop(
       ? { maxStepsPerTurn: opts.maxStepsPerTurn }
       : {}),
     ...(opts?.abortTimeoutMs !== undefined ? { abortTimeoutMs: opts.abortTimeoutMs } : {}),
+    ...(opts?.mutationBudget !== undefined ? { mutationBudget: opts.mutationBudget } : {}),
   });
   return { store, loop, decideCalls };
 }

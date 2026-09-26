@@ -27,6 +27,7 @@
 
 import type { ModelIdentity } from "../models/identity.js";
 import { parseRetryAfterMs } from "../models/retry.js";
+import * as path from "node:path";
 import {
   type ChatMessage,
   type ChatTool,
@@ -39,6 +40,7 @@ import type { SessionStore } from "../session/store.js";
 import { computeCacheAnchor, type PrefixChange } from "../context/prefix-anchor.js";
 import { BudgetExceededError, ParseBudget } from "./budget.js";
 import { normalizePromptVerdict, type PromptGate } from "./prompt-gate.js";
+import { MUTATION_RETRY_BUDGET_EXHAUSTED, type MutationRetryBudget } from "./tools/mutation-budget.js";
 import type { Logger } from "./logger.js";
 import {
   type ChainExecutor,
@@ -293,6 +295,13 @@ export interface AgentLoopDeps {
    */
   maxStepsPerTurn?: number;
   /**
+   * B13/T-P1-57 mutation 重试预算（prompt × path 双作用域）：edit/apply_patch
+   * 失败结果（meta.mutationPaths）按当前 promptId 上报记账，同一路径第 3 次
+   * 计数失败 → 本 step 收尾 turn/end{blocked}（显式护栏终止）。缺省 undefined
+   * = 不启用（零行为变化）。
+   */
+  mutationBudget?: MutationRetryBudget;
+  /**
    * A14/T-P1-50 护栏二：取消后等待在途工作收尾的超时（kimi machine.ts:428
    * `abortTimeout: abortTimeoutMs ?? 10_000` 同构，缺省 10_000）。超时 →
    * 强制收轮：补闭合未闭合 step + turn/end{aborted} 落盘 + runState 归位 +
@@ -412,9 +421,19 @@ export class AgentLoop {
   /** A12/T-P1-53 关联 id 分配（会话内单调 p1、p2…；构造时从流重建基线）。 */
   private promptCounter: number;
 
+  /**
+   * B13/T-P1-57：当前 prompt 的关联 id（nextPromptId 分配即更新——"当前
+   * prompt" = 最新落盘的 user/message）。mutation 预算的计数作用域键。
+   */
+  private currentPromptId: string | undefined;
+
+  /** B13/T-P1-57：本 step 内 mutation 预算耗尽的命中记录（收尾统一检查）。 */
+  private mutationTerminate: { path: string; errorCode: string } | null = null;
+
   private nextPromptId(): string {
     this.promptCounter += 1;
-    return `p${this.promptCounter}`;
+    this.currentPromptId = `p${this.promptCounter}`;
+    return this.currentPromptId;
   }
 
   private armAbortWatchdog(): void {
@@ -488,6 +507,9 @@ export class AgentLoop {
     // A14/T-P1-50：新 turn 复位强制收轮标记与残留看门狗（与 cancelCause 同步）
     this.forcedClosed = false;
     this.disarmAbortWatchdog();
+    // B13/T-P1-57：新 turn 复位预算耗尽标记（计数作用域按 promptId，本就
+    // 不会跨 prompt 生效——此处清的是异常半途残留）
+    this.mutationTerminate = null;
     // 新 turn 一份新信号：丢弃 idle 期迟到的取消（不武装本 turn 之前的工作）
     this.cancelCause = null;
     this.cancelController = new AbortController();
@@ -753,6 +775,22 @@ export class AgentLoop {
     if (output.toolCalls.length > 0) {
       this.deps.onToolStepCompleted?.(turn, step);
     }
+    // B13/T-P1-57：mutation 预算在本 step 内耗尽 → blocked 收轮（显式护栏
+    // 终止非 completed，T-P1-50 同款）。已派发工具照常结算落盘（A11 纪律），
+    // 收轮判定在 step 收尾统一做。
+    if (this.mutationTerminate !== null) {
+      const hit = this.mutationTerminate;
+      this.mutationTerminate = null;
+      this.deps.logger?.warn("mutation 重试预算耗尽——强制收束", {
+        turn,
+        step,
+        path: hit.path,
+        errorCode: hit.errorCode,
+        code: MUTATION_RETRY_BUDGET_EXHAUSTED,
+      });
+      await this.closeTurn(turn, { kind: "blocked" });
+      return { kind: "blocked" };
+    }
     if (this.cancelCause) return { kind: "cancelled" };
     return {
       kind: "completed",
@@ -808,6 +846,9 @@ export class AgentLoop {
           ? { signal: this.cancelController.signal }
           : {}),
       });
+      // B13/T-P1-57：mutation 工具的成败上报预算（结果 meta.mutationPaths
+      // 是工具声明的目标路径——isError 计账、成功清历史）。
+      this.reportMutationOutcome(outcome.value);
       return outcome.value;
     } catch (e) {
       return {
@@ -815,6 +856,36 @@ export class AgentLoop {
         isError: true,
         error: { name: "ToolError", code: "TOOL_EXECUTE_FAILED" },
       };
+    }
+  }
+
+  /**
+   * B13/T-P1-57：把 mutation 工具的结果上报预算。isError → 逐路径 record
+   * （第 3 次计数失败置 mutationTerminate，本 step 收尾收轮）；成功 → 逐
+   * 路径 clear（ADR "a successful mutation clears that path's failure
+   * history"）。路径规范化 = resolve + 小写折叠（Windows 大小写不敏感）。
+   */
+  private reportMutationOutcome(result: ToolExecutionResult): void {
+    const budget = this.deps.mutationBudget;
+    const meta = result.meta;
+    if (budget === undefined || this.currentPromptId === undefined) return;
+    if (meta === null || typeof meta !== "object" || Array.isArray(meta)) return;
+    const paths = (meta as { [key: string]: JsonValue }).mutationPaths;
+    if (!Array.isArray(paths) || paths.length === 0) return;
+    for (const raw of paths) {
+      if (typeof raw !== "string" || raw === "") continue;
+      const normalized = path.resolve(raw).toLowerCase();
+      if (result.isError === true) {
+        const verdict = budget.record(this.currentPromptId, normalized, result.error?.code);
+        if (verdict.terminate) {
+          this.mutationTerminate = {
+            path: raw,
+            errorCode: result.error?.code ?? "UNKNOWN",
+          };
+        }
+      } else {
+        budget.clear(this.currentPromptId, normalized);
+      }
     }
   }
 

@@ -10,6 +10,7 @@ import {
   type TurnDecision,
 } from "./loop.js";
 import { PromptQueue } from "./queue.js";
+import { MutationRetryBudget } from "./tools/mutation-budget.js";
 import { ScriptedProvider, makeLoop } from "./loop.test-utils.js";
 import { RwLock } from "./rw-lock.js";
 import type { PrefixChange } from "../context/prefix-anchor.js";
@@ -1065,6 +1066,92 @@ describe("用户输入关联 id（A12/T-P1-53）", () => {
       .filter((e) => e.type === "user/message")
       .map((e) => (e as { promptId?: string }).promptId);
     expect(inputs).toEqual(["p1", "p2"]);
+  });
+});
+
+describe("mutation 重试预算（B13/T-P1-57）", () => {
+  const collectLogger = () => {
+    const warns: { msg: string; data?: Record<string, unknown> }[] = [];
+    const logger: NonNullable<AgentLoopDeps["logger"]> = {
+      debug() {},
+      info() {},
+      warn: (msg, data) => warns.push({ msg, data }),
+      error() {},
+    };
+    return { logger, warns };
+  };
+
+  const editScript = () => [
+    { type: "text-delta", text: "改" },
+    { type: "tool-call-delta", id: "c1", name: "edit", argsDelta: '{"path":"a.txt"}' },
+    { type: "done" },
+  ] as const;
+
+  const failingEdit = async (): Promise<ToolExecutionResult> => ({
+    content: "oldText 在 a.txt 中未找到",
+    isError: true,
+    error: { name: "EditError", code: "OLD_TEXT_NOT_FOUND" },
+    meta: { mutationPaths: ["a.txt"] },
+  });
+
+  it("同路径失败累计到第 3 次计数失败 → turn/end{blocked} + warn 带 MUTATION_RETRY_BUDGET_EXHAUSTED", async () => {
+    const provider = new ScriptedProvider();
+    // 可恢复码首现宽限：宽限 + 3 次计数 = 4 次失败
+    for (let i = 0; i < 4; i++) provider.mount([...editScript()]);
+    provider.mount([{ type: "text-delta", text: "结束" }, { type: "done" }]);
+    const { logger, warns } = collectLogger();
+    const { loop, store } = makeLoop(provider, {
+      executeTool: failingEdit,
+      mutationBudget: new MutationRetryBudget(),
+      logger,
+    });
+
+    const reason = await loop.runTurn("修文件");
+    expect(reason).toEqual({ kind: "blocked" });
+    const end = store.load("s1").filter((e) => e.type === "turn/end").at(-1) as {
+      reason?: { kind: string };
+    };
+    expect(end.reason?.kind).toBe("blocked");
+    // 失败结果照常落盘（已执行的尝试是事实），轮以显式护栏终止
+    expect(store.load("s1").filter((e) => e.type === "tool/result")).toHaveLength(4);
+    const hit = warns.find((w) => w.msg.includes("mutation 重试预算耗尽"));
+    expect(hit).toBeDefined();
+    expect(hit!.data).toMatchObject({ path: "a.txt", code: "MUTATION_RETRY_BUDGET_EXHAUSTED" });
+  });
+
+  it("中间成功清空该路径历史：clear 后重新累计，不 terminate", async () => {
+    const provider = new ScriptedProvider();
+    for (let i = 0; i < 6; i++) provider.mount([...editScript()]);
+    provider.mount([{ type: "text-delta", text: "结束" }, { type: "done" }]);
+    let call = 0;
+    const flaky: AgentLoopDeps["executeTool"] = async () => {
+      call += 1;
+      // 失败×2（宽限+1 计数）→ 成功（清空）→ 失败×3（宽限+2 计数）——从未到 3
+      if (call === 3) return { content: "edited", meta: { mutationPaths: ["a.txt"] } };
+      return await failingEdit();
+    };
+    const { loop, store } = makeLoop(provider, {
+      executeTool: flaky,
+      mutationBudget: new MutationRetryBudget(),
+    });
+    expect(await loop.runTurn("修文件")).toEqual({ kind: "completed" });
+    expect(store.load("s1").filter((e) => e.type === "tool/result")).toHaveLength(6);
+  });
+
+  it("不同 turn（新 promptId）预算各自独立：前轮累计不带入下一轮", async () => {
+    const provider = new ScriptedProvider();
+    for (let i = 0; i < 2; i++) provider.mount([...editScript()]);
+    provider.mount([{ type: "text-delta", text: "轮1结束" }, { type: "done" }]);
+    for (let i = 0; i < 2; i++) provider.mount([...editScript()]);
+    provider.mount([{ type: "text-delta", text: "轮2结束" }, { type: "done" }]);
+    const { loop } = makeLoop(provider, {
+      executeTool: failingEdit,
+      mutationBudget: new MutationRetryBudget(),
+    });
+    // 两轮各 2 次失败（各轮内宽限+1 计数）——若作用域错成全局 path 键，
+    // 第二轮会累计到 4 次 → blocked
+    expect(await loop.runTurn("第一轮")).toEqual({ kind: "completed" });
+    expect(await loop.runTurn("第二轮")).toEqual({ kind: "completed" });
   });
 });
 
