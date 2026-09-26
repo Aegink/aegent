@@ -463,7 +463,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **偏离 / 建议**：①渲染器是纯函数（快照对象进、文本出），不落文件不接 insta 类快照库（我方 vitest 快照 + 手写断言够用）；②F13 联动验收留给 T-P1-37 的 compaction 相位快照消费（本卡只交付渲染器本体）
 - **完成记录**：2026-09-26。产出 `src/test-support/render.ts` + `render.test.ts` 9 用例：`formatGenerateInput(input, previous)`（O24 单请求差分——system/tools 与 previous 深等 → `[unchanged]` 标签折叠、消息前缀延伸只渲染 `+K 条` 后缀、非前缀 → 全量渲染并标`分叉于第 i 条`；tool_calls 渲染 `assistant（tool_calls: bash@c1）`、tool 消息渲染 `tool(c1): 结果` 携带身份）+ `formatRequestWindow(requests)`（O14 多请求分窗——codex 判据四路：identity 变更（J6 换模）/system prompt 变更/tools 变更/输入分叉，各自开新窗并记录原因；窗内首请求全量（含 identity/system 字数/tools 名单/messages 全文）、后续只渲染 `+K messages` 后缀）。验收：`npx vitest run src/test-support/render.test.ts` → **9 passed**：①首请求全量无折叠；②system/tools 未变 [unchanged] 且内容不重打、后缀-only；③分叉全量渲染标点；④tool_calls/tool 身份渲染；⑤三追加同窗"窗口 1（3 请求）"；⑥identity 变更新窗带原因与新旧身份；⑦system/tools 各自开新窗（codex 判据原文）；⑧历史改写开新窗标分叉点；⑨空序列占位 + 后缀段不含前缀重复。全量 `npx vitest run` **713 passed / 1 skipped**（无净增——本卡测试全在新文件），`npx tsc --noEmit` 干净。**卡内定形**：前缀判断逐条 JSON 深等（kimi isMessagePrefix 的 isDeepEqual 同语义——消息是值不是引用，首版引用相等被测试当场抓出修正）。
 
-#### T-P1-33 · O23 · 事件流快照渲染（列对齐 + 单行 JSON + 同流交错） `[ ]`
+#### T-P1-33 · O23 · 事件流快照渲染（列对齐 + 单行 JSON + 同流交错） `[x]`
 - **依据需求**：O23（P1："事件流快照列对齐 + 单行 JSON；domain 与 RPC/wire 事件同流交错"）
 - **上游首选参考**：[kimi·snapshots.ts:119-120](../oss/kimi-code/packages/agent-core-v2/test/harness/snapshots.ts#L119)（`const prefix = v['type'] === '[rpc]' ? '[emit]' : '[wire]'; return \`${prefix} ${String(v['event']).padEnd(maxEventLength, ' ')} ${stringifyCompact(v['args'])}\``）
 - **取什么 / 别抄什么**：取三纪律：`[emit]`/`[wire]` 前缀分源、事件名 `padEnd` 列对齐、载荷单行 JSON；我方 wire 面 = agent-protocol 协议行（ForwardingStore 逐事件转发），同流交错 = 渲染器接受任意来源行序列保序输出
@@ -473,6 +473,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **依赖**：T-P1-32（同文件，渲染器族）
 - **风险 / 未知**：单行 JSON 的键序——复用 normalize 的 `stableStringify`（键序排序已在），归一化接入（易变值占位符）作为可选参数
 - **偏离 / 建议**：①与 O11 的 previous 差分渲染（T-P1-32）分工：T-P1-32 管"模型上下文"轴、本卡管"事件流"轴，两渲染器同文件不同入口；②截断标记复用 O27 的 P2 前身形态但不做 160 字符政策（P2 边界不越）——本卡只做"必须单行"的最小截断
+- **完成记录**：2026-09-26。产出 render.ts 扩 `renderEventStream(lines, options)`（输入 `{source: "emit"|"wire", type, payload}[]` → `[emit]`/`[wire]` 前缀 + 事件名 `padEnd`（全流最长名定列）+ 载荷 `JSON.stringify` 单行（物理换行结构性转义）保序输出；`normalize` 注入点接易变值归一化、`maxLineChars` 可选最小截断带 `…(+N 字)` 标记、空流占位行）+ render.test 扩 5 用例。验收：`npx vitest run src/test-support/render.test.ts` → **14 passed**（9 既有 + 5 新）：①列对齐（全行 JSON 起始列唯一 + 长短名补位逐行正则）；②含 `\n`/`\t` 载荷转义单行、行数=输入数；③emit/wire 四行保序交错前缀正确；④300 字载荷缺省不截、maxLineChars=40 截断带标记；⑤normalize 注入生效 + 空流占位。全量 `npx vitest run` **727 passed / 1 skipped**（713 → 净增 14），`npx tsc --noEmit` 干净。
 
 #### T-P1-34 · O15+O16 · 录制/回放 provider + 故障注入服务器（真实模型流可测性） `[ ]`
 - **依据需求**：O15（P1："录制/回放真实模型流——避免手写 mock 漂移"）· O16（P1："故障注入服务器——恢复类逻辑必须能注入故障才可测"）

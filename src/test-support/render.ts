@@ -123,6 +123,45 @@ function isSameIdentity(a: RenderableRequest, b: RenderableRequest): boolean {
 }
 
 /**
+ * 事件流快照渲染（O23，T-P1-33）——domain 与 wire 事件同流交错：`[emit]`/
+ * `[wire]` 前缀分源（kimi·snapshots.ts:119）、事件名 `padEnd` 列对齐、载荷
+ * 单行 JSON（JSON.stringify 转义物理换行，结构性保证单行）。
+ * 与 O11 的 previous 差分渲染（formatGenerateInput）分工：本函数管"事件流"轴。
+ */
+
+export interface EventStreamLine {
+  /** emit = domain 事件；wire = RPC/协议行（agent-protocol 转发面）。 */
+  source: "emit" | "wire";
+  type: string;
+  payload: unknown;
+}
+
+export interface RenderEventStreamOptions {
+  /** 载荷归一化注入（易变值占位符——test-support/normalize 的 normalizeValue）。 */
+  normalize?: (payload: unknown) => unknown;
+  /** 超长行最小截断（完整 160 字符政策是 P2 O27；缺省不截）。 */
+  maxLineChars?: number;
+}
+
+export function renderEventStream(
+  lines: readonly EventStreamLine[],
+  options: RenderEventStreamOptions = {},
+): string {
+  if (lines.length === 0) return "（空事件流）";
+  const maxTypeLen = Math.max(...lines.map((l) => l.type.length));
+  const rendered = lines.map((line) => {
+    const payload = options.normalize ? options.normalize(line.payload) : line.payload;
+    let json = JSON.stringify(payload) ?? "undefined";
+    if (options.maxLineChars !== undefined && json.length > options.maxLineChars) {
+      json = `${json.slice(0, options.maxLineChars)}…(+${json.length - options.maxLineChars} 字)`;
+    }
+    const prefix = line.source === "wire" ? "[wire]" : "[emit]";
+    return `${prefix} ${line.type.padEnd(maxTypeLen, " ")} ${json}`;
+  });
+  return rendered.join("\n");
+}
+
+/**
  * 多请求窗口渲染（O14）：settings（identity/system/tools）不变且消息是
  * 前缀延伸 → 同窗；否则开新窗并记录原因。窗内首请求全量、后续只渲染
  * 后缀（suffix index），窗头记录"窗口为何在此结束"的同构信息（新窗原因）。

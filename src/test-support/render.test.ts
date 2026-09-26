@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { formatGenerateInput, formatRequestWindow, type RenderableRequest } from "./render.js";
+import {
+  formatGenerateInput,
+  formatRequestWindow,
+  renderEventStream,
+  type EventStreamLine,
+  type RenderableRequest,
+} from "./render.js";
 
 const TOOLS_A = [{ name: "bash" }, { name: "read" }];
 const TOOLS_B = [{ name: "bash" }, { name: "read" }, { name: "write" }];
@@ -150,5 +156,61 @@ describe("formatRequestWindow（O14：首条全量、后续只留后缀；settin
     ]);
     expect(text).toContain("[1] assistant: b");
     expect(text).not.toContain("[0] user: a\n      [0]"); // 前缀不在后缀段重复
+  });
+});
+
+describe("renderEventStream（O23：列对齐 + 单行 JSON + 同流交错，T-P1-33）", () => {
+  const lines: EventStreamLine[] = [
+    { source: "emit", type: "user/message", payload: { message: { content: "hi" } } },
+    { source: "wire", type: "request", payload: { id: 1, method: "prompt" } },
+    { source: "emit", type: "tool/call", payload: { callId: "c1", name: "bash" } },
+    { source: "wire", type: "message", payload: { kind: "approval_requested" } },
+  ];
+
+  it("列对齐：所有行 JSON 起始列相同（padEnd 断言）", () => {
+    const text = renderEventStream(lines);
+    const rows = text.split("\n");
+    expect(rows).toHaveLength(4);
+    const jsonStart = rows.map((row) => row.indexOf("{"));
+    expect(new Set(jsonStart).size).toBe(1);
+    // 长事件名决定对齐列，短名右侧补空格（user/message 自身最长，仅分隔空格）
+    expect(rows[0]).toMatch(/^\[emit\] user\/message \{/);
+    expect(rows[2]).toMatch(/^\[emit\] tool\/call {3} \{/);
+    expect(rows[1]).toMatch(/^\[wire\] request {5} \{/);
+  });
+
+  it("单行 JSON：载荷含物理换行被转义，行数 = 输入数", () => {
+    const text = renderEventStream([
+      { source: "emit", type: "user/message", payload: { content: "第一行\n第二行\t制表" } },
+      { source: "emit", type: "tool/call", payload: { nested: { deep: { x: [1, 2] } } } },
+    ]);
+    expect(text.split("\n")).toHaveLength(2);
+    expect(text).toContain("第一行\\n第二行\\t制表");
+  });
+
+  it("emit/wire 混合序列保序交错、前缀正确（验收③）", () => {
+    const text = renderEventStream(lines);
+    const rows = text.split("\n");
+    expect(rows.map((r) => r.slice(0, 6))).toEqual(["[emit]", "[wire]", "[emit]", "[wire]"]);
+  });
+
+  it("长载荷截断带标记（maxLineChars 可选；缺省不截）", () => {
+    const big = "x".repeat(300);
+    const stream: EventStreamLine[] = [
+      { source: "emit", type: "assistant/message", payload: { content: big } },
+    ];
+    expect(renderEventStream(stream)).toContain(big); // 缺省不截
+    const cut = renderEventStream(stream, { maxLineChars: 40 });
+    expect(cut).toContain("…(+");
+    expect(cut.length).toBeLessThan(80);
+  });
+
+  it("normalize 注入生效（易变值归一化接入点）与空流占位", () => {
+    const text = renderEventStream(
+      [{ source: "emit", type: "tool/call", payload: { callId: "uuid-1234" } }],
+      { normalize: (p) => ({ ...(p as object), callId: "{{callId}}" }) },
+    );
+    expect(text).toContain("{{callId}}");
+    expect(renderEventStream([])).toBe("（空事件流）");
   });
 });
