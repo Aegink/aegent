@@ -16,6 +16,8 @@
  * withRetry（loop 外包重试——loop 不设第二条重试路径）。
  */
 
+import path from "node:path";
+
 import { runAgentChildStdio, type AgentChildOptions } from "./agent-process.js";
 import { parseProviderConfig } from "../models/config.js";
 import { createOpenAiCompatProvider } from "../models/openai-compat.js";
@@ -93,6 +95,25 @@ async function main(): Promise<void> {
             checkpointRepoRoot: cli.workspace ?? process.cwd(),
             contextWindow: cli.contextWindow ?? 200_000,
             approvalTimeoutMs: cli.approvalTimeoutMs ?? 120_000,
+            // G1/G7 plan 模式（测试/实测开关：AEGENT_PLAN=1）——G4 计划
+            // artifact 落工作区自留目录 .aegent/sessions/<sessionId>（untracked
+            // 新文件不入 git stash，与 E11 互不干扰）
+            ...(process.env["AEGENT_PLAN"] === "1"
+              ? {
+                  planMode: true,
+                  planArtifactDir: path.join(
+                    cli.workspace ?? process.cwd(),
+                    ".aegent",
+                    "sessions",
+                    process.env["AEGENT_SESSION"] ?? "s0",
+                  ),
+                }
+              : {}),
+            // G3/G6 goal（测试/实测开关：AEGENT_GOAL=<目标文本>；到期动作
+            // 缺省 report——每轮催办）
+            ...(process.env["AEGENT_GOAL"]
+              ? { goal: { text: process.env["AEGENT_GOAL"] } }
+              : {}),
           },
         }
       : {}),
