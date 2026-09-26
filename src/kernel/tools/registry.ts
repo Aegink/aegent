@@ -78,6 +78,12 @@ export interface ToolDispatchCall {
   name: string;
   /** 模型产出的原始 arguments JSON 串，unparsed（B12）。 */
   arguments: string;
+  /**
+   * B7 进度上报通道（T-P1-16）：loop 按调用注入（闭包内记 seqInCall 与
+   * 条数上限），registry 原样转进 ToolContext.reportProgress——只有正在
+   * 执行的工具拿得到。缺省 undefined = 该调用无进度通道（零新事件）。
+   */
+  report?: (message: string) => void;
 }
 
 export class ToolRegistry {
@@ -222,6 +228,7 @@ export class ToolRegistry {
     const ctx: ToolContext = {
       toolCallId: call.callId,
       ...(this.env !== undefined ? { env: this.env } : {}),
+      ...(call.report ? { reportProgress: call.report } : {}),
     };
     const executed = await def.execute(args, ctx);
     // B12：契约富值（含 value/render）在此投影成落盘形状——富值不出本函数

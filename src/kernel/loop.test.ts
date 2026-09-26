@@ -462,5 +462,124 @@ describe("RwLock（B17 一把锁的语义）", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// 工具进度上报（B7 / T-P1-16）：reportProgress → tool/progress 事件
+// ---------------------------------------------------------------------------
+
+describe("工具进度上报（B7 / T-P1-16）", () => {
+  it("验收①：进度事件按 callId 聚合后 seqInCall 有序、store seq 单调（按序到达）且先于本调用的 result", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([
+      { type: "tool-call-delta", id: "c1", name: "work", argsDelta: "{}" },
+      { type: "tool-call-delta", id: "c2", name: "work", argsDelta: "{}" },
+      { type: "done" },
+    ]);
+    provider.mount([{ type: "text-delta", text: "完成" }, { type: "done" }]);
+    const { loop, store } = makeLoop(provider, {
+      executeTool: async (call) => {
+        call.report?.(`进度 A`);
+        call.report?.(`进度 B`);
+        return { content: `done-${call.callId}` };
+      },
+    });
+
+    await loop.runTurn("进度");
+    const events = store.load("s1");
+    const progress = events.filter((e) => e.type === "tool/progress") as Extract<
+      SessionEvent,
+      { type: "tool/progress" }
+    >[];
+    expect(progress).toHaveLength(4);
+    for (const callId of ["c1", "c2"]) {
+      const mine = progress.filter((e) => e.callId === callId);
+      // 调用内序号 1,2 单调递增（按序到达）
+      expect(mine.map((e) => e.seqInCall)).toEqual([1, 2]);
+      // store seq 严格递增（落流顺序 = 上报顺序）
+      const seqs = mine.map((e) => e.seq);
+      expect([...seqs].sort((a, b) => a - b)).toEqual(seqs);
+      // 进度全部先于本调用的 tool/result（调用未闭合才可上报）
+      const resultSeq = events.find(
+        (e) => e.type === "tool/result" && (e as { callId: string }).callId === callId,
+      )!.seq;
+      expect(mine.every((e) => e.seq < resultSeq)).toBe(true);
+    }
+    // 事件序整体：call c1 → 进度×2 → result c1 → call c2 → 进度×2 → result c2
+    const relevant = events
+      .filter((e) => e.type === "tool/call" || e.type === "tool/result" || e.type === "tool/progress")
+      .map((e) => (e as { type: string; callId: string }).type + ":" + (e as { callId: string }).callId);
+    expect(relevant).toEqual([
+      "tool/call:c1",
+      "tool/progress:c1",
+      "tool/progress:c1",
+      "tool/result:c1",
+      "tool/call:c2",
+      "tool/progress:c2",
+      "tool/progress:c2",
+      "tool/result:c2",
+    ]);
+    // 配平不受进度事件影响
+    expectPaired(events, "tool/call");
+  });
+
+  it("验收②：不调 reportProgress 的工具零新事件（回归：精确事件列表与 P0 一致）", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([
+      { type: "tool-call-delta", id: "c1", name: "silent", argsDelta: "{}" },
+      { type: "usage", usage: { inputTokens: 3, outputTokens: 1 } },
+      { type: "done" },
+    ]);
+    provider.mount([{ type: "text-delta", text: "ok" }, { type: "done" }]);
+    const { loop, store } = makeLoop(provider, {
+      executeTool: async (call) => ({ content: `ran ${call.callId}` }),
+    });
+
+    await loop.runTurn("安静");
+    const types = store.load("s1").map((e) => e.type);
+    expect(types).not.toContain("tool/progress");
+    expect(types).toEqual([
+      "turn/start",
+      "user/message",
+      "step/start",
+      "request/header",
+      "assistant/message",
+      "tool/call",
+      "tool/result",
+      "step/end",
+      "step/start",
+      "request/header",
+      "assistant/message",
+      "step/end",
+      "turn/end",
+    ]);
+  });
+
+  it("调用内条数上限：MAX_TOOL_PROGRESS_PER_CALL=10，超限静默丢弃（卡内定形）", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([
+      { type: "tool-call-delta", id: "c1", name: "chatty", argsDelta: "{}" },
+      { type: "done" },
+    ]);
+    provider.mount([{ type: "text-delta", text: "ok" }, { type: "done" }]);
+    const { loop, store } = makeLoop(provider, {
+      executeTool: async (call) => {
+        for (let i = 1; i <= 12; i++) {
+          // 经过微任务边界模拟真实工具的分段上报
+          await Promise.resolve();
+          call.report?.(`第 ${String(i)} 段`);
+        }
+        return { content: `done-${call.callId}` };
+      },
+    });
+
+    await loop.runTurn("上限");
+    const progress = store.load("s1").filter((e) => e.type === "tool/progress") as Extract<
+      SessionEvent,
+      { type: "tool/progress" }
+    >[];
+    expect(progress).toHaveLength(10);
+    expect(progress.map((e) => e.seqInCall)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  });
+});
+
 // 类型引用保持（防止误删导出的编译期契约）
 void ({} as AgentLoop | AgentLoopDeps | TurnDecision | undefined);

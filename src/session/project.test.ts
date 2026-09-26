@@ -132,6 +132,77 @@ describe("fold 即校验（E16）", () => {
     ];
     expect(() => stepwise.append(orphanResult)).toThrow(/没有前置未闭合的 tool\/call/);
   });
+
+  it("tool/progress 与 tool/call 同域校验（T-P1-16）：无未闭合 call 的进度拒绝；call 闭合后补报拒绝", () => {
+    const stepwise = Projector.fresh();
+    stepwise.append(oneTurn(1, 1));
+    // 无前置 tool/call 的进度：拒绝
+    const orphanProgress = [
+      { type: "turn/start", seq: 9, ts: 0, turn: 2 } as SessionEvent,
+      { type: "step/start", seq: 10, ts: 0, turn: 2, step: 2 } as SessionEvent,
+      {
+        type: "tool/progress",
+        seq: 11,
+        ts: 0,
+        turn: 2,
+        step: 2,
+        callId: "no-such-call",
+        seqInCall: 1,
+        message: "x",
+      } as SessionEvent,
+    ];
+    expect(() => stepwise.append(orphanProgress)).toThrow(/没有前置未闭合的 tool\/call/);
+    // call 开启期间合法；result 闭合之后补报：拒绝
+    const paired = Projector.fresh();
+    paired.append(oneTurn(1, 1));
+    const open = [
+      { type: "turn/start", seq: 9, ts: 0, turn: 2 } as SessionEvent,
+      { type: "step/start", seq: 10, ts: 0, turn: 2, step: 2 } as SessionEvent,
+      {
+        type: "tool/call",
+        seq: 11,
+        ts: 0,
+        turn: 2,
+        step: 2,
+        callId: "c1",
+        name: "work",
+        arguments: "{}",
+      } as SessionEvent,
+      {
+        type: "tool/progress",
+        seq: 12,
+        ts: 0,
+        turn: 2,
+        step: 2,
+        callId: "c1",
+        seqInCall: 1,
+        message: "进行中",
+      } as SessionEvent,
+    ];
+    expect(() => paired.append(open)).not.toThrow();
+    const closed = [
+      {
+        type: "tool/result",
+        seq: 13,
+        ts: 0,
+        turn: 2,
+        step: 2,
+        callId: "c1",
+        message: { content: "ok" },
+      } as SessionEvent,
+      {
+        type: "tool/progress",
+        seq: 14,
+        ts: 0,
+        turn: 2,
+        step: 2,
+        callId: "c1",
+        seqInCall: 2,
+        message: "迟到的进度",
+      } as SessionEvent,
+    ];
+    expect(() => paired.append(closed)).toThrow(/没有前置未闭合的 tool\/call/);
+  });
 });
 
 describe("todo 投影（G2 / T-P1-10）", () => {

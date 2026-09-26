@@ -225,6 +225,15 @@ export class Projector {
         this.state.openToolCalls.delete(event.callId);
         break;
       }
+      case "tool/progress":
+        // B7 进度（T-P1-16）：与 tool/call/result 同域——进度只能在所属
+        // 调用未闭合时产生（turn/step 开启 + callId 在开集合中）
+        this.requireOpenTurn(turn);
+        this.requireOpenStep(turn, step);
+        if (!this.state.openToolCalls.has(event.callId)) {
+          throw new ProjectError(`tool/progress 的 callId=${event.callId} 没有前置未闭合的 tool/call`);
+        }
+        break;
       case "compaction":
       case "checkpoint":
       case "request/header":
@@ -364,6 +373,8 @@ export class Projector {
       case "session/revert":
         s.revertedTo = event.phase === "revert" ? event.targetSeq : null;
         break;
+      case "tool/progress":
+        break; // B7 进度是瞬态事实：投影不消费（事实在事件流本身，按 callId+seqInCall 可查）
     }
   }
 

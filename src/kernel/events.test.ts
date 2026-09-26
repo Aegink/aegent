@@ -53,6 +53,15 @@ const SAMPLES: NewSessionEvent[] = [
     callId: "c1",
     message: { content: "ok" },
   },
+  // T-P1-16 的工具进度事件（词汇表 17→18，见 l0-events.md §8 落地记录 6）
+  {
+    type: "tool/progress",
+    turn: 1,
+    step: 1,
+    callId: "c1",
+    seqInCall: 1,
+    message: "命令已启动",
+  },
   {
     type: "compaction",
     turn: 1,
@@ -94,12 +103,12 @@ const SAMPLES: NewSessionEvent[] = [
 ];
 
 describe("事件词汇表（l0-events.md §3 定稿）", () => {
-  it("联合成员恰 17 个（13 定稿 + session/revert + model/switch + todo/update + goal/set），且与 EVENT_TYPES 严格一致（验收①：Exclude 遍历断言的运行时面）", () => {
-    expect(EVENT_TYPES).toHaveLength(17);
+  it("联合成员恰 18 个（13 定稿 + session/revert + model/switch + todo/update + goal/set + tool/progress），且与 EVENT_TYPES 严格一致（验收①：Exclude 遍历断言的运行时面）", () => {
+    expect(EVENT_TYPES).toHaveLength(18);
     const declared = new Set<string>(EVENT_TYPES);
     // 每个联合成员都能按其必填载荷构造，且 type 互不相同、并集等于 EVENT_TYPES。
     const constructed = SAMPLES.map((e) => e.type);
-    expect(new Set(constructed)).toHaveLength(17);
+    expect(new Set(constructed)).toHaveLength(18);
     expect(new Set(constructed)).toEqual(declared);
     // 编译期等价断言在 events.ts 的 _EVENT_TYPES_EXACT（tsc --noEmit 时生效）。
   });

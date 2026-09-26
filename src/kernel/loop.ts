@@ -93,6 +93,12 @@ export interface ToolCallPayload {
   name: string;
   /** 模型产出的原始 arguments JSON 串，unparsed（B12）。 */
   arguments: string;
+  /**
+   * B7 进度上报通道（T-P1-16）：loop 在进入链前按调用注入（createProgress
+   * Reporter 闭包——seqInCall 单调、条数有上限），经 terminal 流进
+   * ToolContext.reportProgress。链层替换载荷时丢失即无进度（best-effort）。
+   */
+  report?: (message: string) => void;
 }
 
 /** toolCall 点位的产物（形状 = ToolResultEvent 的消息侧载荷）。 */
@@ -125,6 +131,12 @@ export type TurnDecision = { action: "continue" } | { action: "end" };
  */
 export type ToolExecutionMode = "sequential" | "parallel";
 
+/**
+ * B7/T-P1-16：单调用进度条数上限（卡内定形）——报告次数超过后静默丢弃。
+ * 10 条 × 每条几十字节是常量级流量，"进度不撑爆事件流"由构造保证。
+ */
+export const MAX_TOOL_PROGRESS_PER_CALL = 10;
+
 /** 一个 step 的完整结果——DecideTurn 的全部决策依据。 */
 export interface StepRecord {
   turn: number;
@@ -156,9 +168,13 @@ export interface AgentLoopDeps {
   /** 本次请求可用的工具清单（阶段 4 注册表接入前可空）。 */
   tools?: ChatTool[];
   /** 工具执行终端（阶段 4 = 注册表分发；测试注入假实现）。 */
-  executeTool(
-    call: { callId: string; name: string; arguments: string },
-  ): Promise<ToolExecutionResult>;
+  executeTool(call: {
+    callId: string;
+    name: string;
+    arguments: string;
+    /** B7 进度上报通道（T-P1-16）：registry 转进 ToolContext.reportProgress。 */
+    report?: (message: string) => void;
+  }): Promise<ToolExecutionResult>;
   decideTurn: DecideTurn;
   /**
    * prompt 队列（A2/A9，T-3-03 接线）：step 边界按 QueueMode 排空注入。
@@ -529,6 +545,27 @@ export class AgentLoop {
     };
   }
 
+  /**
+   * B7/T-P1-16 进度发射器（每调用一个闭包）：seqInCall 从 1 起单调递增，
+   * 单调用条数上限 MAX_TOOL_PROGRESS_PER_CALL（卡内定形——高频工具的进度
+   * 不撑爆事件流；超限后的 report 静默丢弃，进度是 best-effort 通道，
+   * 不反压工具执行）。
+   */
+  private createProgressReporter(
+    turn: number,
+    step: number,
+    callId: string,
+  ): (message: string) => void {
+    let seq = 0;
+    return (message: string) => {
+      if (seq >= MAX_TOOL_PROGRESS_PER_CALL) return;
+      seq += 1;
+      this.deps.store.append(this.deps.sessionId, [
+        { type: "tool/progress", turn, step, callId, seqInCall: seq, message },
+      ]);
+    };
+  }
+
   /** 工具分发过 toolCall 链；基础设施崩溃也落成 isError 结果（配平不变量）。 */
   private async dispatchTool(
     turn: number,
@@ -542,6 +579,7 @@ export class AgentLoop {
         callId: call.id,
         name: call.name,
         arguments: call.arguments,
+        report: this.createProgressReporter(turn, step, call.id),
       });
       return outcome.value;
     } catch (e) {

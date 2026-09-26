@@ -91,6 +91,13 @@ export function createBashTool(options: { pathGuard: PathGuard }): ToolDef {
           "bash 需要执行环境（装配处未注入 ExecutionEnv）",
         );
       }
+      // B7 进度示范（T-P1-16）：启动前上报一次——长任务的最早可见事实，
+      // 与 D15 的 started 标记同语义立场（"命令已启动"是工具的诚实陈述）
+      ctx.reportProgress?.(
+        timeout !== undefined
+          ? `命令已启动（超时 ${String(timeout)}s）`
+          : "命令已启动",
+      );
       try {
         const result = await ctx.env.exec(
           command,

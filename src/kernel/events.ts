@@ -279,6 +279,26 @@ export interface ToolResultEvent extends EventBase {
   meta?: JsonValue;
 }
 
+/**
+ * 工具执行进度（B7，T-P1-16）：正在执行的工具经 ToolContext.reportProgress
+ * 上报的流式进度——进度是流内事实（不变量 1），只有正在执行的工具拿得到
+ * 上报通道。**turn 域事件**（非会话级元事件）：与 tool/call 同域——校验
+ * 要求 turn/step 开启且 callId 在 openToolCalls 中（进度只能在所属调用
+ * 未闭合时产生）。seqInCall 是调用内的进度序号（1 起单调递增），按
+ * callId 聚合后有序——"进度按序到达"（B7 验收原文）。单调用进度条数
+ * 上限见 loop.ts（卡内定形，防高频工具撑爆事件流）。
+ * 词汇表 17→18 的裁决记录见 l0-events.md §8 落地记录 6 与待澄清表（供追认）。
+ */
+export interface ToolProgressEvent extends EventBase {
+  type: "tool/progress";
+  step: number;
+  callId: string;
+  /** 调用内进度序号（1 起单调递增）。 */
+  seqInCall: number;
+  /** 进度文本（工具自解释；投影/REPL 可见）。 */
+  message: string;
+}
+
 export interface CompactionEvent extends EventBase {
   type: "compaction";
   /** 压缩摘要文本（P0 由假 provider 剧本生成；摘要质量属 F5 P1）。 */
@@ -399,6 +419,7 @@ export type SessionEvent =
   | AssistantAttemptEvent
   | ToolCallEvent
   | ToolResultEvent
+  | ToolProgressEvent
   | CompactionEvent
   | CheckpointEvent
   | RequestHeaderEvent
@@ -407,7 +428,7 @@ export type SessionEvent =
   | TodoUpdateEvent
   | GoalSetEvent;
 
-/** 17 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
+/** 18 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
 export const EVENT_TYPES = [
   "turn/start",
   "turn/end",
@@ -419,6 +440,7 @@ export const EVENT_TYPES = [
   "assistant/attempt",
   "tool/call",
   "tool/result",
+  "tool/progress",
   "compaction",
   "checkpoint",
   "request/header",

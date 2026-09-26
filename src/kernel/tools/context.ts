@@ -10,8 +10,10 @@
  *   - toolCallId  本次调用的 callId（B9 贯穿：与 tool/call、tool/result
  *              的 callId 配平，不造第二套词汇）；
  *   - signal   取消信号槽（A7）；P0 装配未接，形状先行。
- * policy（阶段 5 权限裁决）与 emit（B7 进度上报，P1）随对应阶段接入——
- * P0 先落会留空字段（YAGNI）。
+ *   - reportProgress  进度上报通道（B7/T-P1-16）：仅本次工具执行期间可得
+ *              （loop 按调用注入，registry 经 ToolDispatchCall 转进 ctx）；
+ *              上报落 `tool/progress` 事件，best-effort 不反压执行。
+ * policy（阶段 5 权限裁决）随对应阶段接入——P0 先落会留空字段（YAGNI）。
  */
 
 import type { ExecutionEnv } from "./env.js";
@@ -20,4 +22,6 @@ export interface ToolContext {
   readonly env?: ExecutionEnv;
   readonly toolCallId: string;
   readonly signal?: AbortSignal;
+  /** B7 进度上报：message 进 `tool/progress` 事件（所属 tool/call 未闭合期间有效）。 */
+  readonly reportProgress?: (message: string) => void;
 }
