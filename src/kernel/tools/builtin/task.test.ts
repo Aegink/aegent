@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { NewSessionEvent, StreamChunk } from "../../../kernel/events.js";
 import type { RuleSource } from "../../../policy/rule-loader.js";
+import { isWriteExecuteTool } from "../../../policy/protected-paths.js";
 import { SessionStore } from "../../../session/store.js";
 import { project } from "../../../session/project.js";
 import { PathGuard } from "../../../sandbox/path-guard.js";
@@ -525,5 +526,77 @@ describe("task 工具与子代理 runner（H1/H4/T-P1-42）", () => {
     expect(writeResult?.message.isError).toBe(true);
     expect(writeResult?.error?.code).toBe("TOOL_POLICY_DENIED");
     expect(writeResult?.message.content).toContain("硬拦");
+  });
+});
+
+describe("T-P1-45 收口盘点：子代理与既有机制六面", () => {
+  it("收口①plan×task：task 不属 plan 硬关面（isWriteExecuteTool=false）——借道绕硬关结构性不可行（子代理写文件被 Deny broker 拒）", async () => {
+    // 静态判定：plan_guard 的 WRITE_EXECUTE_TOOLS 不含 task（派发是委派动作
+    // 不是工作区写入；硬关面注释同步说明）
+    expect(isWriteExecuteTool("task")).toBe(false);
+    // 行为防绕过：plan 模式的担忧是"借子代理之手写文件"——但子代理写
+    // hello.txt 也走子 gate（无规则 → ask → Deny broker 确定性拒绝），
+    // 与 C46 硬拦同构——绕道通道不存在
+    const { store, registry } = makeFixture({
+      scripts: [
+        [
+          { type: "tool-call-delta", id: "w1", name: "write", argsDelta: '{"path":"hello.txt","content":"借道写入"}' },
+          { type: "done" },
+        ],
+        [{ type: "text-delta", text: "写不了，上报限制" }, { type: "done" }],
+      ],
+    });
+    const result = await registry.dispatch({
+      callId: "c1",
+      name: "task",
+      arguments: JSON.stringify({ description: "借道", prompt: "写文件" }),
+    });
+    expect(result.isError).toBeUndefined();
+    const childEvents = store.load(
+      (result.meta as { subagent: { sessionId: string } }).subagent.sessionId,
+    );
+    const writeResult = childEvents.find(
+      (e): e is Extract<typeof e, { type: "tool/result" }> =>
+        e.type === "tool/result" && e.callId === "w1",
+    );
+    expect(writeResult?.message.isError).toBe(true);
+    expect(writeResult?.error?.code).toBe("TOOL_POLICY_DENIED");
+    expect(writeResult?.message.content).toContain("审批拒绝");
+  });
+
+  it("收口⑥快照即规格（O21/O22 反哺）：task 派发成功结算的全链快照——Scenario 头行 + 父子双流单行 JSON", async () => {
+    const { store, registry } = makeFixture({
+      scripts: [
+        [{ type: "text-delta", text: "子代理的整理结果" }, { type: "done" }],
+      ],
+    });
+    const result = await registry.dispatch({
+      callId: "c1",
+      name: "task",
+      arguments: JSON.stringify({ description: "整理", prompt: "整理要点" }),
+    });
+    expect(result.isError).toBeUndefined();
+    const childSessionId = (
+      result.meta as { subagent: { sessionId: string } }
+    ).subagent.sessionId;
+
+    // 快照：Scenario 头行（O21）+ 父子双流 [emit] 单行 JSON（O23 渲染纪律）
+    const lines = [
+      "Scenario: task 派发成功结算——子代理独立子会话跑完一轮，final 输出经 <task_result> 原子并入父流（tool/result 携 meta.lineage），父流零中间事件",
+      ...[...store.load("s0"), ...store.load(childSessionId)].map(
+        (e) => `[emit] ${JSON.stringify(e)}`,
+      ),
+    ];
+    const snapshot = lines.join("\n");
+    // 显式文本断言（T-P1-37 卡内定形：不用 .snap 文件，diff 可读性优先）
+    expect(snapshot.split("\n")[0]).toContain("Scenario: task 派发成功结算");
+    expect(snapshot).toContain('"type":"assistant/message"');
+    // task 不落 session/fork 标记（那是 E5 fork 的 lineage；task 的 lineage 在 result.meta）
+    expect(snapshot).not.toContain('"type":"session/fork"');
+    expect(snapshot).toContain('"type":"turn/end"');
+    // 子流的 delegation 声明（T-P1-44）在快照里可读——读快照即知这是子代理会话
+    expect(snapshot).toContain("委派子代理声明");
+    // 父流零中间事件在快照里可读：s0 的流为空（dispatch 不写父流）
+    expect(snapshot).toContain("<task_result>");
   });
 });
