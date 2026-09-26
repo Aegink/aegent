@@ -535,7 +535,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **偏离 / 建议**：①锁实现用 promise 链而非 Mutex 类（JS 单线程无真并发，链式 enqueue 即串行语义）；②盘点结论：除 pwshHostCache 外无模块级可变全局（logger/registry/guard 均实例注入）——"隔离机制"主战场就是 process.env 与该缓存，卡面记录盘点证据
 - **完成记录**：2026-09-26。产出：①`src/test-support/isolation.ts`（**故障机制头注释**——"vitest 每文件独立 worker 跨文件隔离，同文件内测试串行共享进程：A 改 env/触热缓存 → B 读到残留，顺序耦合单跑绿全跑红"；四件隔离机制 pi-desktop 同构：`serializeGlobal(name, fn)` promise 链排队（`prev.then(fn, fn)`——前序失败不传递**中毒不扩散**）、`withEnv(vars, fn)` RAII 守卫（设置 → fn → finally 快照恢复，fn 崩溃照样还原）、`withEnvSerialized` 组合形态、模块级缓存显式重置面）②`env.ts` 加 `resetPwshHostCacheForTests()`（pwshHostCache 是本模块唯一进程级可变全局，注释写明重置理由）③`isolation.test.ts` 7 用例。**盘点结论落档**：grep 模块级 `let`/可变全局——pwshHostCache（env.ts:131）是唯一可变全局；logger 的 warned 是闭包内非模块级；registry/guard/policy 链全部构造注入；process.env 消费点（AEGENT_DB/AEGENT_PLAN/AEGENT_GOAL）在启动期读取——主战场 = env 修改与 pwsh 缓存两处。验收：`npx vitest run src/test-support/isolation.test.ts src/kernel/tools/env.test.ts` → **isolation 7 passed + env 回归全绿**：①并发提交排队序不重叠；②持有人抛错自身失败 + 后续排队者正常（中毒不扩散）；③不同锁名互不阻塞；④env 设置/恢复逐字节 + 新键删除；⑤fn 抛错 env 已恢复；⑥withEnvSerialized 两段竞争不互踩；⑦pwshHostCache 重置面幂等。全量 `npx vitest run` **761 passed / 1 skipped**（754 → 净增 7），`npx tsc --noEmit` 干净。**单进程假设冲突面结论**：agent 架构本就多进程（T9 helper/agent-child），子进程不共享模块状态（天然隔离）——本卡只管同 worker 进程内共享面，与单进程假设无冲突。
 
-#### T-P1-39 · O26 · 测试名写成完整行为规格（收口盘点） `[ ]`
+#### T-P1-39 · O26 · 测试名写成完整行为规格（收口盘点） `[x]`
 - **依据需求**：O26（P1："测试名写成完整行为规格，把安全边界写进名字"）
 - **上游首选参考**：[codex·session/tests.rs:1655](../oss/codex/codex-rs/core/src/session/tests.rs#L1655)（`user_shell_commands_do_not_inherit_managed_network_proxy`——主语 + 行为 + 安全边界一句话；12880 行测试文件命名一致性即规格）
 - **取什么 / 别抄什么**：取"名字即规格"纪律：读测试名清单应能读出被钉死的行为与边界；我方现状已大量是中文行为规格（`"模型调用失败是硬退出：assistant/attempt 落盘、step 闭合、turn/end{error}"`），本卡是收口不是重建
@@ -545,6 +545,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **依赖**：本批最后一张（盘点含批次 4 新增测试）
 - **风险 / 未知**："验收①："前缀是否算违规——**不算**（编号可追溯卡面验收，行为句在后，信息增益为正）；纯编号无行为句才算弱名——卡内定形
 - **偏离 / 建议**：①我方中文测试名与 codex 蛇形英文不同构，但"名字即规格"语义同构——不英文化（仓库规范中文优先）；②改名只动 it() 字符串，不动 describe 结构与测试体（精准修改）
+- **完成记录**：2026-09-26。**全仓盘点**（脚本提取 89 个测试文件的全部 it() 名单）：**758 个测试名 = 行为规格 552 + 带"验收N："前缀的行为规格 77 + 启发式弱名命中 129**。129 个命中**逐条人工核查后零改名**——全部是有行为语义的句式，三类不改理由：①主语由 describe 承载的省略主语句（"exec 回显 stdout"/"cwd 选项生效"在 env.test 的 describe 下读全即规格）；②紧凑行为句（"重名注册立刻失败"/"合法清单通过"——与"闭集外字段拒绝"构成 deny/pass 成对边界命名）；③含括号内边界注解的规格句（"/revert 对话态回退（session/revert 事件经协议转发）"——行为+机制注解）。**安全边界抽查三处全部合格**：exit-guard.test 13 名中 10+ 带 deny/拦/硬拦/压过语义（"白名单放行不是出口旁路"——边界写进名字）、bash-retry-guard.test 全部携带 started 标记/不可自动重发/fail-closed 语义（"判断不了就不重试"）、plan-mode.test"一律 deny，用户层 allow 规则压不过"（硬关边界）。**结论：弱名数量 0，零改名，全量回归即终态**。验收：`npx vitest run` 全量 **761 passed / 1 skipped**（本卡零代码变更）。**命名纪律（落批次完成定义）**：测试名 = 完整行为规格（行为 + 边界），"验收N："前缀可追溯卡面、纯编号无行为句不允许；安全边界测试名必须携带拒/拦/压过语义。
 
 ## 批次 4 完成定义
 
@@ -553,3 +554,4 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - 词汇表零扩展（预判）——若执行中确需新事件，走待澄清立案管线。
 - 测试基建零运行时泄漏：src/test-support/ 与 src/diagnostics/ 之外无测试专用代码入 kernel/tools/policy 生产路径（O12 不变量服务与 O18 doctor 是声明的两个例外）。
 - 全量基线 701 passed / 1 skipped，本批净增预期 40-60 用例（渲染器与剧本库是纯函数测试大户）。
+- O26 命名纪律（T-P1-39 落档）：测试名 = 完整行为规格（行为 + 边界）；"验收N："前缀可追溯卡面；纯编号无行为句不允许；安全边界测试名必须携带拒/拦/压过语义。
