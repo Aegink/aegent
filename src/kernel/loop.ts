@@ -88,6 +88,10 @@ export interface ModelStepOutput {
   timed: TimedStreamChunk[];
   /** A7：流中途被取消——内容是已交付前缀，其后不再消费。 */
   interrupted?: true;
+  /** B19/T-P1-61：本次模型请求的耗时面（首 chunk 延迟 + 流总时长）。 */
+  timing?: { firstTokenLatencyMs: number; streamDurationMs: number };
+  /** B19/T-P1-61：本次模型请求的关联 id（`r<序数>` 会话内单调）。 */
+  traceId?: string;
 }
 
 /** toolCall 点位：包住"单次工具执行"（载荷与 tool/call 事件同源）。 */
@@ -370,6 +374,9 @@ export class AgentLoop {
     this.promptCounter = deps.store
       .load(deps.sessionId)
       .filter((e) => e.type === "user/message").length;
+    this.traceCounter = deps.store
+      .load(deps.sessionId)
+      .filter((e) => e.type === "request/header").length;
     // 缺省捕获 = 固定 provider/identity（P0 行为）；runTurn 启动时按
     // modelForTurn 覆盖（J7）。
     this.turnModel = { provider: deps.provider, identity: deps.identity };
@@ -421,6 +428,12 @@ export class AgentLoop {
     return this.activeTurnNumber;
   }
 
+  /** B19/T-P1-61：当前 step 号只读面（retrying 事件落流读取；idle 时 undefined）。 */
+  private currentStepNumber: number | undefined;
+  get currentStep(): number | undefined {
+    return this.currentStepNumber;
+  }
+
   /**
    * A14/T-P1-50 看门狗句柄与强制收轮标记。forcedClosed 置位后：
    * closeTurn 直接返回（终态已由看门狗落盘，防 double terminal）、
@@ -449,6 +462,14 @@ export class AgentLoop {
     this.promptCounter += 1;
     this.currentPromptId = `p${this.promptCounter}`;
     return this.currentPromptId;
+  }
+
+  /** B19/T-P1-61 模型请求关联 id（`r<序数>` 会话内单调；request/header 数即基线）。 */
+  private traceCounter: number;
+
+  private nextTraceId(): string {
+    this.traceCounter += 1;
+    return `r${this.traceCounter}`;
   }
 
   private armAbortWatchdog(): void {
@@ -655,6 +676,7 @@ export class AgentLoop {
     | { kind: "cancelled" }
   > {
     const { store, sessionId } = this.deps;
+    this.currentStepNumber = step;
     store.append(sessionId, [{ type: "step/start", turn, step }]);
     const payload: ModelRequestPayload = {
       turn,
@@ -666,7 +688,8 @@ export class AgentLoop {
     const outcome = await this.modelChain.run(this.$, payload);
     if (outcome.truncated) {
       // modelRequest 层不放行请求（P0 无层；真实语义阶段 7 定）：step 空过、
-      // turn 以 blocked 终止——不放行还继续循环没有意义。
+      // turn 以 blocked 终止——不放行还继续循环没有意义。（无模型请求发生
+      // ——B19 的 timing/traceId 缺省，step/end 裸落。）
       store.append(sessionId, [{ type: "step/end", turn, step }]);
       await this.closeTurn(turn, { kind: "blocked" });
       return { kind: "blocked" };
@@ -698,7 +721,13 @@ export class AgentLoop {
                 },
               ]
             : []),
-        { type: "step/end", turn, step },
+        {
+          type: "step/end",
+          turn,
+          step,
+          ...(output.timing ? { timing: output.timing } : {}),
+          ...(output.traceId ? { traceId: output.traceId } : {}),
+        },
       ]);
       return { kind: "cancelled" };
     }
@@ -799,7 +828,15 @@ export class AgentLoop {
     if (parallel && dispatched.length > 0) {
       await this.runParallelTools(turn, step, dispatched, toolResults);
     }
-    store.append(sessionId, [{ type: "step/end", turn, step }]);
+    store.append(sessionId, [
+      {
+        type: "step/end",
+        turn,
+        step,
+        ...(output.timing ? { timing: output.timing } : {}),
+        ...(output.traceId ? { traceId: output.traceId } : {}),
+      },
+    ]);
     // T-8 装配通知：含工具调用的 step 完成记一笔（RapidRefillGuard 的干活记账）。
     if (output.toolCalls.length > 0) {
       this.deps.onToolStepCompleted?.(turn, step);
@@ -1048,12 +1085,17 @@ export class AgentLoop {
     let content = "";
     const calls = new Map<string, { id: string; name: string; arguments: string }>();
     let usage: TokenUsage | undefined;
+    // B19/T-P1-61：traceId 分配 + 流计时（首 chunk 延迟 / 流总时长）
+    const traceId = this.nextTraceId();
+    const streamStart = Date.now();
+    let firstChunkAt: number | undefined;
     try {
       for await (const chunk of this.turnModel.provider.streamChat({
         identity: payload.identity,
         messages: payload.messages,
         ...(tools ? { tools } : {}),
       })) {
+        if (firstChunkAt === undefined) firstChunkAt = Date.now();
         timed.push({ time: Date.now(), chunk });
         switch (chunk.type) {
           case "text-delta":
@@ -1095,6 +1137,15 @@ export class AgentLoop {
       toolCalls: [...calls.values()],
       ...(usage ? { usage } : {}),
       timed,
+      ...(firstChunkAt !== undefined
+        ? {
+            timing: {
+              firstTokenLatencyMs: firstChunkAt - streamStart,
+              streamDurationMs: Date.now() - streamStart,
+            },
+          }
+        : {}),
+      traceId,
       ...(this.cancelCause ? { interrupted: true as const } : {}),
     };
   }

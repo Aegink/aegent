@@ -21,7 +21,7 @@ import path from "node:path";
 import { runAgentChildStdio, type AgentChildOptions } from "./agent-process.js";
 import { parseProviderConfig } from "../models/config.js";
 import { createOpenAiCompatProvider } from "../models/openai-compat.js";
-import { withRetry } from "../models/retry.js";
+import { withRetry, type RetryObservation } from "../models/retry.js";
 import { createLogger } from "./logger.js";
 
 /** A5/T-P1-51 重试留痕 logger（openai 装配专用，模块级单例避免句柄膨胀）。 */
@@ -91,16 +91,23 @@ async function main(): Promise<void> {
       // A5/T-P1-51：重试尝试留痕（结构化 warn——attempt/delayMs/错误字段，
       // kimi retryErrorFields 同构；"事件留记录"落日志不落流——provider
       // 内部重试不进模型历史自洽，卡序头词汇表预判②）。echo 模式无重试面。
-      onRetry: (o) =>
+      onRetry: (o) => {
         retryWarnLogger.warn("模型请求重试", {
           attempt: o.attempt,
           delayMs: o.delayMs,
           ...o.error,
-        }),
+        });
+        // J27/T-P1-61：retrying 一等事件的落流观察者（runAgentChildStdio
+        // 构造 loop 后注册——provider 装配在先、store 在后，late binding）。
+        retryObserver?.(o);
+      },
     });
     identity = { provider: "openai", modelId: cli.model ?? "gpt-4o-mini" };
   }
 
+  // J27/T-P1-61：retrying 事件落流观察者的 late-binding 槽——runAgentChildStdio
+  // 构造 loop 后回填（provider 装配在 store 创建之前，只能经闭包桥接）。
+  let retryObserver: ((o: RetryObservation) => void) | undefined;
   const options: AgentChildOptions = {
     sessionId: process.env["AEGENT_SESSION"] ?? "s0",
     ...(storage ? { storage } : {}),
@@ -144,7 +151,11 @@ async function main(): Promise<void> {
         }
       : {}),
   };
-  await runAgentChildStdio(options);
+  await runAgentChildStdio(options, {
+    registerRetryObserver: (fn) => {
+      retryObserver = fn;
+    },
+  });
 }
 
 void main().catch((e: unknown) => {

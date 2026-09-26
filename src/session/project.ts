@@ -218,6 +218,7 @@ export class Projector {
         break;
       case "assistant/message":
       case "assistant/attempt":
+      case "assistant/retrying":
       case "system/message":
       case "tool/call":
         this.requireOpenTurn(turn);
@@ -358,6 +359,8 @@ export class Projector {
         break;
       case "assistant/attempt":
         break; // 无可见消息；失败事实留在事件流本身（F10 压力测量读它）
+      case "assistant/retrying":
+        break; // 重试可见性事实（J27）——投影不聚值，事件流即真相
       case "compaction":
         s.compactions.push({
           seq: event.seq,

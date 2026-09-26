@@ -1239,5 +1239,36 @@ describe("工具声明元数据按 step 快照（B16/T-P1-59）", () => {
   });
 });
 
+describe("step 可观测事件（B19/T-P1-61：timing/traceId）", () => {
+  it("有模型请求的 step/end 带 timing（首 chunk 延迟/流总时长非负）与单调 traceId", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([{ type: "text-delta", text: "甲" }, { type: "done" }]);
+    provider.mount([{ type: "text-delta", text: "乙" }, { type: "done" }]);
+    let decided = 0;
+    const { loop, store } = makeLoop(provider, {
+      decideTurn: () => {
+        decided += 1;
+        return decided === 1 ? { action: "continue" } : { action: "end" };
+      },
+    });
+
+    expect(await loop.runTurn("观测")).toEqual({ kind: "completed" });
+    const ends = store
+      .load("s1")
+      .filter((e) => e.type === "step/end")
+      .map((e) => e as { turn: number; step: number; timing?: { firstTokenLatencyMs: number; streamDurationMs: number }; traceId?: string });
+    expect(ends).toHaveLength(2);
+    for (const end of ends) {
+      expect(end.timing).toBeDefined();
+      expect(end.timing!.firstTokenLatencyMs).toBeGreaterThanOrEqual(0);
+      expect(end.timing!.streamDurationMs).toBeGreaterThanOrEqual(end.timing!.firstTokenLatencyMs);
+      expect(end.traceId).toMatch(/^r\d+$/);
+    }
+    // traceId 会话内单调（r1 → r2）
+    expect(ends[0]!.traceId).toBe("r1");
+    expect(ends[1]!.traceId).toBe("r2");
+  });
+});
+
 // 类型引用保持（防止误删导出的编译期契约）
 void ({} as AgentLoop | AgentLoopDeps | TurnDecision | undefined);

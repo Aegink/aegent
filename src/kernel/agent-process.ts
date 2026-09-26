@@ -23,6 +23,7 @@ import { AgentLoop, type AgentLoopDeps, type ToolExecutionMode } from "./loop.js
 import { PromptQueue, QueueFullError } from "./queue.js";
 import { ToolClassLimiter, TurnAdmission } from "./admission.js";
 import { isWriteExecuteTool } from "../policy/protected-paths.js";
+import type { RetryObservation } from "../models/retry.js";
 import {
   type AgentMessage,
   type AgentRequest,
@@ -125,7 +126,14 @@ export interface AgentChildOptions {
  * 队列固定 one-at-a-time：每条排队的 prompt 各自成轮、每 step 边界最多注入
  * 一条 steer（"all" 的节奏是会话级配置，T-8 暴露给用户）。
  */
-export async function runAgentChildStdio(options: AgentChildOptions = {}): Promise<void> {
+export async function runAgentChildStdio(
+  options: AgentChildOptions = {},
+  hooks?: {
+    /** J27/T-P1-61：retrying 落流观察者注册（loop 构造后回填；provider 装配
+     * 处的 onRetry 经 late-binding 桥接到此——store 在本函数内创建，装配在先）。 */
+    registerRetryObserver?: (fn: (o: RetryObservation) => void) => void;
+  },
+): Promise<void> {
   const exit = options.exit ?? ((code: number) => process.exit(code));
   const sessionId = options.sessionId ?? "s0";
   const output = options.output ?? process.stdout;
@@ -316,6 +324,32 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
       : {}),
   };
   const loop = new AgentLoop(loopDeps);
+  // J27/T-P1-61：retrying 一等事件落流（provider 层的中间失败尝试对事件流
+  // 可见——attempt/delayMs/错误三字段，kimi retrying 同构最小面）。turn/step
+  // 从 loop 当前状态读取（provider 自身不知 loop 状态）；idle 时的防御性
+  // 缺省落 turn=0/step=0（invariants 的轮作用域校验会拒绝——实际不可达，
+  // 只是类型完备）。
+  hooks?.registerRetryObserver?.((o) => {
+    const turn = loop.activeTurn;
+    const step = loop.currentStep;
+    // 轮作用域守卫：idle 期无在途模型请求，重试回调不可达——防御性忽略
+    //（不落 turn=0 伪事件，invariants 的轮作用域校验是 E16 红线）
+    if (turn === null || step === undefined) return;
+    store.append(sessionId, [
+      {
+        type: "assistant/retrying",
+        turn,
+        step,
+        attempt: o.attempt,
+        delayMs: o.delayMs,
+        error: {
+          name: o.error.errorName,
+          message: o.error.errorMessage,
+          ...(o.error.statusCode !== undefined ? { status: o.error.statusCode } : {}),
+        },
+      },
+    ]);
+  });
 
   let inflight: Promise<void> | null = null;
   let disposing = false;

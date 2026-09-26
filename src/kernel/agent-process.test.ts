@@ -694,3 +694,103 @@ describe("agent-process —— T9 agent 出进程", () => {
     }
   }, 30_000);
 });
+
+describe("assistant/retrying 一等事件（J27/T-P1-61）", () => {
+  it("provider 层重试回调经观察者落流——协议 event 行可见（turn/step/attempt/delayMs/error）", async () => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    const items: AgentMessage[] = [];
+    const waiters: ((r: IteratorResult<AgentMessage>) => void)[] = [];
+    let buf = "";
+    output.setEncoding("utf-8");
+    output.on("data", (chunk: string) => {
+      buf += chunk;
+      for (;;) {
+        const nl = buf.indexOf("\n");
+        if (nl < 0) break;
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        const msg = decodeMessage(line);
+        const w = waiters.shift();
+        if (w) w({ value: msg, done: false });
+        else items.push(msg);
+      }
+    });
+
+    // 挂住的 provider：轮内模型请求挂起（模拟在途流），释放前在轮内触发重试回调
+    let release: (() => void) | undefined;
+    const heldProvider = {
+      identity: { provider: "mock", modelId: "m-1" },
+      async *streamChat() {
+        yield { type: "text-delta", text: "前缀" };
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        yield { type: "done" };
+      },
+    };
+
+    let observer: ((o: { attempt: number; delayMs: number; error: { errorName: string; errorMessage: string; statusCode?: number } }) => void) | undefined;
+    const running = runAgentChildStdio({
+      input,
+      output,
+      provider: heldProvider as never,
+      exit: () => {},
+    }, {
+      registerRetryObserver: (fn) => {
+        observer = fn;
+      },
+    });
+    void running;
+
+    for (let i = 0; i < 50 && observer === undefined; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(observer).toBeDefined();
+
+    // 开轮（provider 挂住——轮保持在途，step=1 开启）
+    input.write(
+      `${JSON.stringify({ type: "prompt", messageId: "m-retry", content: "触发重试" })}\n`,
+    );
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline && release === undefined) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(release).toBeDefined();
+
+    // 轮内触发重试回调 → 落流 → 协议 event 行转发
+    observer!({
+      attempt: 0,
+      delayMs: 500,
+      error: { errorName: "ProviderHttpError", errorMessage: "429 too many requests", statusCode: 429 },
+    });
+
+    // 释放 provider → 轮正常收尾
+    release!();
+    const deadline2 = Date.now() + 5_000;
+    let retrying: Record<string, unknown> | undefined;
+    while (Date.now() < deadline2) {
+      const found = items.find(
+        (m): m is Extract<AgentMessage, { type: "event" }> =>
+          m.type === "event" && m.event.type === "assistant/retrying",
+      );
+      if (found) {
+        retrying = found.event as unknown as Record<string, unknown>;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    expect(retrying).toBeDefined();
+    expect(retrying).toMatchObject({
+      type: "assistant/retrying",
+      turn: 1,
+      step: 1,
+      attempt: 0,
+      delayMs: 500,
+      error: { name: "ProviderHttpError", message: "429 too many requests", status: 429 },
+    });
+    input.end();
+    await new Promise((r) => setTimeout(r, 50));
+  }, 30_000);
+});

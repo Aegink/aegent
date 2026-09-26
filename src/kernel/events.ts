@@ -220,6 +220,19 @@ export interface StepStartEvent extends EventBase {
 export interface StepEndEvent extends EventBase {
   type: "step/end";
   step: number;
+  /**
+   * B19/T-P1-61 step 可观测性（kimi stepCompleted 的 timing/traceId 同构，
+   * ModelRequestTiming 最小面）：有模型请求的 step 才携带（纯工具收尾 step
+   * 不带）；firstTokenLatencyMs = 流开始到首个 chunk、streamDurationMs = 流
+   * 开始到结束。走待澄清 #9 载荷扩展立案（旧流缺省，前向兼容）。
+   */
+  timing?: { firstTokenLatencyMs: number; streamDurationMs: number };
+  /**
+   * B19/T-P1-61 模型请求关联 id（`r<序数>` 会话内单调，promptId 同族分配
+   * 纪律——每次模型请求一枚，request/header 的同一 step 面可关联）。与
+   * timing 同规则：有模型请求的 step 才带。前向兼容同上。
+   */
+  traceId?: string;
 }
 
 /**
@@ -270,6 +283,24 @@ export interface AssistantAttemptEvent extends EventBase {
   type: "assistant/attempt";
   step: number;
   stream: TimedStreamChunk[];
+}
+
+/**
+ * J27/T-P1-61：重试作为一等事件（kimi engine retrying 同构最小面）——
+ * provider 层的中间失败尝试（未产出 chunk 故 assistant/attempt 不落盘的
+ * 那种）对事件流可见：attempt 0-based、delayMs 为重试前等待、error 为
+ * kimi retryErrorFields 同构三字段。词汇表 19→20（走待澄清 #9 立案）。
+ * turn/step 由 agent-child 在回调时从 loop 的当前 step 面读取（provider
+ * 层自身不知 loop 状态）；无在途 step 时的重试（理论不可达，防御性缺省）
+ * 落 turn=0/step=0。
+ */
+export interface AssistantRetryingEvent extends EventBase {
+  type: "assistant/retrying";
+  turn: number;
+  step: number;
+  attempt: number;
+  delayMs: number;
+  error: { name: string; message: string; status?: number };
 }
 
 export interface ToolCallEvent extends EventBase {
@@ -461,6 +492,7 @@ export type SessionEvent =
   | SystemMessageEvent
   | AssistantMessageEvent
   | AssistantAttemptEvent
+  | AssistantRetryingEvent
   | ToolCallEvent
   | ToolResultEvent
   | ToolProgressEvent
@@ -473,7 +505,7 @@ export type SessionEvent =
   | GoalSetEvent
   | SessionForkEvent;
 
-/** 19 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
+/** 20 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
 export const EVENT_TYPES = [
   "turn/start",
   "turn/end",
@@ -483,6 +515,7 @@ export const EVENT_TYPES = [
   "system/message",
   "assistant/message",
   "assistant/attempt",
+  "assistant/retrying",
   "tool/call",
   "tool/result",
   "tool/progress",

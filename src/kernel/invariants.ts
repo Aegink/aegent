@@ -118,6 +118,7 @@ export function expectTurnScoped(events: readonly SessionEvent[]): void {
       e.type === "system/message" ||
       e.type === "assistant/message" ||
       e.type === "assistant/attempt" ||
+      e.type === "assistant/retrying" ||
       e.type === "tool/call" ||
       e.type === "tool/result";
     if (requiresOpenTurn && openTurn !== e.turn) {
