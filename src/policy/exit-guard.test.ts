@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   enforceProtectedPaths,
+  isWriteExecuteTool,
   withProtectedPaths,
 } from "./protected-paths.js";
 import { assemblePolicyChain, type PolicyCall, type PolicyModule } from "./chain.js";
@@ -18,6 +19,7 @@ import { builtinRuleMatchers } from "./matchers.js";
 import { loadedRuleMatch, loadedRuleText, loadRules } from "./rule-loader.js";
 import { createRuleSetModule } from "./rules.js";
 import { createShellSemanticsModule } from "./shell-semantics.js";
+import { createMetaOpsModule } from "./meta-ops.js";
 import { createRevalidator } from "./revalidate.js";
 
 const bashCall = (command: string): PolicyCall => ({
@@ -194,5 +196,42 @@ describe("C46 × C57 · 执行点重算同位（验收④）", () => {
     });
     expect(blocked.allowed).toBe(false);
     expect(blocked.verdict.action).toBe("deny");
+  });
+});
+
+describe("G2 · todo 工具过出口级硬拦（T-P1-10 验收④，为 T-P1-11 plan 硬关铺垫）", () => {
+  it("todo_write 经出口级组合透传：链上 meta-ops 白名单 allow → 出口硬拦不误伤", async () => {
+    const chain = assemblePolicyChain({ core: [createMetaOpsModule()] });
+    const call: PolicyCall = {
+      tool: "todo_write",
+      args: { items: [{ content: "a", status: "pending" }] },
+    };
+    const chainVerdict = await chain.evaluate(call);
+    // 核心层白名单显式放行（不变量 3 的"显式例外"），证据可解释（C18）
+    expect(chainVerdict.action).toBe("allow");
+    expect(chainVerdict.reason).toContain("元操作白名单");
+    // 过出口级硬拦：todo_write 无路径写面 → 透传（"过"= 经过且通过）
+    expect(enforceProtectedPaths(chainVerdict, call).action).toBe("allow");
+    // 写执行类归类（唯一权威面）：todo_write 在 plan 硬关清单内——
+    // T-P1-11 的 plan 模式硬关按本清单判定，届时"plan 模式下 todo 不可写"
+    // 的用例消费此断言面。
+    expect(isWriteExecuteTool("todo_write")).toBe(true);
+    expect(isWriteExecuteTool("read")).toBe(false);
+  });
+
+  it("对照：同出口下 write 到 .git/config 仍被硬拦——白名单放行不是出口旁路", () => {
+    const verdict = enforceProtectedPaths(
+      { action: "allow", reason: "meta-ops 放行" },
+      { tool: "write", args: { path: "/repo/.git/config", content: "x" } },
+    );
+    expect(verdict.action).toBe("deny");
+    expect(verdict.reason).toContain("硬拦");
+  });
+
+  it("meta-ops 只放行清单内工具：read/write 等仍弃权（默认 ask 面不变）", async () => {
+    const chain = assemblePolicyChain({ core: [createMetaOpsModule()] });
+    expect((await chain.evaluate({ tool: "read", args: { path: "a" } })).action).toBe("abstain");
+    expect((await chain.evaluate({ tool: "write", args: { path: "a" } })).action).toBe("abstain");
+    expect((await chain.evaluate(bashCall("echo x"))).action).toBe("abstain");
   });
 });

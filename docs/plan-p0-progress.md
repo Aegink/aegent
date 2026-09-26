@@ -80,6 +80,7 @@
 | 2026-09-26 | T-P1-07 | I1/I13 | `11a8d33` | `npx vitest run src/kernel/hooks.test.ts src/kernel/chain.test.ts` | 27 passed（chain 14 + hooks 13）；①hook 嵌套序=注册序、前 hook 截断不调 next（loop 级工具不执行、tool/result 落 hook 值）；②trace 完整层序（namedLayer）+budget 墙钟衰减可断言（500→380/超支 -150）；③L10 链底无人应答抛错点名事件；④崩溃双轨：untrusted before→隔离 isError（HOOK_FAILED）、trusted→上抛（T-5-01 同款）、after 段一律上抛、modelRequest→blocked、turnEnd→吞错继续；hook 层挂 gate 外层；全量 548 passed，tsc 干净，count-features 310 |
 | 2026-09-26 | T-P1-08 | I2 | `219af6d` | `npx vitest run src/kernel/skills.test.ts` | 8 passed；①递归发现含嵌套源；②缺损/坏行/重复名产诊断码不抛（invalid_metadata/parse_failed/duplicate_name）；③skill_load 按名取正文、未知名 SKILL_NOT_FOUND；④改 SKILL.md 零 .ts diff 机验（清单+正文跟文件走）；集成：system/message 首落带清单、诊断落 skill-lint 日志；copy-assets 整目录拷贝自动跟上（工具描述 7→8）；BUILTIN_TOOL_NAMES 6→7；全量 556 passed，tsc 干净，count-features 310 |
 | 2026-09-26 | T-P1-09 | I6/I9 | `8ec9cbb` | `npx vitest run src/kernel/hooks.test.ts src/kernel/plugin-manifest.test.ts` | 22 passed（14+8）；①分轨：layer 只含 trusted（内核 trace 零 untracked 感知）、untrustedLayer 独立观察轨（next 哨兵=能力越界抛错、崩溃轨内隔离+报告可检索）；②未实现能力拒绝且列明缺哪项；③闭集外字段/坏 point/重复声明拒绝；④trusted 安装后内核链直调、untrusted 观察轨可用、声明未实现 handler 拒绝且回滚无半态、uninstall 摘净；全量 565 passed，tsc 干净，count-features 310——**I 层扩展面组（3 卡）收官** |
+| 2026-09-26 | T-P1-10 | G2 | （本次 commit） | `npx vitest run src/kernel/tools/builtin/todo.test.ts src/session/project.test.ts` | 18 passed（7+11）；①todo_write 落 todo/update（会话级元事件、整值、投影 todos 可查）；②CLI 级 meta-ops 白名单直过无审批、进度行整幅可见（cli.test 扩）；③词汇表 15→16 编译闸门+计数；④todo_write 过出口级硬拦透传 + WRITE_EXECUTE_TOOLS 归类（plan 硬关铺垫，exit-guard.test 扩 3）；连带 logger.ts 时钟注入缺口修复（跨日 flaky）；全量 579 passed，tsc 干净，count-features 310——**词汇表 15→16 已立案待追认（新发现 #3）** |
 
 ---
 
@@ -127,6 +128,7 @@
 | --- | --- | --- | --- | --- | --- |
 | 1 | E4 | `plan-p0.md` T-1-05 明文"追加 revert 标记事件"，但 `l0-events.md` §3.2 的定稿 13 事件无回退标记落点；`src/kernel/events.ts` 原按 13 实现 | 词汇表定稿与计划卡不一致：不追加事件则 revert 状态变更无事件承载（违反不变量 1"事件是唯一真相"）；追加则词汇表 13→14 | 按计划卡执行：新增 `session/revert {targetSeq, phase}`（会话级元事件，最新标记生效），词汇表 13→14，l0-events.md §8 记落地记录 2，events.test 计数同步改 14 | ✅ **已追认（2026-09-25 用户："词汇表 13→14，允许"）**——案关，§3.2 正式计数为 14 事件 |
 | 2 | J9 | `plan-p1.md` T-P1-06 明文"换模进事件流 + 新增会话级元事件 model/switch"，但词汇表（落地记录 2 后）正式计数为 14，无换模落点 | 同先例 #1 的结构：不追加事件则换模/回滚状态变更无事件承载（J9 纪律"换模是持久事件、非静默改状态"落不了）；追加则词汇表 14→15 | 按计划卡执行：新增 `model/switch {from, to, reason: "user"\|"rollback"}`（会话级元事件，session/revert 同款：不要求 turn/step 上下文、turn 挂流内最后轮空流兜 0），词汇表 14→15，l0-events.md §8 记落地记录 3（含不追认的回退面），events.test 计数同步改 15 | ✅ **已追认（2026-09-25 用户："可以"）**——案关，§3.2 正式计数为 15 事件 |
+| 3 | G2 | `plan-p1.md` T-P1-10 明文"新增事件 todo/update {items}（会话级元事件，走词汇表扩展流程 15→16）"，但词汇表（落地记录 3 后）正式计数为 15，无 todo 落点 | 同先例 #1/#2 的结构：不追加事件则 todo 状态变更无事件承载（G2"todo 变更 = 事件、状态 = 投影"落不了，违反不变量 1）；追加则词汇表 15→16 | 按计划卡执行：新增 `todo/update {items: Array<{content, status: "pending"\|"in_progress"\|"completed"}>}`（会话级元事件，session/revert / model/switch 同款：不要求 turn/step 上下文、turn 挂流内最后轮空流兜 0；items 为变更后完整清单——E12 整值），词汇表 15→16，l0-events.md §8 记落地记录 4（含不追认的回退面），events.test 计数同步改 16 | ⏳ 立案待追认（T-P1-10 已按卡执行，回退面约 2 小时） |
 
 ## 人工确认清单
 

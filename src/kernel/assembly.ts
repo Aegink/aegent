@@ -90,6 +90,7 @@ import {
 } from "../policy/review-decision.js";
 import { createToolGateLayer } from "../policy/gate.js";
 import { createApprovalAuditSink } from "../policy/audit-fields.js";
+import { createMetaOpsModule } from "../policy/meta-ops.js";
 import { PathGuard } from "../sandbox/path-guard.js";
 import {
   ModelSwitchService,
@@ -109,6 +110,26 @@ export function truncatingSummarizer(maxChars = 2000): Summarizer {
         ? `${text.slice(0, maxChars)}…（自动摘要截断）`
         : text
     );
+  };
+}
+
+/**
+ * G2 todo 落流出口（T-P1-10）：todo_write 工具的 todo/update 事件经此进
+ * 流（ForwardingStore 自然转发为协议 event 行）。会话级元事件挂流内最后
+ * 轮、空流兜 0（session/revert / model/switch emit 同款逻辑）；词汇表知识
+ * 集中在装配文件，agent-process 一行接线。独立于 createChildAssembly——
+ * 最小装配（无 options.assembly）也要能注册 todo 工具。
+ */
+export function createTodoUpdateEmitter(
+  store: SessionStore,
+  sessionId: string,
+): (items: Array<{ content: string; status: "pending" | "in_progress" | "completed" }>) => void {
+  return (items) => {
+    const events = store.load(sessionId);
+    const turn = events.length > 0 ? events[events.length - 1]!.turn : 0;
+    store.append(sessionId, [
+      { type: "todo/update", turn, items: items.map((i) => ({ ...i })) },
+    ]);
   };
 }
 
@@ -316,6 +337,10 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
         }
       : {}),
     core: [
+      // G2（T-P1-10）：内核元操作白名单——todo_write 只写会话元状态、无
+      // 工作区副作用，核心层显式放行（不变量 3 的"显式例外"落链上模块）。
+      // plan 模式硬关（T-P1-11）在出口级，压不过它不成立——出口在后。
+      createMetaOpsModule(),
       createSessionApprovalModule({
         cache: approvalCache,
         sessionId,

@@ -33,7 +33,7 @@ import type { ChatRequest, ModelProvider } from "../models/provider.js";
 import type { ModelIdentity } from "../models/identity.js";
 import { InMemoryEventStorage, type EventStorage, SessionStore } from "../session/store.js";
 import { Projector } from "../session/project.js";
-import { createChildAssembly, type ChildAssembly, type ChildAssemblyOptions } from "./assembly.js";
+import { createChildAssembly, createTodoUpdateEmitter, type ChildAssembly, type ChildAssemblyOptions } from "./assembly.js";
 import { ModelNotRegisteredError } from "./model-switch.js";
 import { registerBuiltinTools } from "./tools/builtin/index.js";
 import { NodeExecutionEnv } from "./tools/env.js";
@@ -146,13 +146,18 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
   const toolRegistry = new ToolRegistry({ env: new NodeExecutionEnv() });
   registerBuiltinTools(
     toolRegistry,
-    assembly
-      ? {
-          pathGuard: assembly.pathGuard,
-          // I2 技能根 = 工作区根（skill_load 的扫描面）
-          skillsRoot: options.assembly?.workspaceRoot ?? process.cwd(),
-        }
-      : {},
+    {
+      // G2 todo 落流出口（T-P1-10）：无条件构造——最小装配（无权限层）
+      // 也有 store，todo/update 事件落流不依赖生产装配在位。
+      todoEmit: createTodoUpdateEmitter(store, sessionId),
+      ...(assembly
+        ? {
+            pathGuard: assembly.pathGuard,
+            // I2 技能根 = 工作区根（skill_load 的扫描面）
+            skillsRoot: options.assembly?.workspaceRoot ?? process.cwd(),
+          }
+        : {}),
+    },
   );
   const decideTurnBase: AgentLoopDeps["decideTurn"] = (record) =>
     record.toolCalls.length > 0 ? { action: "continue" } : { action: "end" };

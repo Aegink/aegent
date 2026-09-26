@@ -14,7 +14,18 @@
  * 4. tool/result 的 callId 必须有前置未闭合的 tool/call。
  */
 
-import { EVENT_TYPES, type SessionEvent, type TokenUsage } from "../kernel/events.js";
+import {
+  EVENT_TYPES,
+  type SessionEvent,
+  type TodoStatus,
+  type TokenUsage,
+} from "../kernel/events.js";
+
+/** todo 项（投影面形状；与事件载荷 items 同构——E12 整值语义）。 */
+export interface ProjectionTodo {
+  content: string;
+  status: TodoStatus;
+}
 
 /** fold 拒绝的流都是同一类错误：流与词汇表/结构纪律不符（修复数据，不是捕获继续）。 */
 export class ProjectError extends Error {
@@ -74,6 +85,11 @@ export interface SessionProjection {
     to: { provider: string; modelId: string };
     reason: "user" | "rollback";
   }>;
+  /**
+   * todo 清单的更新历史（T-P1-10）：每条 todo/update 的完整清单（E12）。
+   * 当前状态 = 有效视窗内最新一条的 items（revert 切点切割同 modelSwitches）。
+   */
+  todos: Array<{ seq: number; items: ProjectionTodo[] }>;
 }
 
 function emptyProjection(): SessionProjection {
@@ -91,6 +107,7 @@ function emptyProjection(): SessionProjection {
     compactions: [],
     revertedTo: null,
     modelSwitches: [],
+    todos: [],
   };
 }
 
@@ -205,6 +222,7 @@ export class Projector {
       case "checkpoint":
       case "request/header":
       case "model/switch":
+      case "todo/update":
         break;
       case "session/revert":
         // 会话级元事件：不要求 turn/step 上下文。revert 的目标点不能在未来。
@@ -321,6 +339,11 @@ export class Projector {
           reason: event.reason,
         });
         break;
+      case "todo/update":
+        // G2：todo 变更 = 事件，状态 = 投影。items 是整值（E12），逐条全记
+        //（revert 切点重建依据），当前值 = 有效视窗内最新一条。
+        s.todos.push({ seq: event.seq, items: event.items.map((i) => ({ ...i })) });
+        break;
       case "session/revert":
         s.revertedTo = event.phase === "revert" ? event.targetSeq : null;
         break;
@@ -343,6 +366,7 @@ export class Projector {
       toolResults: new Map([...s.toolResults].filter(([, v]) => v.seq <= cut)),
       compactions: s.compactions.filter((c) => c.seq <= cut),
       modelSwitches: s.modelSwitches.filter((m) => m.seq <= cut),
+      todos: s.todos.filter((t) => t.seq <= cut),
       openTurn: s.openTurn && s.openTurn.seq <= cut ? s.openTurn : null,
     };
   }

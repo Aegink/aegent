@@ -134,6 +134,53 @@ describe("fold 即校验（E16）", () => {
   });
 });
 
+describe("todo 投影（G2 / T-P1-10）", () => {
+  /** 会话级元事件样本（会话级纪律：不要求 turn/step 开合上下文）。 */
+  const todoUpdate = (
+    seq: number,
+    items: Array<{ content: string; status: "pending" | "in_progress" | "completed" }>,
+  ): SessionEvent => ({ type: "todo/update", seq, ts: 0, turn: 0, items });
+
+  it("验收①：todo/update 落流后投影可查——todos 历史 + 当前值 = 最新一条", () => {
+    const projection = project([
+      todoUpdate(1, [
+        { content: "a", status: "in_progress" },
+        { content: "b", status: "pending" },
+      ]),
+      todoUpdate(2, [{ content: "a", status: "completed" }]),
+    ]);
+    expect(projection.todos).toHaveLength(2);
+    expect(projection.todos[1]!.items).toEqual([{ content: "a", status: "completed" }]);
+    // 会话级元事件不参与轮开合校验（空流可查）
+    expect(projection.lastSeq).toBe(2);
+  });
+
+  it("验收④（revert 交互）：revert 到 todo/update 之前 → 有效投影的 todos 被切割", () => {
+    const events: SessionEvent[] = [
+      todoUpdate(1, [{ content: "被回退的清单", status: "in_progress" }]),
+      { type: "session/revert", seq: 2, ts: 0, turn: 0, targetSeq: 0, phase: "revert" },
+    ];
+    const projection = project(events);
+    expect(projection.revertedTo).toBe(0);
+    expect(projection.todos).toEqual([]); // seq=1 > cut=0 → 切掉
+    // undo 恢复全部
+    const undone = project([
+      ...events,
+      { type: "session/revert", seq: 3, ts: 0, turn: 0, targetSeq: 0, phase: "undo" },
+    ]);
+    expect(undone.todos).toHaveLength(1);
+  });
+
+  it("todo/update 不进消息投影（模型上下文不含元事件，消息重建面隔离）", () => {
+    const projection = project([
+      todoUpdate(1, [{ content: "a", status: "pending" }]),
+      { type: "turn/start", seq: 2, ts: 0, turn: 1 },
+      { type: "user/message", seq: 3, ts: 0, turn: 1, message: { content: "q" }, source: "user" },
+    ]);
+    expect(projection.messages.map((m) => m.role)).toEqual(["user"]);
+  });
+});
+
 describe("与 SessionStore 的接线（E16 写入前校验）", () => {
   it("store.append 对非法流抛 ProjectError，内存序零提交", () => {
     const store = new SessionStore();

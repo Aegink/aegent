@@ -1,7 +1,8 @@
 /**
  * L0 事件词汇表 —— `docs/l0-events.md` §3 定稿的落地（13 事件 + E4 的
- * session/revert 标记 14 个 + T-P1-06 的 model/switch 共 15 个 + 6 结束原因
- * + 5 取消原因；13→14 与 14→15 的裁决记录见 l0-events.md §8 落地记录）。
+ * session/revert 标记 14 个 + T-P1-06 的 model/switch 15 个 + T-P1-10 的
+ * todo/update 共 16 个 + 6 结束原因 + 5 取消原因；13→14、14→15 与 15→16
+ * 的裁决记录见 l0-events.md §8 落地记录）。
  *
  * 词汇表是 Q9 的单向门：定完再改的代价见
  * `oss/deepseek-harness/.agents/notes/rejected/architecture/2026-06-16-typed-event-schemas.md`。
@@ -352,6 +353,22 @@ export interface ModelSwitchEvent extends EventBase {
   reason: "user" | "rollback";
 }
 
+/** todo 项的状态三值（G2 最小面；opencode 的 cancelled 不引入——YAGNI）。 */
+export type TodoStatus = "pending" | "in_progress" | "completed";
+
+/**
+ * todo 清单更新（G2，T-P1-10）：todo 变更 = 事件，状态 = 投影（不变量 1
+ * 同构，opencode·session/todo 的 Event.Updated 纪律）。会话级元事件：
+ * 不要求 turn/step 开合上下文（session/revert / model/switch 同款，落流时
+ * turn 挂流内最后轮空流兜 0）。items 是变更后的**完整清单**——E12 整值
+ * 事件，绝非 delta；最新一条本事件即 todo 当前状态的事实源。
+ * 词汇表 15→16 的裁决记录见 l0-events.md §8 落地记录 4 与待澄清表（供追认）。
+ */
+export interface TodoUpdateEvent extends EventBase {
+  type: "todo/update";
+  items: Array<{ content: string; status: TodoStatus }>;
+}
+
 export type SessionEvent =
   | TurnStartEvent
   | TurnEndEvent
@@ -367,9 +384,10 @@ export type SessionEvent =
   | CheckpointEvent
   | RequestHeaderEvent
   | SessionRevertEvent
-  | ModelSwitchEvent;
+  | ModelSwitchEvent
+  | TodoUpdateEvent;
 
-/** 15 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
+/** 16 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
 export const EVENT_TYPES = [
   "turn/start",
   "turn/end",
@@ -386,6 +404,7 @@ export const EVENT_TYPES = [
   "request/header",
   "session/revert",
   "model/switch",
+  "todo/update",
 ] as const;
 
 export type SessionEventType = (typeof EVENT_TYPES)[number];

@@ -65,6 +65,20 @@ export function renderEventSummary(e: SessionEvent): string | null {
         : "◆ 会话回退已撤销";
     case "system/message":
       return "◆ 系统提示已装配";
+    case "todo/update": {
+      // G2 多步任务进度：清单是 agent 自报的工作面，到达即整幅刷新
+      //（E12 整值事件——items 就是当前状态，不需要 diff）。
+      const marks: Record<string, string> = {
+        pending: "☐",
+        in_progress: "▶",
+        completed: "✓",
+      };
+      const done = e.items.filter((i) => i.status === "completed").length;
+      const lines = e.items.map(
+        (i) => `◆   ${marks[i.status] ?? "☐"} ${i.content}`,
+      );
+      return [`◆ 任务清单（${done}/${e.items.length} 完成）`, ...lines].join("\n");
+    }
     case "request/header":
       return null;
     default:

@@ -39,6 +39,27 @@ export function isWritePathTool(tool: string): boolean {
   return WRITE_PATH_TOOLS.has(tool);
 }
 
+/**
+ * 写/执行类工具（注册表名）——plan 模式硬关（G7，T-P1-11）判定面的唯一
+ * 权威：plan 激活时这些工具在出口级无条件 deny，规则/白名单压不过。
+ * todo_write 在列——它是会话状态写入（元进度），plan 模式"只读研究"下
+ * 不可写（T-P1-10 验收④的铺垫；出口级硬关在 T-P1-11 落地时消费本清单）。
+ * 与 WRITE_PATH_TOOLS 的分工：后者是 C46 路径硬拦的入口判定（按 args.path
+ * 段匹配），本清单是模式级"能否调用"的类别判定——两用途不混用。
+ * 冻结只追加（C10 先例）。
+ */
+export const WRITE_EXECUTE_TOOLS: ReadonlySet<string> = new Set([
+  "write",
+  "edit",
+  "bash",
+  "todo_write",
+]);
+
+/** 该工具是否为写/执行类（plan 硬关面；非写执行类 = plan 模式下可用）。 */
+export function isWriteExecuteTool(tool: string): boolean {
+  return WRITE_EXECUTE_TOOLS.has(tool);
+}
+
 /** bash 命令里命中保留名单的虚拟写目标（出口级 bash 通道）。 */
 function findProtectedBashWriteTarget(
   command: string,

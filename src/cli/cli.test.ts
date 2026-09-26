@@ -288,6 +288,47 @@ describe("aegent CLI（T-8-01）", () => {
     expect(lines.some((l) => l.includes("⏸ 待审批 [call_2]"))).toBe(true);
   });
 
+  it("T-P1-10 G2：todo_write 更新任务清单——元操作白名单直过，进度在 CLI 可见", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-todo-"));
+    const provider = scriptedProvider([
+      [
+        {
+          type: "tool-call-delta",
+          id: "call_1",
+          name: "todo_write",
+          argsDelta: JSON.stringify({
+            items: [
+              { content: "研究词汇表", status: "completed" },
+              { content: "写 todo 工具", status: "in_progress" },
+              { content: "验收", status: "pending" },
+            ],
+          }),
+        },
+        { type: "done" },
+      ],
+      [
+        { type: "text-delta", text: "清单已同步。" },
+        { type: "usage", usage: { inputTokens: 100, outputTokens: 20 } },
+        { type: "done" },
+      ],
+    ]);
+    const lines = await runScriptedSession(
+      { provider, assembly: { workspaceRoot: workspace, contextWindow: 200_000, approvalTimeoutMs: 5_000 } },
+      async function* ({ waitFor }) {
+        yield "列个任务清单";
+        await waitFor((line) => line.includes("── turn 1 结束"));
+      },
+    );
+    // 核心层 meta-ops 白名单放行：todo_write 不经审批（对照 write 的 ⏸ 流程）
+    expect(lines.some((l) => l.includes("⏸ 待审批"))).toBe(false);
+    expect(lines.some((l) => l.includes("→ todo_write"))).toBe(true);
+    // 多步任务进度整幅可见（E12 整值——每次到达即当前状态）
+    expect(lines.some((l) => l.includes("◆ 任务清单（1/3 完成）"))).toBe(true);
+    expect(lines.some((l) => l.includes("✓ 研究词汇表"))).toBe(true);
+    expect(lines.some((l) => l.includes("▶ 写 todo 工具"))).toBe(true);
+    expect(lines.some((l) => l.includes("☐ 验收"))).toBe(true);
+  });
+
   it("/revert 对话态回退（session/revert 事件经协议转发）", async () => {
     const lines = await runScriptedSession(
       {

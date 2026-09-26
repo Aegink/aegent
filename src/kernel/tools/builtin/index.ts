@@ -16,6 +16,7 @@ import { createGlobTool } from "./glob.js";
 import { createGrepTool } from "./grep.js";
 import { createReadTool } from "./read.js";
 import { createSkillLoadTool } from "./skill.js";
+import { createTodoWriteTool } from "./todo.js";
 import { createWriteTool } from "./write.js";
 
 /** 内置工具名清单（C45 linter 的 unknown-tool 判定缺省面；与
@@ -28,11 +29,20 @@ export const BUILTIN_TOOL_NAMES = [
   "glob",
   "grep",
   "skill_load",
+  "todo_write",
 ] as const;
 
 export function registerBuiltinTools(
   registry: ToolRegistry,
-  options: { pathGuard?: PathGuard; skillsRoot?: string } = {},
+  options: {
+    pathGuard?: PathGuard;
+    skillsRoot?: string;
+    /** G2 todo 落流出口（装配注入）；缺省不注册 todo_write——没有落流
+     * 出口的工具执行会违反不变量 1（状态变更无事件承载）。 */
+    todoEmit?: (
+      items: Array<{ content: string; status: "pending" | "in_progress" | "completed" }>,
+    ) => void;
+  } = {},
 ): void {
   const guard = options.pathGuard ?? PathGuard.forWorkspace(process.cwd());
   // B4：write/edit 共享一个写队列（同路径互斥、异路径并行）
@@ -50,6 +60,11 @@ export function registerBuiltinTools(
       pathGuard: guard,
       skillsRoot: options.skillsRoot ?? process.cwd(),
     }),
+    // G2 todo 面：emit 缺省时不注册（不变量 1——无落流出口的清单写入
+    // 就是"直接改状态不写事件"）
+    ...(options.todoEmit !== undefined
+      ? [createTodoWriteTool({ emit: options.todoEmit })]
+      : []),
   ]) {
     registry.registerTool(def);
   }

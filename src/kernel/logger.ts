@@ -80,14 +80,16 @@ export function redactUserFields(
   return out;
 }
 
-function defaultSink(logDir: string): LogSink {
+function defaultSink(logDir: string, now: () => Date): LogSink {
   // 失败只降级告警一次（防 stderr 刷屏），绝不向上抛——日志是旁路通道
   let warned = false;
   return {
     write(line: string): void {
       try {
         mkdirSync(logDir, { recursive: true });
-        const day = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+        // 按日分文件的日期与 ts 同源（注入 clock 时文件名跟着走——否则
+        // 注入时钟下测试的落盘文件名不受控，跨日即 flaky）
+        const day = now().toISOString().slice(0, 10).replaceAll("-", "");
         appendFileSync(path.join(logDir, `aegent-${day}.log`), `${line}\n`, "utf8");
       } catch (e) {
         if (!warned) {
@@ -107,9 +109,9 @@ export interface Logger {
 }
 
 export function createLogger(options: LoggerOptions = {}): Logger {
-  const sink = options.sink ?? defaultSink(options.logDir ?? "logs");
-  const redactUser = options.redactUserContent ?? true;
   const now = options.clock ?? (() => new Date());
+  const sink = options.sink ?? defaultSink(options.logDir ?? "logs", now);
+  const redactUser = options.redactUserContent ?? true;
   const write = (level: LogLevel, msg: string, data?: Record<string, unknown>): void => {
     const entry: LogEntry = {
       ts: now().toISOString(),
