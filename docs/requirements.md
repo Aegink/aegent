@@ -559,10 +559,10 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | O14 | **窗口内差分快照**：首条全量、后续只留新增后缀 | P1 | [codex·context_snapshot.rs](../oss/codex/codex-rs/core/tests/common/context_snapshot.rs) | 同时做到"可读"与"测试不爆炸" |
 | O15 | **录制/回放**真实模型流 | P1 | [dsh·llm-replay](../oss/deepseek-harness/packages/test-support/llm-replay) | 避免手写 mock 漂移 |
 | O16 | **故障注入服务器** | P1 | [dsh·llm-mock-server](../oss/deepseek-harness/packages/test-support/llm-mock-server) | 恢复类逻辑必须能注入故障才可测 |
-| O17 | 持久化可整体替换为内存实现 | P1 | [dsh·test-support](../oss/deepseek-harness/packages/test-support) | 单测不碰真磁盘 |
+| O17 | 持久化可整体替换为内存实现 | P1 | [dsh·test-support](../oss/deepseek-harness/packages/test-support) | 单测不碰真磁盘 | **〔✅ 已由 T-1-02 EventStorage 接口 + InMemory/Sqlite(:memory:) 双实现覆盖，单测全走内存或 mkdtemp 夹具——批次 4 展卡核对，2026-09-26 用户裁决关闭〕** |
 | O18 | 运行时诊断报告 | P1 | [codex·cli/src/doctor/](../oss/codex/codex-rs/cli/src/doctor) | 一键导出环境/配置/沙箱可用性 |
 | O19 | **迁移断言**：旧字段不再被读 / 旧入口已退役 / 迁移后可恢复 | P1 | [kimi·migration-legacy](../oss/kimi-code/packages/migration-legacy) | ZCode 全仓唯一的一类测试，有参考价值 |
-| O20 | 先断言**模型调用次数**（带说明） | P1 | [codex·compact.rs:423](../oss/codex/codex-rs/core/tests/suite/compact.rs#L423) | `assert_eq!(requests.len(), 3, "expected user, compact, and follow-up requests")` |
+| O20 | 先断言**模型调用次数**（带说明） | P1 | [codex·compact.rs:423](../oss/codex/codex-rs/core/tests/suite/compact.rs#L423) | `assert_eq!(requests.len(), 3, "expected user, compact, and follow-up requests")` | **〔✅ 部分覆盖核对结论追认：计数纪律 T-2-03 已在用，带说明访问器由 T-P1-31 实卡补齐——2026-09-26 用户裁决关闭〕** |
 | O21| 快照里写 `Scenario:` 一句自然语言 —— **快照本身即规格** | P1| [codex·compact.rs:423](../oss/codex/codex-rs/core/tests/suite/compact.rs#L423) | 读快照即知测试意图 |
 | O22| **每个相位/每个原因各有一条快照** | P1| [codex·compact.rs:423](../oss/codex/codex-rs/core/tests/suite/compact.rs#L423) | compact 共 8 条快照，全仓 43 条 |
 | O23 | 事件流快照**列对齐 + 单行 JSON**；domain 与 RPC/wire 事件**同流交错** | P1 | [kimi·snapshots.ts](../oss/kimi-code/packages/agent-core-v2/test/harness/snapshots.ts) | `[wire]`/`[emit]` 前缀 + `padEnd` 对齐 |

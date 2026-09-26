@@ -1,6 +1,6 @@
 # P1 实施计划 · 批次 1
 
-**状态**：v1.4.0 · 批次 1+2+3+4 收官（13/13 卡 + 10/10 卡 + 6/6 卡 + 10/10 卡，2026-09-26；词汇表 18 事件零扩展延续；批次 4 = 测试与诊断基建——O12–O26 全关，O17 核对提请关闭）· 批次 5 候选占位（子代理与 fork 大件，E5 + H1–H5）
+**状态**：v1.4.1 · 批次 1+2+3+4 收官（13/13 卡 + 10/10 卡 + 6/6 卡 + 10/10 卡，2026-09-26；词汇表 18 事件零扩展延续；批次 4 = 测试与诊断基建——O12–O26 全关，O17/O20 核对结论已追认关闭）· 批次 5 候选占位（子代理与 fork 大件，E5 + H1–H5）
 **执行协议**：沿用 [`plan-p0.md`](plan-p0.md) §0（取卡 / 做卡 / 验收 / 打勾 / 提交 / 自动继续 / 四种停下情况），本文件不复制。执行进度追加在 [`plan-p0-progress.md`](plan-p0-progress.md)（台账 / 待澄清 / 人工确认清单共用一个文件）。
 **需求来源**：[`requirements.md`](requirements.md) §4 的 P1 项（共 158 条）。P1 不切阶段（§1 尾注），按**批次**组织：本文件当前只含批次 1，后续批次轮到时再展卡追加。
 **批次 1 范围**（用户圈定于 2026-09-25，四组全选，共 26 条）：
@@ -418,7 +418,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 
 **锚点纪律**：15 条锚点已逐一打开核对（2026-09-26，证据见各卡「证据强度」）：dsh `schedule/src/invariant.ts`（包自有不变量 + invariants 服务 inject）、codex `tests/common/responses.rs`（ResponseMock 请求记录 + single_request 计数 panic）、codex `tests/common/context_snapshot.rs`（"first request retains all its input; later requests retain their suffix index" + group_requests 新窗判定）、dsh `test-support/llm-replay`（录制 JSONL + first-call 序 + override sidecar）与 `llm-mock-server`（具名故障剧本 + startMockLlmServer 捕获请求）、codex `cli/src/doctor/` 全目录、kimi `migration-legacy`（fixtures + runMigration + marker + resume 集成测试）、codex `tests/suite/compact.rs`（计数断言原文三处命中）+ `tests/suite/snapshots/all__suite__compact__*.snap`（8 条快照核实）、kimi `snapshots.ts:119-198`（[emit]/[wire] 前缀 + padEnd + formatGenerateInput 变化检测）、pi-desktop `plugins/tests.rs:10-27`（MARKET_ENV_LOCK + `unwrap_or_else(|e| e.into_inner())` 中毒处理 + RAII 守卫 + 进程全局注释）、codex `session/tests.rs:1655`（`user_shell_commands_do_not_inherit_managed_network_proxy` 原名命中）。**行号漂移注明**：O20/O21/O22 的 `compact.rs:423` 实际断言在 2361/3342/3466（文件演进漂移），断言原文与验收要点逐字命中，内容级零勘误。
 
-**两项展卡核对结论（走 J25/L10/M5 先例的顺带关闭流程，供用户追认）**：
+**两项展卡核对结论（J25/L10/M5 先例流程；✅ 2026-09-26 用户追认关闭）**：
 1. **O17 持久化内存替换：已覆盖，提请关闭，不占卡**——P0 E2（T-1-02）已落 `EventStorage` 接口 + `InMemoryEventStorage` + `SqliteEventStorage`（`:memory:` 支持在 `OpenDbOptions`），全部单测默认内存 store；测试中出现的磁盘仅两类：mkdtemp 临时目录夹具（`boot-maintenance.test.ts` 的 Q5 杀进程语义必须真 WAL 落盘，属测试夹具不是"碰生产磁盘"）与 tmp-fs 种子文件——"单测不碰真磁盘"的验收要点实质满足。
 2. **O20 先断言模型调用次数：部分覆盖，访问器面与 O13 合并实卡**——T-2-03 的计数断言纪律已在用（`fault-tolerance.test.ts` 的 `expect(a.calls()).toBe(3)`、http-mock `calls` 计数、mountSequence"请求多于脚本即报错"的结构性计数断言），但"带说明"的访问器形态没有：裸 `expect` 无失败说明，也无 `single_request` 式"数量错了给可读失败"的取值访问器——T-P1-31 补齐。
 
@@ -550,7 +550,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 ## 批次 4 完成定义
 
 - 10 张卡全部打勾，每勾附「命令 + 结果摘要」；`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 0 失效、`license-audit.sh` 通过。
-- O17（已覆盖）/ O20（部分覆盖实卡）两项展卡核对结论落档，供用户追认。
+- O17（已覆盖关闭）/ O20（部分覆盖实卡后关闭）两项展卡核对结论已落档并经用户追认（2026-09-26，requirements §4 行内标注）。
 - 词汇表零扩展（预判）——若执行中确需新事件，走待澄清立案管线。
 - 测试基建零运行时泄漏：src/test-support/ 与 src/diagnostics/ 之外无测试专用代码入 kernel/tools/policy 生产路径（O12 不变量服务与 O18 doctor 是声明的两个例外）。
 - 全量基线 701 passed / 1 skipped，本批净增预期 40-60 用例（渲染器与剧本库是纯函数测试大户）。
@@ -558,10 +558,10 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 
 ## 批次 4 完成核对（2026-09-26）
 
-- 10/10 卡打勾附验收 ✓（T-P1-30 ~ 39，15 条需求 ID：O12–O26 全关——O17 经展卡核对结论提请关闭未占卡，O20 部分覆盖与 O13 并卡）；全量 `npx vitest run` **761 passed / 1 skipped**（批次 3 收官 701 → 净增 60），`npx tsc --noEmit` 全程干净，`count-features.sh` = 310 不变，`check-doc-links.sh` 385 链接 0 失效，`license-audit.sh` 通过（LEAK 未命中/CLEAN-ROOM/SOURCEMAP 无，与批次 3 同形态）。
+- 10/10 卡打勾附验收 ✓（T-P1-30 ~ 39，15 条需求 ID：O12–O26 全关——O17 经展卡核对结论关闭未占卡、O20 部分覆盖与 O13 并卡，**两项均经用户追认 2026-09-26**）；全量 `npx vitest run` **761 passed / 1 skipped**（批次 3 收官 701 → 净增 60），`npx tsc --noEmit` 全程干净，`count-features.sh` = 310 不变，`check-doc-links.sh` 385 链接 0 失效，`license-audit.sh` 通过（LEAK 未命中/CLEAN-ROOM/SOURCEMAP 无，与批次 3 同形态）。
 - 词汇表零扩展 ✓（研究文档预判"低"命中——18 事件自批次 2 后无变化）。
 - 测试基建零运行时泄漏 ✓：新增面全部落 `src/test-support/`（render/llm-replay/fault-server/isolation/migration-asserts）与 `src/diagnostics/`；两个声明的运行时例外 = O12 不变量服务（`src/kernel/invariants.ts`，装配 `invariants` 选项缺省关闭）与 O18 doctor（`src/diagnostics/doctor.ts` + cli 聚合）。
 - O20 核对结论：T-2-03 计数断言纪律已在用，访问器面（expectCalls/singleRequest 等带说明形态）本批补齐——部分覆盖，实卡（T-P1-31）。
-- O17 核对结论：EventStorage 接口 + InMemory/Sqlite(:memory:) 双实现 P0 已落、单测全走内存或 mkdtemp 夹具——已覆盖，提请用户追认关闭。
+- O17 核对结论：EventStorage 接口 + InMemory/Sqlite(:memory:) 双实现 P0 已落、单测全走内存或 mkdtemp 夹具——已覆盖，✅ 用户追认关闭（2026-09-26）。
 - 本批交付面：不变量检查服务（O12）· mock 计数先行访问器（O13/O20）· 上下文/事件流双渲染器（O14/O24/O23）· 录制回放 provider + 六具名故障剧本 + mock:llm 独立入口（O15/O16，真实厂商回归基建——RecordingProvider 可 wrap 真实网关 provider 先录后测）· doctor 全域 + JSON 导出（O18）· 迁移断言基建（O19，批次 10 Q1 消费方）· 快照即规格 Scenario + compaction 四相位快照（O21/O22）· 进程全局隔离锁 + env RAII（O25）· 测试名规格收口（O26）。
 - 真机验证：`npm run doctor` 8 行报告 0 error / 3 warning / 5 ok；`npm run mock:llm` CLI 冒烟（ready 行 + 429/503 + 请求记录 JSONL）；`--json` 导出脱敏证伪通过。

@@ -943,7 +943,7 @@ O20 在疑似顺带覆盖清单（T-2-03 mock.calls 计数断言），展卡先�
 
 ## 批次 4 展卡记录（2026-09-26，执行会话自展）
 
-> 用户提示词指示：先按圈定研究批次 4 条目（O12–O26）逐条锚点核对 requirements.md §4，照 plan-p1 批次 3 展卡先例把卡序追加进 plan-p1.md，再按 plan-p0 §0 执行。**15 条锚点逐一开文件核实，零内容勘误**（dsh invariant.ts/llm-replay/llm-mock-server/test-support 包组、codex responses.rs/context_snapshot.rs/compact.rs+8 快照文件/doctor 目录/session/tests.rs 具名测试、kimi snapshots.ts:119-198/migration-legacy、pi-desktop plugins/tests.rs:10-27；**行号漂移注明**：compact.rs:423 实际断言在 2361/3342/3466，文件演进漂移、断言原文逐字命中）。**三项展卡核对结论（走 J25/L10/M5 先例，供用户追认）**：①**O17 已覆盖提请关闭不占卡**——EventStorage 接口 + InMemory/Sqlite(:memory:) 双实现 P0 E2 已落，单测全走内存或 mkdtemp 夹具（boot-maintenance 的"杀进程"是真 WAL 语义非生产磁盘）；②**O20 部分覆盖与 O13 并卡**——T-2-03 计数断言纪律已在用（expect(a.calls()).toBe(3) 等），但"带说明"访问器形态缺失，T-P1-31 实卡补齐；③预估 9 卡实展 10 张（O17 关闭后 15 条 → 10 卡 = 1.5 条/卡，批次 2 密度），O13+O20/O14+O24/O15+O16/O21+O22 四组合并。
+> 用户提示词指示：先按圈定研究批次 4 条目（O12–O26）逐条锚点核对 requirements.md §4，照 plan-p1 批次 3 展卡先例把卡序追加进 plan-p1.md，再按 plan-p0 §0 执行。**15 条锚点逐一开文件核实，零内容勘误**（dsh invariant.ts/llm-replay/llm-mock-server/test-support 包组、codex responses.rs/context_snapshot.rs/compact.rs+8 快照文件/doctor 目录/session/tests.rs 具名测试、kimi snapshots.ts:119-198/migration-legacy、pi-desktop plugins/tests.rs:10-27；**行号漂移注明**：compact.rs:423 实际断言在 2361/3342/3466，文件演进漂移、断言原文逐字命中）。**三项展卡核对结论（J25/L10/M5 先例；①②✅ 已于 2026-09-26 经用户追认关闭）**：①**O17 已覆盖提请关闭不占卡**——EventStorage 接口 + InMemory/Sqlite(:memory:) 双实现 P0 E2 已落，单测全走内存或 mkdtemp 夹具（boot-maintenance 的"杀进程"是真 WAL 语义非生产磁盘）；②**O20 部分覆盖与 O13 并卡**——T-2-03 计数断言纪律已在用（expect(a.calls()).toBe(3) 等），但"带说明"访问器形态缺失，T-P1-31 实卡补齐；③预估 9 卡实展 10 张（O17 关闭后 15 条 → 10 卡 = 1.5 条/卡，批次 2 密度），O13+O20/O14+O24/O15+O16/O21+O22 四组合并。
 
 ---
 
@@ -977,7 +977,7 @@ O20 在疑似顺带覆盖清单（T-2-03 mock.calls 计数断言），展卡先�
   - **Windows WAL 文件句柄释放竞态**——better-sqlite3 close 后立即 rmSync 偶发 EBUSY（测试 finally 容忍，临时目录系统回收）
   - vitest 全文件并行（85 worker）下 712→739→761 的回归稳定性依赖测试夹具 mkdtemp 唯一化（P0 纪律持续有效）
 - **遗留风险与未知**（→ 人工确认清单批次 4 行）：
-  - **O17 关闭与 O20 部分覆盖结论待用户追认**（展卡核对结论，J25/L10/M5 先例流程）
+  - ~~O17 关闭与 O20 部分覆盖结论待用户追认~~ ✅ **已追认关闭**（2026-09-26，requirements §4 行内标注落档）
   - O15 录制回放对真实厂商 provider 的端到端演练（RecordingProvider 可 wrap openai-compat provider 先录后测）——批次 5 起的真实厂商回归实跑时确认
   - `npm run mock:llm` CLI 的 SIGINT 优雅停只验了库面 stop（信号路径未真机断链）
 - **批次完成定义核对**：10 卡打勾附验收 ✓；tsc 干净 ✓；count-features 310 ✓；check-doc-links 0 失效 ✓；license-audit 通过 ✓；词汇表零扩展 ✓；测试基建零运行时泄漏 ✓；O17/O20 核对结论落档 ✓；真机 doctor/mock:llm 冒烟 ✓
