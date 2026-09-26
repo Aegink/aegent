@@ -52,6 +52,7 @@ import type {
   TurnEndReason,
 } from "./events.js";
 import { TimeoutError } from "./timeout.js";
+import { RwLock } from "./rw-lock.js";
 import { type PromptQueue } from "./queue.js";
 import { type RunState } from "./run-state.js";
 
@@ -116,6 +117,14 @@ export interface TurnEndPayload {
 /** A1 显式停止决策（pi AgentTurnDecision 同形状）——停止是返回的决策，不是循环推断。 */
 export type TurnDecision = { action: "continue" } | { action: "end" };
 
+/**
+ * B6 工具执行模式（pi ToolExecutionMode 同名两档）："sequential" = 逐个
+ * 执行到底（P0 行为）；"parallel" = preflight 顺序、执行并发（pi types.ts:307
+ * "preflight tool calls sequentially, then execute allowed tools concurrently"
+ * 同款）——tool/call 事件按提交序落流，tool/result 按完成序落流。
+ */
+export type ToolExecutionMode = "sequential" | "parallel";
+
 /** 一个 step 的完整结果——DecideTurn 的全部决策依据。 */
 export interface StepRecord {
   turn: number;
@@ -167,9 +176,26 @@ export interface AgentLoopDeps {
    * 工具循环的双轴预算（B14，T-4-08 接入）：缺省启用默认上限
    * （DEFAULT_MAX_TOOL_CALLS / DEFAULT_TOOL_LOOP_TIMEOUT_MS），传 Infinity
    * 显式禁轴。预算耗尽 = 停止派发，未派发的调用缺席（与取消同语义，
-   * 配平不变量不受影响）。
+   * 配平不变量不受影响）。parallel 模式（T-P1-15）下 tick 照常逐调用
+   * 计数（并行批内累加），progress 不再调用——批内全部派发后没有剩余
+   * 派发点，时间轴的实际闸门是下一步的 tick。
    */
   toolBudget?: { maxTicks?: number; timeoutMs?: number };
+  /**
+   * B6/T-P1-15 工具执行模式（pi ToolExecutionMode 同名两档）：缺省
+   * "sequential"（P0 行为零变化）。"parallel" = preflight（取消/预算检查 +
+   * tool/call 落流）顺序、执行并发（pi types.ts:307 "preflight tool calls
+   * sequentially, then execute allowed tools concurrently" 同款）——tool/call
+   * 事件按提交序落流，tool/result 按完成序落流；并发纪律走 isParallelTool
+   * 声明 + 一把 RwLock（B17：读=并行、写=排他）。
+   */
+  toolExecution?: ToolExecutionMode;
+  /**
+   * B17 并行声明查询：工具名 → 是否声明了可并行（只读类）。未注册/未声明
+   * 一律 false = 排他（未声明即不可并行，fail-closed）。缺省 undefined 时
+   * parallel 模式下所有工具都排他（与 sequential 等效但事件序不同）。
+   */
+  isParallelTool?(name: string): boolean;
   /** 三个点位的层。P0 恒空数组；阶段 5/7 的权限/上下文/压缩层从这里进。 */
   layers?: {
     toolCall?: ReadonlyArray<
@@ -424,6 +450,12 @@ export class AgentLoop {
     const toolResults: StepRecord["toolResults"] = [];
     // B14：每个 step 的工具分发循环一份预算（tick=派发、progress=执行完回环）
     const budget = new ParseBudget(this.deps.toolBudget ?? {});
+    const parallel = this.deps.toolExecution === "parallel";
+    // preflight（取消/预算检查 + tool/call 落流）两种模式共用，顺序执行；
+    // sequential 在此内联执行到底（P0 原路径，逐字节行为不变），
+    // parallel 收集派发批、循环结束后并发执行（pi "preflight … then execute
+    // allowed tools concurrently"）。
+    const dispatched: { id: string; name: string; arguments: string }[] = [];
     for (const call of output.toolCalls) {
       // A7 边界检查：已派发/已执行工具的结果照落盘（事实），未派发的缺席
       if (this.cancelCause) break;
@@ -445,6 +477,8 @@ export class AgentLoop {
           arguments: call.arguments,
         },
       ]);
+      dispatched.push(call);
+      if (parallel) continue;
       const result = await this.dispatchTool(turn, step, call);
       toolResults.push({
         callId: call.id,
@@ -472,6 +506,9 @@ export class AgentLoop {
         if (!(e instanceof BudgetExceededError)) throw e;
         break;
       }
+    }
+    if (parallel && dispatched.length > 0) {
+      await this.runParallelTools(turn, step, dispatched, toolResults);
     }
     store.append(sessionId, [{ type: "step/end", turn, step }]);
     // T-8 装配通知：含工具调用的 step 完成记一笔（RapidRefillGuard 的干活记账）。
@@ -513,6 +550,61 @@ export class AgentLoop {
         isError: true,
         error: { name: "ToolError", code: "TOOL_EXECUTE_FAILED" },
       };
+    }
+  }
+
+  /**
+   * B17/T-P1-15 parallel 模式的并发执行：一把读写锁（本 loop 一个实例），
+   * isParallelTool 声明为真的只读工具持读锁互相并发，其余持写锁与一切互斥
+   * （codex parallel.rs:191 `supports_parallel ? read : write` 的对应物）。
+   * 事件序：tool/result 按完成序落流（pi 同款）；StepRecord.toolResults 按
+   * 提交序回填（pi "tool-result message artifacts … in assistant source order"
+   * 同款）。取消语义不变：已派发（tool/call 已落流）的执行照完成、结果照落盘。
+   */
+  private readonly toolLock = new RwLock();
+
+  private async runParallelTools(
+    turn: number,
+    step: number,
+    calls: ReadonlyArray<{ id: string; name: string; arguments: string }>,
+    toolResults: StepRecord["toolResults"],
+  ): Promise<void> {
+    const byCallId = new Map<string, ToolExecutionResult>();
+    await Promise.all(
+      calls.map(async (call) => {
+        const release = await (this.deps.isParallelTool?.(call.name) === true
+          ? this.toolLock.read()
+          : this.toolLock.write());
+        try {
+          const result = await this.dispatchTool(turn, step, call);
+          byCallId.set(call.id, result);
+          this.deps.store.append(this.deps.sessionId, [
+            {
+              type: "tool/result",
+              turn,
+              step,
+              callId: call.id,
+              message: {
+                content: result.content,
+                ...(result.isError ? { isError: true as const } : {}),
+              },
+              ...(result.error ? { error: result.error } : {}),
+              ...(result.meta !== undefined ? { meta: result.meta } : {}),
+            },
+          ]);
+        } finally {
+          release();
+        }
+      }),
+    );
+    for (const call of calls) {
+      const result = byCallId.get(call.id);
+      if (result === undefined) continue;
+      toolResults.push({
+        callId: call.id,
+        content: result.content,
+        ...(result.isError ? { isError: true as const } : {}),
+      });
     }
   }
 

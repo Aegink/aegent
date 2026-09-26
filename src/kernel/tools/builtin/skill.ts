@@ -34,6 +34,7 @@ export function createSkillLoadTool(options: {
       },
       required: ["name"],
     },
+    parallel: true, // B17：纯读，声明可并行（parallel 模式持读锁）
     async execute(args) {
       const name = args.name;
       if (typeof name !== "string" || name === "") {

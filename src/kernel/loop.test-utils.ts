@@ -49,6 +49,8 @@ export function makeLoop(
     queue?: PromptQueue;
     runState?: RunState;
     toolBudget?: AgentLoopDeps["toolBudget"];
+    toolExecution?: AgentLoopDeps["toolExecution"];
+    isParallelTool?: AgentLoopDeps["isParallelTool"];
   },
 ): Harness {
   const store = new SessionStore();
@@ -76,6 +78,8 @@ export function makeLoop(
     ...(opts?.queue ? { queue: opts.queue } : {}),
     ...(opts?.runState ? { runState: opts.runState } : {}),
     ...(opts?.toolBudget ? { toolBudget: opts.toolBudget } : {}),
+    ...(opts?.toolExecution ? { toolExecution: opts.toolExecution } : {}),
+    ...(opts?.isParallelTool ? { isParallelTool: opts.isParallelTool } : {}),
   });
   return { store, loop, decideCalls };
 }

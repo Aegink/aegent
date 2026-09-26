@@ -25,6 +25,7 @@ export interface ReadArgs {
 export function createReadTool(options: { pathGuard: PathGuard }): ToolDef {
   return {
     name: "read",
+    parallel: true, // B17：纯读，声明可并行（parallel 模式持读锁）
     async execute(args) {
       const { path: filePath, offset, limit } = args as Partial<ReadArgs>;
       if (typeof filePath !== "string" || filePath === "") {

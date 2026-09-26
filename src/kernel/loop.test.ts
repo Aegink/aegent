@@ -10,6 +10,7 @@ import {
   type TurnDecision,
 } from "./loop.js";
 import { ScriptedProvider, makeLoop } from "./loop.test-utils.js";
+import { RwLock } from "./rw-lock.js";
 import { expectPaired, expectSingleTerminal, expectTurnScoped } from "../test-support/event-asserts.js";
 import type { ModelProvider } from "../models/provider.js";
 
@@ -289,6 +290,175 @@ describe("AgentLoop —— A1/A6 显式停止条件与两级生命周期", () =>
       "step/end",
       "turn/end",
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 工具并发（B17+B6，T-P1-15）：parallel 模式 = preflight 顺序、执行并发，
+// 一把 RwLock 分组（声明读=并行、未声明写=排他）
+// ---------------------------------------------------------------------------
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+describe("工具并发（B17+B6 / T-P1-15）", () => {
+  /** 挂一份"两个工具调用"的剧本（c1 慢、c2 快）。 */
+  function mountTwoCalls(provider: ScriptedProvider): void {
+    provider.mount([
+      { type: "tool-call-delta", id: "c1", name: "r1", argsDelta: "{}" },
+      { type: "tool-call-delta", id: "c2", name: "r2", argsDelta: "{}" },
+      { type: "done" },
+    ]);
+  }
+
+  it("验收①：parallel 模式下已声明只读组并发——启动重叠、完成序 ≠ 提交序；tool/result 按完成序落流、record 按提交序（验收④配平）", async () => {
+    const provider = new ScriptedProvider();
+    mountTwoCalls(provider);
+    provider.mount([{ type: "text-delta", text: "完成" }, { type: "done" }]);
+    const trace: string[] = [];
+    const { loop, store, decideCalls } = makeLoop(provider, {
+      toolExecution: "parallel",
+      isParallelTool: (name) => name === "r1" || name === "r2",
+      executeTool: async (call) => {
+        trace.push(`start:${call.callId}`);
+        await sleep(call.callId === "c1" ? 60 : 10);
+        trace.push(`end:${call.callId}`);
+        return { content: `out-${call.callId}` };
+      },
+    });
+
+    const reason = await loop.runTurn("并发");
+    expect(reason).toEqual({ kind: "completed" });
+    // 并发：两个执行都在任一结束前启动（读锁共享）
+    expect(trace.slice(0, 2).sort()).toEqual(["start:c1", "start:c2"]);
+    // 完成序 ≠ 提交序：快的 c2 先完成
+    expect(trace).toEqual(["start:c1", "start:c2", "end:c2", "end:c1"]);
+
+    const events = store.load("s1");
+    // tool/call 按提交序、tool/result 按完成序（pi 同款双序）
+    expect(
+      events.filter((e) => e.type === "tool/call").map((e) => (e as { callId: string }).callId),
+    ).toEqual(["c1", "c2"]);
+    expect(
+      events.filter((e) => e.type === "tool/result").map((e) => (e as { callId: string }).callId),
+    ).toEqual(["c2", "c1"]);
+    // 验收④：并行下配平不变量成立（call/result 按 callId 一一配对）
+    expectPaired(events, "tool/call");
+    expectTurnScoped(events);
+    expectSingleTerminal(events, 1);
+    // StepRecord.toolResults 按提交序（pi "assistant source order" 同款）
+    expect(decideCalls[0]!.toolResults.map((r) => r.callId)).toEqual(["c1", "c2"]);
+  });
+
+  it("验收②：未声明工具被排他化——不与任何执行重叠（fail-closed）", async () => {
+    const provider = new ScriptedProvider();
+    // 批次 [r1（声明）、w1（未声明）、r2（声明）]：w1 持写锁独占，
+    // r2 排在 w1 之后也不得越过它（FIFO：防写者饿死）
+    provider.mount([
+      { type: "tool-call-delta", id: "c1", name: "r1", argsDelta: "{}" },
+      { type: "tool-call-delta", id: "c2", name: "w1", argsDelta: "{}" },
+      { type: "tool-call-delta", id: "c3", name: "r2", argsDelta: "{}" },
+      { type: "done" },
+    ]);
+    provider.mount([{ type: "text-delta", text: "完成" }, { type: "done" }]);
+    const trace: string[] = [];
+    const { loop } = makeLoop(provider, {
+      toolExecution: "parallel",
+      isParallelTool: (name) => name === "r1" || name === "r2",
+      executeTool: async (call) => {
+        trace.push(`start:${call.callId}`);
+        await sleep(call.callId === "c2" ? 30 : 20);
+        trace.push(`end:${call.callId}`);
+        return { content: `out-${call.callId}` };
+      },
+    });
+
+    await loop.runTurn("排他");
+    // r1 独启动（c2/c3 被 w1 的写锁挡住）→ r1 结束 → w1 独占 → w1 结束 → r2
+    expect(trace).toEqual([
+      "start:c1",
+      "end:c1",
+      "start:c2",
+      "end:c2",
+      "start:c3",
+      "end:c3",
+    ]);
+  });
+
+  it("验收③：sequential 缺省零行为变化——call/result 交错、完成序 = 提交序（P0 回归）", async () => {
+    const provider = new ScriptedProvider();
+    mountTwoCalls(provider);
+    provider.mount([{ type: "text-delta", text: "完成" }, { type: "done" }]);
+    const trace: string[] = [];
+    const { loop, store } = makeLoop(provider, {
+      executeTool: async (call) => {
+        trace.push(`start:${call.callId}`);
+        await sleep(call.callId === "c1" ? 30 : 5);
+        trace.push(`end:${call.callId}`);
+        return { content: `out-${call.callId}` };
+      },
+    });
+
+    await loop.runTurn("串行");
+    // 不传 toolExecution（缺省 sequential）：完全串行，逐段交错
+    expect(trace).toEqual(["start:c1", "end:c1", "start:c2", "end:c2"]);
+    expect(
+      store
+        .load("s1")
+        .map((e) => e.type)
+        .filter((t) => t === "tool/call" || t === "tool/result"),
+    ).toEqual(["tool/call", "tool/result", "tool/call", "tool/result"]);
+  });
+});
+
+describe("RwLock（B17 一把锁的语义）", () => {
+  it("读读并发；写者与一切互斥；FIFO 序 + 头部连续读者成批放行", async () => {
+    const lock = new RwLock();
+    const order: string[] = [];
+    const rel1 = await lock.read();
+    const rel2 = await lock.read(); // 立即获得：读锁共享
+    order.push("2-readers");
+
+    const writer = lock.write().then((rel) => {
+      order.push("writer-in");
+      return rel;
+    });
+    const reader3 = lock.read().then((rel) => {
+      order.push("reader3-in");
+      return rel;
+    });
+    await sleep(5);
+    // 写者等读全释放；排在写者后的读者3不得越位（防写者饿死）
+    expect(order).toEqual(["2-readers"]);
+
+    rel1();
+    rel2();
+    const relW = await writer;
+    expect(order).toEqual(["2-readers", "writer-in"]); // 写者独占入写
+
+    relW();
+    const rel3 = await reader3;
+    expect(order).toEqual(["2-readers", "writer-in", "reader3-in"]); // FIFO 唤醒
+    rel3();
+
+    // 写者持锁时排队的两个读者，写者释放后一并入读（成批放行）
+    const writer2 = lock.write().then((rel) => {
+      order.push("writer2-in");
+      return rel;
+    });
+    const b1 = lock.read().then((rel) => {
+      order.push("b1-in");
+      return rel;
+    });
+    const b2 = lock.read().then((rel) => {
+      order.push("b2-in");
+      return rel;
+    });
+    await sleep(5);
+    expect(order).toEqual(["2-readers", "writer-in", "reader3-in", "writer2-in"]);
+    const relW2 = await writer2;
+    relW2();
+    await Promise.all([b1, b2]);
+    expect(order.slice(-2)).toEqual(["b1-in", "b2-in"]);
   });
 });
 

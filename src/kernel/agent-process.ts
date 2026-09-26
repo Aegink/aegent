@@ -19,7 +19,7 @@ import { createInterface } from "node:readline";
 import { spawn } from "node:child_process";
 
 import type { CancelCause } from "./events.js";
-import { AgentLoop, type AgentLoopDeps } from "./loop.js";
+import { AgentLoop, type AgentLoopDeps, type ToolExecutionMode } from "./loop.js";
 import { PromptQueue } from "./queue.js";
 import {
   type AgentMessage,
@@ -77,6 +77,11 @@ export interface AgentChildOptions {
    * 目标位；缺省 DEFAULT_SPILL_DIR（系统临时目录 aegent-tool-spill）。
    */
   spillDir?: string;
+  /**
+   * B6/T-P1-15 工具执行模式：缺省 sequential（P0 行为）。parallel 时由
+   * 注册表的 B17 并行声明（isParallelDeclared）驱动并发分组。
+   */
+  toolExecution?: ToolExecutionMode;
   /**
    * 事件存储（T-8-01：CLI 的 SQLite 落库走此注入）。缺省 InMemory——
    * 原生模块不进 echo 模式冷启动路径（Q16 <500ms 的结构性前提）。
@@ -194,6 +199,14 @@ export async function runAgentChildStdio(options: AgentChildOptions = {}): Promi
     // J11：turn 失败通知 → 装配驱动换模回滚判据。
     ...(assembly?.modelForTurn ? { modelForTurn: assembly.modelForTurn } : {}),
     ...(assembly?.onTurnError ? { onTurnError: assembly.onTurnError } : {}),
+    // B6/B17（T-P1-15）：装配选择 parallel 时，并发分组以注册表的并行声明
+    // 为准（未声明即排他）；缺省 sequential 时两个槽位都不进 deps（P0 原样）。
+    ...(options.toolExecution === "parallel"
+      ? {
+          toolExecution: "parallel" as const,
+          isParallelTool: (name: string) => toolRegistry.isParallelDeclared(name),
+        }
+      : {}),
     ...(assembly
       ? {
           layers: assembly.layers,

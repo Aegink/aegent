@@ -23,6 +23,7 @@ export const MAX_GLOB_RESULTS = 100;
 export function createGlobTool(): ToolDef {
   return {
     name: "glob",
+    parallel: true, // B17：纯读，声明可并行（parallel 模式持读锁）
     async execute(args) {
       const { pattern, path: base } = args as Partial<GlobArgs>;
       if (typeof pattern !== "string" || pattern === "") {

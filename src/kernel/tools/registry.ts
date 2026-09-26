@@ -53,6 +53,13 @@ export interface ToolDef {
     args: JsonRecord,
     ctx: ToolContext,
   ): ToolExecution | Promise<ToolExecution>;
+
+  /**
+   * B17 并行声明：true = 只读类工具，声明后才可在 parallel 模式（B6）下
+   * 与其他执行并发（持读锁）；**缺省 false = 排他**（未声明即不可并行，
+   * fail-closed——持写锁与一切互斥）。写类工具与有状态工具一律缺省。
+   */
+  parallel?: boolean;
 }
 
 /** 工具执行前置守卫（C57 执行点重算的接线面）：政策层实现，registry 在
@@ -130,6 +137,14 @@ export class ToolRegistry {
 
   names(): string[] {
     return [...this.defs.keys()];
+  }
+
+  /**
+   * B17/T-P1-15：并行声明查询（loop 并发分组的数据源）。未注册名 = false
+   * （fail-closed：模型幻觉出的工具名按排他处理）。
+   */
+  isParallelDeclared(name: string): boolean {
+    return this.defs.get(name)?.parallel === true;
   }
 
   /**
