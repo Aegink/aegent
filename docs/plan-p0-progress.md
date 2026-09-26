@@ -150,6 +150,7 @@
 
 | 需求ID | 为什么不能机验 | 人工要怎么确认 |
 | --- | --- | --- |
+| 批次 2 三面（B6/B7/F6） | 并行/进度/缓存的行为证据与真实厂商缓存行为（命中率、F6"token 省 ≥ 30%"口径、T-P1-23 多端点容错）需要真实网关与真实模型流量 | 用户提供 OpenAI 兼容网关后同批次 1 终验口径复测：① parallel 模式真实模型工具调用（B6 行为可观测）；② question/answer 与进度事件在真实流的表现（B7/B8b）；③ 真实会话 Σinput 对比批次 1 基线 64.5k（缓存族 F6/F13/F15 的省算口径 + UsageRow.cacheHitRate 实测值）；④ 多端点容错（J15）需第二端点。key 不落盘，证据落库 |
 | J2（部分） | ~~真实厂商连通性需要 API key~~ **已实测（2026-09-25，用户提供 OpenAI 兼容端点，deepseek-v4.1-flash）**：流式 192 块（reasoning-delta/text-delta/usage/done）、usage 落库（input 2196/output 191/total 2387/reasoningTokens 175）、L3 视图可查；真实模型 tool_call 流式分片拼接正确（arguments 完整 JSON）、审批挂起→超时→isError 回喂→模型自适应重试→诚实收尾，27 事件配平落库。系统提示生效（模型自称 aegent）。**剩：不同厂商 wire 差异的多端点复测**（同一端点已闭环） | **复测已关闭（2026-09-26，P1 批次 1 终验）**：不同接入路径实测通过（用户网关 <redacted-endpoint>，模型 cline-pass/deepseek-v4.1-flash，OpenAI Chat Completions 协议）——五场景审批放行全链路 + 128 事件 seq 连续 + 15/15 配平 + reasoningTokens 映射有效（见下方「批次 1 终验收记录」） |
 | T9 冷启动 | 「<500ms」依赖本机负载 | T-8-05 终验收已实测两形态：echo 模式 median 283.3ms、SQLite 模式 median 273ms，达标收口（T-3-06 基线 109.6ms 的上浮源于子进程装配扩容，见 T-8-05 偏离①） |
 | D3 弱承诺 | 「网络策略只管工具层」是声明不是代码属性 | **已关闭（2026-09-25 用户目检裁决："可以"）**——`src/sandbox/README.md` 置顶加粗的弱承诺段（只拦工具层 fetch，不承诺 bash 子进程/模型接入层/OS 级，deny 档 ≠ 网络隔离）获用户认可 |
@@ -812,6 +813,64 @@ checkpointRepoRoot 先例），"重启不重放"按 Q5 对账口径。不要问�
 
 > 用户裁决：①批次 2 走**路线一**（P1 剩余圈定，研究报告 [`20260926_P2研究_批次圈定建议.md`](20260926_P2研究_批次圈定建议.md)）；②顺带覆盖的 J25/L10/M5 **全部关闭**（requirements.md §4 已标注）。
 > 展卡 10 张（T-P1-14 ~ 23）于 `plan-p1.md`，15 条需求 ID；锚点逐一核对到行号级（48/48 的 P2 层核对与 15/15 的批次 2 核对均零勘误）。B7 的 `tool_execution_update` 事件名在 pi types.ts 未定位（mode 锚已核实）——展卡发现记卡面，非勘误。
+
+---
+
+## 批次 2 报告（完成于 2026-09-26）
+
+- **打勾情况**：10 / 10（T-P1-14 ~ T-P1-23 全部完成，无未完成项）——**P1 批次 2 全部收官**（15 条需求 ID：Q3/B17/B6/B7/F12/F14/F5/F6/F13/F15/B8a/B8b/J12/J15/J19/J18）
+- **产出的文件**：
+  - `src/kernel/tools/spill-gc.ts` + truncate.ts 扩（deletable 联合 + DEFAULT_SPILL_DIR）+ registry 接超量配额 + agent-process 会话关闭 finish()——Q3 spill 清理（T-P1-14）
+  - `src/kernel/rw-lock.ts` + loop `ToolExecutionMode`/`isParallelTool`/`runParallelTools` + ToolDef.parallel + 只读族四工具声明——B17/B6 工具并发（T-P1-15）
+  - `tool/progress` 事件（词汇表 17→18）+ ToolContext.reportProgress 通道 + loop 进度发射器（上限 10）+ bash 示范——B7 进度上报（T-P1-16）
+  - ToolDef.deferrable + toChatTools 占位 + `tool_load` 检索柄 + loop toolsProvider——F12/F14 延迟加载（T-P1-17）
+  - `src/context/llm-summarizer.ts`（createLlmSummarizer + truncatingSummarizer 移入）+ compaction.title 首摘要定名 + request/header reason 扩 "compaction"——F5 摘要/标题（T-P1-18）
+  - `src/context/prefix-anchor.ts`（computeCacheAnchor/describeAnchorChange）+ loop 逐请求锚检测 + 压缩 cache-safe 断言 + UsageRow.cacheHitRate——F6/F13/F15 缓存族（T-P1-19）
+  - `builtin/webfetch.ts` + NetworkGuard 唯一入口对接 + networkPolicy 装配选项 + `--network` 参数——B8a（T-P1-20）
+  - `builtin/question.ts` + 协议分型（question/answer + question_asked）+ meta-ops 放行 + REPL `/answer`——B8b（T-P1-21）
+  - `src/models/catalog.ts`（buildModelCatalog）+ openai-compat /models 发现 + listSwitchableModels——J12 选择器（T-P1-22）
+  - `src/models/fault-tolerance.ts`（classifyProviderFailure + CircuitBreaker + RateLimitTracker + createFailoverProvider）——J15/J19/J18 容错层（T-P1-23）
+- **验收台账**：10 卡 10 命令全部通过（见台账表）；全量 `npx vitest run` **655 passed / 1 skipped**（批次 1 收官 610 → 净增 45），`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变、`check-doc-links.sh`（显式传参 plan-p1/plan-p0-progress/l0-events）44 链接 0 失效、`license-audit.sh` exit 0；`npm run build` 工具描述 14 项进 dist（tool_load/question/webfetch 三个新 txt 自动跟上）
+- **词汇表扩展**：`tool/progress`（17→18，**turn 域事件**——非会话级元事件，校验要求所属调用未闭合；落地记录 6 + 待澄清 #5）与 T-P1-18 的载荷扩展（RequestHeaderReason 扩 "compaction" + CompactionEvent.title，落地记录 7 + 待澄清 #6）**两案均待用户追认**；不追认回退面各约 2 小时（落地记录内详列）
+- **偏离计划的地方**（逐卡详见卡面完成记录）：
+  1. **T-P1-14**：deletable 恒 "manual" 改写 "after-session-end"（T-4-06 预留扩展点兑现——本卡即清理策略定义卡）；会话清理挂 agent-child 退出三路径共享 finish()；超龄触发不做（三选二 KISS）
+  2. **T-P1-15**：预算轴并行语义卡内定形（tick 批内累加、progress 不再调用）；parallel 模式下未声明工具事件序与 sequential 不同但裁决语义一致
+  3. **T-P1-16**：进度上限 10 条卡内定形；REPL 渲染未接（避免波及 cli.test 输出断言，CLI 可观测随 CLI 批次）；卡面 `seq-in-call` 落 camelCase `seqInCall`
+  4. **T-P1-17**：占位 wire 形状选"空 schema + 描述内 [deferred] 标记"（不新增 ChatTool 扩展字段，厂商 wire 兼容零风险）；F13"位置性追加"落为原地替换（更严格：占位与真 schema 位置都不被扰动）
+  5. **T-P1-18**："摘要提示词进 request/header 可观测"落为副调用头（reason="compaction"）+ 提示词作为请求 system 消息两件；标题只在首摘要记录
+  6. **T-P1-19**：锚变化检测是运行时观测非硬失败（rewritten 落 warn 不阻断——作废是成本问题非正确性问题）
+  7. **T-P1-20**：BUILTIN_TOOL_NAMES 实为 11→12（卡面写 10→11 时 tool_load 尚未展卡）；HTML→markdown 转换不做（turndown 依赖违反最小面）
+  8. **T-P1-21**：opencode questions[]（多问题+选项）不取（单问题自由文本最小面）；owner-port 命令面未加（随 K 层批次）
+  9. **T-P1-22**：目录是查询面库函数（装配不接线——/models 探测有启动延迟与失败面）；discovered-only 条目不可换模（无装配绑定 provider，fail-closed）
+  10. **T-P1-23**：容错层是 loop 之下透明路由（不发 model/switch 事件、不改会话身份）；限流桶是库面（适配层响应头透传未做，扩展位）
+- **新发现的约束或坑**：
+  - **prefix-anchor.ts 首版内嵌字面控制字符**（NUL/SOH 作分隔符设想未转义）——`file` 判 data、Edit 工具拒改；重写为换行分隔。教训：**代码/注释里的分隔符永远用可打印字符**（不可见字符进 Write 载荷就是数据损坏）
+  - `toChatTools` 等返回对象字面量带 meta 的工具需显式 ToolExecutionResult 标注（TS 联合收窄对 `declined?: undefined` 类形状过不了 JsonValue 闸门）——webfetch/question 各踩一次，helper（webfetchOk/questionOk）是解法
+  - registerBuiltinTools 的 BUILTIN_TOOL_NAMES 是"**可注册**清单"而非"缺省注册清单"（webfetch/question 条件注册）——全集等价断言必须带齐各能力面装配件（plan-mode.test 两轮适配）
+  - makeLoop 测试 harness 的 opts 面随 loop deps 增长（本批加 toolExecution/isParallelTool/toolsProvider/onCacheAnchorChange/modelForTurn 五槽位）——loop 测试基建的维护成本信号，暂不重构
+- **遗留风险与未知**：
+  - **词汇表两案待追认**（待澄清 #5 tool/progress、#6 reason 扩值+CompactionEvent.title）——不追认回退面见落地记录 6/7
+  - **真实厂商端到端复测未做**（并行/进度/缓存三面行为证据 + F6"token 省 ≥ 30%"口径 + T-P1-23 多端点容错）——已列人工确认清单，需用户网关（同批次 1 终验口径）
+  - spill 默认目录（系统 tmp aegent-tool-spill）在多版本共存时旧 manual 文件不被 GC（人工面保留——设计如此）
+  - cli.test 的 question 用例 ~1.4s（审批/问答往返），测试面继续变厚后注意超时配置
+- **批次完成定义核对**：10 卡打勾附验收 ✓；tsc 干净 ✓；count-features 310 ✓；check-doc-links 0 失效 ✓；license-audit 通过 ✓；词汇表扩展走既有管线 ✓；缓存族锚逐字节断言就位 ✓；真实厂商复测 → 人工确认清单（下项）
+- **下一批**：批次 2 收官。P1 剩余 = H1–H5 子代理族（大件独立成批）· B8 的 apply_patch/lsp · E5/E6 fork 与会话树 · Q2 会话查询 · P2 层数据生命周期族（M4/Q4/Q6/Q8）等（见批次 3 候选占位与 P2 研究报告路线）
+- **下一批提示词**：
+
+```
+继续 aegent P1 批次 3 的实施。批次 2 已全部完成（10/10 卡，655 passed）。
+先与用户确认批次 3 范围（候选：H1–H5 子代理族独立成批 · B8 的
+apply_patch/lsp · E5/E6 fork 与会话树 · Q2 会话查询），并对批次 2 的词汇表
+两案（待澄清 #5 tool/progress 17→18、#6 reason 扩 compaction+title）追认
+——允许则把 l0-events.md §3.2/§8 与待澄清表转正（§3.2 正式计数 18 事件），
+不允许则按落地记录 6/7 回退面回修。展卡格式照 docs/plan-p1.md，锚点逐一
+核对 oss/SOURCES.lock；执行协议沿用 docs/plan-p0.md §0。上一批报告在
+docs/plan-p0-progress.md（批次 2 报告）。本批特有的注意：1) H 族子代理会
+放大会话树与事件流（E5/E6/Q2 大概率同批），展卡前先读
+20260926_P2研究_批次圈定建议.md 的依赖路线；2) 真实厂商复测欠账（并行/
+进度/缓存三面 + token 省 30% 口径 + 多端点容错）在人工确认清单，有网关时
+随批补测。不要问要不要继续。
+```
 
 ---
 
