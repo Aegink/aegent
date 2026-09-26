@@ -108,6 +108,54 @@ export class HttpMock {
     return this.recorded;
   }
 
+  // ---------------------------------------------------------------------------
+  // 计数先行访问器（O13/O20，T-P1-31）——先断言模型调用次数再取值，结构
+  // 错了给可读失败（codex·responses.rs ResponseMock：single_request 数量非 1
+  // 即 panic "expected 1 request, got N"；compact.rs:2361 带说明计数断言）。
+  // why 必填——不带说明的计数断言写不出来（O20"带说明"的字面兑现）。
+  // ---------------------------------------------------------------------------
+
+  private expectCount(n: number, why: string): void {
+    const actual = this.recorded.length;
+    if (actual !== n) {
+      throw new Error(
+        `「${why}」——期待 ${n} 次模型调用，实际 ${actual} 次（expected ${n}, got ${actual}）。` +
+          "结构错了先修调用次数，再看请求内容——计数先行给可读失败",
+      );
+    }
+  }
+
+  /** 断言恰有 n 次调用（why 必填），通过后返回全部记录。 */
+  expectCalls(n: number, why: string): readonly RecordedRequest[] {
+    this.expectCount(n, why);
+    return this.recorded;
+  }
+
+  /** 断言恰有 1 次调用并取之（codex single_request 同构）。 */
+  singleRequest(why: string): RecordedRequest {
+    this.expectCount(1, why);
+    return this.recorded[0]!;
+  }
+
+  /** 取第 i 个请求；i 越界给可读失败（总量断言请用 expectCalls——本访问器只管索引）。 */
+  requestAt(i: number, why: string): RecordedRequest {
+    const actual = this.recorded.length;
+    if (i >= actual || i < 0) {
+      throw new Error(
+        `「${why}」——请求序号 ${i} 越界：实际 ${actual} 条记录（expected index ${i}, got ${actual} records）`,
+      );
+    }
+    return this.recorded[i]!;
+  }
+
+  /** 断言至少 1 次调用并取最后一个请求（多调用场景的尾断言）。 */
+  lastRequest(why: string): RecordedRequest {
+    if (this.recorded.length === 0) {
+      throw new Error(`「${why}」——期待至少 1 次模型调用，实际 0 次：没有记录可供断言`);
+    }
+    return this.recorded[this.recorded.length - 1]!;
+  }
+
   url(path = "/v1/chat/completions"): string {
     return `${this.baseUrl}${path}`;
   }

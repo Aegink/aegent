@@ -143,10 +143,11 @@ describe("openai-compat 流式适配 —— J1/J2", () => {
       ]),
     );
 
-    const recorded = mock.requests()[0];
-    expect(recorded?.path).toBe("/v1/chat/completions");
-    expect(recorded?.headers["authorization"]).toBe("Bearer sk-test");
-    const body = JSON.parse(recorded?.body ?? "{}") as {
+    // O13/O20 示范迁移（T-P1-31）：裸下标访问改带说明的计数先行访问器
+    const recorded = mock.requestAt(0, "请求形状测试恰发一次模型调用");
+    expect(recorded.path).toBe("/v1/chat/completions");
+    expect(recorded.headers["authorization"]).toBe("Bearer sk-test");
+    const body = JSON.parse(recorded.body) as {
       [key: string]: unknown;
       messages: { [key: string]: unknown }[];
     };

@@ -32,6 +32,20 @@ export class ScriptedProvider implements ModelProvider {
     if (!script) throw new Error(`无剧本（第 ${this.callCount} 次调用）`);
     for (const chunk of script) yield chunk;
   }
+
+  /**
+   * 计数先行访问器（O13/O20，T-P1-31）：断言恰有 i+1 次模型调用并取第 i 个
+   * 请求——数量不符给可读失败（含说明与 expected/got），why 必填。
+   */
+  requestAt(i: number, why: string): ChatRequest {
+    const actual = this.requests.length;
+    if (actual < i + 1) {
+      throw new Error(
+        `「${why}」——期待至少 ${i + 1} 次模型调用，实际 ${actual} 次（expected ${i + 1}, got ${actual}）`,
+      );
+    }
+    return this.requests[i]!;
+  }
 }
 
 export interface Harness {
