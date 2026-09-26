@@ -746,7 +746,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **偏离 / 建议**：（留白）
 - **完成记录**：2026-09-27。产出：①`maxStepsPerTurn`（AgentLoopDeps，缺省 0 = 不限）：runTurn 循环头护栏——超限 → logger.warn（turn/maxSteps 结构化）+ `turn/end{blocked}` 收轮（显式护栏终止非 completed；第 maxSteps+1 个 step 不启动）；②`abortTimeoutMs`（缺省未配置 = 无看门狗零行为变化；kimi machine.ts:428 同构缺省 10s 为装配层决策值）：cancel() 武装看门狗（unref 不阻进程退出）→ 超时 → logger.warn + `forcedClosed` 置位 + forceCloseTurn（failTurn 骨架最小版：补闭合未闭合 step + turn/end{aborted, cause} 落盘 + turnEnd flush + runState 归位 + activeTurn 清位；不经 turnEnd 链——压缩层对在途工具挂死的轮无合法消费面）；③**迟到结果闸门**：sequential/parallel 两处 tool/result 落盘前检查 forcedClosed——结算回来的结果不再落盘（warn"看门狗强制收轮后迟到的工具结果被丢弃"），自然收尾路径的 closeTurn 撞 forcedClosed 直接 return（防 double terminal）；④正常收轮先到 → closeTurn disarmAbortWatchdog（迟到的看门狗不触发）；新 turn 开始复位 forcedClosed + 拆残留看门狗。验收：`npx vitest run src/kernel/loop.test.ts src/kernel/loop.cancel.test.ts` → **33 passed**（25 + 8，+4 新）：①maxStepsPerTurn=2：恰 2 个 step、turn/end{blocked}、warn 带 turn/maxSteps；②缺省 0 不限（恒 continue 3 步照常）；③abortTimeoutMs=50 + 挂死工具：看门狗强制收轮（turn/end{aborted, cause=user}、single-terminal、零 tool/result、看门狗 warn）→ 放行在途工具 → 自然路径撞闸无 double terminal + 迟到丢弃 warn；④正常结算路径：10ms 结算的工具 → aborted 正常收轮、tool/result 完整落盘、零看门狗 warn。全量 `npx vitest run` **817 passed / 1 skipped**（813 → 净增 4），`npx tsc --noEmit` 干净。**B14×A14 边界记档**：B14 预算轴数工具调用且跨 turn 持续（默认 256 次/120s）、A14 maxStepsPerTurn 数 step 且每 turn 重置、abortTimeoutMs 是取消后收尾看门狗——三轴各管一段不互相替代。**LIMITATIONS 记档**：看门狗强制的只是事件流终态与状态归位，不弃在途 promise（协作式纪律，runTurn 调用栈仍等工具自然结算）——挂死的外部进程需 OS 级干预。
 
-#### T-P1-51 · A5 · 重试事件留记录 `[ ]`
+#### T-P1-51 · A5 · 重试事件留记录 `[x]`
 - **依据需求**：A5（P1："重试策略——模拟 429/5xx，断言按策略重试且事件留记录"）——重试策略本体 T-2-03（J26）已落（同款退避/Retry-After/流产出后不重试），差异点 = "事件留记录"
 - **上游首选参考**：[kimi·retry.ts:68-74](../oss/kimi-code/packages/agent-core-v2/src/human/llm/requester/retry.ts#L68)（retryErrorFields：errorName/errorMessage/statusCode 三字段供事件载荷——"留记录"的载荷形状）+ [:59-66](../oss/kimi-code/packages/agent-core-v2/src/human/llm/requester/retry.ts#L59)（shouldRetry 决策面）
 - **取什么 / 别抄什么**：取"每次重试尝试带结构化错误字段可检索"；落 logger.warn（D14 告警先例——provider 内部重试不进模型历史=不落流自洽，卡序头词汇表预判②）；不抄 LlmErrorMessage 类层级（我方 ProviderHttpError 在位）
@@ -756,6 +756,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **依赖**：无
 - **风险 / 未知**：无
 - **偏离 / 建议**：（留白）
+- **完成记录**：2026-09-27。产出：①`RetryOptions.onRetry?` 钩子（`RetryObservation {attempt, delayMs, error: RetryAttemptFields}`——kimi retry.ts:68-74 retryErrorFields 同构三字段 errorName/errorMessage/statusCode）；delayMs 在钩子调用前已定（Retry-After 优先于默认退避的裁决结果如实留痕）；②agent-child openai 装配缺省接线 `onRetry → retryWarnLogger.warn("模型请求重试", {attempt, delayMs, ...error})`（模块级单例 logger 避免句柄膨胀；echo 模式无重试面零行为变化）；③词汇表预判②兑现：**零事件扩展**——provider 内部重试不进模型历史 = 不落流自洽，留记录面 = 结构化日志。验收：`npx vitest run src/models/retry.test.ts` → **12 passed**（+2 新）：①429×2 后成功：onRetry 恰 2 次、attempt 0→1 递增、delayMs [500,1000] 与默认退避一致（rand=0 钉死）、error 字段带 errorName/errorMessage/statusCode=429；②400 一次即抛零 onRetry。全量 `npx vitest run` **819 passed / 1 skipped**（817 → 净增 2），`npx tsc --noEmit` 干净。
 
 #### T-P1-52 · A8 · 取消不丢 prompt（退回输入框） `[ ]`
 - **依据需求**：A8（P1："取消可把未发出的 prompt 退回输入框而非丢失"）——展卡核对结论见卡序头③：队列保留结构成立，补可见面

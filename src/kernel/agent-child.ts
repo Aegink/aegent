@@ -22,6 +22,10 @@ import { runAgentChildStdio, type AgentChildOptions } from "./agent-process.js";
 import { parseProviderConfig } from "../models/config.js";
 import { createOpenAiCompatProvider } from "../models/openai-compat.js";
 import { withRetry } from "../models/retry.js";
+import { createLogger } from "./logger.js";
+
+/** A5/T-P1-51 重试留痕 logger（openai 装配专用，模块级单例避免句柄膨胀）。 */
+const retryWarnLogger = createLogger();
 
 interface ChildCliArgs {
   provider?: string;
@@ -83,7 +87,17 @@ async function main(): Promise<void> {
         model: cli.model,
       }),
     });
-    provider = withRetry(createOpenAiCompatProvider(config));
+    provider = withRetry(createOpenAiCompatProvider(config), {
+      // A5/T-P1-51：重试尝试留痕（结构化 warn——attempt/delayMs/错误字段，
+      // kimi retryErrorFields 同构；"事件留记录"落日志不落流——provider
+      // 内部重试不进模型历史自洽，卡序头词汇表预判②）。echo 模式无重试面。
+      onRetry: (o) =>
+        retryWarnLogger.warn("模型请求重试", {
+          attempt: o.attempt,
+          delayMs: o.delayMs,
+          ...o.error,
+        }),
+    });
     identity = { provider: "openai", modelId: cli.model ?? "gpt-4o-mini" };
   }
 

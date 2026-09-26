@@ -14,6 +14,27 @@
 
 import { ProviderHttpError, type ModelProvider } from "./provider.js";
 
+/**
+ * A5/T-P1-51 重试尝试留痕载荷（kimi·retry.ts:68-74 retryErrorFields 同构：
+ * errorName/errorMessage/statusCode 供事件/日志消费）——provider 内部重试
+ * 不进模型历史 = 不落流自洽（assistant/attempt 只承载"模型消息级失败"），
+ * "事件留记录"落 logger.warn 结构化字段。
+ */
+export interface RetryAttemptFields {
+  errorName: string;
+  errorMessage: string;
+  statusCode?: number;
+}
+
+export interface RetryObservation {
+  /** 第几次尝试失败后重试（0-based：0 = 首次请求失败）。 */
+  attempt: number;
+  /** 本次重试前的等待毫秒（Retry-After 优先，否则默认退避）。 */
+  delayMs: number;
+  /** 失败错误的结构化字段（kimi retryErrorFields 同构）。 */
+  error: RetryAttemptFields;
+}
+
 /** kimi·retry.ts 同款枚举：显式清单之外的 status 一律不重试。 */
 export const RETRYABLE_STATUS_CODES: readonly number[] = [
   408, 409, 429, 500, 502, 503, 504, 529,
@@ -32,6 +53,11 @@ export interface RetryOptions {
   sleep?: (ms: number) => Promise<void>;
   /** jitter 随机源可注入（返回 0..1；测试钉死 0/1 取区间两端）。 */
   rand?: () => number;
+  /**
+   * A5/T-P1-51：每次重试尝试的留痕钩子——attempt/delayMs/错误结构化字段。
+   * 装配缺省接线 logger.warn（结构化字段可检索）；不接 = 零行为变化。
+   */
+  onRetry?: (observation: RetryObservation) => void;
 }
 
 export function isRetryableStatus(status: number): boolean {
@@ -77,6 +103,7 @@ export function withRetry(provider: ModelProvider, opts?: RetryOptions): ModelPr
   const maxAttempts = Math.max(opts?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS, 1);
   const sleep = opts?.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const rand = opts?.rand ?? Math.random;
+  const onRetry = opts?.onRetry;
   return {
     async *streamChat(req) {
       for (let attempt = 0; ; attempt++) {
@@ -89,10 +116,33 @@ export function withRetry(provider: ModelProvider, opts?: RetryOptions): ModelPr
           return;
         } catch (e) {
           if (produced || !isRetryable(e) || attempt + 1 >= maxAttempts) throw e;
-          await sleep(pickDelayMs(e, attempt, rand));
+          const delayMs = pickDelayMs(e, attempt, rand);
+          if (onRetry) {
+            onRetry({
+              attempt,
+              delayMs,
+              error: retryErrorFields(e),
+            });
+          }
+          await sleep(delayMs);
         }
       }
     },
+  };
+}
+
+/** kimi·retry.ts:68-74 retryErrorFields 同构：错误的结构化字段（供留痕）。 */
+function retryErrorFields(e: unknown): RetryAttemptFields {
+  if (e instanceof ProviderHttpError) {
+    return {
+      errorName: "ProviderHttpError",
+      errorMessage: e.message,
+      statusCode: e.status,
+    };
+  }
+  return {
+    errorName: e instanceof Error ? e.name : typeof e,
+    errorMessage: e instanceof Error ? e.message : String(e),
   };
 }
 

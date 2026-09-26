@@ -10,6 +10,7 @@ import {
   isRetryableStatus,
   parseRetryAfterMs,
   withRetry,
+  type RetryObservation,
 } from "./retry.js";
 import { modelIdentity } from "./identity.js";
 import { HttpMock } from "../test-support/http-mock.js";
@@ -110,6 +111,52 @@ describe("withRetry —— 显式分类重试（真实 http-mock + openai-compat
     expect(mock.calls).toBe(3);
     expect(waits).toEqual([500, 1000]);
     expect(chunks.map((c) => c.type)).toEqual(["text-delta", "done"]);
+  });
+
+  it("A5/T-P1-51 重试事件留记录：429×2 后成功 → onRetry 恰 2 次、attempt 递增、delayMs 与退避一致、错误字段带 status", async () => {
+    mock.mountSequence([
+      { status: 429, body: JSON.stringify({ error: { message: "rate #1" } }) },
+      { status: 429, body: JSON.stringify({ error: { message: "rate #2" } }) },
+      { events: [wireChunk({ content: "ok" })] },
+    ]);
+    const { sleep } = recordingSleep();
+    const observations: RetryObservation[] = [];
+    const provider = withRetry(makeInnerProvider(), {
+      sleep,
+      rand: () => 0,
+      onRetry: (o) => observations.push(o),
+    });
+
+    await collect(provider, req);
+
+    // 恰 2 次留痕、attempt 0→1 递增、delayMs 与默认退避一致（rand=0 → 500/1000）
+    expect(observations).toHaveLength(2);
+    expect(observations.map((o) => o.attempt)).toEqual([0, 1]);
+    expect(observations.map((o) => o.delayMs)).toEqual([500, 1000]);
+    // 错误结构化字段（kimi retryErrorFields 同构）：名字/消息/statusCode
+    expect(observations[0]!.error).toMatchObject({
+      errorName: "ProviderHttpError",
+      errorMessage: "rate #1",
+      statusCode: 429,
+    });
+    expect(observations[1]!.error.statusCode).toBe(429);
+  });
+
+  it("A5/T-P1-51 不重试路径零留痕：400 一次即抛、onRetry 未被调用", async () => {
+    mock.mountSequence([
+      { status: 400, body: JSON.stringify({ error: { message: "bad request" } }) },
+    ]);
+    const { sleep } = recordingSleep();
+    let retried = 0;
+    const provider = withRetry(makeInnerProvider(), {
+      sleep,
+      onRetry: () => {
+        retried += 1;
+      },
+    });
+
+    await expect(collect(provider, req)).rejects.toThrow("bad request");
+    expect(retried).toBe(0);
   });
 
   it("400 不重试：一次调用即抛，零等待", async () => {
