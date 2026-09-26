@@ -427,7 +427,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 2. **词汇表影响预判：低（零扩展）**——本批全是测试/诊断基建，不新增事件；校验/诊断失败走 logger 与测试断言（D3 弱承诺先例）。
 3. **不做什么**（本批次）：不做 O28 测试政策文档（P2 段 15e）；不做 O27 长行截断 / O29 显式忽略臂 / O30 跨组件因果断言（P2）；不做 kimi migration-legacy 的产品级迁移功能（Q1 迁移链在批次 10，T-P1-36 只落断言基建与首个真实消费面）；不做 dsh test-support 的包组拆分（我方单包目录足够）；O15/O16 不做 dsh 的 Cordis 装配与 Messages 兼容 wire（我方 ModelProvider 接口 + openai-compat 已定形，测试基建挂既有接口）。
 
-#### T-P1-30 · O12 · 不变量检查服务（包自有不变量 + 统一注册面） `[ ]`
+#### T-P1-30 · O12 · 不变量检查服务（包自有不变量 + 统一注册面） `[x]`
 - **依据需求**：O12（P1："包自己拥有不变量，可自动断言防回归"）
 - **上游首选参考**：[dsh·invariant.ts](../oss/deepseek-harness/packages/schedule/schedule/src/invariant.ts)（`validate(events, fail)` 包自有不变量 + `inject: ['invariants']` 服务化安装 + append 前/replay 时双跑）
 - **取什么 / 别抄什么**：取"不变量属于拥有它的域、由统一服务安装执行"的结构与 `validate(events, fail)` 签名；不抄 Cordis ctx 注入架构（我方装配直接传参）；event-asserts 的三个断言器（O7 产物）是第一批"包自有不变量"，本卡把"逐个手工调"升级为"注册后一键全跑"
@@ -437,6 +437,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **依赖**：无（批次 4 首卡）
 - **风险 / 未知**：运行时每次 append 跑全量不变量的开销——本卡不做 append 前 hook（dsh 的 pre-append 是插件可选拉起），只做显式 `check()` 调用点（restore 后 / 测试面），开销面记卡内定形
 - **偏离 / 建议**：①失败收集器 `fail(message)` 签名照 dsh `InvariantFailure`，收集后统一报（不首错即抛）——测试要的是全部失败清单；②"包自有"在我方单包结构落为"不变量定义在域内文件、注册在服务"（event-asserts 留在 test-support 供测试直调，注册表内建复用同一实现——不搬文件不复制代码）
+- **完成记录**：2026-09-26。产出 `src/kernel/invariants.ts`（`Invariant{ name, validate(events, fail) }` dsh 同构 + `InvariantRegistry`（register 重复名拒绝 / check 逐不变量独立 try-catch 收集——fail 收集与 throw 风格断言器（adaptThrowing 适配）与编程错误三路都进失败清单，不吞错不炸他者）/ `createDefaultRegistry()` 内建四件：turn-scoped、paired-steps、paired-tool-calls、single-terminal-per-turn（新增按轮形态 `expectSingleTerminalPerTurn`——多轮流不误报））。**三断言器实现从 event-asserts 迁入 kernel 域**（不变量属于拥有流的域，dsh schedule 包同构），event-asserts re-export 保持既有 import 面（8 用例零改动全绿）。装配 `invariants?: boolean` 选项：显式启用时装配期对 `store.load(sessionId)` 跑一轮，失败落 `logger.warn("不变量检查失败[…]")`——诊断面非前置条件；缺省 false 零行为变化。验收：`npx vitest run src/kernel/invariants.test.ts src/test-support/event-asserts.test.ts` → **15 passed**（invariants 7 + event-asserts 8 零改动）：①坏流（孤儿 tool/result + 悬挂 turn）逐不变量收集、作用域/配平/终态三违例各自报且互不吞；②好流四件全 ok + re-export 面人话抛错；③炸裂校验器异常收集、他者照常；④自定义双 fail 收集完整清单；⑤重复注册名拒绝；⑥多轮各自终态恰一、双终态被抓；⑦装配缺省零行为变化（logger 无调用）+ 启用好流零告警。全量 `npx vitest run` **710 passed / 1 skipped**（701 → 净增 9），`npx tsc --noEmit` 干净。**偏离**：①卡面"event-asserts 留在 test-support"改为**实现迁入 kernel/invariants.ts + event-asserts re-export**——kernel→test-support 的反向依赖不健康（test-support 本就 import kernel），且"包自有不变量"语义上就该住 kernel；②E11 git checkpoint 在 turn/start 前落流（turn=下一轮号）核对无 `single-terminal-per-turn` 误报（seq 早于 terminal）；③运行时 check 只在装配期跑一轮（卡面既定，不做 append hook）。
 
 #### T-P1-31 · O13+O20 · mock 请求记录访问器（计数先行 + 带说明可读失败） `[ ]`
 - **依据需求**：O13（P1："mock 记录全部请求 + 断言请求数量的访问器"）· O20（P1：先断言模型调用次数，带说明——展卡核对结论：部分覆盖，访问器面实卡）

@@ -100,6 +100,7 @@ import {
   type TurnModel,
 } from "./model-switch.js";
 import { createPlanModeService, savePlanArtifact, type PlanModeService } from "./plan-mode.js";
+import { createDefaultRegistry } from "./invariants.js";
 import {
   createGoalService,
   goalFromEvents,
@@ -285,6 +286,12 @@ export interface ChildAssemblyOptions {
     invocation: CompactionInvocation,
   ) => PreCompactOutcome | Promise<PreCompactOutcome>;
   compactionPostHook?: (settled: CompactionSettled) => void | Promise<void>;
+  /**
+   * O12 不变量检查（T-P1-30）：显式启用时装配期对既有流跑一轮内建不变量
+   * （createDefaultRegistry），失败落 logger.warn——诊断面不是运行时前置
+   * 条件，坏流照常按 Q5 对账恢复；缺省 false = 零行为变化。
+   */
+  invariants?: boolean;
   logger?: Logger;
   /** 审批宣告的协议转发口（asked/settled 由 agent-process 转发，timed-out 经事件流可见）。 */
   onApprovalAnnouncement?: (announcement: ApprovalAnnouncement) => void;
@@ -683,6 +690,16 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
   if (goalService !== undefined && restoredGoal === null) {
     // 新会话：初始 goal 落流（G3 验收④——goal 落事件流才有恢复面）
     goalService.set(options.goal!.text, options.goal!.deadline);
+  }
+
+  // —— O12 不变量检查（T-P1-30）：显式启用时对既有流跑一轮内建不变量，
+  // 失败落 warn 诊断。诊断面不是运行时前置条件——坏流照常按 Q5 对账恢复。
+  if (options.invariants) {
+    for (const report of createDefaultRegistry().check(store.load(sessionId))) {
+      for (const failure of report.ok ? [] : report.failures) {
+        logger?.warn(`不变量检查失败[${report.name}]：${failure}`);
+      }
+    }
   }
 
   const toolGateLayer = createToolGateLayer({
