@@ -1,6 +1,6 @@
 # P1 实施计划 · 批次 1
 
-**状态**：v1.2.1 · 批次 1+2 收官（13/13 卡 + 10/10 卡，2026-09-26；词汇表 18 事件已追认转正——待澄清 #5/#6 案关）· 批次 3 候选占位（H1–H5 子代理族独立成批 · B8 的 apply_patch/lsp · E5/E6 fork 与会话树 · Q2 会话查询 · P2 数据生命周期族）
+**状态**：v1.3.0 · 批次 1+2 收官（13/13 卡 + 10/10 卡，2026-09-26；词汇表 18 事件已追认转正——待澄清 #5/#6 案关）· 批次 3 已展卡（6 卡 T-P1-24 ~ 29，沙箱 Windows 深化，2026-09-26）
 **执行协议**：沿用 [`plan-p0.md`](plan-p0.md) §0（取卡 / 做卡 / 验收 / 打勾 / 提交 / 自动继续 / 四种停下情况），本文件不复制。执行进度追加在 [`plan-p0-progress.md`](plan-p0-progress.md)（台账 / 待澄清 / 人工确认清单共用一个文件）。
 **需求来源**：[`requirements.md`](requirements.md) §4 的 P1 项（共 158 条）。P1 不切阶段（§1 尾注），按**批次**组织：本文件当前只含批次 1，后续批次轮到时再展卡追加。
 **批次 1 范围**（用户圈定于 2026-09-25，四组全选，共 26 条）：
@@ -301,6 +301,83 @@
 - 10 张卡全部打勾，每勾附「命令 + 结果摘要」；`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变（需求 ID 无新增）、`check-doc-links.sh` 0 失效、`license-audit.sh` 通过。
 - 词汇表扩展（本批预判 17→18 的 tool/progress）走既有管线（assertNever + l0-events §8 落地记录含回退面 + 待澄清立案）。
 - 缓存族（T-P1-19）的锚逐字节不变断言就位；真实厂商端到端复测（同批次 1 终验口径）：并行/进度/缓存三面的行为证据落库。
+
+## 批次 3 卡序（6 张，2026-09-26 展卡，按依赖排序；8 条需求 ID：D5/D6/D7/D10/D11/D13/D14/D16）
+
+**锚点纪律**：8 条锚点已逐一打开核对（2026-09-26，零勘误，证据见各卡「证据强度」）：dsh `packages/sandbox/`（契约 + 契约包内 SANDBOX_UNAVAILABLE 语义）、`sandbox-windows-acl/`（grant 三件套 + `workspace-sid.ts` 的 `S-1-4-x-y` sha256 派生）、`packages/shell/`（pwsh-local/bash-local 等四执行器 + exactly-one-mounted）、codex `windows-sandbox-rs/src/{setup.rs,token.rs,acl.rs,wfp.rs}`（setup.rs:740 `SandboxNetworkIdentity{Offline,Online}` 命中）、codex `cli/src/doctor/{sandbox.rs,network.rs}`（DoctorCheck 报告面）、dsh `subprocess-native-containment.md`（Windows runner/Job 节 + fallback 一次性警告）。**D14 疑似顺带覆盖核对结论：不等价，需实卡**——T-6-06/bash-retry-guard 是 D15 重试幂等边界（started 标记 + assertRetryAllowed），D14 是"强管辖不可用时 provider 生命周期一次性显式告警"，两者相邻（同文档锚）但机制不同，且我方现状无任何管辖降级告警面。
+
+**本批特有约束**：
+1. **T9**：D6/D13/D16 全部经 Rust helper 子进程（`src/sandbox/win32-helper/`），跨 TS↔Rust 只传可序列化值（argv 动作名 + stdin/stdout JSON，D8 DPAPI 的 base64 argv 先例同族）；TS 侧仅调用，Win32/ACL/SID/Job/WFP 全在 helper 侧。
+2. **词汇表影响预判：低**——D14 告警走 logger.warn（D3 弱承诺先例），不新增事件；本批预计零词汇表扩展。
+3. **不做什么**（本批次）：不做 escalation 一次性放行（B15，批次 7）；不做 pwsh 持久会话（dsh tool-*-persistent，P1 无需求）；不做 AppContainer 路线（dsh 决策文档已弃，codex 同）；不做 SSH 远程后端（D12，P2）；不做 Docker/容器级隔离（dsh "same-world only" 边界同理）。
+
+#### T-P1-24 · D5 · 沙箱可插后端（接口 + local 后端 + fail-closed 语义） `[ ]`
+- **依据需求**：D5（P1："local 后端先跑通，接口不写死"）
+- **上游首选参考**：[dsh·packages/sandbox/sandbox/README.md](../oss/deepseek-harness/packages/sandbox/sandbox/README.md)（契约三件：mode = `read-only / workspace-write / danger-full-access`；**"If the requested mode cannot be enforced, the call fails with `SANDBOX_UNAVAILABLE` instead of running unconfined"** fail-closed；backend 可插——sandbox-local 挂 ctx.sandbox 后面，消费方只见模式与 enforcement completeness 不见平台 runner）
+- **取什么 / 别抄什么**：取"模式词汇 + 不可强制即报错（绝不静默降级为不受限运行）+ 后端接口与平台实现分离"三纪律；不抄 Cordis ctx 装配与 per-call policy 决策文档（我方 P1 无 escalation——B15 预留注释）
+- **证据强度**：`读了代码`（sandbox 契约 README 全文；我方 src/sandbox/ 现有 PathGuard/NetworkGuard 面）
+- **要产出**：`src/sandbox/backend.ts`——`SandboxMode` 三值 + `SandboxSpawnRequest{command, mode, cwd?, timeoutMs?}` + `SandboxSpawnResult`（与 ExecResult 同形）+ `SandboxUnavailableError`（code=SANDBOX_UNAVAILABLE）+ `SandboxBackend` 接口 + `createLocalBackend({env})`（danger-full-access 直通 NodeExecutionEnv；read-only/workspace-write 请求 → SANDBOX_UNAVAILABLE——local 后端无 OS 强制面，后端能力按 mode 显式判定）+ 单测
+- **验收**：`npx vitest run src/sandbox/backend.test.ts`——①danger-full-access 真命令跑通（exitCode/stdout 如实）；②受限 mode 请求报 SANDBOX_UNAVAILABLE 且**零执行**（env 调用计数 0——"instead of running unconfined" 原文语义）；③接口不写死：假后端（测试内实现 SandboxBackend）注入消费方多态可用；④与 PathGuard 分界注释：PathGuard=工具层文件 I/O、SandboxBackend=子进程执行面，互补不重叠
+- **依赖**：无（批次 3 首卡，后续沙箱卡全部挂本接口）
+- **风险 / 未知**：SandboxSpawnResult 是否需要 meta（管辖形态/exitCode）——先与 ExecResult 同形，D13 卡的管辖结算证据再扩
+
+#### T-P1-25 · D6+D10 · Windows 受限令牌后端（Rust helper 子进程） `[ ]`
+- **依据需求**：D6（P1："需 Win32 ACL + 能力 SID；TS 侧仅调用"）· D10（P1："与 D6 二选一或互补"——**本卡裁决：取 D6 Rust helper 路线，D10 的 grant 语义并入本卡验收**；dsh 的 Koffi TS 进程内 FFI 路线不取——T9 纪律与依赖最小面）
+- **上游首选参考**：[codex·token.rs](../oss/codex/codex-rs/windows-sandbox-rs/src/token.rs)（CreateRestrictedToken / SetEntriesInAclW / TokenDefaultDacl——受限令牌 + 显式 DACL 的 Win32 面）；[dsh·workspace-sid.ts](../oss/deepseek-harness/packages/sandbox/sandbox-windows-acl/src/workspace-sid.ts)（**确定性能力 SID 派生**：`S-1-4-<30bit>-<30bit>` = sha256(canonical workspace path)，temp 用第三子权威 `-1` 域分离——"sharing the workspace identity with temp would let sibling sessions write one another's temp trees"）；[dsh·sandbox-windows-acl/README.md](../oss/deepseek-harness/packages/sandbox/sandbox-windows-acl/README.md)（grant 三件套：capability-SID allow ACE + 环境父目录 delete 权 deny + Low integrity label；**"requires an explicit private temp directory, or `tempDir: null`"环境 temp root 绝不隐式 grant**；"any failed Win32 operation prevents an unrestricted spawn"）
+- **取什么 / 别抄什么**：取 dsh 的 SID 派生算法与 grant 形状（MIT 语义自研实现——Rust 侧重写，不摘 TS 代码）；取 codex 的"helper 进程做全部 Win32、TS 侧仅调用"结构；不抄 codex 的 provisioning service/AppContainer 面（那是 D16 域）
+- **证据强度**：`读了代码`（workspace-sid.ts 全文含派生公式；token.rs import 面 40 行 Win32 API 清单；acl.rs 函数签名）；`读了文档`（sandbox-windows-acl README grant 语义）
+- **要产出**：①Rust crate `src/sandbox/win32-helper/`（动作协议：argv `--action run` + stdin JSON `{mode, workspace, tempDir, command, cwd, timeoutMs}` → stdout JSON 结果；`run` 动作：capability SID 派生入参化（TS 算好 SDDL 传入）→ 建 grant ACL → CreateRestrictedToken（含 capability SID）→ spawn 目标；mode=workspace-write 授 workspace+temp 双 grant、read-only 零 grant；**任何 Win32 失败 → 错误退出绝不 spawn 目标**）；②TS 侧 `src/sandbox/win32-backend.ts`（`Win32SandboxBackend implements SandboxBackend`：spawn helper exe、协议编解码、helper 不在场/探针失败 → SANDBOX_UNAVAILABLE）+ `src/sandbox/workspace-sid.ts`（sha256 派生，TS 侧可测）+ 构建脚本 `build:sandbox-helper`（cargo build --release）+ 测试（TS 单测 + cargo test + 真机集成）
+- **验收**：`npx vitest run src/sandbox/backend.test.ts src/sandbox/workspace-sid.test.ts`（helper 在场时含 `src/sandbox/win32-backend.test.ts`）——①workspaceWriteSid 确定性（同路径同 SID）+ tempWriteSid 域分离（第三子权威=1）+ 大小写/别名归一语义；②helper 缺席 → SANDBOX_UNAVAILABLE（不降级不受限运行）；③真机：workspace-write 下写 workspace 内成功、写 workspace 外被拒（ACL 面证据）、read-only 下写 workspace 内也被拒；④spawn 失败路径：helper 以非零退出报结构化错误，TS 侧类型化透传
+- **依赖**：T-P1-24（SandboxBackend 接口）
+- **风险 / 未知**：①Low integrity label 与 deny delete ACE 的 SDDL 构造真机调试量大——最小面先 grant-ACE+受限令牌两件（写隔离已是验收主体），integrity label 失败则记 LIMITATIONS 并进人工确认；②集成测试依赖 cargo 构建——测试文件 skipIf(helper 缺失) 显式报告，构建脚本保证在场；③受权限限制的用例（同 T-6-01 符号链接先例）自动跳过并列人工确认清单
+
+#### T-P1-26 · D13+D14 · kill-on-close Job 管辖 + 不可靠兜底显式告警 `[ ]`
+- **依据需求**：D13（P1："子进程 setsid/重挂父进程/活过父进程时仍被管住；**超时子进程先回收再释放许可**"）· D14（P1："无法建立强管辖时给一次性明确警告，**不假装已管住**"——疑似顺带覆盖核对结论：不等价 D15，实卡）
+- **上游首选参考**：[dsh·subprocess-native-containment.md](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-08-28-subprocess-native-containment.md)（Windows runner and Job 节：suspended 创建 → 入 Job → resume；"creates the target suspended, assigns it to a kill-on-close Job that disallows active breakaway"；"exits successfully only after … the Job has reported zero active processes"——**0 活动进程才证明范围空**；"Unsupported hosts use the existing weaker fallback with **one provider-lifetime warning**"——D14 原文）
+- **取什么 / 别抄什么**：取 Job kill-on-close + disallow breakaway + "0 活动进程才结算"三纪律与"一次性警告"的 provider 生命周期语义；不抄 dsh 的私有 IPC runner 协议（我方 helper 单请求单结果已够，超时回收在 helper 内完成）
+- **证据强度**：`读了文档`（containment 文档 Windows 节 + Fallback 节原文）；`读了代码`（我方 bash-retry-guard.ts 全文核对 D14 无既有覆盖）
+- **要产出**：①helper `run` 动作扩 Job 管辖（CREATE_SUSPENDED → AssignProcessToJobObject（unnamed kill-on-close，disallow breakaway）→ ResumeThread；target 退出后**等 Job 活动数归 0 才报结算**；timeoutMs 触发 → TerminateJobObject 回收全树 → 等 Job 空 → 报 timeout 结算——"先回收再释放许可"）；②TS 侧 `src/sandbox/containment.ts`——`assertContainmentWarning`（D14：强管辖不可用而降级 local/弱兜底时，provider 生命周期**一次性** logger.warn，文案含"子进程管辖降级"+不承诺管住逃逸后代；第二次起静默）+ 后端工厂接线
+- **验收**：`npx vitest run src/sandbox/containment.test.ts`（helper 在场时含真机用例）——①真机：命令内 `nohup`/后台派生活过 target 的后代 → helper 结算晚于 target 退出（Job 清空证据）且后代已死；②超时：长命令 + 短 timeoutMs → 结算报 timeout 且树内无残留（先回收再释放）；③D14：helper 缺席降级 → warn 恰一次（同 provider 第二次 spawn 静默）；④helper 在场零 warn（对照）
+- **依赖**：T-P1-25（helper crate 在位）
+- **风险 / 未知**：Job 活动数轮询间隔与结算延迟——helper 内 50ms 轮询起步（dsh 同量级）；bash 的 setsid 在 Git Bash 是进程组语义、Windows 对应逃逸是 breakaway——disallow breakaway 覆盖，POSIX 语义面记 LIMITATIONS
+
+#### T-P1-27 · D16 · 网络隔离（OS 身份 + WFP provision） `[ ]`
+- **依据需求**：D16（P1："网络隔离需 OS 身份 + WFP；Job Object 只管进程生命周期，**不够**"；Q17 已裁决：接受建 OS 账户但降 P1——即本批）· P0 弱承诺声明（src/sandbox/README.md 置顶）升级为可选强制面
+- **上游首选参考**：[codex·setup.rs:740](../oss/codex/codex-rs/windows-sandbox-rs/src/setup.rs#L740)（`SandboxNetworkIdentity{Offline, Online}` + `from_permissions`——offline 是与网络策略联动的**身份选择**，proxy_enforced 或 network disabled → Offline）；[codex·wfp.rs](../oss/codex/codex-rs/windows-sandbox-rs/src/wfp.rs)（FWPM_CONDITION_ALE_USER_ID + FWP_ACTION_BLOCK + FWPM_FILTER_FLAG_PERSISTENT——**按账户 SID 的 persistent block 过滤器**）
+- **取什么 / 别抄什么**：取"网络隔离 = 专用 OS 身份 + WFP 按 SID 拦截"的结构与 persistent filter 形状；不抄 codex 的 service/installation/interactive provision 全家桶（P1 最小面 = 单命令 elevated provision + run-offline）
+- **证据强度**：`读了代码`（setup.rs:740-761 SandboxNetworkIdentity 原文；wfp.rs import 面与 filter 条件清单）
+- **要产出**：①helper 扩 `provision` 动作（elevated 运行：创建专用本地账户（随机密码、拒绝交互登录）→ 取 SID → WFP provider/sublayer/filter 三件 persistent 安装（ALE_USER_ID == 账户 SID → BLOCK 出站）→ stdout JSON `{accountSid}`）+ `run-offline` 动作（LogonUser + CreateProcessAsUser 以该账户 spawn——其网络流量被 WFP 拦）；②TS 侧 `src/sandbox/offline-network.ts`（provision 状态探针 + run-offline 后端接线：NetworkPolicy deny 档 + sandbox 请求 offline 时走 run-offline；**未 provision → 类型化错误 NETWORK_SANDBOX_NOT_PROVISIONED，不静默降级**——Q17 纪律同款）+ provision 入口脚本（npm script，注明需管理员）+ 单测
+- **验收**：`npx vitest run src/sandbox/offline-network.test.ts`——①未 provision → NETWORK_SANDBOX_NOT_PROVISIONED（拒绝执行，零降级）；②provision 协议编解码/账户名生成/SDDL-SID 校验纯函数可测；③SandboxNetworkIdentity 联动语义：network policy disabled → offline 身份、enabled → online（对齐 codex `from_permissions`）；④真机 elevated provision + offline 进程联网被拒 → **人工确认清单**（管理员权限无法自动化）
+- **依赖**：T-P1-25（helper crate 与协议在位）
+- **风险 / 未知**：WFP 与账户创建均需管理员——自动化面收窄到协议与失败路径，实装验证进人工确认清单；WFP 规则是机器级 persistent 状态，provision 幂等（已存在则跳过）必须在 helper 内保证
+
+#### T-P1-28 · D11 · PowerShell 作为一等 shell（pwsh/bash × local/sandbox 四象限） `[ ]`
+- **依据需求**：D11（P1："Windows 下 `pwsh` 与 `bash` 都有 local/sandbox 两态"）
+- **上游首选参考**：[dsh·packages/shell/README.md](../oss/deepseek-harness/packages/shell/README.md)（四执行器包：bash-local/bash-sandbox/pwsh-local/pwsh-sandbox + "**Exactly one executor implementation is mounted per composition**"；pwsh-local = "fresh `pwsh -Command` processes on Windows"；模型面 tool-bash/tool-pwsh 平行两工具）
+- **取什么 / 别抄什么**：取"pwsh 与 bash 平行、各自有 local/sandbox 两态、模型面两个工具"的形状；不抄 shell-env/持久会话包（P1 无需求）；**bash 语义依赖面（本批特有注意）**：analyzeShellCommand/dangerous-commands 是 bash 方言分析器——pwsh 命令不过 bash 语义分析（假阴性风险：pwsh `rm` 是 Remove-Item 别名），卡内定形：pwsh 走保守字面危险 cmdlet 匹配 + 重定向目标仍过 PathGuard 虚拟操作 + 方言边界记 LIMITATIONS 双载体
+- **证据强度**：`读了代码`（shell 组 README + pwsh-local/bash-local 包结构；我方 env.ts 固定 bash 的 P0 决定 + bash.ts 的语义扫描接线面）
+- **要产出**：①`env.ts` 扩 shell 参数（`"bash" | "pwsh"`，缺省 bash = P0 逐字节零行为变化；pwsh 优先 `pwsh`（Core），缺失回落 `powershell.exe`，执行时探测定形并记卡面）；②`src/kernel/tools/builtin/pwsh.ts`（平行 bash 工具：started 标记/超时/出口硬拦/spill 复用同一工厂纪律，语义扫描换 pwsh 保守面）+ descriptions/pwsh.txt + BUILTIN_TOOL_NAMES +1；③sandbox 态：两 shell 的 sandbox 变体经 T-P1-24 后端执行（dsh "exactly one executor mounted" 同语义）+ 单测
+- **验收**：`npx vitest run src/kernel/tools/env.test.ts src/kernel/tools/builtin/`（扩）——①bash 缺省零行为变化（env/工具回归）；②pwsh local 态真命令（`$PSVersionTable`）跑通、退出码语义与 bash 一致；③pwsh sandbox 态经 SandboxBackend（真机 helper 用例）；④pwsh 工具过出口级硬拦（plan 模式硬关清单含 pwsh）+ bash 语义分析器不对 pwsh 命令运行（假阴性防线）；⑤LIMITATIONS：pwsh 方言边界写进 docs/shell-semantics-limitations.md（既有文档扩节）
+- **依赖**：T-P1-24（sandbox 态）；T-P1-10（WRITE_EXECUTE_TOOLS 硬关清单——pwsh 加入）
+- **风险 / 未知**：pwsh Core 是否在本机（决定 `-Command` 具体宿主）；powershell.exe 5.1 与 Core 的行为差异记 LIMITATIONS；pwsh 语义分析器完整版不做（YAGNI，保守面先行）
+
+#### T-P1-29 · D7 · 沙箱自检 doctor（可独立运行 + 网络策略报告） `[ ]`
+- **依据需求**：D7（P1："可独立运行，报告沙箱可用性与网络策略"）
+- **上游首选参考**：[codex·doctor/sandbox.rs](../oss/codex/codex-rs/cli/src/doctor/sandbox.rs)（`sandbox_check` → DoctorCheck：details 逐项报告 approval policy / filesystem sandbox / denied-read rules + remediation 文案（"run codex sandbox setup --elevated …"））；[codex·doctor/network.rs](../oss/codex/codex-rs/cli/src/doctor/network.rs)（network check：policy enabled/disabled + proxy 环境细节）
+- **取什么 / 别抄什么**：取"独立命令 + 逐项 check（status + details）+ remediation 提示"的形状；不抄 codex 的 macOS 代理探测/更新检查（doctor 目录内其他模块不属 D7 语义）
+- **证据强度**：`读了代码`（sandbox.rs 头部与 WINDOWS_SETUP_REMEDIATION 原文；network.rs check 结构；codex doctor/output.rs 的 CheckStatus 形状）
+- **要产出**：`src/sandbox/doctor.ts`（`runDoctorChecks()`：沙箱可用性行——helper 在场/可执行、受限令牌探针、Job 管辖探针；网络策略行——D3 NetworkPolicy 现值、D16 provision 状态（未 provision → status=warn + remediation "以管理员运行 npm run sandbox:provision"）、弱承诺降级告警（D14 联动））+ `src/cli/doctor-cli.ts`（独立入口，不起 agent 循环，npm script `doctor`）+ 单测
+- **验收**：`npx vitest run src/sandbox/doctor.test.ts`——①真机独立运行输出报告（沙箱三行 + 网络两行，每行 status: ok/warn/error + details）；②helper 缺席构造态 → 沙箱行 status=error 且 remediation 指向 build:sandbox-helper；③未 provision → 网络行 warn + 弱承诺文案在场（不假装已管住）；④纯函数 check 构造可注入（helper/probe 结果注入，测试不依赖真机特权面）
+- **依赖**：T-P1-24/25/26/27（探针消费面）
+- **风险 / 未知**：探针与报告的运行时开销（Job/令牌探针要真 spawn）——doctor 命令内可接受，测试用注入面绕开
+
+## 批次 3 完成定义
+
+- 6 张卡全部打勾，每勾附「命令 + 结果摘要」；`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 0 失效、`license-audit.sh` 通过。
+- T9 纪律：helper 子进程协议全部 JSON 可序列化值；TS 侧（src/kernel、src/policy）零 Win32/FFI 词汇（grep 证伪）。
+- 词汇表零扩展（预判）——若执行中确需新事件，走待澄清立案管线。
+- Rust helper：cargo test 通过 + 构建脚本入 package.json；真机特权面（ACL 完整行为、WFP/账户 provision）验证不足部分列人工确认清单。
+- D14 核对结论（不等价 D15，实卡）与 D10 裁决（D6 路线覆盖）在展卡记录与本报告落档。
 
 ## 批次 3-14 全量圈定（2026-09-26 用户裁决，依据 [`20260926_P1剩余批次全量圈定研究.md`](20260926_P1剩余批次全量圈定研究.md)）
 
