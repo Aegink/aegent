@@ -1125,3 +1125,134 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - 词汇表一处扩展（C17 泛型逃生舱 20→21）走待澄清 #11 立案——三案（#9/#10/#11）可一并追认 ✅（#9/#10 经用户开工表态转正；#11 先行解读转正后经用户会话末"认可转正"复核确认——落地记录 10/11/12，§3.2 正式计数 21 事件）。
 - 权限出口族红线：C11 信任降权在出口级（规则不可授权）✅；C36 清单只追加 ✅；C13 ReadGate 可整体丢弃 ✅。
 - 六面盘点结论落批次报告（T-P1-74）✅（零真冲突）。
+
+## 批次 9 卡序（10 张，2026-09-27 展卡，按依赖排序；9 条需求 ID：C6/C19/C25/C30/C33/C37/C52/C54/C56）
+
+**锚点纪律**：9 条锚点已逐一打开核对（2026-09-27，证据见各卡）：refs claude-code.d.ts:3229（tool.check——`$.tool.check` **runs the same chain and executes nothing**）；kimi evaluate.ts:43（isToolActiveComposed——workspace/profile/global/session 四层**纯 AND**，各层 {enabled?, disabled?}）；hermes terminal_approval_batch.py:1-9（282 行全文：**Only command approval runs ahead**——审批提前收集，the existing sequential executor 按原序释放、**the real execution still runs every command guard** 执行时守卫重跑）；agentscope _types.py:61-85（DONT_ASK = "converts all ASK decisions to DENY (for unattended execution)"）+ _engine.py:491-514（_check_dont_ask：Deny 规则 → DENY / Ask 规则 → DENY converted（建议保留）/ 安全 ASK → DENY converted——**保留检测只改结局**）；qwen network-policy.ts:21（169.254.0.0/16 BlockList 网段拒绝）+ classifier-prompts/system-prompt.ts:56（IMDS/带外回调主机清单：169.254.169.254（AWS）/ fd00:ec2::254 / metadata.google.internal（GCP）/ 100.100.100.200（阿里云）/ collaborator 式回调服务）；zcode turn-machine.ts:251（resolvePermission(toolCallId, decision, modifiedInput?)——`input: modifiedInput ?? tc.input`）；codex protocol.rs:1010-1030（GranularApprovalConfig 五字段：sandbox_approval / rules / skill_approval / request_permissions / mcp_elicitations——**When it is `false`, those requests are automatically rejected instead of shown to the user**）；codex guardian/（GuardianAssessmentOutcome {Allow, Deny} 二值闭集 + GuardianAssessmentStatus {TimedOut, Aborted} 显式状态 + input_budget.rs / request_budget.rs（ExhaustedReviewBudget）判官自身预算 + ext/guardian-reviewer/lib.rs:41 `REVIEW_TIMEOUT = 90s` pub const（reporting.rs:59 复用上报）+ GuardianReviewOptions.require_guardian——"Requires Guardian rather than a manual approval"受管可强制）。**零内容勘误。**
+
+**展卡核对结论（我方现状 × 9 条）**：
+1. **C6 ← N6 通道在位**（owner-port.ts：respond_permission 闭集命令 + lease + PendingApprovals.reply **无端绑定**——任何通道可答、stale 检查防迟到、announce 广播）——本批落"跨端回转就绪面"：答复来源审计（source 端标识）+ 场景③端到端钉死（审批权随 lease 移交：A 端挂起 → B 端 acquire+reply → 桌面 turn 继续）；**多端并发 holder 不做**——N7 roster（批次 12）扩展 lease 语义（N6 注记原文），卡内记档。
+2. **C19 求值管道嵌在 gate 层闭包内未导出**（gate.ts：stripProposedAmendments → chain.evaluate → 五出口族 → broker 分支）——本卡把**执行前的求值管道提取为独立函数**，gate 内部消费同一函数（结构性保证 dry-run 与真执行"同一条链"）；ask 在 dry-run 里就是"需审批"判定——不挂起不执行。
+3. **C25 激活层缺位**（registry 无 disable 面、policy 无激活层）——新落 tool-activation 四层 AND（kimi 同构：workspace/profile/global/session）；激活检查前置批准层——**未激活 ≠ deny 裁决**（独立错误码：不可达的工具连 ask 都不进，与批准语义分离）。
+4. **C30 审批逐个挂起无批量收集；执行时守卫重跑 C57 revalidate 在位**——落批量答复命令（N6 闭集扩展 respond_permission_batch，逐项转达、部分失败不回滚）+ 执行序不变断言（乱序答复对照）+ 守卫重跑复用断言；批量答复的真实场景 = 并行工具装配下多挂起并存（T-P1-15 在位）。
+5. **C33 ← C3 默认 ask 在位**（不变量 3；gate ask/abstain → broker）——落 unattended 活查询开关：ask/abstain 在进 broker **之前**转 deny（reason 带原询问理由——agentscope "converted" 语义），broker 零调用（不挂起不超时）；deny/allow 规则照常（保留检测只改结局）。
+6. **C37 × D3 NetworkGuard 在位**（deny/allow 两档；webfetch 经 guard.fetch 唯一入口）——落 IMDS/带外主机**黑名单面**：独立于 allow/deny 档（allow 档同样拦——SSRF 语义 = 用户放开网络 ≠ 可达元数据）；bash 面不在本卡（OS 层隔离 D16 在位，应用层清单只管 webfetch 直连面）。
+7. **C52 ApprovalReply 无 modifiedInput**——落答复携带修改后参数（allow 才有意义）+ gate 应用 + **修改后参数仍过五出口族硬拦**（批准不可越硬拦出口；规则面不重跑——人的显式批准是权威，C47 语义）；deny 携带 modifiedInput = 编程错误类型化拒绝；N6 respond_permission 透传。
+8. **C54 审批请求无来源分类**——落 ApprovalCategory 闭集（按我方审批发起面定形 5 类：tool / question / task / elicitation / hook-review——后两类预留无发起方）+ 关类检查落 PendingApprovals 层（所有发起面统一受控）：关类 ask **自动 deny**（类型化理由"审批类别已关闭"）——关的是"问"不是"允许"；协议 approval_requested +category（协议面载荷扩展记档，非事件词汇表）。
+9. **C56 不做判官本体**（C42 P2）——四件套接口面先行：JudgePort 端口（review → allow/deny 闭集 + abstain 显式）；abstain 落回人 = gate ask 分支判官复核后 abstain → 照常走 broker ask（不隐式放行不隐式拒绝）；判官自身预算常量 + 检查函数（超预算判官不被调、落回 ask——预算耗尽不放行）；JUDGE_REVIEW_TIMEOUT 常量导出（注释写明刻意宽松理由——codex 90s 同款）；requireJudge 受管强制位（判官 unavailable = 类型化失败非静默放行）。假判官测试承载接口面验收，C42/C55（P2）接口面已备。
+
+**词汇表预判（零新事件）**：审批/问答面全部经 PendingApprovals 宣告回调与协议消息（agent-protocol.ts approval_requested/approval_settled）承载，**不进事件流**——本批 9 条均不动事件词汇表（21 事件不变）；协议面载荷扩展（approval_requested +category、approval_settled +source 痕迹）属协议消息形状，随卡同步协议校验并记档。执行中每处新增事件必须先立案（Q9 单向门不变）。
+
+**本批特有约束**：
+1. **审批面改动集中**（gate/pending/broker/owner-port 四文件被多卡触碰）——按卡序先后做（C19 提取求值管道是 gate 后续改动的基础，先做减少冲突），每卡独立验收。
+2. **出口族红线延续**：C52 modifiedInput 的"批准不可越硬拦"落五出口族重跑——新出口面（若有）并入批次 8 盘点①的出口族次序终局清单；ReadGate 失败计 B13 预算的定形不受本批影响。
+3. **C54 分类闭集与 codex 五类是映射不是照抄**：codex 按"审批流触发源"（sandbox 升级/execpolicy 规则/skill 脚本/工具请求/MCP elicitation），我方按"审批发起面"（gate 工具审批/question 提问/task 派发/预留 elicitation/预留 hook 复核）——映射关系卡内记档，不发明我方没有的执行面。
+4. **C30 批量收集不引入新执行模型**：loop 串行执行序不动（hermes "existing sequential executor" 对应物）——批量只发生在**答复收集侧**，执行侧照旧逐调用过 gate + 出口族 + revalidate。
+
+#### T-P1-75 · C19 · 策略 dry-run（求值管道提取 + CLI /check） `[ ]`
+- **依据需求**：C19（P1："策略 dry-run：可跑完整判定链而不执行工具"）——展卡核对结论②
+- **上游首选参考**：[claude-official·claude-code.d.ts:3229](../refs/claude-official/mods/types/claude-code.d.ts#L3229)（tool.check 事件：`next(e)` resolves to the engine's verdict；`$.tool.check` **runs the same chain and executes nothing**）
+- **取什么 / 别抄什么**：取"同一判定链、零执行"语义；不抄其 hooks 事件形状（我方求值管道在 gate 内，提取函数即达）
+- **证据强度**：`读了代码`（d.ts tool.check 段；我方 gate.ts 全文求值管道现状）
+- **要产出**：①gate 求值管道提取为独立导出函数 evaluateToolPolicy（stripProposedAmendments + chain.evaluate + enforceProtectedPaths/Ceiling/SelfGuard/PlanMode/TrustGate 五出口族——**不进 broker 分支**，ask/abstain 原样返回裁决与证据）；②gate 层内部消费同一函数（结构性保证 dry-run 与真执行同链）；③CLI `/check <tool> <json-args>`（dry-run 入口端到端可见——渲染裁决 action + rule/reason 证据）
+- **验收**：`npx vitest run src/policy/gate.test.ts src/cli/cli.test.ts`（扩）——①dry-run 裁决 = 真执行前段裁决同形（allow/deny 用例各一）；②dry-run 零执行零挂起（无 broker 调用、无工具副作用断言）；③ask 裁决回显"需审批"而非挂起；④CLI /check 端到端可见；⑤既有 gate 回归全绿
+- **依赖**：无（批次 9 首卡）
+- **风险 / 未知**：提取后的函数签名含全部出口族选项（planMode/trustState/ceiling 活查询）——选项收敛进一个 options 对象，gate 与 dry-run 共用同形状
+
+#### T-P1-76 · C25 · 工具激活与批准分离（四层 AND 激活层） `[ ]`
+- **依据需求**：C25（P1："工具激活与工具批准分离（工作区/档案/全局/会话四层按 AND 合成）"）——展卡核对结论③
+- **上游首选参考**：[kimi·evaluate.ts:43](../oss/kimi-code/packages/agent-core-v2/src/agent/toolPolicy/evaluate.ts#L43)（isToolActiveComposed：workspaceDisabledTools / profile / global / sessionDisabledTools 四层**纯 AND**）
+- **取什么 / 别抄什么**：取四层 AND 合成与"激活 ≠ 批准"分离；不抄其 MCP source 分型（我方命名空间工具同走 wildcardMatch）
+- **证据强度**：`读了代码`（isToolActiveComposed 全段；我方 gate/registry 现状——激活面缺位）
+- **要产出**：①`src/policy/tool-activation.ts`——ToolActivationLayers 四层（workspace/profile/global/session，各 {enabled?, disabled?} 清单）+ isToolActiveComposed 四层纯 AND（kimi 同名函数意图）；②接线：gate 层内**首步**激活检查（参数解析前）——未激活 → 类型化拒绝 TOOL_NOT_ACTIVE（独立错误码，**不产生 Verdict 不进批准层**）；③装配选项 activation 注入（缺省全空 = 零行为变化）
+- **验收**：`npx vitest run src/policy/tool-activation.test.ts src/policy/gate.test.ts`（新建+扩）——①四层各自 disabled 命中 → 不可达；②enabled 白名单非空且不含 → 不可达；③四层全放行 → 进批准层照常；④分离语义：未激活错误码 ≠ TOOL_POLICY_DENIED（无 deny 裁决形状）；⑤缺省装配零行为变化
+- **依赖**：T-P1-75（gate 求值管道提取后的层内结构）
+- **风险 / 未知**：enabled 白名单语义（非空 = 仅清单内可达）与 disabled 黑名单可同层并存（kimi 同款）——AND 合成顺序卡内记档
+
+#### T-P1-77 · C33 · 无人值守模式（ASK→DENY 活查询开关） `[ ]`
+- **依据需求**：C33（P1："无人值守模式：把每一个 ASK 转为 DENY（而非卸掉策略）"）——展卡核对结论⑤
+- **上游首选参考**：[agentscope·_types.py:61](../oss/agentscope/src/agentscope/permission/_types.py#L61)（DONT_ASK）+ [_engine.py:491](../oss/agentscope/src/agentscope/permission/_engine.py#L491)（_check_dont_ask：Deny→DENY / Ask→DENY converted / 安全 ASK→DENY converted——**保留检测只改结局**）
+- **取什么 / 别抄什么**：取"转换在判定出口、deny reason 带原询问理由"语义；不抄其 PermissionMode 四档枚举（我方只落 unattended 单开关——C3 默认 ask 是不变量，不发明其他档）
+- **证据强度**：`读了代码`（_types.py DONT_ASK 段 + _engine.py _check_dont_ask 全段；我方 gate ask/abstain 分支现状）
+- **要产出**：①ToolGateOptions +unattended?: () => boolean（活查询——会话内可切换；缺省 = 零行为变化）；②gate ask/abstain 分支**入口处**：unattended → deniedResult（reason = "无人值守：询问转为拒绝（原询问：…）"——converted 语义）+ broker 零调用；③CLI 开关端到端（/unattended on|off——装配活查询接线）
+- **验收**：`npx vitest run src/policy/gate.test.ts src/cli/cli.test.ts`（扩）——①unattended 时规则 ask → deny 且 reason 带原询问理由；②C3 默认 ask 兜底同转（保留检测）；③deny/allow 规则照常（不受开关影响）；④broker 零调用断言（不挂起不超时）；⑤CLI 开关切换端到端生效；⑥缺省零行为变化
+- **依赖**：T-P1-75（gate 结构）
+- **风险 / 未知**：与 C56 判官的组合次序（unattended 时判官复核是否还做）——收口卡定形记档
+
+#### T-P1-78 · C54 · 审批来源分类 5 类（关类 = 自动拒绝） `[ ]`
+- **依据需求**：C54（P1："审批来源分类配置（5 类）；关闭某类 ≠ 放行 = 硬拒绝"）——展卡核对结论⑧
+- **上游首选参考**：[codex·protocol.rs:1010](../oss/codex/codex-rs/protocol/src/protocol.rs#L1010)（GranularApprovalConfig 五字段——"When it is `false`, those requests are automatically rejected instead of shown to the user"）
+- **取什么 / 别抄什么**：取"每类一个开关、false = 自动拒绝非放行"纪律；五类按我方审批发起面定形（映射非照抄，见本批特有约束③）
+- **证据强度**：`读了代码`（GranularApprovalConfig 全段；我方 pending.ask 全部调用方清单：gate（经 broker）+ question 工具）
+- **要产出**：①ApprovalCategory 闭集 5 值常量导出（tool/question/task/elicitation/hook-review——后两类预留无发起方，卡内记档映射）；②ApprovalRequest +category（gate 打标 tool——task 工具调用经 gate 也归 tool 类，细分随真实需求记档；question 工具打标 question）；③PendingApprovals 构造 +category 开关（Record<category, boolean> 缺省全开）——**关类 ask 在挂起前自动 deny**（类型化理由"审批类别已关闭"，announce settled 留痕）；④协议 approval_requested +category（协议校验同步）
+- **验收**：`npx vitest run src/policy/pending.test.ts src/policy/gate.test.ts src/kernel/agent-protocol.test.ts`（扩）——①闭集 5 值；②关 tool 类 → gate ask 自动 deny（不挂起）且 announce 留痕；③关 question 类 → question 工具请求被拒（模型收类型化错误）；④开类照常挂起；⑤关类不改变规则 allow/deny 裁决（只关"问"——allow 规则在关类下照常放行）；⑥协议 approval_requested 带 category 且校验通过
+- **依赖**：T-P1-75（gate 结构）
+- **风险 / 未知**：关类 deny 与 C3 默认 ask 的关系——关类是**配置面对 ask 结局的覆盖**（不是规则、不是出口族），语义域卡内记档
+
+#### T-P1-79 · C52 · 审批支持 modifiedInput（改成这样再执行） `[ ]`
+- **依据需求**：C52（P1："审批支持 modifiedInput（改成这样再执行）"）——展卡核对结论⑦
+- **上游首选参考**：[zcode·turn-machine.ts:251](../oss/zcode/apps/zcode-cli/packages/core/src/agent/turn-machine.ts#L251)（resolvePermission(toolCallId, decision, modifiedInput?)——`input: modifiedInput ?? tc.input`）
+- **取什么 / 别抄什么**：取"批准可携带修改后的参数"语义；**加我方出口族纪律**（zcode 无出口族层——修改后参数仍过五出口族硬拦是 C46/C35/G7/C11 红线的延续，批次 8 盘点①清单并入）
+- **证据强度**：`读了代码`（resolvePermission 全段；我方 gate 答复路径 + ApprovalReply 形状）
+- **要产出**：①ApprovalReply +modifiedInput?: JsonRecord（allow 才有意义；deny 携带 = 编程错误 → 类型化拒绝）；②gate 答复路径：allow 且带 modifiedInput → 用修改后参数**重跑五出口族**（硬拦面——批准不可越硬拦；规则面不重跑——人的显式批准是权威）→ 通过后以修改后参数执行；③N6 respond_permission 命令载荷 +modifiedInput 透传；④CLI /approve 扩展（--args '<json>' 旗标端到端）
+- **验收**：`npx vitest run src/policy/pending.test.ts src/policy/gate.test.ts src/session/owner-port.test.ts src/cli/cli.test.ts`（扩）——①allow+modifiedInput → 修改后参数执行（工具收到改后 args）；②不带 → 原 args（zcode `?? tc.input` 同语义）；③deny+modifiedInput → 类型化拒绝；④修改后参数写保护路径（.git/config）→ 出口族仍 deny（硬拦压过批准）；⑤CLI --args 端到端；⑥既有答复回归全绿
+- **依赖**：T-P1-78（reply 形状改动集中后做）
+- **风险 / 未知**：修改后参数的规则面不重跑 = 用户批准压过规则 ask（C47 批准语义的自然延伸）——但硬拦出口绝不越（红线）；两者边界收口卡定形记档
+
+#### T-P1-80 · C56 · 判官四件套接口面（不做判官本体） `[ ]`
+- **依据需求**：C56（P1："若做 LLM 判官，P0 定四件事：abstain 落回人 / 判官自身预算 / 超时常量被上层复用 / 受管可强制"）——展卡核对结论⑨；C42/C55（P2）接口面预留
+- **上游首选参考**：[codex·guardian/](../oss/codex/codex-rs/core/src/guardian/mod.rs)（GuardianAssessmentOutcome {Allow, Deny} 二值 + Status {TimedOut, Aborted} 显式；input_budget.rs / request_budget.rs 判官自身预算；ext/guardian-reviewer/lib.rs:41 REVIEW_TIMEOUT=90s pub const——reporting.rs:59 复用；GuardianReviewOptions.require_guardian 受管可强制）
+- **取什么 / 别抄什么**：取四纪律形状（abstain 显式 / 预算双面 / 常量导出可复用 / 强制位）；**不做判官本体**（无模型调用——JudgePort 是端口，实现在 P2 C42）；不抄其 session/thread 编排
+- **证据强度**：`读了代码`（guardian 目录关键文件：decision.rs/outcome 枚举/input_budget 头/REVIEW_TIMEOUT 常量与复用点；我方 gate ask 分支现状）
+- **要产出**：①`src/policy/judge-port.ts`——JudgePort 端口（review(request) → {outcome:"allow"|"deny", reason?} | {outcome:"abstain", reason?}——abstain 显式闭集）+ JUDGE_INPUT_BUDGET_CHARS / JUDGE_REQUESTS_PER_SESSION 常量 + 预算检查函数（超预算 → 判官不被调）+ JUDGE_REVIEW_TIMEOUT_MS 常量导出（注释写明刻意宽松理由）；②gate 接线：+judge?: JudgePort 选项——ask 分支先判官复核（allow → 放行 / deny → 类型化拒 / abstain → 照常走 broker ask——**落回人**）；预算耗尽 → 判官不被调直接落回 ask；③requireJudge 强制位（true 且判官 abstain/unavailable → 类型化失败非静默——受管可强制）；④假判官测试（JudgePort 假实现承载四纪律验收，判官本体 P2 落）
+- **验收**：`npx vitest run src/policy/judge-port.test.ts src/policy/gate.test.ts`（新建+扩）——①判官 allow → 放行（broker 零调用）；②判官 deny → 拒且 reason 带判官标记；③abstain → 落回 broker ask（落回人不隐式放行）；④预算耗尽 → 判官不被调、落回 ask；⑤JUDGE_REVIEW_TIMEOUT_MS 导出可复用；⑥requireJudge + abstain → 类型化失败；⑦缺省无判官零行为变化
+- **依赖**：T-P1-77（ask 分支定形——判官接线在同一分支）
+- **风险 / 未知**：判官裁决位置（ask 复核 vs 独立出口）——定形落 ask 分支内（C42"贵路径修正便宜路径假阳性"语义：ask 先复核、假阳性免挂起）；unattended × 判官组合收口卡定形
+
+#### T-P1-81 · C30 · 审批批量（批量答复 + 执行序不变 + 守卫重跑） `[ ]`
+- **依据需求**：C30（P1："审批可批量：审批提前收集、执行仍按原顺序、执行时守卫重跑"）——展卡核对结论④
+- **上游首选参考**：[hermes·terminal_approval_batch.py](../oss/hermes-agent/agent/terminal_approval_batch.py)（"Only command approval runs ahead... the existing sequential executor releases each worker and persists its result before releasing the next... the real execution still runs every command guard"）
+- **取什么 / 别抄什么**：取"审批提前收集 / 执行原序 / 守卫重跑"三纪律；不抄其 contextvars/thread 编排（我方批量发生在答复收集侧，执行侧 loop 串行不动）
+- **证据强度**：`读了代码`（terminal_approval_batch.py 头段与 prepare/执行分离结构；我方 owner-port 命令闭集 + pending.reply 现状）
+- **要产出**：①OwnerCommand 闭集 +respond_permission_batch（{decisions: [{requestId, reply}]}——N6 命令扩展）；②批量答复语义：逐项转达 pending.reply（顺序处理）——部分失败不回滚（stale/unknown 逐项类型化返回，成功项生效）；③执行序不变断言：并行装配下两个挂起乱序批量答复 → 执行按**原调用顺序**完成（loop 串行序与答复序解耦）；④守卫重跑断言：批量 session 批准 → 执行面出口族 + revalidate 照常重算（C57 复用）
+- **验收**：`npx vitest run src/session/owner-port.test.ts src/policy/gate.test.ts`（扩）——①批量答复全部生效（逐项 verdict 正确）；②部分 stale 部分成功（逐项结果不回滚）；③乱序答复 × 原序执行对照断言；④批量批准后执行面守卫照常（session 批准 + 出口族重算）；⑤单答复通道回归不破
+- **依赖**：T-P1-79（reply 形状含 modifiedInput/category 稳定后扩命令）
+- **风险 / 未知**：串行装配下批量 = 单答复退化（无第二挂起并存）——验收用并行工具装配（T-P1-15 在位）构造双挂起；纯串行退化语义记档
+
+#### T-P1-82 · C6 · 审批跨端回转（答复来源审计 + 场景③端到端） `[ ]`
+- **依据需求**：C6（P1："审批跨端回转——场景③：桌面发起 → 飞书 reply → 桌面继续"）——展卡核对结论①
+- **上游首选参考**：[opencode·permission/](../oss/opencode/packages/opencode/src/permission)（C5 Deferred+reply 同锚——答复与发起端解耦的通道形状）；N6 在位（owner-port respond_permission + lease）
+- **取什么 / 别抄什么**：取"答复可来自非发起端、会话继续不受端绑定"；本批落进程内就绪面——**多端并发 holder 不做**（N7 roster 批次 12 扩 lease，N6 注记原文记档）
+- **证据强度**：`读了代码`（opencode permission/ 目录 + 我方 owner-port/pending/CLI 审批面现状）
+- **要产出**：①ApprovalReply +source?: string（答复端标识——settled 宣告与审计留痕带答复来源）；②场景③端到端：端 A（桌面）挂起审批 → A release → 端 B（飞书）acquire lease + respond_permission 答复 → 桌面 turn 继续（session-scope 记账生效）；③审批权随 lease 移交断言（非持约端答复 → NotLeaseHolderError）
+- **验收**：`npx vitest run src/session/owner-port.test.ts src/cli/cli.test.ts`（扩）——①B 端答复后 A 端挂起的 turn 继续（工具执行 + 回喂 + completed）；②答复来源审计可检索（source 端标识落宣告/审计）；③非持约端答复被拒（NotLeaseHolderError）；④场景③全链一条（快照候选）；⑤既有审批回归全绿
+- **依赖**：T-P1-81（N6 命令面稳定后做端到端）
+- **风险 / 未知**：lease 移交间隙的审批可见性（A release 后 B acquire 前审批挂起无 holder）——进程内瞬时态、多端 host 落 N7 时与租约过期一并处理，卡内记档
+
+#### T-P1-83 · C37 · IMDS 与带外回调主机网络侧拒绝 `[ ]`
+- **依据需求**：C37（P1："IMDS（云实例元数据）与带外回调主机列为网络侧拒绝项——防 SSRF 式外带"）——展卡核对结论⑥
+- **上游首选参考**：[qwen·network-policy.ts:21](../oss/qwen-code/packages/core/src/extension/network-policy.ts#L21)（169.254.0.0/16 BlockList）+ [system-prompt.ts:56](../oss/qwen-code/packages/core/src/permissions/classifier-prompts/system-prompt.ts#L56)（IMDS 主机清单：169.254.169.254 / fd00:ec2::254 / metadata.google.internal / 100.100.100.200 / collaborator 式回调服务）
+- **取什么 / 别抄什么**：取主机清单与链路本地网段两形状；不抄其 DNS 解析管线（qwen ResolvedNetworkTarget 全家桶——我方 webfetch 直连面最小落）；判官清单段（system-prompt 是 C42 判官提示词）不取
+- **证据强度**：`读了代码`（network-policy.ts BlockList 段 + system-prompt.ts:49-56 清单段；我方 network.ts guard 两档现状 + webfetch 接线）
+- **要产出**：①network.ts 加 IMDS 黑名单面：IMDS_HOSTS 闭集（qwen 清单四主机 + IPv6 字面量）+ 链路本地网段判定（169.254.0.0/16 IPv4 字面前缀）——**独立于 allow/deny 档**（allow 档同样拦——SSRF 语义：放开网络 ≠ 可达元数据）；②webfetch 接线（host 与字面 IP 双查，URL 解析失败 fail-closed）；③类型化拒绝（NETWORK_IMDS_DENIED，reason 带命中项）
+- **验收**：`npx vitest run src/sandbox/network.test.ts src/kernel/tools/builtin/builtin.test.ts`（扩）——①四主机名各一拒绝；②169.254.x.x 字面量拒绝；③fd00:ec2::254 拒绝；④allow 档同样拒绝（黑名单独立于档位）；⑤正常公网 URL 照常（零误伤）；⑥deny 档既有回归不破
+- **依赖**：无（独立小卡，network 面不与 gate 改动冲突）
+- **风险 / 未知**：bash curl 访问 IMDS 不在本卡（OS 层网络隔离 D16 在位——应用层清单只管 webfetch 直连面）；DNS 重绑定/解析后 IP 复检不落（qwen 有——我方 webfetch 无 DNS 管线，记档为已知边界）
+
+#### T-P1-84 · 收口 · 审批与运行模式盘点 + 快照 `[ ]`
+- **依据需求**：批次 9 收口（照批次 4/5/6/7/8 收口先例；无独立需求 ID）
+- **上游首选参考**：批次 8 T-P1-74 先例
+- **取什么 / 别抄什么**：七面盘点：①C19 dry-run 求值面 × C57 revalidate——dry-run 与执行点重算共享管道的边界（同函数不同调用点）；②C25 激活失败 × C51 broker 拒绝 × C33 无人值守——"不可达 / 拒绝 / 转拒绝"三档语义分域与检查次序；③C54 关类自动拒绝 × C3 默认 ask——配置面覆盖 ask 结局与不变量 3 的分域；④C52 modifiedInput × 五出口族——批准不可越硬拦 + **新出口面并入批次 8 盘点①出口族次序终局清单**；⑤C56 判官 × C33 unattended——组合次序定形（unattended 时判官复核做不做）；⑥C37 黑名单 × D3 档位——双层网络语义（应用层黑名单独立于 OS 档）；⑦快照即规格：场景③跨端回转全链一条
+- **证据强度**：`读了代码`（本批全部新产交叉核对）
+- **要产出**：七面盘点结论 + 快照一条 + 全量回归
+- **验收**：`npx vitest run`（全量回归）+ 盘点清单入完成记录；发现真冲突 → 升级待澄清不硬落
+- **依赖**：T-P1-75 ~ 83 全部（本批最后一张）
+- **风险 / 未知**：无
+
+## 批次 9 完成定义
+
+- 10 张卡全部打勾 ✅，每勾附「命令 + 结果摘要」；`npx tsc --noEmit` 全程干净 ✅；`count-features.sh` = 310 不变 ✅、`check-doc-links.sh` 0 失效 ✅、`license-audit.sh` 通过 ✅。
+- 词汇表零扩展（21 事件不变——审批/问答面走宣告回调与协议消息，不进事件流）✅。
+- 出口族红线：C52 修改后参数仍过五出口族（批准不可越硬拦）✅；新出口面并入批次 8 盘点①清单 ✅。
+- 审批语义分域：不可达（C25）≠ 拒绝（C54 关类/C33 无人值守）≠ 超时拒绝（C50）——收口盘点落报告 ✅。
+- 七面盘点结论落批次报告（T-P1-84）✅（零真冲突）。
