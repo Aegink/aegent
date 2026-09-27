@@ -20,6 +20,7 @@ import type { SessionEvent } from "../kernel/events.js";
 import { ToolClassLimiter, type ToolClassLimits } from "../kernel/admission.js";
 import { isWriteExecuteTool } from "../policy/protected-paths.js";
 import { isValidSessionId } from "../session/session-id.js";
+import { SurfaceHub } from "./lease.js";
 
 // ---------------------------------------------------------------------------
 // 错误面
@@ -104,6 +105,8 @@ export interface AgentHostOptions {
 
 export class AgentHost {
   readonly hostId: string;
+  /** N7/T-P1-113：本会话的 surface 连接面（连接即租约候选，断线即释放）。 */
+  readonly surfaces: SurfaceHub;
   private disposed = false;
   private currentUnattended: boolean;
   private readonly sessionLimiter: ToolClassLimiter | undefined;
@@ -116,6 +119,7 @@ export class AgentHost {
       throw new Error(`会话 id 不合法：${options.sessionId}`);
     }
     this.hostId = options.hostId ?? randomUUID();
+    this.surfaces = new SurfaceHub();
     this.currentUnattended = options.unattendedCeiling === true;
     this.sessionLimiter =
       options.toolClassLimits !== undefined
