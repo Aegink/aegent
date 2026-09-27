@@ -18,6 +18,9 @@ import { Projector } from "../session/project.js";
 import { startNewContextWindow } from "./new-window.js";
 import {
   CompactionEngine,
+  compHashChangeRequest,
+  compactionFingerprint,
+  compactionReasonOf,
   type CompactionRunInput,
   type CompactionSettled,
   type PreCompactOutcome,
@@ -576,5 +579,144 @@ describe("E17 中间态进事件流（T-P1-93）：投影不猜压缩中间态",
     const window = startNewContextWindow(events);
     expect(window.some((m) => m.role === "user" && m.content.includes("会话压缩摘要"))).toBe(false);
     expect(window.some((m) => m.role === "assistant" && m.content === "第一轮回答")).toBe(true);
+  });
+});
+
+describe("F26 压缩指纹（T-P1-100）：compHash 载荷 + 双值齐备触发", () => {
+  it("engine 接 compHash getter → started/failed/completed 三次落盘同值", async () => {
+    const store = new SessionStore();
+    store.append(SESSION, turnEvents(1, "问题", "回答"));
+    let calls = 0;
+    const engine = new CompactionEngine({
+      sessionId: SESSION,
+      store,
+      summarizer: async () => "指纹摘要",
+      compHash: () => {
+        calls++;
+        return "ab12cd34";
+      },
+    });
+    const result = await engine.run({
+      turn: 1,
+      phase: "PreTurn",
+      request: { reason: "local-overflow", estimatedTokens: 999, contextWindow: 100 },
+    });
+    if (result.kind !== "compacted") throw new Error("应当压缩成功");
+    const compactions = store
+      .load(SESSION)
+      .filter((e): e is Extract<SessionEvent, { type: "compaction" }> => e.type === "compaction");
+    expect(compactions).toHaveLength(2); // started + completed
+    expect(compactions.every((e) => e.compHash === "ab12cd34")).toBe(true);
+    // 取值时点在 run 入口：一次 run 只调用一次 getter
+    expect(calls).toBe(1);
+    // reason 词表位不受指纹影响
+    expect(compactions.every((e) => e.reason === "context_limit")).toBe(true);
+  });
+
+  it("engine 未接 compHash getter → 事件无 compHash 字段（零行为变化）", async () => {
+    const store = new SessionStore();
+    store.append(SESSION, turnEvents(1, "问题", "回答"));
+    const engine = new CompactionEngine({
+      sessionId: SESSION,
+      store,
+      summarizer: async () => "无指纹摘要",
+    });
+    await engine.run({
+      turn: 1,
+      phase: "PreTurn",
+      request: { reason: "local-overflow", estimatedTokens: 999, contextWindow: 100 },
+    });
+    const compactions = store
+      .load(SESSION)
+      .filter((e) => e.type === "compaction") as Array<{ compHash?: string }>;
+    expect(compactions.length).toBeGreaterThan(0);
+    expect(compactions.every((e) => e.compHash === undefined)).toBe(true);
+  });
+
+  it("compactionFingerprint：同输入等值；模型/摘要器/保留/预算任一变化 → 不等", () => {
+    const base = {
+      model: { provider: "openai", modelId: "m1" },
+      summarizerKind: "llm",
+      retainedFromEnd: 1,
+      developerBudgetTokens: 4096,
+    };
+    expect(compactionFingerprint(base)).toBe(compactionFingerprint({ ...base }));
+    expect(compactionFingerprint(base)).not.toBe(
+      compactionFingerprint({ ...base, model: { provider: "openai", modelId: "m2" } }),
+    );
+    expect(compactionFingerprint(base)).not.toBe(compactionFingerprint({ ...base, summarizerKind: "truncating" }));
+    expect(compactionFingerprint(base)).not.toBe(compactionFingerprint({ ...base, retainedFromEnd: 2 }));
+    expect(compactionFingerprint(base)).not.toBe(compactionFingerprint({ ...base, developerBudgetTokens: 8192 }));
+    // 8 位 hex 形状
+    expect(compactionFingerprint(base)).toMatch(/^[0-9a-f]{8}$/);
+  });
+
+  it("compHashChangeRequest：双值齐备且不等才触发；旧流缺值/同值/未接指纹均不触发", () => {
+    const store = new SessionStore();
+    store.append(SESSION, turnEvents(1, "问题", "回答"));
+    // 带旧指纹的已结算压缩
+    store.append(SESSION, [
+      {
+        type: "compaction",
+        turn: 1,
+        summary: "旧摘要",
+        retainedTail: 1,
+        tokensBefore: 100,
+        status: "completed",
+        compHash: "00000001",
+      },
+    ]);
+    const events = store.load(SESSION);
+    // 指纹不等 → 触发
+    expect(compHashChangeRequest(events, "00000002")).toEqual({ reason: "comp-hash-changed" });
+    // 指纹相同 → 不触发
+    expect(compHashChangeRequest(events, "00000001")).toBeNull();
+    // 当前指纹缺失（装配未接）→ 不触发
+    expect(compHashChangeRequest(events, undefined)).toBeNull();
+    // 旧流（压缩无 compHash）→ 不触发（"缺值不提供足够信息"）
+    const store2 = new SessionStore();
+    store2.append(SESSION, turnEvents(1, "问题", "回答"));
+    store2.append(SESSION, [
+      {
+        type: "compaction",
+        turn: 1,
+        summary: "旧流摘要",
+        retainedTail: 1,
+        tokensBefore: 100,
+      },
+    ]);
+    expect(compHashChangeRequest(store2.load(SESSION), "00000002")).toBeNull();
+  });
+
+  it("started/failed 残留不作为指纹对拍基准（切换权威同口径）", () => {
+    const store = new SessionStore();
+    store.append(SESSION, turnEvents(1, "问题", "回答"));
+    // 只有 started（崩溃残留）+ failed——无已结算压缩
+    store.append(SESSION, [
+      {
+        type: "compaction",
+        turn: 1,
+        summary: "",
+        retainedTail: 0,
+        tokensBefore: 100,
+        status: "started",
+        compHash: "00000001",
+      },
+      {
+        type: "compaction",
+        turn: 1,
+        summary: "",
+        retainedTail: 0,
+        tokensBefore: 100,
+        status: "failed",
+        compHash: "00000001",
+      },
+    ]);
+    // 无已结算压缩可对拍 → 不触发（即使 compHash 值"不等"）
+    expect(compHashChangeRequest(store.load(SESSION), "00000002")).toBeNull();
+  });
+
+  it("compactionReasonOf：comp-hash-changed → comp_hash_changed（词表位兑现）", () => {
+    expect(compactionReasonOf({ reason: "comp-hash-changed" })).toBe("comp_hash_changed");
   });
 });

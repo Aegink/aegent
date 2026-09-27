@@ -139,3 +139,75 @@ describe("验收：压缩先于切换（次序断言）+ 事件 reason=model_dow
     expect(decision.needsCompaction).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// F29 换模压缩语义断言链（T-P1-100）：压缩请求跑旧模型 → 切换 → 后续跑新模型
+// （codex·tests/suite/compact.rs assert_pre_sampling_switch_compaction_requests
+// 的三段模型身份断言；"剥掉/带上 model_switch 更新项"半边 N/A 记档——我方
+// 模型可见历史无换模标记，见 plan-p1.md 批次 11 卡序头核对结论 ②）
+// ---------------------------------------------------------------------------
+
+import { createLlmSummarizer } from "./llm-summarizer.js";
+import { ModelSwitchService } from "../kernel/model-switch.js";
+import type { ModelProvider } from "../models/provider.js";
+
+/** 剧本 provider：吐一段文本即收（摘要副调用的 wire 桩）。 */
+function oneShotProvider(text: string): ModelProvider {
+  return {
+    async *streamChat() {
+      yield { type: "text-delta", text };
+      yield { type: "done", finishReason: "stop" } as const;
+    },
+  };
+}
+
+describe("F29 断言链：压缩跑旧模型 → 切换 → 后续跑新模型", () => {
+  it("压缩副调用头 identity=旧模型；switch 受理后新 turn 捕获=目标身份", async () => {
+    const store = new SessionStore();
+    appendTurn(store, 1, "长问题", "长回答");
+    const projection = Projector.fold(store.load(SESSION)).projection;
+    projection.lastUsage = { inputTokens: 8900, outputTokens: 100, totalTokens: 9000 };
+
+    const oldModel = modelIdentity("openai", "gpt-large");
+    // 真摘要器（identity = 换模前旧模型——装配固定 summarizerModel 的结构性
+    // 事实：摘要器不随换模目标漂移）+ 剧本 provider
+    const summarizer = createLlmSummarizer({
+      provider: oneShotProvider("<summary>换模前压缩摘要</summary>"),
+      identity: oldModel,
+      store,
+    });
+    const engine = new CompactionEngine({ sessionId: SESSION, store, summarizer });
+
+    const decision = await maybeDownshift({
+      targetModel: target,
+      targetContextWindow: 8000,
+      projection,
+      engine,
+      turn: 2,
+    });
+    expect(decision.needsCompaction).toBe(true);
+    // 段①：压缩副调用 request/header{reason:"compaction"} 的 identity = 旧模型
+    const compactionHeaders = store
+      .load(SESSION)
+      .filter((e) => e.type === "request/header" && e.reason === "compaction");
+    expect(compactionHeaders).toHaveLength(1);
+    const header = compactionHeaders[0] as unknown as {
+      config: { provider: string; modelId: string };
+    };
+    expect(header.config).toEqual({ provider: "openai", modelId: "gpt-large" });
+
+    // 段②：压缩完成先于切换（T-7-06 既有次序——maybeDownshift resolve 后才 switch）
+    const switchService = new ModelSwitchService({
+      initial: oldModel,
+      models: [
+        { identity: oldModel, provider: oneShotProvider("x") },
+        { identity: target, provider: oneShotProvider("x") },
+      ],
+    });
+    switchService.switch(target);
+    // 段③：后续 turn 跑新模型——turn 捕获（J7 既有语义）返回目标身份
+    const captured = switchService.captureForTurn(2);
+    expect(captured.identity).toEqual(target);
+    expect(captured.identity).not.toEqual(oldModel);
+  });
+});

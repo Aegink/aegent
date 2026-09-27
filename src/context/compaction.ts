@@ -31,7 +31,7 @@ import { latestBalancedCutAtOrBefore } from "./tool-pairing.js";
 import { RapidRefillError, type RapidRefillGuard } from "./rapid-refill.js";
 import type { ChatMessage } from "../models/provider.js";
 
-/** 压缩请求：溢出的两种来源（本地提前判定 / provider 拒绝）+ 换模压缩（F24）各自带齐上下文。 */
+/** 压缩请求：溢出的两种来源（本地提前判定 / provider 拒绝）+ 换模压缩（F24）+ 指纹重压（F26）各自带齐上下文。 */
 export type CompactionRequest =
   | {
       /** 本地估算判溢出（发请求前的 A4 面，F10 的"provider 在返回 usage 前拒绝"之前）。 */
@@ -50,17 +50,27 @@ export type CompactionRequest =
       reason: "model-downshift";
       targetModel: { provider: string; modelId: string };
       targetContextWindow: number;
+    }
+  | {
+      /**
+       * 压缩指纹变更重压（F26/T-P1-100，codex CompactionReason::CompHashChanged
+       * 的我方位）。触发判定在 compHashChangeRequest（双值齐备且不等才触发）。
+       */
+      reason: "comp-hash-changed";
     };
 
 /**
  * 事件 `compaction.reason` 的词表映射（codex·compact_model_fallback.rs:27-30 的
  * CompactionReason 序列化风格）：两种溢出源在事件面共用 codex 的 "context_limit"
- * （区分在 request 类型上）；换模压缩 = "model_downshift"（F24 验收字面值）。
+ * （区分在 request 类型上）；换模压缩 = "model_downshift"（F24 验收字面值）；
+ * 指纹重压 = "comp_hash_changed"（F26 验收字面值——词汇表预留槽位兑现）。
  */
 export function compactionReasonOf(request: CompactionRequest): string {
   switch (request.reason) {
     case "model-downshift":
       return "model_downshift";
+    case "comp-hash-changed":
+      return "comp_hash_changed";
     case "local-overflow":
     case "provider-overflow":
       return "context_limit";
@@ -77,6 +87,70 @@ export function compactionRequestFromVerdict(
     estimatedTokens: verdict.estimatedTokens,
     contextWindow: verdict.contextWindow,
   };
+}
+
+// ---------------------------------------------------------------------------
+// 压缩指纹（F26/T-P1-100，codex CompHashChanged 的我方位）
+// ---------------------------------------------------------------------------
+
+/** 引擎缺省保留条数（chooseRetainedTail 的未配置口径——指纹面与引擎同源）。 */
+export const DEFAULT_RETAINED_FROM_END = 1;
+
+/** 指纹覆盖面（卡内定形：只覆盖"影响摘要内容或重建"的配置，防止窄漏报/宽误报）。 */
+export interface CompactionFingerprintInput {
+  /** 生成摘要的模型身份（缺省截断摘要器 / 自定义注入摘要器时缺席）。 */
+  model?: { provider: string; modelId: string };
+  /** 摘要器种类：llm（真摘要模型）| truncating（缺省截断）| custom（注入）。 */
+  summarizerKind: string;
+  /** 保留规则（keepRules.retainedFromEnd——切点选择影响摘要覆盖区间）。 */
+  retainedFromEnd: number;
+  /** F23 developer 注入消息的独立保留预算（新窗口重建面配置）。 */
+  developerBudgetTokens: number;
+}
+
+/**
+ * FNV-1a 32 位哈希（无依赖、跨进程稳定）。序列化用显式字面量固定键序——
+ * 不能用 JSON.stringify replacer 数组做键排序：它会作用于**所有层级**，
+ * 嵌套对象（model）的键不在清单里就被整层丢弃（指纹对 model 变化失明，
+ * 首版实现被测试当场抓出）。
+ */
+export function compactionFingerprint(input: CompactionFingerprintInput): string {
+  const stable = JSON.stringify({
+    model: input.model
+      ? { provider: input.model.provider, modelId: input.model.modelId }
+      : undefined,
+    summarizerKind: input.summarizerKind,
+    retainedFromEnd: input.retainedFromEnd,
+    developerBudgetTokens: input.developerBudgetTokens,
+  });
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < stable.length; i++) {
+    hash ^= stable.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * 指纹变更触发判定（装配 PreTurn 检查点消费）：最新**已结算**压缩的 compHash
+ * 与当前指纹**双值齐备且不等**才发压缩请求（codex·session/turn.rs:1304 纪律——
+ * "A missing hash does not provide enough information to trigger compaction"，
+ * 旧流无指纹 / 引擎未接指纹都不触发）；指纹相同不重压。
+ */
+export function compHashChangeRequest(
+  events: readonly SessionEvent[],
+  currentHash: string | undefined,
+): CompactionRequest | null {
+  if (currentHash === undefined) return null;
+  let latest: Extract<SessionEvent, { type: "compaction" }> | undefined;
+  for (const e of effectiveEvents(events)) {
+    if (e.type === "compaction" && (e.status === undefined || e.status === "completed")) {
+      latest = e;
+    }
+  }
+  const previous = latest?.compHash;
+  if (previous === undefined || previous === currentHash) return null;
+  return { reason: "comp-hash-changed" };
 }
 
 /**
@@ -190,6 +264,12 @@ export interface CompactionEngineDeps {
    * 落账。工具步骤的 recordCompletedToolStep 由 loop/装配侧调用。
    */
   rapidRefillGuard?: RapidRefillGuard;
+  /**
+   * 压缩指纹取值（F26/T-P1-100）：提供时三次落盘（started/failed/completed）
+   * 都写入 compHash 载荷——下轮边界 compHashChangeRequest 据此判"配置指纹
+   * 变了重压"。缺省不接 = 零行为变化（事件无 compHash、不触发指纹重压）。
+   */
+  compHash?: () => string | undefined;
 }
 
 /** 压缩触发入参：相位与轮号由触发方（turn 边界 / step 边界装配）决定。 */
@@ -215,10 +295,15 @@ export class CompactionEngine {
     if (refillDecision?.shouldBlock) {
       throw new RapidRefillError(refillDecision);
     }
+    // F26：压缩指纹（本 run 的配置指纹——三次落盘同值，取值时点在 run 入口）。
+    const compHash = this.deps.compHash?.();
 
     const events = effectiveEvents(store.load(sessionId));
     const tokensBefore = tokensBeforeOf(events);
-    const retainedTail = chooseRetainedTail(events, this.deps.keepRules?.retainedFromEnd ?? 1);
+    const retainedTail = chooseRetainedTail(
+      events,
+      this.deps.keepRules?.retainedFromEnd ?? DEFAULT_RETAINED_FROM_END,
+    );
 
     const invocation: CompactionInvocation = {
       sessionId,
@@ -256,6 +341,7 @@ export class CompactionEngine {
         implementation: "llm-summarizer",
         strategy: "full_summary",
         status: "started",
+        ...(compHash !== undefined ? { compHash } : {}),
       },
     ]);
 
@@ -285,6 +371,7 @@ export class CompactionEngine {
           implementation: "llm-summarizer",
           strategy: "full_summary",
           status: "failed",
+          ...(compHash !== undefined ? { compHash } : {}),
         },
       ]);
       throw e;
@@ -319,6 +406,7 @@ export class CompactionEngine {
         strategy: "full_summary",
         status: "completed",
         ...(title !== undefined ? { title } : {}),
+        ...(compHash !== undefined ? { compHash } : {}),
       },
     ]);
     const seq = committed!.seq;

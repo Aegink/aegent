@@ -418,6 +418,15 @@ export interface CompactionEvent extends EventBase {
    * interrupted 不引入：中断时最后事实是 started（对账后投影可见"未完成"）。
    */
   status?: string;
+  /**
+   * F26/T-P1-100：压缩指纹（压缩相关配置的稳定哈希——摘要模型身份 + 摘要器
+   * 种类 + 保留规则 + developer 保留预算，compactionFingerprint 计算）。下轮
+   * 边界与当前指纹**双值齐备且不等** → 触发 comp_hash_changed 重压（codex
+   * turn.rs:1304 纪律：缺值不提供足够信息触发——旧流无此字段即不触发）。
+   * 三次落盘（started/failed/completed）同值：指纹描述的是本次压缩的配置面。
+   * 可选字段向后兼容：词汇表立案 #17（事件计数 23 不变——载荷扩展）。
+   */
+  compHash?: string;
 }
 
 export interface CheckpointEvent extends EventBase {

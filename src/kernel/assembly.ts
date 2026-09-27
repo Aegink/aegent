@@ -55,14 +55,20 @@ import { effectiveEvents } from "../session/messages.js";
 import {
   type Summarizer,
   CompactionEngine,
+  compHashChangeRequest,
+  compactionFingerprint,
+  DEFAULT_RETAINED_FROM_END,
   type CompactionInvocation,
   type CompactionSettled,
   type PreCompactOutcome,
   phaseForCompletedSteps,
 } from "../context/compaction.js";
+import {
+  startNewContextWindow,
+  DEFAULT_DEVELOPER_BUDGET_TOKENS,
+} from "../context/new-window.js";
 import { PressureMonitor } from "../context/pressure.js";
 import { detectLocalOverflow } from "../context/overflow.js";
-import { startNewContextWindow } from "../context/new-window.js";
 import { RapidRefillGuard } from "../context/rapid-refill.js";
 import { currentWindow } from "../context/window.js";
 import { type BudgetConfig, RolloutBudget } from "../context/budget.js";
@@ -477,6 +483,21 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
   // —— 压缩 / 压力 / 抖动（阶段 7 模块接线）
   const guard = new RapidRefillGuard();
   const monitor = new PressureMonitor({ contextWindow });
+  // F26/T-P1-100：压缩指纹（影响摘要内容或重建的配置面——覆盖面卡内定形，
+  // 见 CompactionFingerprintInput）。装配期配置不变 → 指纹会话内恒定；
+  // 变更只可能来自重启时的新装配（fingerprint 跨进程由事件 compHash 对拍）。
+  const fingerprint = compactionFingerprint({
+    ...(options.summarizerModel !== undefined
+      ? { model: options.summarizerModel.identity }
+      : {}),
+    summarizerKind: options.summarizer
+      ? "custom"
+      : options.summarizerModel !== undefined
+        ? "llm"
+        : "truncating",
+    retainedFromEnd: DEFAULT_RETAINED_FROM_END,
+    developerBudgetTokens: DEFAULT_DEVELOPER_BUDGET_TOKENS,
+  });
   const engineDeps: ConstructorParameters<typeof CompactionEngine>[0] = {
     sessionId,
     store,
@@ -492,6 +513,7 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
           })
         : truncatingSummarizer()),
     rapidRefillGuard: guard,
+    compHash: () => fingerprint,
   };
   if (options.compactionPreHook) {
     engineDeps.preHook = options.compactionPreHook as typeof engineDeps.preHook;
@@ -850,7 +872,16 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
       }
       const messages = startNewContextWindow(store.load(sessionId));
       const verdict = detectLocalOverflow({ messages, contextWindow });
-      if (!verdict.overflow) return;
+      if (!verdict.overflow) {
+        // F26/T-P1-100：溢出未触发时查压缩指纹——配置指纹变了（如重启后换了
+        // 摘要模型）重压旧窗口（CompHashChanged）。双值齐备且不等才触发
+        // （compHashChangeRequest 内判）；溢出刚压缩过则指纹已刷新、自然跳过。
+        const hashRequest = compHashChangeRequest(store.load(sessionId), fingerprint);
+        if (hashRequest !== null) {
+          await engine.run({ turn, phase: "PreTurn", request: hashRequest });
+        }
+        return;
+      }
       // PreTurn 压缩失败按 F10 处理：不吞——错误上抛交 loop.failTurn 闭合
       //（turn/end{error} 落盘，原始错误进 LlmFailure），绝不留下无恢复点的静默。
       await engine.run({
