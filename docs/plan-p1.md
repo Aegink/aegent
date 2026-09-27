@@ -1,6 +1,6 @@
 # P1 实施计划 · 批次 1
 
-**状态**：v1.11 · 批次 1-10 收官（13 + 10 + 6 + 10 + 6 + 9 + 11 + 9 + 10 + 14 = 98 卡全关，2026-09-27；批次 10 = 调度与会话数据工程——15 条需求 ID 中 14 条实卡全关 + N4 展卡核对关闭；词汇表 21→23 事件（command/run+done；#12~#15 四案经用户 2026-09-27"认可"追认转正：六维载荷/中间态行为/produced/命令事件）· 全量基线 1081 passed / 1 skipped · 批次 11 未展卡（上下文与模型运维收尾 12 条，下一会话自展+执行）
+**状态**：v1.12 · 批次 1-10 收官（13 + 10 + 6 + 10 + 6 + 9 + 11 + 9 + 10 + 14 = 98 卡全关，2026-09-27；批次 10 = 调度与会话数据工程——15 条需求 ID 中 14 条实卡全关 + N4 展卡核对关闭；词汇表 21→23 事件（command/run+done；#12~#15 四案经用户 2026-09-27"认可"追认转正：六维载荷/中间态行为/produced/命令事件）· 全量基线 1081 passed / 1 skipped · 批次 11 已展卡（2026-09-27：11 张——F25 / F26+F29 / F11 / F18 / F7 / F8 / F30 / J13 / J16 + 收口共 10 张执行 + T-P1-108 J5 未展占位待澄清 #16 厂商选型追认；提示词"12 条"系误计，实为 11 条）
 **执行协议**：沿用 [`plan-p0.md`](plan-p0.md) §0（取卡 / 做卡 / 验收 / 打勾 / 提交 / 自动继续 / 四种停下情况），本文件不复制。执行进度：**批次 1-10 见 [`plan-p0-progress.md`](plan-p0-progress.md)（已定格）；批次 11 起见 [`plan-p1-progress.md`](plan-p1-progress.md)**（批次报告 / 待澄清 / 人工确认清单；待澄清编号接续 #16 起）。
 **需求来源**：[`requirements.md`](requirements.md) §4 的 P1 项（共 158 条）。P1 不切阶段（§1 尾注），按**批次**组织：本文件当前只含批次 1，后续批次轮到时再展卡追加。
 **批次 1 范围**（用户圈定于 2026-09-25，四组全选，共 26 条）：
@@ -1483,3 +1483,153 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - Q5 红线不破 ✅：重启零自动执行（M3 显式 resume 是唯一例外且经用户动作）；M8 epoch fence 收拢断言面 ✅。
 - 两条接旧账线关闭 ✅：M8 ← T-P1-13 记档兑现；Q1 ← T-P1-36 消费记档兑现（真实 v1→v2 迁移落地）。
 - 盘点结论落批次报告（T-P1-98，零真冲突）✅。
+
+## 批次 11 卡序（11 张，2026-09-27 展卡，按依赖排序；11 条需求 ID：F7/F8/F11/F18/F25/F26/F29/F30 + J5/J13/J16——J5 未展待追认，其余 9 张执行 + 收口）
+
+**锚点纪律**：11 条锚点已逐一打开核对（2026-09-27，证据见各卡）：codex·context/current_time_reminder.rs（71 行全文——`CurrentTimeReminder` developer 角色片段 `<current_time_reminder>It is {time}.</current_time_reminder>` + `CurrentTimeUnavailable` 不可用告示对偶）+ session/time_reminder.rs（202 行全文——`CurrentTimeReminderState`：`last_delivery_time`/`last_window_id` 记账，`take_reminder_due` 判定"新窗口（`last_window_id` ≠ 当前 window_id）|| interval_seconds == 0 || 距上次送达 ≥ interval"，`maybe_record_current_time_reminder` 在轮边界判定到期后 `record_conversation_items` 落历史，时钟读失败落 `CurrentTimeUnavailable`（每窗一次，非致命特性下））；opencode·tool/truncate.ts（156 行全文——MAX_LINES=2000/MAX_BYTES=50KB、direction "head"|"tail"、超限写 truncation 目录 + 提示语按 task 权限分档、RETENTION 7 天 cleanup）；pi-desktop·ADR 0049（三级结局：preflight → 摘要失败落 retained-tail 兜底检查点（携带前次摘要 + 恢复标记 + `details.fallback = "retained_tail"`）→ 兜底也超限才 CONTEXT_COMPACTION_FAILED；"The complete transcript is never deleted"；manual /compact 永不静默兜底）+ ADR 0282（摘要请求有界重试 3 次 2s/4s/8s（pi-ai 瞬态分类：overload/429/5xx/断流/超时重试，quota/auth/坏请求首试即返）+ preflight 按 pi 自己的序列化口径量尺寸 + 恰一次降档（工具结果切 500 字符前缀 + 丢 thinking，user/assistant 正文与参数不动、消息不删）+ `fallback?: "retained_tail"` 可选标记向后兼容）+ ADR 0302（兜底保留"真近期窗口"：压缩区间内最新连续消息全角色保留、受 keep-recent 目标与安全预算双重约束、**不携带孤儿 tool result**（"a provider rejects a result whose call is missing"）+ 超大摘要分块（连续分块各 fit 预算、至多 16 请求、链式 update-the-summary、usage 求和）+ `failureReason` 闭集 `no_new_history/summary_budget/summary_provider/checkpoint_oversized`（不落 provider 错误原文））；zcode·contracts/events/stream-recovery.events.ts（143 行全文——六事件 stream_recovery_anchor_created/started/anchor_selected/tail_discarded/retry_started/blocked；锚点四类 assistant_message/tool_result/tool_error/tool_cancelled + committedToolCallIds；blocked 三判据 running_side_effect/unknown_side_effect/non_retryable_failure——zcode 工具可 during_stream 执行故有 side_effect 两判据）+ runner.ts:348-356（`assertSameBoundModel`——"Runtime header refresh changed the bound model identity."）；codex·state/auto_compact_window.rs（`AutoCompactWindowIds {first_window_id, previous_window_id, window_id}` 三元组 + `window_number` 单调 + `advance()` 换窗推进 + `restore(window_number, ids)` 恢复）+ session/mod.rs:4502-4530（`current_window()` → `{thread_id}:{window_number}`；`start_new_context_window` 开新窗）；codex·compact_model_fallback.rs（59 行全文——`CompactionReason::CompHashChanged => "comp_hash_changed"`）+ session/turn.rs:1304-1365（`comp_hash_changed`："Returns true **only when both turns declare** compaction compatibility hashes **and they differ**. A missing hash does not provide enough information to trigger compaction."——双值齐备且不等才触发）+ tests/suite/compact.rs:416-440（`assert_pre_sampling_switch_compaction_requests`：first=previous_model、compact=previous_model 且**剥掉** `<model_switch>` 更新项、follow_up=next_model 且**带上**）；codex·session/tests.rs:1773-1810（`reload_user_config_layer_keeps_previous_config_for_malformed_shell_policy`——畸形配置 reload 后 `current_config == previous_config`）；opencode·packages/llm/（providers 13 家 × protocols 7 种分层——"Keep provider quirks behind provider and protocol boundaries"）；cc-switch·services/stream_check.rs（可达性探测：任意 HTTP 响应即"可达"、仅 DNS/拒连/TLS/超时判"不可达"、延迟 = TTFB、HealthStatus operational/degraded/failed、降级阈值 6000ms、仅超时类重试 1 次）+ dao/stream_check.rs（检查日志 + `cleanup_old_stream_check_logs(retain_days)`）——**"连通性检查绝不触碰故障转移熔断器"（可达 ≠ 可用，熔断器只由真实流量成败驱动）**。**零内容勘误；提示词"12 条"系误计——圈定研究批次分配表（研究文档 §二·批次 11 行）为 11 条，且 P1 F/J 剩余全集对账 = 8 F + 3 J 无第 12 条。**
+
+**展卡核对结论（我方现状 × 11 条）**：
+1. **F25 × M10 windowId——部分覆盖属实，编号化增量落卡**（J25/L10/M5/N4 先例）：M10 的 windowId = `String(latestCompactionSeq(events) ?? 0)`（assembly.ts:606——"压缩后即换窗"的派生串），"窗口变化驱动重置"概念在位；缺的是 (a) first-class 窗口编号（codex `window_number` 单调计数）、(b) `first/previous/current` 三元组（codex `AutoCompactWindowIds`）、(c) **恢复恒等**断言（codex `restore()`——重启后窗口身份从流重建不变）。我方落法 = `src/context/window.ts` 纯函数推导：number = 已结算压缩数、id = 最新已结算 compaction 的 seq、first/previous 从压缩 seq 序列推导——**零新事件零载荷**（"持久化窗口元数据"半边由 compaction 事件本体承载：retainedTail 即窗界、事件 seq 即窗 id，事件源单一事实源，不设第二元数据存储，记档）；M10 消费面归一到该模块（行为零变化的等价改写 + 断言钉死）。
+2. **F29 ← J6/J7+F24 在位属实，落断言链不落新机制**：换模本体（J6/J7，T-P1-04）与 downshift 先压缩（F24，T-7-06）在位；摘要器身份 = 装配固定 `summarizerModel`（agent-child.ts——**结构性就是旧模型**，不随换模目标漂移）。F29 增量 = 端到端断言链钉死三段语义：压缩请求跑旧模型（request/header{reason:"compaction"} 的 identity = 换模前身份）→ 压缩完成先于切换（T-7-06 既有次序）→ 后续请求跑新模型（下一 turn header identity = 新身份）；"剥掉/带上 model_switch 更新项"半边 **N/A 记档**——我方模型可见历史无换模标记（model/switch 是会话级元事件不进 buildChatMessages，F13 缓存锚纪律下也不插历史标记），codex 该断言维护的是其"历史含更新项"的实现选择，我方无此结构即无此剥除面。
+3. **F18 三分核对：锚点半边在位、有界重试是真实缺口、blocked 槽位零扩展**：①"锚点先于故障持久化"**结构性在位**——事件 append 逐条落盘（T-1-02 WAL），已提交的 assistant/message 与 tool/call+result 就是锚点本体，失败尝试以 assistant/attempt 连完整 timed chunks 落盘（loop.ts callModel catch 路径）即"被丢弃的 tail"记录（zcode StreamRecoveryTailDiscarded 的我方同构）；②"有界重试"**缺口属实**——withRetry 的 D15 流边界（retry.ts:9-12"一旦流产出过增量，任何错误都不再自动重试"）刻意把流中失败上抛，loop 现状 failTurn 收 turn/end{error} 无恢复路径；增量 = loop 级有界恢复重试（从锚点重建历史重发整 step——不是 provider 级 chunk 重试，那会重复产出）；③"显式终态 blocked"**复用 TurnEndReason 既有槽位**（events.ts:184）零词汇表扩展——触发面 = 恢复判据为不可重试失败（J26 terminal 分类：auth/quota/4xx 终态，重试无意义）；重试耗尽 ≠ blocked（zcode blocked 词表也无 exhausted——落既有 turn/end{error}）；zcode 的 running/unknown_side_effect 两判据 **N/A 记档**（我方工具仅在流结束后派发，无 during_stream 在途副作用）。assistant/attempt / assistant/retrying 两事件在位，零新事件；retrying 生产者扩到 loop 级走语义记档（事件形状不变）。
+4. **F8 × B5/B10/B11——生产时半边在位，历史裁剪器是增量**：boundedOutput（registry.dispatch 接线全工具）= opencode truncate 的生产时同构（行/字节双上限、spill 落盘、尾部提示）；F8 验收"**历史中的**冗余工具结果可被裁剪"的增量 = 投影级裁剪：模型可见消息面把陈旧/冗余 tool result 换占位符——**事件流本体永不改写**（不变量 1）、tool/call↔tool/result 配对保持（占位符仍是 result 角色 + callId，"不破坏因果链"）、近期窗口内结果不裁。opencode 的 direction:"tail" 与 RETENTION 清理不取（我方 spill-gc 按会话清理在位，Q13 记档）。
+5. **F11 扩展位兑现（llm-summarizer.ts 头注"截断回退，降级不炸压缩——F11 是它的扩展位"）**：现有一级 = LLM 摘要失败 → truncatingSummarizer 截断（T-P1-18）；增量照 ADR 0282/0302 落三级兜底链：①有界重试（J26 瞬态分类复用，3 次退避）+ 尺寸预检（按我方请求序列化口径）+ 恰一次降档（工具结果切短前缀、消息不删）；②兜底检查点 = 携带前次摘要 + 恢复标记 + **真近期窗口**（压缩区间最新连续消息全角色、不携带孤儿 tool result——tool-pairing 纪律复用）；③超大输入分块摘要（连续分块链式、至多 16 请求、usage 求和）；failureReason 闭集四值 + provider 错误原文不落流（C14 判据/展示分域 + 掩码纪律同构）；manual 触发 fail-fast 不兜底（event trigger:"manual" 槽位兑现）。
+6. **F26 reason 槽位早已预留**：compaction 事件 reason 注释（events.ts:383）"user_requested / comp_hash_changed 是 P1/P2 槽位"——本卡兑现 comp_hash_changed；指纹**载荷扩展立案**（`compHash?: string` 可选字段，事件计数 23 不变）；comp_hash_changed 判据照 codex turn.rs:1304 纪律"**双值齐备且不等才触发**"（缺指纹不触发——"A missing hash does not provide enough information"）；指纹源 = 压缩相关配置（模型身份 + keepRules + 摘要器面，codex 是服务端声明 per-model comp_hash，我方自算配置哈希——requirements"配置哈希"字面）。
+7. **F30 保留语义在位但有真实缺口**：SessionConfigStore.refresh 非白名单键整包拒绝（零应用）✅；但**值类型错在逐键循环中抛出 → 前序合法键已应用**（session-config.ts refresh 按补丁序逐键写——`{queueMaxSize:5, approvalTimeoutMs:-1}` 部分应用，与"整包拒绝"承诺不符）——本卡改两段式（先全验后应用，任何错误零应用），fail-safe 方向与 codex `keeps_previous_config` 同构："解析失败保留上一份，绝不回退默认"；文件面配置 reload 随真实需求记档（我方暂无文件配置热加载，YAGNI 不预建通用 Reload 框架）。
+8. **J13 鉴权刷新面在 openai-compat 独立可落（不被 J5 未决阻塞）**：现状 apiKey 构造期定死（openai-compat.ts:60-62 闭包捕获 settings）；增量 = AuthResolver 每请求现取鉴权（令牌轮换/安全配置重读的接口面）+ **身份不变断言**（zcode assertSameBoundModel 同构——刷新只换 header 不换 req.identity；request/header 事件的 config.identity 跨刷新不变的端到端断言）；圈定研究标注的"J13 ← J5"依赖反向不成立——J13 是适配层无关面，J5 第二厂商照此面实现即可。
+9. **J16 ← J19 在位属实，分域不变量是卡的核心**：熔断器（fault-tolerance.ts）只由真实流量成败驱动；J16 增量 = ①可达性探测（任意 HTTP 响应即可达 / 网络级错误不可达 / TTFB 降级档；**探测绝不触碰熔断器状态**——cc-switch"可达 ≠ 可用"不变量的结构保证 = 探测模块零 CircuitBreaker import）；②检查日志带保留期（logs/health.jsonl 专用族 + 按天保留期清理——"不无限增长"；与 Q7 冷压缩分域：压缩不动 health 族、保留期只删不压，记档）。
+10. **F7 零词汇表扩展（user/message{source:"injected"} 在位承载）**：注入点 = beforeFirstModelRequest 既有 hook（goal 提醒 T-P1-12 / 预算提醒 T-7-08 同款）；到期判定 = 新窗（F25 窗口身份消费——codex time_reminder 同款 `last_window_id` 机制）|| 距上次送达 ≥ interval；状态从流重建（上次送达 = 流内最近一条时间注入消息的 ts——恢复恒等）；CurrentTimeUnavailable 告示 **N/A 记档**（Node 系统时钟不可失败，外部时钟源 P2）；与 F23 分域：时间注入**不占** developer 独立预算（它是"现在"的可再生事实非不可丢指令——丢弃只损失新鲜度，重注入即恢复）。
+11. **J5 第二厂商选型开放——立案 #16 建议 Anthropic，卡保持未展**（卡序内 T-P1-108 只落卡位与既定卡面草案，不展不执行）；其余 9 张 + 收口照常。
+
+**批次 11 全局约束**：
+1. **F18 红线**：恢复重试只重做"未产生副作用的部分"——失败 attempt 的 tool calls 从未派发（calls map 随 throw 丢弃）是安全前提，用断言钉死；blocked 是显式护栏终态非错误（与 C10/B14 同族）。
+2. **F11 红线**：完整 transcript 永不删除不改写（ADR 0049"The complete transcript is never deleted"——兜底只换模型可见视图）；provider 错误原文不落流（闭集 failureReason）；manual /compact fail-fast。
+3. **词汇表预判两案**（接 #16 之后编号，执行中立案供追认、每案含回退面）：#17 = F26 compHash 载荷扩展；#18 = F11 strategy 值域扩 `recent_window_fallback` + failureReason 可选字段。其余卡零扩展（F25/F29/F18/F7/F30/J13/J16 全部零新事件零载荷）。
+4. **不做什么**（本批次）：不做 F6 提示缓存命中率统计面（批次 2 已落缓存锚检测，命中率可观测是 §6.2 真实厂商终验面）；不做 F16 缓存健康诊断（P2）；不做 J17 OAuth（P2）；不做 J5 第二厂商本体（待澄清 #16 未决）；不做 /compact 命令面与 CLI UX（trigger:"manual" 槽位兑现为引擎参数面）；不做健康探测定时调度（库 + 单次执行面，调度随真实消费方）；F8 裁剪不做"恢复原文"交互面（spill 指针已在位）。
+
+#### T-P1-99 · F25 · 上下文窗口编号化（窗口身份 first-class + M10 归一 + 恢复恒等） `[ ]`
+- **依据需求**：F25（P1："上下文窗口编号化；压缩 = 开新窗口 + 持久化窗口元数据"；验收 `window_number` / `window_ids`）
+- **上游首选参考**：[codex·state/auto_compact_window.rs](../oss/codex/codex-rs/core/src/state/auto_compact_window.rs)（`AutoCompactWindowIds {first_window_id, previous_window_id, window_id}` + `window_number` 单调 + `advance()` 换窗推进 + `restore()` 恢复）+ [session/mod.rs:4502](../oss/codex/codex-rs/core/src/session/mod.rs#L4502)（`current_window()` → `{thread_id}:{window_number}`）
+- **取什么 / 别抄什么**：取"编号单调 + 三元组身份 + 恢复恒等"三形状；不抄 UUID now_v7 与 Rust state 机（我方窗口身份从事件流推导——压缩事件 seq 即窗 id，"持久化"半边由事件本体承载，展卡核对结论 ①）
+- **证据强度**：`读了代码`（auto_compact_window.rs 全文 + mod.rs:4502-4530 + 我方 assembly.ts:175/606 + budget.ts windowId 面）
+- **要产出**：①`src/context/window.ts`——`currentWindow(events)` → `WindowIdentity {number, currentId, previousId?, firstId?}`（number = 已结算压缩数——0 = 初始窗；currentId = 最新已结算 compaction 的 seq；first/previous 从压缩 seq 序列推导；只认 status 缺省/completed——new-window 切换权威同口径）；②assembly 预算 windowId 消费归一到该模块（`String(latestCompactionSeq ?? 0)` → `String(currentWindow(events).currentId)` 等价改写，行为零变化）；③恢复恒等断言（同流两次推导逐字段相等——restore 不需要显式恢复调用，流即状态）
+- **验收**：`npx vitest run src/context/window.test.ts src/kernel/assembly.test.ts`（扩）——①无压缩 → {number:0, currentId:0}；②N 次压缩 → number=N、三元组 = 各压缩 seq；③started/failed 不计数（切换权威同口径）；④revert 掉压缩 → 窗口身份回退（effectiveEvents 口径）；⑤M10 归一后预算提醒换窗重发行为零变化（既有用例全绿）；⑥同流推导恒等（restore 断言）
+- **依赖**：无（本批首卡）
+- **风险 / 未知**：currentId 用 seq（数值）而非 UUID——事件流内单调即全局唯一，UUID 无增量信息；窗口身份消费方目前只有预算提醒（F7 卡随后消费）
+- **完成记录**：
+
+#### T-P1-100 · F26+F29 · 压缩指纹（CompHashChanged）+ 换模压缩语义断言链 `[ ]`
+- **依据需求**：F26（P1："压缩结果带指纹（配置哈希），指纹变了重压"；验收 `CompHashChanged`）+ F29（P1："换模压缩语义：压缩请求跑在旧模型上、后续跑在新模型上"）
+- **上游首选参考**：[codex·session/turn.rs:1304](../oss/codex/codex-rs/core/src/session/turn.rs#L1304)（`comp_hash_changed`——双值齐备且不等才触发）+ [compact_model_fallback.rs:30](../oss/codex/codex-rs/core/src/compact_model_fallback.rs#L30)（`CompHashChanged => "comp_hash_changed"`）+ [tests/suite/compact.rs:416](../oss/codex/codex-rs/core/tests/suite/compact.rs#L416)（三段模型身份断言）
+- **取什么 / 别抄什么**：取"指纹双值齐备且不等才重压 + reason 闭集复用既有词表位 + 三段模型身份断言链"；不抄其服务端声明 comp_hash（我方自算配置哈希）与 fallback_step_context 编排（我方摘要器身份装配固定即旧模型，展卡核对结论 ②③）
+- **证据强度**：`读了代码`（turn.rs:1280-1400 + compact_model_fallback.rs 全文 + tests/suite/compact.rs:400-440 + 我方 compaction.ts 全文 + downshift.ts + events.ts:383 预留槽位注释）
+- **要产出**：①`compaction.ts` 增指纹：`compactionFingerprint(config)` 稳定哈希（模型身份 + keepRules.retainedFromEnd + 摘要器 implementation/strategy + developer 预算——稳定序列化后自算哈希，不引依赖）；engine.run 落盘时写入 `compHash`（载荷扩展立案 #17——可选字段前向兼容，事件计数 23 不变）；②触发面：装配 PreTurn 检查点（既有溢出检查同位）增"最新已结算压缩的 compHash ≠ 当前指纹 → 发起压缩 request{reason:"comp-hash-changed"}"——`compactionReasonOf` 增映射 `"comp_hash_changed"`（词表位兑现，非新值）；双值齐备纪律（旧值缺失不触发）；③F29 断言链：downshift 场景端到端——压缩请求（request/header{reason:"compaction"}）identity = 换模前身份 → 压缩完成先于切换（既有次序断言）→ 下一 turn header identity = 新身份；"剥掉/带上 model_switch" N/A 记档（卡序头）
+- **验收**：`npx vitest run src/context/compaction.test.ts src/context/downshift.test.ts src/kernel/assembly.test.ts`（扩）——①同配置两次压缩指纹相等、换模型/换 keepRules 后不等；②指纹变化 → 下轮 PreTurn 压缩 reason="comp_hash_changed" 落流；③无既有指纹（旧流）不触发；④指纹相同不触发；⑤F29 三段断言链全绿；⑥旧流（无 compHash 字段）投影/重建零回归
+- **依赖**：T-P1-99（PreTurn 检查点同位先落窗模块避免冲突）
+- **风险 / 未知**：指纹覆盖面取舍——窄了漏报（配置变了不重压）、宽了误报（无关配置变了也重压）；卡内定形 = 只覆盖"影响摘要内容或重建"的配置，并在注释列明
+- **完成记录**：
+
+#### T-P1-101 · F11 · 压缩失败三级兜底（有界重试 + 近期窗口兜底 + 分块摘要） `[ ]`
+- **依据需求**：F11（P1："压缩失败三级兜底：摘要重试与尺寸控制 → 回退近期窗口 → 分块摘要"）
+- **上游首选参考**：[pi-desktop·ADR 0282](../oss/pi-desktop/docs/adr/0282-compaction-summary-retry-and-sizing.md)（有界重试 3 次退避 + 瞬态分类 + preflight 序列化口径 + 恰一次降档）+ [ADR 0049](../oss/pi-desktop/docs/adr/0049-context-compaction-failure-recovery.md)（retained-tail 兜底 + "The complete transcript is never deleted" + manual fail-fast）+ [ADR 0302](../oss/pi-desktop/docs/adr/0302-compaction-fallback-recent-window-and-chunked-summary.md)（真近期窗口不携带孤儿 result + 分块 ≤16 链式 + failureReason 闭集）
+- **取什么 / 别抄什么**：取"重试→降档→兜底→分块"的次序与红线（transcript 永不删、错误原文不落流、manual fail-fast、孤儿 result 不进窗口）；不抄其 ContextCompactionMark/UI 标记面（我方以 compaction 事件 strategy/failureReason 承载）与 pi-ai RetryPolicy 依赖（复用我方 J26 分类 + backoffDelayMs）
+- **证据强度**：`读了代码`（三份 ADR 全文 + llm-summarizer.ts 头注"F11 是它的扩展位" + compaction.ts 引擎全链 + tool-pairing.ts 配平面）
+- **要产出**：①一级：llm-summarizer 摘要调用有界重试（isRetryableStatus 复用，3 次退避，sleep 注入）+ 尺寸预检（被摘要区间的请求序列化估算 vs 引擎 contextWindow − 输出预留）+ 恰一次降档（工具结果消息切 500 字符前缀带标记、user/assistant 正文与参数不动、消息不删）；②二级：摘要仍失败/超限 → 兜底压缩 = 前次摘要携带（无则空）+ 恢复标记段 + 真近期窗口（压缩区间内最新连续消息全角色保留、受安全预算约束、`latestBalancedCutAtOrBefore` 保证无孤儿 result）——落流 `strategy:"recent_window_fallback"` + `failureReason`（闭集 no_new_history/summary_budget/summary_provider/checkpoint_oversized——载荷扩展立案 #18）；③三级：被摘要区间单请求装不下 → 连续分块（每块 fit 预算，至多 16 请求，块 i 摘要 + 块 i-1 摘要链式喂入，usage 求和）；④manual 触发 fail-fast：CompactionRunInput 增 trigger（"auto"|"manual"），manual 时全部兜底禁用（失败照抛——既有行为）；⑤provider 错误原文不落流（闭集 failureReason 判据 + 原文仅 logger.warn 可检索——D14 先例）
+- **验收**：`npx vitest run src/context/compaction.test.ts src/context/llm-summarizer.test.ts src/context/compaction.snapshot.test.ts`（扩）——①瞬态失败 2 次后第 3 次成功 → 正常摘要 + 重试 warn 可检索；②终态失败（4xx）零重试直接兜底；③兜底 = 前次摘要 + 恢复标记 + 近期窗口进模型可见历史（startNewContextWindow 消费断言）+ strategy/failureReason 落流；④兜底窗口无孤儿 result（配平断言）；⑤超大区间 → 分块 ≥2 次链式摘要成功且 usage 求和；⑥分块超 16 上限 → 兜底；⑦manual 失败照抛零兜底；⑧事件流无 provider 错误原文；⑨transcript 完整性（事件流逐字节不变——只换模型可见视图）
+- **依赖**：T-P1-100（compHash 落盘同文件先落）
+- **风险 / 未知**：分块链式的"块摘要"用同一摘要器（system 指令换链式版）——摘要质量属 F5 域不追求；兜底检查点的 tokensBefore 语义（真实计数 vs 上次结算值）卡内定形
+- **完成记录**：
+
+#### T-P1-102 · F18 · 模型流中断恢复（锚点重建 + 有界重试 + 显式终态 blocked） `[ ]`
+- **依据需求**：F18（P1："模型流中断恢复：锚点先于故障持久化 / 有界重试 / 显式终态 blocked"）
+- **上游首选参考**：[zcode·stream-recovery.events.ts](../oss/zcode/apps/zcode-cli/packages/contracts/src/events/stream-recovery.events.ts)（六事件语义面：锚点/开始/选择/弃尾/重试/blocked 三判据）+ [runner.ts:348](../oss/zcode/apps/zcode-cli/packages/adapters/src/model/runner.ts#L348)（assertSameBoundModel——刷新不改身份的断言纪律同构）+ 我方 retry.ts:9-12 D15 流边界（"一旦流产出过增量不再自动重试"——F18 是其 loop 级补全而非推翻）
+- **取什么 / 别抄什么**：取"锚点先于故障持久化 / 有界重试 / blocked 显式终态"三纪律；不抄其六事件词汇表（我方 assistant/attempt+retrying+turn/end{blocked} 已承载同构信息面——卡序头核对结论 ③）与其 during_stream 工具账本（我方无此执行时序，YAGNI）
+- **证据强度**：`读了代码`（stream-recovery.events.ts 全文 + loop.ts callModel/failTurn + retry.ts 全文 + events.ts TurnEndReason/AssistantAttemptEvent/AssistantRetryingEvent）
+- **要产出**：①`src/kernel/stream-recovery.ts`——恢复判定纯函数：`classifyStreamFailure(e)`（ProviderHttpError 且 status 不在 J26 可重试枚举 → "non-retryable" | 其余 → "recoverable"；cancelCause 在途 → 恢复不启动——取消是权威结局）+ `StreamRecoveryPolicy {maxRetries}`（装配选项，缺省 2）；②loop 集成：callModel 流中失败（首个 chunk 后）→ assistant/attempt 既有落盘 + 判定——recoverable 且重试未耗尽 → assistant/retrying 落流（生产者扩到 loop 级——事件形状不变，注释同步）→ 从锚点重建历史重发整 step（buildMessages 从流现算，锚点 = 已落盘 committed 事实——**失败 attempt 的 tool calls 从未派发是安全前提，断言钉死**）；③non-retryable → turn/end{blocked} 显式终态（TurnEndReason 既有槽位零扩展）+ logger.warn 结构化（blockedReason/failureKind——D14 先例）；重试耗尽 → turn/end{error}（现状语义）；④"锚点先于故障持久化"断言面：恢复重发的请求历史含失败前已提交的 tool 结果（模型不重调）
+- **验收**：`npx vitest run src/kernel/stream-recovery.test.ts src/kernel/loop.test.ts`（扩）——①流中失败（已产出增量）→ attempt 落盘 + retrying 落流 + 重发成功 turn 正常收束；②恢复重发的模型历史 = 锚点重建（失败前的 tool result 在、半截文本不在）；③maxRetries 耗尽 → turn/end{error} 且尝试次数 = 1+maxRetries；④terminal 4xx → turn/end{blocked} 零重试；⑤取消在途 → 零恢复（turn/end{aborted} 既有语义）；⑥失败 attempt 的 tool calls 零派发（工具执行计数断言）；⑦首 chunk 前失败仍走 provider 级 withRetry（D15 边界不回归）
+- **依赖**：无（与压缩族并行）
+- **风险 / 未知**：恢复重试与 B14 step 预算的记账关系（恢复重发是否计新 step）——卡内定形：恢复不推进 step 序号（同一逻辑 step 的重试），预算按既有口径
+- **完成记录**：
+
+#### T-P1-103 · F7 · 时间上下文（当前时间注入） `[ ]`
+- **依据需求**：F7（P1："时间上下文（当前时间注入）；模型知道'现在'；长会话中时间不漂移"）
+- **上游首选参考**：[codex·session/time_reminder.rs](../oss/codex/codex-rs/core/src/session/time_reminder.rs)（`take_reminder_due`：新窗 || interval 到期；送达即记账）+ [context/current_time_reminder.rs](../oss/codex/codex-rs/core/src/context/current_time_reminder.rs)（developer 片段形状）
+- **取什么 / 别抄什么**：取"新窗必送 + 区间节流 + 送达即记账"三纪律与窗口身份消费；不抄其 TimeProvider trait 外部时钟源（Node 系统时钟在位，外部源 P2）与 CurrentTimeUnavailable 告示（系统时钟不可失败——记档）与 developer 角色片段（我方注入面 = user/message{source:"injected"}，goal 提醒同款）
+- **证据强度**：`读了代码`（time_reminder.rs 202 行全文 + current_time_reminder.rs 71 行全文 + 我方 assembly 注入点 beforeFirstModelRequest + goal 提醒 T-P1-12 先例）
+- **要产出**：①`src/context/time-reminder.ts`——`TimeReminderState`（lastDeliveredAt/lastWindowId 从流重建：扫 user/message{source:"injected"} 的时间注入标记）+ `timeReminderDue(state, now, windowId, intervalSeconds)` 纯函数（新窗 || 距上次 ≥ interval——codex 同款判定）；②assembly 接线：beforeFirstModelRequest 注入 `[当前时间] 现在是 <ISO 本地时区>。`（装配选项 `timeReminder?: {intervalSeconds}`——缺省不启用 = 零行为变化；"写历史才算送达"由 append 落流动作本身闭合——M10 纪律同款，无二次 mark 面）；③窗口身份消费 T-P1-99 模块（新窗必送）
+- **验收**：`npx vitest run src/context/time-reminder.test.ts src/kernel/assembly.test.ts`（扩）——①启用后首轮注入一条且内容含当前时间；②interval 内后续轮零注入（节流）；③超 interval 再注入（时间文本更新——"长会话中时间不漂移"）；④压缩后新窗立即再注入（新窗必送）；⑤重启后状态从流重建（首注轮次判定不变）；⑥未启用装配零注入零行为变化；⑦注入内容固定格式（无自由文本敏感面）
+- **依赖**：T-P1-99（窗口身份）
+- **风险 / 未知**：注入格式与 goal/预算提醒的措辞区分（模型侧混淆风险）——三提醒各有固定前缀标记，卡内定形
+- **完成记录**：
+
+#### T-P1-104 · F8 · 工具结果历史裁剪器（投影级，因果链不破） `[ ]`
+- **依据需求**：F8（P1："工具结果裁剪器：历史中的冗余工具结果可被裁剪，且不破坏因果链"）
+- **上游首选参考**：[opencode·tool/truncate.ts](../oss/opencode/packages/opencode/src/tool/truncate.ts)（生产时截断 + spill 指针 + 提示语——生产时半边我方 B5 已同构在位）+ 我方 registry.ts boundedOutput 接线与 tool-pairing.ts 配平纪律
+- **取什么 / 别抄什么**：取"历史中的冗余结果可被裁剪 + 提示语带检索路径"语义；不抄其 direction:"tail" 与 7 天 RETENTION（spill-gc 按会话清理在位）与 Effect Layer 装配；**红线：事件流本体永不改写（不变量 1）——裁剪只在模型可见投影面**
+- **证据强度**：`读了代码`（truncate.ts 全文 + 我方 truncate.ts/registry.ts/messages.ts/spill-gc.ts）
+- **要产出**：①`src/context/result-trim.ts`——`trimToolResultHistory(events, rules)` 纯函数：模型可见消息面上，把"冗余"tool result 替换占位符（`[结果已裁剪：原 <N> 字符，callId <id>，完整输出<有 spill 指针时>在 <path>]`）——规则 = 保留尾部最近 keepLast 个结果原文 + 更早的超 maxChars 结果裁剪（未超不裁——"冗余"判据是尺寸非年龄）；tool/call↔tool/result 配对结构不动（占位符仍是 tool 角色消息）；②messages.buildChatMessages 消费（装配选项 `resultTrim?: rules`，缺省不启用 = 零行为变化）；③与压缩分域：裁剪是请求面视图变换（不落流、无事件），压缩是流内事实（落 compaction 事件）——两者可叠加不互扰（记档）
+- **验收**：`npx vitest run src/context/result-trim.test.ts src/session/messages.test.ts`（扩）——①超限旧结果被裁成占位符（含原尺寸与 callId）；②未超限与 keepLast 窗口内结果原文不动；③每个 tool/call 仍有配对 result（无孤儿——配平断言）；④事件流逐字节不变（裁剪前后 store.load 相等）；⑤未启用零行为变化；⑥同流两次裁剪幂等
+- **依赖**：无
+- **风险 / 未知**：占位符是否进 token 估算口径（溢出判定与裁剪次序）卡内定形：溢出判定先于裁剪（保守方向——按未裁尺寸判溢出）
+- **完成记录**：
+
+#### T-P1-105 · F30 · 配置解析失败保留上一份（fail-safe 两段式刷新） `[ ]`
+- **依据需求**：F30（P1："配置解析失败保留上一份配置，不回退默认；回退默认可能变宽松；fail-safe 方向"）
+- **上游首选参考**：[codex·session/tests.rs:1773](../oss/codex/codex-rs/core/src/session/tests.rs#L1773)（`reload_user_config_layer_keeps_previous_config_for_malformed_shell_policy`——畸形配置 reload 后 current == previous）
+- **取什么 / 别抄什么**：取"解析失败保留上一份、绝不回退默认"的 fail-safe 方向；不抄其 config_layer_stack/文件加载层（我方无文件配置热加载——记档，YAGNI 不预建通用 Reload 框架）
+- **证据强度**：`读了代码`（tests.rs:1773-1810 + 我方 session-config.ts refresh 逐键应用循环的真实缺口）
+- **要产出**：①SessionConfigStore.refresh 改两段式：先全量校验（键合法性 + 每键值类型）后统一应用——任何错误零应用（修复 `{queueMaxSize:5, approvalTimeoutMs:-1}` 顺序依赖部分应用缺口，"整包拒绝"承诺对值错误同样成立）；②错误面不变（StaticConfigImmutableError 原样——协议层 CONFIG_REFRESH 错误行零改动）；③applyPreset 经同一通道自动获得两段式保护；④"不回退默认"断言：刷新失败后各 getter 值与刷新前逐项相等（无任何默认值代换路径）
+- **验收**：`npx vitest run src/kernel/session-config.test.ts`（扩）——①两键补丁后键值类型错 → 两键均不应用（getter 不变）；②单键合法 + 单键静态键 → 整包拒绝（既有行为回归）；③合法补丁照常应用；④预设切换含非法 knob → 零应用；⑤错误后紧接着的正确刷新照常生效（失败不毒化）
+- **依赖**：无
+- **风险 / 未知**：无（范围最小卡）
+- **完成记录**：
+
+#### T-P1-106 · J13 · 鉴权刷新不得改变模型身份（每请求鉴权面 + 身份不变断言） `[ ]`
+- **依据需求**：J13（P1："鉴权刷新不得改变模型身份；刷新 token/header 后断言模型身份未变"）
+- **上游首选参考**：[zcode·model/runner.ts:348](../oss/zcode/apps/zcode-cli/packages/adapters/src/model/runner.ts#L348)（`assertSameBoundModel`——"Runtime header refresh changed the bound model identity."）
+- **取什么 / 别抄什么**：取"刷新只换鉴权材料、身份断言不变"纪律；不抄其 AiSdk 模型解析栈（我方 ModelProvider 二元组身份在位）与 per-attempt 重试栈结构（我方 withRetry 在位，刷新点在其外层）
+- **证据强度**：`读了代码`（runner.ts:150-230 刷新流 + :348-356 断言 + 我方 openai-compat.ts 构造期闭包捕获 + agent-child.ts provider 装配）
+- **要产出**：①`src/models/auth.ts`——`AuthResolver {resolve(): Promise<{apiKey?: string; headers?: Record<string, string>}>}`（每请求现取——令牌轮换/安全配置重读的接口面）+ `AuthRefreshIdentityError`（code=AUTH_REFRESH_IDENTITY_CHANGED——resolver 试图换身份时类型化拒绝，assertSameBoundModel 同构）；②openai-compat 增量：`createOpenAiCompatProvider(config, {authResolver?})`——提供时每请求 resolve 现取 Bearer/额外 header（缺省零行为变化 = 构造期 settings）；③身份不变断言面：request/header 事件的 config {provider, modelId} 跨鉴权刷新逐字节不变（req.identity 由 loop 捕获值传入，resolver 结构上摸不到——**结构保证 + 端到端断言双层**）；④agent-child 装配不接（真实消费方 = 令牌轮换场景，接口面先行记档——YAGNI 边界与 J12 目录查询同款）
+- **验收**：`npx vitest run src/models/auth.test.ts src/models/openai-compat.test.ts`（扩）——①resolver 每请求被调用（请求计数断言）且 header 用最新 key（http-mock 收到的 authorization 断言轮换前后不同）；②身份不变：两次请求的 identity 逐字节相等 + request/header config 相等；③resolver 抛错 → 该请求失败上抛（不吞）且 provider 可复用（下一请求重 resolve）；④缺省（无 resolver）行为零变化（既有用例全绿）；⑤AuthRefreshIdentityError 形状在位（防御面——当前实现结构上不可达，注释声明）
+- **依赖**：无（J5 未决不阻塞——适配层无关面，卡序头核对结论 ⑧）
+- **风险 / 未知**：OAuth 令牌轮换真实场景 J17（P2）——本卡只落接口面与断言面，不做刷新调度
+- **完成记录**：
+
+#### T-P1-107 · J16 · 健康检查（可达性探测）+ 检查日志保留期清理 `[ ]`
+- **依据需求**：J16（P1："健康检查 + 保留期清理；检查日志带保留期，不无限增长"）
+- **上游首选参考**：[cc-switch·services/stream_check.rs](../oss/cc-switch/src-tauri/src/services/stream_check.rs)（可达性探测：任意 HTTP 响应即可达、网络级错误不可达、TTFB 降级档 6000ms、仅超时类重试；**"连通性检查绝不触碰故障转移熔断器"**）+ [dao/stream_check.rs](../oss/cc-switch/src-tauri/src/database/dao/stream_check.rs)（`cleanup_old_stream_check_logs(retain_days)`）
+- **取什么 / 别抄什么**：取"可达 ≠ 可用"分域不变量与保留期清理语义；不抄其 Tauri DAO/命令层与 reqwest 栈（我方 fetch）；日志落我方 logs/ 族（Q7 冷压缩分域记档：压缩白名单不扩 health 族——先落盘不压缩，保留期只删）
+- **证据强度**：`读了代码`（stream_check.rs 服务 + DAO 全文 + 我方 fault-tolerance.ts 熔断器现状 + logger/log-archive 面）
+- **要产出**：①`src/models/health.ts`——`probeProvider(config, opts)` 可达性探测：GET baseUrl（仅读响应头）、任意 HTTP 响应 → reachable（TTFB ≥ degradedThresholdMs → degraded）、DNS/拒连/TLS/超时 → unreachable；`HealthStatus = "operational"|"degraded"|"unreachable"` 闭集 + `HealthCheckResult {status, success, message, responseTimeMs?, httpStatus?, testedAt}`；超时类重试 maxRetries（缺省 1——cc-switch 同值）；**模块零 fault-tolerance import（分域结构保证——探测绝不触碰熔断器状态，断言钉死 import 面）**；②`runHealthCheck`：探测 + 结果落 `logs/health.jsonl`（JSON 行 + 密钥掩码复用 redactSecrets）；③保留期清理：`pruneHealthLogs(retainDays)`（按 testedAt 删旧行——行级重写原子 tmp→rename，缺省 30 天；"不无限增长"验收）+ 配置缺省值常量；④不做定时调度（库 + 单次执行面，消费方随真实需求——CLI/doctor 接线记档）
+- **验收**：`npx vitest run src/models/health.test.ts`——①200/403 两响应均 reachable（"可达 ≠ 配置正确"——403 不误判不可用）；②ECONNREFUSED/超时 → unreachable；③TTFB 超阈值 → degraded；④结果落 health.jsonl 且 apiKey 掩码；⑤prune 删旧行留新行（retainDays 边界断言）+ 原子性（中途失败旧文件不动）；⑥health.ts 零 CircuitBreaker import（grep 断言——T-P1-87 epoch 证伪同款机内化）；⑦探测失败不影响 provider 实例（零共享状态）
+- **依赖**：无
+- **风险 / 未知**：探测端点路径（GET / vs /models）——卡内定形 GET baseUrl 根路径（cc-switch 语义"仅探测 base_url 是否可达"）
+- **完成记录**：
+
+#### T-P1-108 · J5 · 第二厂商适配框架 + Anthropic Messages 适配 `[ ]`（**未展**——待澄清 #16 选型追认后展开执行）
+- **依据需求**：J5（P1："多厂商；厂商适配独立成模块"）
+- **上游首选参考**：[opencode·packages/llm/](../oss/opencode/packages/llm)（providers × protocols 分层）；候选锚点：Anthropic = pi-mono·packages/ai/src/api/（anthropic-cache-split.ts 等，锚点最厚）；Gemini = qwen（备选）
+- **要产出（草案，追认后展开细化）**：Anthropic Messages API 适配（SSE wire 映射到 StreamChunk、`/v1/messages` 头与鉴权、tool_use 块映射、J13 AuthResolver 面接入、catalog discovery 无 /models 路由的声明面兜底）；适配框架面从 openai-compat 抽象的取舍（不预先抽象——第二实现出现时才提公共层，KISS）
+- **验收**：（展开时定）
+- **依赖**：待澄清 #16（用户追认厂商选型）
+- **风险 / 未知**：真实厂商联调成本（批次 1 有真实厂商实测先例）；cache_control 标记面是否进本卡（F6 缓存优化已落锚检测，anthropic-cache-split 的标记策略可能是独立小卡——展开时定）
+- **完成记录**：
+
+#### T-P1-109 · 收口 · 上下文与模型运维收尾盘点 + 快照 `[ ]`
+- **依据需求**：批次 11 收口（照批次 4~10 收口先例；无独立需求 ID）
+- **上游首选参考**：批次 10 T-P1-98 先例
+- **取什么 / 别抄什么**：八面盘点：①F18 恢复重试 × D15 流边界——provider 级（首 chunk 前）与 loop 级（首 chunk 后）两段重试分域不双计；②F11 兜底 × E17 三态——兜底压缩落流形状（started/completed + strategy）与切换权威分域；③F26 指纹触发 × F28 抖动断路——指纹重压是否喂抖动计数（次序与记账面）；④F25 窗口身份 × F22 重建 × M10 预算 × F7 时间注入——四消费方同源不分叉；⑤F7 时间注入 × goal/预算提醒——三注入面同 hook 次序与措辞分域；⑥F8 裁剪 × F17 配平 × 溢出判定——次序（保守方向）与孤儿 result 不可能出现；⑦J13 鉴权刷新 × J16 可达探测 × J19 熔断——三面"碰不碰真实流量与熔断状态"分域终局清单；⑧快照即规格：F18 恢复全链一条（流中失败 → attempt → retrying → 重发 → 收束）
+- **证据强度**：`读了代码`（本批全部新产交叉核对）
+- **要产出**：八面盘点结论 + 快照一条 + 全量回归 + 两案词汇表立案状态复核（#17/#18 在案）
+- **验收**：`npx vitest run`（全量回归）+ 盘点清单入完成记录；发现真冲突 → 升级待澄清不硬落
+- **依赖**：T-P1-99 ~ 107 全部（T-P1-108 未展不阻塞收口——卡序头约束）
+- **风险 / 未知**：无
+- **完成记录**：
+
+## 批次 11 完成定义
+
+- 10 张执行卡全部打勾（T-P1-99 ~ 107 + 109；T-P1-108 未展占位——待澄清 #16 用户追认后由下一会话展开），每勾附「命令 + 结果摘要」；`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 0 失效、`license-audit.sh` exit 0。
+- 词汇表扩展两案走立案管线（#17 compHash 载荷 / #18 strategy 值域 + failureReason 载荷），每案含回退面；`l0-events.md` §8 落地记录同步。
+- F18 红线不破：恢复重试零重复副作用（失败 attempt 的 tool calls 零派发断言）；F11 红线不破：事件流逐字节不变 + provider 错误原文不落流。
+- J16 分域不变量：health.ts 零熔断 import 断言在位。
+- 盘点结论落批次报告（T-P1-109）→ `plan-p1-progress.md` 批次 11 报告 + 批次 12 提示词 + 全量基线更新。
