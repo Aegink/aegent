@@ -510,10 +510,13 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
             identity: options.summarizerModel.identity,
             store,
             onWarn: (message) => logger?.warn(message),
+            contextWindow,
           })
         : truncatingSummarizer()),
     rapidRefillGuard: guard,
     compHash: () => fingerprint,
+    // F11/T-P1-101：兜底检查点的硬安全复检预算 + 摘要器尺寸预检/分块的窗口面
+    contextWindow,
   };
   if (options.compactionPreHook) {
     engineDeps.preHook = options.compactionPreHook as typeof engineDeps.preHook;

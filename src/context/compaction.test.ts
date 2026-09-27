@@ -416,19 +416,22 @@ describe("真 LLM 摘要器（F5 / T-P1-18）", () => {
     expect(settled[1]!.summary).toBe("二次摘要");
   });
 
-  it("截断回退：provider 失败（无剧本）→ 回退截断摘要落盘，降级不炸压缩，告警可检索", async () => {
+  it("F11 兜底（auto）：provider 终态失败 → 近期窗口检查点落盘，run 不终止，恢复标记可读", async () => {
     const { store, provider, warns } = setupWithScript([]); // 无剧本 → streamChat 抛错
     const engine = buildEngine(store, provider, warns);
     const result = await engine.run({ turn: 2, phase: "PreTurn", request: localOverflowRequest });
 
+    // F11 二级：兜底检查点 = 压缩成功（run 继续）——摘要生成失败的降级显式化
     expect(result.kind).toBe("compacted");
     const compaction = settledCompaction(store.load(SESSION));
     if (compaction?.type !== "compaction") throw new Error("缺 compaction 事件");
-    // 截断摘要行为：[role] content 拼接
-    expect(compaction.summary).toContain("[user] 第一轮问题");
-    expect(compaction.title).toBeUndefined(); // 回退路径无标题
-    expect(warns).toHaveLength(1);
-    expect(warns[0]).toContain("回退");
+    expect(compaction.strategy).toBe("recent_window_fallback");
+    expect(compaction.failureReason).toBe("summary_provider");
+    // 恢复标记 + 无 provider 错误原文（闭集 failureReason 纪律）
+    expect(compaction.summary).toContain("压缩恢复标记");
+    expect(compaction.summary).not.toContain("剧本耗尽");
+    // 副调用头的重试面零告警（4xx 不可重试——一次调用即终态）
+    expect(warns).toHaveLength(0);
   });
 
   it("解析回退档（qwen extractRecap 纪律）：开标签截断取其后全部；标签全缺整段直用；空输出 null", () => {
@@ -531,9 +534,11 @@ describe("E17 中间态进事件流（T-P1-93）：投影不猜压缩中间态",
       },
       keepRules: { retainedFromEnd: 1 },
     });
-    await expect(engine.run({ turn: 1, phase: "PreTurn", request: localOverflowRequest })).rejects.toThrow(
-      "摘要 provider 崩溃",
-    );
+    // F11 起：auto 触发的摘要失败走二级兜底（不再照抛）——E17 的 failed
+    // 语义用 manual 触发钉死（fail-fast 路径保留 started+failed 形状）
+    await expect(
+      engine.run({ turn: 1, phase: "PreTurn", request: localOverflowRequest, trigger: "manual" }),
+    ).rejects.toThrow("摘要 provider 崩溃");
     const events = store.load(SESSION);
     const compactions = events.filter(
       (e): e is Extract<SessionEvent, { type: "compaction" }> => e.type === "compaction",
@@ -718,5 +723,269 @@ describe("F26 压缩指纹（T-P1-100）：compHash 载荷 + 双值齐备触发"
 
   it("compactionReasonOf：comp-hash-changed → comp_hash_changed（词表位兑现）", () => {
     expect(compactionReasonOf({ reason: "comp-hash-changed" })).toBe("comp_hash_changed");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F11 压缩失败三级兜底（T-P1-101）验收组
+// ---------------------------------------------------------------------------
+
+import type { ModelProvider } from "../models/provider.js";
+import { ProviderHttpError } from "../models/provider.js";
+import { SummaryGenerationError, MAX_SUMMARY_CHUNKS } from "./llm-summarizer.js";
+
+describe("F11 三级兜底验收（有界重试 / 近期窗口 / 分块 / manual fail-fast）", () => {
+  /** 可编程多剧本 provider：每次 streamChat 消费一个剧本（用尽上抛）。 */
+  function queueProvider(
+    scripts: Array<{ kind: "text"; text: string } | { kind: "error"; error: Error }>,
+  ): { provider: ModelProvider; callCount: () => number } {
+    let calls = 0;
+    const provider: ModelProvider = {
+      async *streamChat() {
+        const script = scripts[calls];
+        calls++;
+        if (script === undefined) throw new Error("剧本耗尽");
+        if (script.kind === "error") throw script.error;
+        yield { type: "text-delta", text: script.text };
+        yield { type: "done", finishReason: "stop" } as const;
+      },
+    };
+    return { provider, callCount: () => calls };
+  }
+
+  function twoTurnStore(): SessionStore {
+    const store = new SessionStore();
+    store.append(SESSION, turnEvents(1, "第一轮问题", "第一轮回答"));
+    store.append(SESSION, turnEvents(2, "第二轮问题", "第二轮回答"));
+    return store;
+  }
+
+  it("一级·瞬态重试：503×2 后第 3 次成功 → 正常摘要 + 每次重试 warn 可检索（验收①）", async () => {
+    const store = twoTurnStore();
+    const { provider, callCount } = queueProvider([
+      { kind: "error", error: new ProviderHttpError(503, "overloaded") },
+      { kind: "error", error: new ProviderHttpError(503, "overloaded") },
+      { kind: "text", text: "<summary>重试后成功摘要</summary>" },
+    ]);
+    const warns: string[] = [];
+    const delays: number[] = [];
+    const engine = new CompactionEngine({
+      sessionId: SESSION,
+      store,
+      summarizer: createLlmSummarizer({
+        provider,
+        identity: { provider: "mock", modelId: "m-1" },
+        store,
+        onWarn: (w) => warns.push(w),
+        maxRetries: 3,
+        sleep: async (ms) => {
+          delays.push(ms);
+        },
+      }),
+      keepRules: { retainedFromEnd: 1 },
+    });
+    const result = await engine.run({ turn: 2, phase: "PreTurn", request: localOverflowRequest });
+    if (result.kind !== "compacted") throw new Error("应当压缩成功");
+    expect(result.summary).toBe("重试后成功摘要");
+    expect(callCount()).toBe(3); // 1 首试 + 2 重试
+    expect(delays).toEqual([2_000, 4_000]); // ADR 0282 退避节奏
+    expect(warns.filter((w) => w.includes("重试"))).toHaveLength(2);
+    // 正常摘要路径 strategy 不变、无 failureReason
+    const settled = [...store.load(SESSION)]
+      .reverse()
+      .find((e): e is Extract<SessionEvent, { type: "compaction" }> => e.type === "compaction");
+    expect(settled!.strategy).toBe("full_summary");
+    expect(settled!.failureReason).toBeUndefined();
+  });
+
+  it("二级·兜底内容：前次摘要携带 + 恢复标记 + 近期窗口进模型可见历史（验收③④⑨）", async () => {
+    const store = twoTurnStore();
+    // 前次已结算摘要（覆盖第一轮）——兜底应携带它
+    store.append(SESSION, [
+      {
+        type: "compaction",
+        turn: 1,
+        summary: "前次有效摘要：第一轮做了压缩模块。",
+        retainedTail: 3,
+        tokensBefore: 500,
+        status: "completed",
+      },
+    ]);
+    // 第三轮带工具配对（切点必须整对保留——"a provider rejects a result whose call is missing"）
+    store.append(SESSION, [
+      { type: "turn/start", turn: 3 },
+      { type: "user/message", turn: 3, message: { content: "第三轮指令" }, source: "user" },
+      { type: "step/start", turn: 3, step: 1 },
+      { type: "tool/call", turn: 3, step: 1, callId: "c9", name: "bash", arguments: "{}" },
+      { type: "tool/result", turn: 3, step: 1, callId: "c9", message: { content: "工具输出" } },
+      { type: "step/end", turn: 3, step: 1 },
+      { type: "turn/end", turn: 3, reason: { kind: "completed" } },
+    ]);
+    const engine = new CompactionEngine({
+      sessionId: SESSION,
+      store,
+      summarizer: async () => {
+        throw new SummaryGenerationError("summary_provider", "模拟终态失败文本XYZ");
+      },
+      keepRules: { retainedFromEnd: 1 },
+    });
+    const before = store.load(SESSION);
+    const result = await engine.run({ turn: 3, phase: "PreTurn", request: localOverflowRequest });
+    if (result.kind !== "compacted") throw new Error("兜底检查点应视为压缩成功（run 继续）");
+    // 兜底摘要 = 前次摘要 + 恢复标记（闭集 failureReason）；错误原文不落流（验收⑧）
+    expect(result.summary).toContain("前次有效摘要：第一轮做了压缩模块。");
+    expect(result.summary).toContain("压缩恢复标记");
+    expect(result.summary).toContain("summary_provider");
+    expect(result.summary).not.toContain("模拟终态失败文本XYZ");
+    // 事件流 append-only：原事件全在、顺序不变（验收⑨ transcript 完整性）
+    const after = store.load(SESSION);
+    expect(after.slice(0, before.length)).toEqual(before);
+    // 兜底事件形状：strategy/failureReason 落流
+    const fallbackEvent = [...after]
+      .reverse()
+      .find((e): e is Extract<SessionEvent, { type: "compaction" }> => e.type === "compaction");
+    expect(fallbackEvent!.strategy).toBe("recent_window_fallback");
+    expect(fallbackEvent!.status).toBe("completed");
+    // 兜底窗口（切点之后）无孤儿 tool result（验收④）
+    const retained = after.filter((e) => e.seq > fallbackEvent!.retainedTail);
+    expect(retained.some((e) => e.type === "tool/call")).toBe(true);
+    expect(() => expectPaired(retained, "tool/call")).not.toThrow();
+    // 近期窗口进模型可见历史：恢复标记摘要 + 第三轮原文 + 工具结果
+    const window = startNewContextWindow(after);
+    expect(window[0]!.content).toContain("压缩恢复标记");
+    expect(window.some((m) => m.role === "user" && m.content === "第三轮指令")).toBe(true);
+    expect(window.some((m) => m.role === "tool" && m.content === "工具输出")).toBe(true);
+  });
+
+  it("三级·分块摘要：超预算区间切成 ≥2 块链式摘要（验收⑤）", async () => {
+    const store = twoTurnStore();
+    const longA = "甲".repeat(600);
+    const longB = "乙".repeat(600);
+    store.append(SESSION, [
+      { type: "turn/start", turn: 3 },
+      { type: "user/message", turn: 3, message: { content: longA }, source: "user" },
+      { type: "user/message", turn: 3, message: { content: longB }, source: "user" },
+      // 保留尾部的最后边界——让两条长消息都落在被摘要区间（≤ retainedTail）
+      { type: "user/message", turn: 3, message: { content: "尾边界" }, source: "user" },
+      { type: "turn/end", turn: 3, reason: { kind: "completed" } },
+    ]);
+    const { provider, callCount } = queueProvider([
+      { kind: "text", text: "<summary>第一块摘要</summary>" },
+      { kind: "text", text: "<summary>链式合并摘要</summary>" },
+    ]);
+    const warns: string[] = [];
+    const engine = new CompactionEngine({
+      sessionId: SESSION,
+      store,
+      summarizer: createLlmSummarizer({
+        provider,
+        identity: { provider: "mock", modelId: "m-1" },
+        store,
+        onWarn: (w) => warns.push(w),
+        // 预算 = 800 − 512 = 288 token：600 字 ≈ 167 token/条 + 8 开销 → 两条必分块
+        contextWindow: 800,
+      }),
+      keepRules: { retainedFromEnd: 1 },
+    });
+    const result = await engine.run({ turn: 3, phase: "PreTurn", request: localOverflowRequest });
+    if (result.kind !== "compacted") throw new Error("分块摘要应成功");
+    expect(result.summary).toBe("链式合并摘要"); // 链式：块 2 输出吞并块 1 摘要
+    expect(callCount()).toBe(2); // ≥2 次请求
+    expect(warns.some((w) => w.includes("分块"))).toBe(true);
+  });
+
+  it("三级·超请求上限：块数 > 16 → summary_budget 兜底（验收⑥）", async () => {
+    const store = twoTurnStore();
+    // 每条 ~167 token，预算 288 → 每块 1 条 → 18 条消息 = 18 块 > 16
+    store.append(SESSION, [
+      { type: "turn/start", turn: 3 },
+      ...Array.from({ length: 18 }, (_, i) => ({
+        type: "user/message" as const,
+        turn: 3,
+        message: { content: "丙".repeat(600) + String(i) },
+        source: "user" as const,
+      })),
+      { type: "turn/end", turn: 3, reason: { kind: "completed" } },
+    ]);
+    const { provider, callCount } = queueProvider([]);
+    const engine = new CompactionEngine({
+      sessionId: SESSION,
+      store,
+      summarizer: createLlmSummarizer({
+        provider,
+        identity: { provider: "mock", modelId: "m-1" },
+        store,
+        contextWindow: 800,
+      }),
+      keepRules: { retainedFromEnd: 1 },
+    });
+    const result = await engine.run({ turn: 3, phase: "PreTurn", request: localOverflowRequest });
+    expect(callCount()).toBe(0); // 预检阶段即拒——零模型调用
+    if (result.kind !== "compacted") throw new Error("auto 兜底应成功");
+    expect(result.summary).toContain("summary_budget");
+    expect(result.summary).toContain("压缩恢复标记");
+  });
+
+  it("manual fail-fast：摘要失败照抛 + failed 事件带 failureReason + 零兜底（验收⑦）", async () => {
+    const store = twoTurnStore();
+    const { provider, callCount } = queueProvider([
+      { kind: "error", error: new ProviderHttpError(503, "overloaded") },
+      { kind: "error", error: new ProviderHttpError(503, "overloaded") },
+      { kind: "error", error: new ProviderHttpError(503, "overloaded") },
+    ]);
+    const engine = new CompactionEngine({
+      sessionId: SESSION,
+      store,
+      summarizer: createLlmSummarizer({
+        provider,
+        identity: { provider: "mock", modelId: "m-1" },
+        store,
+        maxRetries: 2,
+        sleep: async () => {},
+      }),
+      keepRules: { retainedFromEnd: 1 },
+    });
+    await expect(
+      engine.run({ turn: 2, phase: "PreTurn", request: localOverflowRequest, trigger: "manual" }),
+    ).rejects.toThrow(SummaryGenerationError);
+    // manual 仍享有有界重试（ADR 0282 "manual inherits the retry"）：1 首试 + 2 重试
+    expect(callCount()).toBe(3);
+    // 零兜底：最后压缩事实是 failed 且带闭集 failureReason
+    const compactions = store
+      .load(SESSION)
+      .filter((e): e is Extract<SessionEvent, { type: "compaction" }> => e.type === "compaction");
+    expect(compactions[compactions.length - 1]!.status).toBe("failed");
+    expect(compactions[compactions.length - 1]!.failureReason).toBe("summary_provider");
+    expect(compactions.every((e) => e.strategy !== "recent_window_fallback")).toBe(true);
+  });
+
+  it("兜底不可行·checkpoint_oversized：单条超窗消息 → failed + failureReason=checkpoint_oversized", async () => {
+    const store = twoTurnStore();
+    store.append(SESSION, [
+      { type: "turn/start", turn: 3 },
+      { type: "user/message", turn: 3, message: { content: "巨".repeat(4_000) }, source: "user" },
+      { type: "turn/end", turn: 3, reason: { kind: "completed" } },
+    ]);
+    const engine = new CompactionEngine({
+      sessionId: SESSION,
+      store,
+      summarizer: async () => {
+        throw new SummaryGenerationError("summary_provider", "模拟失败");
+      },
+      keepRules: { retainedFromEnd: 1 },
+      contextWindow: 100, // 最小窗口（巨消息 ~1000 token）仍超窗 → 兜底不可行
+    });
+    await expect(
+      engine.run({ turn: 3, phase: "PreTurn", request: localOverflowRequest }),
+    ).rejects.toThrow("模拟失败");
+    const last = [...store.load(SESSION)]
+      .reverse()
+      .find((e): e is Extract<SessionEvent, { type: "compaction" }> => e.type === "compaction");
+    expect(last!.status).toBe("failed");
+    expect(last!.failureReason).toBe("checkpoint_oversized");
+  });
+
+  it(`MAX_SUMMARY_CHUNKS = 16（ADR 0302 request bound 常量在位）`, () => {
+    expect(MAX_SUMMARY_CHUNKS).toBe(16);
   });
 });

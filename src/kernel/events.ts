@@ -406,11 +406,22 @@ export interface CompactionEvent extends EventBase {
    */
   implementation?: string;
   /**
-   * 策略面（codex CompactionStrategy）：当前唯一直值 "full_summary"
-   * （全量摘要）。codex 的 memento/prefix_compaction 是其策略族，我方
-   * 无此二分——收闭集随真实策略演进。
+   * 策略面（codex CompactionStrategy）：**值域收闭集走立案（#18）**——
+   * "full_summary"（全量摘要，正常路径）| "recent_window_fallback"（F11
+   * 兜底检查点：前次摘要 + 恢复标记 + 近期窗口原文，ADR 0049/0302 的
+   * retained-tail 我方位）。旧流只有 full_summary 语义。
    */
   strategy?: string;
+  /**
+   * F11/T-P1-101：兜底/失败原因的**闭集**判据（ADR 0302——"records
+   * details.failureReason from a closed vocabulary … instead of provider
+   * error text"，provider 错误原文绝不落流）：no_new_history（被摘要区间
+   * 无消息）| summary_budget（预检/分块超预算）| summary_provider（摘要
+   * 请求终态失败/空输出）| checkpoint_oversized（兜底检查点仍超窗）。
+   * 仅 strategy="recent_window_fallback"（兜底成功）与 status="failed"
+   * （manual fail-fast / 兜底不可行）携带。可选字段前向兼容。
+   */
+  failureReason?: string;
   /**
    * 状态（codex CompactionStatus 的我方子集）："started"（摘要调用前落——
    * E17/T-P1-93 中间态事实）| "completed"（结算；**缺省读作 completed**——

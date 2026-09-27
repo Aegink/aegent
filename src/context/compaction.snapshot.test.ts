@@ -194,8 +194,9 @@ describe("compaction 三态全链快照（T-P1-98 收口⑦：E17 started/comple
       },
       keepRules: { retainedFromEnd: 1 },
     });
+    // F11 起：auto 失败走兜底——failed 形状用 manual 触发钉死（fail-fast）
     await expect(
-      engine.run({ turn: 1, phase: "PreTurn", request: requests["local-overflow"] }),
+      engine.run({ turn: 1, phase: "PreTurn", request: requests["local-overflow"], trigger: "manual" }),
     ).rejects.toThrow("摘要崩溃");
     const events = store.load(SESSION).filter((e) => e.type === "compaction");
     const snapshot = renderCompactionSnapshot(

@@ -29,7 +29,9 @@ import { type SessionStore } from "../session/store.js";
 import { buildChatMessages, effectiveEvents } from "../session/messages.js";
 import { latestBalancedCutAtOrBefore } from "./tool-pairing.js";
 import { RapidRefillError, type RapidRefillGuard } from "./rapid-refill.js";
+import { SummaryGenerationError } from "./llm-summarizer.js";
 import type { ChatMessage } from "../models/provider.js";
+import type { TokenUsage } from "../kernel/events.js";
 
 /** 压缩请求：溢出的两种来源（本地提前判定 / provider 拒绝）+ 换模压缩（F24）+ 指纹重压（F26）各自带齐上下文。 */
 export type CompactionRequest =
@@ -95,6 +97,13 @@ export function compactionRequestFromVerdict(
 
 /** 引擎缺省保留条数（chooseRetainedTail 的未配置口径——指纹面与引擎同源）。 */
 export const DEFAULT_RETAINED_FROM_END = 1;
+
+/**
+ * F11 兜底近期窗口的保留目标（token，本地估算口径；卡内定形——ADR 0302
+ * "bounded by the keep-recent target and by what the safe budget leaves"的
+ * 我方目标值，安全预算复检由 contextWindow 硬限承担）。
+ */
+export const RECENT_WINDOW_TARGET_TOKENS = 8_192;
 
 /** 指纹覆盖面（卡内定形：只覆盖"影响摘要内容或重建"的配置，防止窄漏报/宽误报）。 */
 export interface CompactionFingerprintInput {
@@ -224,7 +233,9 @@ export type PreCompactOutcome = { action: "proceed" } | { action: "abort"; reaso
  * 可见消息。返回 string（无标题）或 {summary, title?}——string 形状保持
  * P0 注入面零改动。
  */
-export type SummarizerOutput = string | { summary: string; title?: string };
+export type SummarizerOutput =
+  | string
+  | { summary: string; title?: string; usage?: TokenUsage };
 
 export type Summarizer = (input: {
   messages: ChatMessage[];
@@ -270,6 +281,11 @@ export interface CompactionEngineDeps {
    * 变了重压"。缺省不接 = 零行为变化（事件无 compHash、不触发指纹重压）。
    */
   compHash?: () => string | undefined;
+  /**
+   * 上下文窗口（F11/T-P1-101 兜底预算面）：提供时兜底检查点做硬安全复检
+   * （近期窗口原文超窗 → checkpoint_oversized）。缺省 undefined = 跳过该复检。
+   */
+  contextWindow?: number;
 }
 
 /** 压缩触发入参：相位与轮号由触发方（turn 边界 / step 边界装配）决定。 */
@@ -277,6 +293,13 @@ export interface CompactionRunInput {
   turn: number;
   phase: CompactionPhase;
   request: CompactionRequest;
+  /**
+   * 触发方式（F11/T-P1-101）：auto = 引擎自动（溢出/换模/指纹——失败走
+   * 二级近期窗口兜底，run 不终止）；manual = 用户显式（/compact 命令面
+   * ——ADR 0282 "keeps its fail-fast, no-fallback semantics"：失败照抛）。
+   * 缺省 auto。事件 trigger 载荷同源（既有字段，值域不变）。
+   */
+  trigger?: "auto" | "manual";
 }
 
 /**
@@ -336,7 +359,7 @@ export class CompactionEngine {
         retainedTail: 0,
         tokensBefore,
         reason: compactionReasonOf(input.request),
-        trigger: "auto",
+        trigger: input.trigger ?? "auto",
         phase: eventPhaseOf(input.phase),
         implementation: "llm-summarizer",
         strategy: "full_summary",
@@ -346,8 +369,8 @@ export class CompactionEngine {
     ]);
 
     // 摘要生成（被摘要区间 = 切点之前）。F5/T-P1-18：真摘要可带会话标题
-    // （SummarizerOutput 的对象形状）；string 形状 = P0 假摘要注入面。
-    let generated: { summary: string; title?: string };
+    // 与 usage（SummarizerOutput 对象形状）；string 形状 = P0 假摘要注入面。
+    let generated: { summary: string; title?: string; usage?: TokenUsage };
     try {
       const output = await this.deps.summarizer({
         messages: buildChatMessages(events, { upToSeq: retainedTail }),
@@ -355,9 +378,45 @@ export class CompactionEngine {
       });
       generated = typeof output === "string" ? { summary: output } : output;
     } catch (e) {
-      // E17：摘要失败升**流内事实**（status:"failed"）再上抛（调用方
-      // failTurn 收轮的现状行为不变）——压缩失败从"静默降级/静默抛出"变
-      // "可归因"（L8 统计面 failures 可查）。
+      const failureReason =
+        e instanceof SummaryGenerationError ? e.failureReason : "summary_provider";
+      // manual 触发（用户显式 /compact 域——ADR 0282 fail-fast，no-fallback）：
+      // E17 摘要失败升**流内事实**（status:"failed"）再上抛。
+      if (input.trigger === "manual") {
+        store.append(sessionId, [
+          {
+            type: "compaction",
+            turn: input.turn,
+            summary: "",
+            retainedTail: 0,
+            tokensBefore,
+            reason: compactionReasonOf(input.request),
+            trigger: input.trigger,
+            phase: eventPhaseOf(input.phase),
+            implementation: "llm-summarizer",
+            strategy: "full_summary",
+            status: "failed",
+            failureReason,
+            ...(compHash !== undefined ? { compHash } : {}),
+          },
+        ]);
+        throw e;
+      }
+      // F11 二级兜底（auto，ADR 0049/0302）：摘要失败不再终止 run——落
+      // "近期窗口检查点"（前次摘要携带 + 恢复标记 + 近期原文窗口）。兜底
+      // 不可行（no_new_history / checkpoint_oversized）→ failed 事件 + 原错上抛。
+      const fallback = await this.buildFallbackCheckpoint({
+        events,
+        retainedTail,
+        input,
+        tokensBefore,
+        compHash,
+        failureReason,
+        refillDecision,
+      });
+      if (fallback.kind !== "infeasible") return fallback;
+      // 不可行的终局归因 = 兜底为何没装上（checkpoint_oversized /
+      // no_new_history）——比摘要侧原因更接近终局事实
       store.append(sessionId, [
         {
           type: "compaction",
@@ -366,11 +425,12 @@ export class CompactionEngine {
           retainedTail: 0,
           tokensBefore,
           reason: compactionReasonOf(input.request),
-          trigger: "auto",
+          trigger: input.trigger ?? "auto",
           phase: eventPhaseOf(input.phase),
           implementation: "llm-summarizer",
           strategy: "full_summary",
           status: "failed",
+          failureReason: fallback.reason,
           ...(compHash !== undefined ? { compHash } : {}),
         },
       ]);
@@ -397,15 +457,16 @@ export class CompactionEngine {
         retainedTail,
         tokensBefore,
         reason: compactionReasonOf(input.request),
-        // L8 六维度量（T-P1-92，codex facts.rs 对位）：trigger 当前引擎
-        // 只自动触发（manual 槽位随 /compact 命令面）；implementation/
-        // strategy 是当前唯一直值（第二实现/策略出现时收闭集走立案）。
-        trigger: "auto",
+        // L8 六维度量（T-P1-92，codex facts.rs 对位）：trigger 随入参
+        // （manual 槽位由 F11 兑现为引擎参数面）；implementation 唯一直值；
+        // strategy 收闭集 {full_summary, recent_window_fallback}（#18）。
+        trigger: input.trigger ?? "auto",
         phase: eventPhaseOf(input.phase),
         implementation: "llm-summarizer",
         strategy: "full_summary",
         status: "completed",
         ...(title !== undefined ? { title } : {}),
+        ...(generated.usage !== undefined ? { usage: generated.usage } : {}),
         ...(compHash !== undefined ? { compHash } : {}),
       },
     ]);
@@ -421,6 +482,109 @@ export class CompactionEngine {
     }
 
     return { kind: "compacted", summary: generated.summary, retainedTail, tokensBefore, seq };
+  }
+
+  /**
+   * F11 二级兜底（ADR 0049/0302）：摘要生成失败后的"近期窗口检查点"——
+   * 摘要位 = 前次已结算摘要携带 + 恢复标记（**不落 provider 错误原文**，
+   * 闭集 failureReason）；retainedTail = 近期窗口切点（切点后的原文保留，
+   * `latestBalancedCutAtOrBefore` 保证不劈开 tool 配对——"a provider rejects
+   * a result whose call is missing"）。红线：事件流本体逐字节不变（兜底
+   * 只换模型可见视图——compaction 事件是 append 的新事实，不改写历史）。
+   * 返回 null = 兜底不可行（调用方落 failed 事件 + 上抛）。
+   */
+  private async buildFallbackCheckpoint(input: {
+    events: readonly SessionEvent[];
+    retainedTail: number;
+    input: CompactionRunInput;
+    tokensBefore: number;
+    compHash: string | undefined;
+    failureReason: string;
+    refillDecision: ReturnType<RapidRefillGuard["evaluate"]> | undefined;
+  }): Promise<CompactionResult | { kind: "infeasible"; reason: "no_new_history" | "checkpoint_oversized" }> {
+    const { events, retainedTail, input: run, tokensBefore, compHash, failureReason, refillDecision } = input;
+    const { sessionId, store } = this.deps;
+    // no_new_history：被摘要区间没有任何模型可见消息（空区间——ADR 0302
+    // 闭值），兜底窗口无从谈起。
+    const hasCompactedMessages = events.some(
+      (e) =>
+        e.seq <= retainedTail &&
+        (e.type === "user/message" || e.type === "assistant/message" || e.type === "system/message"),
+    );
+    // 近期窗口切点：消息边界升序逐个取配平切点（窗口 = 切点之后原文），
+    // **首个 fitting 的边界给出 ≤ 保留目标的最大窗口**——近期上下文保留
+    // 最大化；全部超目标时停在最小窗口（最后一条用户指令必保，
+    // chooseRetainedTail 同款形状）。每一步都是配平切点——不劈开 tool 配对。
+    const boundaries = events.filter(
+      (e) => e.type === "user/message" || e.type === "system/message",
+    );
+    if (boundaries.length === 0) return { kind: "infeasible", reason: "no_new_history" };
+    let cut = 0;
+    for (const b of boundaries) {
+      const candidate = latestBalancedCutAtOrBefore(events, b.seq - 1);
+      cut = candidate;
+      const rawTokens = estimateMessagesTokens(
+        buildChatMessages(events.filter((ev) => ev.seq > candidate)),
+      );
+      if (rawTokens <= RECENT_WINDOW_TARGET_TOKENS) break;
+    }
+    // checkpoint_oversized：硬安全复检（contextWindow 提供时）——最小窗口
+    // 仍超窗即兜底不可行（ADR 0049 "fallback checkpoints that remain
+    // oversized emit CONTEXT_COMPACTION_FAILED"）。
+    const rawAfterCut = buildChatMessages(events.filter((ev) => ev.seq > cut));
+    if (!hasCompactedMessages) return { kind: "infeasible", reason: "no_new_history" };
+    if (
+      this.deps.contextWindow !== undefined &&
+      estimateMessagesTokens(rawAfterCut) > this.deps.contextWindow
+    ) {
+      return { kind: "infeasible", reason: "checkpoint_oversized" };
+    }
+    // 前次已结算摘要（events 快照取自 started 落盘前——天然不含本次 run）。
+    const previous = [...events]
+      .reverse()
+      .find(
+        (e): e is Extract<SessionEvent, { type: "compaction" }> =>
+          e.type === "compaction" && (e.status === undefined || e.status === "completed"),
+      );
+    const marker =
+      `[压缩恢复标记] 本次摘要生成失败（${failureReason}）。上方为最近一次有效摘要` +
+      `（可能滞后于实际进度）；下方保留近期窗口原文。完整历史仍在事件流中。`;
+    const summary = previous !== undefined ? `${previous.summary}\n\n${marker}` : marker;
+
+    const [committed] = store.append(sessionId, [
+      {
+        type: "compaction",
+        turn: run.turn,
+        summary,
+        retainedTail: cut,
+        tokensBefore,
+        reason: compactionReasonOf(run.request),
+        trigger: run.trigger ?? "auto",
+        phase: eventPhaseOf(run.phase),
+        implementation: "llm-summarizer",
+        strategy: "recent_window_fallback",
+        status: "completed",
+        failureReason,
+        ...(compHash !== undefined ? { compHash } : {}),
+      },
+    ]);
+    const seq = committed!.seq;
+    // post hook 观察（兜底检查点已落盘——ADR 0049 "A successful fallback
+    // emits compaction_end"；观察者与成功摘要同面，renderer 告警由 strategy 值区分）。
+    const invocation: CompactionInvocation = {
+      sessionId,
+      turn: run.turn,
+      phase: run.phase,
+      request: run.request,
+      tokensBefore,
+    };
+    const settled: CompactionSettled = { ...invocation, summary, retainedTail: cut, seq };
+    if (this.deps.postHook) await this.deps.postHook(settled);
+    // 兜底检查点同样降低上下文压力——抖动计数落账（F28 口径一致）。
+    if (refillDecision && this.deps.rapidRefillGuard) {
+      this.deps.rapidRefillGuard.recordCompactSuccess(refillDecision);
+    }
+    return { kind: "compacted", summary, retainedTail: cut, tokensBefore, seq };
   }
 }
 
