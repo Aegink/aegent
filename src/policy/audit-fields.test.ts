@@ -51,7 +51,7 @@ describe("验收 · 一次完整审批流后可检索到 {surface:\"cli\", appro
   it("asked → settled（人经通道答复）→ 审计记录含 surface/approver 对", async () => {
     const { pending, records } = makeAuditedPending();
     const askPromise = pending.ask(
-      { id: "call-1", sessionId: "s1", tool: "bash", args: { command: "git push" } },
+      { id: "call-1", sessionId: "s1", tool: "bash", args: { command: "git push" }, category: "tool" },
       { timeoutMs: 5_000 },
     );
     await pending.reply("call-1", { action: "allow", reason: "可以" });
@@ -75,7 +75,7 @@ describe("验收 · 一次完整审批流后可检索到 {surface:\"cli\", appro
   it("超时流：approver=timeout（C50 不静默，审计可见）", async () => {
     const { pending, records } = makeAuditedPending();
     pending
-      .ask({ id: "call-t", sessionId: "s1", tool: "bash", args: {} }, { timeoutMs: 10 })
+      .ask({ id: "call-t", sessionId: "s1", tool: "bash", args: {}, category: "tool" }, { timeoutMs: 10 })
       .catch(() => {});
     await new Promise((r) => setTimeout(r, 30));
     expect(records.find((r) => r.phase === "timed-out")).toMatchObject({
@@ -88,7 +88,7 @@ describe("验收 · 一次完整审批流后可检索到 {surface:\"cli\", appro
   it("C24 feedback：答复带 feedback 时落 settled 审计记录（T-P1-02）", async () => {
     const { pending, records } = makeAuditedPending();
     const askPromise = pending.ask(
-      { id: "call-f", sessionId: "s1", tool: "bash", args: { command: "ls" } },
+      { id: "call-f", sessionId: "s1", tool: "bash", args: { command: "ls" }, category: "tool" },
       { timeoutMs: 5_000 },
     );
     await pending.reply("call-f", {
@@ -111,7 +111,7 @@ describe("L2 · T-5-15 通道接入（owner 回复走同一审计面）", () => 
       respondPermission: (id, reply) => pending.reply(id, reply),
     });
     const askPromise = pending.ask(
-      { id: "call-2", sessionId: "s1", tool: "write", args: { path: "/a" } },
+      { id: "call-2", sessionId: "s1", tool: "write", args: { path: "/a" }, category: "tool" },
       { timeoutMs: 5_000 },
     );
     await new Promise((r) => setTimeout(r, 5));

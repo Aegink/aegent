@@ -1185,7 +1185,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **偏离 / 建议**：①开关承载 = SessionConfigStore 白名单 knob `unattended`（布尔）——复用 config/refresh 通道（C8 sandboxMode 同款"白名单只追加的预期演进"），不新增协议命令；CLI /unattended on|off 即发 patch。②活查询注入链：agent-process 构造 assembly 时传 `() => configStore.unattended === true`（store getter 缺省 undefined → false）——装配选项 unattended?: () => boolean，gate 每调用读当前值（会话内动态切换即刻生效）。③转换位置在 **gate 层 ask/abstain 分支入口**（broker 之前）——evaluateToolPolicy（dry-run 面）不含转换：dry-run 如实反映"策略链会问"的事实，无人值守的"结局改写"是执行面行为（C56 × C33 组合次序收口卡继续定形）。
 - **完成记录**：①session-config.ts：REFRESHABLE_CONFIG_KEYS +unattended（布尔校验，非布尔 StaticConfigImmutableError 零写入）+ getter + 初始值面。②gate.ts：ToolGateOptions +unattended 活查询；ask/abstain 分支入口转换（reason = "无人值守：询问转为拒绝（原询问：…）"——agentscope converted 语义带原询问理由；broker 零调用）。③assembly +unattended 选项透传；agent-process 接 configStore 活查询（configStore 构造前移）。④repl /unattended on|off（本地校验 + config/refresh patch）。⑤验收：`npx vitest run src/policy/gate.test.ts src/kernel/session-config.test.ts src/kernel/agent-process.test.ts src/cli/cli.test.ts` → **66 passed**（gate 20：规则 ask→deny 带原询问理由/C3 默认 ask 同转/deny·allow 照常/活查询 on·off 动态切换/缺省零行为变化 + session-config 8：knob 布尔校验非布尔拒/闭集断言同步 + CLI 22：/unattended on 端到端无挂起提示 + off 恢复）——验收①~⑥全过；`npx tsc --noEmit` 干净。
 
-#### T-P1-78 · C54 · 审批来源分类 5 类（关类 = 自动拒绝） `[ ]`
+#### T-P1-78 · C54 · 审批来源分类 5 类（关类 = 自动拒绝） `[x]`
 - **依据需求**：C54（P1："审批来源分类配置（5 类）；关闭某类 ≠ 放行 = 硬拒绝"）——展卡核对结论⑧
 - **上游首选参考**：[codex·protocol.rs:1010](../oss/codex/codex-rs/protocol/src/protocol.rs#L1010)（GranularApprovalConfig 五字段——"When it is `false`, those requests are automatically rejected instead of shown to the user"）
 - **取什么 / 别抄什么**：取"每类一个开关、false = 自动拒绝非放行"纪律；五类按我方审批发起面定形（映射非照抄，见本批特有约束③）
@@ -1194,6 +1194,8 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **验收**：`npx vitest run src/policy/pending.test.ts src/policy/gate.test.ts src/kernel/agent-protocol.test.ts`（扩）——①闭集 5 值；②关 tool 类 → gate ask 自动 deny（不挂起）且 announce 留痕；③关 question 类 → question 工具请求被拒（模型收类型化错误）；④开类照常挂起；⑤关类不改变规则 allow/deny 裁决（只关"问"——allow 规则在关类下照常放行）；⑥协议 approval_requested 带 category 且校验通过
 - **依赖**：T-P1-75（gate 结构）
 - **风险 / 未知**：关类 deny 与 C3 默认 ask 的关系——关类是**配置面对 ask 结局的覆盖**（不是规则、不是出口族），语义域卡内记档
+- **偏离 / 建议**：①category 落**必填**字段（ApprovalRequest 构造即打标，编译器指出全部发起面——bash.ts 的沙箱升级审批也在列，归 tool 类记档）；协议 approval_requested 同步必填（decode 校验闭集 5 值，非法/缺失 PROTOCOL_MALFORMED）。②关类结算**留墓碑**（settledWith:"reply"）——同 id 重复 ask 报 Duplicate、迟到 reply 报 Stale（D15 换新 id 纪律不受关类影响）。③关类结算经 announce settled 宣告（C31 不静默纪律——不宣告的结算与静默放行同罪）。④闭集常量 APPROVAL_CATEGORIES + 可路由标记 APPROVAL_CATEGORY_CLOSED 挂 deny reason 前缀（审计面可检索）。⑤assembly/CLI 的分类开关配置暴露不做（YAGNI——PendingApprovals 构造参数面已备，随真实配置需求接线）。
+- **完成记录**：①pending.ts：APPROVAL_CATEGORIES 闭集（tool/question/task/elicitation/hook-review，按审批发起面定形——codex GranularApprovalConfig 五字段映射对应物，后两类预留无发起方）+ ApprovalRequest.category 必填 + PendingApprovals 构造第二参数 categoryConfig（缺省全开）+ ask 首步关类检查（不挂起 → deny verdict "APPROVAL_CATEGORY_CLOSED：审批类别 … 已关闭" + settled 宣告 + 墓碑）。②gate（tool）/question（question）/bash 升级审批（tool）三发起面打标。③协议 approval_requested +category 必填校验；agent-process 发送透传。④验收：`npx vitest run src/policy src/kernel src/session src/cli` → **712 passed**（pending 14：闭集断言/关类自动 deny 不挂起带 CLOSED 标记/settled 宣告留痕/开类照常/墓碑 Stale + gate：关 tool 类 gate ask 自动 deny 且 allow 规则照常放行（只关"问"）+ 协议：category 合法往返/非法与缺失 MALFORMED）——验收①~⑥全过；`npx tsc --noEmit` 干净。
 
 #### T-P1-79 · C52 · 审批支持 modifiedInput（改成这样再执行） `[ ]`
 - **依据需求**：C52（P1："审批支持 modifiedInput（改成这样再执行）"）——展卡核对结论⑦

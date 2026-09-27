@@ -84,6 +84,8 @@ export function createQuestionTool(deps: QuestionToolDeps): ToolDef {
             sessionId: deps.sessionId,
             tool: "question",
             args: { question: hint },
+            // C54：question 是提问发起面（关类时 ask 自动 deny → declined 面）
+            category: "question",
           },
           { timeoutMs: deps.timeoutMs },
         );

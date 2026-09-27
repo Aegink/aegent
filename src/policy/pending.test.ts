@@ -9,11 +9,14 @@ import {
   PermissionTimeout,
   StaleApprovalError,
   UnknownApprovalError,
+  APPROVAL_CATEGORIES,
+  APPROVAL_CATEGORY_CLOSED,
   type ApprovalAnnouncement,
+  type ApprovalRequest,
 } from "./pending.js";
 
-function makeRequest(id: string) {
-  return { id, sessionId: "s1", tool: "Bash", args: { command: "rm -rf /x" } };
+function makeRequest(id: string): ApprovalRequest {
+  return { id, sessionId: "s1", tool: "Bash", args: { command: "rm -rf /x" }, category: "tool" };
 }
 
 /** 收集宣告事实（C31：所有界面都能看到的广播，测试即第一个消费方）。 */
@@ -160,6 +163,57 @@ describe("dispose（会话关闭：不悬挂 promise，不静默结算）", () =
     await expect(pending).rejects.toThrow(PermissionTimeout);
     expect(announcements[announcements.length - 1]?.kind).toBe("timed-out");
     await expect(registry.reply("call-d", { action: "allow" })).rejects.toThrow(
+      StaleApprovalError,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C54 审批来源分类（T-P1-78）：关类 = 自动拒绝非放行；开类照常挂起。
+// ---------------------------------------------------------------------------
+
+describe("C54 · 审批来源分类与关类自动拒绝（T-P1-78）", () => {
+  it("闭集 5 值：tool/question/task/elicitation/hook-review", () => {
+    expect(APPROVAL_CATEGORIES).toEqual([
+      "tool",
+      "question",
+      "task",
+      "elicitation",
+      "hook-review",
+    ]);
+  });
+
+  it("关 tool 类：ask 自动 deny（不挂起）且 reason 带 APPROVAL_CATEGORY_CLOSED，settled 宣告留痕", async () => {
+    const announcements: ApprovalAnnouncement[] = [];
+    const registry = new PendingApprovals(
+      (a) => announcements.push(a),
+      { tool: false },
+    );
+    const verdict = await registry.ask(makeRequest("closed-1"), { timeoutMs: 5_000 });
+    expect(verdict.action).toBe("deny");
+    expect(verdict.reason).toContain(APPROVAL_CATEGORY_CLOSED);
+    expect(verdict.reason).toContain("tool");
+    // 不挂起：listPending 为空；结算有宣告（C31 不静默）
+    expect(registry.listPending()).toEqual([]);
+    expect(announcements.map((a) => a.kind)).toEqual(["settled"]);
+    expect(announcements[0]).toMatchObject({ kind: "settled", tool: "Bash" });
+  });
+
+  it("开类照常挂起（缺省全开——零行为变化）；逐类开关互不影响", async () => {
+    const registry = new PendingApprovals(undefined, { question: false });
+    const pending = registry.ask(makeRequest("open-1"), { timeoutMs: 5_000 });
+    await Promise.resolve();
+    expect(registry.listPending().map((r) => r.id)).toEqual(["open-1"]);
+    await registry.reply("open-1", { action: "allow" });
+    expect(await pending).toMatchObject({ action: "allow" });
+  });
+
+  it("关类后同 id 可重新 ask（关类结算不占墓碑判重位——迟到 reply 报 Stale）", async () => {
+    const registry = new PendingApprovals(undefined, { tool: false });
+    const first = await registry.ask(makeRequest("re-1"), { timeoutMs: 5_000 });
+    expect(first.action).toBe("deny");
+    // 迟到 reply：关类结算已留墓碑 → Stale（非 Unknown）
+    await expect(registry.reply("re-1", { action: "allow" })).rejects.toThrow(
       StaleApprovalError,
     );
   });

@@ -118,6 +118,9 @@ export type AgentMessage =
       tool: string;
       args: JsonRecord;
       timeoutMs: number;
+      /** C54/T-P1-78：审批来源分类（tool/question/task/elicitation/
+       * hook-review 闭集）——UI 按类呈现、配置按类开关。 */
+      category: string;
     }
   | { type: "approval_settled"; requestId: string; allowed: boolean }
   | {
@@ -403,6 +406,7 @@ export function decodeMessage(line: string): AgentMessage {
     tool?: unknown;
     args?: unknown;
     timeoutMs?: unknown;
+    category?: unknown;
     allowed?: unknown;
     targetSeq?: unknown;
     codeRestored?: unknown;
@@ -448,12 +452,23 @@ export function decodeMessage(line: string): AgentMessage {
       if (typeof msg.timeoutMs !== "number") {
         throw new ProtocolError("PROTOCOL_MALFORMED", "approval_requested 需要 timeoutMs");
       }
+      // C54：category 必须在闭集内（tool/question/task/elicitation/hook-review）
+      if (
+        typeof msg.category !== "string" ||
+        !["tool", "question", "task", "elicitation", "hook-review"].includes(msg.category)
+      ) {
+        throw new ProtocolError(
+          "PROTOCOL_MALFORMED",
+          "approval_requested 需要 category ∈ tool/question/task/elicitation/hook-review",
+        );
+      }
       return {
         type: "approval_requested",
         requestId: msg.requestId,
         tool: msg.tool,
         args: msg.args as JsonRecord,
         timeoutMs: msg.timeoutMs,
+        category: msg.category,
       };
     }
     case "approval_settled": {

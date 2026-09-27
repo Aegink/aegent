@@ -204,6 +204,8 @@ export function createBashTool(options: {
               escalation: `sandbox → ${sandboxPermissions}`,
               ...(justification !== undefined ? { justification } : {}),
             },
+            // C54：沙箱升级审批归 tool 类（bash 工具执行内的审批面——记档）
+            category: "tool",
           },
           { timeoutMs },
         );

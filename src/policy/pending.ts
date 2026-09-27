@@ -21,6 +21,33 @@ import type { Verdict } from "./decision.js";
 // 请求 / 答复 / 宣告
 // ---------------------------------------------------------------------------
 
+/**
+ * 审批来源分类闭集（C54，T-P1-78）——按**审批发起面**定形（codex
+ * GranularApprovalConfig 五字段是"审批流触发源"的映射对应物，不是照抄）：
+ *   - tool：gate 工具审批（规则 ask / C3 默认 ask / C10 危险库升级——
+ *     task 子代理派发经 gate 也归此类，细分随真实需求记档）；
+ *   - question：question 工具提问（模型向用户发问）；
+ *   - task：task 子代理派发审批（预留——当前经 gate 归 tool，独立发起
+ *     面出现时启用）；
+ *   - elicitation：MCP/协议 elicitation（预留——无发起方）；
+ *   - hook-review：hook 复核（预留——无发起方）。
+ */
+export const APPROVAL_CATEGORIES = [
+  "tool",
+  "question",
+  "task",
+  "elicitation",
+  "hook-review",
+] as const;
+
+export type ApprovalCategory = (typeof APPROVAL_CATEGORIES)[number];
+
+/** 每类一个开关（codex 语义：false = 该类请求自动拒绝，而非放行）。 */
+export type ApprovalCategoryConfig = Partial<Record<ApprovalCategory, boolean>>;
+
+/** 关类自动拒绝的可路由标记（挂在 deny reason 前，审计面可检索）。 */
+export const APPROVAL_CATEGORY_CLOSED = "APPROVAL_CATEGORY_CLOSED";
+
 /** 一次待审批请求。id 由调用方提供（自然取工具调用的 callId——D15 语义下
  * 重试即新调用新 id，id 相撞属编程错误，注册即败）。 */
 export interface ApprovalRequest {
@@ -28,6 +55,8 @@ export interface ApprovalRequest {
   readonly sessionId: string;
   readonly tool: string;
   readonly args: JsonRecord;
+  /** C54 审批来源分类——发起面打标，关类开关据此自动拒绝。 */
+  readonly category: ApprovalCategory;
 }
 
 /**
@@ -138,10 +167,15 @@ export class PendingApprovals {
   private readonly pending = new Map<string, PendingEntry>();
   /** 已结算请求的墓碑：迟到 reply 的 stale 判定依据（C31）。 */
   private readonly settled = new Map<string, SettledTombstone>();
+  /** C54 关类开关：false 的类别，ask 在挂起前自动拒绝（缺省全开）。 */
+  private readonly categoryConfig: ApprovalCategoryConfig;
 
   constructor(
     private readonly announce?: (announcement: ApprovalAnnouncement) => void,
-  ) {}
+    categoryConfig?: ApprovalCategoryConfig,
+  ) {
+    this.categoryConfig = categoryConfig ?? {};
+  }
 
   /**
    * 发起审批：挂起发起端，返回人答复后 resolve 的裁决 Promise。
@@ -155,6 +189,22 @@ export class PendingApprovals {
     options: { timeoutMs: number },
   ): Promise<Verdict> {
     const { timeoutMs } = options;
+    // C54：关类的 ask **自动拒绝而非放行**——关掉的是"问"，不是"允许"。
+    // 结算同样宣告（C31：不宣告的结算与静默放行同罪）。
+    if (this.categoryConfig[req.category] === false) {
+      const verdict: Verdict = {
+        action: "deny",
+        reason: `${APPROVAL_CATEGORY_CLOSED}：审批类别 "${req.category}" 已关闭（${req.tool} 的请求不呈现给用户，自动拒绝）`,
+      };
+      this.settled.set(req.id, { settledWith: "reply" });
+      this.announce?.({
+        kind: "settled",
+        id: req.id,
+        verdict,
+        tool: req.tool,
+      });
+      return Promise.resolve(verdict);
+    }
     if (this.pending.has(req.id) || this.settled.has(req.id)) {
       throw new DuplicateApprovalError(req.id);
     }

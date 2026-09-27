@@ -58,7 +58,7 @@ describe("N6 · 验收：审批请求经通道 → reply 回传 → C5 Deferred 
   it("pending.ask 挂起 → owner 发 respond_permission → 发起端被唤醒继续", async () => {
     const { pending, port } = makePort();
     const askPromise = pending.ask(
-      { id: "call-1", sessionId: "s1", tool: "bash", args: { command: "git push" } },
+      { id: "call-1", sessionId: "s1", tool: "bash", args: { command: "git push" }, category: "tool" },
       { timeoutMs: 5_000 },
     );
     await new Promise((r) => setTimeout(r, 5)); // 等待挂起注册
@@ -86,7 +86,7 @@ describe("N6 · 验收：审批请求经通道 → reply 回传 → C5 Deferred 
     // 迟到答复（已超时的请求）
     const dying = new PendingApprovals();
     dying
-      .ask({ id: "late", sessionId: "s1", tool: "bash", args: {} }, { timeoutMs: 10 })
+      .ask({ id: "late", sessionId: "s1", tool: "bash", args: {}, category: "tool" }, { timeoutMs: 10 })
       .catch(() => {});
     await new Promise((r) => setTimeout(r, 30));
     const stalePort = new OwnerCommandPort({

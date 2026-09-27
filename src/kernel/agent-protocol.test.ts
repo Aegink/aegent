@@ -264,3 +264,50 @@ describe("policy/check 协议分型（C19/T-P1-75）", () => {
     );
   });
 });
+
+describe("approval_requested 协议分型扩展（C54/T-P1-78）", () => {
+  it("合法载荷往返：category ∈ 闭集；非法/缺失 category → PROTOCOL_MALFORMED", () => {
+    expect(
+      decodeMessage(
+        JSON.stringify({
+          type: "approval_requested",
+          requestId: "c1",
+          tool: "bash",
+          args: { command: "git push" },
+          timeoutMs: 5000,
+          category: "tool",
+        }),
+      ),
+    ).toEqual({
+      type: "approval_requested",
+      requestId: "c1",
+      tool: "bash",
+      args: { command: "git push" },
+      timeoutMs: 5000,
+      category: "tool",
+    });
+    expectMalformed(() =>
+      decodeMessage(
+        JSON.stringify({
+          type: "approval_requested",
+          requestId: "c1",
+          tool: "bash",
+          args: {},
+          timeoutMs: 5000,
+          category: "whatever",
+        }),
+      ),
+    );
+    expectMalformed(() =>
+      decodeMessage(
+        JSON.stringify({
+          type: "approval_requested",
+          requestId: "c1",
+          tool: "bash",
+          args: {},
+          timeoutMs: 5000,
+        }),
+      ),
+    );
+  });
+});

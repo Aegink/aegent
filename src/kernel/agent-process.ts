@@ -179,6 +179,7 @@ export async function runAgentChildStdio(
         tool: announcement.request.tool,
         args: announcement.request.args,
         timeoutMs: announcement.timeoutMs,
+        category: announcement.request.category,
       });
     } else if (announcement.kind === "settled") {
       if (announcement.tool === "question") {

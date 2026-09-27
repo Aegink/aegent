@@ -6,7 +6,7 @@ import type { JsonRecord } from "../kernel/events.js";
 import { makeLoop, ScriptedProvider } from "../kernel/loop.test-utils.js";
 import { expectPaired } from "../test-support/event-asserts.js";
 import { DenyPermissionBroker, ManualPermissionBroker } from "./broker.js";
-import { PendingApprovals, PermissionTimeout } from "./pending.js";
+import { PendingApprovals, PermissionTimeout, type ApprovalAnnouncement } from "./pending.js";
 import { createToolGateLayer, evaluateToolPolicy, TOOL_NOT_ACTIVE, TOOL_POLICY_DENIED } from "./gate.js";
 import { assemblePolicyChain } from "./chain.js";
 import { builtinRuleMatchers } from "./matchers.js";
@@ -584,5 +584,44 @@ describe("场景⑦ · 注入文本不能改变求值时机（loop 级集成）"
     });
     await loop.runTurn("查看状态");
     expect(executed).toBe(1);
+  });
+});
+
+describe("C54 · 关 tool 类 → gate ask 自动拒绝（T-P1-78）", () => {
+  it("关类下 gate ask 不挂起、落 deny 且 reason 带类别关闭标记；allow 规则照常放行（只关'问'）", async () => {
+    const announcements: ApprovalAnnouncement[] = [];
+    const pending = new PendingApprovals((a) => announcements.push(a), { tool: false });
+    const layer = createToolGateLayer({
+      chain: assemblePolicyChain({ user: [rulesModule([["ask", "bash(git *)"]])] }),
+      broker: new ManualPermissionBroker(pending, 5_000),
+      sessionId: "s1",
+    });
+    const received: ToolCallPayload[] = [];
+    const next = makeNext(async (e2) => {
+      received.push(e2);
+      return { content: `executed ${e2.name}` };
+    });
+    // ask 规则命中 → 关类自动 deny
+    const denied = await layer(
+      { sessionId: "s1" },
+      payload({ command: "git push" }, "c-closed"),
+      next,
+    );
+    expect(received).toHaveLength(0);
+    expect(denied.isError).toBe(true);
+    expect(denied.content).toContain("APPROVAL_CATEGORY_CLOSED");
+    expect(announcements.map((a) => a.kind)).toEqual(["settled"]);
+    // allow 规则照常放行（关类不影响 allow/deny 裁决——关的是"问"）
+    const allowLayer = createToolGateLayer({
+      chain: assemblePolicyChain({ user: [rulesModule([["allow", "bash(git status)"]])] }),
+      broker: new ManualPermissionBroker(pending, 5_000),
+      sessionId: "s1",
+    });
+    const allowed = await allowLayer(
+      { sessionId: "s1" },
+      payload({ command: "git status" }, "c-allow"),
+      next,
+    );
+    expect(allowed).toEqual({ content: "executed bash" });
   });
 });

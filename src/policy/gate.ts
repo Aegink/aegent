@@ -222,6 +222,8 @@ export function createToolGateLayer(
         sessionId: options.sessionId,
         tool: e.name,
         args,
+        // C54：gate 是工具审批发起面（task 派发经 gate 亦归此类——记档）
+        category: "tool",
       });
       if (answer.action === "allow") {
         return next({ ...e, arguments: JSON.stringify(args) });

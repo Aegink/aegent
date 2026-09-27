@@ -14,6 +14,7 @@ const req = (id: string, tool: string): ApprovalRequest => ({
   sessionId: "s1",
   tool,
   args: { command: "git push" },
+  category: "tool",
 });
 
 describe("C51 · 默认权限实现是拒绝", () => {
