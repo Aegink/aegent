@@ -108,8 +108,37 @@ export async function runCli(options: RunCliOptions): Promise<void> {
   // expectedTurn 来源；未见过任何轮时 null）
   let lastTurn: number | null = null;
 
+  // L7/T-P1-95：命令生命周期记录（run 前置 + done 结算，commandId 会话内
+  // 单调）——"这条命令执行过"的流内存在性记录（含失败尝试）。/exit /quit
+  // 不记（进程退出路径，done 无结算点——记档）。
+  const KNOWN_COMMANDS = new Set([
+    "revert", "cancel", "approve", "answer", "steer", "fork",
+    "preset", "check", "unattended", "resume",
+  ]);
+  let commandCounter = 0;
+  const recordCommand = (name: string, rest: string[], known: boolean): void => {
+    const commandId = `c${++commandCounter}`;
+    connection.send({
+      type: "command/run",
+      commandId,
+      name,
+      ...(rest.length > 0 ? { args: rest.join(" ") } : {}),
+    });
+    connection.send({
+      type: "command/done",
+      commandId,
+      kind: known ? "success" : "error",
+      ...(known ? {} : { text: `未知命令 /${name}` }),
+    });
+  };
+
   const handleCommand = (command: string): void => {
     const [name, ...rest] = command.split(/\s+/);
+    // L7：调用事实先落流（未知命令也记录——失败尝试是"执行过"的一部分），
+    // done 在 CLI 受理时点结算（子进程拒绝经 error 行/审批面可见——L2 分域）。
+    if (name !== undefined && name.startsWith("/") && name !== "/exit" && name !== "/quit") {
+      recordCommand(name.slice(1), rest, KNOWN_COMMANDS.has(name.slice(1)));
+    }
     if (name === "/revert") {
       const targetSeq = Number(rest[0]);
       if (!Number.isInteger(targetSeq) || targetSeq < 0) {

@@ -698,6 +698,30 @@ export async function runAgentChildStdio(
         })();
         return;
       }
+      case "command/run":
+        // L7/T-P1-95：命令调用事实落流（log-only 会话级元事件，turn=0；
+        // ForwardingStore 自动转发回显——落流可见性经协议 event 行）。
+        store.append(sessionId, [
+          {
+            type: "command/run",
+            turn: 0,
+            commandId: req.commandId,
+            name: req.name,
+            ...(req.args !== undefined ? { args: req.args } : {}),
+          },
+        ]);
+        return;
+      case "command/done":
+        store.append(sessionId, [
+          {
+            type: "command/done",
+            turn: 0,
+            commandId: req.commandId,
+            kind: req.kind,
+            ...(req.text !== undefined ? { text: req.text } : {}),
+          },
+        ]);
+        return;
       case "config/refresh": {
         // B21/T-P1-63：热刷新——白名单键逐键应用并回执 applied；静态设置
         // 出现 → 类型化拒绝（STATIC_CONFIG_IMMUTABLE，整包不应用）。在途

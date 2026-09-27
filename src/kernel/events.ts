@@ -552,6 +552,39 @@ export interface PluginEvent extends EventBase {
   payload?: JsonValue;
 }
 
+/**
+ * 命令生命周期事件对（L7，T-P1-95）：dsh·session-projection-and-command-log
+ * 的 command/run + command/done 同构——"命令的调用与裁决也要持久化，不只记
+ * 工具；否则刷新/换端/fork 后'这条命令执行过'即丢失"。**log-only 会话级
+ * 元事件**（不进模型历史；session/fork / plugin 同款纪律：不要求 turn/step
+ * 开合上下文，turn 落 0）。run 前置（调用事实，含失败尝试）、done 结算
+ * （commandId 配对不变量——run/done 配对由消费方按 commandId 关联）。
+ * payload 结构化（name/args 由命令解析器自报——"never re-parses a line"）。
+ * 与 L2 审计审计面分域：命令面是"执行过"的存在性记录，审批域结构化字段
+ * （approver/category）仍走 L2。
+ * 词汇表 21→23 的裁决记录见 l0-events.md §8 落地记录 16 与待澄清表 #15。
+ */
+export interface CommandRunEvent extends EventBase {
+  type: "command/run";
+  /** 配对键（run/done 一对一）；`c<序数>` 会话内单调。 */
+  commandId: string;
+  /** 命令名（斜杠后首个 token，如 "approve"）。 */
+  name: string;
+  /** 原始参数串（解析器自报；recordInput:false 的域命令可省——防与域事件重复）。 */
+  args?: string;
+  /** 来源端标识（CLI / 多端 host 预留位——N7 时并入注册面）。 */
+  source?: string;
+}
+
+export interface CommandDoneEvent extends EventBase {
+  type: "command/done";
+  commandId: string;
+  /** 结算二值闭集：success（请求已受理/动作已发生）| error（用法错误/类型化拒绝）。 */
+  kind: "success" | "error";
+  /** handler 结算的人话结果（成功行/拒绝理由——事实性数据，非展示层）。 */
+  text?: string;
+}
+
 export type SessionEvent =
   | TurnStartEvent
   | TurnEndEvent
@@ -573,9 +606,11 @@ export type SessionEvent =
   | TodoUpdateEvent
   | GoalSetEvent
   | SessionForkEvent
-  | PluginEvent;
+  | PluginEvent
+  | CommandRunEvent
+  | CommandDoneEvent;
 
-/** 21 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
+/** 23 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
 export const EVENT_TYPES = [
   "turn/start",
   "turn/end",
@@ -598,6 +633,8 @@ export const EVENT_TYPES = [
   "goal/set",
   "session/fork",
   "plugin",
+  "command/run",
+  "command/done",
 ] as const;
 
 export type SessionEventType = (typeof EVENT_TYPES)[number];

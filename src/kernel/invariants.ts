@@ -68,7 +68,9 @@ export function expectTurnScoped(events: readonly SessionEvent[]): void {
       e.type === "todo/update" ||
       e.type === "goal/set" ||
       e.type === "session/fork" ||
-      e.type === "plugin"
+      e.type === "plugin" ||
+      e.type === "command/run" ||
+      e.type === "command/done"
     ) {
       continue;
     }

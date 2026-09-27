@@ -324,6 +324,34 @@ export class Projector {
           throw new ProjectError(`session/fork 的 cutSeq 非法：${String(event.cutSeq)}`);
         }
         break;
+      case "command/run":
+        // L7/T-P1-95 命令生命周期（log-only 会话级元事件）：commandId/name
+        // 非空（配对与来源可检索）；args/source 可选字符串。
+        if (typeof event.commandId !== "string" || event.commandId === "") {
+          throw new ProjectError("command/run 需要 commandId 非空字符串");
+        }
+        if (typeof event.name !== "string" || event.name === "") {
+          throw new ProjectError("command/run 需要 name 非空字符串");
+        }
+        if (event.args !== undefined && typeof event.args !== "string") {
+          throw new ProjectError("command/run 的 args 须为字符串");
+        }
+        if (event.source !== undefined && typeof event.source !== "string") {
+          throw new ProjectError("command/run 的 source 须为字符串");
+        }
+        break;
+      case "command/done":
+        // done 结算：commandId 非空 + kind 二值闭集 + text 可选字符串。
+        if (typeof event.commandId !== "string" || event.commandId === "") {
+          throw new ProjectError("command/done 需要 commandId 非空字符串");
+        }
+        if (event.kind !== "success" && event.kind !== "error") {
+          throw new ProjectError(`command/done 的 kind 非法：${String(event.kind)}（合法：success|error）`);
+        }
+        if (event.text !== undefined && typeof event.text !== "string") {
+          throw new ProjectError("command/done 的 text 须为字符串");
+        }
+        break;
       case "plugin":
         // 插件泛型逃生舱（C17/T-P1-72）：namespace 非空（来源可检索）、
         // payload 可选 JsonValue（只传可序列化值）。
@@ -470,6 +498,9 @@ export class Projector {
         break; // E5 lineage 是子流头部事实：投影不消费（读流头部即可查）
       case "plugin":
         break; // C17 泛型逃生舱是 log-only 载荷：投影不消费（消费方按 namespace 自取）
+      case "command/run":
+      case "command/done":
+        break; // L7 命令生命周期是 log-only 存在性记录：投影不聚值（事件流即真相）
       case "tool/progress":
         break; // B7 进度是瞬态事实：投影不消费（事实在事件流本身，按 callId+seqInCall 可查）
     }

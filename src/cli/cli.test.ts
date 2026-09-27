@@ -1013,3 +1013,31 @@ describe("/resume 崩溃续跑（M3 / T-P1-86）", () => {
     expect(lines.some((l) => l.includes("── turn 2 结束（completed）"))).toBe(true);
   });
 });
+
+describe("L7 命令生命周期落流（T-P1-95）", () => {
+  it("/preset 命令 → 流内 command/run+done 配对（commandId 相等、run 先）；未知命令 done=error", async () => {
+    const storage = new InMemoryEventStorage();
+    const lines = await runScriptedSession(
+      { storage },
+      async function* () {
+        yield "/preset workspace";
+        yield "/unknowncmd foo";
+        yield "第一句话"; // 触发一个真实轮（命令事件与轮事件并存不互扰）
+      },
+    );
+    const events = storage.readAll("s0").map((e) => e as { type: string; commandId?: string; name?: string; kind?: string });
+    const runs = events.filter((e) => e.type === "command/run");
+    const dones = events.filter((e) => e.type === "command/done");
+    expect(runs).toHaveLength(2); // preset + unknowncmd
+    expect(dones).toHaveLength(2);
+    // 配对不变量：run/done 的 commandId 一一对应、顺序 run 先
+    expect(runs[0]!.name).toBe("preset");
+    const presetId = runs[0]!.commandId!;
+    expect(dones.find((e) => e.commandId === presetId)!.kind).toBe("success");
+    const unknownId = runs[1]!.commandId!;
+    expect(dones.find((e) => e.commandId === unknownId)!.kind).toBe("error");
+    // run/done 与轮事件并存（turn/start 在流内且互不干扰）
+    expect(events.some((e) => e.type === "turn/start")).toBe(true);
+    expect(lines.some((l) => l.includes("配置已刷新"))).toBe(true);
+  });
+});

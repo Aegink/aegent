@@ -116,6 +116,20 @@ export type AgentRequest =
        * 轮 → 以原输入开新轮。busy / 无可续跑轮 → 类型化 error 行。 */
       type: "session/resume";
     }
+  | {
+      /** L7/T-P1-95 命令生命周期记录（log-only 落流，无回执——fire-and-forget
+       * 记录面）：name/args 由 CLI 命令解析器自报。 */
+      type: "command/run";
+      commandId: string;
+      name: string;
+      args?: string;
+    }
+  | {
+      type: "command/done";
+      commandId: string;
+      kind: "success" | "error";
+      text?: string;
+    }
   | { type: "dispose" };
 
 /** 子 → 父。 */
@@ -204,6 +218,8 @@ const REQUEST_TYPES = new Set([
   "question/answer",
   "session/fork",
   "session/resume",
+  "command/run",
+  "command/done",
   "steer",
   "config/refresh",
   "policy/check",
@@ -249,6 +265,10 @@ export function decodeRequest(line: string): AgentRequest {
     position?: unknown;
     atSeq?: unknown;
     expectedTurn?: unknown;
+    commandId?: unknown;
+    name?: unknown;
+    kind?: unknown;
+    text?: unknown;
     tool?: unknown;
     args?: unknown;
     modifiedInput?: unknown;
@@ -377,6 +397,41 @@ export function decodeRequest(line: string): AgentRequest {
       targetId: req.targetId,
       ...(req.position !== undefined ? { position: req.position } : {}),
       ...(atSeq !== undefined ? { atSeq } : {}),
+    };
+  }
+  if (req.type === "command/run") {
+    // L7/T-P1-95：命令调用记录（wire 面形状校验，语义在 CLI 命令域）
+    if (typeof req.commandId !== "string" || req.commandId === "") {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "command/run 需要 commandId 非空字符串");
+    }
+    if (typeof req.name !== "string" || req.name === "") {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "command/run 需要 name 非空字符串");
+    }
+    if (req.args !== undefined && typeof req.args !== "string") {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "command/run 的 args 须为字符串");
+    }
+    return {
+      type: "command/run",
+      commandId: req.commandId,
+      name: req.name,
+      ...(req.args !== undefined ? { args: req.args } : {}),
+    };
+  }
+  if (req.type === "command/done") {
+    if (typeof req.commandId !== "string" || req.commandId === "") {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "command/done 需要 commandId 非空字符串");
+    }
+    if (req.kind !== "success" && req.kind !== "error") {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "command/done 的 kind 只接受 success|error");
+    }
+    if (req.text !== undefined && typeof req.text !== "string") {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "command/done 的 text 须为字符串");
+    }
+    return {
+      type: "command/done",
+      commandId: req.commandId,
+      kind: req.kind,
+      ...(req.text !== undefined ? { text: req.text } : {}),
     };
   }
   if (req.type === "session/resume") {

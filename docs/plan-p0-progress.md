@@ -179,6 +179,7 @@
 | 12 | L8 | `plan-p1.md` T-P1-92 明文：compaction 载荷扩六维（codex facts.rs 对位）。我方 compaction 载荷现状 {turn, summary, retainedTail, tokensBefore, usage?, reason?, title?}，无 trigger/phase/implementation/strategy/status | 同 T-P1-18 载荷扩展先例的结构：L8 的"可统计、可归因"需要六维流内事实；追加则 compaction 载荷扩五可选字段（事件计数 21 不变）。tokensAfter 卡面候选未落——引擎无精确来源，宁可少字段不落流内谎言 | 按计划卡执行：CompactionEvent 加 trigger?/phase?/implementation?/strategy?/status? 五可选字段（status 缺省读作 completed；started/failed 随 T-P1-93），project 校验值域闭集 + obs 统计面，l0-events.md §8 记落地记录 13 | ⏳ 立案供追认 |
 | 13 | E17 | `plan-p1.md` T-P1-93 明文：原子操作中间态进事件流。我方现状：压缩只在完成时落单事件（进行中/失败对投影不可见）；zcode 锚点用独立中间态事件 | 中间态需流内事实承载；落法裁定 = 复用 compaction 事件 status 值（started 前置/failed 结算），**零新事件零新字段**（status 字段已在 #12 立案），E17 落行为面 + new-window/投影切换权威口径 | 按计划卡执行：两段化落流 + 失败升流内事实 + 只认 completed 切换，l0-events.md §8 记落地记录 14 | ⏳ 立案供追认 |
 | 14 | E18 | `plan-p1.md` T-P1-94 明文：turn/end 载荷扩 produced。我方 turn/end 载荷 {turn, reason, aborted?, cause?}，无产出集合 | 同 T-P1-18 载荷扩展先例：机器自报产出集合需流内承载；追加则 turn/end 载荷扩可选 produced?: number[]（事件计数 21 不变）；tool 结果不进 produced（自带 turn 归属，无反推成本——卡面记档） | 按计划卡执行：loop 收轮自报（turnEndChain 终端 + 看门狗路径）+ abort 部分产出照报，l0-events.md §8 记落地记录 15 | ⏳ 立案供追认 |
+| 15 | L7 | `plan-p1.md` T-P1-95 明文：命令调用与裁决持久化（dsh command/run+done 同构）。我方词汇表 21 事件无命令落点，REPL 斜杠命令调用不落流 | dsh 的"这条命令执行过"需要流内承载（刷新/换端/fork 后可查）；追加则词汇表 21→23（command/run + command/done 两新事件，log-only 会话级元事件）；与 L2 审计分域记档 | 按计划卡执行：CLI 接线（run 前置/done 结算/未知命令 error）+ 子进程落流 case，l0-events.md §8 记落地记录 16 | ⏳ 立案供追认 |
 
 ## 人工确认清单
 
