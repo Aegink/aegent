@@ -743,6 +743,35 @@ describe("question 问答面（B8b / T-P1-21）", () => {
     expect(lines.some((l) => l.includes("我按默认方案继续"))).toBe(true);
   });
 
+  it("C8：/preset 预设成套切换端到端（T-P1-73）——切换回执可见、未知名本地拒", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-preset-"));
+    const provider = scriptedProvider([
+      [{ type: "text-delta", text: "好的。" }, { type: "done" }],
+      [{ type: "text-delta", text: "好的。" }, { type: "done" }],
+    ]);
+    const lines = await runScriptedSession(
+      {
+        provider,
+        assembly: {
+          workspaceRoot: workspace,
+          contextWindow: 200_000,
+          approvalTimeoutMs: 5_000,
+        },
+      },
+      async function* ({ waitFor }) {
+        yield "/preset workspace";
+        // 验收④：切换经 config/refresh 通道生效，回执行可见
+        await waitFor((line) => line.includes("✔ 配置已刷新"));
+        yield "/preset ghost";
+        // 未知名本地即拒（不等子进程）
+        await waitFor((line) => line.includes("/preset <readonly|workspace|yolo>"));
+        yield "继续";
+        await waitFor((line) => line.includes("── turn 1 结束（completed）"));
+      },
+    );
+    expect(lines.some((l) => l.includes("✔ 配置已刷新：sandboxMode"))).toBe(true);
+  });
+
   it("C36：模型作者问题文本超 200 字符截断（T-P1-70）——提示有界、答复照常回喂", async () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-question-bound-"));
     const longQuestion = "超长问题".repeat(80); // 320 字符 > 200 上界

@@ -16,6 +16,7 @@ import {
   type AgentRequest,
 } from "../kernel/agent-protocol.js";
 import type { SessionEvent } from "../kernel/events.js";
+import { PERMISSION_PRESETS } from "../kernel/session-config.js";
 
 export interface AgentConnection {
   send(request: AgentRequest): void;
@@ -212,7 +213,18 @@ export async function runCli(options: RunCliOptions): Promise<void> {
       });
       return;
     }
-    out(`未知命令 ${String(name)}。可用：/revert <seq> /cancel /steer <补充指令> /approve <id> allow|deny [理由] [--session] [--feedback 文本] /answer <id> <答复> /fork <新会话id> [before|after] [atSeq] /exit`);
+    if (name === "/preset") {
+      // C8 权限预设成套切换：预设是命名记录，切换 = 发 config/refresh 成套
+      // knob 值（复用既有通道，不新增协议命令）；未知名本地即拒（不等子进程）。
+      const preset = rest[0];
+      if (preset === undefined || !(preset in PERMISSION_PRESETS)) {
+        out(`用法：/preset <readonly|workspace|yolo>（${PERMISSION_PRESETS.workspace.label} 等，未知预设名拒绝）`);
+        return;
+      }
+      connection.send({ type: "config/refresh", patch: { ...PERMISSION_PRESETS[preset as keyof typeof PERMISSION_PRESETS].values } });
+      return;
+    }
+    out(`未知命令 ${String(name)}。可用：/revert <seq> /cancel /steer <补充指令> /approve <id> allow|deny [理由] [--session] [--feedback 文本] /answer <id> <答复> /fork <新会话id> [before|after] [atSeq] /preset <readonly|workspace|yolo> /exit`);
   };
 
   // idle 观测（对象属性承载——TS 不跨闭包窄化可变捕获）
@@ -258,6 +270,11 @@ export async function runCli(options: RunCliOptions): Promise<void> {
         case "forked":
           // E5：fork 回执——新会话已创建（后续对话由新进程打开，本连接不动）
           out(`⑂ 已分支到新会话 ${msg.sessionId}（切点 seq=${msg.cutSeq}，复制 ${msg.eventCount} 条事件）`);
+          break;
+        case "config_refreshed":
+          // B21/C8：刷新/预设切换回执——生效键可见（预设经 config/refresh
+          // 通道切换，不新增协议命令）
+          out(`✔ 配置已刷新：${msg.applied.join("、")}`);
           break;
         case "prompt_returned":
           // A8/T-P1-52：取消后未消费输入退回（"退回输入框"——不丢也不自动执行）

@@ -17,9 +17,44 @@
  */
 
 import type { JsonRecord } from "./events.js";
+import type { SandboxMode } from "../sandbox/backend.js";
+
+/**
+ * 权限预设目录（C8，T-P1-73）——**闭集**：readonly / workspace / yolo。
+ * 每预设 = 成套 knob 值的命名记录（dsh·permission-presets 同构："预设是
+ * 命名记录、切换是逐 knob 写入、执行面读折叠值"）；applyPreset 经既有
+ * refresh 通道写入（不新增第二配置来源）。当前预设 knob = sandboxMode
+ * （权限预设的语义核心——dsh 同款 knob；其 approvalPolicy 无我方对应
+ * 执行面，审批默认 ask 是不变量 3）。sandboxMode 是**观测面 knob**：
+ * 预设切换更新 store 值，消费面（bash bashSandbox.defaultMode 构造定死）
+ * 的动态读随消费面接线批次落（T-P1-63 偏离③同款记档）。
+ */
+export const PERMISSION_PRESETS = {
+  readonly: { label: "只读（沙箱地板模式）", values: { sandboxMode: "read-only" } },
+  workspace: { label: "工作区写入（缺省权限面）", values: { sandboxMode: "workspace-write" } },
+  yolo: { label: "全自动（最宽沙箱模式）", values: { sandboxMode: "danger-full-access" } },
+} as const satisfies Record<string, { label: string; values: { sandboxMode: SandboxMode } }>;
+
+export type PermissionPresetName = keyof typeof PERMISSION_PRESETS;
+
+export const UNKNOWN_PRESET = "UNKNOWN_PRESET";
+
+export class UnknownPresetError extends Error {
+  override readonly name = "UnknownPresetError";
+  readonly code = UNKNOWN_PRESET;
+  constructor(readonly preset: string) {
+    super(
+      `未知权限预设 "${preset}"（可用：${Object.keys(PERMISSION_PRESETS).join("/")}）`,
+    );
+  }
+}
 
 /** 可热刷新字段白名单（闭集，冻结只追加——C10 先例）。 */
-export const REFRESHABLE_CONFIG_KEYS = ["approvalTimeoutMs", "queueMaxSize"] as const;
+export const REFRESHABLE_CONFIG_KEYS = [
+  "approvalTimeoutMs",
+  "queueMaxSize",
+  "sandboxMode",
+] as const;
 
 export type RefreshableConfigKey = (typeof REFRESHABLE_CONFIG_KEYS)[number];
 
@@ -40,21 +75,31 @@ export interface SessionConfigValues {
   approvalTimeoutMs?: number;
   /** 输入队列上限（条）——PromptQueue maxSize 同语义。 */
   queueMaxSize?: number;
+  /** 沙箱模式（C8 观测面 knob）——预设切换的目标值；消费面动态读随接线批次。 */
+  sandboxMode?: SandboxMode;
+}
+
+export interface SessionConfigStoreOptions {
+  /** C8 预设切换留痕（logger.info）；缺省不留。 */
+  onInfo?: (message: string) => void;
 }
 
 export class SessionConfigStore {
   private values: {
     approvalTimeoutMs: number | undefined;
     queueMaxSize: number | undefined;
+    sandboxMode: SandboxMode | undefined;
   };
 
   constructor(
     private readonly sessionId: string,
     initial?: SessionConfigValues,
+    private readonly options?: SessionConfigStoreOptions,
   ) {
     this.values = {
       approvalTimeoutMs: initial?.approvalTimeoutMs,
       queueMaxSize: initial?.queueMaxSize,
+      sandboxMode: initial?.sandboxMode,
     };
   }
 
@@ -64,6 +109,10 @@ export class SessionConfigStore {
 
   get queueMaxSize(): number | undefined {
     return this.values.queueMaxSize;
+  }
+
+  get sandboxMode(): SandboxMode | undefined {
+    return this.values.sandboxMode;
   }
 
   /**
@@ -93,8 +142,40 @@ export class SessionConfigStore {
         }
         this.values.queueMaxSize = value;
         applied.push(key);
+      } else if (key === "sandboxMode") {
+        if (
+          typeof value !== "string" ||
+          !(["read-only", "workspace-write", "danger-full-access"] as const satisfies readonly SandboxMode[]).includes(
+            value as SandboxMode,
+          )
+        ) {
+          throw new StaticConfigImmutableError(key);
+        }
+        this.values.sandboxMode = value as SandboxMode;
+        applied.push(key);
       }
     }
     return { applied };
+  }
+
+  /**
+   * 权限预设成套切换（C8，T-P1-73）：**经既有 refresh 通道**逐 knob 写入
+   * 预设记录的全部 knob 值（不新增第二配置来源；切换是 refresh 语义——
+   * 不触碰静态键，在途 turn 不受影响）。未知预设名类型化拒绝（零写入）。
+   * 切换经 onInfo 留痕（"预设事件保留用户意图"——两个预设共享同一名值
+   * 束时，记录的是用户选择的名字）。
+   */
+  applyPreset(name: PermissionPresetName | string): { applied: RefreshableConfigKey[] } {
+    const preset = (PERMISSION_PRESETS as Record<string, { label: string; values: JsonRecord }>)[
+      name
+    ];
+    if (preset === undefined) {
+      throw new UnknownPresetError(name);
+    }
+    const result = this.refresh({ ...preset.values });
+    this.options?.onInfo?.(
+      `权限预设切换 [${this.sessionId}]：${String(name)}（${preset.label}）→ 生效 ${result.applied.join("/")}`,
+    );
+    return result;
   }
 }

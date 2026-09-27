@@ -1088,7 +1088,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **偏离 / 建议**：待澄清 #11 已按用户本会话开工表态（"待澄清表认可然后继续"）标关闭转正——该表态解读为覆盖批次 8 提示词所述"#9/#10/#11 三案一并追认"；#9/#10 开工时已先转正（落地记录 10/11），#11 随本卡落地即转正（落地记录 12，§3.2 正式计数 21）。若解读超出用户本意，回退面照落地记录 12 可执行（约 1.5 小时）。**此解读已在批次 8 组报告中显著记录，供用户复核。**
 - **完成记录**：①词汇表 20→21：新事件 `plugin {namespace, payload?}`（pi CustomEntry 同构；namespace 非空必填 + payload 可选 JsonValue；log-only 不进模型历史、投影不消费、O7 会话级元事件豁免）——events.ts（PluginEvent / EVENT_TYPES 21 / C16 编译闸门同步）/ project.ts（validation：namespace 空/ payload 不可序列化拒；isJsonValue 结构校验）/ invariants.ts（豁免面 +plugin）/ messages.ts default 分支天然不消费。②待澄清 #11 立案即关闭（见上）；l0-events.md §3.2 计数 21 + 第 21 行 + §8 落地记录 12。③验收：`npx vitest run src/kernel/events.test.ts src/session/project.test.ts src/test-support/migration-asserts.test.ts` → **33 passed**——①计数 21（SAMPLES 全型构造 + EVENT_TYPES 长度）✓；②plugin 落流可投影（投影不消费不炸）、namespace 空/payload 函数拒 ✓；③旧流前向兼容（migration-asserts"旧形状流"既有用例承载）✓；④C15：ghost/plugin 恒拒（逃生舱只有一个）✓；kernel/session/test-support 全目录 **510 passed** 回归；`npx tsc --noEmit` 干净。
 
-#### T-P1-73 · C8 · 权限预设成套切换 `[ ]`
+#### T-P1-73 · C8 · 权限预设成套切换 `[x]`
 - **依据需求**：C8（P1："权限预设成套切换——切换预设后规则集整体生效"）
 - **上游首选参考**：[dsh·permission-presets/index.ts](../oss/deepseek-harness/packages/interaction/permission-presets/src/index.ts)（预设 = 记录选择 + 经各 knob 规范 setter 写入 changed knobs；执行面读折叠值；预设事件保留用户意图）
 - **取什么 / 别抄什么**：取"预设是命名记录、切换是逐 knob 写入、执行面读折叠值"；knob = SessionConfigStore 可刷新面；不抄 cordis/zod 体系
@@ -1097,8 +1097,8 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **验收**：`npx vitest run src/kernel/session-config.test.ts src/cli/cli.test.ts`（扩）——①三预设各自成套生效（getter 断言）；②未知预设名类型化拒绝；③切换是 refresh 语义（不含静态键）；④CLI /preset 端到端可见
 - **依赖**：T-P1-63（SessionConfigStore 在位）
 - **风险 / 未知**：沙箱模式 knob 的消费方（bashSandbox.defaultMode）构造定死——预设的沙箱面落 configStore 观测，动态读随消费面接线批次（T-P1-63 偏离③同款记档）
-- **偏离 / 建议**：（留白）
-- **完成记录**：
+- **偏离 / 建议**：①预设目录当前 knob = sandboxMode 单键（dsh 的 approvalPolicy 无我方对应执行面——审批默认 ask 是不变量 3，不发明）；"成套"= 目录结构支持多 knob（values 对象），当前一键。②sandboxMode 追加入 REFRESHABLE_CONFIG_KEYS 白名单（C10 只追加先例的预期演进）——观测面 knob：预设切换更新 store 值 + getter 暴露，消费面（bash defaultMode 构造定死）动态读随接线批次。③预设切换的双路径都经既有 refresh 通道：applyPreset（store API，内部 this.refresh）与 CLI /preset（发 config/refresh patch）——不新增第二来源、不新增协议命令。④未知预设名在 CLI 本地即拒（不等子进程往返）+ store 层 UnknownPresetError 双面。
+- **完成记录**：①session-config.ts——PERMISSION_PRESETS 闭集（readonly/workspace/yolo，每预设 = {label, values:{sandboxMode}}）+ UnknownPresetError + applyPreset（经 refresh 通道写入 + onInfo 留痕"预设事件保留用户意图"）+ REFRESHABLE_CONFIG_KEYS +sandboxMode + store getter/值校验（三值闭集）。②agent-process configStore 构造传 onInfo→logger.info。③CLI /preset <name>（repl 本地查表 + config/refresh 发送）+ config_refreshed 回执渲染"✔ 配置已刷新"（此前静默）+ 未知命令帮助行补 /preset。④验收：`npx vitest run src/kernel/session-config.test.ts src/cli/cli.test.ts` → **27 passed**——①三预设各自成套生效（getter 断言 + 连续切换覆盖）✓；②ghost → UNKNOWN_PRESET 类型化拒绝且零写入 ✓；③切换是 refresh 语义（预设载荷全白名单键、静态键不入、refresh 直发 sandboxMode 同语义、非法值拒）✓；④CLI /preset 端到端可见（✔ 配置已刷新：sandboxMode）+ 未知名本地拒 ✓；onInfo 留痕 ✓；agent-process.test 回归全绿（config/refresh 面 37 passed）；`npx tsc --noEmit` 干净。
 
 #### T-P1-74 · 收口 · 权限语义冲突盘点 + 快照 `[ ]`
 - **依据需求**：批次 8 收口（照批次 4/5/6/7 收口先例；无独立需求 ID）

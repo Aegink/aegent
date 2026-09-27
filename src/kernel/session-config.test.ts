@@ -3,6 +3,8 @@ import {
   SessionConfigStore,
   StaticConfigImmutableError,
   REFRESHABLE_CONFIG_KEYS,
+  PERMISSION_PRESETS,
+  UnknownPresetError,
 } from "./session-config.js";
 
 describe("SessionConfigStore —— B21 配置两类", () => {
@@ -41,9 +43,71 @@ describe("SessionConfigStore —— B21 配置两类", () => {
   });
 
   it("白名单闭集冻结只追加；未刷新路径 getter 返回装配初始值（零行为变化）", () => {
-    expect(REFRESHABLE_CONFIG_KEYS).toEqual(["approvalTimeoutMs", "queueMaxSize"]);
+    // T-P1-73：sandboxMode 追加入白名单（C8 观测面 knob——只追加的预期演进）
+    expect(REFRESHABLE_CONFIG_KEYS).toEqual(["approvalTimeoutMs", "queueMaxSize", "sandboxMode"]);
     const store = new SessionConfigStore("s1");
     expect(store.approvalTimeoutMs).toBeUndefined();
     expect(store.queueMaxSize).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C8 权限预设成套切换（T-P1-73）：预设 = 命名记录，切换 = 经既有 refresh
+// 通道逐 knob 写入（不新增第二来源）。
+// ---------------------------------------------------------------------------
+
+describe("C8 · 权限预设成套切换（T-P1-73）", () => {
+  it("验收①：三预设各自成套生效（getter 断言）", () => {
+    for (const [name, preset] of Object.entries(PERMISSION_PRESETS)) {
+      const store = new SessionConfigStore("s1");
+      const { applied } = store.applyPreset(name);
+      expect(applied).toEqual(["sandboxMode"]);
+      expect(store.sandboxMode).toBe(preset.values.sandboxMode);
+    }
+    // 连续切换：后一预设成套覆盖前一预设
+    const store = new SessionConfigStore("s1");
+    store.applyPreset("yolo");
+    expect(store.sandboxMode).toBe("danger-full-access");
+    store.applyPreset("readonly");
+    expect(store.sandboxMode).toBe("read-only");
+  });
+
+  it("验收②：未知预设名类型化拒绝（UNKNOWN_PRESET，零写入）", () => {
+    const store = new SessionConfigStore("s1", { approvalTimeoutMs: 120_000 });
+    expect(() => store.applyPreset("ghost")).toThrow(UnknownPresetError);
+    try {
+      store.applyPreset("ghost");
+    } catch (e) {
+      expect((e as UnknownPresetError).code).toBe("UNKNOWN_PRESET");
+      expect((e as UnknownPresetError).preset).toBe("ghost");
+    }
+    // 零写入：既有值不动
+    expect(store.approvalTimeoutMs).toBe(120_000);
+    expect(store.sandboxMode).toBeUndefined();
+  });
+
+  it("验收③：切换是 refresh 语义——静态键不入预设载荷；refresh 直发 sandboxMode 同语义", () => {
+    const store = new SessionConfigStore("s1");
+    // 预设载荷全部是白名单键（经 refresh 通道零拒绝）
+    for (const preset of Object.values(PERMISSION_PRESETS)) {
+      for (const key of Object.keys(preset.values)) {
+        expect((REFRESHABLE_CONFIG_KEYS as readonly string[]).includes(key)).toBe(true);
+      }
+    }
+    // refresh 通道直发 sandboxMode 同样生效（CLI /preset 走的就是这条路）
+    const { applied } = store.refresh({ sandboxMode: "workspace-write" });
+    expect(applied).toEqual(["sandboxMode"]);
+    expect(store.sandboxMode).toBe("workspace-write");
+    // 非法值拒绝（闭集外）
+    expect(() => store.refresh({ sandboxMode: "off" })).toThrow(StaticConfigImmutableError);
+  });
+
+  it("切换经 onInfo 留痕（预设事件保留用户意图）", () => {
+    const infos: string[] = [];
+    const store = new SessionConfigStore("s1", undefined, { onInfo: (m) => infos.push(m) });
+    store.applyPreset("workspace");
+    expect(infos).toHaveLength(1);
+    expect(infos[0]).toContain("workspace");
+    expect(infos[0]).toContain("s1");
   });
 });
