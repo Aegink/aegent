@@ -492,6 +492,23 @@ export interface SessionForkEvent extends EventBase {
   cutSeq: number;
 }
 
+/**
+ * 插件事件泛型逃生舱（C17，T-P1-72）：**唯一**一个允许插件/宿主扩展
+ * 落流的泛型槽位（pi CustomEntry 的 `type: "custom"` 同构——"若需插件
+ * 事件，只开一个泛型逃生舱类型，不改词汇表机制"）。namespace 非空
+ * （命名空间必填——来源可检索，防匿名载荷）；payload 可选 JsonValue
+ * （只传可序列化值）。log-only：不进模型历史（模型请求消息装配不消费
+ * 它），跨 compaction 保留。会话级元事件：session/fork 同款纪律，不要求
+ * turn/step 开合上下文。C15 双向钉死：这是词汇表里唯一的开放槽位——
+ * 其他未知类型仍被拒（逃生舱只有一个，没有第二个）。
+ * 词汇表 20→21 的裁决记录见 l0-events.md §8 落地记录 12 与待澄清表 #11。
+ */
+export interface PluginEvent extends EventBase {
+  type: "plugin";
+  namespace: string;
+  payload?: JsonValue;
+}
+
 export type SessionEvent =
   | TurnStartEvent
   | TurnEndEvent
@@ -512,9 +529,10 @@ export type SessionEvent =
   | ModelSwitchEvent
   | TodoUpdateEvent
   | GoalSetEvent
-  | SessionForkEvent;
+  | SessionForkEvent
+  | PluginEvent;
 
-/** 20 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
+/** 21 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
 export const EVENT_TYPES = [
   "turn/start",
   "turn/end",
@@ -536,6 +554,7 @@ export const EVENT_TYPES = [
   "todo/update",
   "goal/set",
   "session/fork",
+  "plugin",
 ] as const;
 
 export type SessionEventType = (typeof EVENT_TYPES)[number];

@@ -127,6 +127,42 @@ describe("fold 即校验（E16）", () => {
     }
   });
 
+  it("plugin（C17/T-P1-72）：合法逃生舱载荷放行（log-only 投影不消费），坏载荷两路类型化拒绝", () => {
+    const projector = Projector.fresh();
+    const ok = {
+      type: "plugin",
+      seq: 1,
+      ts: 0,
+      turn: 0,
+      namespace: "my-plugin",
+      payload: { key: "value", nested: [1, "two", null, true] },
+    } as unknown as SessionEvent;
+    expect(() => projector.append([ok])).not.toThrow();
+
+    // 坏载荷：namespace 空 / payload 不可序列化——append 前拒；payload 缺省合法
+    const bads = [
+      { namespace: "" },
+      { namespace: "x", payload: () => 1 },
+    ];
+    let seq = 2;
+    for (const bad of bads) {
+      const p2 = Projector.fresh();
+      const badEvent = { type: "plugin", seq: seq++, ts: 0, turn: 0, ...bad } as unknown as SessionEvent;
+      expect(() => p2.append([badEvent])).toThrow(ProjectError);
+    }
+    const noPayload = {
+      type: "plugin",
+      seq: 1,
+      ts: 0,
+      turn: 0,
+      namespace: "no-payload",
+    } as unknown as SessionEvent;
+    expect(() => Projector.fresh().append([noPayload])).not.toThrow();
+    // C15：逃生舱只有一个——其他未知类型仍被拒（ghost 恒拒）
+    const ghost = { type: "ghost/plugin", seq: 99, ts: 0, turn: 0 } as unknown as SessionEvent;
+    expect(() => projector.append([ghost])).toThrow(/未知事件类型/);
+  });
+
   it("批内配对可查：同批 [turn/start…turn/end] 合法；同批双开 turn 拒绝", () => {
     const projector = Projector.fresh();
     expect(() => projector.append(oneTurn(1, 1))).not.toThrow(); // 批内开合完整

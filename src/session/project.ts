@@ -120,6 +120,16 @@ function emptyProjection(): SessionProjection {
 
 const KNOWN_TYPES = new Set<string>(EVENT_TYPES);
 
+/** JsonValue 结构校验（plugin.payload 用，C17——只允许可序列化值落流）。 */
+function isJsonValue(v: unknown): boolean {
+  if (v === null || typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+    return true;
+  }
+  if (Array.isArray(v)) return v.every((x) => isJsonValue(x));
+  if (typeof v === "object") return Object.values(v).every((x) => isJsonValue(x));
+  return false;
+}
+
 export class Projector {
   private readonly state: SessionProjection;
 
@@ -276,6 +286,19 @@ export class Projector {
           throw new ProjectError(`session/fork 的 cutSeq 非法：${String(event.cutSeq)}`);
         }
         break;
+      case "plugin":
+        // 插件泛型逃生舱（C17/T-P1-72）：namespace 非空（来源可检索）、
+        // payload 可选 JsonValue（只传可序列化值）。
+        if (typeof event.namespace !== "string" || event.namespace === "") {
+          throw new ProjectError("plugin 需要 namespace 非空字符串");
+        }
+        if (
+          event.payload !== undefined &&
+          !isJsonValue(event.payload)
+        ) {
+          throw new ProjectError("plugin 的 payload 必须是 JsonValue（可序列化值）");
+        }
+        break;
       default:
         throw new ProjectError(`未知事件类型 ${(event as { type: string }).type}`);
     }
@@ -400,6 +423,8 @@ export class Projector {
         break;
       case "session/fork":
         break; // E5 lineage 是子流头部事实：投影不消费（读流头部即可查）
+      case "plugin":
+        break; // C17 泛型逃生舱是 log-only 载荷：投影不消费（消费方按 namespace 自取）
       case "tool/progress":
         break; // B7 进度是瞬态事实：投影不消费（事实在事件流本身，按 callId+seqInCall 可查）
     }

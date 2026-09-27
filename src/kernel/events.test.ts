@@ -116,15 +116,21 @@ const SAMPLES: NewSessionEvent[] = [
     position: "after",
     cutSeq: 12,
   },
+  {
+    type: "plugin",
+    turn: 1,
+    namespace: "my-plugin",
+    payload: { key: "value", nested: [1, "two"] },
+  },
 ];
 
 describe("事件词汇表（l0-events.md §3 定稿）", () => {
-  it("联合成员恰 20 个（13 定稿 + session/revert + model/switch + todo/update + goal/set + tool/progress + session/fork + assistant/retrying），且与 EVENT_TYPES 严格一致（验收①：Exclude 遍历断言的运行时面）", () => {
-    expect(EVENT_TYPES).toHaveLength(20);
+  it("联合成员恰 21 个（13 定稿 + session/revert + model/switch + todo/update + goal/set + tool/progress + session/fork + assistant/retrying + plugin），且与 EVENT_TYPES 严格一致（验收①：Exclude 遍历断言的运行时面）", () => {
+    expect(EVENT_TYPES).toHaveLength(21);
     const declared = new Set<string>(EVENT_TYPES);
     // 每个联合成员都能按其必填载荷构造，且 type 互不相同、并集等于 EVENT_TYPES。
     const constructed = SAMPLES.map((e) => e.type);
-    expect(new Set(constructed)).toHaveLength(20);
+    expect(new Set(constructed)).toHaveLength(21);
     expect(new Set(constructed)).toEqual(declared);
     // 编译期等价断言在 events.ts 的 _EVENT_TYPES_EXACT（tsc --noEmit 时生效）。
   });

@@ -51,7 +51,8 @@ function adaptThrowing(
 /**
  * turn 作用域不变量：turn 从 1 连续编号、不嵌套、不悬挂；turn 作用域事件
  * 归属当前开启的轮；轮内 step 从 1 连续递增。session/revert、model/switch、
- * todo/update、goal/set 与 session/fork 是会话级元事件，不参与本检查；
+ * todo/update、goal/set、session/fork 与 plugin（C17 泛型逃生舱）是会话级
+ * 元事件，不参与本检查；
  * compaction / checkpoint / request/header 只声明 turn 归属、不要求轮开启
  * （与投影器 applyValidation 的判定一致——压缩合法地落在轮外，如 turn
  * 收尾后的 PreTurn 压缩）。
@@ -66,7 +67,8 @@ export function expectTurnScoped(events: readonly SessionEvent[]): void {
       e.type === "model/switch" ||
       e.type === "todo/update" ||
       e.type === "goal/set" ||
-      e.type === "session/fork"
+      e.type === "session/fork" ||
+      e.type === "plugin"
     ) {
       continue;
     }

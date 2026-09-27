@@ -123,7 +123,7 @@ interface EventBase {
 **`seq` / `ts` 由 store 分配**，照 pi 的 `NewEntry = Omit<Entry, "seq" | "timestamp">`（`types.ts:67`）。
 调用方给不出正确的 seq —— 它给一个就多一个不权威的顺序来源。
 
-### 3.2 事件联合（L0，正式计数 **20** 个）
+### 3.2 事件联合（L0，正式计数 **21** 个）
 
 | # | 事件 | 载荷 | 覆盖需求 |
 | --- | --- | --- | --- |
@@ -132,7 +132,6 @@ interface EventBase {
 | 3 | `step/start` | `{turn, step}` | A1 |
 | 4 | `step/end` | `{turn, step, timing?, traceId?}` | A1 / B19（T-P1-61 追加 timing/traceId——落地记录 10） |
 | 5 | `user/message` | `{message, source, promptId?}` | A9 / A12（T-P1-53 追加 promptId——落地记录 9） |
-| 5a | `assistant/retrying` | `{turn, step, attempt, delayMs, error:{name,message,status?}}` | J27（T-P1-61 追加，✅ 已追认——落地记录 10，19→20） |
 | 6 | `system/message` | `{turn, step, message}` | F 层 |
 | 7 | `assistant/message` | `{turn, step, message, stream, usage?, interrupted?}` | **A7** |
 | 8 | `assistant/attempt` | `{turn, step, stream}` | **J 层 / 错误可观测** |
@@ -147,6 +146,8 @@ interface EventBase {
 | 17 | `todo/update` | `{items: Array<{content, status: "pending"\|"in_progress"\|"completed"}>}` | G2（T-P1-10 追加——落地记录 4） |
 | 18 | `goal/set` | `{text, deadline?, status: "active"\|"achieved"\|"abandoned"}` | G3/G6（T-P1-12 追加——落地记录 5） |
 | 19 | `session/fork` | `{parentSessionId, position: "before"\|"after", cutSeq}` | E5（T-P1-40 追加——落地记录 8） |
+| 20 | `assistant/retrying` | `{turn, step, attempt, delayMs, error:{name,message,status?}}` | J27/B19（T-P1-61 追加，✅ 已追认——落地记录 10，19→20） |
+| 21 | `plugin` | `{namespace, payload?}` | C17（T-P1-72 追加，✅ 已追认——落地记录 12，20→21；log-only 会话级元事件，**唯一泛型逃生舱**） |
 
 `user/message.source` 必须是联合：照 DSH 的 `types.ts:309` 注释，人类 prompt、注入上下文、
 目标续跑**三者都逐字投影 content，靠 `source` 区分**。没有 `source` 就再也分不开。
@@ -301,3 +302,4 @@ type CancelCause =
 - **落地记录 9（2026-09-27，T-P1-53 执行会话；✅ 已追认）**：词汇表**载荷面一处扩展**（事件计数 19 不变）——A12 要求"用户输入携带关联 id，关联该输入之后、下一次输入之前的所有事件；仍不提供 per-prompt 完成语义（与 A9 一致）"（plan-p1.md T-P1-53 明文；claude-official·claude-code.d.ts 的 BaseHookInput.prompt_id 行为同构——🔴 专有仓只学语义零代码摘取）。已在 `user/message` 载荷加**可选 `promptId?: string`**：用户输入的关联键，效力区间 = 本条 user/message 之后、下一条 user/message 之前的全部事件（**关联区间由流顺序天然定义**——事件流顺序即关联结构，区间内事件不逐个带 id，投影/消费面按 seq 切片推导，故仅扩起点一处载荷而非逐事件打 id）。loop 在落 user/message 时统一分配：runTurn 首条与 drainQueue 注入的 steer 每条各一枚，格式 `p<序数>` 会话内单调，**恢复路径从流重建计数基线**（AgentLoop 构造时数已有 user/message 条数——重启后不重号）。与 A9 纪律双向钉死：promptId 是关联键**不是完成句柄**——没有 finished() 配对、没有 per-prompt 完成语义；与 queue 的 messageId（q<序数>，inbox admission 收执，仅队列通道）分工明确。**零事件数扩展、零新事件**——T-P1-18 载荷扩展先例（RequestHeaderReason 扩值 + CompactionEvent.title）：载荷扩展≠新事件，但动词汇表载荷仍立案供追认。同步面：events.ts（UserMessageEvent.promptId 可选字段 + 注释）/ loop.ts（nextPromptId 分配器 + 构造时流重建基线 + 两处落盘点）/ project.ts（validation：present 时必须非空字符串，缺省放行=旧流前向兼容）。**不追认的回退面**：events.ts 删可选字段 / loop.ts 删分配器与两处传参 / project.ts 删校验 / l0-events.md 本记录——约 1 小时；回退后 user/message 无关联键，A12 的关联推导失去锚点（A9 语义不受影响）。**用户追认于 2026-09-27（"认可"），此案关闭。**
 - **落地记录 10（2026-09-27，T-P1-61 执行会话；✅ 已追认）**：词汇表 **19→20（一处新事件 + 两处载荷扩展）**——①**新事件 `assistant/retrying`**（J27："retrying 作为一等事件，带 failedAttempt"；kimi engine.ts 的 retrying 事件同构最小面）：`{turn, step, attempt, delayMs, error:{name,message,status?}}`——provider 层的中间失败尝试（未产出 chunk、assistant/attempt 不落盘的那种）对事件流可见；turn/step 由 runAgentChildStdio 的落流观察者从 loop 当前状态读取（provider 层自身不知 loop 状态），idle 期防御性忽略（轮作用域红线）；log-only 面保持（T-P1-51 的 warn 不撤）。②**step/end 载荷扩展**（B19："每步上报 timing 与 traceId"；kimi stepCompleted 的 timing/traceId 同构，ModelRequestTiming 最小面）：可选 `timing?: {firstTokenLatencyMs, streamDurationMs}` + `traceId?: string`（`r<序数>` 会话内单调，request/header 数重建基线）——有模型请求的 step 才携带。③计数口径：**事件计数 19→20，正式计数 20 事件**。同步面：events.ts（AssistantRetryingEvent / StepEndEvent 可选字段 / EVENT_TYPES 20 / 编译闸门）/ project.ts（validation：assistant/retrying 进 step 作用域校验；step/end 载荷缺省放行=旧流前向兼容）/ invariants.ts（轮作用域面 +assistant/retrying）/ loop.ts（callModel 计时与 traceId 分配器 / runStep 两个 step/end 落盘点）/ agent-child.ts（onRetry 桥接观察者）/ agent-process.ts（registerRetryObserver hooks + 落流）/ l0-events.md 本记录 + events.test 计数 20。**不追认的回退面**：以上各文件删新增分支/字段/落盘点——约 2 小时；回退后 retrying 退回 logger.warn（T-P1-51 行为），step/end 无 timing/traceId（B19 的"每步可关联"面缺失）。**用户追认于 2026-09-27（"待澄清表认可"），此案关闭，§3.2 的正式计数为 20 事件。**
 - **落地记录 11（2026-09-27，T-P1-62 执行会话；✅ 已追认）**：**StreamChunk 载荷扩展一处**（事件计数 20 不变）——B20 要求"输出 token 上限应作为'可续跑事件'，不是回合终态"（zcode turn-output-token-continuation 同构：classify 三值 + 上限 3 + 固定 CONTINUE prompt）。已在 **`StreamChunk` 的 `done` 变体加可选 `finishReason?: string`**（OpenAI wire 的 choices[0].finish_reason——此前 mapWireChunk 丢弃该字段，触顶信号无从谈起）；loop 据此判定：纯文本（无工具调用）且 finishReason ∈ OUTPUT_TOKEN_LIMIT_FINISH_REASONS 闭集（length/max_tokens/max_output_tokens，冻结只追加）且本 turn 续跑 < 3 → 落固定续跑指令（user/message source="injected"——注入上下文既有语义，**零新事件**）并直接进下一 step（内核护栏行为，不经 decideTurn——默认"无工具即 end"正是 B20 要防的"结束回合"）。同步面：events.ts（done.finishReason 可选 + 注释）/ openai-compat.ts（finishState 捕获 + done 携带）/ loop.ts（触顶集/续跑计数/判定面）/ provider.test（wire 解析 2 用例）/ loop.test（续跑 3 用例）/ l0-events.md 本记录。**不追认的回退面**：events.ts 删可选字段 / openai-compat.ts 删 finishState / loop.ts 删判定面——约 1 小时；回退后输出触顶即终轮（B20 的"可续跑"语义缺失，触顶事件流不可见）。**用户追认于 2026-09-27（"待澄清表认可"），此案关闭。**
+- **落地记录 12（2026-09-27，T-P1-72 执行会话；✅ 已追认——见待澄清 #11 落款）**：词汇表 **20→21（一处新事件）**——C17 要求"若确需插件事件，只开一个泛型逃生舱类型，不改词汇表机制"（plan-p1.md T-P1-72 明文；pi·session/types.ts:52-64 的 CustomEntry `type: "custom"` + `customType` + `data?` 同构最小面）。已新增 **`plugin {namespace, payload?}`**（会话级元事件，session/fork 同款纪律：不要求 turn/step 开合上下文、turn 挂流内最后轮空流兜 0）：**namespace 非空必填**（来源可检索——pi 的 customType 同位，防匿名载荷落流）；**payload 可选 JsonValue**（只传可序列化值，agent-protocol 的可序列化红线一致）。**log-only 不进模型历史**（messages.ts 装配 default 分支不消费；dsh descriptor 同构先例），跨 compaction 保留；投影不消费（消费方按 namespace 自取）。**C15 双向钉死**：这是词汇表唯一开放槽位——其他未知类型恒被拒（project.ts KNOWN_TYPES 闸门 + 验收用例"ghost/plugin 恒拒"），C16 编译闸门同步（EVENT_TYPES 21 / _EVENT_TYPES_EXACT）。同步面：events.ts（PluginEvent / EVENT_TYPES 21 / 编译闸门）/ project.ts（validation：namespace 非空 + payload JsonValue 结构校验；投影不消费）/ invariants.ts（O7 会话级元事件豁免面 +plugin）/ l0-events.md 本记录 + events.test 计数 21。**不追认的回退面**：events.ts 删 PluginEvent/联合成员/EVENT_TYPES 行、project.ts 删 validation 与投影 case、invariants.ts 删豁免、events.test/project.test 删用例——约 1.5 小时，全部为新增面（不触碰既有 20 事件语义）；回退后插件面无流内承载（C17 的"留槽"自觉落空，插件事件只能 logger 带走）。

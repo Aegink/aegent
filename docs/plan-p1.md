@@ -1076,7 +1076,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **偏离 / 建议**：①哈希通道：策略层不做 I/O（dsh 关键架构决策的本卡对应物）——contentHash（sha256，util.ts）由工具在真实读写时顺带计算传入；ReadGateService 纯内存记账。②"写入必须基于已读版本"的双半边：ReadGate 哈希比对（读后外部修改显式检测）+ edit 的 oldText 精确匹配（既有，版本失配 = OLD_TEXT_NOT_FOUND）互补。③记账语义照 dsh：写/编辑成功后 recordRead 新内容哈希（create-then-edit / edit-then-edit 无需中间读）；delete 成功后 forget（后续编辑由文件层 NOT_FOUND 拒）。④apply_patch 的 move 目标（moveAbs）不校验已读（卡面只要求 update 目标逐个 + delete；move 本质 update+rename，rename 目标覆盖场景记为已知边界）。⑤write 覆盖校验的文件存在性探测经守卫唯一入口（read 命中 ENOENT = 新文件豁免；越界/IO 错误在探测面就落不吞）；readGate 未启用时零额外 I/O。⑥接线通道：ToolContext +readGate 键（env.test 键封闭清单同步——policy 服务无进程能力不违 D4）→ registry 构造注入 → ctx；子代理 subRegistry 不传（可选装配不含子代理，记档）。⑦dsh 的事件瀑布/single-slot 形状不取——我方工具直调 ctx.readGate 可选方法（undefined = 不启用），等价达成"策略可整体丢弃"且无事件词汇成本。
 - **完成记录**：①read-gate.ts 新建——ReadGateService（recordRead/forget/requireRead）+ ReadGateError（EDIT_WITHOUT_READ / EDIT_STALE_READ）。②接线：read 成功后 recordRead（窗口读也记全文件哈希）；edit 执行前 requireRead（队列内、oldText 匹配前）+ 写后记账更新；write 覆盖前 requireRead（新文件豁免）+ 写后记账；apply_patch update 目标逐个校验（验证阶段拒绝 = 零变更）+ delete 同款 + 成功后记账/forget。③装配：assembly +readGate 选项 → agent-process registry 注入 → ctx；缺省 undefined = 不启用。④验收：`npx vitest run src/policy/read-gate.test.ts src/kernel/tools/builtin/builtin.test.ts` → **49 passed**——①未读先 edit → EDIT_WITHOUT_READ ✓；②读后 edit 放行 ✓；③读后外部修改 → EDIT_STALE_READ ✓；④apply_patch update/delete 未读拒绝且零变更 ✓；⑤readGate 缺省 → 工具照常（C13 整体丢弃）✓；⑥write 新文件豁免、覆盖未读拒、覆盖已读放行 ✓；edit-then-edit 无中间读 ✓；apply-patch/env 回归全绿；`npx tsc --noEmit` 干净。
 
-#### T-P1-72 · C17 · 插件事件泛型逃生舱（词汇表 20→21 立案） `[ ]`
+#### T-P1-72 · C17 · 插件事件泛型逃生舱（词汇表 20→21 立案） `[x]`
 - **依据需求**：C17（P1："若需插件事件，只开一个泛型逃生舱类型，不改词汇表机制"）
 - **上游首选参考**：[pi·session/types.ts:52-64](../oss/pi/packages/agent/src/harness/session/types.ts#L52)（CustomEntry：type:"custom" + customType + data? 泛型条目）
 - **取什么 / 别抄什么**：取"唯一泛型槽位 + 命名空间必填 + 载荷 JsonValue"；词形定形 plugin（会话级元事件豁免面，session/fork 同款）；不抄 EntryProjector
@@ -1085,8 +1085,8 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **验收**：`npx vitest run src/kernel/events.test.ts src/session/project.test.ts src/test-support/migration-asserts.test.ts`（扩）——①计数 21；②plugin 落流可投影、namespace 空拒；③旧流前向兼容；④C15：其他未知类型仍被拒（逃生舱只有一个）
 - **依赖**：无
 - **风险 / 未知**：20→21 需用户追认（三案一并）
-- **偏离 / 建议**：（留白）
-- **完成记录**：
+- **偏离 / 建议**：待澄清 #11 已按用户本会话开工表态（"待澄清表认可然后继续"）标关闭转正——该表态解读为覆盖批次 8 提示词所述"#9/#10/#11 三案一并追认"；#9/#10 开工时已先转正（落地记录 10/11），#11 随本卡落地即转正（落地记录 12，§3.2 正式计数 21）。若解读超出用户本意，回退面照落地记录 12 可执行（约 1.5 小时）。**此解读已在批次 8 组报告中显著记录，供用户复核。**
+- **完成记录**：①词汇表 20→21：新事件 `plugin {namespace, payload?}`（pi CustomEntry 同构；namespace 非空必填 + payload 可选 JsonValue；log-only 不进模型历史、投影不消费、O7 会话级元事件豁免）——events.ts（PluginEvent / EVENT_TYPES 21 / C16 编译闸门同步）/ project.ts（validation：namespace 空/ payload 不可序列化拒；isJsonValue 结构校验）/ invariants.ts（豁免面 +plugin）/ messages.ts default 分支天然不消费。②待澄清 #11 立案即关闭（见上）；l0-events.md §3.2 计数 21 + 第 21 行 + §8 落地记录 12。③验收：`npx vitest run src/kernel/events.test.ts src/session/project.test.ts src/test-support/migration-asserts.test.ts` → **33 passed**——①计数 21（SAMPLES 全型构造 + EVENT_TYPES 长度）✓；②plugin 落流可投影（投影不消费不炸）、namespace 空/payload 函数拒 ✓；③旧流前向兼容（migration-asserts"旧形状流"既有用例承载）✓；④C15：ghost/plugin 恒拒（逃生舱只有一个）✓；kernel/session/test-support 全目录 **510 passed** 回归；`npx tsc --noEmit` 干净。
 
 #### T-P1-73 · C8 · 权限预设成套切换 `[ ]`
 - **依据需求**：C8（P1："权限预设成套切换——切换预设后规则集整体生效"）
