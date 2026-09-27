@@ -80,6 +80,13 @@ export interface ToolDef {
    * 此影响——本预算是外层兜底，与内层机制经 J22 code 作用域判据互不误读。
    */
   timeoutMs?: number;
+
+  /**
+   * I3/T-P1-64：内联描述（MCP 工具用——描述随协议 tools/list 到达，没有
+   * descriptions/<name>.txt 文件）。提供时 description() 优先读它；缺省
+   * 走 B2 的按名读文件路径（builtin 行为不变）。
+   */
+  descriptionText?: string;
 }
 
 /** 工具执行前置守卫（C57 执行点重算的接线面）：政策层实现，registry 在
@@ -206,8 +213,12 @@ export class ToolRegistry {
    * 模型可见的描述不该静默成空串。
    */
   description(name: string): string {
-    if (!this.defs.has(name)) {
+    const def = this.defs.get(name);
+    if (def === undefined) {
       throw new Error(`未注册的工具：${name}`);
+    }
+    if (def.descriptionText !== undefined) {
+      return def.descriptionText;
     }
     try {
       return readFileSync(
