@@ -120,6 +120,12 @@ export interface AgentChildOptions {
    * policy 层的 protected-names，不新增反向依赖路径）。
    */
   toolClassLimits?: { writeExecuteMax?: number; readOnlyMax?: number };
+  /**
+   * K3/T-P1-112：外部类级 acquire（host 全局+会话两级组合——host/registry.ts
+   * 的 chainToolAcquire 产物）。提供时优先于 toolClassLimits（后者仅在
+   * 未注入时本地构造）。
+   */
+  toolAcquire?: (name: string) => Promise<() => void>;
   /** 事件存储（T-8-01：CLI 的 SQLite 落库走此注入）。缺省 InMemory——
    * 原生模块不进 echo 模式冷启动路径（Q16 <500ms 的结构性前提）。
    */
@@ -328,9 +334,10 @@ export async function runAgentChildStdio(
     toolsProvider: () => toolRegistry.toChatTools(),
     executeTool: async (call) => {
       // M9/T-P1-49：工具类并发上限（缺省不配 = 直通零行为变化）——
-      // 类级排队在外层、B17 RwLock 在 loop 内层照旧。
-      if (!toolLimiter) return toolRegistry.dispatch(call);
-      const release = await toolLimiter.acquire(call.name);
+      // 类级排队在外层、B17 RwLock 在 loop 内层照旧；K3/T-P1-112 起可为
+      // host 注入的两级组合 acquire（全局外层 → 会话内层）。
+      if (!classAcquire) return toolRegistry.dispatch(call);
+      const release = await classAcquire(call.name);
       try {
         return await toolRegistry.dispatch(call);
       } finally {
@@ -412,13 +419,17 @@ export async function runAgentChildStdio(
   // 持 admit 名额（active = 在途轮数，可观测）。
   const admission = new TurnAdmission();
   // M9/T-P1-49 工具类并发上限（缺省不配 = 不限，零行为变化）：
-  // 类级排队 → loop 派发 → B17 RwLock，三层各司其职。
+  // 类级排队 → loop 派发 → B17 RwLock，三层各司其职。K3/T-P1-112：外部
+  // toolAcquire（host 全局+会话两级组合，host/registry.ts chainToolAcquire
+  // 产物）注入时优先生效——两级上限的会话侧接线面。
   const toolLimiter =
-    options.toolClassLimits !== undefined
+    options.toolAcquire === undefined && options.toolClassLimits !== undefined
       ? new ToolClassLimiter(options.toolClassLimits, (name) =>
           isWriteExecuteTool(name) ? "write" : "read",
         )
       : null;
+  const classAcquire: ((name: string) => Promise<() => void>) | undefined =
+    options.toolAcquire ?? (toolLimiter !== null ? (name) => toolLimiter.acquire(name) : undefined);
 
   // Q3 会话关闭触发（T-P1-14）：退出前清掉本会话的自动可删 spill 文件
   // （manual 声明者与其他会话的文件由 spill-gc 保留）。exit 缺省是
