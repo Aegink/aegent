@@ -25,6 +25,8 @@ import { validateAttachments, AttachmentLimitError } from "../attachments/limits
 import { base64ByteLength } from "../attachments/store.js";
 import type { AttachmentRef } from "../attachments/types.js";
 import type { AttachmentStore } from "../attachments/store.js";
+import { offloadOldestImages } from "../attachments/offload.js";
+import { effectiveEvents } from "../session/messages.js";
 import { ToolClassLimiter, TurnAdmission } from "./admission.js";
 import { isWriteExecuteTool } from "../policy/protected-paths.js";
 import { SessionConfigStore, StaticConfigImmutableError } from "./session-config.js";
@@ -41,7 +43,7 @@ import type { ChatRequest, ModelProvider } from "../models/provider.js";
 import type { ModelIdentity } from "../models/identity.js";
 import { ForkError, InMemoryEventStorage, type EventStorage, SessionStore } from "../session/store.js";
 import { InvalidSessionIdError, isValidSessionId } from "../session/session-id.js";
-import { Projector } from "../session/project.js";
+import { Projector, ProjectError } from "../session/project.js";
 import { findInterruptedTurn, reconcileBootState } from "../session/boot-maintenance.js";
 import { RawChunkLog } from "./raw-chunk-log.js";
 import { createChildAssembly, createTodoUpdateEmitter, type ChildAssembly, type ChildAssemblyOptions } from "./assembly.js";
@@ -577,6 +579,27 @@ export async function runAgentChildStdio(
         send({ type: "accepted", messageId: req.messageId });
         kick();
         return;
+      case "offload": {
+        // P2/T-P1-125：卸载触发面——从当前有效视窗选最老出现，决策落流
+        // （image/offload 事件经 event 行转发可见——A9 无独立回执）；无可
+        // 卸载 → 类型化 error（dsh "exhausted delegates" 语义）。
+        try {
+          const targets = offloadOldestImages(effectiveEvents(store.load(sessionId)), req.count);
+          if (!targets) {
+            send({ type: "error", code: "OFFLOAD_NO_IMAGES", message: "没有可卸载的图片出现（当前视窗无未卸载附件图片）" });
+            return;
+          }
+          const turn = Projector.fold(store.load(sessionId)).projection.turnCount;
+          store.append(sessionId, [{ type: "image/offload", turn, targets: targets.targets }]);
+        } catch (e) {
+          send({
+            type: "error",
+            code: e instanceof ProjectError ? "PROJECTION_REJECTED" : "OFFLOAD_FAILED",
+            message: e instanceof Error ? e.message : String(e),
+          });
+        }
+        return;
+      }
       case "steer": {
         // A10/T-P1-47：steer 带目标轮准入——目标必须是当前活动轮。
         // 不匹配（含 idle）类型化拒绝且不入队（不武装队列）；匹配则入

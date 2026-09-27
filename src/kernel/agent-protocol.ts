@@ -42,6 +42,11 @@ import type { IncomingAttachment } from "../attachments/types.js";
 /** 父 → 子。 */
 export type AgentRequest =
   | {
+      /** P2/T-P1-125：卸载最老图片出现的触发命令（批次 14 UI 消费；A9——无回执，事实经 image/offload 事件可见）。 */
+      type: "offload";
+      count: number;
+    }
+  | {
       type: "prompt";
       messageId: string;
       content: string;
@@ -260,6 +265,7 @@ export function decodeRequest(line: string): AgentRequest {
   }
   const req = raw as {
     type: string;
+    count?: unknown;
     messageId?: unknown;
     content?: unknown;
     cause?: unknown;
@@ -332,6 +338,12 @@ export function decodeRequest(line: string): AgentRequest {
         ? { attachments: parsedAttachments }
         : {}),
     };
+  }
+  if (req.type === "offload") {
+    if (typeof req.count !== "number" || !Number.isInteger(req.count) || req.count < 1) {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "offload.count 需要正整数");
+    }
+    return { type: "offload", count: req.count };
   }
   if (req.type === "cancel") {
     const cause = req.cause as { kind?: unknown; reason?: unknown; message?: unknown } | null;

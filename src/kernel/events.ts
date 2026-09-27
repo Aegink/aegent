@@ -644,6 +644,31 @@ export interface SurfaceDetachEvent extends EventBase {
   reason?: string;
 }
 
+/**
+ * 图片卸载决策（P2/T-P1-125，dsh·image-offload-events 锚点——专用事件持久化
+ * 决策，不替换消息节点）：`targets` 逐项指认被卸载的图片出现（user/message
+ * 事件的 seq + 该消息 attachments 数组中的下标）。**事件级投影事实**——非
+ * log-only：buildChatMessages 消费它把被卸出现从模型请求面替换为占位文本
+ * （dsh"required-on-read"语义：校验面拒绝非法引用——坏 seq/坏索引/重复卸载
+ * 全部 ProjectError，绝不静默）。**只进不退**：卸载决策落流后无自动恢复
+ * （回取 = AttachmentStore.read 显式动作）；投影在有效视窗内消费——revert
+ * 切掉卸载事件即自然失效（用户显式回退优先于容量决策）。
+ * 会话级投影事实：session/revert 同款纪律——不要求 turn/step 开合上下文
+ * （turn 挂流内最后轮）；触发面 = offload wire 命令（编排面选定后落流）。
+ * 词汇表 25→26 立案 #21（待追认）；回退面 = 删事件 + 校验/投影/触发面接线。
+ */
+export interface ImageOffloadTarget {
+  /** 被卸载图片所在的 user/message 事件 seq。 */
+  readonly seq: number;
+  /** 该消息 attachments 数组中的下标（升序、不重复、零基）。 */
+  readonly imageIndexes: readonly number[];
+}
+
+export interface ImageOffloadEvent extends EventBase {
+  type: "image/offload";
+  targets: ImageOffloadTarget[];
+}
+
 import type { AttachmentRef } from "../attachments/types.js";
 
 export type SessionEvent =
@@ -671,7 +696,8 @@ export type SessionEvent =
   | CommandRunEvent
   | CommandDoneEvent
   | SurfaceAttachEvent
-  | SurfaceDetachEvent;
+  | SurfaceDetachEvent
+  | ImageOffloadEvent;
 
 /** 25 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
 export const EVENT_TYPES = [
@@ -700,6 +726,7 @@ export const EVENT_TYPES = [
   "command/done",
   "surface/attach",
   "surface/detach",
+  "image/offload",
 ] as const;
 
 export type SessionEventType = (typeof EVENT_TYPES)[number];

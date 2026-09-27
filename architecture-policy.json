@@ -8,7 +8,9 @@
         "src/attachments"
       ],
       "managed": true,
-      "requires": [],
+      "requires": [
+        "kernel"
+      ],
       "publicEntrypoints": [],
       "owner": "wangh"
     },

@@ -14,6 +14,7 @@
  * 4. tool/result 的 callId 必须有前置未闭合的 tool/call。
  */
 
+import type { AttachmentRef } from "../attachments/types.js";
 import {
   EVENT_TYPES,
   type GoalStatus,
@@ -106,6 +107,13 @@ export interface SessionProjection {
    * 当前 goal = 有效视窗内最新一条（revert 切点切割同 todos）。
    */
   goals: Array<{ seq: number; text: string; deadline?: number; status: GoalStatus }>;
+  /**
+   * P2/T-P1-125：user/message 附件引用索引（seq → refs）——image/offload
+   * 的引用校验数据源（全流维护；校验按流内事实）。
+   */
+  userAttachments: Map<number, readonly AttachmentRef[]>;
+  /** 已卸载图片出现集合（键 `${seq}:${index}`）——重复卸载拒绝判据（只进不退）。 */
+  offloadedImages: Set<string>;
 }
 
 function emptyProjection(): SessionProjection {
@@ -125,6 +133,8 @@ function emptyProjection(): SessionProjection {
     modelSwitches: [],
     todos: [],
     goals: [],
+    userAttachments: new Map(),
+    offloadedImages: new Set(),
   };
 }
 
@@ -387,6 +397,57 @@ export class Projector {
           throw new ProjectError("surface/detach 的 reason 须为字符串");
         }
         break;
+      case "image/offload": {
+        // P2/T-P1-125 图片卸载决策（dsh required-on-read 语义——校验闭面）：
+        // targets 非空；每项 seq 必须指向流内携带附件的 user/message；
+        // imageIndexes 严格升序、不越界；(seq,index) 不与已卸载重复。
+        const targets = event.targets;
+        if (!Array.isArray(targets) || targets.length === 0) {
+          throw new ProjectError("image/offload 需要 targets 非空数组");
+        }
+        const seenSeqs = new Set<number>();
+        for (const t of targets) {
+          if (typeof t.seq !== "number" || !Number.isInteger(t.seq)) {
+            throw new ProjectError("image/offload 的 target.seq 需要整数");
+          }
+          if (seenSeqs.has(t.seq)) {
+            throw new ProjectError(`image/offload 的 target.seq 重复：${t.seq}`);
+          }
+          seenSeqs.add(t.seq);
+          const refs = this.state.userAttachments.get(t.seq);
+          if (!refs) {
+            throw new ProjectError(
+              `image/offload 的 target.seq=${t.seq} 不指向携带附件的 user/message 事件`,
+            );
+          }
+          const idxs = t.imageIndexes;
+          if (!Array.isArray(idxs) || idxs.length === 0) {
+            throw new ProjectError("image/offload 的 target.imageIndexes 需非空数组");
+          }
+          let prev = -1;
+          for (const idx of idxs) {
+            if (typeof idx !== "number" || !Number.isInteger(idx) || idx < 0) {
+              throw new ProjectError(`image/offload 的 imageIndex 非法：${String(idx)}（需非负整数）`);
+            }
+            if (idx <= prev) {
+              throw new ProjectError(`image/offload 的 imageIndexes 必须严格升序（${idx} ≤ ${prev}）`);
+            }
+            prev = idx;
+            if (idx >= refs.length) {
+              throw new ProjectError(
+                `image/offload 的 imageIndex ${idx} 越界（seq=${t.seq} 携带 ${refs.length} 个附件）`,
+              );
+            }
+            const key = `${t.seq}:${idx}`;
+            if (this.state.offloadedImages.has(key)) {
+              throw new ProjectError(
+                `image/offload 重复卸载同一出现：seq=${t.seq} index=${idx}（已卸载只进不退）`,
+              );
+            }
+          }
+        }
+        break;
+      }
       case "plugin":
         // 插件泛型逃生舱（C17/T-P1-72）：namespace 非空（来源可检索）、
         // payload 可选 JsonValue（只传可序列化值）。
@@ -453,6 +514,10 @@ export class Projector {
         break;
       case "user/message":
         s.messages.push({ seq: event.seq, role: "user", content: event.message.content, source: event.source });
+        // P2/T-P1-125：附件引用索引（image/offload 校验数据源——全流维护）
+        if (event.attachments?.length) {
+          s.userAttachments.set(event.seq, event.attachments);
+        }
         break;
       case "system/message":
         s.messages.push({ seq: event.seq, role: "system", content: event.message.content });
@@ -518,6 +583,15 @@ export class Projector {
         // G2：todo 变更 = 事件，状态 = 投影。items 是整值（E12），逐条全记
         //（revert 切点重建依据），当前值 = 有效视窗内最新一条。
         s.todos.push({ seq: event.seq, items: event.items.map((i) => ({ ...i })) });
+        break;
+      case "image/offload":
+        // P2/T-P1-125：卸载集合推进（只进不退——重复出现在校验面已拒）。
+        // 校验面（前置分支）已保证引用合法；这里把出现事实并入投影集合。
+        for (const t of event.targets) {
+          for (const idx of t.imageIndexes) {
+            s.offloadedImages.add(`${t.seq}:${idx}`);
+          }
+        }
         break;
       case "goal/set":
         // G3：goal 事实整值全记（E12），当前 goal = 有效视窗内最新一条。

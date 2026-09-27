@@ -16,11 +16,12 @@ export interface BuildMessagesOptions {
   upToSeq?: number;
   /**
    * 附件图片解析注入（P1/T-P1-124——投影保持纯函数，store 读取由调用方
-   * 注入；P2/T-P1-125 的卸载状态也经此并入）。缺省不注入 = 不展开图片
-   * （user/message 的 attachments 引用只落流不进请求——未配置附件能力时
-   * 零行为变化）。返回 null = 该出现不进请求（占位路径，P2 卸载消费）。
+   * 注入）。缺省不注入 = 不展开图片（user/message 的 attachments 引用只落
+   * 流不进请求——未配置附件能力时零行为变化）。返回 null = 该出现不进请求。
+   * 第二参 = 出现在该消息 attachments 数组中的下标（P2 卸载面按 (seq,index)
+   * 定位——调用方可按需忽略）。
    */
-  resolveImage?: (ref: AttachmentRef) => ChatImage | null;
+  resolveImage?: (ref: AttachmentRef, imageIndex: number) => ChatImage | null;
 }
 
 export function buildChatMessages(
@@ -30,6 +31,21 @@ export function buildChatMessages(
   // E15/T-P1-88：高频只读面先折叠（progress 等瞬态冗余不进消息——输出
   // 与逐条遍历等价，遍历量随冗余度下降）；输入数组本体零改动。
   const coalesced = coalesceEvents(events);
+  // P2/T-P1-125：预扫卸载决策（image/offload 整值事件不折叠）——
+  // seq -> 已卸载的 attachments 下标集合
+  const offloadedImages = new Map<number, Set<number>>();
+  for (const ev of coalesced) {
+    if (ev.type === "image/offload") {
+      for (const t of ev.targets) {
+        let set = offloadedImages.get(t.seq);
+        if (!set) {
+          set = new Set<number>();
+          offloadedImages.set(t.seq, set);
+        }
+        for (const idx of t.imageIndexes) set.add(idx);
+      }
+    }
+  }
   const upTo = opts.upToSeq ?? Number.POSITIVE_INFINITY;
   type AssistantMsg = Extract<ChatMessage, { role: "assistant" }>;
   const messages: ChatMessage[] = [];
@@ -48,15 +64,33 @@ export function buildChatMessages(
         flushCalls();
         // P1/T-P1-124：附件引用经注入的 resolver 展开为图片块（声明性追加
         // 于 content 之后）；resolver 缺省/返回 null 的出现不进请求。
+        // P2/T-P1-125：image/offload 持久决策在此消费——被卸出现（seq+index）
+        // 从 images 剔除并在 content 追加占位行（模型可见容量事实 + 回取
+        // 键 attachmentId）；**只进不退**——无自动恢复路径。
         let images: ChatImage[] | undefined;
+        let placeholderLines = "";
         const resolve = opts.resolveImage;
-        if (resolve && e.attachments?.length) {
-          const resolved = e.attachments
-            .map((ref) => resolve(ref))
-            .filter((img): img is ChatImage => img !== null);
+        if (e.attachments?.length) {
+          const offloaded = offloadedImages.get(e.seq);
+          const resolved: ChatImage[] = [];
+          e.attachments.forEach((ref, index) => {
+            if (offloaded?.has(index)) {
+              placeholderLines += `
+[image offloaded: ${ref.name ?? "image"} (${ref.mediaType}, ${ref.size}B, id=${ref.attachmentId})]`;
+              return;
+            }
+            if (resolve) {
+              const img = resolve(ref, index);
+              if (img !== null) resolved.push(img);
+            }
+          });
           if (resolved.length > 0) images = resolved;
         }
-        messages.push({ role: "user", content: e.message.content, ...(images ? { images } : {}) });
+        messages.push({
+          role: "user",
+          content: placeholderLines !== "" ? `${e.message.content}${placeholderLines}` : e.message.content,
+          ...(images ? { images } : {}),
+        });
         break;
       }
       case "system/message":
