@@ -121,28 +121,50 @@ export function stripProposedAmendments(args: JsonRecord): StripProposalsResult 
 /**
  * 会话级批准缓存：scope=session 的批准记入，同会话同规则后续调用免问；
  * 新会话重新询问。进程内 Map（P0 单进程；跨进程恢复随恢复路径 P1）。
+ *
+ * C34（T-P1-69）：仓库自带配置授予的批准带 trustGated 标记——信任变化
+ * 时**不移除记录而读当前信任**（qwen trustGated 同款：过滤不记账），
+ * 未信任时该批准不生效、恢复信任即还原。
  */
 export class ApprovalScopeCache {
-  private readonly approved = new Map<string, Set<string>>();
+  /** sessionId → (ruleRaw → 是否 trustGated)。 */
+  private readonly approved = new Map<string, Map<string, boolean>>();
 
   constructor(private readonly nowSessionId?: string) {}
 
   /**
    * 记录一次批准。仅 scope=session 生效：once 不留痕；project / user /
    * managed 的持久化随 C22 P1，P0 显式不缓存（宁可多问不可多放）。
+   * trustGated：该批准来自仓库自带配置（C34），仅信任期间生效。
    */
-  record(sessionId: string, ruleRaw: string, scope: ReviewScope): void {
+  record(
+    sessionId: string,
+    ruleRaw: string,
+    scope: ReviewScope,
+    options?: { trustGated?: boolean },
+  ): void {
     if (scope !== "session") return;
     let rules = this.approved.get(sessionId);
     if (rules === undefined) {
-      rules = new Set();
+      rules = new Map();
       this.approved.set(sessionId, rules);
     }
-    rules.add(ruleRaw);
+    rules.set(ruleRaw, options?.trustGated ?? false);
   }
 
-  isApproved(sessionId: string, ruleRaw: string): boolean {
-    return this.approved.get(sessionId)?.has(ruleRaw) ?? false;
+  /**
+   * 查询批准。trusted === false 时 trustGated 批准不生效（C34 每次读
+   * 当前信任——撤销即刻暂停、恢复即还原）；其余照常。
+   */
+  isApproved(
+    sessionId: string,
+    ruleRaw: string,
+    options?: { trusted?: boolean },
+  ): boolean {
+    const trustGated = this.approved.get(sessionId)?.get(ruleRaw);
+    if (trustGated === undefined) return false;
+    if (trustGated && options?.trusted === false) return false;
+    return true;
   }
 }
 
@@ -155,6 +177,11 @@ export function createSessionApprovalModule(options: {
   readonly cache: ApprovalScopeCache;
   readonly sessionId: string;
   readonly matchers: Readonly<Record<string, RuleMatchable>>;
+  /**
+   * C34 项目信任活查询（T-P1-69）：trustGated 批准仅信任期间生效。
+   * 每次评估活查询（每次决策读当前信任）；缺省 = 未启用（全部照常）。
+   */
+  readonly trustState?: () => boolean | undefined;
   readonly name?: string;
 }): PolicyModule {
   const { cache, sessionId, matchers } = options;
@@ -163,7 +190,8 @@ export function createSessionApprovalModule(options: {
     async evaluate(call) {
       const proposal = proposeAmendment(call, matchers);
       if (proposal === undefined) return undefined;
-      if (!cache.isApproved(sessionId, proposal.raw)) return undefined;
+      if (!cache.isApproved(sessionId, proposal.raw, { trusted: options.trustState?.() }))
+        return undefined;
       return {
         action: "allow",
         rule: proposal.raw,

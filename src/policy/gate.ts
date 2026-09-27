@@ -38,6 +38,7 @@ import type { PolicyCall, PolicyChain } from "./chain.js";
 import type { Verdict } from "./decision.js";
 import { enforceProtectedPaths } from "./protected-paths.js";
 import { enforcePlanMode } from "./plan-guard.js";
+import { enforceTrustGate } from "./project-trust.js";
 import { enforceCeiling, type CeilingProfile } from "./intersect.js";
 import { enforceSelfGuard } from "./self-guard.js";
 import { stripProposedAmendments } from "./review-decision.js";
@@ -66,6 +67,12 @@ export interface ToolGateOptions {
    * 变化。
    */
   readonly planMode?: () => boolean;
+  /**
+   * C11 项目信任活查询（T-P1-69）：false 时写/执行类工具出口降权 deny
+   * （规则不得授权）。每调用活查询（ProjectTrustService.isTrusted——
+   * 每次决策读当前信任）；缺省 = 未启用，零行为变化。
+   */
+  readonly trustState?: () => boolean | undefined;
 }
 
 function deniedResult(verdict: Verdict, code: string): ToolExecutionResult {
@@ -119,6 +126,12 @@ export function createToolGateLayer(
     verdict = enforceCeiling(verdict, call, options.ceiling);
     verdict = enforceSelfGuard(verdict, call, { agentInitiated: true });
     verdict = enforcePlanMode(verdict, call, options.planMode?.() ?? false);
+    const trusted = options.trustState?.();
+    verdict = enforceTrustGate(verdict, call, trusted);
+    if (verdict.action === "deny" && trusted === false) {
+      // C11 降权 deny 落可检索警告（出口降权不是常规策略裁决）
+      options.onWarning?.(`trust-gate: ${call.tool} 因项目未信任被降权拒绝（C11 出口级）`);
+    }
 
     if (verdict.action === "allow") {
       return next({ ...e, arguments: JSON.stringify(args) });

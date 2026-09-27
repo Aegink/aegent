@@ -25,6 +25,7 @@ import type { PolicyChain } from "./chain.js";
 import type { Verdict } from "./decision.js";
 import { enforceProtectedPaths } from "./protected-paths.js";
 import { enforcePlanMode } from "./plan-guard.js";
+import { enforceTrustGate } from "./project-trust.js";
 import { enforceCeiling, type CeilingProfile } from "./intersect.js";
 
 /** 决策标记保留键（大小写不敏感剥除；闭集局限同 review-decision.ts）。 */
@@ -86,18 +87,21 @@ export function createRevalidator(options: {
   readonly ceiling?: CeilingProfile;
   /** G7 plan 模式活查询（T-P1-11，与 gate 出口同位；缺省未启用）。 */
   readonly planMode?: () => boolean;
+  /** C11 项目信任活查询（T-P1-69，与 gate 出口同位；缺省未启用）。 */
+  readonly trustState?: () => boolean | undefined;
 }): Revalidator {
   const { chain, sessionId, source } = options;
   return async (tool, args) => {
     const { args: clean, strippedKeys } = stripDecisionMarkers(args);
     const call = { tool, args: clean, sessionId, source };
     let verdict = await chain.evaluate(call);
-    // C46 出口级硬拦、C49 来源上限与 G7 plan 硬关，均与 gate 同位：执行点
-    // 是最后一道闸，不依赖装配方是否记得用 withProtectedPaths 包链
-    //（T-P1-01/03/11）。
+    // C46 出口级硬拦、C49 来源上限、G7 plan 硬关与 C11 信任降权，均与
+    // gate 同位：执行点是最后一道闸，不依赖装配方是否记得用
+    // withProtectedPaths 包链（T-P1-01/03/11/69）。
     verdict = enforceProtectedPaths(verdict, call);
     verdict = enforceCeiling(verdict, call, options.ceiling);
     verdict = enforcePlanMode(verdict, call, options.planMode?.() ?? false);
+    verdict = enforceTrustGate(verdict, call, options.trustState?.());
     return {
       allowed: verdict.action === "allow",
       verdict,

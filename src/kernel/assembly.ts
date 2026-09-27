@@ -248,6 +248,13 @@ export interface ChildAssemblyOptions {
    */
   planArtifactDir?: string;
   /**
+   * C11 项目信任（T-P1-69）：提供 ProjectTrustService 时 gate/revalidator
+   * 出口挂信任降权（未信任时写/执行类出口 deny，规则不得授权）+
+   * session-approval 挂 trustGated 过滤（C34 每次决策读当前信任）。缺省
+   * undefined = 未启用，零行为变化。
+   */
+  trustService?: import("../policy/project-trust.js").ProjectTrustService;
+  /**
    * G3/G6 会话目标（T-P1-12）：提供时构造 GoalService——新会话（流内无
    * goal 事实）以此落初始 goal/set 事件；已有 goal 事实的会话按流重建
    * （goalFromEvents，流内权威——J14 回放保护同款），选项初始值不落。
@@ -443,6 +450,10 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
         cache: approvalCache,
         sessionId,
         matchers: builtinRuleMatchers,
+        // C34：trustGated 批准仅信任期间生效（每次评估读当前信任）
+        ...(options.trustService !== undefined
+          ? { trustState: () => options.trustService!.isTrusted() }
+          : {}),
       }),
       createShellSemanticsModule(),
     ],
@@ -721,6 +732,10 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
     onWarning: (warning) => logger?.warn("策略警告", { userContent: warning }),
     ...(ceiling !== undefined ? { ceiling } : {}),
     ...(planModeService ? { planMode: () => planModeService.isActive } : {}),
+    // C11：未信任项目写/执行类出口降权（规则不得授权），缺省零行为变化
+    ...(options.trustService !== undefined
+      ? { trustState: () => options.trustService!.isTrusted() }
+      : {}),
   });
 
   // —— I1 hooks（T-P1-07）：registry 聚合层挂三点位外层（hooks → gate →
