@@ -89,6 +89,13 @@ export type AgentRequest =
       expectedTurn: number;
       content: string;
     }
+  | {
+      /** B21/T-P1-63 会话配置热刷新：patch 只允许白名单键（REFRESHABLE_
+       * CONFIG_KEYS）——静态设置出现在载荷 → 子进程侧类型化拒绝（整包
+       * 不应用）；白名单键逐键应用并回执 applied。 */
+      type: "config/refresh";
+      patch: JsonRecord;
+    }
   | { type: "dispose" };
 
 /** 子 → 父。 */
@@ -130,6 +137,11 @@ export type AgentMessage =
       cutSeq: number;
       eventCount: number;
     }
+  | {
+      /** B21/T-P1-63：热刷新回执——applied = 本次应用的白名单键。 */
+      type: "config_refreshed";
+      applied: string[];
+    }
   | { type: "idle" }
   | { type: "error"; code: string; message: string };
 
@@ -152,6 +164,7 @@ const REQUEST_TYPES = new Set([
   "question/answer",
   "session/fork",
   "steer",
+  "config/refresh",
   "dispose",
 ]);
 const CANCEL_KINDS = new Set(["user", "parent", "disposed", "hook", "legacy"]);
@@ -189,6 +202,7 @@ export function decodeRequest(line: string): AgentRequest {
     feedback?: unknown;
     identity?: unknown;
     answer?: unknown;
+    patch?: unknown;
     targetId?: unknown;
     position?: unknown;
     atSeq?: unknown;
@@ -307,6 +321,15 @@ export function decodeRequest(line: string): AgentRequest {
       ...(atSeq !== undefined ? { atSeq } : {}),
     };
   }
+  if (req.type === "config/refresh") {
+    // B21/T-P1-63：patch 必须是 JSON 对象（键值校验在 SessionConfigStore
+    // ——白名单外键类型化拒绝、fail-closed 整包不应用）。
+    const patch = req.patch;
+    if (typeof patch !== "object" || patch === null || Array.isArray(patch)) {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "config/refresh 需要 patch 对象");
+    }
+    return { type: "config/refresh", patch: patch as JsonRecord };
+  }
   if (req.type === "steer") {
     // A10/T-P1-47：expectedTurn 正整数必填（轮号从 1 起）、content 非空；
     // 目标校验在 agent-process（对 loop.activeTurn 权威面）——wire 面只做形状。
@@ -353,6 +376,7 @@ export function decodeMessage(line: string): AgentMessage {
     sessionId?: unknown;
     cutSeq?: unknown;
     eventCount?: unknown;
+    applied?: unknown;
     contents?: unknown;
   };
   switch (msg.type) {
@@ -445,6 +469,11 @@ export function decodeMessage(line: string): AgentMessage {
       }
       return { type: "forked", sessionId: msg.sessionId, cutSeq: msg.cutSeq, eventCount: msg.eventCount };
     }
+    case "config_refreshed":
+      if (!Array.isArray(msg.applied) || msg.applied.some((k) => typeof k !== "string")) {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "config_refreshed 需要 applied 字符串数组");
+      }
+      return { type: "config_refreshed", applied: msg.applied as string[] };
     case "prompt_returned": {
       // A8/T-P1-52：取消后未消费输入退回（可为空数组？不——发送方仅在
       // 队列非空时发；wire 面仍校验数组形状）

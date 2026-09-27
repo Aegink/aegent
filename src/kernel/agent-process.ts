@@ -23,6 +23,7 @@ import { AgentLoop, type AgentLoopDeps, type ToolExecutionMode } from "./loop.js
 import { PromptQueue, QueueFullError } from "./queue.js";
 import { ToolClassLimiter, TurnAdmission } from "./admission.js";
 import { isWriteExecuteTool } from "../policy/protected-paths.js";
+import { SessionConfigStore, StaticConfigImmutableError } from "./session-config.js";
 import type { RetryObservation } from "../models/retry.js";
 import {
   type AgentMessage,
@@ -231,6 +232,15 @@ export async function runAgentChildStdio(
     : undefined;
 
   const queue = new PromptQueue("one-at-a-time", options.queueMaxSize);
+  // B21/T-P1-63：会话配置分层（可热刷新白名单 vs 会话内静态设置）——
+  // 初始值取装配面既有可配项（缺省 undefined = getter 返回 undefined，
+  // 未刷新路径零行为变化）；热刷新经协议命令 config/refresh。
+  const configStore = new SessionConfigStore(sessionId, {
+    ...(options.assembly?.approvalTimeoutMs !== undefined
+      ? { approvalTimeoutMs: options.assembly.approvalTimeoutMs }
+      : {}),
+    ...(options.queueMaxSize !== undefined ? { queueMaxSize: options.queueMaxSize } : {}),
+  });
   // 工具装配（T-4-05 接线，兑现 T-4-02 偏离⑥）：注册表分发就是 toolCall 链的
   // 链底 terminal——executeTool 槽位由 registry.dispatch 充当，不存在旁路。
   // T-8-01：装配提供 PathGuard 时经它构造（写守卫唯一入口，T-6-01）。
@@ -608,6 +618,22 @@ export async function runAgentChildStdio(
               e instanceof ModelNotRegisteredError
                 ? e.code
                 : "MODEL_SWITCH_FAILED",
+            message: e instanceof Error ? e.message : String(e),
+          });
+        }
+        return;
+      }
+      case "config/refresh": {
+        // B21/T-P1-63：热刷新——白名单键逐键应用并回执 applied；静态设置
+        // 出现 → 类型化拒绝（STATIC_CONFIG_IMMUTABLE，整包不应用）。在途
+        // turn 不受影响（J7 capturedModel 同构生效点语义）。
+        try {
+          const { applied } = configStore.refresh(req.patch);
+          send({ type: "config_refreshed", applied });
+        } catch (e) {
+          send({
+            type: "error",
+            code: e instanceof StaticConfigImmutableError ? e.code : "CONFIG_REFRESH_FAILED",
             message: e instanceof Error ? e.message : String(e),
           });
         }

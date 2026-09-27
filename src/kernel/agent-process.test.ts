@@ -794,3 +794,62 @@ describe("assistant/retrying 一等事件（J27/T-P1-61）", () => {
     await new Promise((r) => setTimeout(r, 50));
   }, 30_000);
 });
+
+describe("config/refresh 协议链（B21/T-P1-63）", () => {
+  it("白名单 patch → config_refreshed 回执（applied）；静态键 → STATIC_CONFIG_IMMUTABLE error 行且零应用", async () => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    const lines: AgentMessage[] = [];
+    let buf = "";
+    output.setEncoding("utf-8");
+    output.on("data", (chunk: string) => {
+      buf += chunk;
+      for (;;) {
+        const nl = buf.indexOf("\n");
+        if (nl < 0) break;
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (line) lines.push(decodeMessage(line));
+      }
+    });
+    const running = runAgentChildStdio({ input, output, exit: () => {} });
+    void running;
+
+    // 白名单刷新
+    input.write(
+      `${JSON.stringify({ type: "config/refresh", patch: { approvalTimeoutMs: 5_000 } })}\n`,
+    );
+    const deadline = Date.now() + 5_000;
+    let refreshed: { type: string; applied?: string[] } | undefined;
+    while (Date.now() < deadline) {
+      const found = lines.find((m) => m.type === "config_refreshed");
+      if (found) {
+        refreshed = found as { type: string; applied?: string[] };
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    expect(refreshed).toMatchObject({ type: "config_refreshed", applied: ["approvalTimeoutMs"] });
+
+    // 静态键 → 类型化拒绝
+    input.write(
+      `${JSON.stringify({ type: "config/refresh", patch: { model: "gpt-9" } })}\n`,
+    );
+    const deadline2 = Date.now() + 5_000;
+    let err: { type: string; code?: string } | undefined;
+    while (Date.now() < deadline2) {
+      const found = lines.find(
+        (m): m is Extract<AgentMessage, { type: "error" }> =>
+          m.type === "error" && m.code === "STATIC_CONFIG_IMMUTABLE",
+      );
+      if (found) {
+        err = found;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    expect(err).toBeDefined();
+    input.end();
+    await new Promise((r) => setTimeout(r, 50));
+  }, 15_000);
+});

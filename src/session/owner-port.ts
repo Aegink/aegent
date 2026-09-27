@@ -14,7 +14,7 @@
  * owner，不在端口层吞掉或改写。
  */
 
-import { assertNever } from "../kernel/events.js";
+import { assertNever, type JsonRecord } from "../kernel/events.js";
 import type { ModelIdentity } from "../models/identity.js";
 import type { ApprovalReply } from "../policy/pending.js";
 
@@ -48,6 +48,12 @@ export type OwnerCommand =
       readonly target: string;
       readonly position?: "before" | "after";
       readonly atSeq?: number;
+    }
+  | {
+      /** B21/T-P1-63 会话配置热刷新：patch 白名单外键由 SessionConfigStore
+       * 类型化拒绝（STATIC_CONFIG_IMMUTABLE，整包不应用）。 */
+      readonly type: "config/refresh";
+      readonly patch: JsonRecord;
     };
 
 // ---------------------------------------------------------------------------
@@ -97,6 +103,9 @@ export interface OwnerPortHandlers {
     position?: "before" | "after";
     atSeq?: number;
   }) => Promise<void> | void;
+  /** B21/T-P1-63 热刷新处理（装配注入 SessionConfigStore.refresh；返回
+   * applied 键清单给调用面）。 */
+  readonly configRefresh?: (patch: JsonRecord) => { applied: string[] };
 }
 
 export class OwnerCommandPort {
@@ -153,6 +162,9 @@ export class OwnerCommandPort {
           ...(command.position !== undefined ? { position: command.position } : {}),
           ...(command.atSeq !== undefined ? { atSeq: command.atSeq } : {}),
         });
+      case "config/refresh":
+        this.handlers.configRefresh?.(command.patch);
+        return;
       default:
         return assertNever(command, "owner 命令闭集出现未知变体");
     }

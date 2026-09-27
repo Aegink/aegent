@@ -5,6 +5,14 @@ import {
   decodeRequest,
   ProtocolError,
 } from "./agent-protocol.js";
+const expectMalformed = (fn: () => unknown): void => {
+  try {
+    fn();
+    expect.fail("应抛 ProtocolError");
+  } catch (e) {
+    expect((e as ProtocolError).code).toBe("PROTOCOL_MALFORMED");
+  }
+};
 import type { SessionEvent } from "./events.js";
 
 describe("agent-protocol —— T9 可序列化协议", () => {
@@ -182,5 +190,26 @@ describe("agent-protocol —— T9 可序列化协议", () => {
     });
     expect(() => decodeMessage('{"type":"error"}')).toThrow(/code 与 message/);
     expect(() => decodeMessage('{"type":"wtf"}')).toThrow(/未知消息类型/);
+  });
+});
+
+describe("config/refresh 协议分型（B21/T-P1-63）", () => {
+  it("合法 patch 往返；patch 缺失/非对象 → PROTOCOL_MALFORMED", () => {
+    expect(decodeRequest(JSON.stringify({ type: "config/refresh", patch: { approvalTimeoutMs: 5_000 } }))).toEqual({
+      type: "config/refresh",
+      patch: { approvalTimeoutMs: 5_000 },
+    });
+    expect(() => decodeRequest(JSON.stringify({ type: "config/refresh" }))).toThrow(ProtocolError);
+    expectMalformed(() => decodeRequest(JSON.stringify({ type: "config/refresh", patch: [1] })));
+  });
+
+  it("config_refreshed 回执往返：applied 数组；形状坏 → PROTOCOL_MALFORMED", () => {
+    expect(decodeMessage(JSON.stringify({ type: "config_refreshed", applied: ["approvalTimeoutMs"] }))).toEqual({
+      type: "config_refreshed",
+      applied: ["approvalTimeoutMs"],
+    });
+    expect(() => decodeMessage(JSON.stringify({ type: "config_refreshed", applied: [1] }))).toThrow(
+      ProtocolError,
+    );
   });
 });
