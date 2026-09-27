@@ -1,12 +1,38 @@
 # P1 执行进度 · 批次 11 起
 
 > 本文件接续 [`plan-p0-progress.md`](plan-p0-progress.md)（P0 全程 + P1 批次 1-10，2026-09-27 收官，全量基线 1081 passed / 1 skipped，词汇表 23 事件）——**自批次 11 起的执行进度**（批次报告 / 待澄清 / 人工确认清单）记入本文件，旧文件定格不再追加。
-> 执行协议沿用 [`plan-p0.md`](plan-p0.md) §0（取卡 / 做卡 / 验收 / 打勾 / 提交 / 自动继续 / 四种停下情况）；计划本体在 [`plan-p1.md`](plan-p1.md)（执行会话只改任务卡的勾选框、「偏离 / 建议」「完成记录」三个字段）。
+> 执行协议沿用 [`plan-p0.md`](plan-p0.md) §0（取卡 / 做卡 / 验收 / 打勾 / 提交 / 自动继续 / 四种停下情况）；计划本体在 [`plan-p1.md`](plan-p1.md)（执行会话只改任务卡的勾选框、「偏离 / 建议」「完成记录」三个字段）。**批次 14（P1 末批）已收官（2026-09-28）——P1 全部收官，P2 段自此开始**：全量基线 **1293 passed / 1 skipped**（146 文件），词汇表 26 事件，批次 15（P2 段 15a）未展卡。
 > **待澄清编号接续旧文件（#16 起）**——避免跨文件引用歧义；词汇表立案管线不变（`l0-events.md` §8 落地记录全局连续，现为 21；**#16~#19 已全部追认转正**——#16 选型 Anthropic、#17/#18 词汇表形状、#19 surface/attach + surface/detach 23→25（2026-09-28 用户："认可#19"）；**#20/#21 已追认转正（2026-09-28 用户："全部认可"）**——#20 user/message+attachments 载荷扩展、#21 image/offload 25→26，词汇表正式形状 26 事件，无遗留）。
 
 ---
 
-## 批次 14 提示词（当前活跃）
+## 批次 15 提示词（当前活跃）
+
+```
+继续 aegent 批次 15（P2 段首批 15a：会话数据与生命周期 P2；7 条需求 ID：Q2 Q4 Q6
+Q8 M4 E6 E9）。推进模式不变：一会话一批次——本会话只做批次 15a，做完收官即
+停，批次 15b 由下一会话接力。批次 15a 尚未展卡：先照批次 7~14 展卡先例逐条
+锚点核对 requirements.md §4（把卡序追加进 docs/plan-p1.md，展卡核对结论落
+卡序头），再从第一张 [ ] 任务卡开始执行（执行协议沿用 docs/plan-p0.md §0）。
+上一批（批次 14）报告在 docs/plan-p1-progress.md（批次 14 报告 + 人工确认清单
+在该文件）。本批特有的注意：
+1. P1 已全部收官（批次 14 UI 端 K2/K5 收官——Tauri 壳 NSIS 1.46MiB < 60MB、
+   WS 传输定形、答复端闭集并入、ui/ 单一资产两端共用）；P2 段分组照圈定研究
+   §四（15a 会话数据与生命周期 7 条——E6/Q2/M4/Q4/Q6/Q8 归 P2 的用户裁决
+   2026-09-26 兑现）；批次 12/13/14 的人工确认清单三项（真实传输层、答复端
+   闭集、UI 交互）中前两项已消化，第三项与桌面壳运行前提待人工确认不阻塞。
+2. 词汇表影响预判：会话数据与生命周期族大概率动事件载荷/元事件（M4 任务树、
+   Q 系会话数据面）——展卡时逐条预判立案（编号接 #22 起）；零扩展也要复核
+   EVENT_TYPES 26 基线。
+3. 全量基线 1293 passed / 1 skipped；词汇表 26 事件；工程纪律工具链四件
+   （architecture:check / vocabulary:check / count-features / check-doc-links）
+   收官验收必跑。收官照批次 8~14 先例出组报告（写入本文件），更新本文件的批
+   次 15b 提示词与全量基线后停止——不要开始 15b。不要问要不要继续。
+```
+
+---
+
+## 批次 14 提示词（已执行归档）
 
 ```
 继续 aegent P1 批次 14 的实施（UI 端大件；2 条需求 ID：K2 K5）。推进模式不
@@ -141,9 +167,36 @@ docs/plan-p0.md §0）。上一批（批次 12）报告在 docs/plan-p1-progress
 - **遗留风险与未知**（→ 人工确认清单）：#20/#21 待追认（回退面齐备，未追认不阻塞批次 14）；附件远端存储实现（接口在位随部署）；卸载自动触发（压力面挂接随真实预算面需求）；CLI 附件入口随批次 14 UI；架构 policy 的 requires 白名单首轮 = 现状反推（先声明后收紧——渐进路线基线 21 warnings 落 T-P1-121）。
 - **批次完成定义核对**：全部 ✅（见 plan-p1.md 批次 13 完成定义——7 卡全勾 + tsc 干净 + 310 不变 + 736 链接 0 失效 + license exit 0 + 两案立案 + 四件工具链 + 报告/提示词/基线更新）。
 - **下一批**：**批次 14 UI 端（2 条：K2 Tauri 桌面壳 + K5 Web）**——未展卡，下一会话先展卡（锚点核对 + 卡序落 plan-p1.md）再执行，做完收官即停。
-- **下一批提示词**：见本文件头部「批次 14 提示词（当前活跃）」。
+- **下一批提示词**：见本文件头部「批次 14 提示词（已执行归档）」。
 
 ---
+
+---
+
+## 批次 14 · UI 端（2 条：K2 Tauri 桌面壳 + K5 Web）
+
+**状态**：✅ 收官（2026-09-28）——3 张卡全关（T-P1-128 ~ 130）。**P1 末批——P1 全部收官。**
+
+**展卡注意**（承接批次 13 报告）——展卡核对结论已落卡序头（plan-p1.md 批次 14 卡序节）：
+
+1. 2 条锚点逐一打开核对零内容勘误（cc-switch·src-tauri 的 conf/capabilities/main.rs/Cargo.toml + 2434 行业务 lib.rs 结构清点 / pi·packages 的 server·client·protocol 三 README——transport-neutral 与多 attachment 行为面）；批次 12 遗留两项随本批定形消化：真实传输层 = WS over TCP 本机回环、答复端闭集 = web/desktop 并入。
+2. K5 先行 K2 复用（host server 与 ui/ 资产是 Tauri 壳的连接对端与 WebView 载荷）；K2"只学行为"落 conf 形状 + windows_subsystem 惯例，lib.rs 2434 行业务与九插件群不取（内核在 Node 不在 Rust——cc-switch"Rust 全后端"形态不适用）。
+3. 词汇表预判兑现：零新事件零载荷扩展（UI 端是纯消费方——#19/#20/#21 全在位）；wire 两处扩展（query 查询信封 + hello sessionId 回执）非事件词汇表（批次 9/12 wire 先例），无 Q9 立案。
+
+### 批次 14 报告（收官于 2026-09-28）
+
+- **打勾情况**：3/3 卡全关（T-P1-128 K5 host server WS 传输定形+静态 ui+闭集并入 / T-P1-129 K2 Tauri 2 最小壳+NSIS 真实构建 / T-P1-130 收口盘点），每勾附「命令 + 结果摘要」。
+- **展卡结论**：2 条锚点零勘误；关键定形四处——①传输 = WS over TCP（`ws` 包零传递依赖；node 22 原生 WebSocket 仅客户端记档）；②UI 恢复视图 = ClientEnvelope + query 查询信封（bridge 直答——lease 信封同构先例，不动内核 AgentRequest 词汇；pi·client"快照先行+流续播"重连行为的两件承载）；③桌面壳零插件零业务（capabilities 仅 core:default、lib 8 行）；④bundle targets 收窄 nsis（一个安装器即达体积验收）。
+- **产出的文件**：`src/host/server.ts`（node host 进程装配面：SessionStore+AgentHost+spawnAgentProcess+HostBridge+HTTP/WS 同端口+会话流镜像）、`src/host/protocol-parse.ts`（解析半边拆分）、`src/host/server.test.ts`+`server.test-utils.ts`（WS e2e 五用例+helper）、`ui/`（index.html/app.js/style.css 三件静态资产——零构建链零框架）、`src-tauri/`（Cargo.toml/tauri.conf.json/capabilities/main.rs/lib.rs/build.rs/icons 全套——自造品牌图 PIL+tauri icon 派生）、`src/diagnostics/tauri-shell.test.ts`（结构红线五用例）；扩 `src/host/protocol.ts`（query 信封+hello sessionId 回执+onQuery 回调）/ `src/host/bridge.ts`（onQuery 直答+sessionId 注入）/ `src/policy/audit-fields.ts`（APPROVAL_SURFACES 并入）/ `ui/app.js`（hostAddress 双端连接面）/ `.gitignore`（src-tauri 产物）；新依赖 `ws` 8.22.0 + `@tauri-apps/cli` 2.12.0 devDep。
+- **验收台账**：全量 `npx vitest run` **1293 passed / 1 skipped**（批次 13 收官 1283 → 净增 10，146 文件；本轮全量无 flaky 复现）；`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变；`check-doc-links.sh` 739 链接 0 失效（显式传参 10 文件）；`license-audit.sh` exit 0；**K2 体积验收：NSIS 安装器 1,532,864 字节（1.46 MiB）< 60MB（余量 ~40×）**，裸 exe 5.8MB，真实构建 exit 0（cargo 缓存预存 tauri 依赖树——实测 3 分钟，冷构建风险面提前排除）；`architecture:check` 0 error / 21 warning（基线保持）；`vocabulary:check` 3 文件 0 问题。
+- **词汇表扩展**：**零案**——提示词预判"低"兑现；EVENT_TYPES 26 零扩展复核（events.test 计数断言全绿）；APPROVAL_SURFACES 是 TS 闭集追加非事件词汇（批次 12 遗留②消化）。
+- **盘点结论**：八面零真冲突（T-P1-130 完成记录）：①WS × 行协议一行一信封逐字面保持；②两端租约互斥真实传输复验（OWNER_LEASE_BUSY+断线释放）；③闭集并入零破坏；④query 只读零落流；⑤ui 单一资产两端同源；⑥K5×K1 词汇单源；⑦架构检查基线保持（ui 不入册记档）；⑧快照即规格（WS e2e 信封序列 = bridge.test 场景③真实传输重演 + tauri 结构红线五用例）。
+- **新发现的约束或坑**：(a) **E16 流校验对镜像同样生效**——host store 的镜像 append 走 SessionStore 校验，fixture 事件必须完整轮序列（turn/start→user/message→step/start→request/header→assistant/message→turn/end——裸 user/message 落"turn 未开启"）；(b) 坏行回执 requestId 恒 "(unparsed)"（协议层统一处理——非原 requestId）；(c) fake agent 的 accepted 须在 request 到达 bridge 之后（queueMicrotask 自动回执——真实 agent 行为同构）；(d) **store.load vs restore 读面**：restore/readAll 只见已 flush 事件（write-behind 滞后）——query 直答取 load() 内存序（E1"内存序是活动进程唯一真相"）；(e) 桌面壳 tauri:// 协议下 location.host 无意义——hostAddress() 双端分叉（桌面缺省 ws://127.0.0.1:8787 + ?host= 覆盖）；(f) httpServer.close 卡等未断客户端——stop 面先 terminate 全部 ws（测试 rig 教训）。
+- **偏离计划的地方**：逐卡「完成记录」已记档——要点：①批次 12 T-P1-116 遗漏的 4 处 DBG 调试残留清理（本卡 write 路径上的运行时污染）；②**批次 13 收官漏报发现**：replay.ts import models/session 未在 obs requires 声明（T-P1-126 落地时 policy 未同步；本卡架构检查冒 2 error 后补 ['kernel','models','session']——现状即事实反推修正，warning 基线 21 不变）；③protocol.ts 476 行/server.test.ts 419 行超 maxFileLines（managed 域硬 error）——拆分消化出 protocol-parse.ts（162 行）与 server.test-utils.ts（129 行）；④host server 的会话流镜像设计（agent 事件同步 append 进 host store——query 读面的数据源，子进程 db 仍是事件权威，双写记档）。
+- **遗留风险与未知**（→ 人工确认清单）：UI 交互正确性（浏览器/WebView 实际渲染与点击——无浏览器测试基建，机验面在传输与协议层）；桌面壳运行前提（host 进程 sidecar 打包/自启/node runtime 随包分发不做——运行前提 = 本机 node + host server 先起，随 P2 真实部署）；租约 TTL 心跳与 WebDav 远端（P2 部署面不变）；query 全量在长会话下的载荷尺寸（afterSeq 游标在位——分页 YAGNI）。
+- **批次完成定义核对**：全部 ✅（见 plan-p1.md 批次 14 完成定义——3 卡全勾 + tsc 干净 + 310 不变 + 739 链接 0 失效 + license exit 0 + K5 WS e2e/共用内核 + K2 安装器 1.46MiB + 闭集并入 + 零事件扩展 + 批次 12 遗留消化 + 报告/提示词/基线更新）。
+- **下一批**：**批次 15（P2 段首批 15a：会话数据与生命周期 P2，7 条：Q2 Q4 Q6 Q8 M4 E6 E9）**——未展卡，下一会话先展卡（锚点核对 + 卡序落 plan-p1.md）再执行，做完收官即停。
+- **下一批提示词**：见本文件头部「批次 15 提示词（当前活跃）」。
 
 ## 待澄清（执行会话新发现；接续旧文件编号——#16 起）
 
@@ -170,3 +223,5 @@ docs/plan-p0.md §0）。上一批（批次 12）报告在 docs/plan-p1-progress
 | 真实网络传输层（批次 12 host 域） | K8 端间协议的 TCP/WS 传输、N9 的 WebDav 远端、租约 TTL 心跳均接口面在位未实装（无真实部署形态） | 批次 14 UI 部署形态定形时选传输并补端到端实测 | 待批次 14 / 真实部署 |
 | ACP 规范全文对齐 + Anthropic 真实端点（T-P1-117 / T-P1-108） | 方法映射按公开约定最小面（四方法）+ wire 语义 http-mock 钉死；真实 ACP 客户端与 Anthropic 端点未实测 | 真实客户端联调时对齐规范全文（fs 工具面/read_resource 等）；Anthropic 端点跑通一轮真实会话（cache_control 标记策略同窗口） | 待真实联调（§6.2 终验窗口） |
 | 全量 flaky 两例（llm-replay / http-mock，批次 12 期间各复现 1 次） | 93+ 文件并行负载下的端口/时序资源竞态（隔离复跑全绿）——批次 6 T-P1-48 同形态，非产品代码缺陷 | 多次全量跑观察复现率；若频繁，下一会话以 test-only 修复（固定端口/串行化该文件） | 观察中（与批次 11 llm-replay 在案项合并观察） |
+| UI 交互正确性（批次 14 K5/K2，T-P1-128/129） | ui/ 资产的浏览器/WebView 实际渲染与交互（连接/发 prompt/审批卡/恢复视图）无浏览器测试基建——机验面在 host server 传输与协议层（server.test 全链 5 用例） | 浏览器打开 host 地址（node dist/src/host/server.js 起服务）手工走一轮：prompt→事件流→审批卡应答→刷新恢复；桌面壳同机双击 exe 验证 WS 连接 | 待人工确认 |
+| 桌面壳运行前提（批次 14 K2，T-P1-129） | host 进程管理（sidecar 打包/自启/node runtime 随包分发）不做——运行前提 = 本机 node + host server 先起（展卡核对结论④记档） | 真实分发面：tauri:build 产物 + node dist/src/host/server.js 同机运行，桌面壳连接成功即达形态；sidecar 化随 P2 部署定形 | 随 P2 真实部署 |
