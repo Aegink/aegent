@@ -1,6 +1,6 @@
 # P1 实施计划 · 批次 1
 
-**状态**：v1.14 · 批次 1-11 收官 + 批次 12 已展卡（13 + 10 + 6 + 10 + 6 + 9 + 11 + 9 + 10 + 14 + 11 = 108 卡；批次 12 = 多端架构·无 UI 10 条，2026-09-27 本会话展卡 11 张 = T-P1-110 ~ 120 + T-P1-108 J5 展开执行）· 词汇表 23 事件（#16 Anthropic / #17 / #18 均已追认转正）· 全量基线 1144 passed / 1 skipped · 批次 12 执行中
+**状态**：v1.15 · 批次 1-12 收官（13 + 10 + 6 + 10 + 6 + 9 + 11 + 9 + 10 + 14 + 11 + 11 = 119 卡；批次 12 = 多端架构·无 UI——11 张卡全关：T-P1-110~118 + T-P1-108（J5 Anthropic，#16 追认后展开）+ 120 收口）· 词汇表 23→25 事件（#19 surface/attach + surface/detach 两枚 log-only 会话级元事件立案待追认——落地记录 19，回退面齐备）· 全量基线 1239 passed / 1 skipped · 批次 13 未展卡（多模态与工程纪律 8 条，下一会话自展+执行）
 **执行协议**：沿用 [`plan-p0.md`](plan-p0.md) §0（取卡 / 做卡 / 验收 / 打勾 / 提交 / 自动继续 / 四种停下情况），本文件不复制。执行进度：**批次 1-10 见 [`plan-p0-progress.md`](plan-p0-progress.md)（已定格）；批次 11 起见 [`plan-p1-progress.md`](plan-p1-progress.md)**（批次报告 / 待澄清 / 人工确认清单；待澄清编号接续 #16 起）。
 **需求来源**：[`requirements.md`](requirements.md) §4 的 P1 项（共 158 条）。P1 不切阶段（§1 尾注），按**批次**组织：本文件当前只含批次 1，后续批次轮到时再展卡追加。
 **批次 1 范围**（用户圈定于 2026-09-25，四组全选，共 26 条）：
@@ -1803,7 +1803,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 
 ## 批次 12 完成定义
 
-- 11 张卡全部打勾 ✅（T-P1-110 ~ 118 + 108 + 120，每勾附「命令 + 结果摘要」）；`npx tsc --noEmit` 全程干净 ✅；`count-features.sh` = 310 不变 ✅、`check-doc-links.sh` 链接 0 失效（显式传参全量）✅、`license-audit.sh` exit 0 ✅。
-- 词汇表一案走立案管线（#19 surface/attach + surface/detach 23→25，含回退面）供追认；`l0-events.md` §8 落地记录 19 同步；其余卡零事件零载荷扩展 ✅。
-- K4 结构红线机内化 ✅：src/acp ≤8 文件 + cli 零 import 断言在位；K8 自有协议词汇同源（AgentRequest/AgentMessage 复用）✅；N10 三方合并 last-write-wins 禁止红线 ✅；N9 vault 明文不落盘断言 ✅。
-- 盘点结论落批次报告（T-P1-120）✅ → `plan-p1-progress.md` 批次 12 报告 + 批次 13 提示词 + 全量基线更新 ✅。
+- 11 张卡全部打勾 ✅（T-P1-110 ~ 118 + 108 + 120，每勾附「命令 + 结果摘要」）；`npx tsc --noEmit` 全程干净 ✅；`count-features.sh` = 310 不变 ✅、`check-doc-links.sh` 492 链接 0 失效（显式传参全量）✅、`license-audit.sh` exit 0 ✅。
+- 词汇表一案走立案管线 ✅（#19 surface/attach + surface/detach 23→25，含回退面，待追认）；`l0-events.md` §8 落地记录 19 同步 ✅；其余卡零事件零载荷扩展 ✅。
+- K4 结构红线机内化 ✅：src/acp ≤8 文件 + cli 零 import 断言在位；K8 自有协议词汇同源（AgentRequest/AgentMessage 复用）✅；N10 三方合并 last-write-wins 禁止红线 ✅（SyncConflictError 零 apply + per-device knownBase）；N9 vault 明文不落盘断言 + KDF 参数有界 ✅。
+- 盘点结论落批次报告（T-P1-120，八面零真冲突）✅ → `plan-p1-progress.md` 批次 12 报告 + 批次 13 提示词 + 全量基线更新 ✅。
