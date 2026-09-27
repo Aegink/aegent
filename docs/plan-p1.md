@@ -1807,3 +1807,106 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - 词汇表一案走立案管线 ✅（#19 surface/attach + surface/detach 23→25，含回退面，待追认）；`l0-events.md` §8 落地记录 19 同步 ✅；其余卡零事件零载荷扩展 ✅。
 - K4 结构红线机内化 ✅：src/acp ≤8 文件 + cli 零 import 断言在位；K8 自有协议词汇同源（AgentRequest/AgentMessage 复用）✅；N10 三方合并 last-write-wins 禁止红线 ✅（SyncConflictError 零 apply + per-device knownBase）；N9 vault 明文不落盘断言 + KDF 参数有界 ✅。
 - 盘点结论落批次报告（T-P1-120，八面零真冲突）✅ → `plan-p1-progress.md` 批次 12 报告 + 批次 13 提示词 + 全量基线更新 ✅。
+
+
+---
+
+## 批次 13 卡序（7 张，2026-09-28 展卡，按依赖排序；8 条需求 ID：P1/P2/P3 + T1/T2/T5/T6 + L4——P1+P3 一卡承载（研究原文"P 族附件一体"）、T5+T6 一卡承载（同锚点两节同主题"不可信输入面"）+ 收口）
+
+**锚点纪律**：8 条锚点已逐一打开核对（2026-09-28，证据见各卡）：kimi·transcript/src/model/attachment.ts（15 行全文——`AttachmentSource` 三态联合 `{kind:"url",url}|{kind:"file",fileId}|{kind:"session_media",fileId}` + `TranscriptAttachment {attachmentId, mediaType, name?, size?, source?, placeholder?}`——类型化协议面，字节不随附件记录走（fileId 引用外存））；dsh·image-offload-events.md（implemented 2026-09-10 全文——专用 `image/offload` 事件 `{targets:[{seq,imageIndexes}]}`：**不创建也不替换消息节点**、纯投影标记 `ImageBlock.offloaded:true`、required-on-read（读者不认识就拒绝 log 而非静默恢复）、最老优先按当前 surface 顺序、只进不退、回取 = 读占位符的访问路径；归档版（2026-09-02 surfaceOp:replace 标记副本）的演进教训：重算 offload 点随预算/路由/压缩漂移振荡，**决策必须持久化**）；pi-desktop·attachment-limits.ts（9 行全文——`MAX_INLINE_IMAGE_BYTES = 10_000_000` 十进制共享常量 + 注释"Keep the bound decimal and shared … so a replay cannot take a different transport path from a fresh prompt"——限额常量单一来源、校验点唯一）；zcode·architecture-policy.yaml（67 行全文——version + modules {id, roots, managed, requires 白名单, publicEntrypoints, owner} + global {maxFileLines 400, maxContractLines 300, maxPublicMethods 12, forbidCycles, forbidDeepImports, managedOnly} + exceptions；"存量模块先标记为 legacy；新模块或完成迁移的模块设置 managed: true"即渐进采用）；zcode·CONTEXT.md（81 行全文——按限界上下文分节、每词条 `**名称**：定义` + `_Avoid_:` 禁用词三段式）；kimi·tree-sitter-bash/README.md（273 行全文——T5：`MAX_SUBSTITUTION_DEPTH = 150`（measured stack overflow at ~380–500 levels，**≥2.5× margin**）+ `MAX_PARSE_DEPTH = 500` + `MAX_SCAN_DEPTH = 1024`；T6："Parsing runs under a hard budget and **never throws**: budget exhaustion returns `{ok:false, reason:'aborted'}`, malformed input returns a degraded tree with `hasError:true`" + 预算语义 cap total work **not input size** + last-resort guard（意外内部异常降级为单 ERROR 节点树））；codex·rollout-trace/（README 系统形状 + lib.rs 出口面——"observe first, interpret later"：热路径只写有序原始事件（trace.jsonl spine + payloads），离线 reducer `replay_bundle` 重放成语义图回答"哪个模型请求产出了这个工具调用"）。**零内容勘误。**
+
+**展卡核对结论（我方现状 × 8 条）**：
+1. **P1 附件面零起点，最小闭环 = 类型 + 存储 + 限额 + 图片进请求 + 载荷引用落流**：我方 `ChatMessage` 纯文本（provider.ts:24，user content: string）、`user/message` 载荷 `{content: string}`、无任何附件/存储面。增量全量落：新域 `src/attachments/`（types/store/limits）+ `ChatMessage` user 加 `images?` 声明性扩展（不重构 content blocks——我方无音频/视频需求，YAGNI）+ `user/message` 载荷加 `attachments?: AttachmentRef[]`（**流存引用不存字节**——字节在 store，流轻量纪律）+ 两适配器 wire 映射（openai image_url data URL / anthropic image source base64 块——T-P1-108 块映射先例）+ agent-protocol prompt wire 扩 attachments（wire 形状扩展，批次 9 先例）。session_media 不取（无该域）；CLI 入口面不落（批次 14 UI 消费——wire + 库面即达"可随消息附上"验收）。
+2. **P2 的 dsh 演进结论直接定形我方案**：两份笔记对照（归档 replace 版 vs implemented 专用事件版）的核心教训 = **卸载决策必须持久化为事件**（重算随预算/路由/压缩漂移振荡、模型可见前缀不可重建）。我方取专用事件 `image/offload {targets}`（不替换消息节点——消息身份不变）；required-on-read 校验落 project.ts（missing/duplicate/already-omitted 全拒绝——dsh 纯投影校验五路）；我方 tool/result 无图片（纯文本结果），targets 只覆盖 user/message（dsh 覆盖两类，最小面收窄记档）；触发面：dsh 是 provider 预算失败驱动（IMAGE_OFFLOAD_REQUIRED waterfall），我方无请求预算失败面——**手动/wire 命令触发 + 自动触发记档**（验收点是"可移出可回取防膨胀"，不是触发机制）；回取 = AttachmentStore.read 原字节 + 占位文本带存储路径（模型 read 工具可及——dsh"读占位符访问路径"同构）。
+3. **P3 pi-desktop 只给了大小上限常量——类型/数量上限"只学行为"自定形**：锚点 9 行就是大小常量 + 共享纪律注释；验收"类型/大小/数量上限、超限明确报错"——类型白名单闭集（image 四类 + 卡内定形扩展）+ 单件大小 + 每消息数量，超限 `AttachmentLimitError` 带上限值（明确报错不静默截断）；"replay 不能走不同 transport 路径"纪律 = 校验点唯一（validateAttachments 单一入口，prompt 路径与任何未来入口共用）。
+4. **T1 我方落 JSON 策略文件（yaml 形状语义、node 零依赖优先）**：zcode 用 yaml 配其 Rust/Node 工具链；我方检查器落 node 无依赖脚本——`architecture-policy.json`（JSON.parse 内置 + 策略文件自身可校验：模块 id 唯一/roots 存在/requires 引用存在）。layers/maxContractLines/maxPublicMethods 不取（我方无 contract 文件惯例与域内分层——YAGNI 记档）；managed 渐进采用照搬（存量域 false 起步、新域 true）；**与既有结构断言的关系**：acp ≤8 文件/cli 零 import（T-P1-117，acp.test fs 扫描）先于 policy 存在——本卡 policy 首轮不收编既有断言（两套并存记档，收编评估落收口盘点）；--changed = git diff --name-only 基线过滤。
+5. **T2 首批词条小步走（机制 + 结构纪律先落，内容演进）**：我方无领域语言词汇表（l0-events.md 是事件机制词汇表——另一物）；`docs/vocabulary/` 分限界上下文文件（首批 kernel/policy/models 三个），词条从既有文档高频概念提炼（turn/step/steer/compaction/approval/roster/lease/offload……命名分歧点优先）；每词条必有 `_Avoid_` 行机内化（tools/vocabulary-check.mjs）；check-doc-links.sh 显式传参清单加新文件（工具坑在案）。
+6. **T5/T6 落点 = 我方真实不可信输入面盘点，非新建解析器**：tree-sitter-bash 是"解析器"场景，我方对应面：①`src/session/project.ts` isJsonValue（:158）**无界递归**——深嵌套 plugin.payload 触发 RangeError 栈溢出（失控异常，恰是 T6 反例面）——深度上限 + 实测溢出点 + 余量倍数注释；②`src/policy/shell-semantics.ts`（Q19 B 档）平面扫描无递归但输入不可信（模型产出的命令串）——超长/病态输入降级 + 显式标志；③既有面盘点记档：agent-protocol MAX_LINE_BYTES、host/protocol 类型化拒绝、wire 解析面已带防呆（T6 半边在位）。**受控类型化拒绝不是 T6 禁止对象**（ProjectError 拒绝 = 显式错误标志；T6 禁的是失控异常——栈溢出/意外 throw），卡内定形。
+7. **L4 = 请求级重放纯读面，与 E7 transcript 分工**：我方素材全在位（request/header 每请求完整头 + user/system/assistant/message + tool/call/result + assistant/message.stream 无损流）——**零事件扩展**（提示词预判确认）。`src/obs/replay.ts` replaySession(events)：逐轮 {identity, messages, response{content, toolCalls, usage}}——回答"这轮模型看到了什么、回了什么"；E7 transcript（人类条目流）与 L4 replay（请求级调试/审计事实）两读面同源 buildChatMessages 不漂移；bundle 三件套（manifest/trace.jsonl/payloads）不取——L1"事件即轨迹"在位，事件流本身就是原始轨迹，无需第二份记录（codex 是热路径不落语义才需要 bundle；我方流已完整）。
+8. **依赖序**：T 族三卡先行（零词汇表影响的热身件——T1 还反哺本批自查与批次 14）；P1+P3 是 P2 前置（图片先进附件/请求面才有"卸出"可谈）；L4 纯读面放 P2 后（附件/卸载事件落地后回归确认 replay 面可见性）；收口照先例。
+
+**词汇表预判（两案：#20/#21——执行时正式立案供追认）**：#20 = P1 `user/message` 载荷扩展 `attachments?: AttachmentRef[]`（可选字段前向兼容，事件计数 25 不变——载荷扩展）；#21 = P2 新事件 `image/offload {targets: [{seq, imageIndexes}]}`（25→26，**事件级投影事实**：非 log-only——buildChatMessages 消费改变模型请求面；required-on-read 校验闭面）。其余五卡（T1/T2/T5/T6/L4）零事件零载荷扩展。
+
+**本批特有约束**：
+1. **流存引用不存字节**（P1）：附件字节只进 AttachmentStore，事件流只落 AttachmentRef（attachmentId/mediaType/name/size）——流轻量纪律（L1"事件即轨迹"不变成"事件即 blob"）；重建路径 = ref → store.read（恢复/回放时注入 resolver）。
+2. **P2 卸载只进不退**（dsh 纪律）：卸载决策持久化后永不自动恢复——预算增长/路由切换/压缩降总不回退；"回取"是显式动作（store.read / 占位文本路径），不是投影回滚。
+3. **T6"永不抛"的语义边界**：禁的是**失控异常**（栈溢出、意外 throw）；受控类型化拒绝（ProjectError/AttachmentLimitError 等显式错误标志）恰是 T6 要的"降级返回 + 显式错误标志"的拒绝面形态——不是要吞错误返回假成功。
+4. **T1 渐进采用是验收项不是文档**：managed:false 的存量域违规降级警告不失败、managed:true 域全规则硬检查——首次全量跑的警告清单就是渐进路线基线（落完成记录）。
+5. **不做什么**（本批次）：不做 P4 语音转文字（P2 段）；不做 T3 模块阅读包 / T4 豁免理由 / T7 性能断言 / T8 known-diffs（P2 段）；不做附件远端存储实现（接口可插即达，真实远端随部署）；不做 CLI 附件入口与 UI 面（批次 14）；不做卸载自动触发（上下文压力驱动挂接——随真实预算面需求）；不做 codex 式 trace bundle 第二份记录（L1 在位）；不做 T1 对既有 acp 结构断言的收编（两套并存，收口评估）；不做词汇表全量词条穷举（首批三上下文起步，演进文档）。
+
+#### T-P1-121 · T1 · 架构即代码（策略文件 + architecture:check --changed + managed 渐进） `[ ]`
+- **依据需求**：T1（P1："架构即代码：可校验的策略文件（文件行数上限、禁止循环依赖与深导入、模块依赖白名单、公开入口清单、模块 owner），配 architecture:check --changed 只查改动 + 渐进采用（模块级 managed 开关）"）——展卡核对结论④
+- **上游首选参考**：[zcode·architecture-policy.yaml](../oss/zcode/architecture-policy.yaml)（modules {id/roots/managed/requires/publicEntrypoints/owner} + global {maxFileLines/forbidCycles/forbidDeepImports/managedOnly} + "存量 legacy、迁移完成 managed: true"渐进语义）
+- **取什么 / 别抄什么**：取"策略文件 + 检查器 + --changed 只查改动 + managed 渐进"四件与规则五形状（行数上限/禁环/禁深导入/依赖白名单/公开入口）；**策略文件落 JSON**（我方 node 零依赖纪律——zcode 的 yaml 配其自身工具链；JSON.parse 内置且策略文件自身可机检，卡内定形记档）；不取 layers/layerOrder 与 maxContractLines/maxPublicMethods（我方无此惯例——YAGNI 记档）
+- **证据强度**：`读了代码`（policy yaml 全文 67 行 + 我方 src 15 目录结构 + tools/ 脚本先例 + acp 结构断言先例 T-P1-87/T-P1-117）
+- **要产出**：①`architecture-policy.json`（仓库根——zcode 同位）：version + modules[]（我方 15 域：id/roots/managed/requires 白名单/publicEntrypoints/owner——存量域 managed:false、批次 12 新域（acp/host/sync/obs）managed:true 起步，路线落完成记录）+ global（maxFileLines + forbidCycles + forbidDeepImports）+ exceptions[]（{path, reason 必填}）；②`tools/architecture-check.mjs`（node 无依赖）：策略加载 + 形状自检（id 重复/roots 不存在/requires 未知引用 → 拒绝）+ import 扫描建模块依赖图 + 环检测（SCC/DFS）+ 深导入检测（import 非 publicEntrypoints 内部文件）+ 白名单校验（requires 未声明的跨模块 import）+ maxFileLines + `--changed` 过滤（git diff --name-only 基线，只查改动文件涉及模块——managed:false 域违规降级警告、managed:true 域硬失败）+ 退出码语义；③package.json `scripts["architecture:check"]`；④检查器核心逻辑测试（策略形状校验/环样例/深导入样例/--changed 过滤——fixture 目录隔离，不碰真实 src）
+- **验收**：`node tools/architecture-check.mjs` 全量跑（exit 0 或警告清单=渐进基线记档）+ `node tools/architecture-check.mjs --changed` 过滤生效 + `npx vitest run tools/architecture-check.test.ts`——①策略形状自检（坏引用/重复 id 拒绝）；②环检测（构造环样例报出）；③深导入检测（绕过 entrypoint 报出）；④白名单外依赖报出；⑤--changed 只报改动模块；⑥managed:false 降级警告不失败
+- **依赖**：无（本批首卡——落地后反哺本批自查）
+- **风险 / 未知**：存量文件超 maxFileLines 的面（loop.ts/events.ts 等）——渐进采用消化（存量域 managed:false 起步）；依赖白名单首轮从现状 import 反推（现状即事实——先声明后收紧）
+
+#### T-P1-122 · T2 · 领域词汇表（_Avoid_ 纪律 + 限界上下文分文件 + 机检） `[ ]`
+- **依据需求**：T2（P1："带禁用词的领域词汇表，每词条必须有 _Avoid_ 行，按限界上下文分文件"）——展卡核对结论⑤
+- **上游首选参考**：[zcode·CONTEXT.md](../oss/zcode/CONTEXT.md)（按限界上下文分节 + `**词条**：定义` + `_Avoid_:` 三段式词条纪律）
+- **取什么 / 别抄什么**：取三段式词条纪律（每词条**必须**带 _Avoid_）+ 限界上下文分文件；不抄其内容（插件商店域）与单文件分节形态（需求明文"分文件"）；不一次性穷举全部领域词（首批核心域起步——机制+结构纪律先落，词条随域演进记档）
+- **证据强度**：`读了代码`（CONTEXT.md 全文 81 行 + 我方 docs/ 现状（l0-events.md 是事件机制词汇表——领域语言词汇表缺位））
+- **要产出**：①`docs/vocabulary/` 限界上下文分文件（首批三个：kernel.md（事件/轮次/压缩域：turn、step、steer、compaction、offload……）、policy.md（审批/规则域：approval、scope、trust、判官……）、models.md（适配/流/用量域：provider、delta、usage……））——词条三段式照抄（**英文名（中文名）**：定义 + `_Avoid_:` 禁用词与混淆点），词条从既有文档/代码命名提炼，命名分歧点优先；②`tools/vocabulary-check.mjs`——每词条块必有 `_Avoid_` 行（缺失即非零退出 + 指名词条）+ 词条非空；③package.json `scripts["vocabulary:check"]`；④check-doc-links.sh 显式传参清单加新文件（工具坑：默认只扫 4 文件）
+- **验收**：`node tools/vocabulary-check.mjs` exit 0 + 负例验证（临时删一条 _Avoid_ → 非零退出并指名——演示记完成记录）+ `bash tools/check-doc-links.sh`（显式传参含新文件）0 失效 + 词条内容经文档交叉核对（与 l0-events.md/requirements.md 术语一致）
+- **依赖**：无
+- **风险 / 未知**：词条内容质量是人工面（机检只保结构纪律）——首批小步，文件头标注"演进文档：新词条随域文档落"
+
+#### T-P1-123 · T5+T6 · 解析纪律（深度上限写实测溢出点 + 畸形输入永不失控抛出） `[ ]`
+- **依据需求**：T5（P1："深度/递归上限要写实测溢出点与余量倍数"）+ T6（P1："畸形输入永不抛异常，降级返回 + 显式错误标志"）——一卡承载（同锚点两节、同主题"不可信输入面"）——展卡核对结论⑥
+- **上游首选参考**：[kimi·tree-sitter-bash/README.md](../oss/kimi-code/packages/tree-sitter-bash/README.md)（`MAX_SUBSTITUTION_DEPTH = 150`——measured stack overflow at ~380–500、≥2.5× margin 注释范式；budget 语义 cap total work not input size；"never throws"三路 + last-resort guard）
+- **取什么 / 别抄什么**：取"上限常量旁写实测溢出点与余量倍数"注释纪律 + "畸形输入降级返回 + 显式标志、禁失控异常"纪律 + "预算 cap 总工作量不 cap 输入长度"语义；不抄 tree-sitter-bash 本体（我方无语法树解析器——纪律落到既有不可信输入面）；**受控类型化拒绝不是 T6 禁止对象**（ProjectError = 显式错误标志；禁的是栈溢出/意外 throw——展卡核对结论⑥定形）
+- **证据强度**：`读了代码`（README 全文 273 行 + 我方递归面盘点：project.ts:158 isJsonValue **无界递归**（深嵌套 plugin.payload → RangeError）+ shell-semantics.ts 平面扫描无递归但输入不可信 + agent-protocol MAX_LINE_BYTES / host-protocol 类型化拒绝（防呆在位面盘点））
+- **要产出**：①isJsonValue 深度上限：`MAX_JSON_DEPTH` 常量 + 注释写实测溢出点（Node 默认栈二分实测）与余量倍数——超限走既有 ProjectError 拒绝面（错误信息带深度与上限；**不崩于 RangeError**）；②shell-semantics 输入预算：超长命令预算（cap 总工作量语义——MAX_COMMAND_LENGTH 或等价）+ 畸形输入（非字符串/空/NUL/超长）降级返回 + 显式标志（analysis 带 degraded/error 标志，绝不抛）；③不可信输入面盘点清单落完成记录（逐面：防呆在位 / 本卡补齐 / 记档）；④负例测试钉死
+- **验收**：`npx vitest run src/session/project.test.ts src/policy/shell-semantics.test.ts`（扩）——①深嵌套（>上限）plugin.payload → ProjectError 带深度信息（非 RangeError）；②上限内合法深嵌套照常通过（余量验证）；③病态 shell 输入（超长/空/非字符串）→ 降级分析 + 显式标志不抛；④上限常量注释含实测溢出点与余量倍数（源码断言或完成记录引用）；⑤既有用例零回归
+- **依赖**：无
+- **风险 / 未知**：实测溢出点测量（一次性测量脚本或手测，数字写进注释——不进常规测试套件防机器差异 flaky）；isJsonValue 超限的错误分类（ProjectError 新消息 vs 新 code——卡内定形最小面）
+
+#### T-P1-124 · P1+P3 · 附件域（类型化协议 + 存储抽象 + 限额 + 图片进请求面，#20 立案） `[ ]`
+- **依据需求**：P1（P1："附件上传（类型化协议 + 存储抽象）；图片/文件可随消息附上；本地与远端存储可插"）+ P3（P1："附件限额独立模块（类型/大小/数量上限）；超限明确报错（**只学行为**）"）——一卡承载（研究原文"P 族附件一体"；pi-desktop 限额常量与附件管线共享防 replay 走不同路径）——展卡核对结论①③
+- **上游首选参考**：[kimi·transcript/src/model/attachment.ts](../oss/kimi-code/packages/transcript/src/model/attachment.ts)（AttachmentSource 三态联合 + TranscriptAttachment 类型化协议）+ [pi-desktop·attachment-limits.ts](../oss/pi-desktop/packages/shared/src/attachment-limits.ts)（MAX_INLINE_IMAGE_BYTES 十进制共享常量 + "replay 不能走不同 transport 路径"= 校验点唯一）
+- **取什么 / 别抄什么**：取类型化附件联合（source 分型 url/file——**session_media 不取**，无该域 YAGNI）+ 存储可插接口 + 限额共享常量纪律（校验点单一入口）；不抄 kimi 七目录包结构（单域目录足够）与 Electron main/sidecar 双端共享机制（我方单进程——常量单一来源即达）；"只学行为"（P3）：超限**明确报错**（类型化异常带上限值），不静默截断不降级
+- **证据强度**：`读了代码`（attachment.ts 全文 15 行 + attachment-limits.ts 全文 9 行 + 我方 ChatMessage 纯文本现状 + user/message 载荷 + agent-protocol prompt wire + openai-compat / anthropic-messages 消息映射面）
+- **要产出**：①新域 `src/attachments/`——`types.ts`（`AttachmentRef {attachmentId, mediaType, name?, size?}` 落流引用面 + `AttachmentSource` 联合（url / file 本地路径）+ ChatImage {mediaType, data: base64}）+ `store.ts`（`AttachmentStore` 接口 {save/read} + `LocalFileAttachmentStore`（会话附属目录真落盘）+ 内存实现（测试）——远端实现随部署记档，接口可插即达验收）+ `limits.ts`（P3 独立模块：validateAttachments——mediaType 白名单闭集 / 单件大小上限 / 每消息数量上限；超限 `AttachmentLimitError` 带超限维度与上限值；常量集中单一来源）；②消息面：`ChatMessage` user + `images?: ChatImage[]`（声明性追加 content 之后——最小扩展）+ `user/message` 事件 + `attachments?: AttachmentRef[]`（**#20 立案**——流存引用不存字节）；③投影面：buildChatMessages + `resolveImage` 注入参数（ref → ChatImage——纯函数保持，store 读取由调用方注入）；④wire 面：agent-protocol prompt + `attachments?`（base64 字节入子进程——wire 形状扩展批次 9 先例）；⑤loop 接线：prompt 附件 → 限额校验（开轮前拒绝）→ store.save → user/message 落流带 ref
+- **验收**：`npx vitest run src/attachments/ src/session/messages.test.ts src/models/openai-compat.test.ts src/models/anthropic-messages.test.ts src/kernel/agent-child.test.ts`（扩）——①store save/read 往返（本地实现真落盘 + 内存实现）；②限额四路：类型白名单外 / 单件超限 / 数量超限 / 合法通过——错误信息带维度与上限值；③图片进请求 wire 断言：openai content 数组 image_url data URL + anthropic image source base64 块；④user/message 落流带 attachments ref 且载荷无字节（流轻量断言）；⑤无附件 prompt 零行为变化（既有用例全绿）；⑥**#20 立案**（plan-p1-progress.md 待澄清表，含回退面）
+- **依赖**：无（P2 前置）
+- **风险 / 未知**：CLI 入口面不落（批次 14 UI——wire + 库面即达验收）；文件附件（非图片）进请求面 = 占位文本带存储路径（模型 read 工具可及）——最小面记档；ChatMessage images 扩展对既有适配器是纯增量（无 images 字段零变化）
+
+#### T-P1-125 · P2 · 图片卸载与回取（image/offload 事件 #21 + 投影占位 + 回取） `[ ]`
+- **依据需求**：P2（P1："图片从上下文卸载且可回取；长会话中图片可移出上下文并可回取，防 token 膨胀"）——展卡核对结论②
+- **上游首选参考**：[dsh·image-offload-events.md](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-09-10-image-offload-events.md)（专用事件持久化决策 + required-on-read + 纯投影校验闭面 + 最老优先 + 只进不退 + 占位符回取路径）+ [dsh·durable-image-offload.md](../oss/deepseek-harness/.agents/notes/archived/architecture/2026-09-02-durable-image-offload.md)（归档旧设计——重算振荡教训面）
+- **取什么 / 别抄什么**：取"专用事件持久化决策 + 最老优先 + 只进不退 + 投影校验闭面 + 占位文本回取路径"五纪律；不抄 surfaceOp:replace 旧设计（归档教训——重算随预算/路由/压缩漂移振荡）与 compaction/prune 影子价格计费（我方无该计费面）；dsh 的 provider 预算失败驱动（IMAGE_OFFLOAD_REQUIRED waterfall）不落——我方无请求预算失败面，触发面最小化（wire 命令 + 库面直调），自动触发记档
+- **证据强度**：`读了代码`（两份 dsh 笔记全文 + 我方 buildChatMessages 投影 + T-P1-124 附件面）
+- **要产出**：①**词汇表 +1 事件**：`image/offload {targets: [{seq, imageIndexes: number[]}]}`（25→26，**#21 立案**——事件级投影事实：非 log-only，buildChatMessages 消费改变模型请求面；required-on-read 校验落 project.ts：seq 必须指 user/message、imageIndexes 升序不重复、不重复卸载同一出现、引用存在——dsh 校验闭面五路的最小面）；②`src/attachments/offload.ts`——`offloadOldestImages(events, count)` 纯函数（当前投影下最老优先选 N 个未卸载出现 → 事件载荷；决策持久化后重放同流同选——dsh 稳定性纪律）；③投影消费：buildChatMessages 应用 image/offload——被卸出现从 images 剔除 + content 追加占位行（`[image offloaded: <name> <存储路径>]`——回取路径在位）；**只进不退**；④回取面：AttachmentStore.read(id) 原字节（P1 面复用）+ 占位文本带存储路径；⑤触发面：agent-protocol + `offload` wire 命令（wire 形状扩展批次 9 先例——批次 14 UI 消费）+ 库面直调（测试）
+- **验收**：`npx vitest run src/attachments/offload.test.ts src/session/messages.test.ts src/session/project.test.ts src/kernel/events.test.ts`（扩）——①卸载后 buildChatMessages 请求面无被卸图片字节 + 占位行在位；②最老优先 + count 跨消息分配；③校验闭面（重复卸载/坏 seq/坏索引/乱序拒绝）；④回取 store.read 返回原字节；⑤只进不退（无自动恢复路径断言）；⑥EVENT_TYPES 26 + 编译闸门绿；⑦**#21 立案**（含回退面）
+- **依赖**：T-P1-124（附件面 + ChatImage + resolveImage）
+- **风险 / 未知**：自动触发（上下文压力驱动）不落记档（dsh 是 provider 失败驱动——我方压力面挂接随真实预算面需求）；卸载与 F26 压缩指纹交互（卸载改变请求面 → 指纹变化——单边界语义核对落收口盘点）
+
+#### T-P1-126 · L4 · 轨迹回放（事件流 → 模型请求级重放，纯读面零扩展） `[ ]`
+- **依据需求**：L4（P1："轨迹回放：从事件流重放一次真实会话"）——展卡核对结论⑦
+- **上游首选参考**：[codex·rollout-trace/](../oss/codex/codex-rs/rollout-trace)（README"observe first, interpret later"——热路径只写原始事件、离线 replay_bundle 重放语义图，回答"哪个模型请求产出了这个工具调用"）
+- **取什么 / 别抄什么**：取"重放是离线纯读面（热路径零改动）+ 请求级语义重建"两纪律；不抄 bundle 三件套格式（manifest/trace.jsonl/payloads——L1"事件即轨迹"在位，我方事件流即原始轨迹，无需第二份记录）与 reducer 图模型（thread/code-cell/terminal 多对象——单会话单循环 YAGNI）
+- **证据强度**：`读了代码`（rollout-trace README + lib.rs 出口面 + 我方 transcript.ts（E7 检视面先例）+ request/header 事件形状 + assistant/message.stream）
+- **要产出**：`src/obs/replay.ts`——`replaySession(events)` 纯函数：逐轮 `{turn, request: {identity（request/header 模型身份）, messages: ChatMessage[]（该请求发出时的消息序列——buildChatMessages upToSeq 视窗复用）, tools?}, response: {content, toolCalls, usage?}}`——回答"这轮模型看到了什么、回了什么、哪个请求产出哪个工具调用"；与 E7 transcript 分工记档（transcript=人类检视条目流、replay=请求级调试/审计事实——两读面同源 buildChatMessages 不漂移）；CLI/协议露出随 K 层记档（E7 先例同款）；附件/卸载事件面随 P1/P2 落地回归确认（resolveImage 同款注入）
+- **验收**：`npx vitest run src/obs/replay.test.ts`——①多轮重放：轮数 + 每轮 request.messages 与 buildChatMessages 一致 + identity 从 request/header；②工具调用归属（response.toolCalls 与 tool/result callId 对应）；③压缩后轮次（摘要覆盖区间 upToSeq 语义复用）；④纯读面（输入流不改写断言）+ 事件计数零扩展（EVENT_TYPES 26 不变复核）
+- **依赖**：T-P1-124/125（附件面落地后重放面完整——机制本身独立，卡序放后）
+- **风险 / 未知**：request/header 与 step 的对应粒度（一 step 一 header、series 值区分同轮多 step——卡内定形）
+
+#### T-P1-127 · 收口 · 多模态与工程纪律盘点 + 快照 `[ ]`
+- **依据需求**：批次 13 收口（照批次 4~12 收口先例；无独立需求 ID）
+- **上游首选参考**：批次 12 T-P1-120 先例
+- **取什么 / 别抄什么**：八面盘点：①T1 架构检查 × 既有结构断言（acp ≤8 文件 / cli 零 import / fs 扫描）——两套检查并存或收编的裁决；②T5/T6 深度上限 × C17 JsonValue 校验语义——受控拒绝 vs 失控异常分界（展卡结论⑥的执行验证）；③P2 image/offload × F26 压缩指纹——卸载改变请求面 → 指纹变化的单边界语义；④P2 卸载 × E17 压缩——两容量维度并存对照（dsh"compaction in another capacity dimension"同构）；⑤P1 附件 × 流轻量纪律——引用落流字节落 store、重建路径完整性（恢复/fork/回放三路 resolver 注入）；⑥ChatImage × 两适配器 wire 映射——openai/anthropic 块形状漂移防线；⑦L4 replay × E7 transcript × messages.ts——三读面同源 buildChatMessages 不漂移；⑧快照即规格：附件全链一条（附件入 → 落流 ref → 请求含图片 → 卸载 → 请求占位 → 回取原字节）或 --changed 检查一条
+- **证据强度**：`读了代码`（本批全部新产交叉核对）
+- **要产出**：八面盘点结论 + 快照一条 + 全量回归 + #20/#21 立案状态复核
+- **验收**：`npx vitest run`（全量回归）+ 盘点清单入完成记录；发现真冲突 → 升级待澄清不硬落
+- **依赖**：T-P1-121 ~ 126 全部
+- **风险 / 未知**：无
+
+## 批次 13 完成定义
+
+- 7 张卡全部打勾 ✅（T-P1-121 ~ 127，每勾附「命令 + 结果摘要」）；`npx tsc --noEmit` 全程干净 ✅；`count-features.sh` = 310 不变 ✅、`check-doc-links.sh` 显式传参 0 失效（含新增 vocabulary 文件）✅、`license-audit.sh` exit 0 ✅。
+- 词汇表两案走立案管线 ✅（#20 user/message +attachments 载荷扩展；#21 image/offload 25→26 新事件，含回退面，待追认）；`l0-events.md` §8 落地记录 20/21 同步 ✅；其余卡零事件零载荷扩展 ✅。
+- T1 架构检查落地 ✅：architecture-policy.json + architecture:check（全量 + --changed）exit 0 或警告基线记档；T2 词汇表机检 ✅（每词条必有 _Avoid_）；T5/T6 深度上限 + 实测溢出点注释 + 畸形输入降级断言 ✅。
+- 盘点结论落批次报告（T-P1-127，八面零真冲突）✅ → `plan-p1-progress.md` 批次 13 报告 + 批次 14 提示词 + 全量基线更新 ✅。
