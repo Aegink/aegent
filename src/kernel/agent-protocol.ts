@@ -55,6 +55,9 @@ export type AgentRequest =
       /** C52/T-P1-79：修改后的执行参数（仅 allow 携带；子进程 gate 侧重跑
        * 出口族硬拦）。deny 携带 → 子进程类型化拒绝。 */
       modifiedInput?: JsonRecord;
+      /** C6/T-P1-82：答复端标识（跨端回转审计面——多端 host N7 的 wire
+       * 就绪位；P0 CLI 缺省不带）。 */
+      source?: string;
     }
   | {
       /** J6 运行时换模（T-P1-04）：立即受理，生效点在新 turn。identity
@@ -237,6 +240,7 @@ export function decodeRequest(line: string): AgentRequest {
     tool?: unknown;
     args?: unknown;
     modifiedInput?: unknown;
+    source?: unknown;
   };
   if (!REQUEST_TYPES.has(req.type)) {
     throw new ProtocolError("PROTOCOL_UNKNOWN_REQUEST", `未知请求类型 ${req.type}`);
@@ -305,6 +309,7 @@ export function decodeRequest(line: string): AgentRequest {
       ...(req.modifiedInput !== undefined
         ? { modifiedInput: req.modifiedInput as JsonRecord }
         : {}),
+      ...(typeof req.source === "string" ? { source: req.source } : {}),
     };
   }
   if (req.type === "model/switch") {

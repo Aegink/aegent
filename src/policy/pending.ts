@@ -74,13 +74,24 @@ export interface ApprovalReply {
   readonly feedback?: string;
   /** C52：修改后的执行参数（仅 allow 有意义；gate 侧重跑出口族硬拦）。 */
   readonly modifiedInput?: JsonRecord;
+  /** C6：答复端标识（"哪个端答的"——跨端回转审计面；多端 surface 闭集
+   * 随 N7 注册，本批为自由文本透传）。 */
+  readonly source?: string;
 }
 
 /** C31 主动宣告：三类事实，凡能显示审批的界面都应消费。settled 的
  * feedback 是 C24 审批反馈的透传（答复人可选填写，审计面消费）。 */
 export type ApprovalAnnouncement =
   | { kind: "asked"; request: ApprovalRequest; timeoutMs: number }
-  | { kind: "settled"; id: string; verdict: Verdict; tool: string; feedback?: string }
+  | {
+      kind: "settled";
+      id: string;
+      verdict: Verdict;
+      tool: string;
+      feedback?: string;
+      /** C6：答复端标识（reply.source 透传——跨端回转可审计）。 */
+      source?: string;
+    }
   | { kind: "timed-out"; id: string; timeoutMs: number; tool: string };
 
 /**
@@ -277,6 +288,7 @@ export class PendingApprovals {
       verdict,
       tool: entry.request.tool,
       ...(reply.feedback !== undefined ? { feedback: reply.feedback } : {}),
+      ...(reply.source !== undefined ? { source: reply.source } : {}),
     });
     entry.settle(verdict);
   }

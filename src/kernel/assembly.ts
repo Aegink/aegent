@@ -376,6 +376,7 @@ export interface ChildAssembly {
     scope?: "once" | "session",
     feedback?: string,
     modifiedInput?: JsonRecord,
+    source?: string,
   ): Promise<void>;
   /** 协议 revert 请求的处理（E4 对话态；越界错误上抛）。 */
   handleRevert(targetSeq: number): void;
@@ -871,7 +872,7 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
       guard.recordCompletedToolStep();
     },
     wrapDecideTurn,
-    handleApprove: async (requestId, action, reason, scope, feedback, modifiedInput) => {
+    handleApprove: async (requestId, action, reason, scope, feedback, modifiedInput, source) => {
       // C22/C24：scope=session 的批准在答复成功后落会话批准缓存——提案
       // 由引擎从挂起请求的 tool/args 计算（C48），缓存进程内、随会话灭。
       const request = pending
@@ -884,6 +885,8 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
         ...(feedback !== undefined ? { feedback } : {}),
         // C52：修改后参数随答复透传（gate 侧重跑出口族硬拦）
         ...(modifiedInput !== undefined ? { modifiedInput } : {}),
+        // C6：答复端标识透传（跨端回转审计面）
+        ...(source !== undefined ? { source } : {}),
       });
       if (action === "allow" && scope === "session" && request !== undefined) {
         const proposal = proposeAmendment(

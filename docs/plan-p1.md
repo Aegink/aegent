@@ -1233,7 +1233,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **偏离 / 建议**：①requestOwnerCommand 返回类型 Promise<void> → Promise<unknown>（void 返回特例兼容任何值——单答复调用方零破坏，批量逐项结果经返回值回传）。②逐项结果形状 BatchDecisionResult {requestId, ok, code?, message?}——失败项带 pending 层类型化 code（PERMISSION_REPLY_STALE / PERMISSION_REQUEST_UNKNOWN），部分失败不回滚（hermes "persist before releasing next" 语义的答复面对应物）。③双通道：装配可提供 respondPermissionBatch 整批处理器（优先）；缺省 fallback = 逐项 await respondPermission 就地捕获。④"执行仍按原顺序"的结构保证：loop 串行执行序 = 模型 toolCalls 序，答复面无执行序干预点（批量只解除挂起不调度执行）——乱序答复 × 裁决正确归属测试钉住"批量不改变裁决与执行的正确性"；守卫重跑由 C52 出口族重跑 + revalidate 既有语义承载（收口卡④并入清单）。⑤协议面 approve_batch 变体不做（CLI 批量 UI 随真实需求——N6 进程内闭集已备）。
 - **完成记录**：①owner-port.ts：OwnerCommand +respond_permission_batch（decisions 闭集载荷）+ OwnerPortHandlers.respondPermissionBatch?（整批优先）+ BatchDecisionResult + requestOwnerCommand batch 分支（lease 校验 → 双通道逐项转达 → 逐项结果回传，失败不回滚）。②验收：`npx vitest run src/policy src/kernel src/session src/cli` → **733 passed**（owner-port 12：批量全生效逐项归属/部分 stale+unknown 逐项类型化不回滚/非持约端 NotLeaseHolderError/整批处理器优先 + gate 35：并发双挂起乱序答复裁决正确归属且 deny 不执行 allow 真实执行（守卫照常））——验收①~⑤全过；`npx tsc --noEmit` 干净。
 
-#### T-P1-82 · C6 · 审批跨端回转（答复来源审计 + 场景③端到端） `[ ]`
+#### T-P1-82 · C6 · 审批跨端回转（答复来源审计 + 场景③端到端） `[x]`
 - **依据需求**：C6（P1："审批跨端回转——场景③：桌面发起 → 飞书 reply → 桌面继续"）——展卡核对结论①
 - **上游首选参考**：[opencode·permission/](../oss/opencode/packages/opencode/src/permission)（C5 Deferred+reply 同锚——答复与发起端解耦的通道形状）；N6 在位（owner-port respond_permission + lease）
 - **取什么 / 别抄什么**：取"答复可来自非发起端、会话继续不受端绑定"；本批落进程内就绪面——**多端并发 holder 不做**（N7 roster 批次 12 扩 lease，N6 注记原文记档）
@@ -1242,6 +1242,8 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **验收**：`npx vitest run src/session/owner-port.test.ts src/cli/cli.test.ts`（扩）——①B 端答复后 A 端挂起的 turn 继续（工具执行 + 回喂 + completed）；②答复来源审计可检索（source 端标识落宣告/审计）；③非持约端答复被拒（NotLeaseHolderError）；④场景③全链一条（快照候选）；⑤既有审批回归全绿
 - **依赖**：T-P1-81（N6 命令面稳定后做端到端）
 - **风险 / 未知**：lease 移交间隙的审批可见性（A release 后 B acquire 前审批挂起无 holder）——进程内瞬时态、多端 host 落 N7 时与租约过期一并处理，卡内记档
+- **偏离 / 建议**：①source 走自由文本透传（reply.source → settled 宣告 → 审计 replySource）——**不进 APPROVAL_SURFACES 闭集**（那是发起端固定值；答复端闭集随 N7 host 注册后并入，只追加纪律）。②协议 approve +source 可选（wire 就绪位——P0 CLI 缺省不带；多端 host N7 经此字段上报答复端）；handleApprove 尾参 +source（第 7 参——参数列接近上限，N7 时考虑对象化签名，记档）。③"桌面继续"的进程内对应 = 挂起 promise 随 B 端答复 resolve（gate 层 await 解除 → next 执行）——无端绑定是 PendingApprovals 的结构性质（reply(id) 任何持约通道可调），场景③测试钉死。
+- **完成记录**：①pending.ts：ApprovalReply +source → settled 宣告透传（C31 宣告链全量）。②audit-fields.ts：ApprovalAuditRecord +replySource（settled 且答复带 source 时记录——无 source 零变化）。③协议 approve +source（decodeRequest 校验字符串）+ agent-process/assembly handleApprove 尾参透传。④验收：`npx vitest run src/policy src/kernel src/session src/cli` → **735 passed**（pending 18：场景③全链（A 挂起 → lease 移交 → B 端 source 答复 → 在途 resolve + A 旧句柄 NotLeaseHolder + settled 宣告 source 可检索）/ 审计 replySource 记录 + 无 source 零变化）——验收①~⑤全过；`npx tsc --noEmit` 干净。
 
 #### T-P1-83 · C37 · IMDS 与带外回调主机网络侧拒绝 `[ ]`
 - **依据需求**：C37（P1："IMDS（云实例元数据）与带外回调主机列为网络侧拒绝项——防 SSRF 式外带"）——展卡核对结论⑥

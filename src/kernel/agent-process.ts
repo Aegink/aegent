@@ -578,6 +578,7 @@ export async function runAgentChildStdio(
             req.scope,
             req.feedback,
             req.modifiedInput,
+            req.source,
           )
           .catch((e: unknown) => {
             send({

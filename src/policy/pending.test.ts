@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { Verdict } from "./decision.js";
+import { createApprovalAuditSink, type ApprovalAuditRecord } from "./audit-fields.js";
+import { NotLeaseHolderError, OwnerCommandPort } from "../session/owner-port.js";
 import {
   DuplicateApprovalError,
   PERMISSION_REPLY_STALE,
@@ -245,5 +247,74 @@ describe("C52 · modifiedInput 修改后参数（T-P1-79）", () => {
     } catch (e) {
       expect((e as { code?: string }).code).toBe("APPROVAL_REPLY_MALFORMED");
     }
+  });
+});
+
+describe("C6 · 审批跨端回转（T-P1-82）——场景③进程内对应", () => {
+  it("桌面（A 端）挂起 → 移交 lease → 飞书（B 端）答复（source 留痕）→ 桌面 turn 继续", async () => {
+    const announcements: ApprovalAnnouncement[] = [];
+    const pending = new PendingApprovals((a) => announcements.push(a));
+    const port = new OwnerCommandPort({
+      respondPermission: (requestId, reply) => pending.reply(requestId, reply),
+    });
+    // 端 A（桌面）：挂起审批（turn 在途——gate 层 await 中）
+    const leaseA = port.acquireLease("desktop");
+    const hanging = pending.ask(
+      { id: "x-1", sessionId: "s1", tool: "bash", args: { command: "git push" }, category: "tool" },
+      { timeoutMs: 60_000 },
+    );
+    let settled: Verdict | undefined;
+    hanging.then((v) => (settled = v));
+    await new Promise((r) => setTimeout(r, 5));
+    expect(pending.listPending().map((r) => r.id)).toEqual(["x-1"]);
+    // 审批权移交：A 释放、B（飞书）获取
+    leaseA.release();
+    const leaseB = port.acquireLease("feishu");
+    // B 端答复（带端标识）；A 端句柄再答复 → NotLeaseHolder
+    await port.requestOwnerCommand(leaseB, {
+      type: "respond_permission",
+      requestId: "x-1",
+      reply: { action: "allow", source: "feishu" },
+    });
+    await expect(
+      port.requestOwnerCommand(leaseA, {
+        type: "respond_permission",
+        requestId: "x-1",
+        reply: { action: "deny" },
+      }),
+    ).rejects.toThrow(NotLeaseHolderError);
+    // 桌面在途调用继续（verdict resolve——"桌面继续"）
+    await new Promise((r) => setTimeout(r, 5));
+    expect(settled).toMatchObject({ action: "allow" });
+    // 答复来源可检索（settled 宣告带 source——审计/多端 UI 消费）
+    const settledAnnouncement = announcements.find((a) => a.kind === "settled");
+    expect(settledAnnouncement).toMatchObject({ kind: "settled", source: "feishu" });
+  });
+
+  it("审计面：settled 记录带 replySource（答复端标识）", async () => {
+    const records: ApprovalAuditRecord[] = [];
+    const audit = createApprovalAuditSink({
+      surface: "cli",
+      sink: (r) => records.push(r),
+    });
+    const pending = new PendingApprovals(audit);
+    const hanging = pending.ask(
+      { id: "x-2", sessionId: "s1", tool: "bash", args: {}, category: "tool" },
+      { timeoutMs: 5_000 },
+    );
+    await pending.reply("x-2", { action: "allow", source: "feishu" });
+    await hanging;
+    const settledRecord = records.find((r) => r.phase === "settled");
+    expect(settledRecord).toMatchObject({ requestId: "x-2", replySource: "feishu" });
+    // 无 source 的答复：记录无 replySource 字段（P0 单端零变化）
+    const hanging2 = pending.ask(
+      { id: "x-3", sessionId: "s1", tool: "bash", args: {}, category: "tool" },
+      { timeoutMs: 5_000 },
+    );
+    await pending.reply("x-3", { action: "allow" });
+    await hanging2;
+    const settled3 = records.find((r) => r.phase === "settled" && r.requestId === "x-3");
+    expect(settled3).toBeDefined();
+    expect(settled3!.replySource).toBeUndefined();
   });
 });

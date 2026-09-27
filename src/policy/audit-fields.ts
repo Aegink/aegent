@@ -43,6 +43,9 @@ export interface ApprovalAuditRecord {
   readonly at: number;
   /** C24 审批反馈：答复人可选填写，settled 且有 feedback 时存在。 */
   readonly feedback?: string;
+  /** C6 答复端标识（T-P1-82）：settled 且答复带 source 时存在——"哪个端
+   * 答的"（发起端 surface 是本端固定值，答复端可跨端回转）。 */
+  readonly replySource?: string;
 }
 
 /** 唯一构造入口：surface/approver 缺一不可（缺字段构造即类型报错——L2）。 */
@@ -54,6 +57,7 @@ export function approvalAuditRecord(fields: {
   readonly approver: ApprovalApprover;
   readonly at: number;
   readonly feedback?: string;
+  readonly replySource?: string;
 }): ApprovalAuditRecord {
   return { kind: "approval", ...fields };
 }
@@ -107,6 +111,9 @@ export function createApprovalAuditSink(
             at,
             ...(announcement.feedback !== undefined
               ? { feedback: announcement.feedback }
+              : {}),
+            ...(announcement.source !== undefined
+              ? { replySource: announcement.source }
               : {}),
           }),
         );
