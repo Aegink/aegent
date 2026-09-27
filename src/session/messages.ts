@@ -8,6 +8,7 @@
 
 import type { ChatMessage } from "../models/provider.js";
 import type { SessionEvent } from "../kernel/events.js";
+import { coalesceEvents } from "./coalescer.js";
 
 export interface BuildMessagesOptions {
   /** 只取 seq ≤ upToSeq 的事件（压缩覆盖区间 / 有效视窗过滤用）；缺省全流。 */
@@ -18,6 +19,9 @@ export function buildChatMessages(
   events: readonly SessionEvent[],
   opts: BuildMessagesOptions = {},
 ): ChatMessage[] {
+  // E15/T-P1-88：高频只读面先折叠（progress 等瞬态冗余不进消息——输出
+  // 与逐条遍历等价，遍历量随冗余度下降）；输入数组本体零改动。
+  const coalesced = coalesceEvents(events);
   const upTo = opts.upToSeq ?? Number.POSITIVE_INFINITY;
   type AssistantMsg = Extract<ChatMessage, { role: "assistant" }>;
   const messages: ChatMessage[] = [];
@@ -29,7 +33,7 @@ export function buildChatMessages(
       pendingCalls = [];
     }
   };
-  for (const e of events) {
+  for (const e of coalesced) {
     if (e.seq > upTo) continue;
     switch (e.type) {
       case "user/message":
