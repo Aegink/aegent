@@ -127,8 +127,12 @@ export class SessionConfigStore {
   }
 
   /**
-   * 热刷新：patch 只含白名单键且值类型合法 → 逐键应用并返回 applied；
-   * 出现任何非白名单键（静态设置）→ 抛类型化错误且**整包拒绝**（零应用）。
+   * 热刷新（F30/T-P1-105 两段式——fail-safe 方向）：**先全量校验**（键合法
+   * 性 + 每键值类型）**后统一应用**——任何错误零应用（"解析失败保留上一份
+   * 配置，绝不回退默认"；codex session/tests.rs keeps_previous_config 同构）。
+   * 非白名单键整包拒绝；值类型错同样整包拒绝——修复旧实现"按补丁序逐键
+   * 应用、前序合法键先落"的顺序依赖部分应用缺口（`{queueMaxSize:5,
+   * approvalTimeoutMs:-1}` 曾部分生效，与"零应用"承诺不符）。
    */
   refresh(patch: JsonRecord): { applied: RefreshableConfigKey[] } {
     const keys = Object.keys(patch);
@@ -138,39 +142,37 @@ export class SessionConfigStore {
     if (illegal.length > 0) {
       throw new StaticConfigImmutableError(illegal[0] as string);
     }
-    const applied: RefreshableConfigKey[] = [];
+    // 第一段：全量校验（任何键值非法 → 整包拒绝，零写入）
+    const validated: Array<[RefreshableConfigKey, unknown]> = [];
     for (const key of keys) {
       const value = patch[key];
-      if (key === "approvalTimeoutMs") {
-        if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-          throw new StaticConfigImmutableError(key);
-        }
-        this.values.approvalTimeoutMs = value;
-        applied.push(key);
-      } else if (key === "queueMaxSize") {
-        if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
-          throw new StaticConfigImmutableError(key);
-        }
-        this.values.queueMaxSize = value;
-        applied.push(key);
-      } else if (key === "sandboxMode") {
-        if (
-          typeof value !== "string" ||
-          !(["read-only", "workspace-write", "danger-full-access"] as const satisfies readonly SandboxMode[]).includes(
+      const valid =
+        (key === "approvalTimeoutMs" && typeof value === "number" && Number.isFinite(value) && value > 0) ||
+        (key === "queueMaxSize" && typeof value === "number" && Number.isInteger(value) && value > 0) ||
+        (key === "sandboxMode" &&
+          typeof value === "string" &&
+          (["read-only", "workspace-write", "danger-full-access"] as const satisfies readonly SandboxMode[]).includes(
             value as SandboxMode,
-          )
-        ) {
-          throw new StaticConfigImmutableError(key);
-        }
-        this.values.sandboxMode = value as SandboxMode;
-        applied.push(key);
-      } else if (key === "unattended") {
-        if (typeof value !== "boolean") {
-          throw new StaticConfigImmutableError(key);
-        }
-        this.values.unattended = value;
-        applied.push(key);
+          )) ||
+        (key === "unattended" && typeof value === "boolean");
+      if (!valid) {
+        throw new StaticConfigImmutableError(key);
       }
+      validated.push([key as RefreshableConfigKey, value]);
+    }
+    // 第二段：统一应用（校验已通过——此段不再有失败路径）
+    const applied: RefreshableConfigKey[] = [];
+    for (const [key, value] of validated) {
+      if (key === "approvalTimeoutMs") {
+        this.values.approvalTimeoutMs = value as number;
+      } else if (key === "queueMaxSize") {
+        this.values.queueMaxSize = value as number;
+      } else if (key === "sandboxMode") {
+        this.values.sandboxMode = value as SandboxMode;
+      } else if (key === "unattended") {
+        this.values.unattended = value as boolean;
+      }
+      applied.push(key);
     }
     return { applied };
   }

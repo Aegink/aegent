@@ -1573,7 +1573,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **风险 / 未知**：占位符是否进 token 估算口径（溢出判定与裁剪次序）卡内定形：溢出判定先于裁剪（保守方向——按未裁尺寸判溢出）
 - **完成记录**：2026-09-27。产出：①`src/context/result-trim.ts`——`ResultTrimRules {keepLast?, maxChars?}` + `DEFAULT_RESULT_TRIM_RULES`（keepLast 4 / maxChars 2000——卡内定形）+ `trimToolResultMessages(messages, rules)` 纯函数：尾部最近 keepLast 个 tool result 原文保留（保护下标集），更早的**超 maxChars** 结果替换占位符（`[结果已裁剪：原 <N> 字符，callId <id><，完整输出在 <spill 路径>>]`——spill 指针从 boundedOutput 尾部提示正则提取，检索路径不断）；user/system/assistant 消息永不触碰；非破坏性返回新数组；幂等（占位符长度 < maxChars 且已是占位符内容——同视图再裁不变）。②loop.buildMessages 消费：deps + `resultTrim?: ResultTrimRules`，提供时对 buildChatMessages 产物做请求面裁剪（缺省 undefined = 不裁零行为变化）；agent-process 透传 `options.resultTrim`。**红线兑现**：事件流本体零改写（裁剪只在 ChatMessage[] 视图——store.load 逐字节不变由纯函数性保证）；因果链不破（占位符仍是 tool 角色 + callId——配平断言钉死）。验收：`npx vitest run src/context/result-trim.test.ts` → **6 passed**：①超限旧结果裁成占位符（原尺寸 + callId + spill 指针 "C:/spill/a.txt" 提取 + 超长内容不再出现）；②未超限与 keepLast 窗口内原文不动（user/assistant 超限也不裁——只裁 tool 角色）；③配对保持（2 个 tool/call 裁后仍有 2 个配对 result，callId 集合不变）；④幂等（一次/两次裁剪 toEqual）；⑤缺省规则 4/2000（6 条超限结果裁最旧 2 条）；⑥非破坏性。全量 `npx vitest run` → **1126 passed / 1 skipped**（1120 → 净增 6），`npx tsc --noEmit` 干净。偏离：①裁剪落点为 loop.buildMessages（模型请求的消息构造位）而非卡面所写 messages.buildChatMessages 选项——buildChatMessages 是多消费方公共 helper（new-window/压缩区间构造共用），在其签名上加选项会波及压缩面；装配语义等价（agent-process options → loop deps → buildMessages），记档。②溢出判定与裁剪次序：裁剪在 buildMessages（loop 侧）、溢出判定在 assembly beforeFirstModelRequest（startNewContextWindow 产物）——两路径独立，溢出判定按未裁尺寸（保守方向兑现，卡内定形）。
 
-#### T-P1-105 · F30 · 配置解析失败保留上一份（fail-safe 两段式刷新） `[ ]`
+#### T-P1-105 · F30 · 配置解析失败保留上一份（fail-safe 两段式刷新） `[x]`
 - **依据需求**：F30（P1："配置解析失败保留上一份配置，不回退默认；回退默认可能变宽松；fail-safe 方向"）
 - **上游首选参考**：[codex·session/tests.rs:1773](../oss/codex/codex-rs/core/src/session/tests.rs#L1773)（`reload_user_config_layer_keeps_previous_config_for_malformed_shell_policy`——畸形配置 reload 后 current == previous）
 - **取什么 / 别抄什么**：取"解析失败保留上一份、绝不回退默认"的 fail-safe 方向；不抄其 config_layer_stack/文件加载层（我方无文件配置热加载——记档，YAGNI 不预建通用 Reload 框架）
@@ -1582,7 +1582,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **验收**：`npx vitest run src/kernel/session-config.test.ts`（扩）——①两键补丁后键值类型错 → 两键均不应用（getter 不变）；②单键合法 + 单键静态键 → 整包拒绝（既有行为回归）；③合法补丁照常应用；④预设切换含非法 knob → 零应用；⑤错误后紧接着的正确刷新照常生效（失败不毒化）
 - **依赖**：无
 - **风险 / 未知**：无（范围最小卡）
-- **完成记录**：
+- **完成记录**：2026-09-27。产出：`session-config.ts` `SessionConfigStore.refresh` 改**两段式**——第一段全量校验（键合法性 + 每键值类型：approvalTimeoutMs 正有限数 / queueMaxSize 正整数 / sandboxMode 三值闭集 / unattended 布尔），任何错误抛 StaticConfigImmutableError 且**零写入**；第二段统一应用（校验通过后无失败路径）。修复真实缺口：旧实现按补丁序逐键"校验+应用"交替，`{queueMaxSize:5, approvalTimeoutMs:-1}` 会先应用 queueMaxSize 再抛错——部分应用与"整包拒绝（零应用）"承诺不符，且产生"部分新部分旧"的混合配置（fail-safe 方向缺口）。applyPreset 经同一通道自动获得两段式保护。"不回退默认"断言：刷新失败后各 getter 与刷新前逐项相等，无任何默认值代换路径（结构性——values 只在第二段被赋值）。错误面不变（StaticConfigImmutableError 原样——协议层 CONFIG_REFRESH 错误行零改动）。文件面配置 reload 记档兑现：我方无文件配置热加载，YAGNI 不预建通用 Reload 框架（卡序头核对结论 ⑦）。验收：`npx vitest run src/kernel/session-config.test.ts` → **12 passed**（既有 9 零回归 + 3 新：两键补丁后键值错 → 两键均不应用且无默认代换；合法补丁照常应用（两段式正常路径零行为变化）；错误后正确刷新照常生效（失败不毒化））。全量 `npx vitest run` → **1129 passed / 1 skipped**，`npx tsc --noEmit` 干净。**记档（flaky 复现一次）**：本卡期间全量跑出现 1 failed 未复现——`llm-replay.test.ts`"同一 loop 分别跑真 provider 与 ReplayProvider"，隔离复跑两次全绿、后续全量复跑多数全绿；形态与批次 6 T-P1-48 记档一致（93 文件并行资源竞态，疑端口/时序敏感），非本卡引入面（session-config 与 llm-replay 无交集），留作测试基建候选修复（test-only）。
 
 #### T-P1-106 · J13 · 鉴权刷新不得改变模型身份（每请求鉴权面 + 身份不变断言） `[ ]`
 - **依据需求**：J13（P1："鉴权刷新不得改变模型身份；刷新 token/header 后断言模型身份未变"）

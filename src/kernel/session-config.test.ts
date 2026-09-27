@@ -130,3 +130,37 @@ describe("C8 · 权限预设成套切换（T-P1-73）", () => {
     expect(infos[0]).toContain("s1");
   });
 });
+
+// ---------------------------------------------------------------------------
+// F30 配置解析失败保留上一份（T-P1-105）：两段式刷新 fail-safe 验收
+// ---------------------------------------------------------------------------
+
+describe("F30 两段式刷新（先全量校验后统一应用——任何错误零应用）", () => {
+  it("两键补丁后键值类型错 → 两键均不应用（getter 逐项与刷新前相等）", () => {
+    const store = new SessionConfigStore("s", { queueMaxSize: 16, unattended: false });
+    // 队列键在前（旧实现会先应用它再在校验后键时抛错——部分应用缺口）
+    expect(() => store.refresh({ queueMaxSize: 5, approvalTimeoutMs: -1 })).toThrow(
+      StaticConfigImmutableError,
+    );
+    expect(store.queueMaxSize).toBe(16); // 保留上一份
+    expect(store.unattended).toBe(false); // 未被触碰
+    expect(store.approvalTimeoutMs).toBeUndefined(); // 绝无默认值代换（不回退默认）
+  });
+
+  it("合法补丁照常应用（两段式对正常路径零行为变化）", () => {
+    const store = new SessionConfigStore("s", { queueMaxSize: 16 });
+    const result = store.refresh({ queueMaxSize: 8, approvalTimeoutMs: 5_000 });
+    expect(result.applied.sort()).toEqual(["approvalTimeoutMs", "queueMaxSize"]);
+    expect(store.queueMaxSize).toBe(8);
+    expect(store.approvalTimeoutMs).toBe(5_000);
+  });
+
+  it("错误后紧接着的正确刷新照常生效（失败不毒化）", () => {
+    const store = new SessionConfigStore("s");
+    expect(() => store.refresh({ unattended: "yes" as unknown as boolean })).toThrow(
+      StaticConfigImmutableError,
+    );
+    expect(store.refresh({ unattended: true }).applied).toEqual(["unattended"]);
+    expect(store.unattended).toBe(true);
+  });
+});
