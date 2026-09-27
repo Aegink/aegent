@@ -71,6 +71,11 @@ import { PressureMonitor } from "../context/pressure.js";
 import { detectLocalOverflow } from "../context/overflow.js";
 import { RapidRefillGuard } from "../context/rapid-refill.js";
 import { currentWindow } from "../context/window.js";
+import {
+  DEFAULT_TIME_REMINDER_INTERVAL_SECONDS,
+  timeReminderContent,
+  timeReminderDue,
+} from "../context/time-reminder.js";
 import { type BudgetConfig, RolloutBudget } from "../context/budget.js";
 import { assembleSystemPrompt } from "../context/system-prompt.js";
 import { loadSkills } from "./skills.js";
@@ -288,6 +293,11 @@ export interface ChildAssemblyOptions {
   };
   /** M10 预算配置；缺省不启用预算轴。 */
   budget?: BudgetConfig;
+  /**
+   * F7/T-P1-103 时间上下文注入；缺省 undefined = 不启用（零注入零行为
+   * 变化）。intervalSeconds 缺省 3600（新窗必送 + 区间节流）。
+   */
+  timeReminder?: { intervalSeconds?: number };
   /** 压缩摘要器；缺省 P0 内置截断摘要。 */
   summarizer?: Summarizer;
   /**
@@ -411,6 +421,11 @@ export interface ChildAssembly {
 export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembly {
   const { sessionId, store, logger } = options;
   const contextWindow = options.contextWindow;
+  // F7：时间注入间隔（未启用 = undefined，注入位跳过）。
+  const timeReminderIntervalSeconds =
+    options.timeReminder !== undefined
+      ? (options.timeReminder.intervalSeconds ?? DEFAULT_TIME_REMINDER_INTERVAL_SECONDS)
+      : undefined;
 
   // —— 审批出口（C5/C51）：挂起注册表 + Manual broker + L2 审计 + 宣告转发
   const audit = createApprovalAuditSink({
@@ -870,6 +885,20 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
         if (reminder !== null) {
           store.append(sessionId, [
             { type: "user/message", turn, message: { content: reminder }, source: "injected" },
+          ]);
+        }
+      }
+      // F7/T-P1-103：时间上下文注入（新窗必送 + interval 节流；状态从流
+      // 重建——timeReminderDue 纯函数判定，落流动作即"送达"闭合，M10 纪律）。
+      if (timeReminderIntervalSeconds !== undefined) {
+        if (timeReminderDue(store.load(sessionId), Date.now(), timeReminderIntervalSeconds)) {
+          store.append(sessionId, [
+            {
+              type: "user/message",
+              turn,
+              message: { content: timeReminderContent(new Date()) },
+              source: "injected",
+            },
           ]);
         }
       }
