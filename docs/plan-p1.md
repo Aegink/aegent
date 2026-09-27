@@ -1004,7 +1004,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 4. **C12 的版本记账进 ToolContext 侧会话服务**（read 记录 path→内容哈希）——不进事件流（读不是状态变更）。
 5. **C8 预设切换经 SessionConfigStore**——预设 = 成套初始值的命名记录，切换 = 逐 knob 写入。
 
-#### T-P1-66 · C23 · 策略自检扩面（wildcard-tool-name + incomplete-namespace 两类） `[ ]`
+#### T-P1-66 · C23 · 策略自检扩面（wildcard-tool-name + incomplete-namespace 两类） `[x]`
 - **依据需求**：C23（P1："策略自检：报告永不匹配的模式（通配符用错、MCP 名不完整、未知工具名）"）——展卡核对结论②：三类中 unknown-tool 已在，补两类
 - **上游首选参考**：[kimi·evaluate.ts:85-106](../oss/kimi-code/packages/agent-core-v2/src/agent/toolPolicy/evaluate.ts#L85)（findInactiveToolPatterns：MCP 名缺第二段 → incomplete-mcp-name；glob 魔法字符非 MCP 名 → wildcard-not-mcp；未知名 → unknown-tool）
 - **取什么 / 别抄什么**：取三类判据语义；命名空间检查词形对齐我方 `server__tool`（T-P1-64 同款 `__` 分隔，非 kimi `mcp__` 前缀）
@@ -1013,8 +1013,8 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **验收**：`npx vitest run src/policy/linter.test.ts`（扩）——①通配工具名规则 → wildcard-tool-name；②`a__`/`__b`/`a__b__c` → incomplete-namespace-name；③既有三类回归全绿；④findInactiveRuleToolNames 三类各一可单测
 - **依赖**：无（批次 8 首卡）
 - **风险 / 未知**：无
-- **偏离 / 建议**：（留白）
-- **完成记录**：
+- **偏离 / 建议**：wildcard-tool-name 判据偏离 kimi 无条件形状——kimi 的"非 MCP 名含 glob 即报"基于其 builtin 清单精确匹配；我方工具名维度 wildcardMatch 全支持通配（`bash*` 是活规则），无条件报会误报——判据落"注册表现存工具无一被该模式命中（wildcardMatch 真实方言判定）"，语义仍 C23"永不匹配的模式"。incomplete-namespace-name 判据 = 含 `__` 但非两段非空且注册表无此名（验收②的 `a__b__c` 三段落此；卡面"首段或第二段为空"文字未覆盖段数>2，以验收为准）；注册表现存名豁免（工具名自身含 `__` 的三段注册名合法，防误报）。linter.test.ts 为本卡新建（既有三类判据用例原散在 self-guard/ceiling-exit 测试，验收③由同跑两文件回归覆盖）。
+- **完成记录**：①linter.ts 扩 LintIssueKind 两值 + 导出 findInactiveRuleToolName（单名核心）/findInactiveRuleToolNames（kimi 同名意图批量版），lintRules 主循环工具名判定委托单名核心；no-matcher-for-args 保持（hasGlob 变体文案不动）。②linter.test.ts 新建 5 用例（①Bash*(git *)/github__* → wildcard-tool-name；②a__/__b/a__b__c → incomplete-namespace-name；活规则零误报 b*/g*p；两段非空走 unknown-tool + 三段注册名豁免；findInactiveRuleToolNames 三类各一）。③验收：`npx vitest run src/policy/linter.test.ts src/policy/self-guard.test.ts src/policy/ceiling-exit.test.ts` → **24 passed**（新 5 + 既有回归 19 全绿，既有 `b*(git *)`/`notepad(*)`/invalid-syntax 用例零破坏）；`npx tsc --noEmit` 干净。
 
 #### T-P1-67 · C26 · 规则文本形式 Tool(args) 正式解析器 `[ ]`
 - **依据需求**：C26（P1："规则语法采用 Tool(args) 文本形式；配置可读、可复制粘贴"）——展卡核对结论③：P0 形状已在，本卡正式化
