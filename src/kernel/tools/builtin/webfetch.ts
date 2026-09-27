@@ -17,7 +17,7 @@
  */
 
 import type { NetworkGuard } from "../../../sandbox/network.js";
-import { NetworkDeniedError } from "../../../sandbox/network.js";
+import { NetworkDeniedError, NetworkImdsDeniedError } from "../../../sandbox/network.js";
 import { TimeoutError } from "../../timeout.js";
 import { toolError } from "./util.js";
 import type { ToolDef } from "../registry.js";
@@ -92,7 +92,8 @@ export function createWebfetchTool(options: { guard: NetworkGuard }): ToolDef {
           headers: { "user-agent": "aegent-webfetch/1.0" },
         });
       } catch (e) {
-        if (e instanceof NetworkDeniedError) {
+        if (e instanceof NetworkDeniedError || e instanceof NetworkImdsDeniedError) {
+          // D3 拒绝与 C37 IMDS 防护清单命中都透传类型化 code（可路由）
           return webfetchError(e.code, e.message);
         }
         if (e instanceof TimeoutError || (e instanceof Error && e.name === "AbortError")) {

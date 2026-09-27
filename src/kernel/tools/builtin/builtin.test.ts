@@ -420,6 +420,20 @@ describe("webfetch（B8a / T-P1-20）", () => {
     }
   });
 
+
+  it("C37 端到端：webfetch 访问 IMDS → isError 且 NETWORK_IMDS_DENIED（allow 档同样拦）", async () => {
+    const registry = new ToolRegistry();
+    registerBuiltinTools(registry, {
+      networkGuard: createNetworkGuard({ policy: "allow" }),
+    });
+    const result = await dispatch(registry, "webfetch", {
+      url: "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+    });
+    expect(result.isError).toBe(true);
+    expect((result.error as { code?: string }).code).toBe("NETWORK_IMDS_DENIED");
+    expect(result.content).toContain("C37");
+  });
+
   it("验收②：deny 档拒绝且 NETWORK_DENIED 含目标 URL（D3 语义复用，零真实 I/O）", async () => {
     const registry = new ToolRegistry();
     registerBuiltinTools(registry, {

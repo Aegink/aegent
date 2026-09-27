@@ -9,7 +9,13 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { HttpMock } from "../test-support/http-mock.js";
-import { NETWORK_DENIED, NetworkDeniedError, createNetworkGuard } from "./network.js";
+import {
+  NETWORK_DENIED,
+  NETWORK_IMDS_DENIED,
+  NetworkDeniedError,
+  NetworkImdsDeniedError,
+  createNetworkGuard,
+} from "./network.js";
 import { PathGuard } from "./path-guard.js";
 
 describe("NetworkGuard · deny 档", () => {
@@ -86,5 +92,68 @@ describe("D3 弱承诺 · README 声明在位（人工确认清单的机验部�
     expect(readme).toContain("不承诺");
     expect(readme).toContain("子进程");
     expect(readme).toContain("不要把 deny 档当成网络隔离的承诺");
+  });
+});
+
+describe("C37 · IMDS 与带外回调主机黑名单（T-P1-83）", () => {
+  const imdsFetch = vi.fn();
+  function allowGuard() {
+    return createNetworkGuard({ policy: "allow", fetchImpl: imdsFetch as unknown as typeof fetch });
+  }
+
+  it("四主机清单各一拒绝（AWS/GCP/阿里云 + IPv6 字面量），黑名单在 fetchImpl 之前", async () => {
+    const guard = allowGuard();
+    for (const url of [
+      "http://169.254.169.254/latest/meta-data/",
+      "http://metadata.google.internal/computeMetadata/v1/",
+      "http://100.100.100.200/latest/meta-data/",
+      "http://[fd00:ec2::254]/latest/meta-data/",
+    ]) {
+      const err = await guard.fetch(url).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(NetworkImdsDeniedError);
+      expect((err as NetworkImdsDeniedError).code).toBe(NETWORK_IMDS_DENIED);
+      expect((err as Error).message).toContain("C37");
+    }
+    expect(imdsFetch).not.toHaveBeenCalled();
+  });
+
+  it("链路本地网段（169.254.0.0/16）字面前缀拒绝；大小写不敏感", async () => {
+    const guard = allowGuard();
+    for (const url of [
+      "http://169.254.1.2/nms",
+      "http://169.254.254.254/x",
+      "http://METADATA.GOOGLE.INTERNAL/y",
+    ]) {
+      const err = await guard.fetch(url).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(NetworkImdsDeniedError);
+    }
+    // 非链路本地相似前缀不误伤（169.253.x / 169.255.x 放行到 fetchImpl）
+    await allowGuard().fetch("http://169.253.0.1/x").catch(() => undefined);
+    expect(imdsFetch).toHaveBeenCalled();
+  });
+
+  it("allow 档同样拦截（黑名单独立于档位——SSRF 语义）；URL 无法解析 fail-closed", async () => {
+    const guard = allowGuard();
+    // allow 档 + 黑名单主机 → 拒（上面已验）；此处验 URL 解析失败面
+    const err = await guard.fetch("not-a-url-at-all").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(NetworkImdsDeniedError);
+    expect((err as Error).message).toContain("无法解析");
+  });
+
+  it("正常公网 URL 照常放行（零误伤）；deny 档既有语义不变", async () => {
+    const mock = new HttpMock();
+    const base = await mock.start();
+    try {
+      mock.mountSequence([{ status: 200, body: "ok" }]);
+      const guard = createNetworkGuard({ policy: "allow" });
+      const res = await guard.fetch(`${base}/public`);
+      expect(res.status).toBe(200);
+      // deny 档：任何 URL（含非黑名单）照旧 NETWORK_DENIED
+      const denyGuard = createNetworkGuard({ policy: "deny", fetchImpl: vi.fn() as unknown as typeof fetch });
+      const denied = await denyGuard.fetch("https://example.com/api").catch((e: unknown) => e);
+      expect((denied as NetworkDeniedError).code).toBe(NETWORK_DENIED);
+    } finally {
+      await mock.stop();
+    }
   });
 });

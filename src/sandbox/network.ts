@@ -20,6 +20,13 @@ export type NetworkPolicy = "allow" | "deny";
 
 export const NETWORK_DENIED = "NETWORK_DENIED";
 
+/**
+ * C37 IMDS/带外回调主机黑名单命中（T-P1-83）——**独立于 allow/deny 档**：
+ * 用户放开网络 ≠ 可达云元数据（SSRF 语义）。独立错误码让模型/审计面
+ * 区分"策略禁网"与"目标命中防护清单"。
+ */
+export const NETWORK_IMDS_DENIED = "NETWORK_IMDS_DENIED";
+
 /** 拒绝时给出目标 URL（非敏感信息，供模型自纠）与政策名。 */
 export class NetworkDeniedError extends Error {
   override readonly name = "NetworkDeniedError";
@@ -30,6 +37,44 @@ export class NetworkDeniedError extends Error {
   ) {
     super(message);
   }
+}
+
+export class NetworkImdsDeniedError extends Error {
+  override readonly name = "NetworkImdsDeniedError";
+  readonly code = NETWORK_IMDS_DENIED;
+  constructor(
+    readonly url: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * IMDS 与带外回调主机闭集（C37，qwen·classifier-prompts/system-prompt.ts:56
+ * 清单对应物）：AWS IMDS（IPv4 + IPv6 字面量）、GCP、阿里云 + 环回/链路
+ * 本地段。collaborator 式回调服务（request-bin 等）是无限开放集合，无法
+ * 闭集枚举——防护面承诺只覆盖本清单与链路本地段（已知边界，卡内记档）。
+ */
+export const IMDS_HOSTS = [
+  "169.254.169.254",
+  "fd00:ec2::254",
+  "metadata.google.internal",
+  "100.100.100.200",
+] as const;
+
+/** IPv4 链路本地网段前缀（169.254.0.0/16——qwen network-policy.ts BlockList 对应物）。 */
+const LINK_LOCAL_V4_PREFIX = "169.254.";
+
+/**
+ * IMDS 黑名单判定：host 小写比对 + IPv6 方括号形态 + 链路本地字面前缀。
+ * 与档位无关——allow 档同样拦截（SSRF 语义）。
+ */
+export function isImdsTarget(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if ((IMDS_HOSTS as readonly string[]).includes(host)) return true;
+  if (host.startsWith(LINK_LOCAL_V4_PREFIX)) return true;
+  return false;
 }
 
 export type FetchLike = typeof fetch;
@@ -55,7 +100,9 @@ function targetUrl(input: FetchInput): string {
   return input.url;
 }
 
-/** 网络守卫：deny 档在任何真实 I/O 之前拒绝（被拒请求不发生）；allow 档原样透传。 */
+/** 网络守卫：deny 档在任何真实 I/O 之前拒绝（被拒请求不发生）；allow 档先过
+ * C37 IMDS 黑名单面（独立于档位——SSRF 防护），命中即拒、URL 无法解析
+ * fail-closed，通过才透传。 */
 export function createNetworkGuard(options: NetworkGuardOptions): NetworkGuard {
   const fetchImpl = options.fetchImpl ?? fetch;
   const guardedFetch: FetchLike = async (input, init) => {
@@ -64,6 +111,21 @@ export function createNetworkGuard(options: NetworkGuardOptions): NetworkGuard {
       throw new NetworkDeniedError(
         url,
         `网络访问被拒绝（network policy = deny）：${url}。当前配置下工具不能发起网络请求；如确需访问，请让用户调整网络策略。`,
+      );
+    }
+    // C37 IMDS 黑名单面：独立于 allow/deny 档（放开网络 ≠ 可达元数据）
+    let hostname: string | undefined;
+    try {
+      hostname = new URL(url).hostname;
+    } catch {
+      hostname = undefined;
+    }
+    if (hostname === undefined || isImdsTarget(hostname)) {
+      throw new NetworkImdsDeniedError(
+        url,
+        hostname === undefined
+          ? `目标 URL 无法解析（fail-closed）：${url}。C37 网络侧防护要求目标可验证后才可发起请求。`
+          : `目标命中 IMDS/带外回调主机防护清单（C37）：${url}。云实例元数据端点不允许工具访问（防 SSRF 式外带）。`,
       );
     }
     return fetchImpl(input, init);

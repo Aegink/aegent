@@ -1245,7 +1245,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **偏离 / 建议**：①source 走自由文本透传（reply.source → settled 宣告 → 审计 replySource）——**不进 APPROVAL_SURFACES 闭集**（那是发起端固定值；答复端闭集随 N7 host 注册后并入，只追加纪律）。②协议 approve +source 可选（wire 就绪位——P0 CLI 缺省不带；多端 host N7 经此字段上报答复端）；handleApprove 尾参 +source（第 7 参——参数列接近上限，N7 时考虑对象化签名，记档）。③"桌面继续"的进程内对应 = 挂起 promise 随 B 端答复 resolve（gate 层 await 解除 → next 执行）——无端绑定是 PendingApprovals 的结构性质（reply(id) 任何持约通道可调），场景③测试钉死。
 - **完成记录**：①pending.ts：ApprovalReply +source → settled 宣告透传（C31 宣告链全量）。②audit-fields.ts：ApprovalAuditRecord +replySource（settled 且答复带 source 时记录——无 source 零变化）。③协议 approve +source（decodeRequest 校验字符串）+ agent-process/assembly handleApprove 尾参透传。④验收：`npx vitest run src/policy src/kernel src/session src/cli` → **735 passed**（pending 18：场景③全链（A 挂起 → lease 移交 → B 端 source 答复 → 在途 resolve + A 旧句柄 NotLeaseHolder + settled 宣告 source 可检索）/ 审计 replySource 记录 + 无 source 零变化）——验收①~⑤全过；`npx tsc --noEmit` 干净。
 
-#### T-P1-83 · C37 · IMDS 与带外回调主机网络侧拒绝 `[ ]`
+#### T-P1-83 · C37 · IMDS 与带外回调主机网络侧拒绝 `[x]`
 - **依据需求**：C37（P1："IMDS（云实例元数据）与带外回调主机列为网络侧拒绝项——防 SSRF 式外带"）——展卡核对结论⑥
 - **上游首选参考**：[qwen·network-policy.ts:21](../oss/qwen-code/packages/core/src/extension/network-policy.ts#L21)（169.254.0.0/16 BlockList）+ [system-prompt.ts:56](../oss/qwen-code/packages/core/src/permissions/classifier-prompts/system-prompt.ts#L56)（IMDS 主机清单：169.254.169.254 / fd00:ec2::254 / metadata.google.internal / 100.100.100.200 / collaborator 式回调服务）
 - **取什么 / 别抄什么**：取主机清单与链路本地网段两形状；不抄其 DNS 解析管线（qwen ResolvedNetworkTarget 全家桶——我方 webfetch 直连面最小落）；判官清单段（system-prompt 是 C42 判官提示词）不取
@@ -1254,6 +1254,8 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **验收**：`npx vitest run src/sandbox/network.test.ts src/kernel/tools/builtin/builtin.test.ts`（扩）——①四主机名各一拒绝；②169.254.x.x 字面量拒绝；③fd00:ec2::254 拒绝；④allow 档同样拒绝（黑名单独立于档位）；⑤正常公网 URL 照常（零误伤）；⑥deny 档既有回归不破
 - **依赖**：无（独立小卡，network 面不与 gate 改动冲突）
 - **风险 / 未知**：bash curl 访问 IMDS 不在本卡（OS 层网络隔离 D16 在位——应用层清单只管 webfetch 直连面）；DNS 重绑定/解析后 IP 复检不落（qwen 有——我方 webfetch 无 DNS 管线，记档为已知边界）
+- **偏离 / 建议**：①collaborator 式回调服务（request-bin/公共隧道）是无限开放集合，无法闭集枚举——防护清单承诺只覆盖四主机 + 链路本地段（需求"承诺强度可审计"（C29）由清单显式性承载），记档为已知边界。②URL 解析失败 fail-closed 落在**黑名单检查面**（NetworkImdsDeniedError"无法解析"）——deny 档不解析（现状不变，反正全拒）；allow 档解析失败即拒（SSRF 语义下不可验证的目标不放行）。③webfetch 错误分层扩展：NetworkImdsDeniedError 与 NetworkDeniedError 同 instanceof 分支透传类型化 code（FETCH_FAILED 兜底不变——只有 guard 主动拒绝可路由）。④isImdsTarget 的大小写归一含 IPv6 方括号剥离（[fd00:ec2::254] 形态）；169.253.x/169.255.x 不误伤（前缀精确 169.254.）。
+- **完成记录**：①network.ts：IMDS_HOSTS 四主机闭集（169.254.169.254 / fd00:ec2::254 / metadata.google.internal / 100.100.100.200）+ isImdsTarget（小写 + IPv6 方括号 + 169.254.0.0/16 前缀）+ NetworkImdsDeniedError（NETWORK_IMDS_DENIED）+ guard.fetch allow 档黑名单面（命中/解析失败即拒，独立于档位）。②webfetch.ts instanceof 分支透传 code。③验收：`npx vitest run src/policy src/kernel src/session src/cli src/sandbox` → **815 passed / 1 skipped**（network 9：四主机各一/链路本地前缀+大小写/相似前缀不误伤/allow 档同拦/解析失败 fail-closed/公网照常/deny 档不变 + builtin 21：webfetch 访问 IMDS → isError NETWORK_IMDS_DENIED 含 C37）——验收①~⑥全过；`npx tsc --noEmit` 干净。
 
 #### T-P1-84 · 收口 · 审批与运行模式盘点 + 快照 `[ ]`
 - **依据需求**：批次 9 收口（照批次 4/5/6/7/8 收口先例；无独立需求 ID）
