@@ -1100,7 +1100,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **偏离 / 建议**：①预设目录当前 knob = sandboxMode 单键（dsh 的 approvalPolicy 无我方对应执行面——审批默认 ask 是不变量 3，不发明）；"成套"= 目录结构支持多 knob（values 对象），当前一键。②sandboxMode 追加入 REFRESHABLE_CONFIG_KEYS 白名单（C10 只追加先例的预期演进）——观测面 knob：预设切换更新 store 值 + getter 暴露，消费面（bash defaultMode 构造定死）动态读随接线批次。③预设切换的双路径都经既有 refresh 通道：applyPreset（store API，内部 this.refresh）与 CLI /preset（发 config/refresh patch）——不新增第二来源、不新增协议命令。④未知预设名在 CLI 本地即拒（不等子进程往返）+ store 层 UnknownPresetError 双面。
 - **完成记录**：①session-config.ts——PERMISSION_PRESETS 闭集（readonly/workspace/yolo，每预设 = {label, values:{sandboxMode}}）+ UnknownPresetError + applyPreset（经 refresh 通道写入 + onInfo 留痕"预设事件保留用户意图"）+ REFRESHABLE_CONFIG_KEYS +sandboxMode + store getter/值校验（三值闭集）。②agent-process configStore 构造传 onInfo→logger.info。③CLI /preset <name>（repl 本地查表 + config/refresh 发送）+ config_refreshed 回执渲染"✔ 配置已刷新"（此前静默）+ 未知命令帮助行补 /preset。④验收：`npx vitest run src/kernel/session-config.test.ts src/cli/cli.test.ts` → **27 passed**——①三预设各自成套生效（getter 断言 + 连续切换覆盖）✓；②ghost → UNKNOWN_PRESET 类型化拒绝且零写入 ✓；③切换是 refresh 语义（预设载荷全白名单键、静态键不入、refresh 直发 sandboxMode 同语义、非法值拒）✓；④CLI /preset 端到端可见（✔ 配置已刷新：sandboxMode）+ 未知名本地拒 ✓；onInfo 留痕 ✓；agent-process.test 回归全绿（config/refresh 面 37 passed）；`npx tsc --noEmit` 干净。
 
-#### T-P1-74 · 收口 · 权限语义冲突盘点 + 快照 `[ ]`
+#### T-P1-74 · 收口 · 权限语义冲突盘点 + 快照 `[x]`
 - **依据需求**：批次 8 收口（照批次 4/5/6/7 收口先例；无独立需求 ID）
 - **上游首选参考**：批次 7 T-P1-65 先例
 - **取什么 / 别抄什么**：六面盘点：①C11 出口降权 × C46/C35/C57 出口族——出口级组合次序终局清单；②C12 ReadGate × B13 预算 × D15 幂等——edit/apply_patch 失败三源分域；③C26 解析器 × C39 分型路由——解析产物与匹配器职责边界；④C34 trustGated × A2/A9 session-runtime 层——信任过滤与 turn-override 生命周期正交性；⑤C17 逃生舱 × C15 禁区——"唯一槽位"与"插件不得新增类型"双向测试复核；⑥快照即规格：项目信任降权全链一条
@@ -1108,8 +1108,15 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **要产出**：六面盘点结论 + 快照一条 + 全量回归
 - **验收**：`npx vitest run`（全量回归）+ 盘点清单入完成记录；发现真冲突 → 升级待澄清不硬落
 - **依赖**：T-P1-66 ~ 73 全部（本批最后一张）
-- **偏离 / 建议**：（留白）
-- **完成记录**：
+- **偏离 / 建议**：（无——六面盘点零真冲突）
+- **完成记录**：**六面盘点结论**：
+  ①**C11 出口降权 × C46/C35/C57 出口族——次序终局清单**：gate 出口串接 = C46（protectedPaths）→ C49（ceiling）→ C35（selfGuard）→ G7（planMode）→ C11（trustGate），revalidator 同位同序。全部是"无条件最严压过一切"的出口族——次序只影响 deny reason 的归属措辞，不影响裁决（任一出口 deny 即终局，语义域正交：路径面/文件面/来源上限/模式/信任）。终局清单：C46 保留元数据路径写、C35 权限配置/指令文件写（agent 发起）、G7 plan 写执行、C11 未信任写执行——规则/白名单/审批全部压不过。
+  ②**C12 ReadGate × B13 预算 × D15 幂等——失败三源分域**：ReadGate 失败（EDIT_WITHOUT_READ/STALE_READ）在写入前拒绝且**计入 B13 预算**（卡内定形：失败结果带 mutationPaths，反复"不读先改"撞预算终止是防循环的正确偏置；自修面 = 先 read）；B13 预算失败（重试超限 terminate）自修 = 换路径/问用户；D15 幂等 = 重试即新 callId 新调用、ReadGate 记账按 path 不按 callId（重试再次过校验，零重复副作用）。三源分域无冲突。
+  ③**C26 解析器 × C39 分型路由——职责边界**：解析器只拆文本形状（raw 权威/三态/legacy 展开/key:value 拆解），匹配器只做匹配（getSpecifierKind(call.tool) 路由、不重解析）——纯函数管道 raw → ParsedRulePattern → LoadedRule → matcher。literal 纯 key:value 的 argPattern 保留原文形仅作 fail-closed 载荷与回显，匹配消费走 plainSpecifier/toolParamMatchers 字段。无冲突。
+  ④**C34 trustGated × A2/A9 session-runtime——正交性**：trustGated 挂 ApprovalScopeCache（会话级、随会话灭）与 trustService 同生命周期；信任过滤在 session-approval evaluate 每次决策生效——粒度是工具调用（比轮细），轮内信任变化下一调用即生效，与 A2/A9 的轮级生命周期零交互。无冲突。
+  ⑤**C17 逃生舱 × C15 禁区——双向钉死**：正向 plugin 落流可用（合法载荷放行）；反向 ghost/event 恒拒（逃生舱只有一个）；C16 编译闸门同步（EVENT_TYPES 21 互差 never）；C15 语义澄清：插件只能经 plugin 槽位落流（namespace 区分来源），词汇表加新 type 仍是内核行为（走立案管线）。
+  ⑥**快照即规格**：`src/policy/project-trust.snapshot.test.ts`（项目信任降权全链一条：未信任出口压规则+trustGated 过滤 → declareTrusted 同链放行 → revoke 立刻再拦）。
+  **验收**：全量 `npx vitest run` → **957 passed / 1 skipped**（批次 7 收官 906 → 净增 51），`npx tsc --noEmit` 干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 838 链接 0 失效、`license-audit.sh` exit 0。
 
 ## 批次 8 完成定义
 
