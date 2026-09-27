@@ -64,6 +64,7 @@ import { PressureMonitor } from "../context/pressure.js";
 import { detectLocalOverflow } from "../context/overflow.js";
 import { startNewContextWindow } from "../context/new-window.js";
 import { RapidRefillGuard } from "../context/rapid-refill.js";
+import { currentWindow } from "../context/window.js";
 import { type BudgetConfig, RolloutBudget } from "../context/budget.js";
 import { assembleSystemPrompt } from "../context/system-prompt.js";
 import { loadSkills } from "./skills.js";
@@ -170,15 +171,6 @@ function resolveInitialIdentity(
     return ev.to;
   }
   return fallback;
-}
-
-/** 事件流中最新 compaction 的 seq（预算 windowId：压缩后即换窗）。 */
-function latestCompactionSeq(events: readonly SessionEvent[]): number | undefined {
-  let latest: number | undefined;
-  for (const e of events) {
-    if (e.type === "compaction") latest = e.seq;
-  }
-  return latest;
 }
 
 export interface ChildAssemblyOptions {
@@ -602,7 +594,10 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
   const wrapDecideTurn: ChildAssembly["wrapDecideTurn"] = (base) => async (record) => {
     if (budget && record.usage) {
       const exhausted = budget.recordUsage(record.usage);
-      const windowId = String(latestCompactionSeq(store.load(sessionId)) ?? 0);
+      // F25/T-P1-99：窗口身份经 currentWindow 推导（已结算压缩才换窗——
+      // started/failed 残留不换、revert 掉压缩窗口回退；M10"压缩后即换窗"
+      // 的派生串归一到 context/window.ts 单一实现位）。
+      const windowId = String(currentWindow(store.load(sessionId)).currentId);
       const reminder = budget.pendingReminder(sessionId, windowId);
       if (reminder) {
         const content =

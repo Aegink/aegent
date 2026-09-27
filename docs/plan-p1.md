@@ -1507,7 +1507,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 3. **词汇表预判两案**（接 #16 之后编号，执行中立案供追认、每案含回退面）：#17 = F26 compHash 载荷扩展；#18 = F11 strategy 值域扩 `recent_window_fallback` + failureReason 可选字段。其余卡零扩展（F25/F29/F18/F7/F30/J13/J16 全部零新事件零载荷）。
 4. **不做什么**（本批次）：不做 F6 提示缓存命中率统计面（批次 2 已落缓存锚检测，命中率可观测是 §6.2 真实厂商终验面）；不做 F16 缓存健康诊断（P2）；不做 J17 OAuth（P2）；不做 J5 第二厂商本体（待澄清 #16 未决）；不做 /compact 命令面与 CLI UX（trigger:"manual" 槽位兑现为引擎参数面）；不做健康探测定时调度（库 + 单次执行面，调度随真实消费方）；F8 裁剪不做"恢复原文"交互面（spill 指针已在位）。
 
-#### T-P1-99 · F25 · 上下文窗口编号化（窗口身份 first-class + M10 归一 + 恢复恒等） `[ ]`
+#### T-P1-99 · F25 · 上下文窗口编号化（窗口身份 first-class + M10 归一 + 恢复恒等） `[x]`
 - **依据需求**：F25（P1："上下文窗口编号化；压缩 = 开新窗口 + 持久化窗口元数据"；验收 `window_number` / `window_ids`）
 - **上游首选参考**：[codex·state/auto_compact_window.rs](../oss/codex/codex-rs/core/src/state/auto_compact_window.rs)（`AutoCompactWindowIds {first_window_id, previous_window_id, window_id}` + `window_number` 单调 + `advance()` 换窗推进 + `restore()` 恢复）+ [session/mod.rs:4502](../oss/codex/codex-rs/core/src/session/mod.rs#L4502)（`current_window()` → `{thread_id}:{window_number}`）
 - **取什么 / 别抄什么**：取"编号单调 + 三元组身份 + 恢复恒等"三形状；不抄 UUID now_v7 与 Rust state 机（我方窗口身份从事件流推导——压缩事件 seq 即窗 id，"持久化"半边由事件本体承载，展卡核对结论 ①）
@@ -1516,7 +1516,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **验收**：`npx vitest run src/context/window.test.ts src/kernel/assembly.test.ts`（扩）——①无压缩 → {number:0, currentId:0}；②N 次压缩 → number=N、三元组 = 各压缩 seq；③started/failed 不计数（切换权威同口径）；④revert 掉压缩 → 窗口身份回退（effectiveEvents 口径）；⑤M10 归一后预算提醒换窗重发行为零变化（既有用例全绿）；⑥同流推导恒等（restore 断言）
 - **依赖**：无（本批首卡）
 - **风险 / 未知**：currentId 用 seq（数值）而非 UUID——事件流内单调即全局唯一，UUID 无增量信息；窗口身份消费方目前只有预算提醒（F7 卡随后消费）
-- **完成记录**：
+- **完成记录**：2026-09-27。产出：①`src/context/window.ts`——`WindowIdentity {number, currentId, previousId?, firstId?}` + `currentWindow(events)` 纯函数推导（number = 已结算压缩数、currentId = 最新已结算 compaction 的 seq、first/previous 从压缩 seq 序列推导；只认 status 缺省/completed——new-window.ts 切换权威同口径；session/revert 生效时随 effectiveEvents 回退）；头注释收拢"持久化窗口元数据"半边的我方落法（压缩事件本体即元数据——seq 即窗 id、retainedTail 即窗界，不设第二元数据存储）。②assembly.ts:596 M10 预算 windowId 消费归一：`String(latestCompactionSeq ?? 0)` → `String(currentWindow(store.load(sessionId)).currentId)`；`latestCompactionSeq` 函数删除（本次修改产生的无效代码）。③恢复恒等断言落 window.test.ts（同流两次推导 + 重读新数组实例推导相等——流即状态，无显式 restore 调用）。验收：`npx vitest run src/context/window.test.ts` → **6 passed**：①无压缩 {number:0, currentId:0}；②3 次压缩 number=3、三元组 = 各压缩 seq；③started/failed 不计数不占三元组；④status 缺省旧流兼容口径；⑤revert 掉压缩窗口回退（targetSeq 之前 → 退回上一压缩）；⑥恢复恒等（同流两次 + 重读实例三次全等）。装配消费面回归：`npx vitest run src/kernel/loop.test.ts src/kernel/agent-process.test.ts src/cli/cli.test.ts src/context/budget.test.ts` → **86 passed**（M10 换窗重发语义零变化）。全量 `npx vitest run` → **1087 passed / 1 skipped**（批次 10 收官 1081 → 净增 6），`npx tsc --noEmit` 干净。偏离：①卡面验收所列 `src/kernel/assembly.test.ts` 不存在（装配预算路径无独立测试文件）——M10 语义由 budget.test.ts 单测承载（验收③"换窗后记账清零"等 9 用例全绿）+ 装配接线是一行等价改写 + 消费方四套件 86 用例全绿，替代覆盖记档；②"行为零变化"两处有意收紧（非等价场景、均为修正）：a) started/failed 崩溃残留下旧实现会把窗口 id 推到未结算压缩的 seq（换窗到"没有摘要的窗口"），新实现只认已结算——E17/T-P1-93 切换权威纪律的对齐；b) revert 掉压缩后旧实现窗口不回退（raw 流仍见被 revert 事件），新实现随有效视窗回退——new-window.ts"revert 即回到无压缩状态"口径对齐。
 
 #### T-P1-100 · F26+F29 · 压缩指纹（CompHashChanged）+ 换模压缩语义断言链 `[ ]`
 - **依据需求**：F26（P1："压缩结果带指纹（配置哈希），指纹变了重压"；验收 `CompHashChanged`）+ F29（P1："换模压缩语义：压缩请求跑在旧模型上、后续跑在新模型上"）
