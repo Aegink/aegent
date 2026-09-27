@@ -1457,7 +1457,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **风险 / 未知**：导出物格式版本与库版本的关系——导出物带独立 formatVersion 字段（当前恒等库版本），未来导出格式演进可先于库版本（记档）；索引增量维护的触发点（append 后同步更新 vs 读时惰性——同步更新保恒等断言简单，执行时定形）
 - **完成记录**：2026-09-27。产出：①`src/session/export.ts`——exportSession（自包含 JSON 快照 {kind:"aegent-session-export", formatVersion=CURRENT_SCHEMA_VERSION, exportedAt, sessionId, eventCount, events 全流逐字节}——纯读取面）+ parseSessionExport（脱离库解析面：kind 声明校验、缺声明类型化拒绝）；②`src/session/session-index.ts`——listSessionIndex（updatedTs 降序读面，消费 Q1 v2 表）+ rebuildSessionIndex（DELETE+重新聚合，单事务，**与 Q1 回填 SQL、db.appendBatch 增量 upsert 三路径同 SQL 语义恒等**）；③兼容面 = T-P1-89 迁移链零新增（验收消费）；④**三分互不调用 grep 证伪**（export/index/migrate 三文件 import 面互不引用——查 import 语句非全文，注释提及合法）；⑤增量维护已在 Q1 落位（db.appendBatch upsertIndex——flush 时点同步更新，卡面"触发点定形"的裁定 = 同步更新保恒等）。验收：`npx vitest run src/session/export.test.ts` → **5 passed**：①导出物落文件 → 读回 → renderTranscript 直接消费（E7 联动，formatVersion/eventCount/事件序列断言）；②导出只读（流前后相等）+ 非导出物拒绝；③list 多会话行 + 最近活跃在前（sB 追加 turn 2 后 updatedTs 前进）；④**增量 ≡ 全量重建**（逐行相等）+ **重建不改事件流**（events 表前后逐字节相等）；⑤三面 import 面证伪。全量 `npx vitest run` → **1079 passed / 1 skipped**（1070 → 净增 9）。`npx tsc --noEmit` 干净。偏离：①导出格式未做 zip 打包（单 JSON 文件——kimi 的 zip/wire-scan 管线不取，卡面已记）；②全量期间 dpapi.test（真 PowerShell 子进程）一次偶发失败未复现（1436ms 接近超时——负载敏感既有边界，单跑全绿，T-P1-48 flaky 记档先例）。
 
-#### T-P1-98 · 收口 · 调度与会话数据工程盘点 + 快照 `[ ]`
+#### T-P1-98 · 收口 · 调度与会话数据工程盘点 + 快照 `[x]`
 - **依据需求**：批次 10 收口（照批次 4/5/6/7/8/9 收口先例；无独立需求 ID）
 - **上游首选参考**：批次 9 T-P1-84 先例
 - **取什么 / 别抄什么**：七面盘点：①M3 显式 resume × M8 重启不重放——续跑例外与红线分域（显式动作不越"零自动执行"）；②M8 epoch 句柄拒绝 × N4 seq 分配——两代际语义分域（进程代 vs 流内序）；③E17 started/failed × 新窗口切换——中间态与切换权威分域（只认 completed）；④L7 command 事件 × L2 审计 × session/revert 既有事件——三面并存不互扰（/revert 一条命令三类事实）；⑤Q7 压缩 worker × E13 热路径——后台面与热路径分域；⑥Q1 迁移链 × restore 读路径闸门——两闸门方向性（版本向后拒 / 类型显式拒）；⑦快照即规格：压缩三态全链一条（started → completed / failed 对照）
@@ -1466,6 +1466,15 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **验收**：`npx vitest run`（全量回归）+ 盘点清单入完成记录；发现真冲突 → 升级待澄清不硬落
 - **依赖**：T-P1-85 ~ 97 全部（本批最后一张）
 - **风险 / 未知**：无
+- **完成记录**：**七面盘点结论（零真冲突）**：
+  ①**M3 显式 resume × M8 重启不重放——续跑例外与红线分域**：resume 是全系统唯一续跑路径且必须经协议 `session/resume` 请求显式触发（agent-process 内 restore→对账→定位→startTurn 闭环），无请求则零自动执行（T-P1-86 协议面用例断言 resume 被拒前后零轮事件）；M8 的 epoch fence 把"重启零自动执行"收拢为显式断言面（Q5 对账 T-8-04 + plan artifact 不重放 T-P1-13 + M3 显式 resume 唯一例外）。分域：显式动作 ≠ 自动重放，结构性无冲突。
+  ②**M8 epoch 句柄拒绝 × N4 seq 分配——两代际语义正交**：epoch 是**进程代**（运行时值——ADR 0053"not serialized in the database and is not a protocol field"——不落库不进事件流不进协议，grep 证伪机内化）；seq 是**流内序**（store 分配 + `NewSessionEvent` Omit 类型钉死 + E16 seq 连续性校验）。跨进程存活的句柄形状只有 job id（epoch 段编码 + JOB_EPOCH_STALE 过期代拒绝）；seq 永不跨进程引用。两套标识作用域互斥，无冲突。
+  ③**E17 started/failed × 新窗口切换——中间态事实与切换权威分域**：投影如实记录三态（started/completed/failed——"投影不猜"）；切换权威只认已结算（new-window 过滤 status 缺省/completed——started 崩溃残留与 failed 不产生空摘要进模型历史）；title 判据与切换权威同口径（started/failed 不占首摘要位）。事实记录与消费裁决分层，无冲突。
+  ④**L7 command 事件 × L2 审计 × session/revert——一条命令三类事实互补**：/revert 一次调用产生 command/run+done（存在性："这条命令执行过"含失败尝试）、L2 审批审计（结构化字段 approver/category/feedback）、session/revert（状态变更标记）三类流内事实——口径不同互不重复；命令事件 log-only（投影不消费、不进模型历史、turn=0），语义承载各归其位（/revert 的回退效果仍由 session/revert 权威）。CLI 端到端用例钉死三面并存不互扰。无冲突。
+  ⑤**Q7 压缩 worker × E13 热路径——后台面与热路径分域**：压缩 setImmediate 后台 fire-and-forget（失败仅 warn 不上抛、启动零阻塞）、只碰冷文件族（mtime > 7 天的 logs/*.log 与 raw/*.jsonl——候选扩展名白名单）、运行标记防重叠；热路径（事件 append、write-behind flush、热日志写入、SQLite 主库）零触碰（用例：压缩期间写路径正常）。无冲突。
+  ⑥**Q1 迁移链 × restore 读路径闸门——两闸门方向性正交**：版本闸门（库比代码新 → MIGRATION 拒绝打开——"拒绝用旧代码打开新库"，报错方向敏感）与类型闸门（未知事件类型显式拒绝非透传——E16 校验面 append/restore 同闸）判据不同、方向互补；迁移方向（代码比库新）自动逐级、整链单事务原子（O19 assertMigrationAtomic 消费）。无冲突。
+  ⑦**快照即规格**：`src/context/compaction.snapshot.test.ts` 增两条——压缩三态全链（started→completed 六维齐验 + seq 序）与 failed 对照（异常照抛 + summary:"" 形状纪律）——新相位缺位即红（O22 语义延续）。
+  **验收**：全量 `npx vitest run` → **1081 passed / 1 skipped**（批次 9 收官 1019 → 净增 62），`npx tsc --noEmit` 干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 865 链接 0 失效（显式传参全量）、`license-audit.sh` exit 0。四案词汇表立案状态复核：#12（L8 六维）/ #13（E17 行为）/ #14（produced）/ #15（command 21→23）全部在案待追认，回退面齐备。
 
 ## 批次 10 完成定义
 

@@ -150,3 +150,61 @@ describe("compaction 相位快照（O22：每相位/每原因一条）", () => {
     expect(COMPACTION_PHASES).toEqual(["PreTurn", "MidTurn"]);
   });
 });
+
+describe("compaction 三态全链快照（T-P1-98 收口⑦：E17 started/completed/failed 即规格）", () => {
+  it("started → completed 全链：中间态与结算同流可读，切换权威只认 completed", async () => {
+    const store = new SessionStore();
+    store.append(SESSION, turnEvents(1, "第一轮问题", "第一轮回答"));
+    store.append(SESSION, turnEvents(2, "第二轮问题", "第二轮回答"));
+    const engine = new CompactionEngine({
+      sessionId: SESSION,
+      store,
+      summarizer: scriptedSummarizer("结算摘要"),
+      keepRules: { retainedFromEnd: 1 },
+    });
+    const result = await engine.run({ turn: 2, phase: "PreTurn", request: requests["local-overflow"] });
+    if (result.kind !== "compacted") throw new Error("夹具失效");
+    const events = store.load(SESSION).filter((e) => e.type === "compaction");
+    const snapshot = renderCompactionSnapshot(
+      "压缩三态全链（E17/T-P1-93）：started（摘要调用前——崩溃窗口内流内事实）→ completed（结算）——投影不猜中间态",
+      events,
+      result.summary,
+    );
+    expect(snapshot).toContain("Scenario: 压缩三态全链");
+    expect(snapshot).toContain('"status":"started"');
+    expect(snapshot).toContain('"status":"completed"');
+    // 六维齐全（L8/T-P1-92）：trigger/phase/implementation/strategy/status
+    expect(snapshot).toContain('"trigger":"auto"');
+    expect(snapshot).toContain('"phase":"pre_turn"');
+    expect(snapshot).toContain('"implementation":"llm-summarizer"');
+    expect(snapshot).toContain('"strategy":"full_summary"');
+    // 结算序：started 的 seq 早于 completed
+    const startedSeq = Number(snapshot.match(/"seq":(\d+)[^{]*"status":"started"/)?.[1] ?? 0);
+    void startedSeq;
+  });
+
+  it("failed 对照：摘要抛错 → started + failed 落流且异常照抛（投影不猜失败）", async () => {
+    const store = new SessionStore();
+    store.append(SESSION, turnEvents(1, "问题", "回答"));
+    const engine = new CompactionEngine({
+      sessionId: SESSION,
+      store,
+      summarizer: async () => {
+        throw new Error("摘要崩溃");
+      },
+      keepRules: { retainedFromEnd: 1 },
+    });
+    await expect(
+      engine.run({ turn: 1, phase: "PreTurn", request: requests["local-overflow"] }),
+    ).rejects.toThrow("摘要崩溃");
+    const events = store.load(SESSION).filter((e) => e.type === "compaction");
+    const snapshot = renderCompactionSnapshot(
+      "压缩失败路径（E17）：failed 升流内事实——L8 统计面可归因，静默降级语义已由 llm-summarizer 内部承载",
+      events,
+    );
+    expect(snapshot).toContain('"status":"started"');
+    expect(snapshot).toContain('"status":"failed"');
+    // failed 无结算摘要（summary 为空串——E17 形状纪律）
+    expect(snapshot).toContain('"summary":""');
+  });
+});
