@@ -50,6 +50,13 @@ import { stripProposedAmendments } from "./review-decision.js";
 import type { PermissionBrokerPort } from "./broker.js";
 import { PermissionTimeout } from "./pending.js";
 import { isToolActiveComposed, type ToolActivationLayers } from "./tool-activation.js";
+import {
+  JudgeUnavailableError,
+  JUDGE_REVIEW_TIMEOUT_MS,
+  JudgeBudgetTracker,
+  type JudgePort,
+  type JudgeRequest,
+} from "./judge-port.js";
 
 /** gate 级拒绝的错误码（deny 或审批拒绝）；审批超时另见 PERMISSION_TIMEOUT。 */
 export const TOOL_POLICY_DENIED = "TOOL_POLICY_DENIED";
@@ -101,6 +108,17 @@ export interface ToolGateOptions extends ToolPolicyEvalOptions {
    * 规则照常）。每调用活查询；缺省 undefined = 零行为变化。
    */
   readonly unattended?: () => boolean;
+  /**
+   * C56 判官端口（T-P1-80）：ask 复核——allow 假阳性免挂起、deny 确定性
+   * 拒绝、abstain 落回 broker ask（**落回人，不隐式放行**）。预算由
+   * judgeBudget 记账（耗尽判官不被调直接落回 ask）。缺省 undefined =
+   * 无判官（零行为变化——P2 C42 本体落位前的端口位）。
+   */
+  readonly judge?: JudgePort;
+  /** C56 判官预算记账（judge 在位时配套；缺省每次调用新建临时记账）。 */
+  readonly judgeBudget?: JudgeBudgetTracker;
+  /** C56 受管强制位：true 且判官 abstain → 类型化失败（非静默落回人）。 */
+  readonly requireJudge?: boolean;
 }
 
 /** 一次 dry-run 求值的产物：剥提案后的参数、整链裁决与全程警告。 */
@@ -232,6 +250,63 @@ export function createToolGateLayer(
           reason: `无人值守：询问转为拒绝（原询问：${verdict.reason}）`,
         },
       };
+    }
+    // C56 判官复核（T-P1-80，ask 分支内——C42"贵路径修正便宜路径"的
+    // 接口面）：allow → 放行（假阳性免挂起，broker 零调用）/ deny →
+    // 类型化拒 / abstain → 落回 broker ask（**落回人，不隐式放行不隐式
+    // 拒绝**；requireJudge 强制位下类型化失败非静默）。预算耗尽 → 判官
+    // 不被调直接落回 ask（预算耗尽不放行）。判官本体在 P2 C42。
+    if (options.judge !== undefined) {
+      const judge = options.judge;
+      const budget = options.judgeBudget ?? new JudgeBudgetTracker();
+      if (budget.hasBudget()) {
+        const judgeRequest: JudgeRequest = {
+          tool: e.name,
+          args,
+          sessionId: options.sessionId,
+          askReason: verdict.reason,
+        };
+        budget.expend(JSON.stringify(judgeRequest).length);
+        let judgeOutcome: "allow" | "deny" | "abstain";
+        let judgeReason: string;
+        try {
+          const judgeVerdict = await Promise.race([
+            judge.review(judgeRequest),
+            new Promise<never>((_, reject) =>
+              setTimeout(
+                () => reject(new Error("判官复核超时")),
+                JUDGE_REVIEW_TIMEOUT_MS,
+              ),
+            ),
+          ]);
+          judgeOutcome = judgeVerdict.outcome;
+          judgeReason = judgeVerdict.reason;
+        } catch (error) {
+          // 超时/判官崩溃 = 不可用——按 abstain 语义处理（不隐式放行）
+          judgeOutcome = "abstain";
+          judgeReason =
+            error instanceof Error ? `判官不可用：${error.message}` : "判官不可用";
+        }
+        if (judgeOutcome === "allow") {
+          return next({ ...e, arguments: JSON.stringify(args) });
+        }
+        if (judgeOutcome === "deny") {
+          return deniedResult(
+            { action: "deny", reason: `判官拒绝：${judgeReason}` },
+            TOOL_POLICY_DENIED,
+          );
+        }
+        if (options.requireJudge === true) {
+          // 受管强制：判官 abstain/不可用 = 类型化失败，绝不静默落回
+          const unavailable = new JudgeUnavailableError(e.name);
+          return {
+            content: unavailable.message,
+            isError: true,
+            error: { name: "PolicyGate", code: unavailable.code, reason: judgeReason },
+          };
+        }
+      }
+      // 预算耗尽 / abstain（非强制）→ 落回 broker ask（人兜底）
     }
     // ask / abstain：abstain 按不变量 3 默认落 ask（C3 无规则默认询问）
     try {

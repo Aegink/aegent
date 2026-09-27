@@ -8,6 +8,7 @@ import { expectPaired } from "../test-support/event-asserts.js";
 import { DenyPermissionBroker, ManualPermissionBroker } from "./broker.js";
 import { PendingApprovals, PermissionTimeout, type ApprovalAnnouncement } from "./pending.js";
 import { createToolGateLayer, evaluateToolPolicy, TOOL_NOT_ACTIVE, TOOL_POLICY_DENIED } from "./gate.js";
+import { JudgeBudgetTracker, JUDGE_INPUT_BUDGET_CHARS } from "./judge-port.js";
 import { assemblePolicyChain } from "./chain.js";
 import { builtinRuleMatchers } from "./matchers.js";
 import { loadedRuleMatch, loadRules } from "./rule-loader.js";
@@ -698,5 +699,141 @@ describe("C52 · modifiedInput 应用与出口族重跑（T-P1-79）", () => {
     expect(result.isError).toBe(true);
     expect(result.content).toContain("修改后参数被出口族拒绝");
     expect(result.content).toContain(".git");
+  });
+});
+
+describe("C56 · 判官复核接线：allow/deny/abstain/预算/强制位（T-P1-80）", () => {
+  function makeJudgeHarness(
+    script: Array<{ outcome: "allow" | "deny" | "abstain"; reason: string }>,
+    extra?: { requireJudge?: boolean; budget?: JudgeBudgetTracker },
+  ) {
+    const judgeCalls: Array<{ tool: string; askReason: string }> = [];
+    const judge = {
+      name: "fake-judge",
+      review: async (request: { tool: string; askReason: string }) => {
+        judgeCalls.push({ tool: request.tool, askReason: request.askReason });
+        return script[Math.min(judgeCalls.length - 1, script.length - 1)]!;
+      },
+    };
+    const pending = new PendingApprovals();
+    const broker = new ManualPermissionBroker(pending, 5_000);
+    const layer = createToolGateLayer({
+      chain: assemblePolicyChain({ user: [rulesModule([["ask", "bash(git *)"]])] }),
+      broker,
+      sessionId: "s1",
+      judge,
+      ...(extra?.budget !== undefined ? { judgeBudget: extra.budget } : {}),
+      ...(extra?.requireJudge !== undefined ? { requireJudge: extra.requireJudge } : {}),
+    });
+    const received: ToolCallPayload[] = [];
+    const next = makeNext(async (e2) => {
+      received.push(e2);
+      return { content: "executed" };
+    });
+    return { layer, next, received, pending, judgeCalls };
+  }
+
+  it("判官 allow → 放行（broker 零调用、无挂起——假阳性免问人）", async () => {
+    const { layer, next, received, pending, judgeCalls } = makeJudgeHarness([
+      { outcome: "allow", reason: "只读操作" },
+    ]);
+    const result = await layer(
+      { sessionId: "s1" },
+      payload({ command: "git status" }, "j-allow"),
+      next,
+    );
+    expect(result).toEqual({ content: "executed" });
+    expect(judgeCalls).toHaveLength(1);
+    expect(judgeCalls[0]!.tool).toBe("bash");
+    expect(judgeCalls[0]!.askReason).toBeTruthy();
+    expect(pending.listPending()).toHaveLength(0);
+    expect(received).toHaveLength(1);
+  });
+
+  it("判官 deny → 类型化拒（reason 带判官标记），broker 零调用", async () => {
+    const { layer, next, received, pending } = makeJudgeHarness([
+      { outcome: "deny", reason: "删除模式" },
+    ]);
+    const result = await layer(
+      { sessionId: "s1" },
+      payload({ command: "git push" }, "j-deny"),
+      next,
+    );
+    expect(received).toHaveLength(0);
+    expect(result.isError).toBe(true);
+    expect(result.content).toContain("判官拒绝");
+    expect(pending.listPending()).toHaveLength(0);
+  });
+
+  it("判官 abstain → 落回 broker ask（落回人不隐式放行）", async () => {
+    const { layer, next, received, pending } = makeJudgeHarness([
+      { outcome: "abstain", reason: "拿不准" },
+    ]);
+    const pendingAsk = layer(
+      { sessionId: "s1" },
+      payload({ command: "git push" }, "j-abstain"),
+      next,
+    );
+    await waitUntilRegistered(pending, "j-abstain");
+    await pending.reply("j-abstain", { action: "allow" });
+    expect(await pendingAsk).toEqual({ content: "executed" });
+    expect(received).toHaveLength(1);
+  });
+
+  it("预算耗尽 → 判官不被调直接落回 ask（预算耗尽不放行）", async () => {
+    const budget = new JudgeBudgetTracker();
+    budget.expend(JUDGE_INPUT_BUDGET_CHARS);
+    const { layer, next, received, pending, judgeCalls } = makeJudgeHarness(
+      [{ outcome: "allow", reason: "不该被调" }],
+      { budget },
+    );
+    const pendingAsk = layer(
+      { sessionId: "s1" },
+      payload({ command: "git push" }, "j-budget"),
+      next,
+    );
+    await waitUntilRegistered(pending, "j-budget");
+    expect(judgeCalls).toHaveLength(0);
+    await pending.reply("j-budget", { action: "allow" });
+    expect(await pendingAsk).toEqual({ content: "executed" });
+  });
+
+  it("requireJudge 强制位：判官 abstain → 类型化失败（JUDGE_UNAVAILABLE，非静默落回）", async () => {
+    const { layer, next, received, pending } = makeJudgeHarness(
+      [{ outcome: "abstain", reason: "拿不准" }],
+      { requireJudge: true },
+    );
+    const result = await layer(
+      { sessionId: "s1" },
+      payload({ command: "git push" }, "j-force"),
+      next,
+    );
+    expect(received).toHaveLength(0);
+    expect(result.isError).toBe(true);
+    expect((result.error as { code: string }).code).toBe("JUDGE_UNAVAILABLE");
+    expect(pending.listPending()).toHaveLength(0);
+  });
+
+  it("缺省（judge 缺席）：ask 照常走 broker——零行为变化", async () => {
+    const pending2 = new PendingApprovals();
+    const broker = new ManualPermissionBroker(pending2, 5_000);
+    const layer2 = createToolGateLayer({
+      chain: assemblePolicyChain({ user: [rulesModule([["ask", "bash(git *)"]])] }),
+      broker,
+      sessionId: "s1",
+    });
+    const received2: ToolCallPayload[] = [];
+    const next2 = makeNext(async (e2) => {
+      received2.push(e2);
+      return { content: "executed" };
+    });
+    const pendingAsk = layer2(
+      { sessionId: "s1" },
+      payload({ command: "git push" }, "j-default"),
+      next2,
+    );
+    await waitUntilRegistered(pending2, "j-default");
+    await pending2.reply("j-default", { action: "allow" });
+    expect(await pendingAsk).toEqual({ content: "executed" });
   });
 });
