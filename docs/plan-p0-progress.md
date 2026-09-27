@@ -1318,3 +1318,67 @@ docs/plan-p0.md §0）。上一批（批次 8）报告在 docs/plan-p0-progress.
 4. 全量基线 957 passed / 1 skipped。收官照批次 8 先例出组报告，更新
    本文件的批次 10 提示词与全量基线后停止——不要开始批次 10。
 ```
+
+
+## 批次 9 报告（完成于 2026-09-27）
+
+- **打勾情况**：10 / 10（T-P1-75 ~ T-P1-84 全部完成，无未完成项）——**P1 批次 9 全部收官**（9 条需求 ID：C6/C19/C25/C30/C33/C37/C52/C54/C56 全实卡 + 收口卡；本会话自展卡——9 条锚点逐一开文件核实**零内容勘误**——再执行，一会话一批次模式兑现）。逐卡验收命令与结果见 `plan-p1.md` 各卡「完成记录」。
+- **展卡结论**：批次 8 报告遗留的 5 条预判全部成立——C6 ← N6 通道在位（owner-port respond_permission 闭集）；C30 守卫重跑 ← C57 在位（revalidate）；C33 ← C3 默认 ask 在位（不变量 3）；C37 × D3 网络策略联动（NetworkGuard 唯一入口在位）；C56 判官四件套不做本体先行（C42/C55 接口面已备，假判官测试承载验收）。
+- **产出的文件**：
+  - `src/policy/gate.ts` 扩——evaluateToolPolicy 独立求值函数（C19 dry-run 面）+ enforceExitFamily 出口族唯一实现位（三处消费：执行/dry-run/modifiedInput 重跑）+ 激活检查首步（C25）+ unattended 转换（C33）+ 判官复核（C56）+ modifiedInput 应用（C52）+ category 打标（C54）——T-P1-75/76/77/78/79/80
+  - `src/policy/tool-activation.ts` + 测试新建——四层 {enabled?, disabled?} AND 激活层 + isToolActiveComposed（kimi 同名意图）——T-P1-76
+  - `src/policy/judge-port.ts` + 测试新建——JudgePort 三值闭集（abstain 显式）+ JUDGE_INPUT_BUDGET_CHARS/JUDGE_REQUESTS_PER_SESSION 双面预算 + JudgeBudgetTracker + JUDGE_REVIEW_TIMEOUT_MS=90s（刻意宽松理由注释）+ JudgeUnavailableError——T-P1-80
+  - `src/policy/pending.ts` 扩——ApprovalCategory 五类闭集（tool/question/task/elicitation/hook-review）+ category 必填 + 关类自动拒绝（APPROVAL_CATEGORY_CLOSED，settled 宣告+墓碑）+ ApprovalReply +modifiedInput/source + ApprovalAnswer 类型（Verdict & modifiedInput）+ ApprovalReplyMalformedError——T-P1-78/79/82
+  - `src/policy/audit-fields.ts` 扩——ApprovalAuditRecord +replySource（C6 答复端审计）——T-P1-82
+  - `src/sandbox/network.ts` 扩——IMDS_HOSTS 四主机闭集 + isImdsTarget（IPv6 方括号 + 链路本地前缀）+ NetworkImdsDeniedError + guard.fetch 黑名单面（独立于档位，URL 解析失败 fail-closed）——T-P1-83
+  - `src/kernel/tools/builtin/webfetch.ts` 扩——NetworkImdsDeniedError instanceof 分支透传类型化 code——T-P1-83
+  - `src/kernel/agent-protocol.ts` 扩——AgentRequest +policy/check、+approve modifiedInput/source；AgentMessage +policy_verdict、+approval_requested category——T-P1-75/79/82
+  - `src/kernel/agent-process.ts` 扩——policy/check 分支（dry-run 裁决回执不落流）+ approve 透传 + unattended 活查询接 configStore（configStore 构造前移）——T-P1-75/77/79/82
+  - `src/kernel/assembly.ts` 扩——policyEvalOptions 产物（C19 同链保证）+ activation/unattended 装配选项 + handleApprove 尾参 modifiedInput/source——T-P1-75/76/77/79/82
+  - `src/kernel/session-config.ts` 扩——REFRESHABLE_CONFIG_KEYS +unattended（布尔 knob）+ getter——T-P1-77
+  - `src/session/owner-port.ts` 扩——OwnerCommand +respond_permission_batch（C30 批量闭集扩展）+ BatchDecisionResult 逐项结果 + requestOwnerCommand 返回 Promise<unknown>——T-P1-81
+  - `src/cli/repl.ts` 扩——/check（dry-run 端到端）+ /unattended on|off（config/refresh knob）+ /approve --args（modifiedInput）+ policy_verdict 渲染 + approval_requested 帮助行同步——T-P1-75/77/79
+  - `src/policy/approval-cross-surface.snapshot.test.ts` 新建——场景③跨端回转全链快照 + 反例——T-P1-84
+- **验收台账**：10 卡 10 命令全部通过（plan-p1.md 卡面完成记录）；全量 `npx vitest run` **1019 passed / 1 skipped**（批次 8 收官 957 → 净增 62），`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 1061 链接 0 失效（显式传参全量）、`license-audit.sh` exit 0
+- **词汇表扩展**：**零**（21 事件不变——审批/问答面全部经 PendingApprovals 宣告回调与协议消息承载，不进事件流；协议面载荷扩展（policy/check、policy_verdict、approval_requested+category、approve+modifiedInput/source）属协议消息形状，随卡同步 decode 校验并记档）。展卡预判兑现。
+- **七面盘点零真冲突**（T-P1-84 完成记录全文）：①dry-run × C57（同函数不同调用点——查询面 vs 执行面）；②激活失败/拒绝/无人值守三档语义分域与终局检查次序（激活首步→求值→出口族→unattended→判官→broker，四类错误码正交可路由）；③关类 × C3（配置面覆盖 ask 结局，关的是"问"不是"允许"，不变量 3 保持）；④modifiedInput × 五出口族（**出口族清单演进：串联提取 enforceExitFamily 唯一实现位，今后任何出口级硬拦必须进该函数**——结构性防止新出口面漏接重跑）；⑤判官 × unattended 组合次序定形（无人值守时判官复核不发生——判官 allow 会绕过无人值守语义）；⑥C37 黑名单 × D3 档位（防护面独立于策略面，双层网络语义）；⑦场景③跨端回转全链快照一条。
+- **新发现的约束或坑**：
+  - **heredoc 中文内容经 bash cat 追加大段文档会被截断**（Git Bash 环境）：卡序落盘时 heredoc 警告"delimited by end-of-file"且只写入一半——改用 Write 工具写临时文件再 cat 拼接可靠；同理测试代码含模板字符串/反引号时 heredoc 有转义风险，python 注入或 Edit 工具更稳。
+  - **类型必填字段演进的编译器驱动面**：ApprovalRequest.category 落必填后 tsc 一次性列出全部发起面（含 bash.ts 沙箱升级审批这一非显性调用方）——"必填 + 编译器枚举"比"可选字段 + 文档约定"更能防漏打标。
+  - **协议回执的专用变体纪律**：dry-run 裁决不落事件流（不是状态变更）——config_refreshed 同款专用回执变体（policy_verdict）是正确落法，复用 event 通道会在历史里留下从未发生过的裁决。
+  - **门面重复声明笔误**：agent-protocol.ts 的 `reverted` 变体存在相邻重复声明（历史笔误，联合类型允许不报错）——已文字记档（T-P1-75 偏离④），不在功能卡顺手改（AGENTS.md §4），待后续清理批次。
+- **偏离计划的地方**：逐卡详见卡面完成记录（T-P1-75 协议双变体扩展 + abstain≠ask 回执口径统一映射"ask"；T-P1-76 wildcardMatch 替代 picomatch + 激活/dry-run 两面分离；T-P1-77 unattended 走 config/refresh knob 不新增协议命令；T-P1-78 category 必填 + 关类留墓碑；T-P1-79 ApprovalAnswer 不污染 Verdict + deny 携带类型化拒绝；T-P1-80 race 超时按 abstain 语义；T-P1-81 requestOwnerCommand 放宽返回 + fallback 双通道；T-P1-82 source 自由文本不进 surface 闭集；T-P1-83 collaborator 不可枚举记档 + 解析失败 fail-closed）。
+- **遗留风险与未知**（→ 人工确认清单批次 9 行）：
+  - C54 分类开关的**配置面暴露**：PendingApprovals 构造参数已备（categoryConfig），assembly/CLI 的用户配置接线随真实配置需求（YAGNI 记档）；elicitation/hook-review 两类预留无发起方
+  - C56 判官预算的**装配级持久记账**：judgeBudget 缺省每次调用新建临时记账（无跨调用累积）——会话级持久记账随 C42 本体批次（P2）
+  - C37 的 **bash/curl 面**与 **DNS 重绑定**不在本卡（OS 层 D16 在位 / 无 DNS 管线，卡内记档为已知边界）；collaborator 式回调服务不可枚举
+  - C30 的**协议批量变体**（approve_batch）未落——N6 进程内闭集已备，CLI 批量 UI 随真实需求
+  - C6 的**多端并发 holder**（N7 roster）与 lease 移交间隙的审批可见性——批次 12 多端架构承载
+  - agent-protocol.ts **reverted 变体重复声明**笔误（待清理批次顺手修）
+- **批次完成定义核对**：10 卡打勾附验收 ✓；tsc 干净 ✓；count-features 310 ✓；check-doc-links 1061 链接 0 失效 ✓；license-audit 通过 ✓；词汇表零扩展（21 事件不变）✓；出口族红线（C52 重跑 + enforceExitFamily 唯一实现位纪律）✓；审批语义分域落报告 ✓；七面盘点零真冲突 ✓
+- **下一批**：**批次 10 调度与会话数据工程（15 条：M1 M2 M3 M8 + E7 E8 E14 E15 E17 E18 + Q1 Q7 + N4 + L7 L8）**——未展卡，下一会话先展卡（锚点核对 + 卡序落 plan-p1.md）再执行，做完收官即停
+- **下一批提示词**：
+
+```
+继续 aegent P1 批次 10 的实施（调度与会话数据工程；15 条需求 ID：M1 M2
+M3 M8 + E7 E8 E14 E15 E17 E18 + Q1 Q7 + N4 + L7 L8）。推进模式已改：
+一会话一批次——本会话只做批次 10，做完收官即停，批次 11 由下一会话
+接力。批次 10 尚未展卡：先照批次 7/8/9 展卡先例逐条锚点核对
+requirements.md §4（把卡序追加进 docs/plan-p1.md，展卡核对结论落卡序
+头），再从第一张 [ ] 任务卡开始执行（执行协议沿用 docs/plan-p0.md §0）。
+上一批（批次 9）报告在 docs/plan-p0-progress.md。
+本批特有的注意：
+1. 依赖预判（圈定研究）：M1/M2 job 底座 → M3 崩溃续跑（同批内依赖
+   序）；M8 epoch ← G4 遗留收口（T-P1-13 的 plan artifact 重启不重放）；
+   E15 合并器 ← E3（在位）；Q1 迁移链 ← E2 在位 + O19 迁移断言基建
+   （T-P1-36 已落"真实 v0→vN 迁移链批次 10 Q1 落地"的消费方记档）；
+   N4 epoch 为批次 12 多端打底。
+2. 词汇表影响预判"中"——E17 中间态事件、L8 compaction 载荷扩 6 维、
+   N4 epoch 载荷三处候选；每处新增事件/载荷扩展仍走待澄清立案管线
+   （词汇表现为 21 事件，#9/#10/#11 三案已全部转正），新案照旧立案供
+   追认；批次 9 零扩展（协议面载荷扩展不进事件流的先例可参考）。
+3. 展卡注意：M8/G4 遗留与 Q1/O19 消费记档是本批两条"接旧账"线——
+   展卡时先核对 plan-p1.md 对应卡的遗留记档再定卡。
+4. 全量基线 1019 passed / 1 skipped。收官照批次 8/9 先例出组报告，
+   更新本文件的批次 11 提示词与全量基线后停止——不要开始批次 11。
+```
