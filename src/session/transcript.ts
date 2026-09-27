@@ -66,6 +66,12 @@ export type TranscriptEntry =
       phase: "revert" | "undo";
     }
   | {
+      kind: "offload";
+      seq: number;
+      /** 被卸载出现清单（seq + 下标——与 image/offload.targets 同构）。 */
+      targets: { seq: number; imageIndexes: number[] }[];
+    }
+  | {
       kind: "command";
       seq: number;
       phase: "run" | "done";
@@ -158,6 +164,11 @@ export function renderTranscript(events: readonly SessionEvent[]): TranscriptEnt
           phase: event.phase,
         });
         break;
+      case "image/offload":
+        // P2/T-P1-125：卸载决策是流内容量事实（与 compaction/revert 同级）——
+        // 检视面必须可见（否则"模型为什么没收到图片"不可追溯）
+        entries.push({ kind: "offload", seq: event.seq, targets: event.targets.map((t) => ({ seq: t.seq, imageIndexes: [...t.imageIndexes] })) });
+        break;
       case "command/run":
         entries.push({
           kind: "command",
@@ -182,7 +193,8 @@ export function renderTranscript(events: readonly SessionEvent[]): TranscriptEnt
         // 噪声不产生条目：step/*（编排）、request/header（请求元）、
         // assistant/attempt 与 retrying（provider 失败域）、tool/progress
         // （瞬态进度）、checkpoint/model/switch/todo/goal/fork/plugin
-        // （域事实——UI 检视随 K 层，YAGNI 记档）
+        // （域事实——UI 检视随 K 层，YAGNI 记档）；image/offload 产生条目
+        // （T-P1-127 收口盘点⑦——容量决策事实与 compaction 同级可见）
         break;
     }
   }

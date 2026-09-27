@@ -116,3 +116,30 @@ describe("renderTranscript（E7/T-P1-96 会话记录检视面）", () => {
     expect(imports).toEqual(['from "../kernel/events.js"']);
   });
 });
+
+describe("transcript × image/offload（P2/T-P1-125，T-P1-127 盘点⑦增补）", () => {
+  it("卸载决策产生条目（容量事实可见——与 compaction 同级）", () => {
+    const events = [
+      { type: "turn/start", seq: 1, ts: 0, turn: 1 },
+      {
+        type: "user/message",
+        seq: 2,
+        ts: 0,
+        turn: 1,
+        message: { content: "看图" },
+        source: "user",
+        attachments: [{ attachmentId: "a1", mediaType: "image/png", size: 100 }],
+      },
+      {
+        type: "image/offload",
+        seq: 3,
+        ts: 0,
+        turn: 1,
+        targets: [{ seq: 2, imageIndexes: [0] }],
+      },
+    ] as unknown as Parameters<typeof renderTranscript>[0];
+    const entries = renderTranscript(events);
+    const offload = entries.find((e) => e.kind === "offload");
+    expect(offload).toEqual({ kind: "offload", seq: 3, targets: [{ seq: 2, imageIndexes: [0] }] });
+  });
+});

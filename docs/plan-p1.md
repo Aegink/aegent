@@ -1901,7 +1901,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **风险 / 未知**：request/header 与 step 的对应粒度（一 step 一 header、series 值区分同轮多 step——卡内定形）
 - **完成记录**：2026-09-28。产出：`src/obs/replay.ts`——`replaySession(events)` 纯函数（`src/obs/` 观测域第二个纯读投影——compaction-stats/usage 先例）：**逐请求**条目（request/header 的流内事实 → 请求/响应对）`ReplayEntry {turn, step?, reason, identity, messages, tools?, response?}`——messages = buildChatMessages(events, {upToSeq: header.seq})（该请求发出时刻的模型可见序列——E15"派生以组装事件为准"，与 loop/压缩/新窗口三消费方同源不漂移）；identity 从 header.config 二元组；response = 同 (turn,step) 的 assistant/message 回填（content + toolCalls 按 callId 归属 + usage）；**step 可选**（compaction 副调用 header 无 step 语境——reason:"compaction" 区分，F5/T-P1-18 词汇复用）；header.tools 携带时透传（toolsProvider 现取的运行时清单不在流内——记档）。与 E7 transcript 分工记档兑现（transcript=人类检视条目流、replay=请求级调试/审计事实）；bundle 三件套不取记档兑现（L1 事件即轨迹——流本身是原始轨迹）；codex"observe first, interpret later"同构兑现（重放零热路径改动）。测试 6 用例：逐请求重建（messages 与 buildChatMessages upToSeq 严格一致 + series 区分同轮多请求）/工具调用归属（response.toolCalls 与 tool/call 同 step 对应 + usage 回填）/多轮流序/revert 视窗贯穿（resume 请求只看到有效视窗消息）/纯读面（输入流零改写快照断言）/EVENT_TYPES 26 零扩展复核。**测试抓出首版缺陷**：ReplayEntry.step 必填与 header 类型可选冲突（compaction 副调用无 step 语境）——改可选 + 条件展开。验收：`npx vitest run src/obs/replay.test.ts` → **6 passed**；全量 `npx vitest run` → **1282 passed / 1 skipped**（1276 → 净增 6，144 文件）；`npm run check` tsc 干净。**记档**：重放请求消息不含图片字节（流存引用不存字节——P1 纪律；ref 事实在 user/message 载荷可查）；压缩换载荷的装配层偏差（startNewContextWindow 在装配层换摘要载荷——重放是流派生语义非逐字节 wire 重演，header reason 可区分）——两偏差均为"流内事实 vs 运行时装配"的诚实边界，非缺口。
 
-#### T-P1-127 · 收口 · 多模态与工程纪律盘点 + 快照 `[ ]`
+#### T-P1-127 · 收口 · 多模态与工程纪律盘点 + 快照 `[x]`
 - **依据需求**：批次 13 收口（照批次 4~12 收口先例；无独立需求 ID）
 - **上游首选参考**：批次 12 T-P1-120 先例
 - **取什么 / 别抄什么**：八面盘点：①T1 架构检查 × 既有结构断言（acp ≤8 文件 / cli 零 import / fs 扫描）——两套检查并存或收编的裁决；②T5/T6 深度上限 × C17 JsonValue 校验语义——受控拒绝 vs 失控异常分界（展卡结论⑥的执行验证）；③P2 image/offload × F26 压缩指纹——卸载改变请求面 → 指纹变化的单边界语义；④P2 卸载 × E17 压缩——两容量维度并存对照（dsh"compaction in another capacity dimension"同构）；⑤P1 附件 × 流轻量纪律——引用落流字节落 store、重建路径完整性（恢复/fork/回放三路 resolver 注入）；⑥ChatImage × 两适配器 wire 映射——openai/anthropic 块形状漂移防线；⑦L4 replay × E7 transcript × messages.ts——三读面同源 buildChatMessages 不漂移；⑧快照即规格：附件全链一条（附件入 → 落流 ref → 请求含图片 → 卸载 → 请求占位 → 回取原字节）或 --changed 检查一条
@@ -1910,6 +1910,17 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **验收**：`npx vitest run`（全量回归）+ 盘点清单入完成记录；发现真冲突 → 升级待澄清不硬落
 - **依赖**：T-P1-121 ~ 126 全部
 - **风险 / 未知**：无
+- **完成记录**：2026-09-28。**八面盘点结论（零真冲突）**：
+  ①**T1 架构检查 × 既有结构断言——两套并存不收编**：acp ≤8 文件/cli 零 import（T-P1-117，acp.test fs 扫描）是"独立包"验收的**域内文件结构红线**；architecture:check 是**域间依赖契约**（requires 白名单/环/深导入/行数）——不同抽象层级。收编需 policy 扩 per-module maxFiles 粒度（无消费方，YAGNI 记档）。本批两次活演示检查器已履职：attachments 新域未入册当场抓出（T-P1-124）、offload.ts 跨域 import 违规与全 managed 环风险当场抓出（T-P1-125）——T1"落地后反哺展卡纪律"原文兑现。
+  ②**T5/T6 深度上限 × C17 JsonValue 校验——受控/失控分界执行验证**：MAX_JSON_DEPTH=512 超限走 ProjectError（显式错误标志），失控 RangeError 需 ~8400 层（实测）——512 远低于崩溃点，负例测试钉死（600 层受控拒绝/20 万层构造器名断言/上限内 500 层通过）。"受控类型化拒绝非 T6 禁止对象"定形执行一致。
+  ③**P2 image/offload × F26 压缩指纹——正交**：compHash 指纹描述"本次压缩的配置面"（events.ts 注释原文——model/设置面，不含消息内容）；卸载是消息面事实（占位行追加改变 token 计数 → pressure/溢出面自然感知）——卸载不触发也不干扰 comp_hash_changed；两容量维度机制分域（事件分立：compaction vs image/offload）。
+  ④**P2 卸载 × E17 压缩——投影同屏消费次序一致**：buildChatMessages = effectiveEvents（revert 视窗）→ coalesce → 卸载预扫 → upToSeq 遍历——压缩摘要覆盖区间内的被卸消息随摘要整体消失（摘要替代原文，卸载占位行不溢出摘要边界）；dsh"compaction in another capacity dimension"同构对照成立，两维度事件分立无语义交叠。
+  ⑤**P1 附件 × 流轻量纪律——重建三路路径完整**：恢复 = 流重放 + resolveImage 注入（loop deps.attachmentStore）；fork = 流复制引用随流走（attachmentId 全局唯一——store 进程内共享）；回放（L4）= 无字节诚实边界（重放请求消息不含图片字节——流内本无字节，ref 事实可查）。"流存引用不存字节"全链贯彻（wire→store→ref 落流→投影 resolver）。
+  ⑥**ChatImage × 两适配器 wire 映射——测试钉死漂移防线**：openai content 数组（text + image_url data URL）/anthropic content blocks（text + image source base64）各一个 wire 断言用例（provider.test/anthropic-messages.test）；无 images 纯字符串零变化两侧行为一致。
+  ⑦**L4 replay × E7 transcript × messages.ts——三读面同源 + 一致性增补**：replay（请求级 upToSeq）/transcript（人类条目流）/messages（loop 投影）三面同源 buildChatMessages 不漂移；**收口增补**：transcript.ts 的 default 分支原会吞掉 image/offload——卸载是流内容量决策事实（与 compaction/revert 同级），缺失会让"模型为什么没收到图片"不可追溯——补 `kind:"offload"` 条目 + 测试（检视面一致性修复）。
+  ⑧**快照即规格——既有断言即规格**（T-P1-120 先例）：附件全链已分段钉死——attach→落流 ref（agent-process.test 端到端）→请求含图片（provider/anthropic wire 断言）→卸载（offload.test 校验闭面+投影占位）→请求占位无字节（offload.test 机验面）→回取原字节（attachments.test store 往返）；T1 的 --changed 检查（architecture-check.test）；无新增快照测试必要。
+  **词汇表立案状态复核**：#20（user/message +attachments 载荷扩展，计数 25 不变）与 #21（image/offload 25→26）均在案待追认（progress 待澄清表 + l0-events.md §8 落地记录 20/21 同步）；#19 已追认转正（批次 12 遗留——l0-events.md §8 记录 19 与 §3.2 计数 25 本会话开局核实）。当前词汇表正式计数 **26 事件**。
+  **终验收**：全量 `npx vitest run` → **1283 passed / 1 skipped**（批次 12 收官 1239 → 净增 44，144 文件；全量期间 retry.test/http-mock 各复现 1 次 flaky——隔离复跑全绿，人工确认清单在案同形态非本批引入面）；`npm run check` tsc 干净；`bash tools/count-features.sh` = **310 不变**（P0=104/P1=158/P2=48）；`bash tools/check-doc-links.sh`（显式传参 10 文件含新增 vocabulary 三件）= **736 链接 0 失效**；`bash tools/license-audit.sh` exit 0；`node tools/architecture-check.mjs` 0 error / 21 warning（渐进基线：20 存量行数 + 1 存量环 context↔kernel↔lsp↔models↔policy↔sandbox↔session）；`node tools/vocabulary-check.mjs` 3 文件 0 问题。
 
 ## 批次 13 完成定义
 
