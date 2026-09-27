@@ -52,16 +52,28 @@ export interface SurfaceHandle {
 
 export type LeaseListener = (heldBySurfaceId: string | undefined) => void;
 
+/** 连接生命周期变更（N8 roster 落流面——AgentHost 转成 surface/attach|detach 事件）。 */
+export interface SurfaceLifecycleChange {
+  readonly op: "attach" | "detach";
+  readonly surfaceId: string;
+  readonly deliveryKind?: DeliveryKind;
+  readonly reason?: string;
+}
+
 /**
  * 每会话一个的 surface 连接面（AgentHost 的成员——连接即租约候选，
  * "每个界面是一个 host"）。租约序号令牌语义沿用 owner-port：旧句柄在
  * 租约被释放并重新获取后即失效。
+ * onLifecycle：连接建立/断开的生命周期回调（N8/T-P1-114 落流面——AgentHost
+ * 把变更转成 surface/attach|detach 事件 emit，由装配方订阅 append 落流）。
  */
 export class SurfaceHub {
   private leaseOwnerId: string | undefined;
   private leaseId = 0;
   private readonly connections = new Map<string, SurfaceHandleInternal>();
   private readonly leaseListeners = new Set<LeaseListener>();
+
+  constructor(private readonly onLifecycle?: (change: SurfaceLifecycleChange) => void) {}
 
   /** 建立一个 surface 连接（同 surfaceId 重复连接拒绝）。 */
   connect(surfaceId: string, deliveryKind: DeliveryKind): SurfaceHandle {
@@ -77,9 +89,11 @@ export class SurfaceHub {
         if (!this.connections.has(surfaceId)) return;
         this.connections.delete(surfaceId);
         if (this.leaseOwnerId === surfaceId) this.releaseInternal();
+        this.onLifecycle?.({ op: "detach", surfaceId, reason: "disconnected" });
       },
     };
     this.connections.set(surfaceId, handle);
+    this.onLifecycle?.({ op: "attach", surfaceId, deliveryKind });
     return handle;
   }
 

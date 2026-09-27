@@ -352,6 +352,31 @@ export class Projector {
           throw new ProjectError("command/done 的 text 须为字符串");
         }
         break;
+      case "surface/attach":
+        // N8/T-P1-114 surface roster 生命周期（log-only 会话级元事件）：
+        // surfaceId 非空（端标识可检索）；deliveryKind 闭集（N7 投递方式）。
+        if (typeof event.surfaceId !== "string" || event.surfaceId === "") {
+          throw new ProjectError("surface/attach 需要 surfaceId 非空字符串");
+        }
+        if (
+          event.deliveryKind !== undefined &&
+          event.deliveryKind !== "push" &&
+          event.deliveryKind !== "poll"
+        ) {
+          throw new ProjectError(
+            `surface/attach 的 deliveryKind 非法：${String(event.deliveryKind)}（合法：push|poll）`,
+          );
+        }
+        break;
+      case "surface/detach":
+        // detach 结算：surfaceId 非空 + reason 可选字符串（断线/主动/顶替）。
+        if (typeof event.surfaceId !== "string" || event.surfaceId === "") {
+          throw new ProjectError("surface/detach 需要 surfaceId 非空字符串");
+        }
+        if (event.reason !== undefined && typeof event.reason !== "string") {
+          throw new ProjectError("surface/detach 的 reason 须为字符串");
+        }
+        break;
       case "plugin":
         // 插件泛型逃生舱（C17/T-P1-72）：namespace 非空（来源可检索）、
         // payload 可选 JsonValue（只传可序列化值）。

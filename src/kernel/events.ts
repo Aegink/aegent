@@ -609,6 +609,33 @@ export interface CommandDoneEvent extends EventBase {
   text?: string;
 }
 
+/**
+ * surface roster 生命周期事件对（N8，T-P1-114）：多端 = surface roster，
+ * 端的加入/离开由事件维护——**持久事件**（内存 roster 随进程消失，violate
+ * "端的加入/离开是持久事件"验收）。log-only 会话级元事件（session/fork /
+ * plugin / command 同款纪律：不要求 turn/step 开合上下文、turn 落 0、
+ * 不进模型历史、跨 compaction 保留）。attach 携带 surfaceId 与投递方式
+ * （N7 闭集 push|poll）；detach 携带 surfaceId 与可选 reason（断线/主动
+ * 断开/被顶替）。恢复恒等：roster 从流重建（host/roster.ts activeRoster
+ * 纯函数——流即状态），重启后端清单可见。两枚事件而非一枚 op 二值：
+ * attach/detach 判据字段差异大（C14 结构化各自形状自洽）。
+ * 词汇表 23→25 的裁决记录见 l0-events.md §8 落地记录 19 与待澄清表 #19。
+ */
+export interface SurfaceAttachEvent extends EventBase {
+  type: "surface/attach";
+  /** 端标识（连接内唯一；重复 attach 幂等不重复入册——roster 是集合）。 */
+  surfaceId: string;
+  /** 投递方式（N7 闭集 push|poll——连接面的形状快照）。 */
+  deliveryKind?: "push" | "poll";
+}
+
+export interface SurfaceDetachEvent extends EventBase {
+  type: "surface/detach";
+  surfaceId: string;
+  /** 离开原因（断线/主动断开/被顶替——自由文本可缺省）。 */
+  reason?: string;
+}
+
 export type SessionEvent =
   | TurnStartEvent
   | TurnEndEvent
@@ -632,9 +659,11 @@ export type SessionEvent =
   | SessionForkEvent
   | PluginEvent
   | CommandRunEvent
-  | CommandDoneEvent;
+  | CommandDoneEvent
+  | SurfaceAttachEvent
+  | SurfaceDetachEvent;
 
-/** 23 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
+/** 25 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
 export const EVENT_TYPES = [
   "turn/start",
   "turn/end",
@@ -659,6 +688,8 @@ export const EVENT_TYPES = [
   "plugin",
   "command/run",
   "command/done",
+  "surface/attach",
+  "surface/detach",
 ] as const;
 
 export type SessionEventType = (typeof EVENT_TYPES)[number];

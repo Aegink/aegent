@@ -20,7 +20,7 @@ import type { SessionEvent } from "../kernel/events.js";
 import { ToolClassLimiter, type ToolClassLimits } from "../kernel/admission.js";
 import { isWriteExecuteTool } from "../policy/protected-paths.js";
 import { isValidSessionId } from "../session/session-id.js";
-import { SurfaceHub } from "./lease.js";
+import { SurfaceHub, type SurfaceLifecycleChange } from "./lease.js";
 
 // ---------------------------------------------------------------------------
 // 错误面
@@ -119,7 +119,9 @@ export class AgentHost {
       throw new Error(`会话 id 不合法：${options.sessionId}`);
     }
     this.hostId = options.hostId ?? randomUUID();
-    this.surfaces = new SurfaceHub();
+    // N8/T-P1-114：连接生命周期 → surface/attach|detach 事件（emit 经
+    // registry 分发，装配方订阅 append 落流——会话流承载 roster 持久面）。
+    this.surfaces = new SurfaceHub((change) => this.emit(surfaceEventOf(change)));
     this.currentUnattended = options.unattendedCeiling === true;
     this.sessionLimiter =
       options.toolClassLimits !== undefined
@@ -178,6 +180,32 @@ export class AgentHost {
     this.disposed = true;
     this.registry.remove(this.options.sessionId, this);
   }
+}
+
+/**
+ * 生命周期变更 → surface 事件形状（emit/分发面）。seq/ts 是占位伪值——
+ * 真实落流由消费方 append（store 重新分配 seq/ts），分发链上的消费者只读
+ * type/surfaceId/deliveryKind/reason，不得读占位值。
+ */
+function surfaceEventOf(change: SurfaceLifecycleChange): SessionEvent {
+  if (change.op === "attach") {
+    return {
+      type: "surface/attach",
+      turn: 0,
+      seq: 0,
+      ts: 0,
+      surfaceId: change.surfaceId,
+      ...(change.deliveryKind !== undefined ? { deliveryKind: change.deliveryKind } : {}),
+    } as unknown as SessionEvent;
+  }
+  return {
+    type: "surface/detach",
+    turn: 0,
+    seq: 0,
+    ts: 0,
+    surfaceId: change.surfaceId,
+    ...(change.reason !== undefined ? { reason: change.reason } : {}),
+  } as unknown as SessionEvent;
 }
 
 // ---------------------------------------------------------------------------

@@ -137,15 +137,28 @@ const SAMPLES: NewSessionEvent[] = [
     commandId: "c1",
     kind: "success",
   },
+  // T-P1-114 的 surface roster 生命周期对（词汇表 23→25，见 l0-events.md §8 落地记录 19）
+  {
+    type: "surface/attach",
+    turn: 0,
+    surfaceId: "desktop-1",
+    deliveryKind: "push",
+  },
+  {
+    type: "surface/detach",
+    turn: 0,
+    surfaceId: "desktop-1",
+    reason: "disconnected",
+  },
 ];
 
 describe("事件词汇表（l0-events.md §3 定稿）", () => {
-  it("联合成员恰 23 个（13 定稿 + session/revert + model/switch + todo/update + goal/set + tool/progress + session/fork + assistant/retrying + plugin + command/run + command/done），且与 EVENT_TYPES 严格一致（验收①：Exclude 遍历断言的运行时面）", () => {
-    expect(EVENT_TYPES).toHaveLength(23);
+  it("联合成员恰 25 个（13 定稿 + session/revert + model/switch + todo/update + goal/set + tool/progress + session/fork + assistant/retrying + plugin + command/run + command/done + surface/attach + surface/detach），且与 EVENT_TYPES 严格一致（验收①：Exclude 遍历断言的运行时面）", () => {
+    expect(EVENT_TYPES).toHaveLength(25);
     const declared = new Set<string>(EVENT_TYPES);
     // 每个联合成员都能按其必填载荷构造，且 type 互不相同、并集等于 EVENT_TYPES。
     const constructed = SAMPLES.map((e) => e.type);
-    expect(new Set(constructed)).toHaveLength(23);
+    expect(new Set(constructed)).toHaveLength(25);
     expect(new Set(constructed)).toEqual(declared);
     // 编译期等价断言在 events.ts 的 _EVENT_TYPES_EXACT（tsc --noEmit 时生效）。
   });
