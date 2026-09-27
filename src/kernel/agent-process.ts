@@ -97,6 +97,11 @@ export interface AgentChildOptions {
    * 缺省 undefined = 全放行（最小装配零行为变化）。
    */
   promptGate?: AgentLoopDeps["promptGate"];
+  /**
+   * F18/T-P1-102 流中断恢复策略（透传 loop）。缺省 { maxRetries: 2 }——
+   * 有界恢复重试是本特性的交付面；不可重试失败 → turn/end{blocked}。
+   */
+  streamRecovery?: AgentLoopDeps["streamRecovery"];
   /** A13 拦截留痕 logger（透传 loop；缺省不打日志）。 */
   logger?: AgentLoopDeps["logger"];
   /**
@@ -348,6 +353,10 @@ export async function runAgentChildStdio(
     // B16/T-P1-59：执行策略快照源（loop 在 step 开始固化 parallel/timeoutMs
     // 声明——step 中途 registerTool 替换不影响在途 step）
     toolRuntimeMeta: (name: string) => toolRegistry.runtimeMeta(name),
+    // F18/T-P1-102：流中断恢复（loop 级，从锚点重建重发整 step）——缺省
+    // 启用 maxRetries 2（有界；不可重试失败 → turn/end{blocked} 显式终态）。
+    // 首 chunk 前的失败仍在 provider 级 withRetry 域（D15 边界不分域不越界）。
+    streamRecovery: options.streamRecovery ?? { maxRetries: 2 },
     ...(assembly
       ? {
           layers: assembly.layers,

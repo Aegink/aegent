@@ -72,6 +72,7 @@ export function makeLoop(
     promptGate?: AgentLoopDeps["promptGate"];
     logger?: AgentLoopDeps["logger"];
     maxStepsPerTurn?: AgentLoopDeps["maxStepsPerTurn"];
+    streamRecovery?: AgentLoopDeps["streamRecovery"];
     abortTimeoutMs?: AgentLoopDeps["abortTimeoutMs"];
     mutationBudget?: AgentLoopDeps["mutationBudget"];
     toolRuntimeMeta?: AgentLoopDeps["toolRuntimeMeta"];
@@ -116,6 +117,9 @@ export function makeLoop(
     ...(opts?.logger ? { logger: opts.logger } : {}),
     ...(opts?.maxStepsPerTurn !== undefined
       ? { maxStepsPerTurn: opts.maxStepsPerTurn }
+      : {}),
+    ...(opts?.streamRecovery !== undefined
+      ? { streamRecovery: opts.streamRecovery }
       : {}),
     ...(opts?.abortTimeoutMs !== undefined ? { abortTimeoutMs: opts.abortTimeoutMs } : {}),
     ...(opts?.mutationBudget !== undefined ? { mutationBudget: opts.mutationBudget } : {}),

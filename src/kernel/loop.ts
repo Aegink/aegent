@@ -39,6 +39,12 @@ import { Projector } from "../session/project.js";
 import type { SessionStore } from "../session/store.js";
 import { computeCacheAnchor, type PrefixChange } from "../context/prefix-anchor.js";
 import { BudgetExceededError, ParseBudget } from "./budget.js";
+import {
+  classifyStreamFailure,
+  retryErrorFieldsOf,
+  StreamRecoveryBlockedError,
+  type StreamRecoveryPolicy,
+} from "./stream-recovery.js";
 import { normalizePromptVerdict, type PromptGate } from "./prompt-gate.js";
 import { MUTATION_RETRY_BUDGET_EXHAUSTED, type MutationRetryBudget } from "./tools/mutation-budget.js";
 import type { Logger } from "./logger.js";
@@ -327,6 +333,13 @@ export interface AgentLoopDeps {
    * 且跨 turn 持续，本护栏数 step 且每 turn 重置）。
    */
   maxStepsPerTurn?: number;
+  /**
+   * F18/T-P1-102 流中断恢复策略：提供时 callModel 对"流已产出增量后失败"
+   * 走有界恢复重试（从锚点重建重发整 step；不可重试失败 → 类型化标记 →
+   * runStep 以 turn/end{blocked} 显式收轮）；缺省 undefined = 不恢复（现状
+   * turn/end{error} 语义）。agent-process 装配缺省注入 { maxRetries: 2 }。
+   */
+  streamRecovery?: StreamRecoveryPolicy;
   /**
    * B16/T-P1-59：工具执行策略快照源（装配注入 registry.runtimeMeta 同名
    * 包装）——loop 在 step 开始按广告清单固化声明。缺省 undefined = parallel
@@ -736,7 +749,28 @@ export class AgentLoop {
       messages: this.buildMessages(),
       ...(this.deps.tools ? { tools: this.deps.tools } : {}),
     };
-    const outcome = await this.modelChain.run(this.$, payload);
+    let outcome;
+    try {
+      outcome = await this.modelChain.run(this.$, payload);
+    } catch (e) {
+      // F18/T-P1-102：不可重试流失败 → **显式终态 blocked**（TurnEndReason
+      // 既有槽位零扩展——与 C10/B14 同族的护栏终态）+ 结构化 warn 留因
+      // （D14 先例；不重试——auth/quota/4xx 重试无意义）。step 照 mutation
+      // 终态先例直接 closeTurn（turnEnd 链收轮）。
+      if (e instanceof StreamRecoveryBlockedError) {
+        const status = e.original instanceof ProviderHttpError ? e.original.status : undefined;
+        this.deps.logger?.warn("流中断恢复：不可重试失败，显式 blocked 收轮", {
+          turn,
+          step,
+          blockedReason: "non_retryable_failure",
+          ...(status !== undefined ? { status } : {}),
+          userContent: e.original instanceof Error ? e.original.message : String(e.original),
+        });
+        await this.closeTurn(turn, { kind: "blocked" });
+        return { kind: "blocked" };
+      }
+      throw e;
+    }
     if (outcome.truncated) {
       // modelRequest 层不放行请求（P0 无层；真实语义阶段 7 定）：step 空过、
       // turn 以 blocked 终止——不放行还继续循环没有意义。（无模型请求发生
@@ -1131,82 +1165,144 @@ export class AgentLoop {
       }
       this.lastAnchor = { anchor, identity: payload.identity };
     }
-    store.append(sessionId, [
-      {
-        type: "request/header",
-        turn: payload.turn,
-        step: payload.step,
-        // 记录本 turn 捕获值（J7）——换模生效点在新 turn 的事件证据就在
-        // 这里：在途 turn 的 header 保持旧身份，新 turn 起变为新身份。
-        config: {
-          provider: payload.identity.provider,
-          modelId: payload.identity.modelId,
-        },
-        // ChatTool 是 interface（无隐式索引签名），展开成匿名字面量过 JsonValue
-        ...(tools
-          ? {
-              tools: tools.map((t) => ({
-                name: t.name,
-                description: t.description,
-                parameters: t.parameters,
-              })),
-            }
-          : {}),
-        reason: payload.step === 1 ? "initial" : "series",
-      },
-    ]);
-    const timed: TimedStreamChunk[] = [];
-    let content = "";
-    const calls = new Map<string, { id: string; name: string; arguments: string }>();
-    let usage: TokenUsage | undefined;
-    // B19/T-P1-61：traceId 分配 + 流计时（首 chunk 延迟 / 流总时长）
-    const traceId = this.nextTraceId();
-    const streamStart = Date.now();
-    let firstChunkAt: number | undefined;
-    let finishReason: string | undefined;
-    try {
-      for await (const chunk of this.turnModel.provider.streamChat({
-        identity: payload.identity,
-        messages: payload.messages,
-        ...(tools ? { tools } : {}),
-      })) {
-        if (firstChunkAt === undefined) firstChunkAt = Date.now();
-        timed.push({ time: Date.now(), chunk });
-        switch (chunk.type) {
-          case "text-delta":
-            content += chunk.text;
-            break;
-          case "reasoning-delta":
-            break; // 只进流记录，P0 不进 content（摘要属压缩，阶段 7）
-          case "tool-call-delta": {
-            const entry =
-              calls.get(chunk.id) ?? { id: chunk.id, name: "", arguments: "" };
-            if (chunk.name) entry.name = chunk.name;
-            entry.arguments += chunk.argsDelta;
-            calls.set(chunk.id, entry);
-            break;
-          }
-          case "usage":
-            usage = chunk.usage;
-            break;
-          case "done":
-            finishReason = chunk.finishReason;
-            break;
-        }
-        // A7 协作式中断：已到达的 chunk 已如实记录，其后不再消费
-        // （break 会经 generator .return() 关闭流，不弃 promise 不赛跑）
-        if (this.cancelCause) break;
-      }
-    } catch (e) {
+    // F18/T-P1-102：恢复重试循环——每次尝试都是一次真实模型请求（独立
+    // request/header + traceId + 流计时）；失败 attempt 以 assistant/attempt
+    // 落盘后按判定走恢复 / blocked / 上抛三路（见 catch 块内注释）。
+    const recovery = this.deps.streamRecovery;
+    let recoveryAttempt = 0;
+    for (;;) {
+      // 每次尝试都是一次真实模型请求——request/header 逐次落盘（J7 捕获值
+      // 的证据面；reason: payload.step === 1 ? "initial" : "series" 同前）。
       store.append(sessionId, [
         {
-          type: "assistant/attempt",
+          type: "request/header",
           turn: payload.turn,
           step: payload.step,
-          stream: timed,
+          config: {
+            provider: payload.identity.provider,
+            modelId: payload.identity.modelId,
+          },
+          // ChatTool 是 interface（无隐式索引签名），展开成匿名字面量过 JsonValue
+          ...(tools
+            ? {
+                tools: tools.map((t) => ({
+                  name: t.name,
+                  description: t.description,
+                  parameters: t.parameters,
+                })),
+              }
+            : {}),
+          reason: payload.step === 1 ? "initial" : "series",
         },
       ]);
-      // E14：provider 异常路径的已到达分片同样落诊断日志（保真不分顺逆）
+      const timed: TimedStreamChunk[] = [];
+      let content = "";
+      const calls = new Map<string, { id: string; name: string; arguments: string }>();
+      let usage: TokenUsage | undefined;
+      // B19/T-P1-61：traceId 分配 + 流计时（首 chunk 延迟 / 流总时长）——
+      // 每次尝试一枚（失败尝试的序号消耗后留空档，单调不密——traceId 是
+      // 关联键不是计数器）
+      const traceId = this.nextTraceId();
+      const streamStart = Date.now();
+      let firstChunkAt: number | undefined;
+      let finishReason: string | undefined;
+      try {
+        for await (const chunk of this.turnModel.provider.streamChat({
+          identity: payload.identity,
+          messages: payload.messages,
+          ...(tools ? { tools } : {}),
+        })) {
+          if (firstChunkAt === undefined) firstChunkAt = Date.now();
+          timed.push({ time: Date.now(), chunk });
+          switch (chunk.type) {
+            case "text-delta":
+              content += chunk.text;
+              break;
+            case "reasoning-delta":
+              break; // 只进流记录，P0 不进 content（摘要属压缩，阶段 7）
+            case "tool-call-delta": {
+              const entry =
+                calls.get(chunk.id) ?? { id: chunk.id, name: "", arguments: "" };
+              if (chunk.name) entry.name = chunk.name;
+              entry.arguments += chunk.argsDelta;
+              calls.set(chunk.id, entry);
+              break;
+            }
+            case "usage":
+              usage = chunk.usage;
+              break;
+            case "done":
+              finishReason = chunk.finishReason;
+              break;
+          }
+          // A7 协作式中断：已到达的 chunk 已如实记录，其后不再消费
+          // （break 会经 generator .return() 关闭流，不弃 promise 不赛跑）
+          if (this.cancelCause) break;
+        }
+      } catch (e) {
+        store.append(sessionId, [
+          {
+            type: "assistant/attempt",
+            turn: payload.turn,
+            step: payload.step,
+            stream: timed,
+          },
+        ]);
+        // E14：provider 异常路径的已到达分片同样落诊断日志（保真不分顺逆）
+        this.deps.rawChunkLog?.write({
+          ts: Date.now(),
+          sessionId,
+          turn: payload.turn,
+          step: payload.step,
+          identity: payload.identity,
+          chunks: timed,
+        });
+        // 取消是权威结局——恢复不启动（abort 路径按取消收轮）
+        if (this.cancelCause) throw e;
+        // D15 流边界的 loop 级补全（F18）：首 chunk 前的失败仍是 provider
+        // 级 withRetry 的域（它已按同分类决定重试或上抛）——loop 不接手，
+        // 现状语义（turn/end{error}）不变。
+        if (timed.length === 0) throw e;
+        // 流已产出增量后失败——恢复判定三路：
+        // ①不可重试（auth/quota/4xx 终态）→ 类型化标记，runStep 以
+        //   turn/end{blocked} 显式收轮（零重试——重试无意义）；
+        // ②重试耗尽 / 未配恢复策略 → 上抛（现状 turn/end{error}——
+        //   "耗尽 ≠ blocked"：zcode blocked 词表亦无 exhausted）；
+        // ③可恢复且有剩余额度 → assistant/retrying 落流 + 从锚点重建
+        //   重发整 step（失败 attempt 的 tool calls 从未派发——calls
+        //   随 throw 丢弃，无副作用歧义；chunk 级重试必然重复产出，
+        //   整 step 重发才是 D15 边界的正确补全粒度）。
+        if (classifyStreamFailure(e) === "non-retryable") {
+          throw new StreamRecoveryBlockedError(e);
+        }
+        if (recovery === undefined || recoveryAttempt >= recovery.maxRetries) {
+          throw e;
+        }
+        store.append(sessionId, [
+          {
+            type: "assistant/retrying",
+            turn: payload.turn,
+            step: payload.step,
+            attempt: recoveryAttempt,
+            delayMs: 0, // 立即重发（provider 级退避在 withRetry 域；卡内定形）
+            error: retryErrorFieldsOf(e),
+          },
+        ]);
+        this.deps.logger?.warn("流中断恢复重试", {
+          turn: payload.turn,
+          step: payload.step,
+          attempt: recoveryAttempt,
+          maxRetries: recovery.maxRetries,
+          errorName: e instanceof Error ? e.name : typeof e,
+          userContent: e instanceof Error ? e.message : String(e),
+        });
+        recoveryAttempt += 1;
+        // 锚点重建：请求消息从事件流现算（失败尝试不进历史——buildMessages
+        // 只读已提交事实），结构上保证"从锚点重发"。
+        payload = { ...payload, messages: this.buildMessages() };
+        continue;
+      }
+      // E14/T-P1-90：请求完成后分片序列落诊断日志（旁路通道——热路径零等待）
       this.deps.rawChunkLog?.write({
         ts: Date.now(),
         sessionId,
@@ -1215,34 +1311,24 @@ export class AgentLoop {
         identity: payload.identity,
         chunks: timed,
       });
-      throw e;
+      return {
+        content,
+        toolCalls: [...calls.values()],
+        ...(usage ? { usage } : {}),
+        timed,
+        ...(firstChunkAt !== undefined
+          ? {
+              timing: {
+                firstTokenLatencyMs: firstChunkAt - streamStart,
+                streamDurationMs: Date.now() - streamStart,
+              },
+            }
+          : {}),
+        traceId,
+        ...(finishReason !== undefined ? { finishReason } : {}),
+        ...(this.cancelCause ? { interrupted: true as const } : {}),
+      };
     }
-    // E14/T-P1-90：请求完成后分片序列落诊断日志（旁路通道——热路径零等待）
-    this.deps.rawChunkLog?.write({
-      ts: Date.now(),
-      sessionId,
-      turn: payload.turn,
-      step: payload.step,
-      identity: payload.identity,
-      chunks: timed,
-    });
-    return {
-      content,
-      toolCalls: [...calls.values()],
-      ...(usage ? { usage } : {}),
-      timed,
-      ...(firstChunkAt !== undefined
-        ? {
-            timing: {
-              firstTokenLatencyMs: firstChunkAt - streamStart,
-              streamDurationMs: Date.now() - streamStart,
-            },
-          }
-        : {}),
-      traceId,
-      ...(finishReason !== undefined ? { finishReason } : {}),
-      ...(this.cancelCause ? { interrupted: true as const } : {}),
-    };
   }
 
   // -------------------------------------------------------------------------

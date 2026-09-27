@@ -311,6 +311,10 @@ export interface AssistantAttemptEvent extends EventBase {
  * turn/step 由 agent-child 在回调时从 loop 的当前 step 面读取（provider
  * 层自身不知 loop 状态）；无在途 step 时的重试（理论不可达，防御性缺省）
  * 落 turn=0/step=0。
+ * F18/T-P1-102：生产者扩展到 **loop 级流恢复**（事件形状不变，语义记档）
+ * ——流已产出增量后的失败由 loop 从锚点重建重发整 step（provider 级
+ * withRetry 的 D15 边界在该域从不重试），每次恢复重发前落本事件；
+ * attempt 在 loop 域内重新 0-based 起算、delayMs=0（立即重发）。
  */
 export interface AssistantRetryingEvent extends EventBase {
   type: "assistant/retrying";
