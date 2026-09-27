@@ -189,6 +189,7 @@
 | D3 弱承诺 | 「网络策略只管工具层」是声明不是代码属性 | **已关闭（2026-09-25 用户目检裁决："可以"）**——`src/sandbox/README.md` 置顶加粗的弱承诺段（只拦工具层 fetch，不承诺 bash 子进程/模型接入层/OS 级，deny 档 ≠ 网络隔离）获用户认可 |
 | T-6-01 符号链接逃逸 | 本机无创建符号链接特权（Windows 需开发者模式），逃逸用例自动跳过（LIMITATIONS #1） | 有特权环境跑 `npx vitest run src/sandbox/path-guard.test.ts` 应 22 全过（终验收实测 21 passed + 1 skipped）；realpath 归一逻辑已有"最近存在祖先"路径的确定性用例覆盖 |
 | §6.2 常驻内存 | 任务管理器观察（需求原文如此） | **多会话并发实测完成（2026-09-25，用户要求的口径）**——agent-child 并发脚本（`scratch/_tmp_mem/concurrent.mjs`，WorkingSet64 每 250ms 采样）：① 8 会话×10 轮（~43 事件/进程）：单进程峰值 43.5–43.9MB，并发总 349.4MB；② 16 会话×10 轮：单进程 43.6–43.8MB，总 700.1MB；③ 8 会话×50 轮（~210 事件/进程，事件×5）：单进程 45.9–46.5MB（仅 +2.5MB）。**结论：单实例常驻稳定 43–47MB（<150MB 余量 3 倍+，含 node 运行时基线）；事件规模翻 5 倍内存仅微涨（大头是运行时基线，内核对象增长温和）；多会话 = N×单实例线性扩展（T9 每会话一进程的架构结果，16 会话总 700MB 超 150MB 是 16 个实例合计——单实例口径达标，进程级共享内核摊薄属 K5/P1 host 架构）**。任务管理器目测（需求原文方式）随时可做，数据在此可复核 |
+| 批次 8 三件（C11/C17/C34） | **#11 转正的解读待复核**（词汇表 20→21 系按用户开工表态"待澄清表认可然后继续"解读为三案一并追认——回退面照落地记录 12 约 1.5 小时）；**trustGated 打标来源缺位**（cache.record {trustGated} 机制在位、仓库配置加载器未落）；**sandboxMode 观测 knob**（store 值可改、消费面动态读随接线批次）——三者均非缺陷，随后续批次/用户复核收口 | 待用户复核 #11 解读；其余随后续批次 |
 
 ### J2 实测记录（2026-09-25，真实 OpenAI 兼容端点）
 
@@ -1257,3 +1258,65 @@ docs/plan-p0-progress.md。本批特有的注意：
 ## 批次 8 展卡记录（2026-09-27，执行会话自展——本会话只展卡，执行留下一会话）
 
 > 用户在批次 7 收官后改为**一会话一批次**模式。本会话完成了批次 8 的展卡（锚点核对 + 卡序落卡 + 提交），未执行任何批次 8 任务卡——执行从下一会话开始（提示词见上方批次 7 报告末尾）。**12 条锚点逐一开文件核实，零内容勘误**（qwen rule-parser.ts parseRule/getSpecifierKind/types.ts 四值 + permission-manager.ts trustGated 过滤段 + trusted-user-answers.ts 有界常量、pi project-trust.ts 全文 + session/types.ts CustomEntry、dsh permission-presets/index.ts + file-context-as-event-gate.md 全文、kimi evaluate.ts:85-106、codex execpolicy/parser.rs:455-461）。**展卡核对结论（我方现状 × 12 条，详见 plan-p1.md 卡序头）**：C41 已被 T-5-05 覆盖关闭不占卡；C23 补两类；C26 P0 形状已在正式化；C36 注释升机制；C12/C13 配对（ReadGate 可选装配）；C11+C34 成对；C8 落 SessionConfigStore。**词汇表预判**：C17 泛型逃生舱一处（plugin 事件 20→21 走 #11 立案），其余零扩展。9 张：T-P1-66（C23）→ 67（C26）→ 68（C39+C53）→ 69（C11+C34）→ 70（C36）→ 71（C12+C13）→ 72（C17）→ 73（C8）→ 74（收口）。
+
+---
+
+## 批次 8 报告（完成于 2026-09-27）
+
+- **打勾情况**：9 / 9（T-P1-66 ~ T-P1-74 全部完成，无未完成项）——**P1 批次 8 全部收官**（12 条需求 ID：C41 展卡核对关闭不占卡 + C8/C11/C12/C13/C17/C23/C26/C34/C36/C39/C53 共 11 条实卡全关）
+- **产出的文件**：
+  - `src/policy/linter.ts` 扩——wildcard-tool-name / incomplete-namespace-name / empty-value-pattern / basename-unanchored 四类 + findInactiveRuleToolName(s) 导出（C23/C53/C26）——T-P1-66/67/68
+  - `src/policy/linter.test.ts` 新建——五类判据 + C53 用例（T-P1-66/68）
+  - `src/policy/rule-loader.ts` 升——C26 正式解析器（三态/legacy `:*` 展开/literal key:value/plainSpecifier/raw 原文权威）+ loadedRuleMatch 分型路由（MCP 带 specifier 拒配）——T-P1-67/68
+  - `src/policy/specifier-kinds.ts` 新建 + 测试——SpecifierKind 四值闭集 + getSpecifierKind + matchGitignorePath（手写 gitignore 风格）+ matchDomainPattern（host 后缀）+ matchLiteralSpecifier + 三 matcher——T-P1-68
+  - `src/policy/matchers.ts` 扩——builtinRuleMatchers 注册 path/domain（C44 样例校验面）——T-P1-68
+  - `src/policy/project-trust.ts` + 测试 + 快照新建——TrustState 三值 + ProjectTrustService（isTrusted 每次读当前状态）+ enforceTrustGate 出口（C11/C34）——T-P1-69/74
+  - `src/policy/review-decision.ts` 扩——ApprovalScopeCache trustGated 维度 + session-approval trustState 活查询——T-P1-69
+  - `src/policy/protected-names.ts` / `self-guard.ts` 扩——两清单 Object.freeze + extendProtectedNames 唯一追加入口（C36）——T-P1-70
+  - `src/kernel/tools/builtin/question.ts` 扩——MAX_USER_HINT_LENGTH=200 截断 + onWarn + meta 留痕——T-P1-70
+  - `src/policy/read-gate.ts` + 测试新建——ReadGateService（recordRead/forget/requireRead + EDIT_WITHOUT_READ/EDIT_STALE_READ）——T-P1-71
+  - `src/kernel/tools/context.ts` / `registry.ts` / `builtin/{read,write,edit,apply-patch}.ts` 扩——ToolContext +readGate 键（env.test 键封闭同步）+ 四工具记账/校验接线（C12/C13 可选装配）——T-P1-71
+  - `src/kernel/events.ts` / `session/project.ts` / `kernel/invariants.ts` 扩——词汇表 20→21：`plugin {namespace, payload?}`（C17 泛型逃生舱，log-only 会话级元事件）+ C16 闸门同步——T-P1-72
+  - `src/kernel/session-config.ts` 扩——PERMISSION_PRESETS 闭集（readonly/workspace/yolo）+ applyPreset（经 refresh 通道）+ UnknownPresetError + sandboxMode 观测 knob（C8）——T-P1-73
+  - `src/cli/repl.ts` 扩——/preset 命令（config/refresh 通道）+ config_refreshed 回执渲染——T-P1-73
+  - `src/kernel/assembly.ts` / `agent-process.ts` 扩——trustService/readGate 装配选项接线——T-P1-69/71
+  - `docs/l0-events.md`——§3.2 计数 21 + 第 21 行 + 落地记录 10/11/12 转正落款——T-P1-72 + #9/#10 追认
+- **验收台账**：9 卡 9 命令全部通过（见台账表）；全量 `npx vitest run` **957 passed / 1 skipped**（批次 7 收官 906 → 净增 51），`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 838 链接 0 失效、`license-audit.sh` exit 0
+- **词汇表扩展**：**一处**（`plugin` 泛型逃生舱 20→21，落地记录 12 + 待澄清 #11）。**⚠️ 供用户复核的解读**：本会话开工时用户回复"待澄清表认可然后继续"——我将其解读为对批次 8 提示词所述"#9/#10/#11 三案一并追认"的授权，故 #9/#10 开工即转正（落地记录 10/11，20 事件）、#11 随 T-P1-72 落地同批转正（21 事件）。若此解读超出本意，回退面照落地记录 12 可执行（约 1.5 小时，全部新增面）。
+- **六面盘点零真冲突**（T-P1-74 完成记录全文）：①出口族次序终局清单（C46→C49→C35→G7→C11，全"最严压过一切"、语义域正交）；②ReadGate/B13/D15 失败三源分域（ReadGate 失败计预算——防"反复不读先改"循环的定形）；③解析器与匹配器职责边界（纯函数管道）；④trustGated 与轮级生命周期正交（工具粒度生效）；⑤C17×C15 双向钉死（唯一槽位 + ghost 恒拒 + C16 闸门）；⑥项目信任降权全链快照一条。
+- **新发现的约束或坑**：
+  - **块注释里的 `*/` 字面量**：specifier-kinds.ts 头注释写 `` `**/` `` 触发 TS 块注释提前终结（语法雪崩）——文档注释描述 glob 语法时避免 `*/` 序列。
+  - **policy 纯函数纪律的兑现**：ReadGateService/matchGitignorePath 全部零 I/O（哈希由工具传入、路径纯字符串形状）——"策略层不做 I/O"（dsh 关键决策）在落地时显著降低了接线成本。
+  - **既有 fail-closed 语义的收窄是行为变化**：分型路由后已知工具的带参规则从"永不命中"变"按分型语义命中"（write/read 等不再 fail-closed）——write 可样例校验/可提案为功能增强，相关既有测试同步更新（rule-loader/review-decision/self-guard 三处）。
+- **偏离计划的地方**：逐卡详见卡面完成记录（T-P1-67 偏离①完整四分型预置防盘符误解析、③纯 key:value 的 argPattern 保留原文形防 fail-closed 旁路；T-P1-68 路由键用 call.tool；T-P1-69 warn 走 onWarning 通道；T-P1-71 子代理不传 readGate、move 目标不校验；T-P1-73 预设目录单 knob——dsh approvalPolicy 无对应执行面不发明）。
+- **遗留风险与未知**（→ 人工确认清单批次 8 行）：
+  - trustGated 批准的**打标来源**缺位：机制在位（cache.record {trustGated}），但当前无"仓库自带配置"加载器来打标——随仓库规则加载批次落位
+  - sandboxMode 观测 knob 的**消费面接线**（bash bashSandbox.defaultMode 动态读）随消费面批次（T-P1-63 偏离③同款）
+  - readGate/trustService 的 **CLI 装配选项暴露**随 CLI/多端批次；子代理 subRegistry 不传 readGate（可选装配不含子代理，已记档）
+  - #11 转正的解读（上文 ⚠️）待用户复核——回退面 1.5 小时可执行
+- **批次完成定义核对**：9 卡打勾附验收 ✓；tsc 干净 ✓；count-features 310 ✓；check-doc-links 0 失效 ✓；license-audit 通过 ✓；C41 核对关闭 ✓；词汇表 21 事件（三案转正）✓；出口族红线三条 ✓；六面盘点落报告 ✓
+- **下一批**：**批次 9 权限·审批与运行模式（9 条：C6 C19 C25 C30 C33 C37 C52 C54 C56）**——未展卡，下一会话先展卡（锚点核对 + 卡序落 plan-p1.md）再执行，做完收官即停
+- **下一批提示词**：
+
+```
+继续 aegent P1 批次 9 的实施（权限·审批与运行模式；9 条需求 ID：C6 C19
+C25 C30 C33 C37 C52 C54 C56）。推进模式已改：一会话一批次——本会话只做
+批次 9，做完收官即停，批次 10 由下一会话接力。批次 9 尚未展卡：先照批次
+7/8 展卡先例逐条锚点核对 requirements.md §4（把卡序追加进 docs/plan-p1.md，
+展卡核对结论落卡序头），再从第一张 [ ] 任务卡开始执行（执行协议沿用
+docs/plan-p0.md §0）。上一批（批次 8）报告在 docs/plan-p0-progress.md。
+本批特有的注意：
+1. 展卡核对预判（批次 8 报告遗留）：C6 ← N6 审批通道（在位）；C30 ←
+   C57（在位）；C33 ← C3 默认 ask（在位）；C37 IMDS 拒绝 × D3 网络策略
+   （在位）联动小卡；C56 判官四件套不做判官本体先行——P2 的 C42/C55
+   接口面预留。展卡时先核对再定卡。
+2. 词汇表预判低影响——每处新增事件/载荷扩展仍走待澄清立案管线；用户
+   已有"待澄清表认可"的先例表态（2026-09-27），立案时注明并按此口径
+   处理，报告显著记录。
+3. 权限红线延续：出口级语义（C46/C35/G7/C11）已终局（批次 8 盘点①），
+   新出口面须并入该清单；ReadGate 失败计 B13 预算的定形延续。
+4. 全量基线 957 passed / 1 skipped；词汇表 21 事件（#9/#10/#11 已转正，
+   其中 #11 系按用户开工表态解读转正——若用户在批次 9 会话否认，回退
+   面照 l0-events.md 落地记录 12 执行）。收官照批次 8 先例出组报告，更新
+   本文件的批次 10 提示词与全量基线后停止——不要开始批次 10。
+```
