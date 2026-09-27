@@ -2,11 +2,46 @@
 
 > 本文件接续 [`plan-p0-progress.md`](plan-p0-progress.md)（P0 全程 + P1 批次 1-10，2026-09-27 收官，全量基线 1081 passed / 1 skipped，词汇表 23 事件）——**自批次 11 起的执行进度**（批次报告 / 待澄清 / 人工确认清单）记入本文件，旧文件定格不再追加。
 > 执行协议沿用 [`plan-p0.md`](plan-p0.md) §0（取卡 / 做卡 / 验收 / 打勾 / 提交 / 自动继续 / 四种停下情况）；计划本体在 [`plan-p1.md`](plan-p1.md)（执行会话只改任务卡的勾选框、「偏离 / 建议」「完成记录」三个字段）。
-> **待澄清编号接续旧文件（#16 起）**——避免跨文件引用歧义；词汇表立案管线不变（`l0-events.md` §8 落地记录全局连续，现为 19；**#16~#19 已全部追认转正**——#16 选型 Anthropic、#17/#18 词汇表形状、#19 surface/attach + surface/detach 23→25（2026-09-28 用户："认可#19"））。
+> **待澄清编号接续旧文件（#16 起）**——避免跨文件引用歧义；词汇表立案管线不变（`l0-events.md` §8 落地记录全局连续，现为 21；**#16~#19 已全部追认转正**——#16 选型 Anthropic、#17/#18 词汇表形状、#19 surface/attach + surface/detach 23→25（2026-09-28 用户："认可#19"）；**#20/#21 在案待追认**——#20 user/message+attachments 载荷扩展、#21 image/offload 25→26，回退面齐备未追认不阻塞批次 14）。
 
 ---
 
-## 批次 13 提示词（当前活跃）
+## 批次 14 提示词（当前活跃）
+
+```
+继续 aegent P1 批次 14 的实施（UI 端大件；2 条需求 ID：K2 K5）。推进模式不
+变：一会话一批次——本会话只做批次 14，做完收官即停，批次 15（P2 段）由下
+一会话接力。批次 14 尚未展卡：先照批次 7~13 展卡先例逐条锚点核对
+requirements.md §4（K2·cc-switch src-tauri / K5·pi packages——把卡序追加
+进 docs/plan-p1.md，展卡核对结论落卡序头），再从第一张 [ ] 任务卡开始执
+行（执行协议沿用 docs/plan-p0.md §0）。上一批（批次 13）报告在
+docs/plan-p1-progress.md（批次 13 报告 + 待澄清 #20/#21 + 人工确认清单均
+在该文件）。本批特有的注意：
+1. 批次 13 遗留：#20（user/message 载荷 +attachments）与 #21（image/offload
+   25→26 新事件）待追认——若用户已表态追认则在 l0-events.md §8 落地记录
+   20/21 落"已追认"转正，未追认不阻塞批次 14（回退面齐备，可选字段/新事
+   件均前向兼容口径）。
+2. 批次 12/13 产出的 UI 前置地基已收官：host 域（registry/lease/protocol/
+   bridge/roster）+ 端间协议（hello 握手/requestId 关联/审批广播）+ 租约
+   互斥 + K8 词汇同源——K2/K5 是这些接口面的真实端消费方；批次 12 人工确
+   认清单的"真实网络传输层（TCP/WS）"与"答复端闭集（APPROVAL_SURFACES）"
+   随本批 UI 部署形态定形，展卡时逐条核对消化。
+3. 词汇表影响预判（圈定研究标注"低"）：UI 端是消费方面（wire/协议/事件
+   全在位）——预计零新事件零载荷扩展；若 UI 需要新事实承载仍走 Q9 单向
+   门立案（编号接 #22 起）。
+4. 全量基线 1283 passed / 1 skipped；词汇表 26 事件（#20/#21 待追认口径）；
+   工程纪律工具链四件（architecture:check / vocabulary:check / count-features
+   / check-doc-links）收官验收必跑。收官照批次 8~13 先例出组报告（写入本
+   文件），更新本文件的批次 15 提示词与全量基线后停止——不要开始批次 15。
+   不要问要不要继续。
+```
+
+---
+
+## 批次 13 提示词（已执行归档）
+
+```
+继续 aegent P1 批次 13 的实施
 
 ```
 继续 aegent P1 批次 13 的实施（多模态与工程纪律；8 条需求 ID：P1 P2 P3 +
@@ -84,6 +119,33 @@ docs/plan-p0.md §0）。上一批（批次 12）报告在 docs/plan-p1-progress
 
 ---
 
+## 批次 13 · 多模态与工程纪律（8 条：P1 P2 P3 + T1 T2 T5 T6 + L4）
+
+**状态**：✅ 收官（2026-09-28）——7 张卡全关（T-P1-121 ~ 127）。
+
+**展卡注意**（承接批次 12 报告）——展卡核对结论已落卡序头（plan-p1.md 批次 13 卡序节）：
+
+1. 8 条锚点逐一打开核对零内容勘误（kimi attachment.ts / dsh 两份 offload 笔记含归档版教训 / pi-desktop attachment-limits.ts / zcode architecture-policy.yaml + CONTEXT.md / kimi tree-sitter-bash README / codex rollout-trace）；P1+P3 一卡（"P 族附件一体"）、T5+T6 一卡（同锚点同主题"不可信输入面"）。
+2. 词汇表预判立案：#20 = user/message +attachments 载荷扩展（流存引用不存字节）；#21 = image/offload 25→26 新事件（事件级投影事实非 log-only——dsh implemented 版演进结论直接定形）。
+3. T1/T2 是工程纪律件：architecture-policy.json（JSON 非 yaml——node 零依赖）+ vocabulary/ 三上下文分文件——都是"机制 + 结构纪律先落、内容渐进"的形态。
+
+### 批次 13 报告（收官于 2026-09-28）
+
+- **打勾情况**：7/7 卡全关（T-P1-121 T1 架构即代码 / T-P1-122 T2 领域词汇表 / T-P1-123 T5+T6 解析纪律 / T-P1-124 P1+P3 附件域 / T-P1-125 P2 图片卸载 / T-P1-126 L4 轨迹回放 / T-P1-127 收口），每勾附「命令 + 结果摘要」。
+- **展卡结论**：8 条锚点零勘误；执行定形两处偏差记档——kimi AttachmentSource 联合无消费方不落（mediaType 闭集即类型化协议，YAGNI）；dsh 的 provider 预算失败驱动不落（我方无请求预算失败面——手动 wire 命令触发 + 自动触发记档，验收点在"可移出可回取"非触发机制）。
+- **产出的文件**：`architecture-policy.json` + `tools/architecture-check.mjs`（T1）；`docs/vocabulary/`（kernel/policy/models 三件 36 词条）+ `tools/vocabulary-check.mjs`（T2）；`src/session/project.ts`（MAX_JSON_DEPTH）/ `src/policy/shell-semantics.ts`（MAX_COMMAND_LENGTH + degraded）（T5/T6）；新域 `src/attachments/`（types/store/limits/offload 四模块）（P1+P3/P2）；`src/obs/replay.ts`（L4）；扩 provider/events/messages/loop/queue/agent-protocol/agent-process/transcript 七处接线。
+- **验收台账**：全量 `npx vitest run` **1283 passed / 1 skipped**（批次 12 收官 1239 → 净增 44，144 文件）；`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变；`check-doc-links.sh` 736 链接 0 失效（显式传参 10 文件含 vocabulary 三件）；`license-audit.sh` exit 0；**新增两件工程纪律工具**：`architecture:check` 0 error / 21 warning（渐进基线：20 存量行数 + 1 存量环 context↔kernel↔lsp↔models↔policy↔sandbox↔session——kernel 装配枢纽双向依赖，新域全部单向干净）、`vocabulary:check` 3 文件 0 问题。
+- **词汇表扩展**：25→26 一案——#21 `image/offload {targets:[{seq,imageIndexes}]}`（事件级投影事实）；#20 user/message 载荷扩展（计数不变）；两案落地记录 20/21 同步（l0-events.md §8 + §3.2 表格行），回退面齐备待追认。
+- **盘点结论**：八面零真冲突（T-P1-127 完成记录）：①T1 × acp 结构断言并存不收编（不同抽象层级）+ 本批两次活演示（新域入册/跨域 import 违规当场抓出）；②T5/T6 受控拒绝 × 失控异常分界验证；③image/offload × F26 指纹正交（配置面 vs 消息面）；④卸载 × 压缩投影同屏次序一致；⑤附件 × 流轻量重建三路（恢复/fork/回放）完整；⑥ChatImage 两适配器测试钉死；⑦三读面同源 buildChatMessages + transcript offload 条目一致性增补；⑧既有断言即规格。
+- **新发现的约束或坑**：(a) **T1 检查器环检测首版假环**（Tarjan 递归返回值污染——cli/obs 无入边域被误报进环）改双向可达法；**环边图必须排除测试文件出边**（lsp 测试 import cli 构成假运行时环）——与白名单检查同口径；(b) **interface 无隐式 index signature**：agent-protocol 的 AssertNever JSON 型证闸门抓到 AttachmentRef/IncomingAttachment 用 interface 声明不通过——改 type alias（编译期词汇 JSON 安全闸门继续有效）；(c) **attachments↔session 模块环风险**：offload.ts 首版 import session/messages（effectiveEvents）——T1 检查器当场报 requires 违规，修正为"视窗截断由调用方做"（attachments 保持纯选择域）——架构检查器反哺纪律的活演示；(d) **测试 seq 污染**：模块级递增 seq 在 describe 间不重置 + 失败 append 后 lastSeq 不动（后续事件必须重放基线）——E16 连续性约束的测试面教训；(e) **HttpMock 生命周期**：beforeEach 必须 await mock.start()（url 依赖监听端口）、清理是 stop() 非 close()；(f) flaky：retry.test/http-mock 并行竞态各复现 1 次（隔离复跑全绿——人工确认清单在案同形态）。
+- **偏离计划的地方**：逐卡「完成记录」已记档——要点：T1 策略文件落 JSON 非 yaml（node 零依赖 + 策略自身可机检）；T2 未加 vitest 测试（机检脚本即检查器，负例演示落完成记录——与 T1 的测试要求区分）；P1 的 CLI 入口面不落（批次 14 UI——wire+库面即达验收）；P2 触发面落 wire 命令 offload（批次 14 UI 消费）；transcript 增补 offload 条目（收口盘点⑦一致性）。
+- **遗留风险与未知**（→ 人工确认清单）：#20/#21 待追认（回退面齐备，未追认不阻塞批次 14）；附件远端存储实现（接口在位随部署）；卸载自动触发（压力面挂接随真实预算面需求）；CLI 附件入口随批次 14 UI；架构 policy 的 requires 白名单首轮 = 现状反推（先声明后收紧——渐进路线基线 21 warnings 落 T-P1-121）。
+- **批次完成定义核对**：全部 ✅（见 plan-p1.md 批次 13 完成定义——7 卡全勾 + tsc 干净 + 310 不变 + 736 链接 0 失效 + license exit 0 + 两案立案 + 四件工具链 + 报告/提示词/基线更新）。
+- **下一批**：**批次 14 UI 端（2 条：K2 Tauri 桌面壳 + K5 Web）**——未展卡，下一会话先展卡（锚点核对 + 卡序落 plan-p1.md）再执行，做完收官即停。
+- **下一批提示词**：见本文件头部「批次 14 提示词（当前活跃）」。
+
+---
+
 ## 待澄清（执行会话新发现；接续旧文件编号——#16 起）
 
 
@@ -104,6 +166,8 @@ docs/plan-p0.md §0）。上一批（批次 12）报告在 docs/plan-p1-progress
 | llm-replay flaky（批次 11 测试基建） | `llm-replay.test.ts` 回放等价用例在 93 文件并行负载下偶发失败（批次 11 期间复现 1 次，隔离复跑两次全绿）——疑似端口/时序资源竞态，非产品代码缺陷 | 多次全量跑观察复现率；若复现频繁，下一会话以 test-only 修复（如固定端口/串行化该文件） | 观察中（批次 6 T-P1-48 同形态） |
 | J16 健康探测真实端点（T-P1-107） | 探测的 reachability/degraded 判据已单测钉死，但真实厂商端点的 TTFB 分布未实测 | 下次真实厂商联调时顺带跑 `runHealthCheck`（degraded 阈值 6000ms 是否合理） | 待真实厂商联调（同 §6.2 终验窗口） |
 | #19 surface/attach + surface/detach（批次 12 词汇表 23→25） | 两枚 log-only 会话级元事件的词汇表扩展走 Q9 单向门——追认是用户决策项（§0 第 7 条第 3 款） | 追认则 l0-events.md §8 落地记录 19 落"已追认"转正；不追认按回退面删除（约 1.5 小时全部新增面，roster 回落内存面） | **✅ 已追认转正（2026-09-28 用户："认可#19"）** |
+| #20 user/message+attachments 载荷扩展 + #21 image/offload 25→26（批次 13 词汇表） | 载荷扩展与新事件走 Q9 单向门——追认是用户决策项（§0 第 7 条第 3 款） | 追认则 l0-events.md §8 落地记录 20/21 落"已追认"转正；不追认按各自回退面删除（#20 约 2 小时 / #21 约 2.5 小时，全部新增面） | **⏳ 待追认** |
+| 架构 policy 渐进基线（批次 13 T1，21 warnings） | 存量域（managed:false）违规降级警告——收紧路线是人工决策（拆文件/补 entrypoints/域拆分节奏） | 逐批消化：超行数文件随触碰拆分；requires 白名单后续按目标架构收紧；收编 acp 结构断言的评估随 policy 演进 | 观察中（警告清单 = 渐进基线，落 T-P1-121 完成记录） |
 | 真实网络传输层（批次 12 host 域） | K8 端间协议的 TCP/WS 传输、N9 的 WebDav 远端、租约 TTL 心跳均接口面在位未实装（无真实部署形态） | 批次 14 UI 部署形态定形时选传输并补端到端实测 | 待批次 14 / 真实部署 |
 | ACP 规范全文对齐 + Anthropic 真实端点（T-P1-117 / T-P1-108） | 方法映射按公开约定最小面（四方法）+ wire 语义 http-mock 钉死；真实 ACP 客户端与 Anthropic 端点未实测 | 真实客户端联调时对齐规范全文（fs 工具面/read_resource 等）；Anthropic 端点跑通一轮真实会话（cache_control 标记策略同窗口） | 待真实联调（§6.2 终验窗口） |
 | 全量 flaky 两例（llm-replay / http-mock，批次 12 期间各复现 1 次） | 93+ 文件并行负载下的端口/时序资源竞态（隔离复跑全绿）——批次 6 T-P1-48 同形态，非产品代码缺陷 | 多次全量跑观察复现率；若频繁，下一会话以 test-only 修复（固定端口/串行化该文件） | 观察中（与批次 11 llm-replay 在案项合并观察） |
