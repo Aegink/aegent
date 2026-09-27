@@ -13,6 +13,8 @@
  * 审批宣告面同款"进程内事实 + 回调"先例，不进事件词汇表。
  */
 
+import { JobEpochStaleError, encodeEpochScopedId, parseEpochScopedId } from "../session/epoch.js";
+
 export type JobStatus = "running" | "stopping" | "completed" | "killed" | "failed";
 
 export type JobChannel = "stdout" | "stderr" | "log";
@@ -79,6 +81,9 @@ export interface JobRegistryOptions {
   /** ring 容量上限（字节，UTF-8 口径）；缺省 64KB，超出丢最旧整条。 */
   maxRingBytes?: number;
   now?: () => number;
+  /** M8/T-P1-87 执行代：提供时 job id 编码为 `<epoch>-<kind>-<n>`，旧代
+   * 句柄查询/取消 → JOB_EPOCH_STALE；缺省（单测/无分代诉求）不编码。 */
+  epoch?: string;
 }
 
 const DEFAULT_RING_BYTES = 64 * 1024;
@@ -87,11 +92,13 @@ export class JobRegistry {
   private readonly jobs = new Map<string, JobRecord>();
   private readonly maxRingBytes: number;
   private readonly now: () => number;
+  private readonly epoch?: string;
   private counter = 0;
 
   constructor(options: JobRegistryOptions = {}) {
     this.maxRingBytes = options.maxRingBytes ?? DEFAULT_RING_BYTES;
     this.now = options.now ?? (() => Date.now());
+    this.epoch = options.epoch;
   }
 
   /**
@@ -99,7 +106,8 @@ export class JobRegistry {
    * 执行体的异步失败被注册表接住落 failed，绝不外抛毒化调用方。
    */
   start(spec: JobSpec): string {
-    const id = `${spec.kind}-${++this.counter}`;
+    const localId = `${spec.kind}-${++this.counter}`;
+    const id = this.epoch ? encodeEpochScopedId(this.epoch, localId) : localId;
     const record: JobRecord = {
       view: { id, kind: spec.kind, status: "running", createdAt: this.now(), totalChunks: 0 },
       ring: [],
@@ -228,6 +236,12 @@ export class JobRegistry {
   }
 
   private mustGet(id: string): JobRecord {
+    // M8 过期代句柄拒绝：解析出 epoch 段且 ≠ 本代 → 类型化拒绝（不静默
+    // 误命中"不存在"——调用方要能区分"查无此 job"与"这是旧进程的句柄"）。
+    const parsed = parseEpochScopedId(id);
+    if (this.epoch && parsed && parsed.epoch !== this.epoch) {
+      throw new JobEpochStaleError(id, parsed.epoch, this.epoch);
+    }
     const record = this.jobs.get(id);
     if (!record) throw new UnknownJobError(id);
     return record;
