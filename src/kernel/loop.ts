@@ -38,6 +38,7 @@ import { buildChatMessages, effectiveEvents } from "../session/messages.js";
 import { Projector } from "../session/project.js";
 import type { SessionStore } from "../session/store.js";
 import { computeCacheAnchor, type PrefixChange } from "../context/prefix-anchor.js";
+import { trimToolResultMessages, type ResultTrimRules } from "../context/result-trim.js";
 import { BudgetExceededError, ParseBudget } from "./budget.js";
 import {
   classifyStreamFailure,
@@ -340,6 +341,12 @@ export interface AgentLoopDeps {
    * turn/end{error} 语义）。agent-process 装配缺省注入 { maxRetries: 2 }。
    */
   streamRecovery?: StreamRecoveryPolicy;
+  /**
+   * F8/T-P1-104 工具结果历史裁剪规则：提供时 buildMessages 在请求面把陈旧
+   * 超长的 tool result 换占位符（事件流不改写、配对保持、尾部 keepLast
+   * 原文保留）；缺省 undefined = 不裁剪（零行为变化）。
+   */
+  resultTrim?: ResultTrimRules;
   /**
    * B16/T-P1-59：工具执行策略快照源（装配注入 registry.runtimeMeta 同名
    * 包装）——loop 在 step 开始按广告清单固化声明。缺省 undefined = parallel
@@ -1423,7 +1430,11 @@ export class AgentLoop {
    */
   private buildMessages(): ChatMessage[] {
     const events = effectiveEvents(this.deps.store.load(this.deps.sessionId));
-    return buildChatMessages(events);
+    const messages = buildChatMessages(events);
+    // F8/T-P1-104：投影级裁剪（请求面视图变换——事件流不改写，因果链不破）
+    return this.deps.resultTrim !== undefined
+      ? trimToolResultMessages(messages, this.deps.resultTrim)
+      : messages;
   }
 }
 

@@ -102,6 +102,10 @@ export interface AgentChildOptions {
    * 有界恢复重试是本特性的交付面；不可重试失败 → turn/end{blocked}。
    */
   streamRecovery?: AgentLoopDeps["streamRecovery"];
+  /**
+   * F8/T-P1-104 工具结果历史裁剪规则（透传 loop）。缺省 undefined = 不裁剪。
+   */
+  resultTrim?: AgentLoopDeps["resultTrim"];
   /** A13 拦截留痕 logger（透传 loop；缺省不打日志）。 */
   logger?: AgentLoopDeps["logger"];
   /**
@@ -357,6 +361,7 @@ export async function runAgentChildStdio(
     // 启用 maxRetries 2（有界；不可重试失败 → turn/end{blocked} 显式终态）。
     // 首 chunk 前的失败仍在 provider 级 withRetry 域（D15 边界不分域不越界）。
     streamRecovery: options.streamRecovery ?? { maxRetries: 2 },
+    ...(options.resultTrim !== undefined ? { resultTrim: options.resultTrim } : {}),
     ...(assembly
       ? {
           layers: assembly.layers,
