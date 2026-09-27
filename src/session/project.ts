@@ -120,6 +120,30 @@ function emptyProjection(): SessionProjection {
 
 const KNOWN_TYPES = new Set<string>(EVENT_TYPES);
 
+/** L8 六维值域闭集（与 events.ts 注释同步——单一事实源是词汇表）。 */
+const COMPACTION_TRIGGERS = new Set(["auto", "manual"]);
+const COMPACTION_EVENT_PHASES = new Set(["pre_turn", "mid_turn"]);
+const COMPACTION_STATUSES = new Set(["started", "completed", "failed"]);
+
+function validateCompactionMetrics(event: Extract<SessionEvent, { type: "compaction" }>): void {
+  if (event.trigger !== undefined && !COMPACTION_TRIGGERS.has(event.trigger)) {
+    throw new ProjectError(`compaction.trigger 值域外：${event.trigger}（合法：auto|manual）`);
+  }
+  if (event.phase !== undefined && !COMPACTION_EVENT_PHASES.has(event.phase)) {
+    throw new ProjectError(`compaction.phase 值域外：${event.phase}（合法：pre_turn|mid_turn）`);
+  }
+  if (event.status !== undefined && !COMPACTION_STATUSES.has(event.status)) {
+    throw new ProjectError(`compaction.status 值域外：${event.status}（合法：started|completed|failed）`);
+  }
+  // implementation/strategy 单一实现期是自由值（注释纪律收闭集），只查形状
+  if (event.implementation !== undefined && typeof event.implementation !== "string") {
+    throw new ProjectError("compaction.implementation 须为字符串");
+  }
+  if (event.strategy !== undefined && typeof event.strategy !== "string") {
+    throw new ProjectError("compaction.strategy 须为字符串");
+  }
+}
+
 /** JsonValue 结构校验（plugin.payload 用，C17——只允许可序列化值落流）。 */
 function isJsonValue(v: unknown): boolean {
   if (v === null || typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
@@ -254,6 +278,10 @@ export class Projector {
         }
         break;
       case "compaction":
+        // L8/T-P1-92 六维载荷值域闭集（透传垃圾值拒绝——E12/E16 校验面）；
+        // 全部可选（旧流缺省兼容——status 缺省读作 completed）。
+        validateCompactionMetrics(event);
+        break;
       case "checkpoint":
       case "request/header":
       case "model/switch":

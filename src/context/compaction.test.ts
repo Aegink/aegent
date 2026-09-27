@@ -424,3 +424,69 @@ describe("真 LLM 摘要器（F5 / T-P1-18）", () => {
     expect(parseSummaryOutput("   ")).toBeNull();
   });
 });
+
+describe("L8 六维度量（T-P1-92）：压缩载荷带六面 + 值域闭集", () => {
+  it("压缩落流载荷含 trigger/phase/implementation/strategy/status（引擎 auto 填充）", async () => {
+    const store = new SessionStore();
+    store.append(SESSION, turnEvents(1, "第一轮问题", "第一轮回答", {
+      inputTokens: 700,
+      outputTokens: 100,
+      totalTokens: 800,
+    }));
+    store.append(SESSION, turnEvents(2, "第二轮问题", "第二轮回答"));
+    const engine = new CompactionEngine({
+      sessionId: SESSION,
+      store,
+      summarizer: scriptedSummarizer("剧情摘要"),
+      keepRules: { retainedFromEnd: 1 },
+    });
+    const result = await engine.run({
+      turn: 2,
+      phase: "MidTurn",
+      request: { reason: "local-overflow", estimatedTokens: 9_000, contextWindow: 8_000 },
+    });
+    expect(result.kind).toBe("compacted");
+    const event = store.load(SESSION).find((e) => e.type === "compaction");
+    expect(event).toMatchObject({
+      trigger: "auto",
+      phase: "mid_turn", // PascalCase 相位 → 事件面 snake_case（codex serde 同款）
+      implementation: "llm-summarizer",
+      strategy: "full_summary",
+      status: "completed",
+    });
+    expect(event?.reason).toBe("context_limit"); // 六维之一（F24 既有）
+  });
+
+  it("project 校验：六维字段透传垃圾值 → 显式拒绝（E16 校验面）；合法六维放行", () => {
+    const store = new SessionStore();
+    expect(() =>
+      store.append(SESSION, [
+        {
+          type: "compaction",
+          turn: 1,
+          summary: "s",
+          retainedTail: 0,
+          tokensBefore: 1,
+          status: "未知状态",
+        } as never,
+      ]),
+    ).toThrow(/compaction.status 值域外/);
+    expect(() =>
+      store.append(SESSION, [
+        {
+          type: "compaction",
+          turn: 1,
+          summary: "s",
+          retainedTail: 0,
+          tokensBefore: 1,
+          trigger: "cron",
+        } as never,
+      ]),
+    ).toThrow(/compaction.trigger 值域外/);
+    // 合法六维（含 P0 形状缺省）照常落流
+    store.append(SESSION, [
+      { type: "compaction", turn: 1, summary: "s", retainedTail: 0, tokensBefore: 1 },
+    ]);
+    expect(store.load(SESSION).filter((e) => e.type === "compaction")).toHaveLength(1);
+  });
+});

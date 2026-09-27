@@ -105,6 +105,14 @@ export type CompactionPhase = (typeof COMPACTION_PHASES)[number];
  * 入参是本 turn **已完成**的模型 step 数——0 表示第一次模型请求尚未发出（PreTurn），
  * 已有完成 step 则处于轮中（MidTurn，step 边界触发面）。
  */
+/**
+ * 相位的事件面值映射（F20/F21 的 PascalCase → 事件载荷 snake_case——
+ * codex facts.rs serde rename_all = "snake_case" 同款序列化纪律）。
+ */
+export function eventPhaseOf(phase: CompactionPhase): "pre_turn" | "mid_turn" {
+  return phase === "PreTurn" ? "pre_turn" : "mid_turn";
+}
+
 export function phaseForCompletedSteps(completedModelSteps: number): CompactionPhase {
   return completedModelSteps === 0 ? "PreTurn" : "MidTurn";
 }
@@ -256,6 +264,14 @@ export class CompactionEngine {
         retainedTail,
         tokensBefore,
         reason: compactionReasonOf(input.request),
+        // L8 六维度量（T-P1-92，codex facts.rs 对位）：trigger 当前引擎
+        // 只自动触发（manual 槽位随 /compact 命令面）；implementation/
+        // strategy 是当前唯一直值（第二实现/策略出现时收闭集走立案）。
+        trigger: "auto",
+        phase: eventPhaseOf(input.phase),
+        implementation: "llm-summarizer",
+        strategy: "full_summary",
+        status: "completed",
         ...(title !== undefined ? { title } : {}),
       },
     ]);

@@ -375,6 +375,40 @@ export interface CompactionEvent extends EventBase {
    * 可选字段向后兼容：早期流缺省读作 context_limit。
    */
   reason?: string;
+  // -------------------------------------------------------------------------
+  // L8 六维度量（T-P1-92，codex·analytics/facts.rs:444-509 对位）——全部
+  // 可选（旧流缺省兼容）；事件计数 21 不变（载荷扩展，词汇表立案 #12）。
+  // -------------------------------------------------------------------------
+  /**
+   * 触发方式（codex CompactionTrigger）："auto"（引擎自动——溢出/换模）
+   * | "manual"（用户显式 /compact——命令面随真实需求，槽位先留）。
+   */
+  trigger?: string;
+  /**
+   * 相位（codex CompactionPhase；F20/F21 的两相位映射到事件面 snake_case）：
+   * "pre_turn"（轮收尾时的首次请求前）| "mid_turn"（step 边界）。
+   * codex 的 standalone_turn/post_turn 是其编排特有，不引入。
+   */
+  phase?: string;
+  /**
+   * 实现面（codex CompactionImplementation）：当前唯一直值 "llm-summarizer"
+   * （F5 的 LLM 摘要器）。**纪律**：单一实现期落唯一直值，第二实现出现时
+   * 收闭集走立案（YAGNI 对冲过度设计）。
+   */
+  implementation?: string;
+  /**
+   * 策略面（codex CompactionStrategy）：当前唯一直值 "full_summary"
+   * （全量摘要）。codex 的 memento/prefix_compaction 是其策略族，我方
+   * 无此二分——收闭集随真实策略演进。
+   */
+  strategy?: string;
+  /**
+   * 状态（codex CompactionStatus 的我方子集）："started"（摘要调用前落——
+   * E17/T-P1-93 中间态事实）| "completed"（结算；**缺省读作 completed**——
+   * 旧流兼容）| "failed"（摘要失败降级升流内事实，T-P1-93）。codex 的
+   * interrupted 不引入：中断时最后事实是 started（对账后投影可见"未完成"）。
+   */
+  status?: string;
 }
 
 export interface CheckpointEvent extends EventBase {
