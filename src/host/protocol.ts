@@ -26,132 +26,33 @@
  */
 
 import {
-  MAX_LINE_BYTES,
   type AgentRequest,
   type AgentMessage,
 } from "../kernel/agent-protocol.js";
 import type { SessionEvent } from "../kernel/events.js";
+import {
+  bounded,
+  parseClientEnvelope,
+  type ClientEnvelope,
+  type ProtocolErrorShape,
+} from "./protocol-parse.js";
 
 export const PROTOCOL_VERSION = 1;
 
-/** 错误消息有界（pi boundedErrorMessage 同款 500 字符截断）。 */
-function bounded(message: string): string {
-  return message.length <= 500 ? message : `${message.slice(0, 497)}...`;
-}
-
-export interface ProtocolErrorShape {
-  readonly code: string;
-  readonly message: string;
-}
-
-// ---------------------------------------------------------------------------
-// 端 → host 信封（严格校验：未知属性拒绝）
-// ---------------------------------------------------------------------------
-
-export type ClientEnvelope =
-  | {
-      type: "hello";
-      version: number;
-      /** N2/T-P1-116：端身份注册（可选——缺省 = 匿名观察者，只收广播不可写）。
-       * surfaceId/deliveryKind 成对出现由 HostBridge 校验。 */
-      surfaceId?: string;
-      deliveryKind?: string;
-    }
-  | { type: "request"; requestId: string; sessionId: string; call: AgentRequest }
-  /**
-   * N7/T-P1-116 run 租约的协议面（host 域命令——不经 agent，bridge 直答）：
-   * acquire 获得写命令权（单 holder，已有人持约 → LeaseBusy error）；
-   * release 主动归还。断线自动释放（SurfaceHub close 面）。
-   */
-  | { type: "lease"; op: "acquire" | "release"; surfaceId: string };
-
-function rejectUnknownKeys(value: Record<string, unknown>, allowed: readonly string[]): string | null {
-  for (const key of Object.keys(value)) {
-    if (!allowed.includes(key)) return `未知属性 "${key}"`;
-  }
-  return null;
-}
-
-/** 解析并严格校验一条端 → host 信封（坏信封抛 Error——调用方转 error 行）。 */
-export function parseClientEnvelope(line: string): ClientEnvelope {
-  if (line.length > MAX_LINE_BYTES) {
-    throw new Error(`行超长（上限 ${MAX_LINE_BYTES} 字符）`);
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(line);
-  } catch (error) {
-    throw new Error(`非 JSON 行：${bounded(error instanceof Error ? error.message : String(error))}`);
-  }
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("信封必须是 JSON 对象");
-  }
-  const record = parsed as Record<string, unknown>;
-  const type = record["type"];
-  if (type === "hello") {
-    const unknownKey = rejectUnknownKeys(record, ["type", "version", "surfaceId", "deliveryKind"]);
-    if (unknownKey) throw new Error(`hello 信封${unknownKey}`);
-    if (typeof record["version"] !== "number" || !Number.isInteger(record["version"])) {
-      throw new Error("hello 需要 version 整数");
-    }
-    const surfaceId = record["surfaceId"];
-    const deliveryKind = record["deliveryKind"];
-    if (surfaceId !== undefined && (typeof surfaceId !== "string" || surfaceId === "")) {
-      throw new Error("hello 的 surfaceId 须为非空字符串");
-    }
-    if (deliveryKind !== undefined && deliveryKind !== "push" && deliveryKind !== "poll") {
-      throw new Error(`hello 的 deliveryKind 非法：${String(deliveryKind)}（合法：push|poll）`);
-    }
-    return {
-      type: "hello",
-      version: record["version"],
-      ...(surfaceId !== undefined ? { surfaceId: surfaceId as string } : {}),
-      ...(deliveryKind !== undefined ? { deliveryKind: deliveryKind as "push" | "poll" } : {}),
-    };
-  }
-  if (type === "lease") {
-    const unknownKey = rejectUnknownKeys(record, ["type", "op", "surfaceId"]);
-    if (unknownKey) throw new Error(`lease 信封${unknownKey}`);
-    if (record["op"] !== "acquire" && record["op"] !== "release") {
-      throw new Error(`lease 的 op 非法：${String(record["op"])}（合法：acquire|release）`);
-    }
-    if (typeof record["surfaceId"] !== "string" || record["surfaceId"] === "") {
-      throw new Error("lease 需要 surfaceId 非空字符串");
-    }
-    return { type: "lease", op: record["op"] as "acquire" | "release", surfaceId: record["surfaceId"] };
-  }
-  if (type === "request") {
-    const unknownKey = rejectUnknownKeys(record, ["type", "requestId", "sessionId", "call"]);
-    if (unknownKey) throw new Error(`request 信封${unknownKey}`);
-    if (typeof record["requestId"] !== "string" || record["requestId"] === "") {
-      throw new Error("request 需要 requestId 非空字符串");
-    }
-    if (typeof record["sessionId"] !== "string" || record["sessionId"] === "") {
-      throw new Error("request 需要 sessionId 非空字符串");
-    }
-    if (record["call"] === null || typeof record["call"] !== "object" || Array.isArray(record["call"])) {
-      throw new Error("request 需要 call 对象（AgentRequest）");
-    }
-    const call = record["call"] as Record<string, unknown>;
-    if (typeof call["type"] !== "string" || call["type"] === "") {
-      throw new Error("request.call 需要 type 字段");
-    }
-    return {
-      type: "request",
-      requestId: record["requestId"],
-      sessionId: record["sessionId"],
-      call: call as unknown as AgentRequest,
-    };
-  }
-  throw new Error(`未知信封类型：${String(type)}`);
-}
 
 // ---------------------------------------------------------------------------
 // host → 端信封
 // ---------------------------------------------------------------------------
 
 export type ServerEnvelope =
-  | { type: "hello"; version: typeof PROTOCOL_VERSION }
+  | {
+      type: "hello";
+      version: typeof PROTOCOL_VERSION;
+      /** K5/T-P1-128：本 host 的会话 id 回执（UI 连接后即可发起 query/请求
+       * ——host 单会话模型的路由引导；批次 12 hello 身份字段先例的 server
+       * 侧对称面）。缺省不发（协议层不感知 sessionId 时）。 */
+      sessionId?: string;
+    }
   | { type: "hello_error"; error: ProtocolErrorShape }
   | { type: "response"; requestId: string; ok: true; result?: unknown }
   | { type: "response"; requestId: string; ok: false; error: ProtocolErrorShape }
@@ -193,6 +94,8 @@ export interface HostProtocolServerOptions {
   surfaceId?: string;
   /** 协议错误留痕（坏行/校验拒绝——可观测面；缺省静默）。 */
   onProtocolError?: (error: Error) => void;
+  /** hello 回执携带的本 host 会话 id（K5 路由引导——bridge 侧注入）。 */
+  sessionId?: string;
   /**
    * hello 回调（N2 surface 注册面）：端身份（surfaceId/deliveryKind）由
    * 组合层（HostBridge）消费——协议层只解析与校验形状。
@@ -203,6 +106,11 @@ export interface HostProtocolServerOptions {
    * reject → ok:false（LeaseBusy/NotLeaseHolder 等类型化 code）。
    */
   onLease?: (lease: { op: "acquire" | "release"; surfaceId: string }) => Promise<unknown>;
+  /**
+   * query 信封回调（K5/T-P1-128 恢复视图——bridge 直答只读，不经 agent）。
+   * reject（Error 带 code）→ ok:false response。
+   */
+  onQuery?: (query: { sessionId: string; op: "events"; afterSeq?: number }) => Promise<unknown>;
 }
 
 export class HostProtocolServer {
@@ -260,7 +168,11 @@ export class HostProtocolServer {
         return;
       }
       this.helloed = true;
-      this.write({ type: "hello", version: PROTOCOL_VERSION });
+      this.write({
+        type: "hello",
+        version: PROTOCOL_VERSION,
+        ...(this.options.sessionId !== undefined ? { sessionId: this.options.sessionId } : {}),
+      });
       if (envelope.surfaceId !== undefined || envelope.deliveryKind !== undefined) {
         if (envelope.surfaceId !== undefined) this.surfaceId = envelope.surfaceId;
         this.options.onHello?.({
@@ -304,7 +216,6 @@ export class HostProtocolServer {
       void this.options
         .onLease(envelope)
         .then((result) => {
-          console.log("DBG-then:", JSON.stringify(result));
           this.write({
             type: "response",
             requestId: "(lease)",
@@ -313,7 +224,6 @@ export class HostProtocolServer {
           });
         })
         .catch((error: unknown) => {
-          console.log("DBG-catch:", String(error));
           const code =
             error instanceof Error &&
             typeof (error as unknown as { code?: unknown }).code === "string"
@@ -323,6 +233,42 @@ export class HostProtocolServer {
           this.write({
             type: "response",
             requestId: "(lease)",
+            ok: false,
+            error: { code, message },
+          });
+        });
+      return;
+    }
+    if (envelope.type === "query") {
+      if (!this.options.onQuery) {
+        this.write({
+          type: "response",
+          requestId: envelope.requestId,
+          ok: false,
+          error: { code: "QUERY_UNSUPPORTED", message: bounded("本连接未配置查询面") },
+        });
+        return;
+      }
+      void this.options
+        .onQuery(envelope)
+        .then((result) => {
+          this.write({
+            type: "response",
+            requestId: envelope.requestId,
+            ok: true,
+            ...(result !== undefined ? { result } : {}),
+          });
+        })
+        .catch((error: unknown) => {
+          const code =
+            error instanceof Error &&
+            typeof (error as unknown as { code?: unknown }).code === "string"
+              ? (error as unknown as { code: string }).code
+              : "QUERY_ERROR";
+          const message = bounded(error instanceof Error ? error.message : String(error));
+          this.write({
+            type: "response",
+            requestId: envelope.requestId,
             ok: false,
             error: { code, message },
           });
@@ -376,10 +322,11 @@ export class HostProtocolServer {
   private write(envelope: ServerEnvelope): void {
     if (this.closed) return;
     const line = JSON.stringify(envelope);
-    console.log("DBG-write:", this.surfaceId ?? "?", line.slice(0, 80));
     this.options.write(line);
   }
 }
 
 /** 协议行长度上限复用（agent-protocol 同款——帧纪律单一来源）。 */
 export type { AgentMessage };
+export { parseClientEnvelope, type ClientEnvelope } from "./protocol-parse.js";
+

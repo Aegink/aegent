@@ -16,11 +16,11 @@
 import type { ApprovalAnnouncement } from "./pending.js";
 
 // ---------------------------------------------------------------------------
-// 字段闭集（P0 单端；多端随 N7 追加——只追加不替换）
+// 字段闭集（P0 单端起步；批次 14 多端真实端面并入——只追加不替换）
 // ---------------------------------------------------------------------------
 
-/** 审批发起的界面端。P0 只有 CLI。 */
-export const APPROVAL_SURFACES = ["cli"] as const;
+/** 审批发起的界面端。P0 只有 CLI；批次 14（K5/K2·T-P1-128）并入 web/desktop。 */
+export const APPROVAL_SURFACES = ["cli", "web", "desktop"] as const;
 export type ApprovalSurface = (typeof APPROVAL_SURFACES)[number];
 
 /** 审批人：人（经 owner 通道）/ 审批超时（C50）。 */

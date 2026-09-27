@@ -174,6 +174,7 @@ export class HostBridge implements SessionRouter {
     const serverOptions: HostProtocolServerOptions = {
       write: surfaceOptions.write,
       surfaceId,
+      sessionId: this.options.host.sessionId,
       onHello: (hello) => {
         // hello 携带的身份与注册不符 = 编程错误（connectSurface 已注册）
         if (hello.surfaceId !== undefined && hello.surfaceId !== surfaceId) {
@@ -183,13 +184,32 @@ export class HostBridge implements SessionRouter {
       // N7 run 租约协议面：acquire/release 直答（不经 agent）；单 holder
       // 语义在 SurfaceHub（LeaseBusyError/NotLeaseHolderError 的 code 透传）。
       onLease: async (lease) => {
-        console.log("DBG-onLease:", JSON.stringify(lease), "holder:", this.options.host.surfaces.currentLeaseHolder());
         if (lease.op === "acquire") {
           const acquired = this.options.host.surfaces.acquireRunLease(lease.surfaceId);
           return { held: true, surfaceId: acquired.ownerId };
         }
         const released = this.options.host.surfaces.releaseRunLease(lease.surfaceId);
         return { released };
+      },
+      // K5/T-P1-128 恢复视图（只读直答——不落流、不经 agent、不需要租约）。
+      onQuery: async (query) => {
+        if (query.sessionId !== this.options.host.sessionId) {
+          const error = new Error(`会话 ${query.sessionId} 没有 host 注册`);
+          (error as unknown as { code: string }).code = "UNKNOWN_HOST_SESSION";
+          throw error;
+        }
+        const store = this.options.store;
+        if (store === undefined) {
+          const error = new Error("host 未配置事件存储，恢复视图不可用");
+          (error as unknown as { code: string }).code = "STORE_UNAVAILABLE";
+          throw error;
+        }
+        // 内存序读取（同步）：镜像 append 的直接产物——最新、无 write-behind
+        // 缓冲滞后（restore/readAll 只见已 flush 部分——E1 纪律的读面选择）。
+        const all = store.load(query.sessionId);
+        const events =
+          query.afterSeq !== undefined ? all.filter((e) => e.seq > query.afterSeq!) : [...all];
+        return { events };
       },
     };
     const server = new HostProtocolServer(this, serverOptions);

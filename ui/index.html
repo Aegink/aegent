@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>aegent</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header id="status-bar">
+      <span id="conn-status">连接中…</span>
+      <span id="surface-id"></span>
+      <span id="lease-status"></span>
+      <button id="lease-btn" type="button" hidden>取得写租约</button>
+    </header>
+    <main id="stream" aria-live="polite"></main>
+    <section id="pending" aria-label="待决审批"></section>
+    <footer id="composer">
+      <input id="prompt-input" type="text" placeholder="输入指令回车执行…" autocomplete="off" />
+      <button id="send-btn" type="button">发送</button>
+    </footer>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

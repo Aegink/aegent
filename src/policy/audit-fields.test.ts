@@ -18,9 +18,9 @@ function makeAuditedPending() {
   return { pending, records };
 }
 
-describe("L2 · 字段闭集（P0 单端）", () => {
-  it("surface 与 approver 是封闭清单（多端随 N7 只追加）", () => {
-    expect([...APPROVAL_SURFACES]).toEqual(["cli"]);
+describe("L2 · 字段闭集（多端真实端面已并入）", () => {
+  it("surface 与 approver 是封闭清单（批次 14 并入 web/desktop——只追加不替换）", () => {
+    expect([...APPROVAL_SURFACES]).toEqual(["cli", "web", "desktop"]);
     expect([...APPROVAL_APPROVERS]).toEqual(["user", "timeout"]);
   });
 

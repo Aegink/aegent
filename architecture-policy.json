@@ -147,7 +147,9 @@
       ],
       "managed": true,
       "requires": [
-        "kernel"
+        "kernel",
+        "models",
+        "session"
       ],
       "publicEntrypoints": [],
       "owner": "wangh"
