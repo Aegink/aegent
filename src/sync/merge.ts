@@ -155,14 +155,28 @@ export function threeWayMerge(
       if (l !== undefined && l.deleted !== true) entities.push(l);
       continue;
     }
-    // 本侧未动 → 取远端（远端墓碑 = 删除收敛，不产出）
-    if (l !== undefined && b !== undefined && sameEntity(l, b)) {
-      if (r !== undefined && r.deleted !== true) entities.push(r);
+    // 缺席非删除（pi 墓碑纪律："缺席仅在 base 有意义"，显式墓碑才表达
+    // 删除）——本侧缺席且另一侧相对 base 未变 → 取未变侧本体（B 设备
+    // 配置快照没有该实体 = B 未动，不丢 A 的新增）。
+    if (l === undefined && r !== undefined && b !== undefined && sameEntity(r, b)) {
+      entities.push(r);
       continue;
     }
-    // 远端未动 → 取本地
+    if (r === undefined && l !== undefined && b !== undefined && sameEntity(l, b)) {
+      entities.push(l);
+      continue;
+    }
+    // 本侧未动 → 取远端（远端墓碑 = 删除收敛，不产出；远端缺席非删除 →
+    // 保留本地）
+    if (l !== undefined && b !== undefined && sameEntity(l, b)) {
+      if (r !== undefined && r.deleted !== true) entities.push(r);
+      else if (r === undefined) entities.push(l);
+      continue;
+    }
+    // 远端未动 → 取本地（本地缺席非删除 → 保留远端）
     if (r !== undefined && b !== undefined && sameEntity(r, b)) {
       if (l !== undefined && l.deleted !== true) entities.push(l);
+      else if (l === undefined) entities.push(r);
       continue;
     }
     // 单边新增（base 与另一边都无；墓碑对缺席 = 删除收敛，不产出）
@@ -185,6 +199,17 @@ export function threeWayMerge(
         continue;
       }
       conflicts.push(conflictOf(domain, entityId, label, l, r, "双方各自新增了同名实体且内容冲突"));
+      continue;
+    }
+    // 缺席（非墓碑）不构成"修改"——base 有 + 本侧缺席 + 对侧相对 base
+    // 改动 → 取对侧（A 设备快照没有 B 新推的实体状态 = A 未动，采纳 B；
+    // 墓碑方不进此分支——删除 vs 修改仍是冲突）。
+    if (l === undefined && r !== undefined && r.deleted !== true) {
+      entities.push(r);
+      continue;
+    }
+    if (r === undefined && l !== undefined && l.deleted !== true) {
+      entities.push(l);
       continue;
     }
     // 删除 vs 修改（一方墓碑、另一方改动——双方同删已在 sameEntity 收敛）
