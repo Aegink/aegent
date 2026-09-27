@@ -58,6 +58,13 @@ export interface ShellAnalysis {
   readonly ops: readonly VirtualOp[];
   /** 任一操作 uncertain。 */
   readonly uncertain: boolean;
+  /**
+   * T6/T-P1-123：输入降级标志（畸形输入永不失控抛出——降级返回 + 显式标志）。
+   * 置位时 ops 为空且 uncertain 恒 true（fail-closed：分析不了按危险处理——
+   * C28 消费纪律），绝不 throw。non_string = 运行时收到非字符串；too_long =
+   * 超过 MAX_COMMAND_LENGTH；contains_nul = 含 NUL（shell 参数硬限制）。
+   */
+  readonly degraded?: "non_string" | "too_long" | "contains_nul";
   /** 任一操作在动态 cd 之后。 */
   readonly cwdUnknown: boolean;
   /** 任一操作路径可能依赖 cwd。 */
@@ -234,7 +241,27 @@ function isDynamicTarget(target: string): boolean {
 }
 
 /** 主入口：把一条 bash 命令分析成虚拟操作（B 档）。 */
+/**
+ * 单条命令的扫描输入上限（T5/T-P1-123——预算 cap 总工作量，不 cap 语义能力）。
+ * 依据：单条 bash 命令的 OS 硬限制约 ARG_MAX 128KB 的一半取整；本扫描器为
+ * 线性扫描（B 档五构造 + 重定向抽取），64KB 输入实测毫秒级完成——上限保证
+ * 最坏情况工作量有界，且远超真实交互输入（模型产出的单命令通常 <4KB）。
+ * 超限走 degraded 降级（见 ShellAnalysis.degraded），不抛异常。
+ */
+export const MAX_COMMAND_LENGTH = 65_536;
+
 export function analyzeShellCommand(command: string): ShellAnalysis {
+  // T6/T-P1-123：畸形输入降级返回 + 显式标志（uncertain 恒 true——fail-closed），
+  // 绝不因输入形态异常抛出失控异常。
+  if (typeof (command as unknown) !== "string") {
+    return { ops: [], uncertain: true, cwdUnknown: false, pathMayDependOnCwd: false, degraded: "non_string" };
+  }
+  if ((command as string).includes(" ")) {
+    return { ops: [], uncertain: true, cwdUnknown: false, pathMayDependOnCwd: false, degraded: "contains_nul" };
+  }
+  if ((command as string).length > MAX_COMMAND_LENGTH) {
+    return { ops: [], uncertain: true, cwdUnknown: false, pathMayDependOnCwd: false, degraded: "too_long" };
+  }
   const ops: VirtualOp[] = [];
   let uncertain = false;
   let cwdUnknown = false;

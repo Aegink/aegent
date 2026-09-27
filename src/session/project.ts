@@ -154,13 +154,23 @@ function validateCompactionMetrics(event: Extract<SessionEvent, { type: "compact
   }
 }
 
+/**
+ * JsonValue 结构校验的嵌套深度上限（T5/T-P1-123——上限必须写实测溢出点与余量倍数）。
+ * 实测 Node 22 默认栈下，递归结构校验（Object.values 形态）约在 ~8400 层触发
+ * RangeError 栈溢出（失控异常——T6 明令禁止的形态）；本上限 512 层保持 ≥15×
+ * 余量，且远超任何合法落流 payload 的深度（厂商 API 侧 JSON 深度限制通常 ≤128）。
+ * 超限 = 结构校验失败（false → 调用点 ProjectError 受控拒绝），绝不崩于 RangeError。
+ */
+export const MAX_JSON_DEPTH = 512;
+
 /** JsonValue 结构校验（plugin.payload 用，C17——只允许可序列化值落流）。 */
-function isJsonValue(v: unknown): boolean {
+function isJsonValue(v: unknown, depth = 0): boolean {
+  if (depth > MAX_JSON_DEPTH) return false;
   if (v === null || typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
     return true;
   }
-  if (Array.isArray(v)) return v.every((x) => isJsonValue(x));
-  if (typeof v === "object") return Object.values(v).every((x) => isJsonValue(x));
+  if (Array.isArray(v)) return v.every((x) => isJsonValue(x, depth + 1));
+  if (typeof v === "object") return Object.values(v).every((x) => isJsonValue(x, depth + 1));
   return false;
 }
 
@@ -387,7 +397,9 @@ export class Projector {
           event.payload !== undefined &&
           !isJsonValue(event.payload)
         ) {
-          throw new ProjectError("plugin 的 payload 必须是 JsonValue（可序列化值）");
+          throw new ProjectError(
+            "plugin 的 payload 必须是 JsonValue（可序列化值；含超深嵌套防护——MAX_JSON_DEPTH 512）",
+          );
         }
         break;
       default:

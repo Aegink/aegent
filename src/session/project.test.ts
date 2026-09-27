@@ -158,6 +158,25 @@ describe("fold 即校验（E16）", () => {
       namespace: "no-payload",
     } as unknown as SessionEvent;
     expect(() => Projector.fresh().append([noPayload])).not.toThrow();
+
+    // T5/T-P1-123：深度上限——MAX_JSON_DEPTH(512) 内通过（余量验证），
+    // 超限受控拒绝（ProjectError 带深度提示），绝不崩于 RangeError 栈溢出
+    const deepObject = (levels: number): SessionEvent => {
+      let payload: unknown = { leaf: 1 };
+      for (let i = 0; i < levels; i++) payload = { nested: payload };
+      return { type: "plugin", seq: 1, ts: 0, turn: 0, namespace: "deep", payload } as unknown as SessionEvent;
+    };
+    expect(() => Projector.fresh().append([deepObject(500)])).not.toThrow();
+    const deepBad = Projector.fresh();
+    expect(() => deepBad.append([deepObject(600)])).toThrow(/MAX_JSON_DEPTH/);
+    const deepBad2 = Projector.fresh();
+    try {
+      deepBad2.append([deepObject(200_000)]);
+      expect.unreachable("超深 payload 应被拒绝");
+    } catch (e) {
+      // 受控 ProjectError，而非失控 RangeError（栈溢出）
+      expect((e as Error).constructor.name).toBe("ProjectError");
+    }
     // C15：逃生舱只有一个——其他未知类型仍被拒（ghost 恒拒）
     const ghost = { type: "ghost/plugin", seq: 99, ts: 0, turn: 0 } as unknown as SessionEvent;
     expect(() => projector.append([ghost])).toThrow(/未知事件类型/);
