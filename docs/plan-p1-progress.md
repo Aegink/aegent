@@ -25,10 +25,11 @@ docs/plan-p1-progress.md（批次 11 报告 + 待澄清 #16~#18 + 人工确认�
    留 K3"（批次 6）+ M8/N4 execution epoch（批次 10）+ N6 lease 语义扩展
    （批次 9 C6 卡记档"多端并发 holder 留 N7"）——多端打底逐条消费。
 3. 词汇表高风险预判（圈定研究）：N8 surface roster attach/detach 事件——
-   展卡时预判立案（编号接 #19 起）；批次 11 遗留三案先向用户确认：
-   #16（J5 厂商选型，建议 Anthropic——批次 11 的 T-P1-108 未展卡，追认后
-   可并入批次 12 展卡执行）、#17（compHash 载荷）、#18（strategy 值域 +
-   failureReason 载荷），未回前相关面保持现状。
+   展卡时预判立案（编号接 #19 起）；批次 11 遗留案状态：#16 已追认
+   （Anthropic）——T-P1-108（J5 Anthropic Messages 适配）在本批展卡执行
+   （锚点照卡序头草案：opencode llm 分层 + pi-mono anthropic api）；#17
+   （compHash 载荷）/ #18（strategy 值域 + failureReason 载荷）待用户
+   追认，未回前相关面保持现状（可选字段前向兼容，不阻塞展卡）。
 4. 全量基线 1144 passed / 1 skipped；词汇表 23 事件。收官照批次 8~11
    先例出组报告（写入本文件），更新本文件的批次 13 提示词与全量基线后
    停止——不要开始批次 13。不要问要不要继续。
@@ -66,7 +67,7 @@ docs/plan-p1-progress.md（批次 11 报告 + 待澄清 #16~#18 + 人工确认�
 
 | # | 需求ID | 我看到的（含路径:行） | 与需求文档的矛盾 | 建议 | 裁决与落实 |
 | --- | --- | --- | --- | --- | --- |
-| #16 | J5 | 展卡时开放问题（批次 11 提示词明示"展卡时先立案"）：第二厂商选型候选按参考仓覆盖面为 Anthropic（pi-mono·packages/ai/src/api/ 锚点最厚——anthropic-cache-split.ts 等）与 Gemini（qwen） | 非矛盾——用户决策项（技术选型，§0 第 7 条第 3 款） | 建议 **Anthropic**：pi-mono 锚点最厚（流式 wire/缓存切分/工具块映射均有同仓先例），且 F6/F13-F15 缓存族已按 pi-mono 语义落过锚；Gemini（qwen）备选 | **待用户追认**——T-P1-108 保持未展；追认后由下一会话（批次 12）展开执行 |
+| #16 | J5 | 展卡时开放问题（批次 11 提示词明示"展卡时先立案"）：第二厂商选型候选按参考仓覆盖面为 Anthropic（pi-mono·packages/ai/src/api/ 锚点最厚——anthropic-cache-split.ts 等）与 Gemini（qwen） | 非矛盾——用户决策项（技术选型，§0 第 7 条第 3 款） | 建议 **Anthropic**：pi-mono 锚点最厚（流式 wire/缓存切分/工具块映射均有同仓先例），且 F6/F13-F15 缓存族已按 pi-mono 语义落过锚；Gemini（qwen）备选 | **✅ 已追认（2026-09-27 用户："Anthropic"）**——T-P1-108（J5 第二厂商适配）照批次 12 提示词既定安排并入批次 12 展卡执行 |
 | #17 | F26 | T-P1-100 落地：`compaction` 事件载荷增可选字段 `compHash?: string`（events.ts CompactionEvent——压缩指纹，三次落盘 started/failed/completed 同值；`reason:"comp_hash_changed"` 是词汇表 2026-09-25 定稿注释中**预先声明**的 P1 槽位，非新值） | 无矛盾——载荷扩展按 Q9 封闭联合纪律走立案（事件计数 23 不变） | 追认 `compHash` 可选载荷；回退面 = 字段删除后旧流/新流均零影响（可选字段前向兼容，缺省读作"无指纹"不触发重压——codex turn.rs:1304"缺值不触发"纪律） | **待用户追认** |
 | #18 | F11 | T-P1-101 落地：`compaction` 事件 (a) `strategy` 值域收闭集 `"full_summary" \| "recent_window_fallback"`（原注释"唯一直值"演进——F11 兜底检查点是真实第二策略）+ (b) 新增可选字段 `failureReason?: string`（**闭集** no_new_history/summary_budget/summary_provider/checkpoint_oversized——ADR 0302 纪律"closed vocabulary instead of provider error text"，provider 错误原文绝不落流） | 无矛盾——值域扩展 + 载荷扩展按 Q9 纪律走立案（事件计数 23 不变；旧流 strategy 缺省读作 full_summary 语义） | 追认 strategy 值域收闭集 + failureReason 可选载荷；回退面 = 删除字段后兜底检查点退回"failed 事件 + 上抛"旧行为（E17/T-P1-93 语义），旧流零影响 | **待用户追认** |
 
