@@ -981,3 +981,140 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - 两个真实缺口在实现/测试中被抓出并修复 ✓：①C46/C35 出口硬拦拦不到 apply_patch 的 patchText 嵌入路径（policy 侧新增 extractPatchWritePaths 前缀扫描器，两出口各加分支）；②B13 预算的"成功清空"依赖成功结果也携带 mutationPaths（工具层成对补齐）。
 - 六面盘点 ✓（详见 T-P1-65 完成记录）：超时四轴终局清单、三层重试分域、escalation×策略链次序、快照×动态注册、热刷新×capturedModel 生效点对齐、apply_patch 两阶段快照一条。
 - 本批交付面：超时统一定形（timeout.ts 扩库四件 + registry 武装）· apply_patch 工具（V4A + 两阶段）· mutation 重试预算（promptId×path）· 沙箱升级执行期校验（escalation + bash 接入 SandboxBackend）· 工具声明 step 快照（runtimeMeta）· lsp 工具（最小 LSP 客户端）· step 可观测事件（timing/traceId + retrying）· 输出触顶可续跑 · 配置两类（SessionConfigStore + config/refresh 协议）· MCP 客户端（最小 stdio JSON-RPC + 命名空间化注册）· 六面盘点 + 快照。
+
+## 批次 8 卡序（9 张，2026-09-27 展卡，按依赖排序；12 条需求 ID：C8/C11/C12/C13/C17/C23/C26/C34/C36/C39/C41/C53）
+
+**锚点纪律**：12 条锚点已逐一打开核对（2026-09-27，证据见各卡）：qwen rule-parser.ts（parseRule:458-540 + getSpecifierKind:392-404 + SpecifierKind 四值 types.ts:31 + legacy `:*` 后缀展开 + literal 的 key:value matcher 语法与 key 合法性）；qwen permission-manager.ts:1340-1360（activeSessionAllowRules——trustGated 规则**每次决策读 isTrustedFolder**，撤销即刻暂停、恢复即还原，无需记账）+ test:3479（addSessionAllowRule(rule, {trustGated:true})）；qwen trusted-user-answers.ts:12（MAX_TRUSTED_USER_ANSWER_QUESTION_CHARS=200——模型作者的问题文本按分类器用户提示有界）；pi project-trust.ts（project_trust 事件 + trusted yes/no/undecided + remember 持久化）；dsh permission-presets/index.ts（预设 = 记录选择 + 经各 knob 规范 setter 写入，执行面读折叠值）；dsh file-context-as-event-gate.md（C12/C13——编辑前必须先读 + 策略层不可 in-path 强制可整体丢弃）；pi session/types.ts:52-64（CustomEntry 泛型逃生舱 + EntryProjector）；kimi evaluate.ts:85-106（findInactiveToolPatterns 三类）；codex execpolicy/parser.rs:455-461（basename 规则绑绝对路径清单）。**零内容勘误。**
+
+**展卡核对结论（我方现状 × 12 条）**：
+1. **C41：已被 T-5-05 覆盖关闭，不占卡**——rule-loader.ts 的 invalid 标记（"语法畸形 → 规则保留集合里标 invalid 永不命中，原文可见可被 linter 点名"）即 qwen invalid 同款，linter.ts:46-48 已点名 invalid-syntax。展卡核对后关闭。
+2. **C23：部分覆盖，实卡补两类**——linter 已有 invalid-syntax/unknown-tool/no-matcher-for-args 三类（T-5-07）；kimi 三类中**wildcard-not-mcp（工具名维度含 glob 魔法字符）与 incomplete-namespace-name（命名空间名段数不足）未在**——我方 T-P1-64 落了 server__tool 命名空间后此检查有了真实语义。
+3. **C26：P0 形状已在，P1 正式化**——rule-loader.ts 明注"规则文本形式 Tool(argPattern) 或裸 Tool（C26 的 P1 正式化前的 P0 形状）"：P1 落 qwen parseRule 同款正式解析器（不平衡括号标 invalid、`:*` legacy 后缀展开、literal 的 key:value matcher）。
+4. **C36：注释纪律已在，P1 升机制**——self-guard.ts 与 protected-names.ts 的"C36 纪律：只能追加不能替换"注释升运行时冻结机制 + 用户提示有界（200 字符）。
+5. **C12/C13 配对**：edit 的 oldText 精确匹配天然拒"基于旧版本写入"（版本失配 = NOT_FOUND），缺"编辑前必须先读"面——落会话内已读版本记账；C13 = 该策略是**可选装配模块**（不装 = 工具照常用）。
+6. **C11+C34 成对**：信任状态面（首开未信任 → 写执行降权）+ trustGated 规则（每次决策读当前信任）；我方 ApprovalScopeCache（T-P1-02）的 session-runtime 层是 trustGated 承载位。
+7. **C8 预设 = 记录选择 + 逐 knob 写入**（dsh 语义）：落 SessionConfigStore（T-P1-63 白名单机制复用）——预设切换 = 成套 refresh，不新增第二来源。
+
+**词汇表预判（一处新事件走立案）**：C17 泛型逃生舱 = 新会话级元事件 `plugin {namespace, payload?}`（pi CustomEntry 同构；O7 豁免面）——20→21 走待澄清 #11。C11 信任状态、C8 预设切换预判零事件（内存态 + config 观测面；信任持久化属 Q 域预留 API）。执行中每处新增事件必须先立案。
+
+**本批特有约束**：
+1. **C39 的 path 分型是 gitignore 风格**（`*` 不跨段/`**` 跨段）——手写不引 picomatch；command 分型复用 bashRuleMatcher 的 shell glob（wildcardMatch 不动）。
+2. **C53 的 basename 绑定**：basename 参数规则（无路径分隔符）绑绝对路径白名单——不绑定则 linter 警告（防解释器路径绕过）。
+3. **C11 信任状态是内存会话面**：显式信任持久化属 Q 域——本批落内存声明 + 降权机制，持久化 API 预留。
+4. **C12 的版本记账进 ToolContext 侧会话服务**（read 记录 path→内容哈希）——不进事件流（读不是状态变更）。
+5. **C8 预设切换经 SessionConfigStore**——预设 = 成套初始值的命名记录，切换 = 逐 knob 写入。
+
+#### T-P1-66 · C23 · 策略自检扩面（wildcard-tool-name + incomplete-namespace 两类） `[ ]`
+- **依据需求**：C23（P1："策略自检：报告永不匹配的模式（通配符用错、MCP 名不完整、未知工具名）"）——展卡核对结论②：三类中 unknown-tool 已在，补两类
+- **上游首选参考**：[kimi·evaluate.ts:85-106](../oss/kimi-code/packages/agent-core-v2/src/agent/toolPolicy/evaluate.ts#L85)（findInactiveToolPatterns：MCP 名缺第二段 → incomplete-mcp-name；glob 魔法字符非 MCP 名 → wildcard-not-mcp；未知名 → unknown-tool）
+- **取什么 / 别抄什么**：取三类判据语义；命名空间检查词形对齐我方 `server__tool`（T-P1-64 同款 `__` 分隔，非 kimi `mcp__` 前缀）
+- **证据强度**：`读了代码`（evaluate.ts 全文 106 行；我方 linter.ts 三类现状 + registry-bridge 命名空间形状）
+- **要产出**：①linter 扩两类：wildcard-tool-name（规则工具名维度含 glob 魔法字符）+ incomplete-namespace-name（含 `__` 但首段或第二段为空）；②导出纯函数 findInactiveRuleToolNames 供单测（kimi 同名函数意图）；③警告照既有 linter 通道（logger.warn 可检索）
+- **验收**：`npx vitest run src/policy/linter.test.ts`（扩）——①通配工具名规则 → wildcard-tool-name；②`a__`/`__b`/`a__b__c` → incomplete-namespace-name；③既有三类回归全绿；④findInactiveRuleToolNames 三类各一可单测
+- **依赖**：无（批次 8 首卡）
+- **风险 / 未知**：无
+- **偏离 / 建议**：（留白）
+- **完成记录**：
+
+#### T-P1-67 · C26 · 规则文本形式 Tool(args) 正式解析器 `[ ]`
+- **依据需求**：C26（P1："规则语法采用 Tool(args) 文本形式；配置可读、可复制粘贴"）——展卡核对结论③：P0 形状已在，本卡正式化
+- **上游首选参考**：[qwen·rule-parser.ts:458-540](../oss/qwen-code/packages/core/src/permissions/rule-parser.ts#L458)（parseRule：裸名/Tool(specifier)/不平衡括号 → invalid 永不匹配/`:*` legacy 后缀展开仅 command 分型/literal 的 key:value 逗号 matcher 与 key 合法性）
+- **取什么 / 别抄什么**：取解析语义三态（裸名/带参/invalid）与"配置文本是权威、解析产物可从原文重建"；不抄 picomatch/shell-quote 依赖
+- **证据强度**：`读了代码`（parseRule 全段；我方 rule-loader.parseRulePattern 现状）
+- **要产出**：①parseRulePattern 升正式解析器：不平衡括号 → invalid（既有）+ `:*` legacy 后缀（command 分型才展开——工具类别查表预置 bash/pwsh）+ literal 分型的 key:value matcher 解析（key 合法性、空值模式警告）；②round-trip 断言：解析产物 raw 回显逐字节一致（配置可复制粘贴）；③单测扩
+- **验收**：`npx vitest run src/policy/rule-loader.test.ts`（扩）——①三态各一；②`Bash(git:*)` → `git *`；③key:value matcher（合法/非法 key/空值警告）；④round-trip 逐字节
+- **依赖**：无
+- **风险 / 未知**：`:*` 展开依赖 command 分型——getSpecifierKind 在 T-P1-68 正式落，本卡先以工具类别查表预置
+- **偏离 / 建议**：（留白）
+- **完成记录**：
+
+#### T-P1-68 · C39+C53 · specifier 按 kind 分型匹配（+basename 绑绝对路径） `[ ]`
+- **依据需求**：C39（P1："specifier 按 kind 分型匹配（command→shell glob、path→gitignore 风格、domain、literal），kind 由工具类别推导"）· C53（P1："basename 规则必须绑绝对路径清单（反解释器路径绕过）"）
+- **上游首选参考**：[qwen·rule-parser.ts:392-404](../oss/qwen-code/packages/core/src/permissions/rule-parser.ts#L392)（getSpecifierKind：SHELL→command / READ|EDIT→path / WEBFETCH→domain / 其余→literal）+ types.ts:31（四值闭集）；[codex·execpolicy/parser.rs:455-461](../oss/codex/codex-rs/execpolicy/src/parser.rs#L455)（basename 规则绑绝对路径清单）
+- **取什么 / 别抄什么**：取四分型闭集与"kind 由工具类别推导"；path 分型落 gitignore 风格 glob（手写）；不抄其别名表（我方工具清单扁平）
+- **证据强度**：`读了代码`（getSpecifierKind + types.ts + parser.rs 错误行；我方 matchers.ts/wildcardMatch 现状）
+- **要产出**：①`src/policy/specifier-kinds.ts`——SpecifierKind 四值闭集 + getSpecifierKind（bash/pwsh→command；read/write/edit/apply_patch→path；webfetch→domain；其余→literal）；②gitignore 风格 path matcher（`*` 不跨段/`**` 跨段/`?` 单字符）+ domain matcher（host 后缀）；③rule-loader 按 kind 路由参数匹配；④C53：command 分型的 basename 参数规则绑绝对路径白名单——不绑定则 linter 警告 basename-unanchored
+- **验收**：`npx vitest run src/policy/specifier-kinds.test.ts src/policy/rule-loader.test.ts src/policy/linter.test.ts`（扩）——①四分型推导各一；②path matcher 跨段语义；③domain 后缀匹配；④literal 精确 + key:value；⑤basename 未绑 → 警告可检索；⑥绑清单后只命中清单内绝对路径
+- **依赖**：T-P1-67（解析器结构）
+- **风险 / 未知**：gitignore glob 与 wildcardMatch 语义差异（跨段）——path matcher 独立函数不混
+- **偏离 / 建议**：（留白）
+- **完成记录**：
+
+#### T-P1-69 · C11+C34 · 项目信任 + trustGated 门控 `[ ]`
+- **依据需求**：C11（P1："项目信任：未信任项目降权——首次打开陌生项目时限制写与执行，用户显式信任后放开"）· C34（P1："仓库自带规则用 trustGated 标记门控，信任变化时不移除规则而读当前信任"）
+- **上游首选参考**：[pi·project-trust.ts](../oss/pi/packages/coding-agent/examples/extensions/project-trust.ts)（project_trust 事件 + trusted 三值 + remember）；[qwen·permission-manager.ts:1340-1360](../oss/qwen-code/packages/core/src/permissions/permission-manager.ts#L1340)（activeSessionAllowRules：trustGated 规则**每次决策读 isTrustedFolder**——撤销即刻暂停、恢复即还原）
+- **取什么 / 别抄什么**：取"信任是每次决策读的当前状态（不是快照记账）"与"未信任 → 写执行降权"；不抄其 UI 事件流（CLI 审批通道在位）；信任持久化（remember）预留 API 本批落内存
+- **证据强度**：`读了代码`（project-trust.ts 全文 + permission-manager.ts 过滤段；我方 ApprovalScopeCache 现状）
+- **要产出**：①`src/policy/project-trust.ts`——TrustState + ProjectTrustService（isTrusted() **每次调用读当前状态**；declareTrusted；缺省 trusted 默认值卡内定形记档）；②gate 挂点：未信任时写执行类（isWriteExecuteTool）出口级 deny（**规则不得授权信任降权**——C46 同款出口语义）+ logger.warn；③C34：session-runtime 规则加 trustGated 标记——每次读 isTrusted()，未信任时过滤（不移除不记账）；④装配选项 trustState 注入（缺省 = 零行为变化）
+- **验收**：`npx vitest run src/policy/project-trust.test.ts src/policy/scope-cache.test.ts`（扩）——①未信任 → 写执行类 deny 且 warn 可检索（规则 allow 压不过）；②declareTrusted 后即刻放行（每次读当前状态断言）；③trustGated 规则未信任不生效、信任后恢复；④非 trustGated 用户规则照常；⑤缺省装配零行为变化
+- **依赖**：无
+- **风险 / 未知**：出口降权与 C57/exit-guard 组合次序——降权在链裁决后出口处（同 T-P1-01 位置），卡内定形记档
+- **偏离 / 建议**：（留白）
+- **完成记录**：
+
+#### T-P1-70 · C36 · 内置保护清单只追加机制（+用户提示有界） `[ ]`
+- **依据需求**：C36（P1："内置保护清单只能追加、不能替换；用户提示有界（长度 + 条数）"）
+- **上游首选参考**：[qwen·trusted-user-answers.ts:12](../oss/qwen-code/packages/core/src/permissions/trusted-user-answers.ts#L12)（MAX_TRUSTED_USER_ANSWER_QUESTION_CHARS=200——模型作者的问题文本有界）
+- **取什么 / 别抄什么**：取"清单只追加 + 提示有界"两纪律；我方两清单的 C36 注释升机制；不抄其问答投影面（question 工具在位）
+- **证据强度**：`读了代码`（trusted-user-answers.ts 头部常量；我方 protected-names.ts/self-guard.ts 注释现状）
+- **要产出**：①两清单升运行时冻结机制：Object.freeze + extendProtectedNames(list, additions) 唯一追加入口（返回新清单、重复幂等）；②用户提示有界：question 工具与审批提示的模型作者文本 MAX_USER_HINT_LENGTH=200 截断 + warn 留痕（常量导出）；③单测 freeze 证伪
+- **验收**：`npx vitest run src/policy/protected-names.test.ts src/policy/self-guard.test.ts src/cli/cli.test.ts`（扩）——①extendProtectedNames 追加生效且原清单不变；②重复追加幂等；③question 文本 >200 字符截断且 warn；④既有保护行为回归全绿
+- **依赖**：无
+- **风险 / 未知**：无
+- **偏离 / 建议**：（留白）
+- **完成记录**：
+
+#### T-P1-71 · C12+C13 · 编辑前必须先读（可选装配模块） `[ ]`
+- **依据需求**：C12（P1："编辑前必须先读；写入必须基于已读版本"）· C13（P1："策略层不可 in-path 强制——不想要该策略的部署能整体丢弃它，工具仍可用"）
+- **上游首选参考**：[dsh·file-context-as-event-gate.md](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-06-26-file-context-as-event-gate.md)（全文 173 行：读记账门控 + 可整体丢弃的策略层）
+- **取什么 / 别抄什么**：取"未读先编辑拒、基于旧版本写入拒"与"策略可整体丢弃"；edit 的 oldText 精确匹配天然拒旧版本写入（版本失配 = NOT_FOUND）——补"已读记账"半边；不抄其事件总线形状
+- **证据强度**：`读了代码`（dsh 笔记全文；我方 edit.ts/apply-patch.ts/write.ts 现状）
+- **要产出**：①`src/policy/read-gate.ts`——ReadGateService（recordRead(path, contentHash)；requireRead(path, currentHash?)：未读 → EDIT_WITHOUT_READ；读过但哈希 ≠ 当前 → EDIT_STALE_READ）；②接线：read 成功后 recordRead（ToolContext 侧会话服务）；edit/apply_patch 执行前 requireRead（**可选装配**——readGate 缺省 undefined = 不启用，C13 验收面）；apply_patch 的 update 目标逐个校验；③write 覆盖已有文件同样校验（create 新文件豁免）
+- **验收**：`npx vitest run src/policy/read-gate.test.ts src/kernel/tools/builtin/builtin.test.ts`（扩）——①未读先 edit → EDIT_WITHOUT_READ；②读后 edit 放行；③读后外部修改 → EDIT_STALE_READ；④apply_patch update 未读目标拒绝且零变更；⑤readGate 缺省 → 工具照常（C13 整体丢弃）；⑥write 新文件豁免
+- **依赖**：无
+- **风险 / 未知**：apply_patch 的 delete 也要求已读（删除是写面），卡内定形
+- **偏离 / 建议**：（留白）
+- **完成记录**：
+
+#### T-P1-72 · C17 · 插件事件泛型逃生舱（词汇表 20→21 立案） `[ ]`
+- **依据需求**：C17（P1："若需插件事件，只开一个泛型逃生舱类型，不改词汇表机制"）
+- **上游首选参考**：[pi·session/types.ts:52-64](../oss/pi/packages/agent/src/harness/session/types.ts#L52)（CustomEntry：type:"custom" + customType + data? 泛型条目）
+- **取什么 / 别抄什么**：取"唯一泛型槽位 + 命名空间必填 + 载荷 JsonValue"；词形定形 plugin（会话级元事件豁免面，session/fork 同款）；不抄 EntryProjector
+- **证据强度**：`读了代码`（types.ts CustomEntry 段；我方 events.ts 会话级元事件豁免面现状）
+- **要产出**：①**词汇表 20→21**：新事件 plugin {namespace, payload?}（namespace 非空、payload JsonValue）；O7 豁免面 +plugin；log-only 不进模型历史；②C16 编译闸门同步；③project.ts validation；④**待澄清 #11 立案**（21 事件供追认，#9/#10/#11 三案可一并追认）；⑤l0-events.md §3.2 行 + §8 落地记录 12
+- **验收**：`npx vitest run src/kernel/events.test.ts src/session/project.test.ts src/test-support/migration-asserts.test.ts`（扩）——①计数 21；②plugin 落流可投影、namespace 空拒；③旧流前向兼容；④C15：其他未知类型仍被拒（逃生舱只有一个）
+- **依赖**：无
+- **风险 / 未知**：20→21 需用户追认（三案一并）
+- **偏离 / 建议**：（留白）
+- **完成记录**：
+
+#### T-P1-73 · C8 · 权限预设成套切换 `[ ]`
+- **依据需求**：C8（P1："权限预设成套切换——切换预设后规则集整体生效"）
+- **上游首选参考**：[dsh·permission-presets/index.ts](../oss/deepseek-harness/packages/interaction/permission-presets/src/index.ts)（预设 = 记录选择 + 经各 knob 规范 setter 写入 changed knobs；执行面读折叠值；预设事件保留用户意图）
+- **取什么 / 别抄什么**：取"预设是命名记录、切换是逐 knob 写入、执行面读折叠值"；knob = SessionConfigStore 可刷新面；不抄 cordis/zod 体系
+- **证据强度**：`读了代码`（presets/index.ts 头注；我方 session-config.ts 现状）
+- **要产出**：①预设目录闭集：readonly/workspace/yolo——每预设 = 成套 knob 值的命名记录（常量导出）；②SessionConfigStore 扩 applyPreset(name)：经既有 refresh 通道逐 knob 写入（不新增第二来源）；③切换 logger.info 留痕（"预设事件保留用户意图"）；④CLI repl /preset <name>（复用 config/refresh 通道，不新增协议命令）
+- **验收**：`npx vitest run src/kernel/session-config.test.ts src/cli/cli.test.ts`（扩）——①三预设各自成套生效（getter 断言）；②未知预设名类型化拒绝；③切换是 refresh 语义（不含静态键）；④CLI /preset 端到端可见
+- **依赖**：T-P1-63（SessionConfigStore 在位）
+- **风险 / 未知**：沙箱模式 knob 的消费方（bashSandbox.defaultMode）构造定死——预设的沙箱面落 configStore 观测，动态读随消费面接线批次（T-P1-63 偏离③同款记档）
+- **偏离 / 建议**：（留白）
+- **完成记录**：
+
+#### T-P1-74 · 收口 · 权限语义冲突盘点 + 快照 `[ ]`
+- **依据需求**：批次 8 收口（照批次 4/5/6/7 收口先例；无独立需求 ID）
+- **上游首选参考**：批次 7 T-P1-65 先例
+- **取什么 / 别抄什么**：六面盘点：①C11 出口降权 × C46/C35/C57 出口族——出口级组合次序终局清单；②C12 ReadGate × B13 预算 × D15 幂等——edit/apply_patch 失败三源分域；③C26 解析器 × C39 分型路由——解析产物与匹配器职责边界；④C34 trustGated × A2/A9 session-runtime 层——信任过滤与 turn-override 生命周期正交性；⑤C17 逃生舱 × C15 禁区——"唯一槽位"与"插件不得新增类型"双向测试复核；⑥快照即规格：项目信任降权全链一条
+- **证据强度**：`读了代码`（本批全部新产交叉核对）
+- **要产出**：六面盘点结论 + 快照一条 + 全量回归
+- **验收**：`npx vitest run`（全量回归）+ 盘点清单入完成记录；发现真冲突 → 升级待澄清不硬落
+- **依赖**：T-P1-66 ~ 73 全部（本批最后一张）
+- **偏离 / 建议**：（留白）
+- **完成记录**：
+
+## 批次 8 完成定义
+
+- 9 张卡全部打勾，每勾附「命令 + 结果摘要」；`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 0 失效、`license-audit.sh` 通过。
+- C41 展卡核对关闭（T-5-05 已覆盖，不占卡）——12 条中 11 条实卡 + 1 条核对关闭。
+- 词汇表一处扩展（C17 泛型逃生舱 20→21）走待澄清 #11 立案——三案（#9/#10/#11）可一并追认。
+- 权限出口族红线：C11 信任降权在出口级（规则不可授权）；C36 清单只追加；C13 ReadGate 可整体丢弃。
+- 六面盘点结论落批次报告（T-P1-74）。
