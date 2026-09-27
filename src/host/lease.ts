@@ -148,6 +148,18 @@ export class SurfaceHub {
     execute();
   }
 
+  /**
+   * 主动归还租约（N7 协议面 release——surfaceId 须为当前持有者；非持有者
+   * → NotLeaseHolderError，未持约 → false no-op）。
+   */
+  releaseRunLease(surfaceId: string): boolean {
+    if (this.leaseOwnerId !== surfaceId) {
+      throw new NotLeaseHolderError(surfaceId);
+    }
+    this.releaseInternal();
+    return true;
+  }
+
   onLeaseChange(listener: LeaseListener): () => void {
     this.leaseListeners.add(listener);
     return () => this.leaseListeners.delete(listener);

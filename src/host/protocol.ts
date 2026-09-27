@@ -49,8 +49,21 @@ export interface ProtocolErrorShape {
 // ---------------------------------------------------------------------------
 
 export type ClientEnvelope =
-  | { type: "hello"; version: number }
-  | { type: "request"; requestId: string; sessionId: string; call: AgentRequest };
+  | {
+      type: "hello";
+      version: number;
+      /** N2/T-P1-116：端身份注册（可选——缺省 = 匿名观察者，只收广播不可写）。
+       * surfaceId/deliveryKind 成对出现由 HostBridge 校验。 */
+      surfaceId?: string;
+      deliveryKind?: string;
+    }
+  | { type: "request"; requestId: string; sessionId: string; call: AgentRequest }
+  /**
+   * N7/T-P1-116 run 租约的协议面（host 域命令——不经 agent，bridge 直答）：
+   * acquire 获得写命令权（单 holder，已有人持约 → LeaseBusy error）；
+   * release 主动归还。断线自动释放（SurfaceHub close 面）。
+   */
+  | { type: "lease"; op: "acquire" | "release"; surfaceId: string };
 
 function rejectUnknownKeys(value: Record<string, unknown>, allowed: readonly string[]): string | null {
   for (const key of Object.keys(value)) {
@@ -76,12 +89,36 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
   const record = parsed as Record<string, unknown>;
   const type = record["type"];
   if (type === "hello") {
-    const unknownKey = rejectUnknownKeys(record, ["type", "version"]);
+    const unknownKey = rejectUnknownKeys(record, ["type", "version", "surfaceId", "deliveryKind"]);
     if (unknownKey) throw new Error(`hello 信封${unknownKey}`);
     if (typeof record["version"] !== "number" || !Number.isInteger(record["version"])) {
       throw new Error("hello 需要 version 整数");
     }
-    return { type: "hello", version: record["version"] };
+    const surfaceId = record["surfaceId"];
+    const deliveryKind = record["deliveryKind"];
+    if (surfaceId !== undefined && (typeof surfaceId !== "string" || surfaceId === "")) {
+      throw new Error("hello 的 surfaceId 须为非空字符串");
+    }
+    if (deliveryKind !== undefined && deliveryKind !== "push" && deliveryKind !== "poll") {
+      throw new Error(`hello 的 deliveryKind 非法：${String(deliveryKind)}（合法：push|poll）`);
+    }
+    return {
+      type: "hello",
+      version: record["version"],
+      ...(surfaceId !== undefined ? { surfaceId: surfaceId as string } : {}),
+      ...(deliveryKind !== undefined ? { deliveryKind: deliveryKind as "push" | "poll" } : {}),
+    };
+  }
+  if (type === "lease") {
+    const unknownKey = rejectUnknownKeys(record, ["type", "op", "surfaceId"]);
+    if (unknownKey) throw new Error(`lease 信封${unknownKey}`);
+    if (record["op"] !== "acquire" && record["op"] !== "release") {
+      throw new Error(`lease 的 op 非法：${String(record["op"])}（合法：acquire|release）`);
+    }
+    if (typeof record["surfaceId"] !== "string" || record["surfaceId"] === "") {
+      throw new Error("lease 需要 surfaceId 非空字符串");
+    }
+    return { type: "lease", op: record["op"] as "acquire" | "release", surfaceId: record["surfaceId"] };
   }
   if (type === "request") {
     const unknownKey = rejectUnknownKeys(record, ["type", "requestId", "sessionId", "call"]);
@@ -118,7 +155,13 @@ export type ServerEnvelope =
   | { type: "hello_error"; error: ProtocolErrorShape }
   | { type: "response"; requestId: string; ok: true; result?: unknown }
   | { type: "response"; requestId: string; ok: false; error: ProtocolErrorShape }
-  | { type: "event"; sessionId: string; event: SessionEvent };
+  | { type: "event"; sessionId: string; event: SessionEvent }
+  /**
+   * N2/T-P1-116 广播通道：审批挂起/结算、提问、退回输入等**非会话流事实**
+   * （协议消息形状，非事件词汇表——批次 9 先例"协议面载荷扩展属协议消息
+   * 形状"）。name = agent 协议消息 type；payload = 其消息体。
+   */
+  | { type: "notification"; sessionId: string; name: string; payload?: unknown };
 
 // ---------------------------------------------------------------------------
 // 会话路由（host 侧实现——K8 server 与 agent-child 编排的解耦面）
@@ -128,8 +171,10 @@ export interface SessionRouter {
   /**
    * 将 AgentRequest 路由到目标会话。resolve 值 = 回执载荷（如 accepted 的
    * messageId）；reject（Error 带 code 属性时用其 code）→ ok:false response。
+   * from.surfaceId = 发送端身份（N2 写命令租约校验的归属面——匿名/未注册
+   * 为 undefined）。
    */
-  send(sessionId: string, request: AgentRequest): Promise<unknown>;
+  send(sessionId: string, request: AgentRequest, from?: { surfaceId?: string }): Promise<unknown>;
   /** 会话事件推送订阅（host → 全部连接的 event 通道）。 */
   onEvent(listener: (sessionId: string, event: SessionEvent) => void): () => void;
 }
@@ -141,19 +186,37 @@ export interface SessionRouter {
 export interface HostProtocolServerOptions {
   /** 输出通道（host → 端的行写入口——传输层注入，协议不管字节怎么走）。 */
   write: (line: string) => void;
+  /**
+   * 连接身份（构造期给定——组合层注册 surface 时确定；hello 的 surfaceId
+   * 字段只是校验回执，身份真源在此）。
+   */
+  surfaceId?: string;
   /** 协议错误留痕（坏行/校验拒绝——可观测面；缺省静默）。 */
   onProtocolError?: (error: Error) => void;
+  /**
+   * hello 回调（N2 surface 注册面）：端身份（surfaceId/deliveryKind）由
+   * 组合层（HostBridge）消费——协议层只解析与校验形状。
+   */
+  onHello?: (hello: { surfaceId?: string; deliveryKind?: "push" | "poll" }) => void;
+  /**
+   * lease 信封回调（N7 run 租约协议面——bridge 直答，不经 agent）。
+   * reject → ok:false（LeaseBusy/NotLeaseHolder 等类型化 code）。
+   */
+  onLease?: (lease: { op: "acquire" | "release"; surfaceId: string }) => Promise<unknown>;
 }
 
 export class HostProtocolServer {
   private helloed = false;
   private closed = false;
+  /** 本连接的 surface 身份（构造期给定；request 的 from 归属面）。 */
+  private surfaceId: string | undefined;
   private readonly unsubscribe: () => void;
 
   constructor(
     private readonly router: SessionRouter,
     private readonly options: HostProtocolServerOptions,
   ) {
+    this.surfaceId = options.surfaceId;
     // 事件推送：会话事件 → 全部连接广播（N2 审批广播的面——"任何通道可答"
     // 的前提是任何通道都看得见挂起）。
     this.unsubscribe = router.onEvent((sessionId, event) => {
@@ -198,21 +261,77 @@ export class HostProtocolServer {
       }
       this.helloed = true;
       this.write({ type: "hello", version: PROTOCOL_VERSION });
+      if (envelope.surfaceId !== undefined || envelope.deliveryKind !== undefined) {
+        if (envelope.surfaceId !== undefined) this.surfaceId = envelope.surfaceId;
+        this.options.onHello?.({
+          ...(envelope.surfaceId !== undefined ? { surfaceId: envelope.surfaceId } : {}),
+          ...(envelope.deliveryKind !== undefined
+            ? { deliveryKind: envelope.deliveryKind as "push" | "poll" }
+            : {}),
+        });
+      }
       return;
     }
-    // request：握手前置（hello 才能发 request）
+    // request：握手前置（hello 才能发 request/lease）
     if (!this.helloed) {
       this.write({
         type: "response",
-        requestId: envelope.requestId,
+        requestId: envelope.type === "request" ? envelope.requestId : "(lease)",
         ok: false,
         error: { code: "HELLO_REQUIRED", message: bounded("先发 hello 握手再发 request") },
       });
       return;
     }
+    if (envelope.type === "lease") {
+      if (!this.helloed) {
+        this.write({
+          type: "response",
+          requestId: "(lease)",
+          ok: false,
+          error: { code: "HELLO_REQUIRED", message: bounded("先发 hello 握手再发 lease") },
+        });
+        return;
+      }
+      if (!this.options.onLease) {
+        this.write({
+          type: "response",
+          requestId: "(lease)",
+          ok: false,
+          error: { code: "LEASE_UNSUPPORTED", message: bounded("本连接未配置租约面") },
+        });
+        return;
+      }
+      void this.options
+        .onLease(envelope)
+        .then((result) => {
+          console.log("DBG-then:", JSON.stringify(result));
+          this.write({
+            type: "response",
+            requestId: "(lease)",
+            ok: true,
+            ...(result !== undefined ? { result } : {}),
+          });
+        })
+        .catch((error: unknown) => {
+          console.log("DBG-catch:", String(error));
+          const code =
+            error instanceof Error &&
+            typeof (error as unknown as { code?: unknown }).code === "string"
+              ? (error as unknown as { code: string }).code
+              : "LEASE_ERROR";
+          const message = bounded(error instanceof Error ? error.message : String(error));
+          this.write({
+            type: "response",
+            requestId: "(lease)",
+            ok: false,
+            error: { code, message },
+          });
+        });
+      return;
+    }
     const { requestId, sessionId, call } = envelope;
     void this.router
-      .send(sessionId, call)
+      .send(sessionId, call, { ...(this.surfaceId !== undefined ? { surfaceId: this.surfaceId } : {}) })
       .then((result) => {
         this.write({
           type: "response",
@@ -232,9 +351,19 @@ export class HostProtocolServer {
       });
   }
 
-  /** 主动推送一条 host → 端消息（event 通道之外的扩展位——缺省不用）。 */
+  /** 主动推送一条 host → 端事件（router 广播之外的显式入口）。 */
   pushEvent(sessionId: string, event: SessionEvent): void {
     this.write({ type: "event", sessionId, event });
+  }
+
+  /** N2 广播：审批/提问等非流内事实（name = agent 协议消息 type）。 */
+  notify(sessionId: string, name: string, payload?: unknown): void {
+    this.write({
+      type: "notification",
+      sessionId,
+      name,
+      ...(payload !== undefined ? { payload } : {}),
+    });
   }
 
   /** 连接关闭：停止事件订阅（连接生命周期在协议之外——close 是传输面动作）。 */
@@ -246,7 +375,9 @@ export class HostProtocolServer {
 
   private write(envelope: ServerEnvelope): void {
     if (this.closed) return;
-    this.options.write(JSON.stringify(envelope));
+    const line = JSON.stringify(envelope);
+    console.log("DBG-write:", this.surfaceId ?? "?", line.slice(0, 80));
+    this.options.write(line);
   }
 }
 
