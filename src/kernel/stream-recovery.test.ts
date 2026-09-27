@@ -252,3 +252,36 @@ describe("F18 流中断恢复（loop 级，streamRecovery 启用）", () => {
     expect(err.message).toContain("non_retryable_failure");
   });
 });
+
+// ---------------------------------------------------------------------------
+// 快照即规格（T-P1-109 收口⑧）：F18 恢复全链一条——事件类型序列即规格，
+// 新相位缺位/次序漂移即红（O22 语义延续）
+// ---------------------------------------------------------------------------
+
+describe("快照即规格：F18 恢复全链（流中失败 → attempt → retrying → 重发 → 收束）", () => {
+  it("事件类型序列逐位钉死（attempt 之后的 retrying 与第二枚 header 是恢复的证据位）", async () => {
+    const { provider } = flakyProvider([
+      { chunks: [{ type: "text-delta", text: "半" }], error: new Error("mid-stream reset") },
+      { chunks: [{ type: "text-delta", text: "恢复后完整" }, { type: "done", finishReason: "stop" }] },
+    ]);
+    const harness = makeLoop(provider, { streamRecovery: { maxRetries: 2 } });
+    const reason = await harness.loop.runTurn("问题");
+    expect(reason.kind).toBe("completed");
+    const types = harness.store
+      .load("s1")
+      .filter((e) => e.type !== "tool/progress")
+      .map((e) => e.type);
+    expect(types).toEqual([
+      "turn/start",
+      "user/message",
+      "step/start",
+      "request/header", // 尝试 1（失败）
+      "assistant/attempt", // 被丢弃的 tail（含 timed chunks）
+      "assistant/retrying", // 恢复重发的证据位
+      "request/header", // 尝试 2（每次尝试各一枚 header）
+      "assistant/message", // 重发成功产出
+      "step/end",
+      "turn/end",
+    ]);
+  });
+});

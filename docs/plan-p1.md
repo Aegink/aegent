@@ -1,6 +1,6 @@
 # P1 实施计划 · 批次 1
 
-**状态**：v1.12 · 批次 1-10 收官（13 + 10 + 6 + 10 + 6 + 9 + 11 + 9 + 10 + 14 = 98 卡全关，2026-09-27；批次 10 = 调度与会话数据工程——15 条需求 ID 中 14 条实卡全关 + N4 展卡核对关闭；词汇表 21→23 事件（command/run+done；#12~#15 四案经用户 2026-09-27"认可"追认转正：六维载荷/中间态行为/produced/命令事件）· 全量基线 1081 passed / 1 skipped · 批次 11 已展卡（2026-09-27：11 张——F25 / F26+F29 / F11 / F18 / F7 / F8 / F30 / J13 / J16 + 收口共 10 张执行 + T-P1-108 J5 未展占位待澄清 #16 厂商选型追认；提示词"12 条"系误计，实为 11 条）
+**状态**：v1.13 · 批次 1-11 收官（13 + 10 + 6 + 10 + 6 + 9 + 11 + 9 + 10 + 14 + 11 = 108 卡；批次 11 = 上下文与模型运维收尾——10 张执行卡全关 + T-P1-108 J5 未展占位（待澄清 #16 厂商选型追认）；词汇表 23 事件（#17 compHash 载荷 / #18 strategy 值域 + failureReason 载荷 两案立案待追认——落地记录 17/18）· 全量基线 1144 passed / 1 skipped · 批次 12 未展卡（多端架构·无 UI 10 条，下一会话自展+执行）
 **执行协议**：沿用 [`plan-p0.md`](plan-p0.md) §0（取卡 / 做卡 / 验收 / 打勾 / 提交 / 自动继续 / 四种停下情况），本文件不复制。执行进度：**批次 1-10 见 [`plan-p0-progress.md`](plan-p0-progress.md)（已定格）；批次 11 起见 [`plan-p1-progress.md`](plan-p1-progress.md)**（批次报告 / 待澄清 / 人工确认清单；待澄清编号接续 #16 起）。
 **需求来源**：[`requirements.md`](requirements.md) §4 的 P1 项（共 158 条）。P1 不切阶段（§1 尾注），按**批次**组织：本文件当前只含批次 1，后续批次轮到时再展卡追加。
 **批次 1 范围**（用户圈定于 2026-09-25，四组全选，共 26 条）：
@@ -1615,7 +1615,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **风险 / 未知**：真实厂商联调成本（批次 1 有真实厂商实测先例）；cache_control 标记面是否进本卡（F6 缓存优化已落锚检测，anthropic-cache-split 的标记策略可能是独立小卡——展开时定）
 - **完成记录**：
 
-#### T-P1-109 · 收口 · 上下文与模型运维收尾盘点 + 快照 `[ ]`
+#### T-P1-109 · 收口 · 上下文与模型运维收尾盘点 + 快照 `[x]`
 - **依据需求**：批次 11 收口（照批次 4~10 收口先例；无独立需求 ID）
 - **上游首选参考**：批次 10 T-P1-98 先例
 - **取什么 / 别抄什么**：八面盘点：①F18 恢复重试 × D15 流边界——provider 级（首 chunk 前）与 loop 级（首 chunk 后）两段重试分域不双计；②F11 兜底 × E17 三态——兜底压缩落流形状（started/completed + strategy）与切换权威分域；③F26 指纹触发 × F28 抖动断路——指纹重压是否喂抖动计数（次序与记账面）；④F25 窗口身份 × F22 重建 × M10 预算 × F7 时间注入——四消费方同源不分叉；⑤F7 时间注入 × goal/预算提醒——三注入面同 hook 次序与措辞分域；⑥F8 裁剪 × F17 配平 × 溢出判定——次序（保守方向）与孤儿 result 不可能出现；⑦J13 鉴权刷新 × J16 可达探测 × J19 熔断——三面"碰不碰真实流量与熔断状态"分域终局清单；⑧快照即规格：F18 恢复全链一条（流中失败 → attempt → retrying → 重发 → 收束）
@@ -1624,12 +1624,22 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **验收**：`npx vitest run`（全量回归）+ 盘点清单入完成记录；发现真冲突 → 升级待澄清不硬落
 - **依赖**：T-P1-99 ~ 107 全部（T-P1-108 未展不阻塞收口——卡序头约束）
 - **风险 / 未知**：无
-- **完成记录**：
+- **完成记录**：**八面盘点结论（零真冲突）**：
+  ①**F18 恢复重试 × D15 流边界——两段重试分域不双计**：withRetry（provider 级）拥有"首 chunk 前"域（J26 retryable status 内部重试）；loop 级恢复（streamRecovery）只接管"流已产出增量后"的失败——该域 withRetry 从不重试（增量已送达，chunk 级重试必重复产出），重发粒度 = 整 step（从锚点重建）。分域信号 = `timed.length === 0`（callModel catch 显式分流）；计数不双计（recoveryAttempt 只在 loop 域递增——测试⑦：withRetry 域内 2 次上游调用，loop 零感知单 header）；两域共用 J26 同一分类器，判据单源。无冲突。
+  ②**F11 兜底 × E17 三态——兜底落流形状与切换权威分域**：兜底 run 落 started（失败 attempt 事实）+ completed（strategy=recent_window_fallback 结算）两条；切换权威只认已结算——fallback completed 恰是结算，以其 summary/retainedTail 切换 ✓；started 不切换（T-P1-93 口径保持）；崩溃窗口 started 无 completed → 投影可见进行中 ✓。failed 仅 manual/兜底不可行（checkpoint_oversized/no_new_history）时出现。事实记录与消费裁决分层，无冲突。
+  ③**F26 指纹触发 × F28 抖动断路——次序与记账面**：beforeFirstModelRequest 次序 = 溢出检查先行（命中即压缩并刷新指纹，指纹检查随 return 跳过——单边界不双压）；未溢出才查指纹。指纹重压经 engine.run 同一生命周期：refillDecision run 入口评估、成功 recordCompactSuccess——**指纹重压喂抖动计数**（它确实降低上下文压力，F28"所有压缩成功同权记账"口径一致）；抖动硬失败（RapidRefillError）中断指纹重压 → 上抛 failTurn（F10 不吞语义）。无冲突。
+  ④**F25 窗口身份 × F22 重建 × M10 预算 × F7 时间注入——四消费方同源不分叉**：全部消费 context/window.ts `currentWindow`（单一实现位）或同口径的已结算压缩过滤（new-window 的 settledCompactions 与 currentWindow.isSettledCompaction 同判据：status 缺省/completed + effectiveEvents 视窗）。started/failed/revert 三情形四消费方同步变化（T-P1-99 测试③④窗口侧 + new-window 测试重建侧各自钉死）。"持久化窗口元数据" = compaction 事件本体（无第二元数据存储——事件源单一事实源）。无冲突。
+  ⑤**F7 时间注入 × goal/预算提醒——三注入面同 hook 次序与措辞分域**：goal（T-P1-12）与时间（T-P1-103）在 beforeFirstModelRequest（次序固定：goal → 时间 → 溢出 → 指纹）；预算提醒在 wrapDecideTurn（决策面，每 step 后）——不同 hook 无次序纠缠。措辞三前缀分域：`[目标提醒]` / `[预算提醒]` / `[当前时间]`。落流面同为 user/message{source:"injected"}；F23 分域：时间注入不占 developer 独立预算（可再生事实），goal 占（不可丢指令）。无冲突。
+  ⑥**F8 裁剪 × F17 配平 × 溢出判定——保守方向次序**：裁剪在 loop.buildMessages（请求面视图），配平在压缩切点选择（流面）——不同层不互扰。裁剪不制造孤儿（占位符保持 tool 角色+callId——测试③ expectPaired 钉死）；压缩引擎读未裁事件流（摘要输入确定性）。溢出判定按未裁尺寸（startNewContextWindow 产物不经 trim——保守方向：宁可早压不误判装得下）。次序终局：溢出判定（assembly PreTurn）→ 压缩（流内事实）→ buildMessages 裁剪（请求视图）→ 请求。无冲突。
+  ⑦**J13 鉴权刷新 × J16 可达探测 × J19 熔断——三面"碰不碰真实流量与熔断状态"终局清单**：谁可改熔断器状态 = 仅 fault-tolerance.ts 内部（真实模型流量成败经 classifyProviderFailure 计数）——health.ts 零熔断 import（剥离注释源码扫描机内化）+ HealthCheckResult 无计数位；J13 鉴权刷新零状态面（只换请求头材料）。谁发真实流量 = loop 主链（provider+withRetry+failover）与 J16 探测（带外诊断 HTTP——直连 fetch，不经 failover/withRetry 层，不进熔断记账）；J13 无独立流量（依附主链）。谁可变模型身份 = 仅 loop 捕获值（J7）+ 换模服务受理（J6）；鉴权与探测结构上摸不到身份（AuthMaterial 无身份字段 + assertAuthIdentityUnchanged 契约面）。三面正交，无冲突。
+  ⑧**快照即规格**：`src/kernel/stream-recovery.test.ts` F18 恢复全链一条——事件类型序列 10 位逐位钉死（turn/start → user/message → step/start → request/header → assistant/attempt → assistant/retrying → request/header → assistant/message → step/end → turn/end），新相位缺位/次序漂移即红（O22 语义延续）。
+  **词汇表立案状态复核**：#16（J5 厂商选型——非词汇案）/ #17（compHash 载荷）/ #18（strategy 值域 + failureReason 载荷）全部在案待追认，回退面齐备（l0-events.md §8 落地记录 17/18 同步）；事件计数 23 不变。
+  **验收**：全量 `npx vitest run` → **1144 passed / 1 skipped**（批次 10 收官 1081 → 净增 63），`npx tsc --noEmit` 干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 882 链接 0 失效（显式传参全量）、`license-audit.sh` exit 0（LEAK 未命中/SOURCEMAP 无，与批次 10 同形态）。
 
 ## 批次 11 完成定义
 
-- 10 张执行卡全部打勾（T-P1-99 ~ 107 + 109；T-P1-108 未展占位——待澄清 #16 用户追认后由下一会话展开），每勾附「命令 + 结果摘要」；`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 0 失效、`license-audit.sh` exit 0。
-- 词汇表扩展两案走立案管线（#17 compHash 载荷 / #18 strategy 值域 + failureReason 载荷），每案含回退面；`l0-events.md` §8 落地记录同步。
-- F18 红线不破：恢复重试零重复副作用（失败 attempt 的 tool calls 零派发断言）；F11 红线不破：事件流逐字节不变 + provider 错误原文不落流。
-- J16 分域不变量：health.ts 零熔断 import 断言在位。
-- 盘点结论落批次报告（T-P1-109）→ `plan-p1-progress.md` 批次 11 报告 + 批次 12 提示词 + 全量基线更新。
+- 10 张执行卡全部打勾 ✅（T-P1-99 ~ 107 + 109，每勾附「命令 + 结果摘要」；T-P1-108 未展占位——待澄清 #16 用户追认后由下一会话展开）；`npx tsc --noEmit` 全程干净 ✅；`count-features.sh` = 310 不变 ✅、`check-doc-links.sh` 882 链接 0 失效（显式传参全量）✅、`license-audit.sh` exit 0 ✅。
+- 词汇表扩展两案走立案管线 ✅（#17 compHash 载荷 / #18 strategy 值域 + failureReason 载荷，每案含回退面）；`l0-events.md` §8 落地记录 17~18 同步 ✅；事件计数 23 不变 ✅。
+- F18 红线不破 ✅：恢复重试零重复副作用（失败 attempt 的 tool calls 零派发断言——T-P1-102 验收⑥）；F11 红线不破 ✅：事件流 append-only 逐字节不变（T-P1-101 验收⑨）+ provider 错误原文不落流（验收⑧）。
+- J16 分域不变量 ✅：health.ts 零熔断 import 断言在位（剥离注释源码扫描——验收⑥）。
+- 盘点结论落批次报告（T-P1-109，八面零真冲突）✅ → `plan-p1-progress.md` 批次 11 报告 + 批次 12 提示词 + 全量基线 1144 passed / 1 skipped 更新 ✅。
