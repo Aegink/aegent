@@ -951,7 +951,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **偏离 / 建议**：①**MCP stdio 分帧是 newline-delimited JSON**（与 LSP 的 Content-Length 帧不同）——独立实现不复用 LSP parser；②**ToolDef 加可选 `descriptionText`**（MCP 工具描述随协议 tools/list 到达、无 txt 文件——registry.description() 优先读内联值，builtin 走 B2 按名读文件路径不变）；③**MCP 工具 execute 捕获协议面失败转 isError**（超时/崩溃/错误帧 = "工具执行失败"语义，不作基础设施崩溃上抛——builtin 同轨）；④server 名校验（非空且不含 `__`——防命名空间前缀歧义）；⑤CLI `--mcp` 装配接线留记档（registerMcpServers 面即 I3 能力实现，装配选项留给多端批次——T-P1-58 bashSandbox 同款取舍）
 - **完成记录**：2026-09-27。产出：①`src/mcp/client.ts`——McpClient（initialize 握手 + protocolVersion 协商（回退取 server 响应值）+ capabilities.tools 检测 + notifications/initialized + tools/list **cursor 分页全部取尽** + tools/call（content 投影文本 + isError 透传）+ request id 配对 + withTimeout deadline 兜底 code=MCP_TIMEOUT + 崩溃 fail 处置挂起请求）+ createMcpStdioTransport（newline 分帧 + 行缓冲）；②`src/mcp/registry-bridge.ts`——connectAndRegister（握手 → 无 tools 能力零注册不报错 → listTools → 逐个映射注册）+ toToolDef（name=`<server>__<tool>` 命名空间化 / inputSchema 透传 / descriptionText 内联 / execute 带 meta.mcpServer/mcpTool）+ validateServerName；③registry.ts ToolDef 加 descriptionText（description() 优先读）。验收：`npx vitest run src/mcp/registry-bridge.test.ts` → **5 passed**：①stdio 桩 server（node 子进程）握手 + capabilities + listTools（真进程全链）；②无 tools 能力零注册；③注册进 B1（fs__echo 命名空间断言）+ dispatch 往返（echo 往返 + isError 透传）+ wire 面描述来自协议；④server 失联后调用快速类型化失败不挂 loop（isError）；⑤server 名校验。全量 `npx vitest run` **905 passed / 1 skipped**（899 → 净增 6），`npx tsc --noEmit` 干净，check-doc-links 113 链接 0 失效，license-audit 通过。**记档**：B16 快照联动由机制保证（注册发生在 step 进行中 → 在途 step 的 stepToolMeta 已固化、下一 step 的 toolsProvider/runtimeMeta 查询自然可见）；完整协议面（sampling/resources/prompts/HTTP transport/订阅通知）记 LIMITATIONS。
 
-#### T-P1-65 · 收口 · 工具纪律与超时冲突盘点 + 快照 `[ ]`
+#### T-P1-65 · 收口 · 工具纪律与超时冲突盘点 + 快照 `[x]`
 - **依据需求**：批次 7 收口（照批次 4/5/6 收口先例；无独立需求 ID）
 - **上游首选参考**：批次 6 T-P1-54 先例（逐面盘点 + 测试钉死或记档）
 - **取什么 / 别抄什么**：六面盘点：①超时四轴终局清单——工具 timeoutMs（M6）/ 空闲与可重臂（J23）/ B14 step 预算 / A14 abortTimeoutMs 看门狗的边界与互斥；②B13 预算 × D15 幂等边界 × A5 provider 重试——三层"重试"语义分域（mutation 失败预算 / 已启动不自动重试 / provider 网络重试）；③B15 escalation × C 策略链——升级参数经策略链的次序（先策略裁决还是先升级判定）；④B16 快照 × I3 动态注册——动态注册在快照机制下的可见性时点；⑤B21 热刷新 × J7 capturedModel——两类"生效点"语义对齐复核；⑥快照即规格：apply_patch 两阶段验证一条快照（O21/O22 反哺）
@@ -960,13 +960,24 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **验收**：`npx vitest run`（全量回归——含批次 7 全部新测试）+ 盘点清单入完成记录；发现真冲突 → 升级待澄清不硬落
 - **依赖**：T-P1-55 ~ 64 全部（本批最后一张）
 - **偏离 / 建议**：（留白）
-- **完成记录**：
+- **完成记录**：2026-09-27。**六面盘点结论**（每面：现状/定形/测试或记档）：①**超时四轴终局清单**：`M6 ToolDef.timeoutMs` = 单次工具执行的 deadline（registry.dispatch 武装，结构化 TOOL_TIMEOUT 结果）；`J23 IdleWatchdog` = 空闲/可重臂空闲的库级形状（**生产消费面暂缺——流式模型请求的空闲检测是原生场景，当前 provider 层无此消费点，库就位等消费者**，记档）；`B14 ParseBudget` = 每 step 工具调用数与墙钟（runStep 内构造）；`A14 abortTimeoutMs` = 取消后收尾看门狗。四轴各管一段互不替代（批次 6 盘点②延续）。②**三层"重试"分域**：`B13 MutationRetryBudget` = 同输入同路径 mutation 失败的会话内护栏（promptId×path 双键、3 次 terminate）；`D15 bash-retry-guard` = 单次执行"已启动不自动重试"的幂等边界；`A5/J26 withRetry` = provider 网络层退避（ADR 0207 明文"Provider retry budgets … are unaffected"）。三层互不感知、测试各自钉死。③**B15 escalation × C 策略链次序**：策略链 toolCall 点位裁决（工具调用本身的 allow/ask/deny）→ PathGuard 出口断言（工作区边界，**不可被升级放宽**）→ bash execute 内 escalation 校验与审批（模式升级的审批是工具执行体内的第二通道，与链上工具审批语义不同不混）。④**B16 快照 × I3 动态注册**：MCP 注册发生在 step 进行中 → 在途 step 的 stepToolMeta 已固化（判定不受影响）、下一 step 的 toolsProvider/runtimeMeta 查询自然可见——机制保证 + B16/I3 各自测试。⑤**B21 热刷新 × J7 capturedModel 生效点对齐**：capturedModel = turn 启动捕获（生效点新 turn）；configStore = 立即更新、消费方调用时读（在途消费方持旧值）——两类生效点不同但同满足"在途 turn 不受影响"不变量；SessionConfigStore 当前消费方为构造定死（消费方动态读接线记档 T-P1-63 偏离③）。⑥**快照即规格**（O21/O22 反哺）：`src/kernel/tools/builtin/apply-patch.snapshot.test.ts` apply_patch 两阶段验证一条（Scenario 头行：验证失败整体拒绝零变更 → 全通过才执行 → A/M/D + B13 预算上报面）。验收：全量 `npx vitest run` **906 passed / 1 skipped**（899 → 净增 7），`npx tsc --noEmit` 干净，`count-features.sh` = 310 不变，`check-doc-links.sh` 548 链接 0 失效，`license-audit.sh` exit 0。
 
 ## 批次 7 完成定义
 
 - 11 张卡全部打勾，每勾附「命令 + 结果摘要」；`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 0 失效、`license-audit.sh` 通过。
-- B8 五工具族收官（webfetch/todo/question 已在前批，apply_patch/lsp 本批）；超时四面统一定形（B18/J23/J24/M6）。
-- 词汇表三处扩展全部走待澄清立案（J27 新事件 19→20 / B20 done.finishReason / B19 step.end 载荷），先立案后落流，用户追认前不擅自转正。
-- 超时家族分层红线：工具超时不弃 promise（迟到结果按既有纪律）、看门狗/预算/工具超时三轴互不越界（批次 6 盘点②延续）。
-- B16 快照在 I3 动态注册前落位（安全网次序不可倒置）。
+- B8 五工具族收官（webfetch/todo/question 前批 + apply_patch/lsp 本批）；超时四面统一定形（B18 三档/J24 上限守卫/J23 三种超时/M6 每工具可配）。
+- 词汇表三处扩展全部走待澄清立案（#9：assistant/retrying 新事件 19→20 + step/end timing/traceId；#10：StreamChunk done.finishReason）——先立案后落流，用户追认前不擅自转正。
+- 安全面扩展：C46 出口硬拦与 C35 自我修改防线新增 apply_patch 通道（patchText 前缀扫描，扫描器与解析器对齐由测试钉死）。
+- 超时家族分层红线：工具超时不弃 promise（迟到结果按 withTimeout 既有纪律）、看门狗/预算/工具超时/空闲四轴互不越界。
+- B16 快照在 I3 动态注册前落位（安全网次序未倒置）。
 - 六面盘点结论落批次报告（T-P1-65）。
+
+## 批次 7 完成核对（2026-09-27）
+
+- 11/11 卡打勾附验收 ✓（T-P1-55 ~ 65，13 条需求 ID：B8 残余（apply_patch/lsp）/B13/B15/B16/B18/B19/B20/B21/I3/M6/J23/J24/J27 全关）；全量 `npx vitest run` **906 passed / 1 skipped**（批次 6 收官 827 → 净增 79），`npx tsc --noEmit` 全程干净，`count-features.sh` = 310 不变，`check-doc-links.sh` 548 链接 0 失效，`license-audit.sh` exit 0。
+- 超时四面一张卡统一定形 ✓（B18 clampTimeout 三档 + J24 MAX_TIMER_DELAY_MS 守卫 + J23 IdleWatchdog 空闲/可重臂 + M6 ToolDef.timeoutMs 每工具可配——bash 参数面迁移三档）。
+- B8 五工具族收官 ✓：apply_patch（V4A 解析 + 两阶段验证执行）与 lsp（最小 LSP 客户端 + 9 操作闭集）落位——**拆期评估结论：不拆期**。
+- 三处词汇表扩展全部立案 ✓：#9（assistant/retrying 19→20 + step/end timing/traceId）、#10（done.finishReason）——**待用户追认，追认前正式口径按"已落流、未转正"**。
+- 两个真实缺口在实现/测试中被抓出并修复 ✓：①C46/C35 出口硬拦拦不到 apply_patch 的 patchText 嵌入路径（policy 侧新增 extractPatchWritePaths 前缀扫描器，两出口各加分支）；②B13 预算的"成功清空"依赖成功结果也携带 mutationPaths（工具层成对补齐）。
+- 六面盘点 ✓（详见 T-P1-65 完成记录）：超时四轴终局清单、三层重试分域、escalation×策略链次序、快照×动态注册、热刷新×capturedModel 生效点对齐、apply_patch 两阶段快照一条。
+- 本批交付面：超时统一定形（timeout.ts 扩库四件 + registry 武装）· apply_patch 工具（V4A + 两阶段）· mutation 重试预算（promptId×path）· 沙箱升级执行期校验（escalation + bash 接入 SandboxBackend）· 工具声明 step 快照（runtimeMeta）· lsp 工具（最小 LSP 客户端）· step 可观测事件（timing/traceId + retrying）· 输出触顶可续跑 · 配置两类（SessionConfigStore + config/refresh 协议）· MCP 客户端（最小 stdio JSON-RPC + 命名空间化注册）· 六面盘点 + 快照。
