@@ -1257,7 +1257,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **偏离 / 建议**：①collaborator 式回调服务（request-bin/公共隧道）是无限开放集合，无法闭集枚举——防护清单承诺只覆盖四主机 + 链路本地段（需求"承诺强度可审计"（C29）由清单显式性承载），记档为已知边界。②URL 解析失败 fail-closed 落在**黑名单检查面**（NetworkImdsDeniedError"无法解析"）——deny 档不解析（现状不变，反正全拒）；allow 档解析失败即拒（SSRF 语义下不可验证的目标不放行）。③webfetch 错误分层扩展：NetworkImdsDeniedError 与 NetworkDeniedError 同 instanceof 分支透传类型化 code（FETCH_FAILED 兜底不变——只有 guard 主动拒绝可路由）。④isImdsTarget 的大小写归一含 IPv6 方括号剥离（[fd00:ec2::254] 形态）；169.253.x/169.255.x 不误伤（前缀精确 169.254.）。
 - **完成记录**：①network.ts：IMDS_HOSTS 四主机闭集（169.254.169.254 / fd00:ec2::254 / metadata.google.internal / 100.100.100.200）+ isImdsTarget（小写 + IPv6 方括号 + 169.254.0.0/16 前缀）+ NetworkImdsDeniedError（NETWORK_IMDS_DENIED）+ guard.fetch allow 档黑名单面（命中/解析失败即拒，独立于档位）。②webfetch.ts instanceof 分支透传 code。③验收：`npx vitest run src/policy src/kernel src/session src/cli src/sandbox` → **815 passed / 1 skipped**（network 9：四主机各一/链路本地前缀+大小写/相似前缀不误伤/allow 档同拦/解析失败 fail-closed/公网照常/deny 档不变 + builtin 21：webfetch 访问 IMDS → isError NETWORK_IMDS_DENIED 含 C37）——验收①~⑥全过；`npx tsc --noEmit` 干净。
 
-#### T-P1-84 · 收口 · 审批与运行模式盘点 + 快照 `[ ]`
+#### T-P1-84 · 收口 · 审批与运行模式盘点 + 快照 `[x]`
 - **依据需求**：批次 9 收口（照批次 4/5/6/7/8 收口先例；无独立需求 ID）
 - **上游首选参考**：批次 8 T-P1-74 先例
 - **取什么 / 别抄什么**：七面盘点：①C19 dry-run 求值面 × C57 revalidate——dry-run 与执行点重算共享管道的边界（同函数不同调用点）；②C25 激活失败 × C51 broker 拒绝 × C33 无人值守——"不可达 / 拒绝 / 转拒绝"三档语义分域与检查次序；③C54 关类自动拒绝 × C3 默认 ask——配置面覆盖 ask 结局与不变量 3 的分域；④C52 modifiedInput × 五出口族——批准不可越硬拦 + **新出口面并入批次 8 盘点①出口族次序终局清单**；⑤C56 判官 × C33 unattended——组合次序定形（unattended 时判官复核做不做）；⑥C37 黑名单 × D3 档位——双层网络语义（应用层黑名单独立于 OS 档）；⑦快照即规格：场景③跨端回转全链一条
@@ -1266,11 +1266,22 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **验收**：`npx vitest run`（全量回归）+ 盘点清单入完成记录；发现真冲突 → 升级待澄清不硬落
 - **依赖**：T-P1-75 ~ 83 全部（本批最后一张）
 - **风险 / 未知**：无
+- **偏离 / 建议**：（无——七面盘点零真冲突）
+- **完成记录**：**七面盘点结论**：
+  ①**C19 dry-run × C57 revalidate——同函数不同调用点**：evaluateToolPolicy 是 dry-run（协议 policy/check）与 gate 执行前求值的同一函数（同链结构性保证）；C57 执行点重算（revalidate.ts）在恢复路径独立调用同一 chain。dry-run 不产生批准记录、不落事件流（不是状态变更）；revalidate 在真实执行点。共享求值实现、语义域分离（查询面 vs 执行面），无冲突。
+  ②**C25 激活失败 × C51 broker 拒绝 × C33 无人值守——三档语义分域与检查次序**：终局次序 = 激活（gate 首步，TOOL_NOT_ACTIVE 不产生 Verdict 批准层零触达）→ 求值链 → 五出口族 → unattended 转换（ask 分支入口，deny reason 带"无人值守"前缀）→ 判官复核 → broker（C51 缺省 Deny / C54 关类在 pending 层前置拒绝，deny reason 带 APPROVAL_CATEGORY_CLOSED 前缀）。三档错误码与原因域正交：不可达 ≠ 策略拒绝 ≠ 转拒绝 ≠ 关类拒绝，可路由可审计。
+  ③**C54 关类 × C3 默认 ask——配置面覆盖与不变量分域**：关类检查落 PendingApprovals 层（挂起前），决定"问不呈现给人时自动拒"；C3 默认 ask 是链级兜底（无规则 → abstain → gate 默认 ask，不变量 3）。关类不改变规则 allow/deny 裁决（测试钉住 allow 规则关类下照常放行——关的是"问"不是"允许"）；不变量 3 语义保持（缺省仍是 ask 而非 allow）。无冲突。
+  ④**C52 modifiedInput × 五出口族——批准不可越硬拦 + 出口族清单并入**：出口族串联提取为 enforceExitFamily（唯一实现位），三处消费：正常执行（gate）/dry-run（C19）/修改后参数重跑（C52）。**出口族次序终局清单更新**（批次 8 盘点①演进）：C46→C49→C35→G7→C11 次序不变；新增纪律——今后任何出口级硬拦必须进 enforceExitFamily（结构性防止"新出口面漏接 modifiedInput 重跑"）；修改后参数的规则面不重跑（人的显式批准是权威，C47 语义）但硬拦出口绝不越。无冲突。
+  ⑤**C56 判官 × C33 unattended——组合次序定形**：unattended 检查在 gate ask 分支入口（broker 之前），判官复核在其后——**无人值守时判官复核不发生**（ask 已转 deny，判官不被调）。理由：无人值守 = 人不在场，判官 allow 会隐式放行绕过无人值守语义、复核结果必被覆盖且白耗预算；判官定位是"免人挂起"（修正 ask 假阳性），无人值守下无挂起可免。终局次序（见②）。无冲突。
+  ⑥**C37 黑名单 × D3 档位——双层网络语义**：D3 档位（allow/deny）是用户策略面；C37 黑名单是防护面（独立于档位——allow 档同样拦）。次序：deny 档先拒（不解析 URL，现状不变）→ allow 档黑名单检查（命中/解析失败即拒，NETWORK_IMDS_DENIED）→ 透传。已知边界记档：collaborator 开放集合不可枚举（清单承诺面 = 四主机 + 链路本地段，C29 承诺强度可审计）；DNS 重绑定不复检（无 DNS 管线）；bash 面归 OS 层 D16。语义域正交（策略 vs 防护），无冲突。
+  ⑦**快照即规格**：`src/policy/approval-cross-surface.snapshot.test.ts`——场景③跨端回转全链一条（A 端挂起 → lease 移交 → B 端 source 答复 → 在途继续执行 → 审计 replySource 留痕）+ 反例（B 端 deny 与 A 端同语义——跨端不等于越权）。
+  **验收**：全量 `npx vitest run` → **1019 passed / 1 skipped**（批次 8 收官 957 → 净增 62），`npx tsc --noEmit` 干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 1061 链接 0 失效（显式传参全量）、`license-audit.sh` exit 0。
 
 ## 批次 9 完成定义
 
-- 10 张卡全部打勾 ✅，每勾附「命令 + 结果摘要」；`npx tsc --noEmit` 全程干净 ✅；`count-features.sh` = 310 不变 ✅、`check-doc-links.sh` 0 失效 ✅、`license-audit.sh` 通过 ✅。
+- 10 张卡全部打勾 ✅（T-P1-75 ~ 84），每勾附「命令 + 结果摘要」；`npx tsc --noEmit` 全程干净 ✅；`count-features.sh` = 310 不变 ✅、`check-doc-links.sh` 1061 链接 0 失效（全量传参）✅、`license-audit.sh` 通过 ✅。
 - 词汇表零扩展（21 事件不变——审批/问答面走宣告回调与协议消息，不进事件流）✅。
-- 出口族红线：C52 修改后参数仍过五出口族（批准不可越硬拦）✅；新出口面并入批次 8 盘点①清单 ✅。
+- 出口族红线：C52 修改后参数仍过五出口族（批准不可越硬拦）✅；出口族串联提取 enforceExitFamily 唯一实现位（新出口面纪律：必须进该函数）✅。
 - 审批语义分域：不可达（C25）≠ 拒绝（C54 关类/C33 无人值守）≠ 超时拒绝（C50）——收口盘点落报告 ✅。
+- 判官四件套接口面在位（C56，不做本体）：abstain 落回人 / 双面预算 / 90s 常量复用 / requireJudge 强制位 ✅；C42/C55（P2）接口面已备 ✅。
 - 七面盘点结论落批次报告（T-P1-84）✅（零真冲突）。
