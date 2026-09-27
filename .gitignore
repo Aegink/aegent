@@ -83,3 +83,6 @@ scratch/
 # Tauri 桌面壳构建产物（K2）——可再生产物不入库
 src-tauri/target/
 src-tauri/gen/schemas/
+
+# ---- 凭据与本地私密（全局规则：不入库）----
+private/

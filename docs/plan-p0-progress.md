@@ -1,4 +1,4 @@
-# P0 执行进度
+# P0 执行进度（**已定格**——P1 执行进度见 [`plan-p1-progress.md`](plan-p1-progress.md)、P2 见 [`plan-p2-progress.md`](plan-p2-progress.md)）
 
 > 本文件由**执行会话**反复重写；计划本体在 [`plan-p0.md`](plan-p0.md)（执行会话只改任务卡的勾选框、「偏离 / 建议」「完成记录」三个字段）。
 > **〔状态 2026-09-27〕本文件定格于 P1 批次 10 收官**（P0 全程 + P1 批次 1-10；全量基线 1081 passed / 1 skipped，词汇表 23 事件，#1~#15 全部追认转正）——**批次 11 起的执行进度（批次报告 / 待澄清 / 人工确认清单）记入 [`plan-p1-progress.md`](plan-p1-progress.md)**，本文件只读留档。

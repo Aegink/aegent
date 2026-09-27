@@ -1,4 +1,4 @@
-# P1 执行进度 · 批次 11 起
+# P1 执行进度 · 批次 11 起（**已定格——P1 全部收官 2026-09-28**；P2 段执行记录见 [`plan-p2-progress.md`](plan-p2-progress.md)）
 
 > 本文件接续 [`plan-p0-progress.md`](plan-p0-progress.md)（P0 全程 + P1 批次 1-10，2026-09-27 收官，全量基线 1081 passed / 1 skipped，词汇表 23 事件）——**自批次 11 起的执行进度**（批次报告 / 待澄清 / 人工确认清单）记入本文件，旧文件定格不再追加。
 > 执行协议沿用 [`plan-p0.md`](plan-p0.md) §0（取卡 / 做卡 / 验收 / 打勾 / 提交 / 自动继续 / 四种停下情况）；计划本体在 [`plan-p1.md`](plan-p1.md)（执行会话只改任务卡的勾选框、「偏离 / 建议」「完成记录」三个字段）。**批次 14（P1 末批）已收官（2026-09-28）——P1 全部收官，P2 段自此开始**：全量基线 **1293 passed / 1 skipped**（146 文件），词汇表 26 事件，批次 15（P2 段 15a）未展卡。
@@ -6,7 +6,7 @@
 
 ---
 
-## 批次 15 提示词（当前活跃）
+## 批次 15 提示词（已迁移 [`plan-p2-progress.md`](plan-p2-progress.md)——P2 记录与 P2 提示词自批次 15 起在新文件，避免本文件过长）
 
 ```
 继续 aegent 批次 15（P2 段首批 15a：会话数据与生命周期 P2；7 条需求 ID：Q2 Q4 Q6
@@ -216,12 +216,13 @@ docs/plan-p0.md §0）。上一批（批次 12）报告在 docs/plan-p1-progress
 | 需求ID / 批次 | 为什么不能机验 | 人工要怎么确认 | 状态 |
 | --- | --- | --- | --- |
 | llm-replay flaky（批次 11 测试基建） | `llm-replay.test.ts` 回放等价用例在 93 文件并行负载下偶发失败（批次 11 期间复现 1 次，隔离复跑两次全绿）——疑似端口/时序资源竞态，非产品代码缺陷 | 多次全量跑观察复现率；若复现频繁，下一会话以 test-only 修复（如固定端口/串行化该文件） | 观察中（批次 6 T-P1-48 同形态） |
-| J16 健康探测真实端点（T-P1-107） | 探测的 reachability/degraded 判据已单测钉死，但真实厂商端点的 TTFB 分布未实测 | 下次真实厂商联调时顺带跑 `runHealthCheck`（degraded 阈值 6000ms 是否合理） | 待真实厂商联调（同 §6.2 终验窗口） |
+| J16 健康探测真实端点（T-P1-107） | 探测的 reachability/degraded 判据已单测钉死，但真实厂商端点的 TTFB 分布未实测 | 下次真实厂商联调时顺带跑 `runHealthCheck`（degraded 阈值 6000ms 是否合理） | **✅ 已确认（2026-09-28 真实端点联调）**——端点 1 TTFB 155ms operational、端点 2 TTFB 1002-4256ms operational（6s 阈值合理，免费网关波动在位）；凭据掩码档 private/live-endpoints.md |
 | #19 surface/attach + surface/detach（批次 12 词汇表 23→25） | 两枚 log-only 会话级元事件的词汇表扩展走 Q9 单向门——追认是用户决策项（§0 第 7 条第 3 款） | 追认则 l0-events.md §8 落地记录 19 落"已追认"转正；不追认按回退面删除（约 1.5 小时全部新增面，roster 回落内存面） | **✅ 已追认转正（2026-09-28 用户："认可#19"）** |
 | #20 user/message+attachments 载荷扩展 + #21 image/offload 25→26（批次 13 词汇表） | 载荷扩展与新事件走 Q9 单向门——追认是用户决策项（§0 第 7 条第 3 款） | 追认则 l0-events.md §8 落地记录 20/21 落"已追认"转正；不追认按各自回退面删除（#20 约 2 小时 / #21 约 2.5 小时，全部新增面） | **✅ 已追认转正（2026-09-28 用户："全部认可"）** |
 | 架构 policy 渐进基线（批次 13 T1，21 warnings） | 存量域（managed:false）违规降级警告——收紧路线是人工决策（拆文件/补 entrypoints/域拆分节奏） | 逐批消化：超行数文件随触碰拆分；requires 白名单后续按目标架构收紧；收编 acp 结构断言的评估随 policy 演进 | 观察中（警告清单 = 渐进基线，落 T-P1-121 完成记录） |
-| 真实网络传输层（批次 12 host 域） | K8 端间协议的 TCP/WS 传输、N9 的 WebDav 远端、租约 TTL 心跳均接口面在位未实装（无真实部署形态） | 批次 14 UI 部署形态定形时选传输并补端到端实测 | 待批次 14 / 真实部署 |
-| ACP 规范全文对齐 + Anthropic 真实端点（T-P1-117 / T-P1-108） | 方法映射按公开约定最小面（四方法）+ wire 语义 http-mock 钉死；真实 ACP 客户端与 Anthropic 端点未实测 | 真实客户端联调时对齐规范全文（fs 工具面/read_resource 等）；Anthropic 端点跑通一轮真实会话（cache_control 标记策略同窗口） | 待真实联调（§6.2 终验窗口） |
+| 真实网络传输层（批次 12 host 域） | K8 端间协议的 TCP/WS 传输、N9 的 WebDav 远端、租约 TTL 心跳均接口面在位未实装（无真实部署形态） | 批次 14 UI 部署形态定形时选传输并补端到端实测 | **✅ 已定形（批次 14）**——WS over TCP 本机回环（T-P1-128 落地 + 真实 WS 会话实测 2026-09-28）；WebDav 远端/租约 TTL 心跳仍随 P2 部署 |
+| P1 真实厂商端点联调（2026-09-28 终验窗口首轮） | 适配器对真实推理模型（SSE delta.reasoning 字段）的解析、真实端点断流（免费网关偶发）、CLI/host 全链的行为无法单测覆盖 | 用用户供给端点跑：①适配器级流式（text/reasoning-delta+usage）②CLI --smoke 全链（9 事件落流 sqlite）③host server WS 全链——三项全通过（端点 1 稳定 / 端点 2 免费网关首跑断流重跑完整） | **✅ 首轮通过（2026-09-28）**——Anthropic wire 与 STT 端点仍待联调；凭据掩码档 private/live-endpoints.md（不入库） |
+| ACP 规范全文对齐 + Anthropic 真实端点（T-P1-117 / T-P1-108） | 方法映射按公开约定最小面（四方法）+ wire 语义 http-mock 钉死；真实 ACP 客户端与 Anthropic 端点未实测 | 真实客户端联调时对齐规范全文（fs 工具面/read_resource 等）；Anthropic 端点跑通一轮真实会话（cache_control 标记策略同窗口） | **部分完成（2026-09-28）**——OpenAI 协议端点全链通过（适配器级+CLI+host WS 三层）；Anthropic 真实端点仍待联调（用户提供端点为 OpenAI 协议——AnthropicMessages wire 未实测，cache_control 策略同窗口） |
 | 全量 flaky 两例（llm-replay / http-mock，批次 12 期间各复现 1 次） | 93+ 文件并行负载下的端口/时序资源竞态（隔离复跑全绿）——批次 6 T-P1-48 同形态，非产品代码缺陷 | 多次全量跑观察复现率；若频繁，下一会话以 test-only 修复（固定端口/串行化该文件） | 观察中（与批次 11 llm-replay 在案项合并观察） |
-| UI 交互正确性（批次 14 K5/K2，T-P1-128/129） | ui/ 资产的浏览器/WebView 实际渲染与交互（连接/发 prompt/审批卡/恢复视图）无浏览器测试基建——机验面在 host server 传输与协议层（server.test 全链 5 用例） | 浏览器打开 host 地址（node dist/src/host/server.js 起服务）手工走一轮：prompt→事件流→审批卡应答→刷新恢复；桌面壳同机双击 exe 验证 WS 连接 | 待人工确认 |
+| UI 交互正确性（批次 14 K5/K2，T-P1-128/129） | ui/ 资产的浏览器/WebView 实际渲染与交互（连接/发 prompt/审批卡/恢复视图）无浏览器测试基建——机验面在 host server 传输与协议层（server.test 全链 5 用例） | 浏览器打开 host 地址（node dist/src/host/server.js 起服务）手工走一轮：prompt→事件流→审批卡应答→刷新恢复；桌面壳同机双击 exe 验证 WS 连接 | **传输面已验证（2026-09-28）**——host server 真实 WS 会话全链通过（真实模型回复 9 事件流）；浏览器/WebView 视觉交互仍待人工确认 |
 | 桌面壳运行前提（批次 14 K2，T-P1-129） | host 进程管理（sidecar 打包/自启/node runtime 随包分发）不做——运行前提 = 本机 node + host server 先起（展卡核对结论④记档） | 真实分发面：tauri:build 产物 + node dist/src/host/server.js 同机运行，桌面壳连接成功即达形态；sidecar 化随 P2 部署定形 | 随 P2 真实部署 |
