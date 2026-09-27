@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { assemblePolicyChain, type PolicyCall } from "./chain.js";
 import { builtinRuleMatchers } from "./matchers.js";
+import { lintRules } from "./linter.js";
 import {
   RuleLoadError,
   loadedRuleMatch,
@@ -57,13 +58,104 @@ describe("解析与 raw 保留（C38）", () => {
     }
   });
 
-  it("parseRulePattern 直接暴露（畸形返回 undefined）", () => {
+  it("parseRulePattern 直接暴露（畸形返回 undefined；产物含 raw 原文）", () => {
     expect(parseRulePattern("Read(./secrets/**)")).toEqual({
+      raw: "Read(./secrets/**)",
       toolName: "Read",
       argPattern: "./secrets/**",
     });
     expect(parseRulePattern("Read(")).toBeUndefined();
     expect(parseRulePattern("")).toBeUndefined();
+  });
+
+  it("验收④ round-trip：解析产物 raw 逐字节保留 trim 后原文（配置可复制粘贴）", () => {
+    for (const raw of [
+      "bash",
+      "bash(git *)",
+      "bash(git:*)",
+      "  bash(git *)  ",
+      "agent(coder,model:opus)",
+    ]) {
+      const parsed = parseRulePattern(raw);
+      expect(parsed).toBeDefined();
+      expect(parsed?.raw).toBe(raw.trim());
+    }
+    // 规范形重建：非 legacy 输入可由 {toolName, argPattern} 重建出原文
+    const rebuilt = parseRulePattern("bash(git status)");
+    expect(rebuilt && `${rebuilt.toolName}(${rebuilt.argPattern})`).toBe(
+      "bash(git status)",
+    );
+  });
+
+  it("验收① 三态：裸名 / 带参 / 畸形标 invalid", () => {
+    const rules = loadRules(
+      [
+        { raw: "bash", action: "deny" }, // 裸名
+        { raw: "bash(git status)", action: "allow" }, // 带参
+        { raw: "bash(git", action: "allow" }, // 畸形 → invalid
+      ],
+      builtinRuleMatchers,
+    );
+    expect(rules.map((r) => r.invalid)).toEqual([false, false, true]);
+    expect(rules[0]).toMatchObject({ toolName: "bash", raw: "bash" });
+    expect(rules[1]).toMatchObject({
+      toolName: "bash",
+      argPattern: "git status",
+    });
+  });
+
+  it("验收② legacy `:*` 后缀：Bash(git:*) → `git *`（仅 command 分型展开）", () => {
+    expect(parseRulePattern("bash(git:*)")).toMatchObject({
+      raw: "bash(git:*)", // raw 权威保留原文
+      toolName: "bash",
+      argPattern: "git *", // 展开产物
+    });
+    // 非 command 分型不展开（path 分型的 `:*` 是字面量不误展开）
+    expect(parseRulePattern("read(./a:*b)")).toMatchObject({
+      argPattern: "./a:*b",
+    });
+  });
+
+  it("验收③ literal 分型 key:value matcher：合法 / 非法 key / 空值警告", () => {
+    // 合法 key：解析出 matchers；plain 部分保留为 argPattern
+    const mixed = parseRulePattern("agent(coder,model:opus,type:*)");
+    expect(mixed).toMatchObject({
+      toolName: "agent",
+      argPattern: "coder",
+    });
+    expect(mixed?.toolParamMatchers).toEqual([
+      { key: "model", valuePattern: "opus" },
+      { key: "type", valuePattern: "*" },
+    ]);
+
+    // 纯 key:value：argPattern 保留原文形状（不退 undefined——undefined
+    // 是工具级语义，会让未接线的规则放行一切）
+    const pure = parseRulePattern("agent(model:opus)");
+    expect(pure?.toolParamMatchers).toEqual([{ key: "model", valuePattern: "opus" }]);
+    expect(pure?.argPattern).toBe("model:opus");
+
+    // 非法 key（连字符）退回 plain 部分，不产生 matcher
+    const badKey = parseRulePattern("agent(coder,bad-key:v)");
+    expect(badKey?.toolParamMatchers).toBeUndefined();
+    expect(badKey?.argPattern).toBe("coder,bad-key:v");
+
+    // 命名空间名跳过 key:value 解析（MCP 工具 specifier 含 : 不当 matcher）
+    expect(parseRulePattern("srv__tool(a:b)")?.toolParamMatchers).toBeUndefined();
+
+    // 空值模式加载后经 linter 报 empty-value-pattern（可检索警告）
+    const warns = lintRules(
+      loadRules([{ raw: "agent(model:)", action: "allow" }], builtinRuleMatchers),
+      { knownToolNames: ["bash", "agent"], matchers: builtinRuleMatchers },
+    ).filter((i) => i.kind === "empty-value-pattern");
+    expect(warns).toHaveLength(1);
+    expect(warns[0]).toMatchObject({ kind: "empty-value-pattern" });
+    expect(warns[0]?.detail).toContain("model");
+  });
+
+  it("path 分型的 Windows 盘符不被误解析为 key:value（C:\\ 形状保持）", () => {
+    const win = parseRulePattern("edit(C:\\Users\\foo)");
+    expect(win?.toolParamMatchers).toBeUndefined();
+    expect(win?.argPattern).toBe("C:\\Users\\foo");
   });
 });
 

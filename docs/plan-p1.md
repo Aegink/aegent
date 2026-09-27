@@ -1016,7 +1016,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **偏离 / 建议**：wildcard-tool-name 判据偏离 kimi 无条件形状——kimi 的"非 MCP 名含 glob 即报"基于其 builtin 清单精确匹配；我方工具名维度 wildcardMatch 全支持通配（`bash*` 是活规则），无条件报会误报——判据落"注册表现存工具无一被该模式命中（wildcardMatch 真实方言判定）"，语义仍 C23"永不匹配的模式"。incomplete-namespace-name 判据 = 含 `__` 但非两段非空且注册表无此名（验收②的 `a__b__c` 三段落此；卡面"首段或第二段为空"文字未覆盖段数>2，以验收为准）；注册表现存名豁免（工具名自身含 `__` 的三段注册名合法，防误报）。linter.test.ts 为本卡新建（既有三类判据用例原散在 self-guard/ceiling-exit 测试，验收③由同跑两文件回归覆盖）。
 - **完成记录**：①linter.ts 扩 LintIssueKind 两值 + 导出 findInactiveRuleToolName（单名核心）/findInactiveRuleToolNames（kimi 同名意图批量版），lintRules 主循环工具名判定委托单名核心；no-matcher-for-args 保持（hasGlob 变体文案不动）。②linter.test.ts 新建 5 用例（①Bash*(git *)/github__* → wildcard-tool-name；②a__/__b/a__b__c → incomplete-namespace-name；活规则零误报 b*/g*p；两段非空走 unknown-tool + 三段注册名豁免；findInactiveRuleToolNames 三类各一）。③验收：`npx vitest run src/policy/linter.test.ts src/policy/self-guard.test.ts src/policy/ceiling-exit.test.ts` → **24 passed**（新 5 + 既有回归 19 全绿，既有 `b*(git *)`/`notepad(*)`/invalid-syntax 用例零破坏）；`npx tsc --noEmit` 干净。
 
-#### T-P1-67 · C26 · 规则文本形式 Tool(args) 正式解析器 `[ ]`
+#### T-P1-67 · C26 · 规则文本形式 Tool(args) 正式解析器 `[x]`
 - **依据需求**：C26（P1："规则语法采用 Tool(args) 文本形式；配置可读、可复制粘贴"）——展卡核对结论③：P0 形状已在，本卡正式化
 - **上游首选参考**：[qwen·rule-parser.ts:458-540](../oss/qwen-code/packages/core/src/permissions/rule-parser.ts#L458)（parseRule：裸名/Tool(specifier)/不平衡括号 → invalid 永不匹配/`:*` legacy 后缀展开仅 command 分型/literal 的 key:value 逗号 matcher 与 key 合法性）
 - **取什么 / 别抄什么**：取解析语义三态（裸名/带参/invalid）与"配置文本是权威、解析产物可从原文重建"；不抄 picomatch/shell-quote 依赖
@@ -1025,8 +1025,8 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **验收**：`npx vitest run src/policy/rule-loader.test.ts`（扩）——①三态各一；②`Bash(git:*)` → `git *`；③key:value matcher（合法/非法 key/空值警告）；④round-trip 逐字节
 - **依赖**：无
 - **风险 / 未知**：`:*` 展开依赖 command 分型——getSpecifierKind 在 T-P1-68 正式落，本卡先以工具类别查表预置
-- **偏离 / 建议**：（留白）
-- **完成记录**：
+- **偏离 / 建议**：①分型查表预置为**完整四分型**（command/path/domain/literal 三集合 + specifierKindOf 导出）而非仅 command——不预置 path/domain 则 `edit(C:\Users\foo)` 的盘符 `C` 会命中 key 正则被误解析成 matcher（真实语义破坏），qwen 不踩此坑因其 path 分型先行；T-P1-68 正式化时挪 specifier-kinds.ts。②key:value 的匹配接线（toolParamMatchers 消费）留 T-P1-68 分型路由——本卡产物是解析产物（LoadedRule.toolParamMatchers），未接线规则经 no-matcher fail-closed 永不命中不越权。③纯 key:value（plain 空时）argPattern 保留原文形状不退 undefined——undefined 是"工具级规则"（匹配一切调用）语义，退 undefined 会让未接线规则放行一切（qwen specifier 可为 undefined，我方 LoadedRule 语义不同故保留原文形）。④qwen 的"非 literal 分型含 :" debugLogger.warn 不落（我方无对应通道；linter 的 no-matcher-for-args 已覆盖主要死规则面）。⑤既有测试两处同步：parseRulePattern toEqual 断言加 raw 字段（产物形状升级）。
+- **完成记录**：①parseRulePattern 升正式解析器：三态（裸名/带参/invalid）+ 工具部分 trim（`Bash (git)`≡`Bash(git)`）+ legacy `:*` 展开仅 command 分型 + literal 分型 key:value 解析（PARAM_KEY_RE 合法性、非法 key 退 plain、命名空间名跳过）+ raw 逐字节保留 trim 后原文；LoadedRule 扩 toolParamMatchers。②linter 扩 empty-value-pattern 类（valuePattern==="" 警告，qwen debugLogger.warn 的 linter 通道落法）。③验收：`npx vitest run src/policy/rule-loader.test.ts`（扩）→ **17 passed**——①三态各一 ✓；②`bash(git:*)` → `git *` 且 raw 权威保留原文、`read(./a:*b)` 不误展开 ✓；③key:value 合法/非法 key/空值警告 + Windows 盘符不误解析 ✓；④round-trip 逐字节（5 输入 raw === trim 后原文 + 规范形重建）✓；连同 linter/self-guard/ceiling-exit/evaluate 回归 **58 passed 全绿**；`npx tsc --noEmit` 干净。
 
 #### T-P1-68 · C39+C53 · specifier 按 kind 分型匹配（+basename 绑绝对路径） `[ ]`
 - **依据需求**：C39（P1："specifier 按 kind 分型匹配（command→shell glob、path→gitignore 风格、domain、literal），kind 由工具类别推导"）· C53（P1："basename 规则必须绑绝对路径清单（反解释器路径绕过）"）

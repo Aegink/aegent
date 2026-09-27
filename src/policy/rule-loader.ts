@@ -1,7 +1,10 @@
 /**
- * 规则加载器（C38/C44）——raw 原文保留 + 加载期样例校验 + 畸形规则
- * 显式标 never-match。规则文本形式 `Tool(argPattern)` 或裸 `Tool`
- * （C26 的 P1 正式化前的 P0 形状，qwen·permissions 同款）。
+ * 规则加载器（C38/C44/C26）——raw 原文保留 + 加载期样例校验 + 畸形规则
+ * 显式标 never-match。规则文本形式 `Tool(args)` 的正式解析器（T-P1-67，
+ * qwen·rule-parser.ts parseRule 同构）：裸名 / 带参 / invalid 三态 +
+ * legacy `:*` 后缀展开（仅 command 分型）+ literal 分型的 key:value
+ * 参数 matcher 解析。配置文本是权威——解析产物 raw 逐字节保留原文
+ * （trim 后），verdict 回显可复制粘贴。
  *
  * 三种坏规则两种处置（来源纪律不同）：
  *   - 语法畸形（括号不闭合、空工具名等）→ 规则保留在集合里标 invalid，
@@ -39,6 +42,17 @@ export interface LoadedRule {
   readonly invalid: boolean;
   /** 来源行号（调用方提供，报错与 linter 定位用）。 */
   readonly line?: number;
+  /**
+   * literal 分型的 key:value 参数 matcher（C26 解析产物，qwen
+   * toolParamMatchers 同构）——匹配接线随 T-P1-68 的分型路由落。
+   */
+  readonly toolParamMatchers?: readonly ToolParamMatcher[];
+}
+
+/** literal 分型 key:value 参数 matcher（qwen 同构：{key, valuePattern}）。 */
+export interface ToolParamMatcher {
+  readonly key: string;
+  readonly valuePattern: string;
 }
 
 /** 加载输入：一行规则原文 + 动作 + 可选行号与样例。 */
@@ -77,26 +91,96 @@ export class RuleLoadError extends Error {
 }
 
 // ---------------------------------------------------------------------------
-// 解析（kimi·parsePattern 同款形状）
+// specifier 分型查表（T-P1-67 预置；T-P1-68 随 specifier-kinds.ts 的
+// getSpecifierKind 正式化并接匹配路由。qwen getSpecifierKind 同构四值）
 // ---------------------------------------------------------------------------
 
+const COMMAND_SPECIFIER_TOOLS = new Set(["bash", "pwsh"]);
+const PATH_SPECIFIER_TOOLS = new Set(["read", "write", "edit", "apply_patch"]);
+const DOMAIN_SPECIFIER_TOOLS = new Set(["webfetch"]);
+
+export type SpecifierKind = "command" | "path" | "domain" | "literal";
+
+export function specifierKindOf(toolName: string): SpecifierKind {
+  if (COMMAND_SPECIFIER_TOOLS.has(toolName)) return "command";
+  if (PATH_SPECIFIER_TOOLS.has(toolName)) return "path";
+  if (DOMAIN_SPECIFIER_TOOLS.has(toolName)) return "domain";
+  return "literal";
+}
+
+// ---------------------------------------------------------------------------
+// 解析（C26 正式解析器，qwen·rule-parser.ts parseRule 同构）
+// ---------------------------------------------------------------------------
+
+/** 正式解析产物：raw 原文权威（round-trip 回显）+ 工具名 + 参数维度。 */
+export interface ParsedRulePattern {
+  /** trim 后的原文（配置文本是权威——可复制粘贴回配置不变形）。 */
+  readonly raw: string;
+  readonly toolName: string;
+  /** 参数维度（legacy 展开后的 command glob / plain 部分）；裸规则 undefined。 */
+  readonly argPattern?: string;
+  /** literal 分型的 key:value matcher（qwen toolParamMatchers 同构）。 */
+  readonly toolParamMatchers?: readonly ToolParamMatcher[];
+}
+
+/** key 合法性（qwen 同款：标识符形状，连字符与点不支持）。 */
+const PARAM_KEY_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
 /**
- * 拆 `Tool(argPattern)`。畸形（空串 / 有左括号无右括号 / 空工具名）返回
- * undefined，由调用方标 invalid；`Tool()` 空参数按裸工具处理（kimi 同款）。
+ * 拆 `Tool(argPattern)`（三态：裸名 / 带参 / invalid）。畸形（空串 /
+ * 有左括号无右括号 / 空工具名）返回 undefined，由调用方标 invalid；
+ * `Tool()` 空参数按裸工具处理（kimi 同款）。升级点（T-P1-67）：
+ *   - 工具部分 trim（`Bash (git)` ≡ `Bash(git)`，qwen toolPart 同款）；
+ *   - legacy `:*` 后缀展开仅 command 分型（`Bash(git:*)` → `git *`，
+ *     防干扰 key:value 语法）；
+ *   - literal 分型 key:value matcher 解析（key 合法性、非法 key 退回
+ *     plain 部分；MCP 命名空间名跳过）。
  */
-export function parseRulePattern(
-  raw: string,
-): { toolName: string; argPattern?: string } | undefined {
+export function parseRulePattern(raw: string): ParsedRulePattern | undefined {
   const trimmed = raw.trim();
   if (trimmed.length === 0) return undefined;
   const openIdx = trimmed.indexOf("(");
-  if (openIdx === -1) return { toolName: trimmed };
+  if (openIdx === -1) return { raw: trimmed, toolName: trimmed };
   if (!trimmed.endsWith(")")) return undefined;
-  const toolName = trimmed.slice(0, openIdx);
-  const argPattern = trimmed.slice(openIdx + 1, -1);
+  const toolName = trimmed.slice(0, openIdx).trim();
+  const rawSpecifier = trimmed.slice(openIdx + 1, -1);
   if (toolName.length === 0) return undefined;
-  if (argPattern.length === 0) return { toolName };
-  return { toolName, argPattern };
+  if (rawSpecifier.length === 0) return { raw: trimmed, toolName };
+
+  const kind = specifierKindOf(toolName);
+  // legacy `:*` 后缀（qwen 同款：`git:*` → `git *`；仅 command 分型）
+  const specifier =
+    kind === "command" ? rawSpecifier.replace(/:(\*)/g, " $1") : rawSpecifier;
+
+  let argPattern: string = specifier;
+  let toolParamMatchers: ToolParamMatcher[] | undefined;
+  if (kind === "literal" && !toolName.includes("__") && specifier.includes(":")) {
+    const plainParts: string[] = [];
+    const matchers: ToolParamMatcher[] = [];
+    for (const part of specifier.split(",").map((p) => p.trim())) {
+      const colonIdx = part.indexOf(":");
+      const key = colonIdx > 0 ? part.substring(0, colonIdx).trim() : "";
+      if (key !== "" && PARAM_KEY_RE.test(key)) {
+        matchers.push({ key, valuePattern: part.substring(colonIdx + 1).trim() });
+        continue;
+      }
+      plainParts.push(part);
+    }
+    if (matchers.length > 0) {
+      toolParamMatchers = matchers;
+      const plain = plainParts.join(",").trim();
+      // plain 部分为空（纯 key:value）时 argPattern 保留原文形状而非
+      // 退成 undefined——undefined 是"工具级规则"（匹配一切调用），
+      // 会让未接线的 key:value 规则越过 fail-closed 放行一切
+      argPattern = plain !== "" ? plain : specifier;
+    }
+  }
+  return {
+    raw: trimmed,
+    toolName,
+    ...(argPattern !== "" ? { argPattern } : {}),
+    ...(toolParamMatchers !== undefined ? { toolParamMatchers } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -123,10 +207,13 @@ export function loadRules(
       };
     }
     return {
-      raw: source.raw,
+      raw: parsed.raw,
       toolName: parsed.toolName,
       ...(parsed.argPattern !== undefined
         ? { argPattern: parsed.argPattern }
+        : {}),
+      ...(parsed.toolParamMatchers !== undefined
+        ? { toolParamMatchers: parsed.toolParamMatchers }
         : {}),
       action: source.action,
       invalid: false,

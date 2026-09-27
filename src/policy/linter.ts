@@ -30,7 +30,8 @@ export type LintIssueKind =
   | "unknown-tool"
   | "no-matcher-for-args"
   | "wildcard-tool-name"
-  | "incomplete-namespace-name";
+  | "incomplete-namespace-name"
+  | "empty-value-pattern";
 
 export interface LintIssue {
   readonly kind: LintIssueKind;
@@ -151,6 +152,18 @@ export function lintRules(
             ? `工具名含通配且带参数模式，无法静态确认匹配器，运行时可能永不命中`
             : `工具 "${rule.toolName}" 未登记参数匹配器，带参规则永不命中（fail-closed）`,
       });
+    }
+    // C26 key:value matcher 的空值模式（qwen debugLogger.warn 同构警告，
+    // 落我方 linter 通道可检索）：空 pattern 只匹配空串，多半是笔误
+    for (const m of rule.toolParamMatchers ?? []) {
+      if (m.valuePattern === "") {
+        issues.push({
+          kind: "empty-value-pattern",
+          raw: rule.raw,
+          ...(rule.line !== undefined ? { line: rule.line } : {}),
+          detail: `key "${m.key}" 的值为空模式——只匹配空字符串；需匹配任意值请用 "*"`,
+        });
+      }
     }
   }
   return issues;
