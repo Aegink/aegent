@@ -1,6 +1,6 @@
 # P1 实施计划 · 批次 1
 
-**状态**：v1.9 · 批次 1-8 收官（13 + 10 + 6 + 10 + 6 + 9 + 11 + 9 = 74 卡全关，2026-09-27；批次 8 = 权限·规则语义与信任——12 条需求 ID 中 11 条实卡全关 + C41 展卡核对关闭；词汇表 21 事件（#9/#10/#11 三案经用户 2026-09-27"待澄清表认可"转正）· 全量基线 957 passed / 1 skipped · 批次 9 未展卡（权限·审批与运行模式 9 条，下一会话自展+执行）
+**状态**：v1.10 · 批次 1-9 收官（13 + 10 + 6 + 10 + 6 + 9 + 11 + 9 + 10 = 84 卡全关，2026-09-27；词汇表 21 事件（#9/#10/#11 三案经用户 2026-09-27"待澄清表认可"转正）· 全量基线 1019 passed / 1 skipped · 批次 10 已展卡（调度与会话数据工程 15 条需求 ID：M1/M2/M3/M8 + E7/E8/E14/E15/E17/E18 + Q1/Q7 + N4 + L7/L8 → 14 张 T-P1-85 ~ 98，N4 展卡核对关闭不占卡；本会话展卡+执行）
 **执行协议**：沿用 [`plan-p0.md`](plan-p0.md) §0（取卡 / 做卡 / 验收 / 打勾 / 提交 / 自动继续 / 四种停下情况），本文件不复制。执行进度追加在 [`plan-p0-progress.md`](plan-p0-progress.md)（台账 / 待澄清 / 人工确认清单共用一个文件）。
 **需求来源**：[`requirements.md`](requirements.md) §4 的 P1 项（共 158 条）。P1 不切阶段（§1 尾注），按**批次**组织：本文件当前只含批次 1，后续批次轮到时再展卡追加。
 **批次 1 范围**（用户圈定于 2026-09-25，四组全选，共 26 条）：
@@ -1285,3 +1285,179 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - 审批语义分域：不可达（C25）≠ 拒绝（C54 关类/C33 无人值守）≠ 超时拒绝（C50）——收口盘点落报告 ✅。
 - 判官四件套接口面在位（C56，不做本体）：abstain 落回人 / 双面预算 / 90s 常量复用 / requireJudge 强制位 ✅；C42/C55（P2）接口面已备 ✅。
 - 七面盘点结论落批次报告（T-P1-84）✅（零真冲突）。
+
+---
+
+## 批次 10 卡序（14 张，2026-09-27 展卡，按依赖排序；15 条需求 ID：M1/M2/M3/M8 + E7/E8/E14/E15/E17/E18 + Q1/Q7 + N4 + L7/L8——N4 展卡核对关闭不占卡）
+
+**锚点纪律**：15 条锚点已逐一打开核对（2026-09-27，证据见各卡）：dsh·packages/jobs/jobs/src/index.ts:85（JobRegistry 抽象类——start(spec)→JobId（注册表发 `<kind>-N` id，preflight 拒绝不留下残迹）/ list/get/read/readAt/kill/wait/remove/attachController 八方法 + view.ts:19 `JobStatus = running|stopping|completed|killed|failed` 五值闭集；jobs 三包结构 jobs/jobs-local/tool-jobs）；codex·session/daemon_recovery.rs（46 行全文——`interrupted_turn()` 捕获"输入已记录（RecordedTurnInput 标记）、未取消"的常规 turn，"Callers must flush the rollout after capture before persisting the snapshot"；恢复 = 从已记录输入重开轮，非重执行已完成的 step）；pi-desktop·ADR 0041:22-23（"Electron host supervision is single-flight and generation-aware. **A stale host generation cannot issue notifications or accept new RPC writes**"）+ ADR 0053 §4（**process-epoch fence**："The host process has an internal boot epoch, but it is **not serialized in the database and is not a protocol field**"——启动期一个事务把全部 prior pending approvals 与 queued/running execution 标 interrupted，"**No approval, queue entry, provider call, or tool execution is replayed**"）；kimi·transcript/（七子目录包 contract/granularity/history/model/ops/pagination/store/view——会话记录独立模型，脱离内核可检视）；kimi·sessionIndex/（7 文件：projector/service/dirtyJournal/mirror/source/model）+ sessionExport/（6 文件：manifest/zip/wire-scan/errors/file-source）；dsh·event-sourced-sessions.md:13（"**raw stream chunks are logged for token-level replay fidelity while the assembled assistant/message event is authoritative for derivation**"）；zcode·zcodeSessionEventCoalescer.ts（202 行——getBackgroundSessionEventCoalesceKey(event) 合并键 + mergeBackgroundSessionEvents + scheduleFlush 定时 flush 的独立合并模块）；zcode·session.events.ts:96（"sendQueuedNow 原子提升：**reservation/promoting/rollback 均进入事件流，投影不本地猜测**"）+ :515-517（`state: "queued"|"reserved"|"promoting"` 三态）；kimi·engine.ts:61/480/496/500（`readonly produced: readonly HistoryMessage[]`——turnSettled {outcome, produced: event.messages}，回合结局与产出一起结算）；dsh·session-format-v0-to-v1/src/migration.ts:27（defineSessionFormatMigration {name, fromVersion: 0, toVersion: 1, migrateHeader, createStage, validateTargetHeader}）+ session-format/src/chain.ts:65-68（createSessionFormatChain——缺失相邻迁移即抛 SessionFormatUnsupportedMigrationError "Session migration vN->vN+1 is missing"，单调整数版本逐级）；codex·rollout/compression.rs（COMPRESSED_SUFFIX ".zst" / TEMP_SUFFIX ".tmp" / spawn_rollout_compression_worker fire-and-forget"**failures are logged, startup is not blocked, and a run marker under codex_home prevents overlapping or too-frequent compression runs**" + persist_temp_file_noclobber 原子替换 + materialize_rollout_for_append 读时解压）；pi·session/types.ts:67（`NewEntry = Omit<Entry, "seq" | "timestamp">`——"Entry supplied to a transaction **before storage assigns sequence** and timestamp"）；dsh·session-projection-and-command-log.md:13（"**Command results are unrecoverable** … a refresh, another tab, resume, or fork loses the record that the command ever ran"）+ :127-128（`command/run: {commandId, name, args?, source}` / `command/done: {commandId, kind: "success"|"error", text?}`——run 前置、done 结算，log-only 不包 turn，配对不变量）；codex·analytics/facts.rs:444-509（CodexCompactionEvent 六维枚举 CompactionTrigger{Manual,Auto}/CompactionReason{UserRequested,ContextLimit,ModelDownshift,CompHashChanged}/CompactionImplementation/CompactionPhase{StandaloneTurn,PreTurn,MidTurn,PostTurn}/CompactionStrategy{Memento,PrefixCompaction}/CompactionStatus{Completed,Failed,Interrupted} + tokensBefore/After 等度量字段）。**零内容勘误。**
+
+**展卡核对结论（我方现状 × 15 条）**：
+1. **N4 展卡核对关闭，不占卡**（C41/L10/M5 先例）："seq 由 store 分配、调用方不提供"已 **100% 在位且类型钉死**——`NewSessionEvent = DistributiveOmit<SessionEvent, "seq"|"ts">`（events.ts:570，pi NewEntry 的 Omit 同构）+ store.append 内部分配 seq/ts（store.ts:77-83）+ T-1-02 的 seq 单调/断层拒绝断言。验收要点前半已由 P0 承载关闭；后半"跨端 epoch 需自研"由 T-P1-87（M8）落 ExecutionEpoch 机制承载（boot 生成 + 句柄编码 + 过期代拒绝），为批次 12 的 N7 host/N8 roster 打底——N4 无独立可落增量，关闭记档。
+2. **M1/M2 同底座合一张卡**（dsh JobRegistry 是同一抽象类的两面）：M1"不阻塞对话"= start 即返回 id、执行在后台异步、输出入 ring 缓冲按需读（read/readAt 游标面）；M2"状态可查可取消"= list/get 返回 JobView（JobStatus 五值闭集含 stopping 中间态）+ kill 的 requested/already-finished 二值回执。执行体最小面 = spec 传入的异步闭包（不绑 bash——S 组闲时任务批次 15 才消费 job 底座，YAGNI）；不进 BUILTIN 工具面（无真实发起方，卡内记档）。
+3. **M3 崩溃续跑 × Q5 红线分域**：现状 T-8-04 对账把崩溃轮标 interrupted 后**不自动续跑**（M8"重启绝不重放"的既有兑现）；M3 的增量 = 提供显式 `session/resume` 动作——按对账标记找到最新 interrupted 轮，取该轮 user/message（A12 的 promptId 关联键在此复用）开**新轮**续跑；"不重复已完成副作用"的事件源结构保证 = 已完成 step 的 tool/call+result 与 assistant/message 已落流，新轮历史从流重建 → 模型看到工具已执行 → 不重调（测试以剧本钉死）。resume 是显式动作 ≠ 自动重放（两语义分域，验收对拍）。
+4. **M8 是 G4 遗留收口**（T-P1-13 完成记录："execution epoch（M8）留后续批次，本卡'重启不重放'完全复用 Q5 对账"）：ADR 0053 的 epoch **不序列化不进协议**（内部 boot epoch）——我方落法 = ExecutionEpoch 进程内值 + **句柄编码**（job id `${epoch}-${kind}-${n}`）+ 过期代拒绝（JOB_EPOCH_STALE——旧进程的句柄在新进程不可命中，"stale host generation cannot accept writes" 的我方真实面）；"cannot issue notifications" 面 = 我方单 agent-child 进程内宣告无跨代路径（write-behind 缓冲是内存的，进程死即消失），记档 + epoch fence 断言面收拢"重启零自动执行"三处既有语义（T-8-04 / T-P1-13 / 本批 M3 的显式 resume 例外）。
+5. **E15 合并器独立模块**（project.ts 现状无合并逻辑——tool/progress 只做校验+记录，T-P1-16 落的上限 10 在 tools 侧）：新落 `src/session/coalescer.ts` 独立模块——同 key 冗余事件在**投影视图**折叠（tool/progress 同 callId 只留最新；事件流本体永不改写——不变量 1），project.ts 消费；合并前后投影语义等价断言 + project(10k) 不回退。
+6. **E14 落诊断日志面**：我方流分片（StreamChunk）在 models 层、组装后 assistant/message 落事件流（dsh 的"组装事件是派生权威"现状已满足——project 只消费流事件）；缺的是"raw chunks 入日志"半边——落 model 请求完成后的分片 dump（诊断日志独立文件，T-P1-34 RecordingProvider 同位但运行时常开 vs 测试显式启用）；对照断言：分片日志缺失不影响投影。
+7. **Q7 压缩对象 = logs/ 冷文件族**（记偏离：codex 压的是 per-session rollout 文件，我方会话事件在单库 SQLite 热路径，无 rollout 文件可压——logs/ 按日 JSON + E14 分片 dump 是唯一冷文件族；"事件源架构必然的债"的等效承载）：后台 worker fire-and-forget 不阻塞启动、.zst 后缀、tmp→rename 原子替换、运行标记防重叠、读取面透明解压。
+8. **Q1 是 O19 消费方兑现**（T-P1-36 记档"真实 v0→vN 迁移链批次 10 Q1 落地"）：真实迁移 = schema v1→v2 建**会话索引表**（sessionId → 首末 seq/事件数/时间——E8 索引面的地基，v2 的正当 bump 理由）；机制面 = 相邻迁移注册表（缺相邻迁移 fail-closed 抛错，dsh chain.ts 同构）+ 单事务原子（T-1-02 既有）+ O19 三断言消费（前向兼容/版本闸门/迁移可恢复）；"未知事件类型显式拒绝"在 restore 路径补闸门（append 路径 E16 已拦）。
+9. **E17 × L8 合流于 compaction 载荷**（词汇表影响最集中的两处合并为一次扩展）：L8 六维落 compaction 载荷可选字段 trigger?/reason（已有）/implementation?/phase?/strategy?/status? + tokensAfter?（codex facts.rs 六枚举对位，我方无值域的维度落当前唯一直值——如 implementation:"summarizer"）；E17 中间态复用同事件 status 值（"started"前置落流 + "completed"结算 + "failed"落流——T-P1-18 的 provider 失败降级从"静默告警"升"流内事实"）——**零新事件**（E12 整值/状态变更承载，status 可选缺省 completed 兼容旧流）；"投影不猜" = 崩溃窗口内投影可见压缩进行中（started 无 completed）、新窗口只认 completed。
+10. **E18 落 turn/end 载荷扩 produced?**（kimi turnSettled {outcome, produced} 同构）：本回合产出的 assistant/message 事件 seq 列表机器自报（消费者免事后反推"哪些消息属于这一轮"）；事件计数 21 不变（载荷扩展立案）。
+11. **L7 需两处新事件**（本批唯一新事件卡）：`command/run {commandId, name, args?, source}` + `command/done {commandId, kind: "success"|"error", text?}`（dsh 同构 log-only 会话级元事件，不进模型历史）——REPL 斜杠命令（/approve /revert /steer /fork /preset /check /unattended /answer /cancel）生命周期落流；词汇表 21→23 立案；与 L2 审批审计互补不重复（审计面是审批域结构化字段，命令面是"这条命令执行过"的存在性记录）。
+12. **E7 transcript 独立检视面**：`src/session/transcript.ts` 纯函数（SessionEvent[] → 可读 transcript：回合分组/消息/工具调用/压缩标记）——零 store/loop 依赖（"脱离内核被检视"的结构保证：只 import 词汇表类型与投影消息函数）；CLI 露出随真实需求记档（YAGNI）。
+13. **E8 三分互不污染**：导出（自包含 JSON 快照：事件流+元数据）与索引（消费 Q1 v2 会话索引表）与兼容（Q1 迁移链）三面独立模块、互不调用；验收 = 迁移前后导出物逐字节不变、索引重建不改源库、迁移不改导出物。
+14. **E17/L8/E18/L7 四案词汇表走立案管线**（#12 载荷扩两处 + #13 turn/end produced + #14 command 两事件；接既有 #11 之后编号），每案含不追认回退面；其余卡零扩展（M1/M2 job 面走进程内 Service + 订阅回调，不进事件流——批次 9 审批面同款先例）。
+
+**批次 10 全局约束**：
+1. **接旧账两条线的记档核对已完成**：M8 ← T-P1-13（plan-p1.md 批次 1 卡 T-P1-13 完成记录尾"execution epoch（M8）留后续批次"）；Q1 ← T-P1-36（"真实 v0→vN 迁移链批次 10 Q1 落地（既定消费方）"）——两卡消费对应记档并关闭。
+2. **Q5 红线不破**：M3 的续跑是显式动作；M8 的 fence 断言面收拢"重启零自动执行"；任何"自动重放"路径都是 bug。
+3. **词汇表扩展每处走既有流程**：C16 assertNever 同步 + l0-events.md §8 落地记录 + 进度文件待澄清立案供追认；本批预判 4 案（#12~#15），执行中新发现照旧立案。
+4. **不做什么**（本批次）：不做 M4 空闲回收/M7 deadline 库/M11 闲时任务（P2）；不做 job 的 BUILTIN 工具与 CLI 面（无真实发起方）；不做 N1/N3/N7/N8 多端本体（批次 12，M8/N4 只打底）；不做 Q2 查询工具化/Q4 旧数据清理/Q8 归档档位（P2）；不做 E9 会话引用/E6 fork 树（P2）；不做 L5/L6/L9（P2）；E8 索引不做全文检索与查询语言（Q2 P2 域）。
+
+#### T-P1-85 · M1/M2 · JobRegistry（后台 job 底座 + 注册表状态可查可取消） `[ ]`
+- **依据需求**：M1（P1："后台 job——不阻塞对话"）+ M2（P1："job 注册表——job 状态可查、可取消"）
+- **上游首选参考**：[dsh·packages/jobs/jobs/src/index.ts:85](../oss/deepseek-harness/packages/jobs/jobs/src/index.ts#L85)（JobRegistry 抽象类：start spec preflight"Any preflight rejection leaves no job id or execution resource" + list/get/read/readAt/kill/wait/remove；view.ts:19 JobStatus 五值 running|stopping|completed|killed|failed；kill 返回 `requested|already-finished`）
+- **取什么 / 别抄什么**：取"注册表发 id / 后台启动即返回 / 输出 ring 按游标读 / kill 二值回执 / JobStatus 五值（含 stopping 中间态）"五形状；不抄其 Cordis Service 装配与 SessionId 归属面（我方单会话进程内，owner 归属随批次 12 多端）；tool-jobs 的 bash 后台化不取（无发起方）
+- **证据强度**：`读了代码`（index.ts:85-195 全方法签名与 doc + view.ts JobStatus/JobChunk/JobView + jobs-local 实现结构；我方 kernel 层现状）
+- **要产出**：①`src/kernel/jobs.ts`——JobRegistry（start(spec) → JobId 即返回不阻塞；执行体 = spec 提供的异步闭包，output 经 ring 缓冲（有界，lossy 标记）；list()/get(id) 返回 JobView（status/output 摘要）；read(id) 游标消费增量输出；kill(id, reason?) → "requested"|"already-finished"（stopping 中间态 → 终态 settled 回调）；wait(id, timeoutMs)）；②JobStatus 五值闭集 + job 生命周期回调面（onSettled 订阅——批次 15 闲时任务消费）；③id 形状预留 epoch 段（本卡 `${kind}-${n}`，T-P1-87 编码进）；④job 面零事件流扩展（进程内 Service + 回调，批次 9 审批面同款）
+- **验收**：`npx vitest run src/kernel/jobs.test.ts`（新建）——①start 即返回、执行体在后台跑完、对话路径零阻塞（并行断言）；②list/get 状态可查（running→completed 迁移）；③read 游标增量 + ring 有界 lossy；④kill 活 job → stopping → killed（reason 进 detail）、kill 已完成 → already-finished；⑤wait 结算/超时两路；⑥执行体抛错 → failed 不毒化注册表
+- **依赖**：无（本批首卡）
+- **风险 / 未知**：job 执行体与 loop/工具的关系——本卡最小面是独立闭包宿主（不接 ToolContext）；bash 后台化是 S 组批次的消费面，接口形状留 spec.kind
+
+#### T-P1-86 · M3 · 崩溃续跑（场景⑤：显式 resume，不重复已完成副作用） `[ ]`
+- **依据需求**：M3（P1："崩溃续跑——场景⑤：重启后不重复已完成副作用"）；codex interrupted_turn 语义
+- **上游首选参考**：[codex·session/daemon_recovery.rs](../oss/codex/codex-rs/core/src/session/daemon_recovery.rs)（`interrupted_turn()` 捕获"输入已记录、未取消"的常规 turn——恢复 = 从已记录输入重开，非重执行；"Callers must flush the rollout after capture"）
+- **取什么 / 别抄什么**：取"续跑的输入事实已在持久层"与"恢复的是未完成部分"两纪律；不抄其 TaskKind/EnvironmentConfigState 门控（我方对应 = Q5 对账的 interrupted 标记 + interrupted 轮的 user/message 已落流事实）
+- **证据强度**：`读了代码`（daemon_recovery.rs 46 行全文；我方 boot-maintenance.ts 对账现状 + T-8-04 记档）
+- **要产出**：①`src/session/boot-maintenance.ts` 扩——findInterruptedTurn(sessionId)（对账标记 → 该轮 user/message 定位——含 promptId）；②协议 +session/resume 请求 / 回执（显式动作）；③resume 行为：以原输入开**新轮**（事件流追加，原轮 turn/end{interrupted} 不动）——历史从流重建，已完成 step 的工具结果在模型历史可见 → 模型不重调（"不重复已完成副作用"的结构保证）；④REPL /resume 命令；⑤M8 红线并置断言：重启后不 resume 则零执行（显式动作 ≠ 自动重放）
+- **验收**：`npx vitest run src/session/boot-maintenance.test.ts src/kernel/agent-process.test.ts src/cli/cli.test.ts`（扩）——①崩溃模拟（step1 工具执行落流 → step2 中杀进程）→ 对账 interrupted → resume → 新轮模型历史含 step1 结果、剧本断言只发新调用不重调；②resume 后 turn/end{completed} 正常收束；③无 interrupted 轮 resume → 类型化拒绝；④重启后不 resume → 零自动执行（对照断言）；⑤原轮 interrupted 标记与事件流完整性不受 resume 影响（append-only）
+- **依赖**：T-8-04（对账在位）；A12 promptId（user/message 关联键在位）
+- **风险 / 未知**：resume 的新轮 promptId 策略——新轮是新 promptId 还是沿用原值（关联区间按流推导的 A9 复证面）；执行时定形记偏离
+
+#### T-P1-87 · M8 · Execution epoch（G4 遗留收口：过期代句柄拒绝 + 重启不重放收拢） `[ ]`
+- **依据需求**：M8（P1："持久化权威必须分代——过期的 host 代不能发通知或接受写入；重启绝不重放旧进程创建的工作"）；G4 接旧账（T-P1-13："execution epoch（M8）留后续批次"）
+- **上游首选参考**：[pi-desktop·ADR 0041:22-23](../oss/pi-desktop/docs/adr/0041-bounded-host-runtime-and-persistence-outbox.md#L22)（"A stale host generation cannot issue notifications or accept new RPC writes"）+ [ADR 0053 §4](../oss/pi-desktop/docs/adr/0053-plan-checkpoint-artifact-and-execution-epoch.md)（process-epoch fence：boot epoch "not serialized in the database and is not a protocol field"；启动事务把 prior pending/queued/running 全标 interrupted——"No approval, queue entry, provider call, or tool execution is replayed"）
+- **取什么 / 别抄什么**：取"boot epoch 进程内值不序列化"与"过期代句柄/写入拒绝"两纪律；不抄其 Electron host 握手/outbox（我方单 agent-child 进程无跨进程宿主）；"not serialized"的推论 = 我方不落库不进事件流
+- **证据强度**：`读了文档`（ADR 0041 全文 55 行 + ADR 0053 §4 全段；T-P1-13 完成记录的遗留记档）
+- **要产出**：①`src/session/epoch.ts`——ExecutionEpoch（boot 时生成 fresh 值、非持久、进程内单例传入消费方）；②过期代句柄拒绝：T-P1-85 的 JobRegistry id 编码 epoch 段（`${epoch}-${kind}-${n}`）→ 旧 epoch job id 查询/kill → 类型化 JOB_EPOCH_STALE（"stale generation cannot accept writes" 的我方真实面——job 是唯一的可跨代存活句柄形状）；③"cannot issue notifications"面记档：我方单进程宣告无跨代路径（write-behind 缓冲内存态、进程死即消失），多端 host 的跨代通知面随批次 12 N7；④"重启绝不重放"断言面收拢：boot 后零自动执行（T-8-04 对账 + T-P1-13 plan 不重放 + T-P1-86 resume 显式例外）三处回归断言并置
+- **验收**：`npx vitest run src/session/epoch.test.ts src/kernel/jobs.test.ts src/session/boot-maintenance.test.ts`（新建+扩）——①boot epoch 每次进程 fresh 生成且不落库不进事件流（grep 证伪）；②旧 epoch job id get/kill/read → JOB_EPOCH_STALE 类型化拒绝（不静默误命中）；③新 epoch 内 job 正常全功能（T-P1-85 回归）；④重启后零自动执行断言面（resume 前无任何轮启动）
+- **依赖**：T-P1-85（job id 编码位）；T-P1-86（显式 resume 例外在位）
+- **风险 / 未知**：epoch 值形状（随机 hex vs boot 时间戳）——随机 hex 防同毫秒碰撞；N4 的跨端 epoch 打底 = 本模块导出常量与类型（批次 12 N7/N8 扩展为流内载荷时走立案）
+
+#### T-P1-88 · E15 · 事件合并器独立模块（E3 的服务面） `[ ]`
+- **依据需求**：E15（P1："事件合并器作为独立模块——服务于 E3 的'1 万事件 <200ms'"）
+- **上游首选参考**：[zcode·zcodeSessionEventCoalescer.ts](../oss/zcode/packages/services/src/zcode-agent/zcodeSessionEventCoalescer.ts)（getBackgroundSessionEventCoalesceKey(event) 合并键提取 + mergeBackgroundSessionEvents 合并 + scheduleFlush 定时 flush——独立模块、纯函数合并核 + 调度壳）
+- **取什么 / 别抄什么**：取"合并键 + 合并函数 + 独立模块"三形状；不抄其后台推送调度面（我方落投影加速——合并发生在投影视图，不在事件流、不在推送通道）
+- **证据强度**：`读了代码`（coalescer 202 行全文：coalesce key 的 progress 同域判定 + merge 的条目并合 + flush 调度；我方 project.ts 现状——tool/progress 只校验+记录无合并）
+- **要产出**：①`src/session/coalescer.ts`——coalesceEvents(events) 纯函数：同 key 冗余事件在**投影视图**折叠（tool/progress 同 callId 只留最新一条、条数上限与 T-P1-16 一致；可扩展规则注册面）；事件流本体永不改写（不变量 1——折叠只发生在投影输入侧）；②project.ts 消费（restore/append 路径投影前折叠）；③合并前后投影语义等价断言（消息/工具/todos/goals 一致——仅 progress 中间历史折叠）
+- **验收**：`npx vitest run src/session/coalescer.test.ts src/session/project.test.ts`（新建+扩）——①同 callId 12 条 progress 折叠为最新 1 条（上限内取最新）；②不同 callId 不互折叠；③折叠后投影 = 不折叠投影（逐域等价，progress 除外）；④project(10k) 计时不回退（<200ms 基线保持）；⑤折叠是视图行为——store 原始事件逐字节不变
+- **依赖**：无（E3/T-1-04 在位）
+- **风险 / 未知**：折叠规则的默认集——只折 tool/progress（唯一高频冗余事件）；其余事件折叠无收益（整值事件各条都是状态事实），YAGNI 记档
+
+#### T-P1-89 · Q1 · 会话格式迁移链（O19 消费方兑现：真实 v1→v2 + 机制面） `[ ]`
+- **依据需求**：Q1（P1："会话格式版本迁移链——单调整数不搞 major/minor；写入方决定 bump；未知事件类型必须显式拒绝而非透传；报错方向敏感；拿不准就 bump"）；O19 接旧账（T-P1-36："真实 v0→vN 迁移链批次 10 Q1 落地（既定消费方）"）
+- **上游首选参考**：[dsh·session-format/src/chain.ts](../oss/deepseek-harness/packages/session/session-format/src/chain.ts)（createSessionFormatChain：currentVersion + 相邻迁移注册表——缺失相邻迁移即抛 SessionFormatUnsupportedMigrationError"Session migration vN->vN+1 is missing"，fail-closed；单调整数逐级）+ [session-format-v0-to-v1/src/migration.ts:27](../oss/deepseek-harness/packages/session/session-format-v0-to-v1/src/migration.ts#L27)（defineSessionFormatMigration {name, fromVersion, toVersion, migrateHeader, createStage, validateTargetHeader} 形状）
+- **取什么 / 别抄什么**：取"相邻迁移注册表 + 缺失即抛 + 单调整数 + 事件级 transform"四纪律；不抄其 header/restorer 双面（我方 db.user_version 单一版本轴——事件流格式与 schema 版本同轴，记档）
+- **证据强度**：`读了代码`（chain.ts 全纪律段 + v0-to-v1 migration 全文 + 我方 db.ts CURRENT_SCHEMA_VERSION=1 现状 + T-P1-36 断言基建）
+- **要产出**：①`src/session/migrate.ts`——相邻迁移注册表（MIGRATIONS: ReadonlyArray<{from, to, migrate(db)}>; 链执行器逐级跑；缺相邻迁移抛 MIGRATION_CHAIN_BROKEN fail-closed）+ db.ts migrate 改走链式；②**真实迁移 v1→v2**：建会话索引表 session_index(session_id, first_seq, last_seq, event_count, created_at, updated_at)——E8 索引面的地基（bump 的正当理由；旧库打开自动迁移 + 单事务原子 T-1-02 既有）；③restore 路径未知事件类型显式拒绝（restore 遇 KNOWN_TYPES 外类型 → 类型化 UNKNOWN_EVENT_TYPE 拒绝非透传——append 路径 E16 已拦，此为读路径闸门）；④O19 断言消费：assertSchemaVersionGate（v+1 拒绝）/ assertMigrationAtomic（中途失败可恢复）/ 前向兼容三断言全跑真实 v1→v2
+- **验收**：`npx vitest run src/session/migrate.test.ts src/session/db.test.ts src/test-support/migration-asserts.test.ts`（新建+扩）——①v1 库打开 → 自动迁移 v2 → 索引表按既有事件填充正确（逐会话计数/seq 断言）；②迁移中途注入失败 → 库可打开且无半写（O19 模板消费）；③user_version=3 的库打开 → 类型化拒绝（"拒绝用旧代码打开新库"）；④restore 遇未知类型事件 → UNKNOWN_EVENT_TYPE 拒绝（报错方向敏感：未知**新**代码读旧库不炸、未知类型**显式拒**）；⑤链完整性：注册表缺 v2→v3 相邻项时构造 v3 → 链缺失 fail-closed
+- **依赖**：E2（db.ts 在位）；T-P1-36（断言基建在位——本卡是其既定消费方）
+- **风险 / 未知**：事件流格式与 schema 版本是否该分轴（dsh 分 header version / 我方单 user_version）——单轴足够（事件载荷演进全走可选字段前向兼容，P0-P1 无破坏性事件变更），分轴随真实需求记档
+
+#### T-P1-90 · E14 · 原始流分片入诊断日志（组装事件为派生权威） `[ ]`
+- **依据需求**：E14（P1："原始流分片与组装后消息都入日志——派生时以组装事件为准，不用分片"）
+- **上游首选参考**：[dsh·event-sourced-sessions.md:13](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-06-11-event-sourced-sessions.md#L13)（"raw stream chunks are logged for token-level replay fidelity while the assembled assistant/message event is authoritative for derivation"）
+- **取什么 / 别抄什么**：取"分片入日志（token 级回放保真）+ 组装事件是派生权威"双向；我方后半已满足（project 只消费流事件——对照断言钉死），本卡落前半
+- **证据强度**：`读了代码`（dsh 原文段；我方 models 层 StreamChunk 流转 + logger.ts 通道 + T-P1-34 RecordingProvider 同位结构）
+- **要产出**：①`src/kernel/raw-chunk-log.ts`——RawChunkLog（model 请求完成后分片序列 JSONL 落诊断日志独立文件 logs/raw/<date>.jsonl：{ts, sessionId, turn, step, chunks:[{type, …}]}——D9 纪律 redactSecrets 覆盖；装配选项缺省开、logs 目录缺省关）；②写失败降级不带崩（T-6-05 同款）；③对照断言：分片日志缺失/损坏 → 投影与 restore 全不受影响（"派生以组装事件为准"的机验）
+- **验收**：`npx vitest run src/kernel/raw-chunk-log.test.ts src/kernel/loop.test.ts`（新建+扩）——①一轮含 3 类分片（text-delta/tool 调用/usage）→ JSONL 逐条可读且与该轮 assistant/message 组装结果一致（分片拼接 == 事件载荷）；②写失败（目录只读）→ warn 不带崩；③删掉分片日志 → project/restore 逐字节不变（派生不依赖分片）；④密钥形状字符串经 redact（D9 grep 面）
+- **依赖**：无（logger/loop 在位）
+- **风险 / 未知**：分片日志与 E13"热路径不阻塞 I/O"的边界——写入在请求完成后的轮外时点（fire-and-forget append），不在流式热路径内；量级风险记档（分片日志是最大冷文件族 → T-P1-91 压缩的对象）
+
+#### T-P1-91 · Q7 · 日志冷热分离 + 后台压缩（冷 logs 族 zstd + 原子替换 + 防重叠） `[ ]`
+- **依据需求**：Q7（P1："日志冷热分离 + 后台 zstd 压缩 + 表示形态对上层透明 + 原子替换保权限 + 运行标记防重叠——不影响热路径"）
+- **上游首选参考**：[codex·rollout/compression.rs](../oss/codex/codex-rs/rollout/src/compression.rs)（spawn_rollout_compression_worker"fire-and-forget: failures are logged, startup is not blocked, and a **run marker** prevents overlapping or too-frequent compression runs" + persist_temp_file_noclobber（TEMP_SUFFIX ".tmp" → rename）+ materialize 读时解压 + COMPRESSED_SUFFIX ".zst"）
+- **取什么 / 别抄什么**：取五纪律全形（冷热分界/后台 worker/透明读/原子替换/防重叠）；**对象偏离记档**：codex 压 per-session rollout 文件，我方会话事件在单库 SQLite 热路径——冷文件族 = logs/ 按日 JSON + logs/raw/（E14 产物）
+- **证据强度**：`读了代码`（compression.rs 头段常量与 worker 文档 + noclobber 段；我方 logger.ts 按日文件布局）
+- **要产出**：①`src/session/log-archive.ts`——后台压缩 worker（fire-and-forget：启动不阻塞、失败仅 warn；冷判定 = mtime 早于 N 天缺省 7）；②zstd 压缩（Node 22.15+ 内置 zlib zstd API 探测，缺失降级 gzip 并记档——保证零新依赖）；③`.zst` 后缀 + tmp→rename 原子替换（Windows rename 语义实测定形）+ 权限保持；④运行标记 logs/.compression-lock（含 pid/ts，stale 检测防重叠防频繁）；⑤读取透明：logger 读/诊断检索路径遇 .zst 自动解压（表示形态对上层透明）；⑥热路径零影响断言（压缩运行中 append/restore 正常）
+- **验收**：`npx vitest run src/session/log-archive.test.ts`（新建）——①冷文件压缩为 .zst 且内容往返一致；②热文件（<N 天）不动；③原子替换：目标已存在时替换成功且权限保持（Windows 实测定形记偏离）；④运行标记：并发第二 worker → 跳过不重叠；stale 标记（陈旧 pid）→ 接管；⑤透明读：.zst 文件经读取面返回原文；⑥压缩期间写入路径正常（热路径不阻塞）；⑦启动不阻塞（worker 异步、failure logged）
+- **依赖**：T-P1-90（logs/raw/ 分片族是压缩对象之一；无硬依赖可并行，顺序执行保对象齐）
+- **风险 / 未知**：Node 22 zstd 内置 API 的实验状态——探测 + gzip 降级双路（.gz/.zst 后缀同管线）；Windows rename 覆盖已存在文件语义执行时实测记偏离
+
+#### T-P1-92 · L8 · 压缩六维度量（compaction 载荷扩展——词汇表立案 #12） `[ ]`
+- **依据需求**：L8（P1："压缩作为结构化度量事件，6 维度：trigger/reason/implementation/phase/strategy/status——压缩可统计、可归因"）
+- **上游首选参考**：[codex·analytics/facts.rs:444-509](../oss/codex/codex-rs/analytics/src/facts.rs#L444)（CodexCompactionEvent 六枚举：CompactionTrigger{Manual,Auto} / CompactionReason{UserRequested,ContextLimit,ModelDownshift,CompHashChanged} / CompactionImplementation{Responses,ResponsesCompactionV2} / CompactionPhase{StandaloneTurn,PreTurn,MidTurn,PostTurn} / CompactionStrategy{Memento,PrefixCompaction} / CompactionStatus{Completed,Failed,Interrupted} + tokensBefore/After 度量）
+- **取什么 / 别抄什么**：取六维骨架与可统计可归因目标；值域对齐我方实况（reason 已有三值先例 {context_limit, model_downshift}+compaction 副调用头；phase 我方 F20/F21 已有 PreTurn/MidTurn 相位概念；implementation/strategy 我方单一实现落当前唯一直值；Interrupted 不落值域——中断时最后事实是 started，T-P1-93 承载）
+- **证据强度**：`读了代码`（facts.rs 六枚举全段 + CodexCompactionEvent 全字段；我方 compaction 载荷现状 {turn, summary, retainedTail, tokensBefore, usage?, reason?, title?}）
+- **要产出**：①compaction 载荷扩**可选**字段：`trigger?: "manual"|"auto"`、`phase?: "pre_turn"|"mid_turn"`、`implementation?: string`（当前唯一直值 "summarizer"——闭集随实现演进）、`strategy?: string`（当前唯一直值）、`status?: "started"|"completed"|"failed"`（缺省 "completed" 兼容旧流）、`tokensAfter?: number`；②**词汇表立案 #12**（事件计数 21 不变——载荷扩展，T-P1-18 先例）+ l0-events.md §8 落地记录 13；③obs 统计消费面：按 trigger/phase/status 分列可查（L8"可统计、可归因"验收）；④C16 编译闸门同步（载荷类型收口）
+- **验收**：`npx vitest run src/context/compaction.test.ts src/obs/usage.test.ts src/kernel/events.test.ts`（扩）——①六字段全缺省的旧流 → restore/投影零变化（前向兼容）；②真 summarizer 压缩 → 载荷带 trigger/phase/implementation/strategy/status="completed"/tokensAfter 六面可断言；③统计面按维度分列可查；④events.test 计数 21 不变 + 载荷类型闭集编译闸门；⑤manual 触发路径（显式 compact 调用）→ trigger:"manual"
+- **依赖**：无（compaction 引擎在位）
+- **风险 / 未知**：value 域收窄风险（implementation/strategy 落 string 而非闭集枚举）——单一实现期落唯一直值 + 注释纪律（第二实现出现时收闭集走立案），YAGNI 对冲过度设计
+
+#### T-P1-93 · E17 · 压缩中间态进事件流（投影不猜——依赖 #12 的 status 维） `[ ]`
+- **依据需求**：E17（P1："原子操作的中间态（reservation/promoting/rollback）也进事件流——投影不猜中间态"）
+- **上游首选参考**：[zcode·session.events.ts:96](../oss/zcode/apps/zcode-cli/packages/contracts/src/events/session.events.ts#L96)（"sendQueuedNow 原子提升：**reservation/promoting/rollback 均进入事件流，投影不本地猜测**"）+ :515-517（state: "queued"|"reserved"|"promoting"——中间态是流内事实）
+- **取什么 / 别抄什么**：取"原子操作中间态有流内事实承载、消费方不猜"纪律；**落点选型偏离记档**：zcode 用独立中间态事件（queued/reserved/promoting 三类型），我方复用 compaction 事件 status 维（"started"前置 + "completed"结算 + "failed"落流——E12 整值/状态变更承载，事件计数不变）
+- **证据强度**：`读了代码`（zcode 三态段；我方 compaction.ts 生命周期——pre hook → 摘要 → compaction 事件 → post hook，现状单事件完成时落流）
+- **要产出**：①压缩引擎落流两段化：摘要调用**前** append compaction{status:"started", trigger, phase}（此后崩溃 → 流内事实"压缩进行中"，重启对账后投影可见未完成压缩——投影不猜）；完成 → append compaction{status:"completed", …完整载荷}（T-P1-92 的字段齐）；provider 失败 → append compaction{status:"failed"}（T-P1-18 的静默降级升流内事实——告警保留）；②新窗口重建只认 status 缺省/completed 的最新压缩（started/failed 不切换窗口——对照断言）；③**词汇表立案 #13**（零新事件——status 值承载中间态，与 #12 同载荷扩展案的 E17 面，回退面共写）
+- **验收**：`npx vitest run src/context/compaction.test.ts src/session/project.test.ts src/test-support/compaction.snapshot.test.ts`（扩）——①压缩开始 → started 事件在流（摘要调用前，seq 早于副调用 header）；②完成 → completed 落流且新窗口按它切换；③注入 summarizer 抛错 → failed 事件落流 + 告警保留 + 新窗口不切换（旧窗口继续）+ 轮不炸；④started 后模拟崩溃（无 completed）→ restore 后投影可见"未完成压缩"事实（compactions 投影含 started 条目）；⑤revert 切割 started/completed 同域处理；⑥快照测试事件面 reason 全集断言更新
+- **依赖**：T-P1-92（status/trigger/phase 字段在位）
+- **风险 / 未知**：started 事件与 pre hook 中止的交互——中止后零 compaction 事件是 T-7-02 既有验收（"abort 后零 compaction 事件"）——两段化后 pre hook 中止点在 started 之前（先 hook 后 started），验收用例同步调整（中止仍零事件，语义不变；started 落点在 hook 之后摘要之前）
+
+#### T-P1-94 · E18 · 回合结局与产出消息一起结算（turn/end 载荷扩 produced——立案 #14） `[ ]`
+- **依据需求**：E18（P1："回合结局与该回合产出的消息一起结算（机器自报 produced[]）——优于事后反推'哪些消息属于这一轮'"）
+- **上游首选参考**：[kimi·engine.ts:61/480/496/500](../oss/kimi-code/packages/agent-core-v2/src/agent/loop/machine/engine.ts#L61)（`readonly produced: readonly HistoryMessage[]` + turnSettled {outcome:"done"|"aborted", produced: event.messages}——结局与产出同帧结算，aborted 时部分产出也声明）
+- **取什么 / 别抄什么**：取"机器自报产出集合、与结局同帧"纪律；形状对齐事件源架构（kimi 传消息对象数组——我方流内事实用 seq 引用，不复制消息本体——E12 整值与载荷轻量平衡记档）
+- **证据强度**：`读了代码`（engine.ts produced 声明与三处 turnSettled 发布点；我方 loop closeTurn 时点与 turn/end 载荷现状 {turn, reason, aborted?, cause?}）
+- **要产出**：①turn/end 载荷扩可选 `produced?: number[]`（本回合产出的 assistant/message 事件 seq 按序列表——closeTurn 时点机器自报；tool 结果对的归属经 tool/call 的 turn 字段已有）；②loop 填充：正常收束/超时收束/abort 收束三路都自报（aborted 时部分产出照报——kimi 同语义）；③**词汇表立案 #14**（事件计数 21 不变）；④消费面断言：produced 与"事后按流反推"（turn/start..end 之间的 assistant/message）恒等——自报权威、反推作对照
+- **验收**：`npx vitest run src/kernel/loop.test.ts src/kernel/events.test.ts`（扩）——①3 步骤正常轮 → produced 恰为本轮 assistant/message seq 升序、与反推恒等；②abort 中途轮 → produced 为已产出部分（不丢不虚构）；③无 assistant 产出的轮（纯工具拒绝）→ produced 空数组或缺省（定形记档）；④旧流无 produced → 投影/断言器零变化（前向兼容）；⑤events.test 计数 21 不变
+- **依赖**：无（loop closeTurn 在位）
+- **风险 / 未知**：tool 结果是否计入 produced——kimi 的 HistoryMessage 含工具消息，我方 tool/call+result 自带 turn 归属字段（无反推问题），produced 只收 assistant/message（有真实反推成本的域），记档
+
+#### T-P1-95 · L7 · 命令调用与裁决持久化（command/run + command/done——词汇表 21→23 立案 #15） `[ ]`
+- **依据需求**：L7（P1："命令的调用与裁决也要持久化——不只记工具；否则刷新/换端/fork 后'这条命令执行过'即丢失"）
+- **上游首选参考**：[dsh·session-projection-and-command-log.md:127-133](../oss/deepseek-harness/.agents/notes/proposed/architecture/2026-07-27-session-projection-and-command-log.md#L127)（command/run {commandId, name, args?, source} / command/done {commandId, kind:"success"|"error", text?}——run 前置、done 结算；"appends command/run before invoking the handler and command/done at settlement"；log-only 不包 turn；payload 结构化 name/args 由解析器自报"never re-parses a line"；recordInput:false 时省 args 防与域事件重复）
+- **取什么 / 别抄什么**：取 run/done 配对事件对 + log-only 会话级元事件 + 结构化载荷三纪律；不抄其 mux 广播与 RPC 退化面（command.execute admission——我方协议面随批次 12 多端）；与 L2 审批审计分域（存在性记录 vs 结构化审批字段）
+- **证据强度**：`读了代码`（dsh 命令日志段全文 :122-133；我方 repl.ts 命令清单 /revert /cancel /approve /answer /steer /fork /preset /check /unattended /exit——调用不落流现状）
+- **要产出**：①两处新事件：`command/run {commandId, name, args?, source}` + `command/done {commandId, kind: "success"|"error", text?}`（会话级元事件、log-only 不进模型历史、配对不变量 commandId）；②词汇表 21→23 走立案 **#15** + l0-events.md §8 落地记录 + C16 编译闸门 23；③repl 接线：斜杠命令 run 前置 / done 结算（/exit 不落——非会话域命令记档；/cancel 的取消语义照旧）；④project 校验与 O7 豁免面同步（会话级元事件同款纪律）；⑤done.text 为 handler 结算的人话结果（成功行/拒绝理由——审批域细节仍走 L2 审计面不重复）
+- **验收**：`npx vitest run src/kernel/events.test.ts src/session/project.test.ts src/cli/cli.test.ts`（扩）——①/approve 全链 → 流内 command/run+done 配对（commandId 相等、kind 正确、顺序 run 先）；②/revert → run/done 落流 + 既有 session/revert 事件并存不互扰；③非法命令（未知名）→ run 落流 + done{kind:"error"}（"这条命令执行过"含失败尝试）；④run/done 不进模型历史（消息重建不含）；⑤revert 切割同域 + O7 断言器豁免面（会话级元事件）；⑥events.test 计数 21→23 + C16 闸门
+- **依赖**：无（repl/project 在位）；与 T-P1-86 的 /resume 命令汇合（resume 命令同样落 run/done——依赖序 T-P1-86 先落命令面，本卡接线统一）
+- **风险 / 未知**：命令事件是否该进投影消费域（如 plan 折叠 command/run——dsh 的 worked example）——我方 P1 只落存在性记录，域投影消费随真实需求（YAGNI 记档）
+
+#### T-P1-96 · E7 · transcript 独立检视面（脱离内核） `[ ]`
+- **依据需求**：E7（P1："transcript 独立包——会话记录可脱离内核被检视"）
+- **上游首选参考**：[kimi·transcript/](../oss/kimi-code/packages/transcript)（七子目录包：model/turn/frame/interaction/attachment/todo/item/task/meta/prompt——会话记录的独立模型层，与 agent-core-v2 内核分离）
+- **取什么 / 别抄什么**：取"记录检视面与内核分离"纪律与回合分帧视角；不抄其七目录包结构（我方单包目录 + 单文件纯函数面足够——kimi 包是产品级多消费方形态，YAGNI）
+- **证据强度**：`读了代码`（transcript 包目录与 index.ts 导出面 + model/turn 帧模型；我方 project/messages 投影现状）
+- **要产出**：①`src/session/transcript.ts`——renderTranscript(events): TranscriptEntry[] 纯函数（零 store/loop 依赖，只 import 词汇表类型与投影消息函数）：回合分组（turn/start..end 帧）+ 消息行（角色/文本）+ 工具调用行（工具名/参数摘要/结果状态）+ 压缩标记行（含 T-P1-93 status）+ revert 标记行；②Entry 是结构化数据（可渲染可检索，非字符串 dump）；③脱离内核的结构保证 = 模块入边只有 events/types（grep 证伪）
+- **验收**：`npx vitest run src/session/transcript.test.ts`（新建）——①完整会话流（3 轮 + 工具 + 压缩 + revert）→ transcript 逐行结构断言（回合分组正确、工具行含状态、压缩行含标记）；②分片/进度等噪声事件不产生行（E14"派生以组装事件为准"同构）；③abort 轮的部分产出正确成帧；④空流 → 空 transcript 不抛；⑤入边证伪：transcript.ts import 面零 store/loop/agent-process
+- **依赖**：T-P1-93（压缩 status 行）；T-P1-94（produced 可作回合消息交叉断言——弱依赖）
+- **风险 / 未知**：CLI/协议露出（--print-transcript / 协议命令）随真实需求记档——本卡只落库面（"可被检视"= 检视函数存在且独立，露出是 K 层域）
+
+#### T-P1-97 · E8 · 导出 / 索引 / 兼容三分（迁移时三者不互相污染） `[ ]`
+- **依据需求**：E8（P1："导出 / 索引 / 兼容三分——迁移时三者不互相污染"）
+- **上游首选参考**：[kimi·sessionIndex/](../oss/kimi-code/packages/agent-core-v2/src/app/sessionIndex)（sessionIndexProjector 投影建索引 + sessionIndexDirtyJournal 脏标记 + service 组织）+ [sessionExport/](../oss/kimi-code/packages/agent-core-v2/src/app/sessionExport)（manifest + zip 打包 + wire-scan + file-source——导出是自包含产物）
+- **取什么 / 别抄什么**：取"三面独立、互不调用"结构纪律与"导出是自包含快照物"语义；不抄其 zip/wire-scan 打包管线（我方导出 = 单 JSON 文件自包含快照）与 dirtyJournal（我方索引在 Q1 v2 表上增量维护，批处理重建面足够）
+- **证据强度**：`读了代码`（sessionIndex 7 文件分工 + sessionExport 6 文件分工；我方 Q1 v2 session_index 表与迁移链）
+- **要产出**：①`src/session/export.ts`——exportSession(store, sessionId) → 自包含 JSON 快照（{formatVersion, exportedAt, events 全流, 元数据}——导出时刻的完整事实，无库引用）；②`src/session/session-index.ts`——索引读写面（消费 Q1 v2 session_index 表：list 会话行/按时间排序/事件计数；append 时增量维护 + 全量重建面）；③兼容 = T-P1-89 迁移链（不新增代码，验收消费）；④三面互不调用（export 不 import 索引、索引不 import 导出、迁移链独立——grep 证伪）
+- **验收**：`npx vitest run src/session/export.test.ts src/session/session-index.test.ts`（新建）——①导出物含全事件且脱离库可读（纯 JSON 解析 → renderTranscript 可消费——E7 联动）；②迁移 v1→v2 前后导出物逐字节不变（导出格式自身带 formatVersion 声明，兼容面显式）；③索引行与流事实恒等（重建前后一致、事件计数正确）；④索引重建不改事件流（store 逐字节不变）；⑤append 后索引增量更新与全量重建等价
+- **依赖**：T-P1-89（v2 索引表 + 迁移链）；T-P1-96（transcript 消费导出物作联动断言）
+- **风险 / 未知**：导出物格式版本与库版本的关系——导出物带独立 formatVersion 字段（当前恒等库版本），未来导出格式演进可先于库版本（记档）；索引增量维护的触发点（append 后同步更新 vs 读时惰性——同步更新保恒等断言简单，执行时定形）
+
+#### T-P1-98 · 收口 · 调度与会话数据工程盘点 + 快照 `[ ]`
+- **依据需求**：批次 10 收口（照批次 4/5/6/7/8/9 收口先例；无独立需求 ID）
+- **上游首选参考**：批次 9 T-P1-84 先例
+- **取什么 / 别抄什么**：七面盘点：①M3 显式 resume × M8 重启不重放——续跑例外与红线分域（显式动作不越"零自动执行"）；②M8 epoch 句柄拒绝 × N4 seq 分配——两代际语义分域（进程代 vs 流内序）；③E17 started/failed × 新窗口切换——中间态与切换权威分域（只认 completed）；④L7 command 事件 × L2 审计 × session/revert 既有事件——三面并存不互扰（/revert 一条命令三类事实）；⑤Q7 压缩 worker × E13 热路径——后台面与热路径分域；⑥Q1 迁移链 × restore 读路径闸门——两闸门方向性（版本向后拒 / 类型显式拒）；⑦快照即规格：压缩三态全链一条（started → completed / failed 对照）
+- **证据强度**：`读了代码`（本批全部新产交叉核对）
+- **要产出**：七面盘点结论 + 快照一条 + 全量回归 + 四案词汇表立案状态复核（#12~#15 全部在案）
+- **验收**：`npx vitest run`（全量回归）+ 盘点清单入完成记录；发现真冲突 → 升级待澄清不硬落
+- **依赖**：T-P1-85 ~ 97 全部（本批最后一张）
+- **风险 / 未知**：无
+
+## 批次 10 完成定义
+
+- 14 张卡全部打勾（T-P1-85 ~ 98；N4 展卡核对关闭不占卡——15 条需求 ID 中 14 条实卡承载 + 1 条核对关闭），每勾附「命令 + 结果摘要」；`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 0 失效（全量传参）、`license-audit.sh` 通过。
+- 词汇表扩展四案走立案管线（#12 compaction 载荷六维 / #13 压缩中间态 status 值 / #14 turn/end produced / #15 command/run+done 新事件 21→23）——每案含不追认回退面；`l0-events.md` §8 落地记录同步。
+- Q5 红线不破：重启零自动执行（M3 显式 resume 是唯一例外且经用户动作）；M8 epoch fence 收拢断言面。
+- 两条接旧账线关闭：M8 ← T-P1-13 记档兑现；Q1 ← T-P1-36 消费记档兑现（真实 v1→v2 迁移落地）。
+- 盘点结论落批次报告（T-P1-98）。
