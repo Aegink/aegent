@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { doctorReportToJson, runRuntimeDoctorChecks, type RuntimeDoctorDeps } from "./doctor.js";
 import { formatDoctorReport } from "../sandbox/doctor.js";
-import { SqliteEventStorage } from "../session/db.js";
+import { CURRENT_SCHEMA_VERSION, SqliteEventStorage } from "../session/db.js";
 
 function deps(overrides: Partial<RuntimeDoctorDeps> = {}): RuntimeDoctorDeps {
   return {
@@ -85,7 +85,7 @@ describe("运行时诊断报告（O18，T-P1-35）", () => {
       const report = runRuntimeDoctorChecks(deps({ dbPath }));
       const storageCheck = report.checks[3]!;
       expect(storageCheck.status).toBe("ok");
-      expect(storageCheck.details.join(" ")).toContain("会话 1 个 / 事件 2 条 · schema 版本 1");
+      expect(storageCheck.details.join(" ")).toContain(`会话 1 个 / 事件 2 条 · schema 版本 ${CURRENT_SCHEMA_VERSION}`);
       expect(report.errors).toBe(0);
     } finally {
       try {

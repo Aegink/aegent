@@ -8,15 +8,13 @@
  * ——这是 SessionStore.write-behind 契约的存储端前提。
  */
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 
 import type { SessionEvent } from "../kernel/events.js";
 import type { EventStorage } from "./store.js";
+import { MIGRATIONS, planMigrationChain } from "./migrate.js";
 
-export const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 2;
 
 export interface OpenDbOptions {
   /** 文件路径；":memory:" 时全内存。 */
@@ -53,7 +51,12 @@ export class SqliteEventStorage implements EventStorage {
     }
   }
 
-  /** user_version 单调推进：v0 应用 schema.sql 后置 1；更高版本号留给未来的迁移步骤。 */
+  /**
+   * user_version 单调推进（Q1/T-P1-89 迁移链化）：库比代码新 → 拒绝打开
+   * （fail-closed，报错方向敏感）；代码比库新 → 相邻迁移注册表逐级迁移
+   * （缺失相邻迁移 fail-closed），整链单事务（T-1-02 批量原子语义——中途
+   * 失败无半写，重启重跑幂等）。
+   */
   private migrate(): void {
     const version = (this.db.pragma("user_version", { simple: true }) as number) ?? 0;
     if (version > CURRENT_SCHEMA_VERSION) {
@@ -62,10 +65,11 @@ export class SqliteEventStorage implements EventStorage {
       );
     }
     if (version === CURRENT_SCHEMA_VERSION) return;
-    const schemaPath = join(dirname(fileURLToPath(import.meta.url)), "schema.sql");
-    const ddl = readFileSync(schemaPath, "utf-8");
+    const plan = planMigrationChain(version, CURRENT_SCHEMA_VERSION, MIGRATIONS);
     this.db.transaction(() => {
-      this.db.exec(ddl);
+      for (const step of plan) {
+        step.apply(this.db);
+      }
       this.db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
     })();
   }
@@ -77,8 +81,52 @@ export class SqliteEventStorage implements EventStorage {
       for (const event of events) {
         this.insertEvent.run(sessionId, event.seq, event.type, JSON.stringify(event), event.ts);
       }
+      // Q1 v2：会话索引随写维护（E8 读面的地基——表与数据恒不 stale）
+      this.upsertIndex(sessionId);
     });
     run();
+  }
+
+  /** 会话索引 upsert：从本会话事件聚合（幂等——重建与增量同一 SQL）。 */
+  private upsertIndex(sessionId: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO session_index (session_id, first_seq, last_seq, event_count, created_ts, updated_ts)
+         SELECT s.id,
+                COALESCE(MIN(e.seq), 0),
+                COALESCE(MAX(e.seq), 0),
+                COUNT(e.seq),
+                s.created_ts,
+                COALESCE(MAX(e.ts), s.created_ts)
+         FROM sessions s LEFT JOIN events e ON e.session_id = s.id
+         WHERE s.id = ?
+         GROUP BY s.id
+         ON CONFLICT(session_id) DO UPDATE SET
+           first_seq = excluded.first_seq,
+           last_seq = excluded.last_seq,
+           event_count = excluded.event_count,
+           updated_ts = excluded.updated_ts`,
+      )
+      .run(sessionId);
+  }
+
+  /** E8 消费面：会话索引行（Q1 v2 表的读取原语）。 */
+  readSessionIndex(sessionId: string): { firstSeq: number; lastSeq: number; eventCount: number; createdTs: number; updatedTs: number } | null {
+    const row = this.db
+      .prepare(
+        "SELECT first_seq, last_seq, event_count, created_ts, updated_ts FROM session_index WHERE session_id = ?",
+      )
+      .get(sessionId) as
+      | { first_seq: number; last_seq: number; event_count: number; created_ts: number; updated_ts: number }
+      | undefined;
+    if (!row) return null;
+    return {
+      firstSeq: row.first_seq,
+      lastSeq: row.last_seq,
+      eventCount: row.event_count,
+      createdTs: row.created_ts,
+      updatedTs: row.updated_ts,
+    };
   }
 
   readAll(sessionId: string): SessionEvent[] {

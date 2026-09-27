@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
 import type { NewSessionEvent, SessionEvent } from "../kernel/events.js";
-import { SqliteEventStorage } from "./db.js";
+import { CURRENT_SCHEMA_VERSION, SqliteEventStorage } from "./db.js";
 import { SessionStore } from "./store.js";
 
 const dirs: string[] = [];
@@ -89,10 +89,10 @@ describe("SqliteEventStorage（E2）", () => {
   it("schema 版本迁移：新库写 user_version=1，二次打开不重复执行 DDL", () => {
     const path = tempDbPath();
     const storage = SqliteEventStorage.open({ path });
-    expect(storage.db.pragma("user_version", { simple: true })).toBe(1);
+    expect(storage.db.pragma("user_version", { simple: true })).toBe(CURRENT_SCHEMA_VERSION);
     // 二次打开（同连接走 migrate 幂等分支 + 不同连接走 v1 短路）
     const again = SqliteEventStorage.open({ path });
-    expect(again.db.pragma("user_version", { simple: true })).toBe(1);
+    expect(again.db.pragma("user_version", { simple: true })).toBe(CURRENT_SCHEMA_VERSION);
     again.close();
     storage.close();
   });
