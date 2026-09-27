@@ -19,6 +19,8 @@
  * 下一次模型请求。
  */
 
+import type { AttachmentRef } from "../attachments/types.js";
+
 export type QueueMode = "all" | "one-at-a-time";
 
 /** 入队收执：只有 messageId——没有完成句柄（A9）。 */
@@ -29,6 +31,12 @@ export interface EnqueueReceipt {
 export interface QueuedPrompt {
   messageId: string;
   content: string;
+  /**
+   * 附件引用（P1/T-P1-124）：编排面（agent-process）已校验限额并落 store
+   * 后的 ref 列表，随 prompt 穿队列到 runTurn 落流；无附件缺省缺字段
+   * （queue 语义零变化）。
+   */
+  attachments?: AttachmentRef[];
 }
 
 /** M9/T-P1-48 有限队列：超限入队类型化拒绝（fail-closed 不静默丢）。 */
@@ -63,12 +71,16 @@ export class PromptQueue {
    * 没有回调、没有 per-prompt 结果可等（A9）。
    * 队列已满时抛 QueueFullError（M9 fail-closed）——消息不收执不排队。
    */
-  enqueue(content: string): EnqueueReceipt {
+  enqueue(content: string, attachments?: readonly AttachmentRef[]): EnqueueReceipt {
     if (this.items.length >= this.maxSize) {
       throw new QueueFullError(this.maxSize, this.mode);
     }
     const messageId = `q${++this.counter}`;
-    this.items.push({ messageId, content });
+    this.items.push({
+      messageId,
+      content,
+      ...(attachments !== undefined && attachments.length > 0 ? { attachments: [...attachments] } : {}),
+    });
     return { messageId };
   }
 

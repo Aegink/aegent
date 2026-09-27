@@ -21,6 +21,10 @@ import { spawn } from "node:child_process";
 import type { CancelCause, TurnEndReason } from "./events.js";
 import { AgentLoop, type AgentLoopDeps, type ToolExecutionMode } from "./loop.js";
 import { PromptQueue, QueueFullError } from "./queue.js";
+import { validateAttachments, AttachmentLimitError } from "../attachments/limits.js";
+import { base64ByteLength } from "../attachments/store.js";
+import type { AttachmentRef } from "../attachments/types.js";
+import type { AttachmentStore } from "../attachments/store.js";
 import { ToolClassLimiter, TurnAdmission } from "./admission.js";
 import { isWriteExecuteTool } from "../policy/protected-paths.js";
 import { SessionConfigStore, StaticConfigImmutableError } from "./session-config.js";
@@ -109,6 +113,12 @@ export interface AgentChildOptions {
   resultTrim?: AgentLoopDeps["resultTrim"];
   /** A13 拦截留痕 logger（透传 loop；缺省不打日志）。 */
   logger?: AgentLoopDeps["logger"];
+  /**
+   * 附件存储（P1/T-P1-124）：缺省 undefined = 附件能力未启用——prompt 带
+   * 附件类型化拒绝 ATTACHMENTS_UNSUPPORTED（显式能力开关，缺省部署零新
+   * 目录零行为变化；批次 14 UI 端配置后启用）。
+   */
+  attachmentStore?: AttachmentStore;
   /**
    * M9/T-P1-48 有限队列上限（PromptQueue maxSize）：缺省 64（宽松但有限）。
    * 超限 prompt → QUEUE_FULL error 行（收执不发、消息不入队）。
@@ -383,6 +393,9 @@ export async function runAgentChildStdio(
           onCacheAnchorChange: assembly.onCacheAnchorChange,
         }
       : {}),
+    // P1/T-P1-124：附件 store（主 loop 的投影 resolver 源）——缺省 undefined
+    // = 附件能力未启用
+    ...(options.attachmentStore ? { attachmentStore: options.attachmentStore } : {}),
   };
   const loop = new AgentLoop(loopDeps);
   // J27/T-P1-61：retrying 一等事件落流（provider 层的中间失败尝试对事件流
@@ -449,7 +462,7 @@ export async function runAgentChildStdio(
 
   // 轮启动的唯一入口（kick 消费队列与 M3 resume 共用——in-flight 管理、
   // E11 打点、崩溃出口、A8 退回都在这条链上，绝不开旁路）。
-  const startTurn = (content: string): void => {
+  const startTurn = (content: string, attachments?: AttachmentRef[]): void => {
     if (inflight) return;
     // J20/T-P1-49：轮跑动期间持 admit 名额（active = 在途轮数）。
     // draining 后 admit 不再计数（admit 的拒绝面只对 handleRequest 的新
@@ -466,7 +479,7 @@ export async function runAgentChildStdio(
           Projector.fold(store.load(sessionId)).projection.turnCount + 1;
         await assembly.checkpoint.capture(turn);
       }
-      return loop.runTurn(content);
+      return loop.runTurn(content, attachments);
     })()
       .then((reason) => {
         ended = reason;
@@ -507,7 +520,7 @@ export async function runAgentChildStdio(
       send({ type: "idle" });
       return;
     }
-    startTurn(next.content);
+    startTurn(next.content, next.attachments);
   };
 
   const handleRequest = (req: AgentRequest): void => {
@@ -522,10 +535,38 @@ export async function runAgentChildStdio(
           });
           return;
         }
+        // P1/T-P1-124：附件编排面（校验限额 + 字节落 store → ref）——在
+        // 收执之前完成（限额失败 = 不收执不开轮，与 QUEUE_FULL 同形态）。
+        let attachmentRefs: AttachmentRef[] | undefined;
+        if (req.attachments?.length) {
+          if (!options.attachmentStore) {
+            send({
+              type: "error",
+              code: "ATTACHMENTS_UNSUPPORTED",
+              message: "本进程未启用附件能力（attachmentStore 未配置）",
+            });
+            return;
+          }
+          try {
+            validateAttachments(
+              req.attachments.map((att) => ({
+                mediaType: att.mediaType,
+                byteLength: base64ByteLength(att.data),
+              })),
+            );
+          } catch (e) {
+            if (e instanceof AttachmentLimitError) {
+              send({ type: "error", code: e.code, message: e.message });
+              return;
+            }
+            throw e;
+          }
+          attachmentRefs = req.attachments.map((att) => options.attachmentStore!.save(att));
+        }
         // A9：先收执、再入队/开轮——accepted 只证明 admission。
         // M9/T-P1-48：队列满（有限队列）类型化拒绝——收执不发、消息不入队。
         try {
-          queue.enqueue(req.content);
+          queue.enqueue(req.content, attachmentRefs);
         } catch (e) {
           if (e instanceof QueueFullError) {
             send({ type: "error", code: e.code, message: e.message });

@@ -131,7 +131,7 @@ interface EventBase {
 | 2 | `turn/end` | `{turn, reason: TurnEndReason}` | **A7** |
 | 3 | `step/start` | `{turn, step}` | A1 |
 | 4 | `step/end` | `{turn, step, timing?, traceId?}` | A1 / B19（T-P1-61 追加 timing/traceId——落地记录 10） |
-| 5 | `user/message` | `{message, source, promptId?}` | A9 / A12（T-P1-53 追加 promptId——落地记录 9） |
+| 5 | `user/message` | `{message, source, promptId?, attachments?}` | A9 / A12（T-P1-53 追加 promptId——落地记录 9）/ P1（T-P1-124 追加 attachments——落地记录 20，#20 待追认） |
 | 6 | `system/message` | `{turn, step, message}` | F 层 |
 | 7 | `assistant/message` | `{turn, step, message, stream, usage?, interrupted?}` | **A7** |
 | 8 | `assistant/attempt` | `{turn, step, stream}` | **J 层 / 错误可观测** |
@@ -325,3 +325,5 @@ type CancelCause =
 
 - **落地记录 19（2026-09-27，T-P1-114 执行会话；✅ 已追认（2026-09-28 用户："认可#19"））**：词汇表 **23→25（两处新事件）**——N8 要求"多端 = surface roster，attach/detach 由事件维护；端的加入/离开是持久事件"（claude-official·claude-code.d.ts 的 surface 枚举 + `$.ui.mount`/`unmount` 显式生命周期——🔴 专有仓只学语义零代码摘取）。已新增 **`surface/attach {surfaceId, deliveryKind?}`** 与 **`surface/detach {surfaceId, reason?}`**（log-only 会话级元事件：session/fork / plugin / command 同款纪律——不要求 turn/step 开合上下文、turn 落 0、不进模型历史、跨 compaction 保留）。**两枚而非一枚 op 二值**：attach/detach 判据字段差异大（attach 带 deliveryKind 闭集 push|poll、detach 带 reason 可选——C14 结构化各自形状自洽，command/run+done 配对先例）；**roster 恢复恒等**：`src/host/roster.ts` activeRoster 纯函数从流重建（attach 入册幂等、detach 出册 no-op 收敛——流即状态，T-P1-99 先例）；**落流面**：SurfaceHub 连接生命周期（connect/close/断线自动释放）→ AgentHost emit → 装配方 append（"端的加入/离开是持久事件"——内存 roster 随进程消失不满足验收）；**会话级/host 级分域记档**：会话流承载会话级 roster，host 进程级跨会话清单由 HostRegistry 内存面承载。同步面：events.ts（SurfaceAttachEvent/SurfaceDetachEvent / EVENT_TYPES 25 / 编译闸门）/ project.ts（validation：surfaceId 非空 + deliveryKind 闭集 + reason 可选；投影不消费）/ invariants.ts（O7 会话级元事件豁免面 +surface 两事件）/ host/roster.ts + lease.ts（生命周期回调）/ registry.ts（surfaceEventOf 转换）/ events.test 计数 25。**不追认的回退面**：events.ts 删两事件/联合成员/EVENT_TYPES 两行、project.ts 删校验、invariants.ts 删豁免、host/roster.ts 删模块、lease.ts/registry.ts 删生命周期回调、events.test 计数回 23——约 1.5 小时，全部为新增面（不触碰既有 23 事件语义）；回退后 roster 回落内存面（N8"持久事件"验收缺失，端清单重启不可见）。
 > **#19 追认于 2026-09-28（用户："认可#19"），此案关闭，§3.2 的正式计数为 25 事件。**
+
+- **落地记录 20（2026-09-28，T-P1-124 执行会话；⏳ 待追认）**：P1 要求"附件上传（类型化协议 + 存储抽象）；图片/文件可随消息附上"（kimi·transcript attachment.ts 锚点）。**user/message 载荷扩展**：新增可选字段 **`attachments?: AttachmentRef[]`**（`AttachmentRef = {attachmentId, mediaType, name?, size}`——`src/attachments/types.ts`）——**流存引用不存字节**：字节在 AttachmentStore（`src/attachments/store.ts`，本地文件/内存两实现 + 远端接口随部署），事件流只落引用（流轻量纪律——L1"事件即轨迹"不变成"事件即 blob"）。重建路径 = ref → store.read（恢复/回放时经 resolveImage 注入——buildChatMessages 纯函数保持，store 读取在装配边界）。**事件计数 25 不变**（载荷扩展非新事件）。字段缺省——旧流前向兼容（缺值读作"无附件"，投影零变化）。**不追认的回退面**：events.ts 删字段 + types.ts 删 AttachmentRef + messages.ts/loop.ts 删投影展开与落流 + agent-protocol/agent-process/queue 删 wire 与编排透传 + tests（约 2 小时，全部为新增面——不触碰既有 25 事件语义）；回退后 prompt 附件能力关闭（ATTACHMENTS_UNSUPPORTED 恒拒绝），既有会话流零影响（旧流本就无该字段）。

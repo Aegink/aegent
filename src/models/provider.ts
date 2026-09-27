@@ -21,9 +21,22 @@ export interface ChatTool {
   parameters: JsonValue;
 }
 
+/** 用户消息携带的图片块（P1/T-P1-124——声明性追加于 content 之后；data 为 base64）。 */
+export interface ChatImage {
+  /** MIME 类型（attachments 域白名单闭集内的值）。 */
+  mediaType: string;
+  /** 原始字节 base64。 */
+  data: string;
+}
+
 export type ChatMessage =
   | { role: "system"; content: string }
-  | { role: "user"; content: string }
+  | {
+      role: "user";
+      content: string;
+      /** 随消息附上的图片（P1）；无附件时缺省——既有路径零变化。 */
+      images?: ChatImage[];
+    }
   | {
       role: "assistant";
       content: string;

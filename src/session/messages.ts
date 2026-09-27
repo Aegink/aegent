@@ -6,13 +6,21 @@
  * 一遍必然漂移；loop 侧内嵌实现换用本 helper 在 T-7-04 接线时顺路做。
  */
 
-import type { ChatMessage } from "../models/provider.js";
+import type { AttachmentRef } from "../attachments/types.js";
+import type { ChatImage, ChatMessage } from "../models/provider.js";
 import type { SessionEvent } from "../kernel/events.js";
 import { coalesceEvents } from "./coalescer.js";
 
 export interface BuildMessagesOptions {
   /** 只取 seq ≤ upToSeq 的事件（压缩覆盖区间 / 有效视窗过滤用）；缺省全流。 */
   upToSeq?: number;
+  /**
+   * 附件图片解析注入（P1/T-P1-124——投影保持纯函数，store 读取由调用方
+   * 注入；P2/T-P1-125 的卸载状态也经此并入）。缺省不注入 = 不展开图片
+   * （user/message 的 attachments 引用只落流不进请求——未配置附件能力时
+   * 零行为变化）。返回 null = 该出现不进请求（占位路径，P2 卸载消费）。
+   */
+  resolveImage?: (ref: AttachmentRef) => ChatImage | null;
 }
 
 export function buildChatMessages(
@@ -36,10 +44,21 @@ export function buildChatMessages(
   for (const e of coalesced) {
     if (e.seq > upTo) continue;
     switch (e.type) {
-      case "user/message":
+      case "user/message": {
         flushCalls();
-        messages.push({ role: "user", content: e.message.content });
+        // P1/T-P1-124：附件引用经注入的 resolver 展开为图片块（声明性追加
+        // 于 content 之后）；resolver 缺省/返回 null 的出现不进请求。
+        let images: ChatImage[] | undefined;
+        const resolve = opts.resolveImage;
+        if (resolve && e.attachments?.length) {
+          const resolved = e.attachments
+            .map((ref) => resolve(ref))
+            .filter((img): img is ChatImage => img !== null);
+          if (resolved.length > 0) images = resolved;
+        }
+        messages.push({ role: "user", content: e.message.content, ...(images ? { images } : {}) });
         break;
+      }
       case "system/message":
         flushCalls();
         messages.push({ role: "system", content: e.message.content });

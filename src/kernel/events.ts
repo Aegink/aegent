@@ -276,6 +276,14 @@ export interface UserMessageEvent extends EventBase {
    * 走待澄清 #8 载荷扩展立案——事件计数 19 不变）。
    */
   promptId?: string;
+  /**
+   * 随消息附上的附件引用（P1/T-P1-124——词汇表立案 #20：载荷扩展，事件计数
+   * 不变）。**流存引用不存字节**：本字段只携带 AttachmentRef（id/mediaType/
+   * name/size），字节在 AttachmentStore（流轻量纪律）；重建路径 = ref →
+   * store.read（恢复/回放时注入 resolver）。字段缺省——旧流前向兼容
+   * （缺值读作"无附件"，投影零变化）。
+   */
+  attachments?: AttachmentRef[];
 }
 
 export interface SystemMessageEvent extends EventBase {
@@ -635,6 +643,8 @@ export interface SurfaceDetachEvent extends EventBase {
   /** 离开原因（断线/主动断开/被顶替——自由文本可缺省）。 */
   reason?: string;
 }
+
+import type { AttachmentRef } from "../attachments/types.js";
 
 export type SessionEvent =
   | TurnStartEvent

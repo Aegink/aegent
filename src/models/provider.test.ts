@@ -161,6 +161,29 @@ describe("openai-compat 流式适配 —— J1/J2", () => {
     expect(body.messages[2]).toEqual({ role: "tool", tool_call_id: "call_9", content: "file content" });
   });
 
+  it("P1/T-P1-124：user images → OpenAI 多模态 content 数组（text + image_url data URL）", async () => {
+    mock.mountSseSequence([{ events: [wireChunk({ content: "ok" })] }]);
+    await collect(
+      makeProvider(),
+      makeReq([
+        {
+          role: "user",
+          content: "看图",
+          images: [{ mediaType: "image/png", data: "AAAA" }],
+        },
+      ]),
+    );
+    const recorded = mock.requestAt(0, "图片映射测试恰发一次模型调用");
+    const body = JSON.parse(recorded.body) as { messages: { [key: string]: unknown }[] };
+    expect(body.messages[0]).toEqual({
+      role: "user",
+      content: [
+        { type: "text", text: "看图" },
+        { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } },
+      ],
+    });
+  });
+
   it("非 2xx 在响应头阶段抛 ProviderHttpError，status 与 Retry-After 透传", async () => {
     mock.mountSequence([
       {

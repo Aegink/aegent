@@ -37,10 +37,21 @@ import {
   type JsonValue,
   type SessionEvent,
 } from "./events.js";
+import type { IncomingAttachment } from "../attachments/types.js";
 
 /** 父 → 子。 */
 export type AgentRequest =
-  | { type: "prompt"; messageId: string; content: string }
+  | {
+      type: "prompt";
+      messageId: string;
+      content: string;
+      /**
+       * 随消息附上的附件（P1/T-P1-124——wire 形状扩展，批次 9 先例：
+       * wire 形状非事件词汇表）。base64 字节随 wire 传子进程，编排面
+       * 校验限额并落 store 后以 ref 落流。可选——无附件零变化。
+       */
+      attachments?: IncomingAttachment[];
+    }
   | { type: "cancel"; cause: CancelCause }
   | { type: "revert"; targetSeq: number }
   | {
@@ -284,7 +295,43 @@ export function decodeRequest(line: string): AgentRequest {
     if (typeof req.content !== "string" || req.content === "") {
       throw new ProtocolError("PROTOCOL_MALFORMED", "prompt 需要 content 非空字符串");
     }
-    return { type: "prompt", messageId: req.messageId, content: req.content };
+    // P1/T-P1-124：附件可选字段校验（wire 面 T6——畸形形状类型化拒绝）
+    const rawAttachments = (req as { attachments?: unknown }).attachments;
+    if (rawAttachments !== undefined) {
+      if (!Array.isArray(rawAttachments)) {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "prompt.attachments 必须是数组");
+      }
+      for (const att of rawAttachments as Record<string, unknown>[]) {
+        if (att === null || typeof att !== "object") {
+          throw new ProtocolError("PROTOCOL_MALFORMED", "prompt.attachments 成员必须是对象");
+        }
+        if (typeof att["mediaType"] !== "string" || att["mediaType"] === "") {
+          throw new ProtocolError("PROTOCOL_MALFORMED", "prompt.attachments 成员需要 mediaType 非空字符串");
+        }
+        if (typeof att["data"] !== "string" || att["data"] === "") {
+          throw new ProtocolError("PROTOCOL_MALFORMED", "prompt.attachments 成员需要 data 非空字符串（base64）");
+        }
+        if (att["name"] !== undefined && typeof att["name"] !== "string") {
+          throw new ProtocolError("PROTOCOL_MALFORMED", "prompt.attachments 成员的 name 需要字符串");
+        }
+      }
+    }
+    const parsedAttachments = (rawAttachments as Record<string, unknown>[] | undefined)?.map(
+      (att) => ({
+        mediaType: att["mediaType"] as string,
+        data: att["data"] as string,
+        ...(att["name"] !== undefined ? { name: att["name"] as string } : {}),
+      }),
+    );
+    return {
+      type: "prompt",
+      messageId: req.messageId,
+      content: req.content,
+      // 空数组剥掉键（无附件语义与缺省一致——queue/wire 零差异）
+      ...(parsedAttachments !== undefined && parsedAttachments.length > 0
+        ? { attachments: parsedAttachments }
+        : {}),
+    };
   }
   if (req.type === "cancel") {
     const cause = req.cause as { kind?: unknown; reason?: unknown; message?: unknown } | null;

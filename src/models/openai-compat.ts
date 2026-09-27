@@ -247,8 +247,23 @@ function mapToolCallDelta(
 function toWireMessage(m: ChatMessage): unknown {
   switch (m.role) {
     case "system":
-    case "user":
       return { role: m.role, content: m.content };
+    case "user":
+      // P1/T-P1-124：图片附件 → OpenAI 多模态 content 数组（text 块在前，
+      // image_url data URL 块随后）；无 images 零变化（纯字符串 content）。
+      if (m.images?.length) {
+        return {
+          role: "user",
+          content: [
+            { type: "text", text: m.content },
+            ...m.images.map((img) => ({
+              type: "image_url",
+              image_url: { url: `data:${img.mediaType};base64,${img.data}` },
+            })),
+          ],
+        };
+      }
+      return { role: "user", content: m.content };
     case "assistant":
       return {
         role: "assistant",

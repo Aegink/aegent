@@ -84,6 +84,31 @@ describe("agent-protocol —— T9 可序列化协议", () => {
     });
     expect(decodeRequest('{"type":"dispose"}')).toEqual({ type: "dispose" });
 
+    // P1/T-P1-124：附件 wire 形状——合法解析 + 畸形类型化拒绝（T6 受控面）
+    const withAtt = decodeRequest(
+      '{"type":"prompt","messageId":"m2","content":"看图","attachments":[{"mediaType":"image/png","data":"AAAA","name":"dot.png"}]}',
+    );
+    expect(withAtt).toEqual({
+      type: "prompt",
+      messageId: "m2",
+      content: "看图",
+      attachments: [{ mediaType: "image/png", data: "AAAA", name: "dot.png" }],
+    });
+    expect(decodeRequest('{"type":"prompt","messageId":"m3","content":"hi","attachments":[]}')).not.toHaveProperty("attachments");
+    for (const [bad, frag] of [
+      ['{"type":"prompt","messageId":"m","content":"x","attachments":"nope"}', "必须是数组"],
+      ['{"type":"prompt","messageId":"m","content":"x","attachments":[{"data":"AA"}]}', "mediaType"],
+      ['{"type":"prompt","messageId":"m","content":"x","attachments":[{"mediaType":"image/png"}]}', "data"],
+      ['{"type":"prompt","messageId":"m","content":"x","attachments":[{"mediaType":"image/png","data":"AA","name":1}]}', "name"],
+    ] as const) {
+      try {
+        decodeRequest(bad);
+        expect.unreachable(`应拒绝：${frag}`);
+      } catch (e) {
+        expect((e as Error).message).toContain(frag);
+      }
+    }
+
     expect(() => decodeRequest("not json")).toThrow(ProtocolError);
     expect(() => decodeRequest('{"type":"explode"}')).toThrow(/未知请求类型/);
     expect(() => decodeRequest('{"type":"prompt","messageId":"","content":"hi"}')).toThrow(

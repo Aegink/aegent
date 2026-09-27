@@ -251,3 +251,45 @@ describe("anthropic-messages 流式适配 —— J5/T-P1-108", () => {
     expect(anthropicRows[0]!.source).toBe("declared");
   });
 });
+
+
+describe("anthropic 图片映射（P1/T-P1-124）", () => {
+  let mock: HttpMock;
+  beforeEach(async () => {
+    mock = new HttpMock();
+    await mock.start();
+  });
+  afterEach(async () => {
+    await mock.stop();
+  });
+
+  it("user images → content blocks（text + image source base64）", async () => {
+    mock.mountSseSequence([
+      {
+        events: [
+          anthropicEvents.messageStart,
+          anthropicEvents.textDelta(0, "ok"),
+          anthropicEvents.messageDelta(1),
+          anthropicEvents.messageStop,
+        ],
+      },
+    ]);
+    const provider = makeProvider(mock);
+    await collect(provider, makeReq([
+      {
+        role: "user",
+        content: "看图",
+        images: [{ mediaType: "image/png", data: "AAAA" }],
+      },
+    ]));
+    const recorded = mock.requestAt(0, "图片映射测试恰发一次模型调用");
+    const body = JSON.parse(recorded.body) as { messages: { content: unknown }[] };
+    expect(body.messages[0]).toEqual({
+      role: "user",
+      content: [
+        { type: "text", text: "看图" },
+        { type: "image", source: { type: "base64", media_type: "image/png", data: "AAAA" } },
+      ],
+    });
+  });
+});

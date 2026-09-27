@@ -34,6 +34,8 @@ import {
   type ModelProvider,
   ProviderHttpError,
 } from "../models/provider.js";
+import type { AttachmentRef } from "../attachments/types.js";
+import type { AttachmentStore } from "../attachments/store.js";
 import { buildChatMessages, effectiveEvents } from "../session/messages.js";
 import { Projector } from "../session/project.js";
 import type { SessionStore } from "../session/store.js";
@@ -207,6 +209,13 @@ export type DecideTurn = (
 export interface AgentLoopDeps {
   sessionId: string;
   store: SessionStore;
+  /**
+   * 附件存储（P1/T-P1-124）：缺省 undefined = 附件能力未启用——prompt 带
+   * 附件由进程编排面（agent-process）类型化拒绝，loop 投影零变化。
+   * 在位时 buildMessages 注入 resolveImage（store 读 → ChatImage），
+   * user/message 的 attachments 引用展开进模型请求。
+   */
+  attachmentStore?: AttachmentStore;
   /**
    * 已在装配处套好 withRetry 的 provider（组合点在 T-3-06 的进程装配）；
    * loop 只认 ModelProvider 接口，不重复包重试。
@@ -596,7 +605,7 @@ export class AgentLoop {
    * 返回结束原因（硬退出的 error 也不抛——终态在事件流里，pi 同款
    * "error responses remain hard exits"）。
    */
-  async runTurn(prompt: string): Promise<TurnEndReason> {
+  async runTurn(prompt: string, attachments?: readonly AttachmentRef[]): Promise<TurnEndReason> {
     const { store, sessionId } = this.deps;
     // A3：turn 尝试开始即 busy（先于任何校验与落盘）——若本 turn 半途崩溃，
     // busy 停留，由恢复路径归位。
@@ -631,6 +640,8 @@ export class AgentLoop {
         message: { content: prompt },
         source: "user",
         promptId: this.nextPromptId(),
+        // P1/T-P1-124：附件引用随消息落流（流存引用不存字节）；无附件零变化
+        ...(attachments !== undefined && attachments.length > 0 ? { attachments: [...attachments] } : {}),
       },
     ]);
     try {
@@ -1430,7 +1441,19 @@ export class AgentLoop {
    */
   private buildMessages(): ChatMessage[] {
     const events = effectiveEvents(this.deps.store.load(this.deps.sessionId));
-    const messages = buildChatMessages(events);
+    // P1/T-P1-124：附件 store 在位时注入 resolver（ref → ChatImage）——
+    // 投影函数保持纯函数，store 读取在装配边界
+    const store = this.deps.attachmentStore;
+    const messages = buildChatMessages(events, {
+      ...(store
+        ? {
+            resolveImage: (ref) => {
+              const att = store.read(ref.attachmentId);
+              return att ? { mediaType: att.mediaType, data: att.data } : null;
+            },
+          }
+        : {}),
+    });
     // F8/T-P1-104：投影级裁剪（请求面视图变换——事件流不改写，因果链不破）
     return this.deps.resultTrim !== undefined
       ? trimToolResultMessages(messages, this.deps.resultTrim)

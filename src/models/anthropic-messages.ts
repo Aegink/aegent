@@ -121,7 +121,22 @@ function toAnthropicMessages(messages: ChatMessage[]): {
       continue;
     }
     if (m.role === "user") {
-      wire.push({ role: "user", content: m.content });
+      // P1/T-P1-124：图片附件 → Anthropic image source base64 块（text 块
+      // 在前，image 块随后）；无 images 零变化（纯字符串 content）。
+      if (m.images?.length) {
+        wire.push({
+          role: "user",
+          content: [
+            { type: "text", text: m.content },
+            ...m.images.map((img) => ({
+              type: "image",
+              source: { type: "base64", media_type: img.mediaType, data: img.data },
+            })),
+          ],
+        });
+      } else {
+        wire.push({ role: "user", content: m.content });
+      }
       continue;
     }
     if (m.role === "assistant") {

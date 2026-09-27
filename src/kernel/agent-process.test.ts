@@ -8,6 +8,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { decodeMessage, type AgentMessage } from "./agent-protocol.js";
 import { runAgentChildStdio, spawnAgentProcess } from "./agent-process.js";
+import { InMemoryAttachmentStore } from "../attachments/store.js";
 import { drainUntil, recvWithTimeout } from "../test-support/event-asserts.js";
 import type { ModelProvider } from "../models/provider.js";
 
@@ -1042,4 +1043,122 @@ describe("N1/T-P1-110 会话 id 校验（子进程入口防御面）", () => {
     input.end();
     await running;
   });
+});
+
+
+describe("agent-process × 附件编排面（P1+P3/T-P1-124）", () => {
+  const TINY_PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+  it("attachmentStore 配置 + prompt 带附件 → ref 落流（流内无字节）；无 store → ATTACHMENTS_UNSUPPORTED", async () => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    let exitCode: number | null = null;
+    const store = new InMemoryAttachmentStore();
+    const running = runAgentChildStdio({
+      input,
+      output,
+      exit: (code) => {
+        exitCode = code;
+      },
+      attachmentStore: store,
+    });
+
+    const lines: AgentMessage[] = [];
+    let buf = "";
+    output.setEncoding("utf-8");
+    output.on("data", (chunk: string) => {
+      buf += chunk;
+      for (;;) {
+        const nl = buf.indexOf("\n");
+        if (nl < 0) break;
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (line) lines.push(decodeMessage(line));
+      }
+    });
+    const waitFor = async (pred: (m: AgentMessage) => boolean, label: string) => {
+      for (let i = 0; i < 300; i++) {
+        const hit = lines.find(pred);
+        if (hit) return hit;
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      throw new Error(`等待超时：${label}`);
+    };
+
+    input.write(
+      `${JSON.stringify({
+        type: "prompt",
+        messageId: "a1",
+        content: "看图",
+        attachments: [{ mediaType: "image/png", data: TINY_PNG_B64, name: "dot.png" }],
+      })}
+`,
+    );
+    await waitFor((m) => m.type === "accepted", "accepted 收执");
+    // user/message 落流带 ref（流存引用不存字节）
+    const userMsg = (await waitFor(
+      (m) => m.type === "event" && m.event.type === "user/message",
+      "user/message 落流",
+    )) as Extract<AgentMessage, { type: "event" }>;
+    const atts = (userMsg.event as { attachments?: { attachmentId: string; mediaType: string; size: number; data?: string }[] }).attachments!;
+    expect(atts).toHaveLength(1);
+    expect(atts[0]!.mediaType).toBe("image/png");
+    expect(atts[0]!.size).toBeGreaterThan(0);
+    expect(atts[0]!.data).toBeUndefined();
+    // 字节在 store（save 落盘）
+    expect(store.read(atts[0]!.attachmentId)).not.toBeNull();
+    await waitFor(
+      (m) => m.type === "event" && m.event.type === "turn/end",
+      "turn/end",
+    );
+
+    // 无 store 能力不测同进程（options 已定）——单独进程跑 ATTACHMENTS_UNSUPPORTED
+    input.write(`${JSON.stringify({ type: "dispose" })}
+`);
+    input.end();
+    await running;
+
+    // 未启用附件能力：prompt 带附件 → ATTACHMENTS_UNSUPPORTED（不收执不开轮）
+    const input2 = new PassThrough();
+    const output2 = new PassThrough();
+    let exitCode2: number | null = null;
+    const running2 = runAgentChildStdio({
+      input: input2,
+      output: output2,
+      exit: (code) => {
+        exitCode2 = code;
+      },
+    });
+    const lines2: AgentMessage[] = [];
+    let buf2 = "";
+    output2.setEncoding("utf-8");
+    output2.on("data", (chunk: string) => {
+      buf2 += chunk;
+      for (;;) {
+        const nl = buf2.indexOf("\n");
+        if (nl < 0) break;
+        const line = buf2.slice(0, nl).trim();
+        buf2 = buf2.slice(nl + 1);
+        if (line) lines2.push(decodeMessage(line));
+      }
+    });
+    input2.write(
+      `${JSON.stringify({
+        type: "prompt",
+        messageId: "a2",
+        content: "看图",
+        attachments: [{ mediaType: "image/png", data: TINY_PNG_B64 }],
+      })}
+`,
+    );
+    await new Promise((r) => setTimeout(r, 100));
+    const err = lines2.find(
+      (m) => m.type === "error" && (m as { code?: string }).code === "ATTACHMENTS_UNSUPPORTED",
+    );
+    expect(err).toBeDefined();
+    input2.write(`${JSON.stringify({ type: "dispose" })}
+`);
+    input2.end();
+    await running2;
+  }, 30_000);
 });
