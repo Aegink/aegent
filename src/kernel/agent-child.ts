@@ -19,6 +19,7 @@
 import path from "node:path";
 
 import { runAgentChildStdio, type AgentChildOptions } from "./agent-process.js";
+import { InvalidSessionIdError, isValidSessionId } from "../session/session-id.js";
 import { parseProviderConfig } from "../models/config.js";
 import { createOpenAiCompatProvider } from "../models/openai-compat.js";
 import { withRetry, type RetryObservation } from "../models/retry.js";
@@ -29,6 +30,8 @@ const retryWarnLogger = createLogger();
 
 interface ChildCliArgs {
   provider?: string;
+  /** N1/T-P1-110 会话 id（wire 通道；env AEGENT_SESSION 是兼容回退）。 */
+  session?: string;
   db?: string;
   /** E14/T-P1-90 原始分片日志目录（缺省不写——旁路通道按需开启）。 */
   rawLogDir?: string;
@@ -45,6 +48,7 @@ interface ChildCliArgs {
 function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv): ChildCliArgs {
   const args: ChildCliArgs = {
     provider: env["AEGENT_PROVIDER"],
+    session: env["AEGENT_SESSION"],
     db: env["AEGENT_DB"],
     rawLogDir: env["AEGENT_RAW_LOG_DIR"],
     apiKey: env["AEGENT_API_KEY"],
@@ -54,6 +58,7 @@ function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv): ChildCliArg
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--provider" && i + 1 < argv.length) args.provider = argv[++i];
+    else if (a === "--session" && i + 1 < argv.length) args.session = argv[++i];
     else if (a === "--db" && i + 1 < argv.length) args.db = argv[++i];
     else if (a === "--raw-log-dir" && i + 1 < argv.length) args.rawLogDir = argv[++i];
     else if (a === "--workspace" && i + 1 < argv.length) args.workspace = argv[++i];
@@ -70,6 +75,13 @@ async function main(): Promise<void> {
   const cli = parseArgs(process.argv.slice(2), process.env);
   if (cli.network !== undefined && cli.network !== "allow" && cli.network !== "deny") {
     throw new Error(`--network 只接受 allow|deny，收到：${cli.network}`);
+  }
+  // N1/T-P1-110：wire 通道（--session / env AEGENT_SESSION）提供的会话 id
+  // 过形状校验（防御性——CLI 侧已生成/校验，子进程不信 wire）；缺省 "s0"
+  // 是 mock/测试脚手架值（进程内构造面与脚手架路径不校验，记档）。
+  const sessionId = cli.session ?? "s0";
+  if (!isValidSessionId(sessionId)) {
+    throw new InvalidSessionIdError(sessionId);
   }
 
   // 存储：指定 --db 时动态 import SQLite（原生模块不进缺省冷启动路径）
@@ -114,7 +126,7 @@ async function main(): Promise<void> {
   let retryObserver: ((o: RetryObservation) => void) | undefined;
   const options: AgentChildOptions = {
     ...(cli.rawLogDir ? { rawLogDir: cli.rawLogDir } : {}),
-    sessionId: process.env["AEGENT_SESSION"] ?? "s0",
+    sessionId,
     ...(storage ? { storage } : {}),
     ...(provider ? { provider, identity } : {}),
     // F5/T-P1-18：真实 provider 时启用真摘要（LLM 生成 + 截断回退）——

@@ -1003,3 +1003,43 @@ describe("session/resume（M3/T-P1-86）", () => {
     await child.end();
   });
 });
+
+// ---------------------------------------------------------------------------
+// N1/T-P1-110：会话 id 形状校验（runAgentChildStdio 统一防御面——进程内
+// 构造面与 wire 通道同规则；"s0" 等脚手架短 id 合法，wire 危险形状被拒）
+// ---------------------------------------------------------------------------
+
+describe("N1/T-P1-110 会话 id 校验（子进程入口防御面）", () => {
+  it("options.sessionId 非法形状 → InvalidSessionIdError 启动即拒", async () => {
+    await expect(
+      runAgentChildStdio({ sessionId: "bad id", exit: () => {} }),
+    ).rejects.toMatchObject({ code: "INVALID_SESSION_ID" });
+    await expect(
+      runAgentChildStdio({ sessionId: "", exit: () => {} }),
+    ).rejects.toMatchObject({ code: "INVALID_SESSION_ID" });
+  });
+
+  it("合法短 id（s-ceiling 等）与缺省不受影响（回归锚）", async () => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    output.resume();
+    const running = runAgentChildStdio({
+      sessionId: "s-ceiling",
+      input,
+      output,
+      exit: () => {},
+    });
+    // ready 行可到即说明入口校验放行、装配正常
+    output.setEncoding("utf-8");
+    const firstLine = await new Promise<string>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("等待 ready 超时")), 3000);
+      output.once("data", (chunk: string) => {
+        clearTimeout(timer);
+        resolve(chunk.trim());
+      });
+    });
+    expect(firstLine).toContain("ready");
+    input.end();
+    await running;
+  });
+});

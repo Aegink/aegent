@@ -15,6 +15,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { spawnAgentProcess } from "../kernel/agent-process.js";
+import { InvalidSessionIdError, createSessionId, isValidSessionId } from "../session/session-id.js";
 import { runCli } from "./repl.js";
 
 /** 编译产物旁的子进程入口（dist/src/cli/index.js → dist/src/kernel/agent-child.js）。 */
@@ -47,11 +48,33 @@ export function parseCliArgv(argv: readonly string[]): CliArgv {
   return { smoke, ...(entryPath !== undefined ? { entryPath } : {}), childArgs };
 }
 
+/**
+ * N1/T-P1-110：会话 id 的规范生成点在 CLI 入口——childArgs 未显式带
+ * --session 时生成 UUID 注入（此前缺省恒为 "s0"，跨端引用无唯一性保证）；
+ * 显式指定的 id 过形状校验，非法抛 InvalidSessionIdError（启动即拒）。
+ * 纯函数以便直测（main 的 spawn 面不可直测——同 agent-child 先例）。
+ */
+export function resolveChildSessionArgv(
+  childArgs: readonly string[],
+): { args: string[] } {
+  const args = [...childArgs];
+  const sessionIdx = args.indexOf("--session");
+  if (sessionIdx >= 0) {
+    const explicit = args[sessionIdx + 1];
+    if (explicit === undefined || !isValidSessionId(explicit)) {
+      throw new InvalidSessionIdError(explicit ?? "(缺失)");
+    }
+    return { args };
+  }
+  return { args: [...args, "--session", createSessionId()] };
+}
+
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
   const { smoke, entryPath, childArgs } = parseCliArgv(argv);
+  const { args } = resolveChildSessionArgv(childArgs);
   const connection = spawnAgentProcess({
     entryPath: entryPath ?? defaultChildEntryPath(),
-    args: childArgs,
+    args,
   });
   if (!smoke) {
     process.stdout.write("aegent CLI（输入指令回车执行；/exit 退出）\n");

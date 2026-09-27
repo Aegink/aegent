@@ -22,6 +22,8 @@ import {
   renderEventSummary,
   runCli,
 } from "./repl.js";
+import { resolveChildSessionArgv } from "./index.js";
+import { InvalidSessionIdError } from "../session/session-id.js";
 import { runAgentChildStdio, type AgentChildOptions } from "../kernel/agent-process.js";
 import { decodeMessage } from "../kernel/agent-protocol.js";
 import type { ModelProvider } from "../models/provider.js";
@@ -1039,5 +1041,44 @@ describe("L7 命令生命周期落流（T-P1-95）", () => {
     // run/done 与轮事件并存（turn/start 在流内且互不干扰）
     expect(events.some((e) => e.type === "turn/start")).toBe(true);
     expect(lines.some((l) => l.includes("配置已刷新"))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// N1/T-P1-110：CLI 会话 id 规范生成点（resolveChildSessionArgv 纯函数直测
+// ——main 的真实 spawn 面不可直测，同 agent-child 先例）
+// ---------------------------------------------------------------------------
+
+describe("N1/T-P1-110 CLI 会话 id 生成点", () => {
+  it("无 --session → 注入 UUID 形状的新 id（非 s0）", () => {
+    const { args } = resolveChildSessionArgv(["--provider", "echo"]);
+    const idx = args.indexOf("--session");
+    expect(idx).toBeGreaterThanOrEqual(0);
+    const id = args[idx + 1]!;
+    expect(id).not.toBe("s0");
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  });
+
+  it("两次生成互不等（唯一性）", () => {
+    const a = resolveChildSessionArgv([]).args;
+    const b = resolveChildSessionArgv([]).args;
+    expect(a[a.indexOf("--session") + 1]).not.toBe(b[b.indexOf("--session") + 1]);
+  });
+
+  it("显式合法 --session 照用（脚手架短 id 兼容）", () => {
+    const { args } = resolveChildSessionArgv(["--session", "s0", "--db", "x.db"]);
+    expect(args).toEqual(["--session", "s0", "--db", "x.db"]);
+  });
+
+  it("显式非法 --session（空白/空/点开头）→ InvalidSessionIdError 启动即拒", () => {
+    expect(() => resolveChildSessionArgv(["--session", "bad id"])).toThrowError(
+      expect.objectContaining({ code: "INVALID_SESSION_ID" }),
+    );
+    expect(() => resolveChildSessionArgv(["--session"])).toThrowError(
+      expect.objectContaining({ code: "INVALID_SESSION_ID" }),
+    );
+    expect(() => resolveChildSessionArgv(["--session", ".hidden"])).toThrowError(
+      expect.objectContaining({ code: "INVALID_SESSION_ID" }),
+    );
   });
 });

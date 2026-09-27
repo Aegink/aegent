@@ -36,6 +36,7 @@ import type { ApprovalAnnouncement } from "../policy/pending.js";
 import type { ChatRequest, ModelProvider } from "../models/provider.js";
 import type { ModelIdentity } from "../models/identity.js";
 import { ForkError, InMemoryEventStorage, type EventStorage, SessionStore } from "../session/store.js";
+import { InvalidSessionIdError, isValidSessionId } from "../session/session-id.js";
 import { Projector } from "../session/project.js";
 import { findInterruptedTurn, reconcileBootState } from "../session/boot-maintenance.js";
 import { RawChunkLog } from "./raw-chunk-log.js";
@@ -150,7 +151,10 @@ export async function runAgentChildStdio(
   },
 ): Promise<void> {
   const exit = options.exit ?? ((code: number) => process.exit(code));
+  // N1/T-P1-110：会话 id 统一过形状校验（进程内构造面同规则——"s0" 等脚手架
+  // 短 id 合法，只有空串/空白/超长这类 wire 危险形状被拒）。
   const sessionId = options.sessionId ?? "s0";
+  if (!isValidSessionId(sessionId)) throw new InvalidSessionIdError(sessionId);
   const output = options.output ?? process.stdout;
   const input = options.input ?? process.stdin;
 

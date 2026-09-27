@@ -1,6 +1,6 @@
 # P1 实施计划 · 批次 1
 
-**状态**：v1.13 · 批次 1-11 收官（13 + 10 + 6 + 10 + 6 + 9 + 11 + 9 + 10 + 14 + 11 = 108 卡；批次 11 = 上下文与模型运维收尾——10 张执行卡全关 + T-P1-108 J5 未展占位（待澄清 #16 厂商选型追认）；词汇表 23 事件（#17 compHash 载荷 / #18 strategy 值域 + failureReason 载荷 两案已经用户 2026-09-27"全部认可"追认转正——落地记录 17/18）· 全量基线 1144 passed / 1 skipped · 批次 12 未展卡（多端架构·无 UI 10 条，下一会话自展+执行）
+**状态**：v1.14 · 批次 1-11 收官 + 批次 12 已展卡（13 + 10 + 6 + 10 + 6 + 9 + 11 + 9 + 10 + 14 + 11 = 108 卡；批次 12 = 多端架构·无 UI 10 条，2026-09-27 本会话展卡 11 张 = T-P1-110 ~ 120 + T-P1-108 J5 展开执行）· 词汇表 23 事件（#16 Anthropic / #17 / #18 均已追认转正）· 全量基线 1144 passed / 1 skipped · 批次 12 执行中
 **执行协议**：沿用 [`plan-p0.md`](plan-p0.md) §0（取卡 / 做卡 / 验收 / 打勾 / 提交 / 自动继续 / 四种停下情况），本文件不复制。执行进度：**批次 1-10 见 [`plan-p0-progress.md`](plan-p0-progress.md)（已定格）；批次 11 起见 [`plan-p1-progress.md`](plan-p1-progress.md)**（批次报告 / 待澄清 / 人工确认清单；待澄清编号接续 #16 起）。
 **需求来源**：[`requirements.md`](requirements.md) §4 的 P1 项（共 158 条）。P1 不切阶段（§1 尾注），按**批次**组织：本文件当前只含批次 1，后续批次轮到时再展卡追加。
 **批次 1 范围**（用户圈定于 2026-09-25，四组全选，共 26 条）：
@@ -1643,3 +1643,155 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - F18 红线不破 ✅：恢复重试零重复副作用（失败 attempt 的 tool calls 零派发断言——T-P1-102 验收⑥）；F11 红线不破 ✅：事件流 append-only 逐字节不变（T-P1-101 验收⑨）+ provider 错误原文不落流（验收⑧）。
 - J16 分域不变量 ✅：health.ts 零熔断 import 断言在位（剥离注释源码扫描——验收⑥）。
 - 盘点结论落批次报告（T-P1-109，八面零真冲突）✅ → `plan-p1-progress.md` 批次 11 报告 + 批次 12 提示词 + 全量基线 1144 passed / 1 skipped 更新 ✅。
+
+## 批次 12 卡序（11 张，2026-09-27 展卡，按依赖排序；10 条需求 ID：K3/K4/K8 + N1/N2/N3/N7/N8/N9/N10——N7+N3 一卡承载、N9/N10 拆两卡 + T-P1-108 J5 展开 + 收口）
+
+**锚点纪律**：10 条锚点已逐一打开核对（2026-09-27，证据见各卡）：pi-desktop·apps/desktop/electron/main/agent-host-bridge.ts（411 行全文——`createAgentHostBridge`：RuntimePort {prompt/steer/stop/abort/respondInput/isBusy} + ApprovalPort {resolveTool/resolveContract/listPendingTools} 两个端口面把 headless AgentHost 模块包在既有 IPC handler 之上（"wraps the existing registered IPC handlers … so the local permission and persistence behavior is reused unchanged"——**行为复用、不重写**）+ `DESKTOP_PRINCIPAL`（subject/roles/pairedDevice）+ `PERMISSION_MODE_RANK` 三档排序 + `isWidening` 拒绝（"a remote viewer … should never be able to run a turn at auto"——per-turn 天花板**只能收窄不能放宽**，narrower 请求被接收但 R1 遗留待 host-core 生效）+ `ingest(envelope)` 事件信封喂入 + `settleApprovalExternally`（模块外结算防重入 `resolvingViaModule`）+ `endTurn`（"Main is authoritative here"——真实 abort 可能丢失终态事件，主进程权威收尾防队列永久占位）+ 队列操作 push/list/remove/prioritize/reorder 全在 owner principal 下）；grok·xai-acp-lib（恰好 8 文件：lib.rs 出口清单 + channel.rs（AcpAgentChannel/AcpClientChannel 双向信箱 + `acp_send` 往返 + `AcpChannelFailure {SendFailed, RecvFailed}` 类型化通道失败——code 恒 INTERNAL_ERROR、typed data 键 `xaiAcpChannelFailure` 防字符串匹配）+ common.rs（AcpTxo/AcpRxo oneshot 回执 + `acp_internal_error`）+ gateway.rs（双端转发）+ line_reader.rs/stdin_reader.rs（行缓冲 IO）+ message.rs（AcpAgentMessage/AcpClientMessage 信箱联合）+ normalize.rs——依赖 agent-client-protocol crate 的 wire 类型，**库自身只做通道/转发/信箱**，Cargo.toml 独立 crate 即"独立包"纪律）；pi·packages/protocol/（src/protocol.ts——`PROTOCOL_VERSION = 8` + ClientHello/ServerHello 版本握手（不匹配 → hello_error）+ RequestEnvelope {id, target: ServerTarget{serverId}|SessionTarget{serverId,sessionId,attachmentId}, call: opaque JSON} + ResponseEnvelope {id, ok:true, result?}|{id, ok:false, error{code,message}} + CancelEnvelope + service_update/attachment 信封 + StrictObject additionalProperties:false + isJsonValue 递归拒绝非 JSON；framing.ts——4 字节无符号大端长度前缀 + FrameDecoder 增量解码 + DEFAULT_MAX_FRAME_LENGTH 16MiB + FrameError 状态机 open/ended/failed；codec.ts——ProtocolValidationError + boundedErrorMessage **500 字符截断** + ClientMessageDecoder/ServerMessageDecoder 任意分片重组；README——"Server and worker lifecycle is intentionally outside this public protocol"、帧 = 长度前缀 + 一个 definite-length CBOR、默认上限 16MiB/1e6 元素/64 层嵌套）；zcode·sessionRealtimePort.ts（45 行全文——SessionRealtimePort {hostId, deliveryKind?: TaskRealtimeHostDeliveryKind, publish(event), acquireTaskRunLease/releaseTaskRunLease, publishStreamOp, requestOwnerCommand（stop_generation/respond_permission/respond_elicitation/respond_workspace_hook_review/enqueue_task_command/promote_task_command/cancel_task_command 七闭集——N6 注记的同源面）, onDidReceiveEvent/onDidReceiveOwnerCommand, publishOwnerCommandResult, dispose}——**每界面一个 host 连接 + run 租约 acquire/release + 事件 publish 推送**三面一体）；refs claude-code.d.ts（🔴 专有仓只学语义零代码摘取——surface = terminal/desktop/vscode/mobile 的插件 UI 表面枚举 + `$.ui.mount({plugin, surface})` / `ui.unmount()` **显式挂载/卸载生命周期**（文件头 40-51 行多表面测试范式）——N8 取"端是 roster 成员、加入/离开是显式生命周期动作"的语义，不取其 UI 绘制面）；pi-desktop·crates/host-core/src/config_sync/（mod.rs 出口：crypto {create_vault, unlock_vault, rewrap_vault, encrypt_object, decrypt_object, vault_key_b64, VaultHeader, VaultKey} + transport {WebDavConfig, WebDavTransport, remote_error_is_offline} + merge/domains/engine/coordinator/handlers/progress；merge.rs——`three_way(base, local, remote)`：按 (domain, entity_id) BTreeMap 索引并集、`merge_application_fields` 字段级三方（local==remote 取之 / local==base 取 remote / remote==base 取 local / 三者全异 → None 上抛冲突）+ `choose_conflict`（`:local`/`:remote` 后缀双实体化——冲突不静默丢弃、给用户两份候选）+ `MergeConflict {domain, entity_id, label, local_digest, remote_digest, reason}` + 墓碑纪律（"A missing entity is meaningful only when it is present in the base … deletion as a tombstone before invoking"——类别 opt-out 不变成意外远程删除）；crypto.rs——AES-256-GCM + Argon2id（`checked_kdf` 参数**有界** MIN/MAX——"an attacker-controlled remote header cannot turn unlocking into an unbounded memory or CPU allocation"）+ VaultHeader {format, version, vault_id, cipher, kdf, wrap_nonce, wrapped_key}——**数据密钥随机生成、口令 KDF 后包裹数据密钥**（rewrap = 换口令不重加密数据）+ FORMAT_VERSION 2）；pi-mono·packages/ai/src/api/anthropic-messages.ts（2113 行——SSE 解析状态机（`ANTHROPIC_MESSAGE_EVENTS` 六值闭集 message_start/content_block_start/content_block_delta/content_block_stop/message_delta/message_stop + sse.event==="error" 直接抛 + "stream ended before message_stop" 兜底）+ `assertRequestAuth`（x-api-key 或 authorization 缺一即拒）+ usage **累积**（message_start 起始 + message_delta 累加——"both overwrite `output.usage`, so without a carry-over …"）+ content_block 分型 text/thinking/redacted_thinking/tool_use + tool_use 增量 input_json_delta 拼 JSON）——**零内容勘误。**
+
+**展卡核对结论（我方现状 × 10 条）**：
+1. **N1 会话 id 无规范生成点**：sessionId 现状 = agent-process.ts:153 `options.sessionId ?? "s0"` + agent-child.ts:117 `process.env["AEGENT_SESSION"] ?? "s0"`——CLI 从不生成 id（childArgs 透传、agent-child parseArgs 无 --session），测试恒 "s0"；store 键寻址（append/readAll/fork 按 sessionId 分族）与 fork 的 targetId 传递在位。增量 = `src/session/session-id.ts` 规范生成点（crypto.randomUUID）+ 形状校验闭面 + CLI 新会话生成并经 wire 传子进程（显式 --session 仍受支持且过校验）；"各端指向同一会话"半边由 store 键寻址**结构性在位**（同 id 即同会话流），K8 协议路由消费同校验。
+2. **K3 的"行为复用"半边结构性在位，host 注册/分发/两级上限是增量**：我方 agent-child 装配已经是"headless host"（协议受理 + 审批挂起 + 事件流 + owner-port）——pi-desktop "wraps existing handlers, behavior reused unchanged" 的对应物 = host 层**包装配不重写**（AgentHost = 单会话宿主的注册/生命周期/事件出口面）。缺的三块：①多 host 注册表（sessionId → host，重复注册类型化拒绝）；②事件分发（host 订阅各会话事件 → 路由订阅端——pi-desktop `onQueueChange`/`ingest` 的我方同构）；③**M9 记档消费**（T-P1-49"全局/会话两级上限结构留 K3"）——host 级 ToolClassLimiter 全局聚合（跨会话泳道）叠在既有会话级 toolClassLimits 外层（admission.ts 同类复用，次序 = 全局在外——host 资源面优先，卡内定形）。权限天花板落最小面（host 会话 unattended 天花板：请求放宽 → 类型化拒绝——isWidening 同构；"narrower 即受理"半边随真实远端协商需求记档）。
+3. **N7+N3 一卡承载（同一机制两面）**：N7 验收要点自引"Q6 要的会话级互斥"、N3 验收要点即互斥语义——zcode SessionRealtimePort 的 acquire/release 租约 + deliveryKind + hostId 三形状一体承载。我方 owner-port lease 最小版（acquire/release + NotLeaseHolder + 租约序号令牌）在位；增量 = ①SurfaceConnection 连接面（surfaceId + deliveryKind 闭集 + **断线自动释放租约**——批次 9 记档"租约移交间隙……多端 host 落 N7 时与租约过期一并处理"的消费点：进程内连接生命周期即租约存活性，时间 TTL 不落（无网络传输层，记档随 K8 真实传输）；②"run 由租约保护"贯穿：prompt/steer/cancel 写命令路径校验持约（非持约 → NotLeaseHolderError 贯穿——N6 语义在 host 面的兑现）；③N3 断言面：两端同时写只一个受理 + 事件流无交错（单 loop 结构保证 + seq 单调断言）；④多端并发 holder 保持不做（单 holder——zcode TaskRunLease 同语义，N6 注记原文兑现记档）。
+4. **N8 roster 事件 = 本批唯一词汇表预判案（#19，23→25）**：需求"attach/detach 由事件维护；端的加入/离开是持久事件"——内存态不持久（violate 验收）、plugin 逃生舱不专（roster 是核心域）、单事件 op 二值（session/revert 先例）与两事件（command/run+done 先例）之间**取两枚**：`surface/attach {surfaceId, deliveryKind?}` + `surface/detach {surfaceId, reason?}`——attach/detach 判据字段差异大（C14 结构化各自形状自洽，合并则校验分支化），会话级元事件（session/fork 同款纪律：不要求 turn/step 上下文、turn 挂流内最后轮空流兜 0、log-only 不进模型历史、跨 compaction 保留）。落流面 = host 连接生命周期（T-P1-113 SurfaceConnection 建立/断开 → store.append）；**恢复恒等**：roster 从流重建（activeRoster 纯函数——T-P1-99"流即状态"先例），重启后端清单可见。执行时立案 #19 供追认。
+5. **K8"内核协议自有"= 信封化我方词汇，非照抄 chord**：pi protocol 的**形状**取五件——hello 版本握手（不匹配 hello_error）、request{id,target}/response{id,ok|error} 关联、事件推送信封、严格校验（未知属性拒绝 + 错误消息 500 字符有界）、连接生命周期在协议之外（"intentionally outside this public protocol"）；**不取** CBOR/长度前缀帧（我方 JSON 行协议在位——agent-protocol.ts MAX_LINE_BYTES 防呆同款，debug 可读，二进制传输优化无真实消费方）；**不取** serverId/attachmentId 三级路由（我方单 host 进程内 sessionId 一级路由 + N1 校验即达，YAGNI）。落 `src/host/protocol.ts`：AgentRequest/AgentMessage 复用（内核协议自有——词汇单一来源）+ 信封字段（envelopeSeq/sessionId/requestId）+ HostProtocolServer（行输入 → 校验 → registry 路由 → response/event 输出）。
+6. **N2 是 C6 面的协议线消费，无新机制**：T-P1-82 已落 ApprovalReply +source 审计 + 进程内场景③（A 挂起 → lease 移交 → B 答复 → 轮继续）+ approve +source wire 就绪位（"多端 host N7 经此字段上报答复端"原文）。增量全部在 host/协议层：①approval_requested/approval_settled 向**所有**连接广播（"任何通道可答"的端面——PendingApprovals 无端绑定的结构性事实的广播兑现）；②跨连接场景③端到端（A 连接开轮挂起 → 断开（租约自动释放——N7 消费）→ B 连接 acquire + approve{source} → 轮继续 + 审计 replySource）；③非持约连接答复 → 类型化拒绝（C6"答复权随 lease 移交"贯穿）。
+7. **K4"独立包"落独立域目录 + 反向 import 断言（pnpm workspace 不引入）**：验收要点"仅 8 个文件；不塞进 CLI 包"——xai-acp-lib 是 Cargo workspace 独立 crate；我方单 package.json 仓库引入 pnpm workspace 是工程结构变更（收益仅在打包边界，本批无发布面）——落 `src/acp/` 独立域目录：**文件数 ≤8 硬约束**（fs 扫描断言——T-P1-87 源码扫描机内化先例）+ **cli/ 零 import acp 反向断言**（"不塞进 CLI 包"的机内化）+ 入口 src/acp/main.ts（agent-child 同款独立启动面）。ACP 协议面（JSON-RPC over stdio 行协议）映射：initialize/session_new/session_prompt/session_cancel/session_request_permission → 我方 AgentRequest；事件 → session_update 通知；**xai-acp-lib 的"库自身只做通道/信箱、wire 类型靠 agent-client-protocol crate"分层同构**——我方 JSON-RPC 编解码薄层 + 方法映射层，ACP 规范全文不引依赖照抄（方法名/参数形状按 ACP 公开约定最小面落，记档）。
+8. **N9/N10 拆两卡（同域不同机制）**：N10 = 三方合并纯函数（merge.rs 的 three_way + 字段级 + 墓碑 + MergeConflict——**禁后写覆盖**的机制本体，无 IO 无依赖可先行）；N9 = 同步子系统骨架（vault 加密 + RemoteStore 接口 + 导入日志 + coordinator 消费 N10 合并）。**加密落地形状**：AES-256-GCM（node:crypto 内置）+ **KDF 用 scrypt 替代 Argon2id**（记档：argon2 无 Node 原生实现、引 npm 原生依赖违反依赖纪律，scrypt 同为内存难解型 KDF 且内置；`checked_kdf` 的"参数有界防 DoS"纪律照搬——攻击者控制的 vault header 不能引发无界内存）；**vault 形状照抄**：数据密钥随机生成、口令 KDF 后包裹数据密钥（rewrap = 换口令不重加密数据——pi 同构）+ VaultHeader 字段面 + FORMAT_VERSION。**RemoteStore 接口化**：真实 WebDav 传输不落（无网络基础设施，FileSystemRemoteStore 本机双目录模拟多设备——测试面；真实远端随部署需求，接口在位）；**导入日志可崩溃恢复** = apply 前落 journal（步进 {op, entityId, done}）中断后重放幂等收敛（M3"不重复已完成副作用"的同族纪律）。
+9. **T-P1-108 J5 展开执行（#16 已追认 Anthropic）**：锚点照卡序头草案（opencode llm 分层 + pi-mono anthropic api）；pi-mono 六事件 SSE 闭集 + usage 累积 + x-api-key/auth 双鉴权 + content_block 分型四件形状落适配；**流中 error 帧是 T-P1-102 偏离②预留 blocked 判据的真实面**（"机制为 J5 第二厂商预留"原文兑现）；cache_control 标记面不落（F6 锚检测在位，标记策略随 §6.2 真实厂商联调——占位卡风险栏原文）；**不预先抽象公共适配层**（KISS——占位卡原文，第二实现落完再评估提层）。
+10. **批次 10 的 N4 关闭记档消费**：T-P1-87 ExecutionEpoch（boot 生成 + 句柄编码 + 过期代拒绝）即"跨端 epoch 需自研"的打底——本批 host 层不扩 epoch 流内载荷（无跨进程 epoch 消费方：单 host 进程 + K8 行协议无旧代句柄传输面），N4 关闭记档继续有效，多进程 host（若批次 14 UI 需要守护进程）再评估扩展。
+
+**词汇表预判（一案：#19）**：N8 两枚新事件 `surface/attach` / `surface/detach`（23→25，会话级元事件 log-only）——执行 T-P1-114 时正式立案供追认（含回退面）；其余卡零扩展（N1/N3/N7/K3/K8/K4/N2/N9/N10/J5 全部零新事件零新载荷——K8 协议信封是 wire 形状非事件词汇表，K4 ACP 同理）。
+
+**本批特有约束**：
+1. **host 层是"包装不重写"**（pi-desktop 行为复用纪律）：AgentHost 包既有装配面，审批/持久化/owner-port 语义零改写——host 新增面只有注册/分发/租约校验/两级上限四块，任何"顺手改装配行为"都越界。
+2. **两协议分域**：agent-protocol（父↔子 stdio，进程边界）与 host/protocol（端↔host，K8 端间）共享 AgentRequest/AgentMessage 词汇但信封独立——K4 ACP 是 host 协议的映射面，三者词汇单一来源（events.ts/agent-protocol.ts），不允许第三套并行词汇。
+3. **K4 文件数 ≤8 与 cli 零 import 断言是验收项**（fs 扫描机内化），不是文档约定。
+4. **不做什么**（本批次）：不做 K2/K5 UI 端（批次 14）；不做真实网络传输（K8 的 TCP/WebSocket 传输、N9 的 WebDav 远端、租约 TTL 心跳——接口面在位，随真实部署）；不做多端并发 holder（N7 保持单 holder——N6 注记原文）；不做 ACP fs 工具面与 read_resource（真实客户端联调面）；不做 N5 推送（P2）；不做配置同步的"选择域"（pi-desktop CategorySelection——我方配置域单一，全量同步即达）；不做 epoch 流内载荷化（N4 记档）。
+
+#### T-P1-110 · N1 · 统一会话 ID（规范生成点 + 校验面 + CLI 贯通） `[x]`
+- **依据需求**：N1（P1："统一会话 ID：各端指向同一会话"；自研无上游参考）——展卡核对结论①
+- **上游首选参考**：自研（无上游参考）；形状参照 pi `SessionTarget.sessionId` 的"非空 IdSchema"与 N4 关闭记档的 store 键寻址事实
+- **取什么 / 别抄什么**：取"会话 id 是跨端寻址的规范形状"语义；不发明 id 内嵌语义（无时间戳/无路由段——UUID 即可，寻址唯一性是唯一要求）
+- **证据强度**：`读了代码`（我方 agent-process.ts:153 / agent-child.ts:117 / cli/index.ts 透传链 + store.ts 键寻址 + fork targetId 传递）
+- **要产出**：①`src/session/session-id.ts`——`createSessionId()`（crypto.randomUUID v4）+ `isValidSessionId(v)`（非空 UUID 形状校验——**校验闭面**：垃圾串/空串/超长拒绝）；②CLI 贯通：cli/index.ts 新会话未显式指定时 `createSessionId()` 生成并经子进程参数（`--session`）传 agent-child（agent-child parseArgs + `--session` 解析——env AEGENT_SESSION 通道保留兼容）；显式指定的 session 过 `isValidSessionId`（非法启动即拒）；mock-llm/测试路径缺省 "s0" 保留（脚手架确定性值，记档）；③校验消费点：agent-process spawnAgentProcess options.sessionId 校验（非法类型化拒绝）
+- **验收**：`npx vitest run src/session/session-id.test.ts src/cli/cli.test.ts src/kernel/agent-process.test.ts`（扩）——①生成唯一（N 枚互不等 + 格式合法）；②校验闭面（合法 UUID 过/垃圾串/空/超长拒）；③CLI 无 --session 启动 → 子进程会话 id 是 UUID 形状（非 "s0"）；④显式 --session 合法照用、非法启动即拒；⑤mock-llm 缺省路径零行为变化（既有用例全绿）
+- **依赖**：无（本批首卡）
+- **风险 / 未知**：改 CLI 缺省 id 可能触碰既有测试的 "s0" 假设——mock-llm 路径（T-8-01 脚手架）保持缺省，只有真实 CLI 入口生成 UUID；测试用 --session "s0" 显式钉住既有用例
+- **完成记录**：2026-09-27。产出：①`src/session/session-id.ts`——`createSessionId()`（crypto.randomUUID v4）+ `isValidSessionId(v)`（**形状安全校验**：非空、≤128 字符、无空白、不以 "." 开头——防路径形串进文件名/路由面）+ `InvalidSessionIdError`（code=INVALID_SESSION_ID，错误信息带 received 与约束原文）。②CLI 贯通：`resolveChildSessionArgv(childArgs)` 纯函数（无 --session → 注入 UUID；显式指定 → 校验，缺失/非法抛 InvalidSessionIdError 启动即拒）——cli/index.ts main 消费（真实 spawn 面不可直测，纯函数直测同 agent-child 先例）；agent-child parseArgs + `--session`（wire 通道，env AEGENT_SESSION 是兼容回退初值——argv 覆盖 env），main 里 wire 提供的 id 过校验（子进程不信 wire 的防御面）、缺省 "s0" 保留（mock/脚手架值，卡面记档兑现）。③runAgentChildStdio 统一防御：options.sessionId（含缺省 "s0"）过同一校验——进程内构造面与 wire 同规则，"s-ceiling"/"s1" 等既有测试 id 全部形状合法零破坏。**偏离**：卡面写"非空 UUID 形状校验"——落为形状安全校验（UUID 是生成点的实现选择非强制约束）：fork 的 `/fork <新会话id>` 允许用户任意 id（既有面）、"s0" 脚手架缺省在用，硬性 UUID 会破坏两者；唯一性由生成点保证、不靠校验强制（校验拦注入与路由混乱）。验收：`npx vitest run src/session/session-id.test.ts src/kernel/agent-process.test.ts src/cli/cli.test.ts` → **48 passed**（session-id 5：64 枚互不等 + UUID v4 形状 + 校验闭面 13 例 + 128 边界 + 错误形状；agent-process +2：非法形状启动即拒（双例）/合法短 id 放行（ready 行可到）；cli +4：无 --session 注入 UUID 非 s0 / 两次生成互不等 / 显式 s0 照用 / 非法三种启动即拒）。全量 `npx vitest run` → **1155 passed / 1 skipped**（批次 11 收官 1144 → 净增 11），`npx tsc --noEmit` 干净。
+
+#### T-P1-111 · N10 · 配置三方合并（禁后写覆盖 + 冲突显式 + 墓碑删除） `[ ]`
+- **依据需求**：N10（P1："配置同步禁止后写覆盖先写，必须三方合并；冲突显式报错"——与 C49 同源纪律）——展卡核对结论⑧
+- **上游首选参考**：[pi-desktop·config_sync/merge.rs](../oss/pi-desktop/crates/host-core/src/config_sync/merge.rs)（`three_way(base, local, remote)` 实体级并集 + `merge_application_fields` 字段级三方 + `choose_conflict` `:local`/`:remote` 双实体化 + `MergeConflict {domain, entity_id, label, local_digest, remote_digest, reason}` + 墓碑纪律）
+- **取什么 / 别抄什么**：取"三方合并 + 冲突显式化（双候选不静默裁决）+ 墓碑删除"三纪律；不抄 BTreeMap/Rust 错误栈与 digest 的 sha2 实现（我方 FNV-1a 有先例——T-P1-100 指纹同款自算）；**红线：三方全异的键绝不自动取边（last-write-wins 禁止）**
+- **证据强度**：`读了代码`（merge.rs 120 行核心段全文 + 我方无既有合并面）
+- **要产出**：①`src/sync/merge.ts`——`SyncEntity {domain, entityId, label?, payload: JsonRecord, deleted?: boolean}`（墓碑 = deleted:true，payload 空）+ `threeWayMerge(base, local, remote)`：实体级三集并（墓碑参与键集）——双删/单边增删改/双方同改同值各自结算；`mergeEntityFields` 字段级（payload 对象逐键：local==remote 取之 / 一方==base 取另一方 / 全异 → 冲突）；冲突项产出 `MergeConflict {domain, entityId, label, localDigest, remoteDigest, reason}`（digest 为稳定序列化 FNV-1a——审计可比对）；**冲突时结果带 `conflicts` 非空且 `applyable:false`**（调用方必须显式解决——`choose_conflict` 的 `:local`/`:remote` 双候选化提供解决面）；②纯函数无 IO（N9 coordinator 消费）
+- **验收**：`npx vitest run src/sync/merge.test.ts`——①双边同改同值收敛；②单边修改取修改边；③字段级合并（同实体不同键各自并入）；④同键全异 → 冲突列出（localDigest/remoteDigest 可比对）且 applyable:false；⑤删除语义：base 有 + 一方墓碑 + 另一方未改 → 删除；另一方已改 → 冲突（删除 vs 修改）；⑥双方各删 → 删除收敛；⑦纯函数（无 IO import 断言可选）+ 同输入幂等
+- **依赖**：无
+- **风险 / 未知**：payload 非对象（数组/标量）的实体不做字段级（整体冲突或整体取边——merge.rs `payload.as_object()` None 上抛同语义，卡内定形：非对象 payload 双改即冲突）
+- **完成记录**：
+
+#### T-P1-112 · K3 · 远程 host 架构（HostRegistry 多会话注册 + 事件分发 + M9 两级上限） `[ ]`
+- **依据需求**：K3（P1："远程 host 架构：多 host 注册 + IPC 桥（**只学行为**）"）+ M9 记档消费（T-P1-49"全局/会话两级上限结构留 K3"）——展卡核对结论②
+- **上游首选参考**：[pi-desktop·agent-host-bridge.ts](../oss/pi-desktop/apps/desktop/electron/main/agent-host-bridge.ts)（RuntimePort/ApprovalPort 端口包既有 handler"行为复用不重写" + `ingest(envelope)` 事件喂入 + `onQueueChange` 分发 + `isWidening` 天花板不放宽拒绝 + `endTurn` 主进程权威收尾）
+- **取什么 / 别抄什么**：取"host = 会话宿主的注册/生命周期/事件出口面 + 天花板不放宽 + 行为复用"；不抄 Electron IPC invoke 桥（我方 IPC 桥半边 = K8 协议 server，卡序头约束分域）与 RacpError 传输形状（我方类型化 Error code 面在位）
+- **证据强度**：`读了代码`（agent-host-bridge.ts 全文 411 行 + 我方 admission.ts ToolClassLimiter + agent-child 装配面 + owner-port lease）
+- **要产出**：①`src/host/registry.ts`——`AgentHost`（单会话宿主：sessionId + hostId + 事件出口订阅（agent 事件 → 分发）+ dispose 面）；`HostRegistry`——`register(options) → AgentHost`（sessionId 重复注册类型化拒绝 HOST_SESSION_EXISTS）+ `get/list/has` + `subscribe(listener)` 全局事件分发（事件按 sessionId 路由，监听方可过滤）+ dispose 清理；②**M9 两级上限**：HostRegistry 构造接 `globalToolClassLimits` → host 级 `ToolClassLimiter`（admission.ts 复用）；会话装配的 executeTool 链在会话 limiter 外层接入全局 limiter（次序 = 全局在外——host 资源面优先，卡内定形）；测试面 = 单进程双会话装配（AgentHost 直构，不 spawn 子进程——装配工厂注入）；③权限天花板最小面：AgentHost 会话创建时 `unattendedCeiling`（缺省 false）——请求面放宽（ceiling false 请求 true）→ 类型化拒绝 HOST_CEILING_WIDENING（isWidening 同构；收窄照常记档）
+- **验收**：`npx vitest run src/host/registry.test.ts`（扩 assembly 相关回归）——①多 host 注册 + 重复注册拒绝；②事件分发：两会话各自事件路由到订阅端（sessionId 归属可辨）；③全局两级：会话内限 2、全局限 1 时两会话各 1 并发写 → 第 2 个在全局排队（时序断言）；④会话限额独立生效（全局不限时会话限仍拦）；⑤天花板放宽拒绝 + 收窄受理；⑥dispose 后 get 返回空 + 订阅清理；⑦缺省（无全局限额/无天花板配置）零行为变化
+- **依赖**：T-P1-110（sessionId 校验）
+- **风险 / 未知**：全局 limiter 接入点在装配 executeTool 装饰链（agent-process 透传）——单进程双装配测试面直构（不经 spawn），跨进程全局聚合随批次 14 守护进程形态再评估（记档）
+- **完成记录**：
+
+#### T-P1-113 · N7+N3 · 每界面一个 host 连接 + run 租约 + 会话级互斥 `[ ]`
+- **依据需求**：N7（P1："每个界面是一个 host（有投递方式之分）；run 由租约保护"）+ N3（P1："会话级互斥；Q6 已定可多端；同时写不产生交错"）——展卡核对结论③
+- **上游首选参考**：[zcode·sessionRealtimePort.ts](../oss/zcode/packages/services/src/session/sessionRealtimePort.ts)（SessionRealtimePort {hostId, deliveryKind?, acquireTaskRunLease/releaseTaskRunLease, publish, requestOwnerCommand 七闭集}——连接 + 租约 + 推送三面一体）
+- **取什么 / 别抄什么**：取"连接即租约候选 + run 受租约保护 + deliveryKind 投递方式之分"三形状；不抄其 RPC 回传通道形状（我方 owner-port 在位）；**多端并发 holder 保持不做**（单 holder——N6 注记原文记档兑现）
+- **证据强度**：`读了代码`（sessionRealtimePort.ts 45 行全文 + 我方 owner-port.ts lease 全文 + 批次 9 C6 记档原文）
+- **要产出**：①`src/host/lease.ts`——`SurfaceConnection {surfaceId, deliveryKind: "push"|"poll", ownerId}`（投递方式闭集两值——卡内定形）+ host 面 run 租约：`acquireRunLease(surface)`（接 owner-port acquireLease——**单 holder 语义复用**）+ `releaseRunLease` + **断线自动释放**（connection.close() → 租约释放 + 通知面）；②"run 由租约保护"贯穿：AgentHost 的写命令面（prompt/steer/cancel——K8 卡接入前的 host 直调面）校验持约（非持约 → NotLeaseHolderError 贯穿——owner-port 语义在 host 面兑现）；③N3 互斥断言面：两端同时发写命令 → 持约者受理、另一端类型化拒绝；事件流无交错（seq 单调断言 + 单 loop 结构事实记档）；④移交间隙：A 释放 → 审批挂起保留（timeout 面既有）→ B acquire 后可答（C6 面回归断言）
+- **验收**：`npx vitest run src/host/lease.test.ts`——①acquire/release 往返 + 单 holder（第二连接 acquire → LeaseBusy）；②断线自动释放（close 后另一连接可 acquire）+ 释放通知可观测；③非持约写命令拒绝（NotLeaseHolderError 贯穿）；④两连接同时写只一个受理 + 事件流 seq 单调无交错；⑤deliveryKind 闭集两值 + 非法值拒绝；⑥移交间隙审批挂起保留 + 新 holder 可答（C6 回归）；⑦租约序号令牌：旧句柄在重获后失效（既有语义贯穿）
+- **依赖**：T-P1-112（AgentHost 面）
+- **风险 / 未知**：租约 TTL/心跳不落（无网络传输层——连接生命周期即存活性，记档随 K8 真实传输层）
+- **完成记录**：
+
+#### T-P1-114 · N8 · surface roster（attach/detach 持久事件——词汇表立案 #19） `[ ]`
+- **依据需求**：N8（P1："多端 = surface roster，attach/detach 由事件维护"——"端的加入/离开是持久事件"）——展卡核对结论④
+- **上游首选参考**：[claude-official·claude-code.d.ts](../refs/claude-official/mods/types/claude-code.d.ts)（🔴 专有仓只学语义零代码摘取——surface 枚举 + `$.ui.mount`/`ui.unmount()` 显式挂载/卸载生命周期）
+- **取什么 / 别抄什么**：取"端是 roster 成员、加入/离开是显式生命周期动作"语义；不取其 UI 绘制/元素表面（插件系统域）；**词汇表扩展走 Q9 单向门立案（#19）**
+- **证据强度**：`读了代码`（d.ts 头部 surface 测试范式段 + 我方 events.ts 会话级元事件纪律 + project.ts 校验面）
+- **要产出**：①**词汇表 23→25**：`surface/attach {surfaceId, deliveryKind?}` + `surface/detach {surfaceId, reason?}`（会话级元事件：session/fork 同款纪律——不要求 turn/step 开合上下文、turn 挂流内最后轮空流兜 0、**log-only 不进模型历史**、跨 compaction 保留）；同步面：events.ts（两事件类型 / EVENT_TYPES 25 / 编译闸门）/ project.ts（validation：surfaceId 非空 + deliveryKind 闭集 + detach reason 可选；投影不消费）/ invariants.ts（O7 豁免面）；②`src/host/roster.ts`——`activeRoster(events)` 纯函数（attach/detach 序列 → 当前 roster：attach 入册、detach 出册；**恢复恒等**——同流两次推导相等，T-P1-99"流即状态"先例）；③落流面：T-P1-113 SurfaceConnection 建立/断开 → store.append 两事件（host 层接线）；④revert 切点切割（会话级元事件先例回归）
+- **验收**：`npx vitest run src/host/roster.test.ts src/session/project.test.ts src/kernel/events.test.ts`（扩）——①attach → 入册 + deliveryKind 可选载荷；②detach → 出册 + reason 可选；③重复 attach 同 surfaceId → 幂等（roster 不重复）或类型化拒绝（卡内定形）；④恢复恒等（同流两次推导 + 重读实例相等）；⑤投影/validation：非法载荷拒绝 + log-only（模型历史不含 surface 事件）；⑥EVENT_TYPES 25 + 编译闸门绿；⑦revert 切点切割回归；**#19 立案**（plan-p1-progress.md 待澄清表，含回退面）
+- **依赖**：T-P1-112/T-P1-113（host 连接生命周期是落流面——事件机制可先行、接线随后）
+- **风险 / 未知**：attach/detach 落的是**会话流**（host 连接是会话级事实）——host 进程级 roster（跨会话）不在会话流内（单会话流 = 会话事实源，host 级清单由 registry 内存面承载——两级分域记档）
+- **完成记录**：
+
+#### T-P1-115 · K8 · 端间协议层（hello 握手 + request/response 信封 + host 路由） `[ ]`
+- **依据需求**：K8（P1："端间协议层：内核协议自有 + ACP 适配"——ACP 半边 K4 卡消费）——展卡核对结论⑤
+- **上游首选参考**：[pi·packages/protocol/](../oss/pi/packages/protocol/src/protocol.ts)（hello 版本握手 + request{id,target}/response{id,ok|error{code,message}} 信封 + 严格校验 + 错误消息 500 字符有界 + "Server and worker lifecycle is intentionally outside this public protocol"）
+- **取什么 / 别抄什么**：取握手/信封关联/严格校验/有界错误四形状；**不取** CBOR 与长度前缀帧（JSON 行协议在位——agent-protocol 同款 MAX_LINE_BYTES，debug 可读；二进制优化无消费方）与 serverId/attachmentId 三级路由（单 host sessionId 一级路由 + N1 校验即达，YAGNI）
+- **证据强度**：`读了代码`（protocol.ts/framing.ts/codec.ts/README 全文 + 我方 agent-protocol.ts 协议纪律）
+- **要产出**：①`src/host/protocol.ts`——**自有协议信封**（词汇复用 AgentRequest/AgentMessage——内核协议自有）：端 → host `{type:"hello", version}` / `{type:"request", requestId, sessionId, call: AgentRequest}`；host → 端 `{type:"hello", version}` / `{type:"hello_error", error}` / `{type:"response", requestId, ok:true, result?}|{ok:false, error{code,message}}` / `{type:"event", sessionId, event: SessionEvent}` 推送 + 错误消息 500 字符有界；`PROTOCOL_VERSION = 1`（自有协议首版）；②`HostProtocolServer`——行输入 → JSON 解析 + 信封校验（未知属性拒绝）→ hello 握手（版本不匹配 → hello_error）→ request 按 sessionId 经 HostRegistry 路由 → AgentMessage 出口转 response/event；坏行 → error response 不崩连接（pi ProtocolValidationError 语义的我方适配：信封级错误可回复，帧级不可恢复才断连）；③JSON 行帧 + MAX_LINE_BYTES 复用
+- **验收**：`npx vitest run src/host/protocol.test.ts`——①hello 握手（版本匹配/不匹配 → hello_error）；②request/response requestId 关联（并发请求不串线）；③事件推送按 sessionId 路由；④未知请求类型/未知属性 → error response；⑤超长行拒绝（MAX_LINE_BYTES）；⑥坏 JSON 行 → error response 且连接存活；⑦dispose/断连语义（协议外——记档兑现）
+- **依赖**：T-P1-112（HostRegistry 路由面）
+- **风险 / 未知**：传输层（TCP/Unix socket/stdio）本卡不落——HostProtocolServer 以行迭代器为输入输出接口（真实传输随批次 14 UI 部署形态；记档）
+- **完成记录**：
+
+#### T-P1-116 · N2 · 审批跨端（协议线场景③端到端 + 审批广播） `[ ]`
+- **依据需求**：N2（P1："审批跨端（见 C6）"）——展卡核对结论⑥
+- **上游首选参考**：[opencode·permission/](../oss/opencode/packages/opencode/src/permission)（C5/C6 同锚——答复与发起端解耦）；C6/T-P1-82 在位（source 审计 + 进程内场景③ + approve +source wire 就绪位）
+- **取什么 / 别抄什么**：取"答复可来自任意连接、事实广播全员"；本卡是 host/协议层消费——零新机制（C6 面原样贯穿）
+- **证据强度**：`读了代码`（T-P1-82 完成记录 + owner-port/pending 现状 + T-P1-113 lease 面）
+- **要产出**：①审批广播：agent-child 协议 approval_requested/approval_settled → host → **所有**连接推送（协议 event 信封——"任何通道可答"的端面）；②跨连接场景③端到端：连接 A 开轮 → 审批挂起（A 收到广播）→ A 断开（租约自动释放——T-P1-113 消费）→ 连接 B acquire + request{approve, source:"feishu"} → host 校验持约 → owner-port → 挂起 resolve → A 会话轮继续（turn 完成）+ settled 广播；③非持约连接答复 → NotLeaseHolderError response（C6"答复权随 lease"贯穿）；④审计 replySource 落 L2（T-P1-82 面回归）
+- **验收**：`npx vitest run src/host/protocol.test.ts src/host/lease.test.ts`（扩）——①场景③全链跨连接（A 挂起 → 断开 → B acquire+approve{source} → turn 完成）；②双连接广播（approval_requested 两端各收到一份）；③非持约答复类型化拒绝；④settled 广播 + 审计 source 可检索；⑤超时路径回归（挂起超时按拒绝结算——既有语义不破）
+- **依赖**：T-P1-113（租约贯穿）+ T-P1-115（协议信封）
+- **风险 / 未知**：无（全消费面，零新机制）
+- **完成记录**：
+
+#### T-P1-117 · K4 · ACP 适配（独立域 ≤8 文件 + cli 零 import） `[ ]`
+- **依据需求**：K4（P1："ACP 适配（**独立包**）：仅 8 个文件；**不塞进 CLI 包**（反面见 qwen）"）——展卡核对结论⑦
+- **上游首选参考**：[grok·xai-acp-lib](../oss/grok-build/crates/codegen/xai-acp-lib/src/lib.rs)（8 文件结构 + "库自身只做通道/信箱/转发，wire 类型靠 agent-client-protocol crate"分层 + AcpChannelFailure 类型化通道失败）
+- **取什么 / 别抄什么**：取独立包纪律（文件数硬约束 + 反向 import 断言）与 JSON-RPC over stdio 行协议形状；不抄 Rust 信箱实现与 agent-client-protocol 依赖（我方薄编解码 + 方法映射；ACP 方法名/参数按公开约定最小面落——真实客户端联调时再对齐规范全文，记档）
+- **证据强度**：`读了代码`（lib.rs/Cargo.toml/common.rs 全文 + gateway/message 结构 + 我方 agent-protocol/agent-process 面）
+- **要产出**：①`src/acp/`（**≤8 文件硬约束**，fs 扫描断言）：main.ts（独立启动入口——agent-child 同款）+ jsonrpc.ts（行协议 JSON-RPC 编解码：request{id,method,params}/response{id,result|error}/notification + 类型化解析错误）+ acp-agent.ts（会话映射：initialize/session_new/session_prompt/session_cancel → AgentRequest + 事件 → session_update 通知）+ permission.ts（session_request_permission ↔ approve +source——N2 面复用）+ 其余按需（≤8 内）；②**反向 import 断言**：cli/ 目录零 `from "../acp` import（fs 扫描——"不塞进 CLI 包"机内化）；③acp → kernel/session 单向依赖（无反向）
+- **验收**：`npx vitest run src/acp/acp.test.ts`（含结构断言）——①initialize 握手（协议版本/能力面）；②session_new + session_prompt → 我方 prompt + 事件流映射 session_update（assistant 增量可见）；③session_request_permission → 审批挂起 → 应答回传（ACP response）+ source 透传；④文件数 ≤8 断言 + cli 零 import 断言；⑤坏 JSON-RPC 行类型化错误不崩
+- **依赖**：T-P1-115（协议词汇面）——ACP 是端间协议的另一编码，词汇同源
+- **风险 / 未知**：ACP 规范版本漂移（agent-client-protocol crate 是 unstable 特性）——最小面落（四方法），规范全文对齐随真实客户端联调（记档）
+- **完成记录**：
+
+#### T-P1-118 · N9 · 配置同步子系统（加密 vault + RemoteStore + 导入日志崩溃恢复） `[ ]`
+- **依据需求**：N9（P1："配置跨设备同步（Q20）：加密 vault + 远端存储 + 三方合并 + 导入日志可崩溃恢复；里面有 API key，**加密不是可选项**；独立子系统"）——展卡核对结论⑧（三方合并半边 T-P1-111 先落）
+- **上游首选参考**：[pi-desktop·config_sync/crypto.rs](../oss/pi-desktop/crates/host-core/src/config_sync/crypto.rs)（AES-256-GCM + KDF 参数有界防 DoS + VaultHeader {format, version, vault_id, cipher, kdf, wrap_nonce, wrapped_key} 数据密钥包裹 + rewrap 换口令不重加密）+ transport.rs（远端存储接口面）
+- **取什么 / 别抄什么**：取"数据密钥包裹 + 参数有界 + rewrap + 对象级加解密"四形状与 vault header 字段面；**KDF 用 scrypt 替代 Argon2id**（Node 内置、内存难解型同族——引 npm 原生依赖违反依赖纪律，记档）；WebDav 不落（FileSystemRemoteStore 接口实现——真实远端随部署，记档）
+- **证据强度**：`读了代码`（crypto.rs 80 行核心段 + mod.rs 出口面 + merge.rs 全文 + 我方 dpapi/secure-config.ts 分域对照）
+- **要产出**：①`src/sync/vault.ts`——`createVault(passphrase)`（随机数据密钥 32B + scrypt 派生包裹密钥 + AES-256-GCM 包裹）+ `unlockVault(header, passphrase)`（认证失败类型化拒绝）+ `rewrapVault`（换口令不重加密数据密文）+ `encryptObject/decryptObject`（每对象独立 nonce——**API key 等明文绝不落盘**）+ KDF 参数有界（N/ r/ p 上下限——攻击者控制的 header 不能引发无界内存，checked_kdf 同款）；②`src/sync/store.ts`——`RemoteStore {readManifest/writeManifest}` 接口 + `FileSystemRemoteStore(root)`（本机目录模拟多设备——测试面）；③`src/sync/coordinator.ts`——`syncOnce({localConfig, remote, passphrase})`：capture local → 拉 remote（无则首推）→ unlock 解密 → `threeWayMerge`（T-P1-111）→ 无冲突 apply + **journal 包裹**（`src/sync/journal.ts`：apply 前落 `journal.jsonl` 步进 {op, entityId, done}——中断后重跑：done 步跳过、未 done 步幂等重放——"导入日志可崩溃恢复"验收面）→ push 加密清单；有冲突 → 显式报错零 apply（N10 贯穿）；④与 dpapi/secure-config 分域记档（静态安全配置 vs 跨设备同步两套加密不互通不互替）
+- **验收**：`npx vitest run src/sync/vault.test.ts src/sync/coordinator.test.ts`——①create/unlock 往返 + 错误口令类型化拒绝；②KDF 参数越界拒绝；③rewrap 后旧口令失效、新口令可解且数据密文不变；④encryptObject 密文无明文断言（API key 原文不出现在 vault 文件）；⑤跨"设备"同步：设备 A 推 → 设备 B 拉合并推 → 设备 A 再拉收敛；⑥字段级合并生效（T-P1-111 消费）+ 冲突显式报错零 apply；⑦journal 崩溃恢复：中断点重跑幂等收敛（done 步零重复副作用断言）；⑧首推（remote 空）与后续合并两路
+- **依赖**：T-P1-111（threeWayMerge）
+- **风险 / 未知**：本地配置源（domains 对应物）= settings/providers JSON 快照（卡内定形最小域——models 配置面；pi-desktop 多域 CategorySelection 不做，记档）；vault 元数据（vaultId 等）进 header 明文（pi 同构——header 本身不含密钥）
+- **完成记录**：
+
+#### T-P1-108 · J5 · 第二厂商适配框架 + Anthropic Messages 适配 `[ ]`（#16 已追认 Anthropic——本批展开执行）
+- **依据需求**：J5（P1："多厂商；厂商适配独立成模块"）
+- **上游首选参考**：[opencode·packages/llm/](../oss/opencode/packages/llm)（providers × protocols 分层）；[pi-mono·packages/ai/src/api/anthropic-messages.ts](../oss/pi-mono/packages/ai/src/api/anthropic-messages.ts)（SSE 六事件闭集 + usage 累积 + assertRequestAuth 双鉴权 + content_block 分型）——#16 追认锚点（pi-mono 锚点最厚）
+- **取什么 / 别抄什么**：取 SSE 状态机/累积/双鉴权/块分型四件；不抄其 typebox/SDK 依赖与 thinking-recovery/server-tools（本卡最小面）；**不预先抽象公共适配层**（KISS——第二实现落完再评估提层，占位卡原文）；cache_control 标记面不落（F6 锚检测在位，随 §6.2 真实厂商联调）
+- **证据强度**：`读了代码`（anthropic-messages.ts SSE/鉴权/累积关键段 + 我方 openai-compat.ts/provider.ts 形状 + agent-child --provider 分支）
+- **要产出**：①`src/models/anthropic-messages.ts`——`createAnthropicMessagesProvider(config, {authResolver?})`：POST {baseUrl}/v1/messages + `x-api-key`（或 authorization——authResolver 面接入，J13 先例）+ `anthropic-version` 头 + max_tokens 必填（配置缺省卡内定形）；SSE 解析（event+data 行，六事件闭集 message_start/content_block_*/message_delta/message_stop + **error 事件直接抛**——T-P1-102 偏离②"流中 error 帧"预留判据的真实面 + "ended before message_stop" 兜底）；映射：text_delta → text-delta / thinking_delta → reasoning-delta / input_json_delta → tool-call-delta（按 block index 聚合）/ usage 累积（message_start 起始 + message_delta 累加——pi-mono carry-over 同款）/ message_stop → done；消息映射：system 角色 → 顶层 system 字段（Anthropic wire 形状）/ assistant.toolCalls → content blocks tool_use / tool 结果 → user 消息 tool_result 块（is_error 映射）；②catalog 声明面：anthropic 无 /models 路由的声明行兜底（catalog.ts 纪律③消费）；③agent-child `--provider anthropic` 分支（parseArgs + 装配）；④echo/mock 路径零变化
+- **验收**：`npx vitest run src/models/anthropic-messages.test.ts src/models/catalog.test.ts src/kernel/agent-child.test.ts`（扩，http-mock SSE 流）——①文本/思考/工具块三类增量映射（含 block index 聚合）；②usage 累积（start + delta 求和落 usage chunk）；③message_stop → done 且流正常终止；④流中 error 事件 → 类型化抛出（provider 层语义——J26 分类消费）；⑤提前断流 → "before message_stop" 兜底抛；⑥第二轮请求 wire 断言：system 顶层 + tool_use/tool_result 块形状（历史往返不丢）；⑦authResolver 每请求现取（T-P1-106 面复用）；⑧catalog anthropic 声明行兜底 + agent-child --provider anthropic 装配通
+- **依赖**：无（models 域独立；T-P1-106 AuthResolver 面在位）
+- **风险 / 未知**：真实厂商联调成本（批次 1 有真实厂商实测先例——本卡 http-mock 钉死 wire 语义，真实端点随 §6.2）；max_tokens 缺省值与 prompt 缓存标记策略卡内记档
+- **完成记录**：
+
+#### T-P1-120 · 收口 · 多端架构盘点 + 快照 `[ ]`
+- **依据需求**：批次 12 收口（照批次 4~11 收口先例；无独立需求 ID）
+- **上游首选参考**：批次 11 T-P1-109 先例
+- **取什么 / 别抄什么**：八面盘点：①K3 全局限器 × 会话级 toolClassLimits × B17 RwLock——三层并发控制次序与计数面（全局外层排队、会话内层、工具级互斥各司其职）；②N7 run 租约 × N6 owner-port 命令面——租约校验单点（host 面校验与 port 面校验的双重语义：连接层准入 + 命令层校验不冲突不重复）；③N8 roster 事件 × 会话流纪律——log-only 零模型历史污染 + 恢复恒等 + host 级清单与会话流两级分域；④K8 端间协议 × agent-protocol 父子协议——词汇同源 + 信封分域 + 两协议不漂移的保证面；⑤K4 ACP × K8 自有协议——映射边界（ACP 词汇不漏进内核协议/事件词汇表）+ 文件数与 import 断言机内化；⑥N2 跨端审批 × C54 分类 × C6 source 审计——跨连接答复的审计链完整面；⑦N9 vault × dpapi secure-config——两套加密分域（静态安全配置 vs 跨设备同步）；⑧快照即规格：跨端场景③全链一条（A 开轮挂起 → 断开 → B acquire+approve{source} → 轮继续）或 roster 生命周期一条（attach → 使用 → detach → 重启重建）
+- **证据强度**：`读了代码`（本批全部新产交叉核对）
+- **要产出**：八面盘点结论 + 快照一条 + 全量回归 + #19 立案状态复核（#19 在案待追认）
+- **验收**：`npx vitest run`（全量回归）+ 盘点清单入完成记录；发现真冲突 → 升级待澄清不硬落
+- **依赖**：T-P1-110 ~ 118 + T-P1-108 全部
+- **风险 / 未知**：无
+- **完成记录**：
+
+## 批次 12 完成定义
+
+- 11 张卡全部打勾 ✅（T-P1-110 ~ 118 + 108 + 120，每勾附「命令 + 结果摘要」）；`npx tsc --noEmit` 全程干净 ✅；`count-features.sh` = 310 不变 ✅、`check-doc-links.sh` 链接 0 失效（显式传参全量）✅、`license-audit.sh` exit 0 ✅。
+- 词汇表一案走立案管线（#19 surface/attach + surface/detach 23→25，含回退面）供追认；`l0-events.md` §8 落地记录 19 同步；其余卡零事件零载荷扩展 ✅。
+- K4 结构红线机内化 ✅：src/acp ≤8 文件 + cli 零 import 断言在位；K8 自有协议词汇同源（AgentRequest/AgentMessage 复用）✅；N10 三方合并 last-write-wins 禁止红线 ✅；N9 vault 明文不落盘断言 ✅。
+- 盘点结论落批次报告（T-P1-120）✅ → `plan-p1-progress.md` 批次 12 报告 + 批次 13 提示词 + 全量基线更新 ✅。
