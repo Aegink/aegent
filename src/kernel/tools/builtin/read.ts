@@ -14,7 +14,7 @@
 import * as path from "node:path";
 import { PathGuard, PathGuardError } from "../../../sandbox/path-guard.js";
 import type { ToolDef } from "../registry.js";
-import { toolError } from "./util.js";
+import { contentHash, toolError } from "./util.js";
 
 export interface ReadArgs {
   path: string;
@@ -26,7 +26,7 @@ export function createReadTool(options: { pathGuard: PathGuard }): ToolDef {
   return {
     name: "read",
     parallel: true, // B17：纯读，声明可并行（parallel 模式持读锁）
-    async execute(args) {
+    async execute(args, ctx) {
       const { path: filePath, offset, limit } = args as Partial<ReadArgs>;
       if (typeof filePath !== "string" || filePath === "") {
         return toolError("ReadError", "INVALID_ARGUMENTS", "read 需要 path（非空字符串）");
@@ -74,6 +74,9 @@ export function createReadTool(options: { pathGuard: PathGuard }): ToolDef {
       if (end < lines.length) {
         content += `\n\n[Showing lines ${String(start + 1)}-${String(end)} of ${String(lines.length)}. Use offset=${String(end + 1)} to continue.]`;
       }
+      // C12 读记账（可选装配）：记全文件内容哈希（窗口读也算观察——
+      // version 语义，dsh 同款）
+      ctx?.readGate?.recordRead(path.resolve(filePath), contentHash(text));
       return { content };
     },
   };

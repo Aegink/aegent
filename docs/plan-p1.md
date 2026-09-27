@@ -1064,7 +1064,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **偏离 / 建议**：①extendProtectedNames 的幂等键 = trim + 小写（与段匹配方言一致）；返回的新清单同样 freeze（只追加纪律延续）。②追加生效于调用方持有的清单实例——findProtectedMetadataSegment 加可选 names 参数（默认原清单）作参数化预留，主动接线（用户配置/插件扩展保护名）随真实需求落（YAGNI）。③"warn 留痕"落两处：QuestionToolDeps.onWarn 回调（assembly 注入 logger.warn）+ 工具结果 meta 的 questionTruncated/questionOriginalLength（tool/result 落流可检索）。④审批提示有界自动达成——question 挂起的审批/问答展示用截断后 hint（同一 pending.ask 载荷），其余审批请求 args 是执行输入非提示文本不截断。
 - **完成记录**：①protected-names.ts/self-guard.ts 两清单 Object.freeze（mutate throw）+ extendProtectedNames 唯一追加入口（返回新冻结清单、重复幂等、空串忽略）。②question.ts 加 MAX_USER_HINT_LENGTH=200 导出（qwen MAX_TRUSTED_USER_ANSWER_QUESTION_CHARS=200 同款——模型作者文本按分类器用户提示有界）+ 超界截断（hint 进 pending.ask 与问答展示）+ onWarn 依赖 + meta 留痕；assembly 注入 onWarn。③验收：`npx vitest run src/policy/protected-names.test.ts src/policy/self-guard.test.ts src/cli/cli.test.ts` → **32 passed**——①extendProtectedNames 追加生效且原清单不变 ✓；②重复追加幂等（含大小写/空白变体）✓；③CLI 端到端：320 字符问题 ❓ 行渲染 200 字符截断版、答复照常回喂、turn completed ✓；freeze 证伪两清单各一 ✓；既有保护行为回归全绿 ✓；`npx tsc --noEmit` 干净。
 
-#### T-P1-71 · C12+C13 · 编辑前必须先读（可选装配模块） `[ ]`
+#### T-P1-71 · C12+C13 · 编辑前必须先读（可选装配模块） `[x]`
 - **依据需求**：C12（P1："编辑前必须先读；写入必须基于已读版本"）· C13（P1："策略层不可 in-path 强制——不想要该策略的部署能整体丢弃它，工具仍可用"）
 - **上游首选参考**：[dsh·file-context-as-event-gate.md](../oss/deepseek-harness/.agents/notes/implemented/architecture/2026-06-26-file-context-as-event-gate.md)（全文 173 行：读记账门控 + 可整体丢弃的策略层）
 - **取什么 / 别抄什么**：取"未读先编辑拒、基于旧版本写入拒"与"策略可整体丢弃"；edit 的 oldText 精确匹配天然拒旧版本写入（版本失配 = NOT_FOUND）——补"已读记账"半边；不抄其事件总线形状
@@ -1073,8 +1073,8 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **验收**：`npx vitest run src/policy/read-gate.test.ts src/kernel/tools/builtin/builtin.test.ts`（扩）——①未读先 edit → EDIT_WITHOUT_READ；②读后 edit 放行；③读后外部修改 → EDIT_STALE_READ；④apply_patch update 未读目标拒绝且零变更；⑤readGate 缺省 → 工具照常（C13 整体丢弃）；⑥write 新文件豁免
 - **依赖**：无
 - **风险 / 未知**：apply_patch 的 delete 也要求已读（删除是写面），卡内定形
-- **偏离 / 建议**：（留白）
-- **完成记录**：
+- **偏离 / 建议**：①哈希通道：策略层不做 I/O（dsh 关键架构决策的本卡对应物）——contentHash（sha256，util.ts）由工具在真实读写时顺带计算传入；ReadGateService 纯内存记账。②"写入必须基于已读版本"的双半边：ReadGate 哈希比对（读后外部修改显式检测）+ edit 的 oldText 精确匹配（既有，版本失配 = OLD_TEXT_NOT_FOUND）互补。③记账语义照 dsh：写/编辑成功后 recordRead 新内容哈希（create-then-edit / edit-then-edit 无需中间读）；delete 成功后 forget（后续编辑由文件层 NOT_FOUND 拒）。④apply_patch 的 move 目标（moveAbs）不校验已读（卡面只要求 update 目标逐个 + delete；move 本质 update+rename，rename 目标覆盖场景记为已知边界）。⑤write 覆盖校验的文件存在性探测经守卫唯一入口（read 命中 ENOENT = 新文件豁免；越界/IO 错误在探测面就落不吞）；readGate 未启用时零额外 I/O。⑥接线通道：ToolContext +readGate 键（env.test 键封闭清单同步——policy 服务无进程能力不违 D4）→ registry 构造注入 → ctx；子代理 subRegistry 不传（可选装配不含子代理，记档）。⑦dsh 的事件瀑布/single-slot 形状不取——我方工具直调 ctx.readGate 可选方法（undefined = 不启用），等价达成"策略可整体丢弃"且无事件词汇成本。
+- **完成记录**：①read-gate.ts 新建——ReadGateService（recordRead/forget/requireRead）+ ReadGateError（EDIT_WITHOUT_READ / EDIT_STALE_READ）。②接线：read 成功后 recordRead（窗口读也记全文件哈希）；edit 执行前 requireRead（队列内、oldText 匹配前）+ 写后记账更新；write 覆盖前 requireRead（新文件豁免）+ 写后记账；apply_patch update 目标逐个校验（验证阶段拒绝 = 零变更）+ delete 同款 + 成功后记账/forget。③装配：assembly +readGate 选项 → agent-process registry 注入 → ctx；缺省 undefined = 不启用。④验收：`npx vitest run src/policy/read-gate.test.ts src/kernel/tools/builtin/builtin.test.ts` → **49 passed**——①未读先 edit → EDIT_WITHOUT_READ ✓；②读后 edit 放行 ✓；③读后外部修改 → EDIT_STALE_READ ✓；④apply_patch update/delete 未读拒绝且零变更 ✓；⑤readGate 缺省 → 工具照常（C13 整体丢弃）✓；⑥write 新文件豁免、覆盖未读拒、覆盖已读放行 ✓；edit-then-edit 无中间读 ✓；apply-patch/env 回归全绿；`npx tsc --noEmit` 干净。
 
 #### T-P1-72 · C17 · 插件事件泛型逃生舱（词汇表 20→21 立案） `[ ]`
 - **依据需求**：C17（P1："若需插件事件，只开一个泛型逃生舱类型，不改词汇表机制"）

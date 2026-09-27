@@ -12,11 +12,12 @@
 
 import * as path from "node:path";
 import { PathGuard, PathGuardError } from "../../../sandbox/path-guard.js";
+import { ReadGateError } from "../../../policy/read-gate.js";
 import type { JsonValue } from "../../events.js";
 import type { ToolExecutionResult } from "../../loop.js";
 import type { ToolDef } from "../registry.js";
 import type { WriteQueue } from "../write-queue.js";
-import { toolError } from "./util.js";
+import { contentHash, toolError } from "./util.js";
 
 export interface EditArgs {
   path: string;
@@ -43,7 +44,7 @@ export function createEditTool(options: {
   const guard = options.pathGuard;
   return {
     name: "edit",
-    async execute(args) {
+    async execute(args, ctx) {
       const { path: filePath, oldText, newText } = args as Partial<EditArgs>;
       if (typeof filePath !== "string" || filePath === "") {
         return toolError("EditError", "INVALID_ARGUMENTS", "edit 需要 path（非空字符串）");
@@ -80,6 +81,17 @@ export function createEditTool(options: {
             `读取 ${filePath} 失败：${(e as Error).message}`,
           );
         }
+        // C12 编辑前必须先读（可选装配，T-P1-71）：未读 → EDIT_WITHOUT_READ、
+        // 读后外部修改（哈希失配）→ EDIT_STALE_READ；oldText 精确匹配是
+        // "基于已读版本"的第二半边保证（失配 = OLD_TEXT_NOT_FOUND）
+        try {
+          ctx?.readGate?.requireRead(abs, contentHash(text));
+        } catch (e) {
+          if (e instanceof ReadGateError) {
+            return toolError("ReadGateError", e.code, e.message);
+          }
+          throw e;
+        }
         const occurrences = countOccurrences(text, oldText);
         if (occurrences === 0) {
           return toolError(
@@ -109,6 +121,8 @@ export function createEditTool(options: {
             `写回 ${filePath} 失败：${(e as Error).message}`,
           );
         }
+        // 写后记账更新为新版本（dsh 同款：edit-then-edit 无需中间读）
+        ctx?.readGate?.recordRead(abs, contentHash(next));
         return {
           content: `Edited ${filePath} (1 replacement, ${String(Buffer.byteLength(next, "utf8"))} bytes written)`,
         };

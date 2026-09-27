@@ -7,6 +7,7 @@ import { NodeExecutionEnv } from "../env.js";
 import { PathGuard } from "../../../sandbox/path-guard.js";
 import { seedTextFile } from "../../../test-support/tmp-fs.js";
 import { registerBuiltinTools } from "./index.js";
+import { ReadGateService } from "../../../policy/read-gate.js";
 
 const tmpDirs: string[] = [];
 afterEach(() => {
@@ -658,5 +659,138 @@ describe("bash 沙箱升级（B15/T-P1-58）", () => {
     const perm = (bash!.parameters as { properties: { sandboxPermissions: { enum: string[] } } })
       .properties.sandboxPermissions;
     expect(perm.enum).toEqual(["workspace-write", "danger-full-access"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C12/C13 编辑前必须先读（T-P1-71）：readGate 提供时记账 + 校验；缺省
+// undefined = 整体丢弃（工具照常用）。
+// ---------------------------------------------------------------------------
+
+describe("C12/C13 · 编辑前必须先读（可选装配）", () => {
+  function readGateTools(dir: string): { registry: ToolRegistry; gate: import("../../../policy/read-gate.js").ReadGateService } {
+    const gate = new ReadGateService();
+    const registry = new ToolRegistry({ readGate: gate });
+    registerBuiltinTools(registry, { pathGuard: PathGuard.forWorkspace(dir) });
+    return { registry, gate };
+  }
+
+  it("验收①：未读先 edit → EDIT_WITHOUT_READ；验收②：读后 edit 放行", async () => {
+    const dir = tempDir();
+    const file = path.join(dir, "code.txt");
+    seedTextFile(file, "hello world\n");
+    const { registry } = readGateTools(dir);
+
+    const unread = await dispatch(registry, "edit", {
+      path: file,
+      oldText: "hello",
+      newText: "hi",
+    });
+    expect(unread.isError).toBe(true);
+    expect(unread.error?.code).toBe("EDIT_WITHOUT_READ");
+
+    await dispatch(registry, "read", { path: file });
+    const ok = await dispatch(registry, "edit", {
+      path: file,
+      oldText: "hello",
+      newText: "hi",
+    });
+    expect(ok.isError).toBeUndefined();
+  });
+
+  it("验收③：读后外部修改 → EDIT_STALE_READ", async () => {
+    const dir = tempDir();
+    const file = path.join(dir, "stale.txt");
+    seedTextFile(file, "v1\n");
+    const { registry } = readGateTools(dir);
+    await dispatch(registry, "read", { path: file });
+    // 外部修改（不经工具，绕过记账）
+    seedTextFile(file, "v2 (external write)\n");
+    const result = await dispatch(registry, "edit", {
+      path: file,
+      oldText: "v2",
+      newText: "v3",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.error?.code).toBe("EDIT_STALE_READ");
+  });
+
+  it("edit 后再 edit 无需中间读（写后记账 = 新基线）", async () => {
+    const dir = tempDir();
+    const file = path.join(dir, "twice.txt");
+    seedTextFile(file, "aaa bbb\n");
+    const { registry } = readGateTools(dir);
+    await dispatch(registry, "read", { path: file });
+    const first = await dispatch(registry, "edit", { path: file, oldText: "aaa", newText: "ccc" });
+    expect(first.isError).toBeUndefined();
+    const second = await dispatch(registry, "edit", { path: file, oldText: "bbb", newText: "ddd" });
+    expect(second.isError).toBeUndefined();
+  });
+
+  it("验收④：apply_patch update 未读目标拒绝且零变更；delete 同款（卡内定形）", async () => {
+    const dir = tempDir();
+    const file = path.join(dir, "patched.txt");
+    seedTextFile(file, "original\n");
+    const { registry } = readGateTools(dir);
+    // patch 内路径与 read/write 同语义（path.resolve 相对进程 cwd）——
+    // 用工作区内绝对路径（正斜杠形式，apply-patch.test 同款）
+    const target = `${dir.split(path.sep).join("/")}/patched.txt`;
+
+    const update = await dispatch(registry, "apply_patch", {
+      patchText: `*** Begin Patch\n*** Update File: ${target}\n@@\n-original\n+changed\n*** End Patch`,
+    });
+    expect(update.isError).toBe(true);
+    expect(update.error?.code).toBe("EDIT_WITHOUT_READ");
+    expect(readFileSync(file, "utf8")).toBe("original\n"); // 零变更
+
+    const del = await dispatch(registry, "apply_patch", {
+      patchText: `*** Begin Patch\n*** Delete File: ${target}\n*** End Patch`,
+    });
+    expect(del.isError).toBe(true);
+    expect(del.error?.code).toBe("EDIT_WITHOUT_READ");
+    expect(existsSync(file)).toBe(true); // 未删除
+
+    // 读后 update 放行，且 edit-then-patch 无需中间读
+    await dispatch(registry, "read", { path: file });
+    const ok = await dispatch(registry, "apply_patch", {
+      patchText: `*** Begin Patch\n*** Update File: ${target}\n@@\n-original\n+changed\n*** End Patch`,
+    });
+    expect(ok.isError).toBeUndefined();
+    const second = await dispatch(registry, "apply_patch", {
+      patchText: `*** Begin Patch\n*** Update File: ${target}\n@@\n-changed\n+changed2\n*** End Patch`,
+    });
+    expect(second.isError).toBeUndefined();
+  });
+
+  it("验收⑥：write 新文件豁免；覆盖未读拒；覆盖已读放行", async () => {
+    const dir = tempDir();
+    const existing = path.join(dir, "exists.txt");
+    seedTextFile(existing, "old\n");
+    const fresh = path.join(dir, "fresh.txt");
+    const { registry } = readGateTools(dir);
+
+    const create = await dispatch(registry, "write", { path: fresh, content: "new\n" });
+    expect(create.isError).toBeUndefined(); // 新文件豁免
+
+    const overwrite = await dispatch(registry, "write", { path: existing, content: "x\n" });
+    expect(overwrite.isError).toBe(true);
+    expect(overwrite.error?.code).toBe("EDIT_WITHOUT_READ");
+
+    await dispatch(registry, "read", { path: existing });
+    const ok = await dispatch(registry, "write", { path: existing, content: "read-then-overwrite\n" });
+    expect(ok.isError).toBeUndefined();
+  });
+
+  it("验收⑤：readGate 缺省（C13 整体丢弃）→ 未读先 edit 照常成功", async () => {
+    const dir = tempDir();
+    const file = path.join(dir, "free.txt");
+    seedTextFile(file, "hello\n");
+    const registry = toolsWith(dir); // 无 readGate
+    const result = await dispatch(registry, "edit", {
+      path: file,
+      oldText: "hello",
+      newText: "hi",
+    });
+    expect(result.isError).toBeUndefined();
   });
 });

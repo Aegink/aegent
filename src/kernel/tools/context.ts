@@ -17,6 +17,7 @@
  */
 
 import type { ExecutionEnv } from "./env.js";
+import type { ReadGateService } from "../../policy/read-gate.js";
 
 export interface ToolContext {
   readonly env?: ExecutionEnv;
@@ -24,4 +25,10 @@ export interface ToolContext {
   readonly signal?: AbortSignal;
   /** B7 进度上报：message 进 `tool/progress` 事件（所属 tool/call 未闭合期间有效）。 */
   readonly reportProgress?: (message: string) => void;
+  /**
+   * C12/C13 编辑前必须先读（T-P1-71）：会话内观察态记账服务。可选装配
+   * ——缺省 undefined = 不启用（C13 整体丢弃，工具照常用）；提供时
+   * read 记账、edit/write/apply_patch 校验。
+   */
+  readonly readGate?: ReadGateService;
 }

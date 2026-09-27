@@ -11,10 +11,11 @@
 
 import * as path from "node:path";
 import { PathGuard, PathGuardError } from "../../../sandbox/path-guard.js";
+import { ReadGateError } from "../../../policy/read-gate.js";
 import type { ToolExecutionResult } from "../../loop.js";
 import type { ToolDef } from "../registry.js";
 import type { WriteQueue } from "../write-queue.js";
-import { toolError } from "./util.js";
+import { contentHash, toolError } from "./util.js";
 
 export interface WriteArgs {
   path: string;
@@ -29,7 +30,7 @@ export function createWriteTool(options: {
   const guard = options.pathGuard;
   return {
     name: "write",
-    async execute(args) {
+    async execute(args, ctx) {
       const { path: filePath, content } = args as Partial<WriteArgs>;
       if (typeof filePath !== "string" || filePath === "") {
         return toolError("WriteError", "INVALID_ARGUMENTS", "write 需要 path（非空字符串）");
@@ -39,6 +40,39 @@ export function createWriteTool(options: {
       }
       const abs = path.resolve(filePath);
       const doWrite = async (): Promise<ToolExecutionResult> => {
+        // C12 覆盖已有文件须基于已读版本（可选装配，T-P1-71）；create 新
+        // 文件豁免（不存在 = 无"旧版本"可言，dsh createIfAbsent 同构）。
+        // 探测经守卫唯一入口：read 命中 ENOENT 即新文件；越界/IO 错误在
+        // 探测面就落（不吞——落盘路径会重复同样的错误，提前返回更可读）。
+        if (ctx?.readGate !== undefined) {
+          let currentText: string | undefined;
+          try {
+            currentText = await guard.read(abs);
+          } catch (e) {
+            if (e instanceof PathGuardError) {
+              return toolError("WriteError", e.code, e.message);
+            }
+            const code = (e as NodeJS.ErrnoException).code;
+            if (code !== "ENOENT") {
+              return toolError(
+                "WriteError",
+                code ?? "IO_ERROR",
+                `读取 ${filePath} 失败：${(e as Error).message}`,
+              );
+            }
+            // ENOENT = 新文件（豁免）
+          }
+          if (currentText !== undefined) {
+            try {
+              ctx.readGate.requireRead(abs, contentHash(currentText));
+            } catch (e) {
+              if (e instanceof ReadGateError) {
+                return toolError("ReadGateError", e.code, e.message);
+              }
+              throw e;
+            }
+          }
+        }
         try {
           await guard.write(abs, content);
         } catch (e) {
@@ -51,6 +85,8 @@ export function createWriteTool(options: {
             `写入 ${filePath} 失败：${(e as Error).message}`,
           );
         }
+        // 写后记账 = 新版本（后续覆盖/编辑的合法基线）
+        ctx?.readGate?.recordRead(abs, contentHash(content));
         return {
           content: `Successfully wrote to ${filePath} (${String(Buffer.byteLength(content, "utf8"))} bytes)`,
         };

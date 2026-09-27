@@ -1,5 +1,6 @@
 /** 内置工具共用的小件：可预期失败的统一落法。 */
 
+import { createHash } from "node:crypto";
 import type { ToolExecutionResult } from "../../loop.js";
 
 /**
@@ -19,4 +20,12 @@ export function toolError(
     isError: true,
     error: { name, code, ...(reason !== undefined ? { reason } : {}) },
   };
+}
+
+/**
+ * 内容哈希（C12 读记账的新鲜度基线，T-P1-71）：sha256 hex。工具在真实
+ * 读写时顺带计算传给 ReadGateService——策略层自身不做 I/O。
+ */
+export function contentHash(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex");
 }

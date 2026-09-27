@@ -67,7 +67,7 @@ describe("NodeExecutionEnv（D4 实现层，真实 bash 执行）", () => {
 
 describe("ToolContext 类型面（D4 的编译期证明）", () => {
   it("键集合封闭：除 env/toolCallId/signal/reportProgress 外多出任何键即编译失败", () => {
-    type AllowedKeys = "env" | "toolCallId" | "signal" | "reportProgress";
+    type AllowedKeys = "env" | "toolCallId" | "signal" | "reportProgress" | "readGate";
     // 若有人给 ToolContext 加 spawn/exec/proc 等裸进程 API 字段，
     // 下一行的 Exclude 不再收窄为 never，此文件编译失败——这是特性（C16 同款）。
     const _forbidden: AssertNever<Exclude<keyof ToolContext, AllowedKeys>> = true;

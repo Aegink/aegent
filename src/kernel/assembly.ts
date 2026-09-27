@@ -255,6 +255,12 @@ export interface ChildAssemblyOptions {
    */
   trustService?: import("../policy/project-trust.js").ProjectTrustService;
   /**
+   * C12/C13 编辑前必须先读（T-P1-71）：提供 ReadGateService 时 read 记账、
+   * edit/write/apply_patch 校验（未读拒/过期拒）。缺省 undefined = 不启用
+   * （C13 整体丢弃，工具照常用）。
+   */
+  readGate?: import("../policy/read-gate.js").ReadGateService;
+  /**
    * G3/G6 会话目标（T-P1-12）：提供时构造 GoalService——新会话（流内无
    * goal 事实）以此落初始 goal/set 事件；已有 goal 事实的会话按流重建
    * （goalFromEvents，流内权威——J14 回放保护同款），选项初始值不落。

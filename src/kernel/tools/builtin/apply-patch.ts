@@ -29,10 +29,11 @@
 
 import * as path from "node:path";
 import { PathGuard, PathGuardError } from "../../../sandbox/path-guard.js";
+import { ReadGateError } from "../../../policy/read-gate.js";
 import type { ToolExecutionResult } from "../../loop.js";
 import type { ToolDef } from "../registry.js";
 import type { WriteQueue } from "../write-queue.js";
-import { toolError } from "./util.js";
+import { contentHash, toolError } from "./util.js";
 
 export interface ApplyPatchArgs {
   patchText: string;
@@ -355,7 +356,7 @@ export function createApplyPatchTool(options: {
   const guard = options.pathGuard;
   return {
     name: "apply_patch",
-    async execute(args) {
+    async execute(args, ctx) {
       const { patchText } = args as Partial<ApplyPatchArgs>;
       if (typeof patchText !== "string" || patchText.trim() === "") {
         return toolError("ApplyPatchError", "INVALID_ARGUMENTS", "apply_patch 需要 patchText（非空字符串）");
@@ -406,6 +407,45 @@ export function createApplyPatchTool(options: {
           continue;
         }
         if (hunk.type === "delete") {
+          // C12（T-P1-71）：删除也是写面——delete 目标同样要求已读且新鲜
+          //（卡内定形）。读一次拿当前哈希做校验（未读/失配在验证阶段拒绝，
+          // 零变更）。
+          if (ctx?.readGate !== undefined) {
+            let deleteText: string;
+            try {
+              deleteText = await guard.read(path.resolve(hunk.path));
+            } catch (e) {
+              if (e instanceof PathGuardError) {
+                return toolError("ApplyPatchError", e.code, e.message);
+              }
+              if ((e as NodeJS.ErrnoException).code === "ENOENT") {
+                return {
+                  ...toolError(
+                    "ApplyPatchError",
+                    "HUNK_NOT_APPLIED",
+                    `Failed to read file to delete: ${hunk.path}（文件不存在）`,
+                  ),
+                  meta: { mutationPaths: patchHunkPaths(hunk) },
+                };
+              }
+              return toolError(
+                "ApplyPatchError",
+                (e as NodeJS.ErrnoException).code ?? "IO_ERROR",
+                `读取 ${hunk.path} 失败：${(e as Error).message}`,
+              );
+            }
+            try {
+              ctx.readGate.requireRead(path.resolve(hunk.path), contentHash(deleteText));
+            } catch (e) {
+              if (e instanceof ReadGateError) {
+                return {
+                  ...toolError("ReadGateError", e.code, e.message),
+                  meta: { mutationPaths: patchHunkPaths(hunk) },
+                };
+              }
+              throw e;
+            }
+          }
           changes.push({ kind: "delete", path: hunk.path, abs: path.resolve(hunk.path) });
           continue;
         }
@@ -444,6 +484,21 @@ export function createApplyPatchTool(options: {
             ...toolError("ApplyPatchError", "HUNK_NOT_APPLIED", (e as Error).message),
             meta: { mutationPaths: patchHunkPaths(hunk) },
           };
+        }
+        // C12（T-P1-71）：update 目标逐个校验已读 + 新鲜度（验证阶段拒绝 =
+        // 零变更）；成功后的新内容哈希在阶段二记账
+        if (ctx?.readGate !== undefined) {
+          try {
+            ctx.readGate.requireRead(path.resolve(hunk.path), contentHash(text));
+          } catch (e) {
+            if (e instanceof ReadGateError) {
+              return {
+                ...toolError("ReadGateError", e.code, e.message),
+                meta: { mutationPaths: patchHunkPaths(hunk) },
+              };
+            }
+            throw e;
+          }
         }
         changes.push({
           kind: "update",
@@ -495,6 +550,15 @@ export function createApplyPatchTool(options: {
           applied.push(
             queue ? await queue.run(action, () => applyChange(change)) : await applyChange(change),
           );
+          // C12（T-P1-71）：成功后记账为新版本（dsh 同款——create-then-edit /
+          // edit-then-edit 无需中间读）；delete 清记账（后续编辑由文件层拒）
+          if (ctx?.readGate !== undefined) {
+            if (change.kind === "delete") {
+              ctx.readGate.forget(change.abs);
+            } else {
+              ctx.readGate.recordRead(change.abs, contentHash(change.content));
+            }
+          }
         }
       } catch (e) {
         return toolError(

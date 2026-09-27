@@ -250,6 +250,10 @@ export async function runAgentChildStdio(
     env: new NodeExecutionEnv(),
     sessionId,
     ...(options.spillDir !== undefined ? { spillDir: options.spillDir } : {}),
+    // C12/C13：读记账（可选装配，缺省不启用——工具照常用）
+    ...(options.assembly?.readGate !== undefined
+      ? { readGate: options.assembly.readGate }
+      : {}),
   });
   registerBuiltinTools(
     toolRegistry,

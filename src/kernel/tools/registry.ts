@@ -138,6 +138,9 @@ export class ToolRegistry {
   private readonly guard:
     | ((name: string, args: JsonRecord) => Promise<ToolGuardOutcome>)
     | undefined;
+  private readonly readGate:
+    | import("../../policy/read-gate.js").ReadGateService
+    | undefined;
 
   /**
    * @param descriptionsDir 描述目录；缺省为同目录的 `descriptions/`。
@@ -160,6 +163,8 @@ export class ToolRegistry {
     spillDir?: string;
     spillMaxFiles?: number;
     guard?: (name: string, args: JsonRecord) => Promise<ToolGuardOutcome>;
+    /** C12/C13 读记账服务（可选装配，T-P1-71）；缺省不启用。 */
+    readGate?: import("../../policy/read-gate.js").ReadGateService;
   }) {
     this.descriptionsDir =
       options?.descriptionsDir ??
@@ -169,6 +174,7 @@ export class ToolRegistry {
     this.spillDir = options?.spillDir;
     this.spillMaxFiles = options?.spillMaxFiles ?? DEFAULT_SPILL_MAX_FILES;
     this.guard = options?.guard;
+    this.readGate = options?.readGate;
   }
 
   /** 注册一个工具；重名是装配错误，立刻失败。 */
@@ -323,6 +329,7 @@ export class ToolRegistry {
       ...(this.env !== undefined ? { env: this.env } : {}),
       ...(call.report ? { reportProgress: call.report } : {}),
       ...(call.signal ? { signal: call.signal } : {}),
+      ...(this.readGate !== undefined ? { readGate: this.readGate } : {}),
     };
     // M6：工具声明 timeoutMs 则在执行外包总预算——超时转结构化 isError
     // 结果（code=TOOL_TIMEOUT，dsh toolTimeoutResult 同构：模型看到的是
