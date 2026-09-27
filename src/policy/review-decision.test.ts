@@ -40,12 +40,18 @@ describe("C48 · 提案由引擎计算", () => {
   });
 
   it("未登记匹配器 / 命令缺失的工具调用无法生成提案（批准只能一次性）", () => {
+    // T-P1-68 分型路由后 write（path）有 patternOf 可生成提案——
+    // 不可提案面换 literal 工具（grep 未注册、patternOf 缺省 undefined）
     expect(
-      proposeAmendment({ tool: "write", args: { path: "/a" } }, builtinRuleMatchers),
+      proposeAmendment({ tool: "grep", args: { pattern: "x" } }, builtinRuleMatchers),
     ).toBeUndefined();
     expect(
       proposeAmendment({ tool: "bash", args: {} }, builtinRuleMatchers),
     ).toBeUndefined();
+    // write 调用的批准可升级为 path 规则提案（C48 语义扩展至 path 分型）
+    expect(
+      proposeAmendment({ tool: "write", args: { path: "/a" } }, builtinRuleMatchers),
+    ).toEqual({ raw: "write(/a)", permission: "write", pattern: "/a" });
   });
 });
 
@@ -93,7 +99,7 @@ describe("验收② · 会话作用域批准：同会话免再问，新会话重
   const askRules = createRuleSetModule({
     name: "user-rules",
     rules: loadRules([{ raw: "bash(git *)", action: "ask" }], matchers),
-    match: loadedRuleMatch(matchers),
+    match: loadedRuleMatch(),
     ruleText: (rule) => rule.raw,
   });
   const cache = new ApprovalScopeCache();

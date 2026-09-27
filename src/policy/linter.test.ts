@@ -22,7 +22,6 @@ function lint(raw: string, line?: number) {
   );
   return lintRules(rules, {
     knownToolNames: KNOWN_TOOLS,
-    matchers: builtinRuleMatchers,
   });
 }
 
@@ -76,5 +75,22 @@ describe("C23 · 策略自检扩面（T-P1-66）", () => {
       { name: "a__", kind: "incomplete-namespace-name" },
       { name: "ghost", kind: "unknown-tool" },
     ]);
+  });
+});
+
+describe("C53 · basename 参数规则绑绝对路径（T-P1-68）", () => {
+  it("验收⑤：command 分型裸 basename 规则报 basename-unanchored（可检索）", () => {
+    const [issue] = lint("bash(git)", 7);
+    expect(issue).toMatchObject({
+      kind: "basename-unanchored",
+      raw: "bash(git)",
+      line: 7,
+    });
+    expect(issue?.detail).toContain("PATH");
+
+    // 非 basename 形状不报：带空格 glob / 含路径分隔 / 非 command 分型
+    expect(lint("bash(git *)").map((i) => i.kind)).toEqual([]);
+    expect(lint("bash(C:\\tools\\git.exe *)").map((i) => i.kind)).toEqual([]);
+    expect(lint("read(secrets)", 1).map((i) => i.kind)).toEqual([]); // path 分型非 basename 语义
   });
 });

@@ -412,7 +412,6 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
   // （装配会让有其他活规则的配置整体不可用过狠）——警告落日志可检索。
   const lintIssues = lintRules(loadedRules, {
     knownToolNames: options.knownToolNames ?? BUILTIN_TOOL_NAMES,
-    matchers: builtinRuleMatchers,
   });
   for (const issue of lintIssues) {
     logger?.warn(`policy-lint: [${issue.kind}] ${issue.raw} —— ${issue.detail}`);
@@ -429,7 +428,7 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
             createRuleSetModule({
               name: "user-rules",
               rules: loadedRules,
-              match: loadedRuleMatch(builtinRuleMatchers),
+              match: loadedRuleMatch(),
               ruleText: loadedRuleText,
             }),
           ],

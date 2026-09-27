@@ -130,7 +130,7 @@ describe("enforcePlanMode（G7 出口级硬关）", () => {
           ],
           builtinRuleMatchers,
         ),
-        match: loadedRuleMatch(builtinRuleMatchers),
+        match: loadedRuleMatch(),
         ruleText: loadedRuleText,
       }),
     ],

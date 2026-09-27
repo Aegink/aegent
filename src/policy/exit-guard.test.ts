@@ -38,7 +38,7 @@ function userAllowOverCoreChain(raw: string): ReturnType<
       createRuleSetModule({
         name: "user-rules",
         rules,
-        match: loadedRuleMatch(builtinRuleMatchers),
+        match: loadedRuleMatch(),
         ruleText: loadedRuleText,
       }),
     ],
@@ -141,7 +141,7 @@ describe("C46 · 出口级硬拦：bash 虚拟写通道（T-P1-01）", () => {
           createRuleSetModule({
             name: "managed-rules",
             rules,
-            match: loadedRuleMatch(builtinRuleMatchers),
+            match: loadedRuleMatch(),
             ruleText: loadedRuleText,
           }),
         ],
@@ -176,7 +176,7 @@ describe("C46 × C57 · 执行点重算同位（验收④）", () => {
           createRuleSetModule({
             name: "managed-rules",
             rules,
-            match: loadedRuleMatch(builtinRuleMatchers),
+            match: loadedRuleMatch(),
             ruleText: loadedRuleText,
           }),
         ],

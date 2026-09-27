@@ -23,7 +23,7 @@ function rulesForGate(entries: ReadonlyArray<readonly ["allow" | "ask" | "deny",
   return createRuleSetModule({
     name: "user-rules",
     rules,
-    match: loadedRuleMatch(builtinRuleMatchers),
+    match: loadedRuleMatch(),
     ruleText: (rule) => rule.raw,
   });
 }

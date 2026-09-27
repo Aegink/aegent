@@ -12,9 +12,11 @@
  *   - incomplete-namespace-name（kimi incomplete-mcp-name 同构）：含 `__`
  *     但不是 "server__tool" 两段非空形状（段数≠2 或有空段）。注册表现存
  *     名豁免（server 名不含 `__` 但工具名自身可含——三段注册名合法）。
- * 我方新增两类保持：invalid-syntax（loadRules 标 invalid）与
- * no-matcher-for-args（带参规则但工具未登记参数匹配器，fail-closed 让它
- * 静默死掉，linter 负责让它**可见**）。
+ * 我方新增两类保持：invalid-syntax（loadRules 标 invalid）、
+ * empty-value-pattern（C26 key:value 空值模式）与 no-matcher-for-args
+ * （带参规则永不命中的三类来源：未知工具 / 通配工具名无法静态确认 /
+ * MCP 命名空间名带 specifier 拒配——T-P1-68 分型路由后已知工具的带参
+ * 规则均有匹配语义）、basename-unanchored（C53 basename 未绑绝对路径）。
  *
  * linter 只警告不拦截：装一条死规则是用户配置错误，不是攻击面——
  * 拒绝装配会让有其他活规则的配置整体不可用，过狠（样例矛盾才拒，
@@ -22,8 +24,8 @@
  */
 
 import type { LoadedRule } from "./rule-loader.js";
-import type { RuleMatchable } from "./matchers.js";
 import { wildcardMatch } from "./evaluate.js";
+import { getSpecifierKind } from "./specifier-kinds.js";
 
 export type LintIssueKind =
   | "invalid-syntax"
@@ -31,7 +33,8 @@ export type LintIssueKind =
   | "no-matcher-for-args"
   | "wildcard-tool-name"
   | "incomplete-namespace-name"
-  | "empty-value-pattern";
+  | "empty-value-pattern"
+  | "basename-unanchored";
 
 export interface LintIssue {
   readonly kind: LintIssueKind;
@@ -58,6 +61,7 @@ export type InactiveToolNameKind =
  * 通配/魔法字符 → 注册表无一命中报 wildcard-tool-name；命名空间形状
  * 畸形（含 `__` 但非两段非空且注册表无此名）报 incomplete-namespace-name；
  * 裸名不在注册表报 unknown-tool。可命中返回 undefined。
+ * 注：`a__b__c` 三段名若注册表现存（工具名自身含 __ 的注册名）豁免。
  */
 export function findInactiveRuleToolName(
   toolName: string,
@@ -102,8 +106,6 @@ export function lintRules(
   options: {
     /** 注册表现存工具名（未知工具名判定依据）。 */
     knownToolNames: readonly string[];
-    /** 参数匹配器注册表（与 loadedRuleMatch 同一张）。 */
-    matchers: Readonly<Record<string, RuleMatchable>>;
   },
 ): LintIssue[] {
   const known = new Set(options.knownToolNames);
@@ -142,15 +144,43 @@ export function lintRules(
         detail: `工具 "${rule.toolName}" 不在注册表现存工具名单中`,
       });
     }
-    if (rule.argPattern !== undefined && options.matchers[rule.toolName] === undefined) {
+    // 带参规则永不命中的三类来源（T-P1-68 分型路由后收窄）：
+    // 未知工具不会被调用；通配工具名无法静态确认分型；MCP 命名空间
+    // 工具名已编码身份、specifier 无从解释（loadedRuleMatch 拒配）。
+    // 已知非 MCP 工具的带参规则经四分型路由均有匹配语义，不再误报。
+    if (rule.argPattern !== undefined || rule.toolParamMatchers !== undefined) {
+      const noMatchDetail = !known.has(rule.toolName) && !hasGlob
+        ? `工具 "${rule.toolName}" 未在注册表中，带参规则永不命中（fail-closed）`
+        : hasGlob
+          ? `工具名含通配且带参数模式，无法静态确认匹配器，运行时可能永不命中`
+          : rule.toolName.includes("__")
+            ? `MCP 工具名已编码 server__tool 身份，不支持 specifier（qwen 拒配同款），永不命中`
+            : undefined;
+      if (noMatchDetail !== undefined) {
+        issues.push({
+          kind: "no-matcher-for-args",
+          raw: rule.raw,
+          ...(rule.line !== undefined ? { line: rule.line } : {}),
+          detail: noMatchDetail,
+        });
+      }
+    }
+    // C53：command 分型的 basename 参数规则（裸词、无通配、无路径分隔）
+    // 须绑绝对路径清单（写成绝对路径 glob），否则可被 PATH 上同名可
+    // 执行绕过——只警告不拦截（linter 纪律）
+    if (
+      getSpecifierKind(rule.toolName) === "command" &&
+      rule.argPattern !== undefined &&
+      rule.argPattern.length > 0 &&
+      !/\s/.test(rule.argPattern) &&
+      !GLOB_MAGIC.test(rule.argPattern) &&
+      !/[/\\]/.test(rule.argPattern)
+    ) {
       issues.push({
-        kind: "no-matcher-for-args",
+        kind: "basename-unanchored",
         raw: rule.raw,
         ...(rule.line !== undefined ? { line: rule.line } : {}),
-        detail:
-          hasGlob
-            ? `工具名含通配且带参数模式，无法静态确认匹配器，运行时可能永不命中`
-            : `工具 "${rule.toolName}" 未登记参数匹配器，带参规则永不命中（fail-closed）`,
+        detail: `basename 参数规则 "${rule.argPattern}" 未绑绝对路径清单——按 PATH 解析可被同名可执行绕过（C53）；请写成绝对路径形式如 "bash(C:\\\\tools\\\\${rule.argPattern}.exe *)"`,
       });
     }
     // C26 key:value matcher 的空值模式（qwen debugLogger.warn 同构警告，

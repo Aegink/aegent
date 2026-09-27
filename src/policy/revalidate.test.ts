@@ -26,7 +26,7 @@ function makeRevalidator(sessionId = "s1") {
   const inner = createRuleSetModule({
     name: "user-rules",
     rules,
-    match: loadedRuleMatch(builtinRuleMatchers),
+    match: loadedRuleMatch(),
   });
   const chain = assemblePolicyChain({
     user: [

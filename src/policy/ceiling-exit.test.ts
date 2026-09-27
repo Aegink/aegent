@@ -94,7 +94,7 @@ function rulesModule(entries: ReadonlyArray<readonly [Action, string]>) {
   return createRuleSetModule({
     name: "user-rules",
     rules,
-    match: loadedRuleMatch(builtinRuleMatchers),
+    match: loadedRuleMatch(),
     ruleText: loadedRuleText,
   });
 }

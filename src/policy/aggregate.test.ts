@@ -110,7 +110,7 @@ describe("C46 · 硬拦出口（规则不得授权）", () => {
           createRuleSetModule({
             name: "managed-rules",
             rules,
-            match: loadedRuleMatch(builtinRuleMatchers),
+            match: loadedRuleMatch(),
             ruleText: loadedRuleText,
           }),
         ],

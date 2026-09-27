@@ -65,7 +65,7 @@ describe("deriveSubagentRules（H5/T-P1-41 权限降级算法）", () => {
   it("验收⑤：产出规则经既有 loadRules → loadedRuleMatch 评估路径可执行（deny 命中、allow 不复活）", () => {
     const derived = deriveSubagentRules(parentRules);
     const loaded = loadRules(derived, {});
-    const match = loadedRuleMatch({});
+    const match = loadedRuleMatch();
     const asCall = (tool: string) => ({
       tool,
       args: {},

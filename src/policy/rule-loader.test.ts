@@ -54,7 +54,7 @@ describe("解析与 raw 保留（C38）", () => {
     expect(rules.map((r) => r.invalid)).toEqual([true, true, true]);
     // never-match：畸形规则对任何调用都不产生裁决
     for (const rule of rules) {
-      expect(loadedRuleMatch(builtinRuleMatchers)(rule, bashCall("git status"))).toBeUndefined();
+      expect(loadedRuleMatch()(rule, bashCall("git status"))).toBeUndefined();
     }
   });
 
@@ -145,7 +145,7 @@ describe("解析与 raw 保留（C38）", () => {
     // 空值模式加载后经 linter 报 empty-value-pattern（可检索警告）
     const warns = lintRules(
       loadRules([{ raw: "agent(model:)", action: "allow" }], builtinRuleMatchers),
-      { knownToolNames: ["bash", "agent"], matchers: builtinRuleMatchers },
+      { knownToolNames: ["bash", "agent"] },
     ).filter((i) => i.kind === "empty-value-pattern");
     expect(warns).toHaveLength(1);
     expect(warns[0]).toMatchObject({ kind: "empty-value-pattern" });
@@ -239,7 +239,9 @@ describe("C44 · 加载期样例校验", () => {
       loadRules(
         [
           { raw: "bash", action: "allow", line: 2, matchExamples: ["anything"] },
-          { raw: "write(/a/**)", action: "allow", line: 3, matchExamples: ["/a/b"] },
+          // T-P1-68 分型路由后 write（path）已登记可校验样例；未登记面
+          // 换 literal 工具（sampleCall 形状工具相关不注册，宁严勿松）
+          { raw: "grep(x)", action: "allow", line: 3, matchExamples: ["y"] },
         ],
         builtinRuleMatchers,
       );
@@ -271,7 +273,7 @@ describe("C21 · 参数匹配委托（链上路径）", () => {
         createRuleSetModule({
           name: "user-rules",
           rules,
-          match: loadedRuleMatch(builtinRuleMatchers),
+          match: loadedRuleMatch(),
           ruleText: loadedRuleText,
         }),
       ],
@@ -281,35 +283,47 @@ describe("C21 · 参数匹配委托（链上路径）", () => {
     expect(verdict.rule).toBe("bash(git status)"); // raw 原文回显
   });
 
-  it("未登记匹配器的工具，带参规则永不命中（fail-closed），链弃权", async () => {
+  it("MCP 命名空间工具带 specifier 的规则永不命中（qwen 拒配同款），链弃权", async () => {
     const rules = loadRules(
-      [{ raw: "write(/a/**)", action: "allow" }],
+      [{ raw: "srv__tool(x)", action: "allow" }],
       builtinRuleMatchers,
     );
-    const chain = assemblePolicyChain({
-      user: [
-        createRuleSetModule({
-          name: "user-rules",
-          rules,
-          match: loadedRuleMatch(builtinRuleMatchers),
-        }),
-      ],
-    });
-    // Write 未登记 RuleMatchable：引擎不能替工具猜参数语义
-    expect((await chain.evaluate({ tool: "Write", args: { path: "/a/b" } })).action).toBe(
-      "abstain",
-    );
+    const match = loadedRuleMatch();
+    expect(match(rules[0]!, { tool: "srv__tool", args: { x: 1 } })).toBeUndefined();
   });
 
   it("裸工具规则不经委托，按工具名通配命中", async () => {
     const rules = loadRules([{ raw: "bash", action: "deny" }], builtinRuleMatchers);
-    const match = loadedRuleMatch(builtinRuleMatchers);
+    const match = loadedRuleMatch();
     expect(match(rules[0]!, bashCall("anything"))).toBe("deny");
   });
 
   it("工具名维度通配：B* 规则命中 Bash 调用", () => {
     const rules = loadRules([{ raw: "b*(git *)", action: "ask" }], builtinRuleMatchers);
-    const match = loadedRuleMatch(builtinRuleMatchers);
+    const match = loadedRuleMatch();
     expect(match(rules[0]!, bashCall("git push"))).toBe("ask");
+  });
+
+  it("C39 分型路由：path 规则按 gitignore 语义命中 write 调用", () => {
+    const rules = loadRules(
+      [{ raw: "write(/a/**)", action: "allow" }],
+      builtinRuleMatchers,
+    );
+    const match = loadedRuleMatch();
+    expect(match(rules[0]!, { tool: "write", args: { path: "/a/b/c.txt" } })).toBe("allow");
+    expect(match(rules[0]!, { tool: "write", args: { path: "/b/c.txt" } })).toBeUndefined();
+  });
+
+  it("验收⑥ C53：绑绝对路径清单后只命中清单内绝对路径命令", () => {
+    const rules = loadRules(
+      [{ raw: "bash(C:\tools\git.exe *)", action: "allow" }],
+      builtinRuleMatchers,
+    );
+    const match = loadedRuleMatch();
+    // 只命中以清单内绝对路径开头的命令
+    expect(match(rules[0]!, bashCall("C:\tools\git.exe status"))).toBe("allow");
+    // 裸短名（按 PATH 解析）与 PATH 上其他位置的同名可执行都不命中
+    expect(match(rules[0]!, bashCall("git status"))).toBeUndefined();
+    expect(match(rules[0]!, bashCall("C:\evil\git.exe status"))).toBeUndefined();
   });
 });

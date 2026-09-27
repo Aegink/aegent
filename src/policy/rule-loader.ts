@@ -23,7 +23,14 @@
 
 import type { PolicyAction, PolicyCall } from "./chain.js";
 import type { RuleMatchable } from "./matchers.js";
+import { bashRuleMatcher } from "./matchers.js";
 import { wildcardMatch } from "./evaluate.js";
+import {
+  getSpecifierKind,
+  domainRuleMatcher,
+  pathRuleMatcher,
+  literalRuleMatcher,
+} from "./specifier-kinds.js";
 
 // ---------------------------------------------------------------------------
 // 类型
@@ -44,9 +51,16 @@ export interface LoadedRule {
   readonly line?: number;
   /**
    * literal 分型的 key:value 参数 matcher（C26 解析产物，qwen
-   * toolParamMatchers 同构）——匹配接线随 T-P1-68 的分型路由落。
+   * toolParamMatchers 同构）——匹配消费在 specifier-kinds.ts 的
+   * literal 分型路由（T-P1-68）。
    */
   readonly toolParamMatchers?: readonly ToolParamMatcher[];
+  /**
+   * literal 分型 key:value 之外的 plain 部分（`agent(coder,model:opus)`
+   * 的 "coder"）；纯 key:value 规则为 undefined（此时 argPattern 保留
+   * 原文形状做 fail-closed 载体，不参与匹配）。
+   */
+  readonly plainSpecifier?: string;
 }
 
 /** literal 分型 key:value 参数 matcher（qwen 同构：{key, valuePattern}）。 */
@@ -91,24 +105,6 @@ export class RuleLoadError extends Error {
 }
 
 // ---------------------------------------------------------------------------
-// specifier 分型查表（T-P1-67 预置；T-P1-68 随 specifier-kinds.ts 的
-// getSpecifierKind 正式化并接匹配路由。qwen getSpecifierKind 同构四值）
-// ---------------------------------------------------------------------------
-
-const COMMAND_SPECIFIER_TOOLS = new Set(["bash", "pwsh"]);
-const PATH_SPECIFIER_TOOLS = new Set(["read", "write", "edit", "apply_patch"]);
-const DOMAIN_SPECIFIER_TOOLS = new Set(["webfetch"]);
-
-export type SpecifierKind = "command" | "path" | "domain" | "literal";
-
-export function specifierKindOf(toolName: string): SpecifierKind {
-  if (COMMAND_SPECIFIER_TOOLS.has(toolName)) return "command";
-  if (PATH_SPECIFIER_TOOLS.has(toolName)) return "path";
-  if (DOMAIN_SPECIFIER_TOOLS.has(toolName)) return "domain";
-  return "literal";
-}
-
-// ---------------------------------------------------------------------------
 // 解析（C26 正式解析器，qwen·rule-parser.ts parseRule 同构）
 // ---------------------------------------------------------------------------
 
@@ -121,6 +117,13 @@ export interface ParsedRulePattern {
   readonly argPattern?: string;
   /** literal 分型的 key:value matcher（qwen toolParamMatchers 同构）。 */
   readonly toolParamMatchers?: readonly ToolParamMatcher[];
+  /**
+   * literal 分型 key:value 之外 plain 部分（qwen specifier 语义）；
+   * 纯 key:value（plain 空）为 undefined——argPattern 保留原文形状
+   * （undefined 是"工具级规则"（匹配一切调用）语义，会让未接线的
+   * key:value 规则越过 fail-closed 放行一切）。
+   */
+  readonly plainSpecifier?: string;
 }
 
 /** key 合法性（qwen 同款：标识符形状，连字符与点不支持）。 */
@@ -147,13 +150,14 @@ export function parseRulePattern(raw: string): ParsedRulePattern | undefined {
   if (toolName.length === 0) return undefined;
   if (rawSpecifier.length === 0) return { raw: trimmed, toolName };
 
-  const kind = specifierKindOf(toolName);
+  const kind = getSpecifierKind(toolName);
   // legacy `:*` 后缀（qwen 同款：`git:*` → `git *`；仅 command 分型）
   const specifier =
     kind === "command" ? rawSpecifier.replace(/:(\*)/g, " $1") : rawSpecifier;
 
   let argPattern: string = specifier;
   let toolParamMatchers: ToolParamMatcher[] | undefined;
+  let plainSpecifier: string | undefined;
   if (kind === "literal" && !toolName.includes("__") && specifier.includes(":")) {
     const plainParts: string[] = [];
     const matchers: ToolParamMatcher[] = [];
@@ -173,6 +177,7 @@ export function parseRulePattern(raw: string): ParsedRulePattern | undefined {
       // 退成 undefined——undefined 是"工具级规则"（匹配一切调用），
       // 会让未接线的 key:value 规则越过 fail-closed 放行一切
       argPattern = plain !== "" ? plain : specifier;
+      plainSpecifier = plain !== "" ? plain : undefined;
     }
   }
   return {
@@ -180,6 +185,7 @@ export function parseRulePattern(raw: string): ParsedRulePattern | undefined {
     toolName,
     ...(argPattern !== "" ? { argPattern } : {}),
     ...(toolParamMatchers !== undefined ? { toolParamMatchers } : {}),
+    ...(plainSpecifier !== undefined ? { plainSpecifier } : {}),
   };
 }
 
@@ -214,6 +220,9 @@ export function loadRules(
         : {}),
       ...(parsed.toolParamMatchers !== undefined
         ? { toolParamMatchers: parsed.toolParamMatchers }
+        : {}),
+      ...(parsed.plainSpecifier !== undefined
+        ? { plainSpecifier: parsed.plainSpecifier }
         : {}),
       action: source.action,
       invalid: false,
@@ -289,25 +298,44 @@ function pushAllViolations(
 }
 
 // ---------------------------------------------------------------------------
-// 链上匹配（配 createRuleSetModule 使用）
+// 链上匹配（配 createRuleSetModule 使用；C39 分型路由 T-P1-68）
 // ---------------------------------------------------------------------------
 
 /**
- * 链上规则匹配函数（C21 委托路径）：工具名维度通配 + 参数维度委托。
- * invalid 规则永不命中；带参规则在调用方工具未登记匹配器时永不命中
- * （fail-closed，见 matchers.ts 头注释）。
+ * 链上规则匹配函数（C21/C39）：工具名维度通配 + 参数维度按
+ * getSpecifierKind(call.tool) 分型路由——command → bashRuleMatcher 的
+ * shell glob（既有方言）、path → gitignore 风格、domain → host 后缀、
+ * literal → 精确 + key:value。invalid 规则永不命中；MCP 命名空间工具
+ * （server__tool）的规则带 specifier 时永不命中（qwen 同款 reject——
+ * 工具名已编码 server+tool 身份，specifier 无从解释）。
  */
-export function loadedRuleMatch(
-  matchers: Readonly<Record<string, RuleMatchable>>,
-): (rule: LoadedRule, call: PolicyCall) => PolicyAction | undefined {
+export function loadedRuleMatch(): (rule: LoadedRule, call: PolicyCall) => PolicyAction | undefined {
   return (rule, call) => {
     if (rule.invalid) return undefined;
     if (!wildcardMatch(call.tool, rule.toolName)) return undefined;
-    if (rule.argPattern === undefined) return rule.action;
-    const matcher = matchers[call.tool];
-    return matcher?.matchesRule(rule.argPattern, call) === true
-      ? rule.action
-      : undefined;
+    const hasSpecifier =
+      rule.argPattern !== undefined || rule.toolParamMatchers !== undefined;
+    if (!hasSpecifier) return rule.action;
+    // MCP 命名空间带 specifier 拒配（不静默忽略——qwen 同款语义）
+    if (call.tool.includes("__")) return undefined;
+    switch (getSpecifierKind(call.tool)) {
+      case "command":
+        return bashRuleMatcher.matchesRule(rule.argPattern ?? "", call)
+          ? rule.action
+          : undefined;
+      case "path":
+        return pathRuleMatcher.matchesRule(rule.argPattern ?? "", call)
+          ? rule.action
+          : undefined;
+      case "domain":
+        return domainRuleMatcher.matchesRule(rule.argPattern ?? "", call)
+          ? rule.action
+          : undefined;
+      case "literal":
+        return literalRuleMatcher.matchesLoadedRule(rule, call)
+          ? rule.action
+          : undefined;
+    }
   };
 }
 

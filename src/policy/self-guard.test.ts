@@ -96,10 +96,7 @@ describe("C45 · 规则 linter（永不生效规则输出警告）", () => {
       [{ raw, action: "allow", ...(line !== undefined ? { line } : {}) }],
       builtinRuleMatchers,
     );
-    return lintRules(rules, {
-      knownToolNames: KNOWN_TOOLS,
-      matchers: builtinRuleMatchers,
-    });
+    return lintRules(rules, { knownToolNames: KNOWN_TOOLS });
   }
 
   it("验收③：喂一条永不匹配的规则输出警告（未知工具名 + 带参无匹配器双警告）", () => {
@@ -112,22 +109,32 @@ describe("C45 · 规则 linter（永不生效规则输出警告）", () => {
     expect(issues[0]?.detail).toContain("Bashh");
   });
 
-  it("语法畸形规则报 invalid-syntax；带参规则无匹配器报 no-matcher-for-args", () => {
+  it("语法畸形规则报 invalid-syntax；MCP 命名空间带 specifier 报 no-matcher-for-args", () => {
     const [broken] = lint("Bash(git");
     expect(broken).toMatchObject({ kind: "invalid-syntax", raw: "Bash(git" });
 
-    const [dead] = lint("write(/a/**)", 4); // write 未登记参数匹配器
-    expect(dead).toMatchObject({
+    // T-P1-68 分型路由后已知工具（write→path）带参有匹配语义不再报；
+    // 永不命中面收窄为未知工具 / 通配 / MCP 命名空间带 specifier
+    const dead = loadRules(
+      [{ raw: "srv__tool(x)", action: "allow", line: 4 }],
+      builtinRuleMatchers,
+    );
+    const issues = lintRules(dead, {
+      knownToolNames: [...KNOWN_TOOLS, "srv__tool"],
+    });
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
       kind: "no-matcher-for-args",
-      raw: "write(/a/**)",
+      raw: "srv__tool(x)",
       line: 4,
     });
-    expect(dead?.detail).toContain("fail-closed");
+    expect(issues[0]?.detail).toContain("server__tool");
   });
 
   it("健康规则零警告；工具名通配带参给'无法静态确认'变体", () => {
     expect(lint("bash(git *)")).toEqual([]);
     expect(lint("read")).toEqual([]);
+    expect(lint("write(/a/**)")).toEqual([]); // path 分型路由后有匹配语义
     const [wild] = lint("b*(git *)");
     expect(wild?.kind).toBe("no-matcher-for-args");
     expect(wild?.detail).toContain("无法静态确认");
