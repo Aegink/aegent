@@ -1170,4 +1170,94 @@ T-3-04 部分覆盖（取消槽 + await 边界检查已落）——展卡先核�
 ## 批次 5 展卡记录（2026-09-26，执行会话自展）
 
 > 用户提示词指示：先按圈定研究批次 5 条目（E5 + H1–H5）逐条锚点核对 requirements.md §4，照 plan-p1 批次 4 展卡先例把卡序追加进 plan-p1.md，再按 plan-p0 §0 执行。**6 条锚点逐一开文件核实，零内容勘误**（pi fork-policy.ts:8-37 + session/types.ts:562-583、opencode tool/task.ts 全文 371 行、opencode agent/subagent-permissions.ts:14-27 全文、dsh subagent 包 README + run-settlement.ts + child-agent.ts；**唯一漂移 = E5 的 position 词形**：requirements 写 "before/after"、pi 当前版本为 `position?: "before" | "at"`——语义等价（切点是否包含选中条目：before=父级不含选中、at/after=含选中），我方采用 before/after 词形贴 requirements）。**两项展卡定形（研究文档 §三批次 5 要点指令）**：①**H1 = 进程内隔离 + 独立子会话**（opencode 同款——task 在同内核进程起子循环、子会话是同一 SessionStore 的新 sessionId；H6 五后端是 P2 再插进程外形态）；②**H4 = 独立新会话，E5 fork 是独立的会话分支功能**（opencode task 就是 sessions.create({parentID}) 全新会话不继承父历史；pi fork 是用户级分支操作——两者不混，E5 落数据面+元事件+协议面、H4 落 task 工具创建面）。**词汇表高影响预判**：session/fork 一处扩展（18→19）走立案；task 派发/结算与 delegation 预判零扩展（tool/call+result 承载结算、lineage 放 meta；delegation 以装配参数+系统提示重建）。**external_directory 维度**：C 族无此条目（grep 证伪），我方由 PathGuard 结构性覆盖——降级算法落"只继承 deny"，该维度注释记档不发明对应物。预估 6-7 卡实展 6 张（H1+H4 并卡、H2/H3 各一张、E5/H5 各一张、收口盘点一张）。
+---
 
+## 批次 7 展卡记录（2026-09-27，执行会话自展）
+
+> 用户提示词指示（连续推进 7-11 的第一批）：先按圈定研究批次 7 条目（B8 残余 + B13 B15 B16 B18 B19 B20 B21 + I3 + M6 + J23 J24 J27）逐条锚点核对 requirements.md §4，照 plan-p1 批次 6 展卡先例把卡序追加进 plan-p1.md，再按 plan-p0 §0 执行。**13 条锚点逐一开文件核实，一处弱锚点勘误**（dsh timeout/index.ts 全文 190 行承载 B18/J23/J24 三条 + guard/timeout-policy 全文 81 行 M6、pi-desktop ADR 0207 全文、dsh escalation.ts 全文 186 行、codex parallel.rs:44-50、kimi engine.ts:65-88 + model-requester.ts:23-31、zcode turn-output-token-continuation.ts 全文、codex session/tests.rs:2056-2109、opencode apply_patch.ts 全文 313 行 + lsp.ts 全文 113 行 + mcp/index.ts 1004 行；**勘误 = I3**：requirements 写 app/src/context/mcp.ts 是 UI toggle hook（19 行），客户端本体在 packages/opencode/src/mcp/index.ts）。**三项展卡定形**：①超时四面（B18/J23/J24/M6）一张卡统一定形（dsh 一文件承载三条）；②J27/B20 是词汇表高风险点各走立案；③**B8b lsp 不拆期**（最小 stdio LSP 客户端单卡可落，多 server/诊断流记 LIMITATIONS）。预估 8 卡实展 11 张（超时四面合一、apply_patch/B13 相邻、B16 在 I3 前落快照安全网、收口照先例）。
+
+---
+
+## 批次 7 报告（完成于 2026-09-27）
+
+- **打勾情况**：11 / 11（T-P1-55 ~ T-P1-65 全部完成，无未完成项）——**P1 批次 7 全部收官**（13 条需求 ID：B8 残余（apply_patch/lsp）/B13/B15/B16/B18/B19/B20/B21/I3/M6/J23/J24/J27 全关；**B8 五工具族就此收官**）
+- **产出的文件**：
+  - `src/kernel/timeout.ts` 扩库——MAX_TIMER_DELAY_MS + assertTimerDelayMs（J24 武装点过闸）+ clampTimeout 三档合并（B18）+ IdleWatchdog（J23 空闲/可重臂，arm/disarm/touch/pulse/dispose）——T-P1-55
+  - `src/kernel/tools/registry.ts` 扩——ToolDef.timeoutMs（M6 dispatch 层武装，J22 code 判据不误捕）+ ToolDef.descriptionText（MCP 内联描述）+ runtimeMeta 快照源 + ToolDispatchCall.runtimeMeta——T-P1-55/59/64
+  - `src/kernel/tools/builtin/apply-patch.ts` + 描述文件 + 测试/快照——V4A 解析器 + deriveUpdatedLines 纯函数 + 两阶段执行（验证先行零半态）——T-P1-56/65
+  - `src/kernel/tools/mutation-budget.ts` + 测试——MutationRetryBudget（promptId×path 双键、per-code 宽限、成功清空、3 次 terminate）——T-P1-57
+  - `src/sandbox/escalation.ts` + 测试——WIDER_MODES 阶梯表 + ESCALATION_TARGETS 封闭词汇 + 配对校验 + 严格更宽校验——T-P1-58
+  - `src/policy/protected-paths.ts` + `self-guard.ts` 扩——extractPatchWritePaths 前缀扫描器（apply_patch 通道）+ 两出口各加分支 + WRITE_EXECUTE_TOOLS +apply_patch——T-P1-56
+  - `src/sandbox/path-guard.ts` 扩——remove()（delete/move 的守卫唯一入口）——T-P1-56
+  - `src/kernel/loop.ts` 扩——mutationBudget 接线（reportMutationOutcome + 收尾 blocked 收轮）+ stepToolMeta 快照（parallel/timeoutMs 固化）+ callModel 计时与 traceId 分配器 + OUTPUT_TOKEN_LIMIT_FINISH_REASONS 触顶续跑（runStep continue kind）——T-P1-57/59/61/62
+  - `src/kernel/tools/builtin/lsp.ts` + `src/lsp/client.ts` + 测试——9 操作闭集 + 最小 LSP 客户端（Content-Length 分帧/握手/id 配对/LSP_TIMEOUT）——T-P1-60
+  - `src/kernel/events.ts` 扩——AssistantRetryingEvent（19→20）+ StepEndEvent.timing/traceId + StreamChunk done.finishReason——T-P1-61/62
+  - `src/kernel/agent-child.ts` + `agent-process.ts` 扩——onRetry 桥接观察者（registerRetryObserver hooks + 落流 idle 守卫）——T-P1-61
+  - `src/models/openai-compat.ts` 扩——finishState 捕获 wire finish_reason → done 携带——T-P1-62
+  - `src/kernel/session-config.ts` + 测试——SessionConfigStore（白名单热刷新/静态整包拒绝）——T-P1-63
+  - `src/mcp/client.ts` + `registry-bridge.ts` + 测试——最小 stdio JSON-RPC MCP 客户端（握手/能力检测/分页/调用）+ 命名空间化注册桥——T-P1-64
+  - `src/kernel/tools/builtin/index.ts` 扩——BUILTIN_TOOL_NAMES 15→17（apply_patch/lsp）+ bash 三档与沙箱选项 + lspClientFor 选项——T-P1-55/56/58/60
+  - `docs/l0-events.md`——§3.2 assistant/retrying 行 + §8 落地记录 10/11（含不追认回退面）——T-P1-61/62
+- **验收台账**：11 卡 11 命令全部通过（见台账表）；全量 `npx vitest run` **906 passed / 1 skipped**（批次 6 收官 827 → 净增 79），`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变、`check-doc-links.sh` 548 链接 0 失效、`license-audit.sh` exit 0
+- **词汇表扩展**：**三处全部走立案**——①新事件 assistant/retrying（19→20，落地记录 10 + 待澄清 #9）；②step/end 载荷扩展 timing/traceId（并入 #9）；③StreamChunk done.finishReason（落地记录 11 + 待澄清 #10）。**两案待用户追认，追认前正式口径按"已落流、未转正"（20 事件）**。研究文档"中影响"预判命中。
+- **两个真实缺口在实现/测试中被抓出并修复**（本批质量亮点）：
+  1. **T-P1-56**：C46 出口硬拦与 C35 自我修改防线只看 write/edit 的 args.path——**apply_patch 的目标路径藏在 patchText 里可绕过 .git/AGENTS.md 保护** → policy 侧新增 extractPatchWritePaths 前缀扫描器（与 bash 虚拟写目标扫描同位，不 import 工具层解析器避免 policy→kernel 反向依赖），enforceProtectedPaths 与 enforceSelfGuard 各加分支，扫描器与解析器前缀集对齐由测试钉死
+  2. **T-P1-57**：B13 的"成功清空该路径失败历史"依赖**成功结果也携带 mutationPaths**（初版只有失败带）——工具层成对补齐（edit 成败都带、apply_patch 成功汇总带全部涉及路径）
+- **偏离计划的地方**（逐卡详见卡面完成记录）：
+  1. **T-P1-55**：bash"无默认档且无提示 = 不武装"语义保持（不把上限值展开传 env——2^31-1 秒换毫秒顶到 setTimeout 可靠上限即 J24 陷阱）；参数校验面保持 isError 分层（T-4-03 验收不破坏，clampTimeout 的 throw 用于装配级编程错误）
+  2. **T-P1-56**：匹配容错落三级（exact/rstrip/trim，Unicode 归一化级不落——中文误伤风险）；update 区段非 @@ 变更行构成**隐式 chunk**（V4A 宽松语义；opencode 把无 @@ 行静默丢弃是缺陷不取）；PathGuard 加 remove()（删除面守卫唯一入口）
+  3. **T-P1-58**：现状核对发现批次 3 的 SandboxBackend 未接入 bash 执行路径——本卡顺势补接线（bashSandbox 装配选项 + backend.spawn 替代 env）；PathGuard 红线不破（升级放宽的是沙箱模式非工作区边界）；CLI 装配默认不启用（零行为变化）
+  4. **T-P1-60**：工具内按需自动 initialize（装配面不需要先行握手）；传输抽象分离帧读写与进程管理（测试注入内存桩）
+  5. **T-P1-62**：触顶续跑不经 decideTurn（内核护栏行为——默认"无工具即 end"正是 B20 要防的"结束回合"）
+  6. **T-P1-64**：MCP stdio 是 newline 分帧（与 LSP Content-Length 不同）独立实现；ToolDef 加 descriptionText（MCP 描述内联，builtin 走 txt 不变）；CLI --mcp 装配接线留多端批次
+- **新发现的约束或坑**：
+  - **批次 3 遗留接线缺口**：SandboxBackend（D5）一直未接入 bash 执行路径（env 直通）——T-P1-58 顺势补上，CLI 默认不启用；后续 K3/多端批次暴露 CLI 参数面时需复查
+  - **MCP/LSP 的协议面手写最小闭环**：MCP sampling/resources/prompts/HTTP transport、LSP 多 server/诊断流/watch 同步都记 LIMITATIONS——真语言 server E2E 依赖环境，桩 server 钉协议面
+  - **vitest 全量偶发 flaky 持续**：本批又现 3 次"首跑 1-2 failed 未复现"（http-mock/llm-replay 各形态），复跑全绿——延续批次 6 记档，收口卡连跑确认
+- **遗留风险与未知**（→ 人工确认清单批次 7 行）：
+  - ~~待澄清 #9（assistant/retrying 19→20 + step/end timing/traceId）~~ ⏳ 已立案供追认（2026-09-27）
+  - ~~待澄清 #10（StreamChunk done.finishReason）~~ ⏳ 已立案供追认（2026-09-27）
+  - J23 IdleWatchdog 的生产消费面暂缺（流式模型请求空闲检测是原生场景，provider 层无此消费点——库就位等消费者）
+  - B21 消费面接线（ManualPermissionBroker/question 的 timeoutMs 动态读 configStore）留白名单扩展批次（T-P1-63 偏离③）
+  - bashSandbox/registerMcpServers 的 CLI 装配选项暴露随 CLI/多端批次
+  - MCP/LSP 真实 server 的环境级 E2E（TS server 等）未实测——桩 server 钉协议面
+- **批次完成定义核对**：11 卡打勾附验收 ✓；tsc 干净 ✓；count-features 310 ✓；check-doc-links 0 失效 ✓；license-audit 通过 ✓；超时四面一张卡 ✓；词汇表三处扩展走立案 ✓；两个真实缺口修复各有测试钉死 ✓；六面盘点 + apply_patch 快照 ✓；B8 五工具族收官 ✓
+- **下一批**：**批次 8 权限·规则语义与信任（12 条：C8 C11 C12 C13 C17 C23 C26 C34 C36 C39 C41 C53）**——立即开工（用户授权连续推进 7-11）
+- **下一批提示词**：
+
+```
+继续 aegent P1 的实施。用户已授权连续推进批次 7-11（一次接续做完，不逐批
+停下等确认），当前批次 7 已收官（T-P1-55~65 全关，基线 906 passed / 1
+skipped），现在进批次 8。仍必须逐批走完整流程、不得乱做：
+1. 每批开工：先按 docs/20260926_P1剩余批次全量圈定研究.md 该批条目逐条
+   锚点核对 requirements.md §4，照 plan-p1.md 批次 6/7 展卡先例把该批卡序
+   追加进 plan-p1.md（疑似顺带覆盖先核对再定卡面），然后按 docs/plan-p0.md
+   §0 协议逐卡执行：取第一个 [ ] 卡、只做该卡、验收后才打勾、一卡一 commit。
+2. 每批收官：照批次 6/7 先例出组报告（打勾情况/产出文件/台账/词汇表/缺陷/
+   偏离/坑/遗留），更新 plan-p0-progress.md 的下一批提示词与全量基线，
+   然后立即进下一批——不要问要不要继续。
+3. 批次顺序与各批特有注意：
+   - 批次 8 权限·规则语义与信任（C8 C11 C12 C13 C17 C23 C26 C34 C36 C39
+     C41 C53）：C26 Tool(args) 语法是 C39 分型匹配前置；C11 项目信任 ←
+     C34 trustGated 同批；C12 与 write/edit（在位）联动；C23 与 C41 疑似
+     被 T-5-05/T-5-07 部分覆盖（linter 已报 never-match）——展卡先核对。
+   - 批次 9 权限·审批与运行模式（C6 C19 C25 C30 C33 C37 C52 C54 C56）：
+     C6 ← N6 通道（在位）；C30 ← C57（在位）；C33 ← C3 默认 ask（在位）；
+     C37 IMDS 拒绝 × D3 网络策略（在位）联动小卡；C56 判官四件套不做
+     判官本体先行——P2 的 C42/C55 接口面预留。
+   - 批次 10 调度与会话数据工程（M1 M2 M3 M8 + E7 E8 E14 E15 E17 E18 +
+     Q1 Q7 + N4 + L7 L8）：M1/M2 job 底座 → M3 崩溃续跑；M8 execution
+     epoch 是 G4 遗留收口；E17/L8/N4 动事件载荷——词汇表影响最集中的批
+     （当前 20 事件口径），展卡时逐条走立案；Q7 冷热分离注意"不影响热路
+     径"验收口径。
+   - 批次 11 上下文与模型运维收尾（F7 F8 F11 F18 F25 F26 F29 F30 + J5
+     J13 J16）：F25 与 M10 windowId 概念核对（疑似部分覆盖）；F29 ←
+     J6/J7+F24（在位）；J16 ← J19 熔断（在位）；J5 第二厂商选型（开放
+     问题）——展卡时先在待澄清表立案建议 Anthropic（pi-mono 锚点最厚）
+     供追认，用户未回前该卡保持未展、其余卡照常。
+4. 上下文将满时照 plan-p0.md §0.3：出当前批次的阶段/组报告 + 更新接力
+   提示词（剩余批次、基线、注意事项），不要为赶进度跳过验收或压缩流程。
+5. 批次 7 遗留两案待追认（#9 assistant/retrying 19→20 + step/end 载荷、
+   #10 done.finishReason）——继续走"已落流、未转正"口径，用户追认前不改
+   正式计数语义。全量基线 906 passed / 1 skipped。
+```
