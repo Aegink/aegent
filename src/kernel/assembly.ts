@@ -790,11 +790,15 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
           networkGuard: createNetworkGuard({ policy: options.networkPolicy }),
         }
       : {}),
-    // B8b/T-P1-21：question 依赖（共用 pending 注册表）+ 协议答复处理
+    // B8b/T-P1-21：question 依赖（共用 pending 注册表）+ 协议答复处理；
+    // C36 有界警告落 logger（T-P1-70）
     question: {
       pending,
       sessionId,
       timeoutMs: options.questionTimeoutMs ?? options.approvalTimeoutMs,
+      ...(logger !== undefined
+        ? { onWarn: (message: string) => logger.warn("question", { userContent: message }) }
+        : {}),
     },
     handleQuestionAnswer: async (requestId, answer) => {
       await pending.reply(

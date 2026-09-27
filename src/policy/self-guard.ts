@@ -22,12 +22,14 @@ import { extractPatchWritePaths, isWritePathTool } from "./protected-paths.js";
 
 /**
  * 受保护文件名（C35 清单；只能追加不能替换——C36 纪律）。大小写不敏感
- * 保守向（Windows 盘 AGENTS.md 与 agents.md 同物）。
+ * 保守向（Windows 盘 AGENTS.md 与 agents.md 同物）。运行时冻结同
+ * protected-names.ts（T-P1-70）：mutate 直接 throw，追加走
+ * extendProtectedNames 唯一入口。
  */
-export const SELF_EDIT_PROTECTED_NAMES = [
+export const SELF_EDIT_PROTECTED_NAMES: readonly string[] = Object.freeze([
   "agents.md",
   "permissions.json",
-] as const;
+]);
 
 /** 路径任一段命中受保护文件名则返回该段原文；否则 undefined。 */
 export function findSelfEditProtectedSegment(

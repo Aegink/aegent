@@ -1052,7 +1052,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **偏离 / 建议**：①出口次序定形：enforceTrustGate 在 gate 出口串 enforcePlanMode 之后（C46→C49→C35→G7→C11）——全部无条件出口族同层，先后仅影响 deny reason 的措辞归属（都是最严压过一切），revalidator 同位。②降权 deny 的 warn 可检索走 gate 既有 onWarning 通道（trust-gate 前缀），装配处落 logger.warn（同 C48 剥提案警告通道）。③C34 承载位 = ApprovalScopeCache（session 批准规则加 trustGated 维度，Map<rule,trustGated> 结构）+ createSessionApprovalModule 的 trustState 活查询——本批无"仓库自带配置"来源（未来仓库规则加载器落位时打 trustGated 标记），机制先行。④assembly 选项为 trustService（ProjectTrustService 实例）而非裸布尔——服务承载状态机，装配侧 () => trustService.isTrusted() 活查询。⑤pi 的 project_trust 事件流（extension 钩子）不落——我方信任是装配注入的内存服务，CLI 交互面随批次 9 审批通道。
 - **完成记录**：①project-trust.ts 新建——TrustState 三值（trusted/untrusted/undecided，pi yes/no/undecided 同构；初始 undecided=陌生项目即降权，卡内定形）+ ProjectTrustService（isTrusted 每次调用读当前状态/declareTrusted/declareUntrusted/reset；remember 持久化 Q 域预留注释）+ enforceTrustGate 出口（trusted===false 且 isWriteExecuteTool → deny，规则不得授权；undefined 透传零行为变化）。②gate/revalidate 出口同位接线 + onWarning warn；assembly 加 trustService 选项（gate + session-approval 两处接线）。③C34：ApprovalScopeCache.record 加 {trustGated} / isApproved 加 {trusted}（每次读当前信任，过滤不移除）；createSessionApprovalModule +trustState。④验收：`npx vitest run src/policy/project-trust.test.ts src/policy/scope-cache.test.ts` → **12 passed**——①未信任写执行类出口 deny 且规则 allow 压不过、warn 含 trust-gate 可检索 ✓；②declareTrusted 后即刻放行（活查询断言）✓；③trustGated 未信任不生效、信任后恢复（记录保留）✓；④非 trustGated 照常 ✓；⑤缺省装配零行为变化 ✓；连同 review-decision/rule-scope/gate 既有回归 **35 passed 全绿**；`npx tsc --noEmit` 干净。
 
-#### T-P1-70 · C36 · 内置保护清单只追加机制（+用户提示有界） `[ ]`
+#### T-P1-70 · C36 · 内置保护清单只追加机制（+用户提示有界） `[x]`
 - **依据需求**：C36（P1："内置保护清单只能追加、不能替换；用户提示有界（长度 + 条数）"）
 - **上游首选参考**：[qwen·trusted-user-answers.ts:12](../oss/qwen-code/packages/core/src/permissions/trusted-user-answers.ts#L12)（MAX_TRUSTED_USER_ANSWER_QUESTION_CHARS=200——模型作者的问题文本有界）
 - **取什么 / 别抄什么**：取"清单只追加 + 提示有界"两纪律；我方两清单的 C36 注释升机制；不抄其问答投影面（question 工具在位）
@@ -1061,8 +1061,8 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **验收**：`npx vitest run src/policy/protected-names.test.ts src/policy/self-guard.test.ts src/cli/cli.test.ts`（扩）——①extendProtectedNames 追加生效且原清单不变；②重复追加幂等；③question 文本 >200 字符截断且 warn；④既有保护行为回归全绿
 - **依赖**：无
 - **风险 / 未知**：无
-- **偏离 / 建议**：（留白）
-- **完成记录**：
+- **偏离 / 建议**：①extendProtectedNames 的幂等键 = trim + 小写（与段匹配方言一致）；返回的新清单同样 freeze（只追加纪律延续）。②追加生效于调用方持有的清单实例——findProtectedMetadataSegment 加可选 names 参数（默认原清单）作参数化预留，主动接线（用户配置/插件扩展保护名）随真实需求落（YAGNI）。③"warn 留痕"落两处：QuestionToolDeps.onWarn 回调（assembly 注入 logger.warn）+ 工具结果 meta 的 questionTruncated/questionOriginalLength（tool/result 落流可检索）。④审批提示有界自动达成——question 挂起的审批/问答展示用截断后 hint（同一 pending.ask 载荷），其余审批请求 args 是执行输入非提示文本不截断。
+- **完成记录**：①protected-names.ts/self-guard.ts 两清单 Object.freeze（mutate throw）+ extendProtectedNames 唯一追加入口（返回新冻结清单、重复幂等、空串忽略）。②question.ts 加 MAX_USER_HINT_LENGTH=200 导出（qwen MAX_TRUSTED_USER_ANSWER_QUESTION_CHARS=200 同款——模型作者文本按分类器用户提示有界）+ 超界截断（hint 进 pending.ask 与问答展示）+ onWarn 依赖 + meta 留痕；assembly 注入 onWarn。③验收：`npx vitest run src/policy/protected-names.test.ts src/policy/self-guard.test.ts src/cli/cli.test.ts` → **32 passed**——①extendProtectedNames 追加生效且原清单不变 ✓；②重复追加幂等（含大小写/空白变体）✓；③CLI 端到端：320 字符问题 ❓ 行渲染 200 字符截断版、答复照常回喂、turn completed ✓；freeze 证伪两清单各一 ✓；既有保护行为回归全绿 ✓；`npx tsc --noEmit` 干净。
 
 #### T-P1-71 · C12+C13 · 编辑前必须先读（可选装配模块） `[ ]`
 - **依据需求**：C12（P1："编辑前必须先读；写入必须基于已读版本"）· C13（P1："策略层不可 in-path 强制——不想要该策略的部署能整体丢弃它，工具仍可用"）

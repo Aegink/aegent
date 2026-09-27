@@ -17,23 +17,43 @@
  * codex 的工作区顶层更严，记为已知取舍。
  */
 
-/** 保留元数据路径名（C46；只能追加不能替换——C36 纪律）。 */
-export const PROTECTED_METADATA_PATH_NAMES = [
+/** 保留元数据路径名（C46；只能追加不能替换——C36 纪律）。运行时冻结：
+ * 任何 mutate（push/splice）直接 throw，追加只能走 extendProtectedNames。 */
+export const PROTECTED_METADATA_PATH_NAMES: readonly string[] = Object.freeze([
   ".git",
   ".agents",
   ".codex",
-] as const;
+]);
+
+/**
+ * 保护清单的唯一追加入口（C36 机制，T-P1-70）：返回**新**冻结清单，
+ * 原清单不变；重复追加幂等（大小写不敏感——与段匹配方言一致）；空串
+ * 忽略。追加生效于调用方持有的清单实例（未来用户配置/插件扩展保护名
+ * 时，把扩展清单传入消费面——findProtectedMetadataSegment 的清单参数
+ * 已预留，YAGNI 不做主动接线）。
+ */
+export function extendProtectedNames(
+  list: readonly string[],
+  additions: readonly string[],
+): readonly string[] {
+  const seen = new Set(list.map((s) => s.toLowerCase()));
+  const out = [...list];
+  for (const addition of additions) {
+    const key = addition.trim().toLowerCase();
+    if (key === "" || seen.has(key)) continue;
+    seen.add(key);
+    out.push(addition);
+  }
+  return Object.freeze(out);
+}
 
 /** 路径任一段命中保留名则返回该段原文；否则 undefined。 */
 export function findProtectedMetadataSegment(
   path: string,
+  names: readonly string[] = PROTECTED_METADATA_PATH_NAMES,
 ): string | undefined {
   for (const segment of path.split(/[\\/]+/)) {
-    if (
-      (PROTECTED_METADATA_PATH_NAMES as readonly string[]).includes(
-        segment.toLowerCase(),
-      )
-    ) {
+    if ((names as readonly string[]).includes(segment.toLowerCase())) {
       return segment;
     }
   }

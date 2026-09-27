@@ -33,7 +33,17 @@ export interface QuestionToolDeps {
   sessionId: string;
   /** 答复等待上界（必填——无上界的静默永挂是 C50 要防的事故）。 */
   timeoutMs: number;
+  /** C36 有界警告去向（装配注入 logger.warn）；缺省丢弃。 */
+  onWarn?: (message: string) => void;
 }
+
+/**
+ * 模型作者提示文本上界（C36，T-P1-70；qwen
+ * MAX_TRUSTED_USER_ANSWER_QUESTION_CHARS=200 同款——question 文本是模型
+ * 作者的，按分类器用户提示有界而不是按用户自己的答复有界）。截断只影响
+ * 提示面（挂起的审批/问答展示），原始长度留痕 meta。
+ */
+export const MAX_USER_HINT_LENGTH = 200;
 
 export function createQuestionTool(deps: QuestionToolDeps): ToolDef {
   return {
@@ -57,6 +67,15 @@ export function createQuestionTool(deps: QuestionToolDeps): ToolDef {
           "question 需要 question（非空字符串）",
         );
       }
+      // C36 有界：模型作者的问题文本超上界截断 + warn 留痕（截断只影响
+      // 提示与问答展示面，用户看到的问题不失控）
+      let hint = question;
+      if (question.length > MAX_USER_HINT_LENGTH) {
+        hint = question.slice(0, MAX_USER_HINT_LENGTH);
+        deps.onWarn?.(
+          `question 文本 ${question.length} 字符超上界 ${MAX_USER_HINT_LENGTH}，已截断（C36 有界纪律）`,
+        );
+      }
       let verdict: Verdict;
       try {
         verdict = await deps.pending.ask(
@@ -64,7 +83,7 @@ export function createQuestionTool(deps: QuestionToolDeps): ToolDef {
             id: ctx.toolCallId,
             sessionId: deps.sessionId,
             tool: "question",
-            args: { question },
+            args: { question: hint },
           },
           { timeoutMs: deps.timeoutMs },
         );
@@ -74,19 +93,31 @@ export function createQuestionTool(deps: QuestionToolDeps): ToolDef {
           return toolError(
             "QuestionError",
             e.code,
-            `问题超时（${String(deps.timeoutMs)}ms）未获用户答复：${question}`,
+            `问题超时（${String(deps.timeoutMs)}ms）未获用户答复：${hint}`,
           );
         }
         throw e; // Duplicate 等 = 编程错误，上抛交 loop 兜底（配平不变量）
       }
       return verdict.action === "allow"
         ? questionOk(`用户答复：${verdict.reason ?? ""}`, {
-            question,
+            question: hint,
             answer: verdict.reason ?? "",
+            ...(question.length > MAX_USER_HINT_LENGTH
+              ? {
+                  questionTruncated: true,
+                  questionOriginalLength: question.length,
+                }
+              : {}),
           })
         : questionOk("用户选择不回答这个问题。请基于已有信息继续，或换一种方式推进。", {
-            question,
+            question: hint,
             declined: true,
+            ...(question.length > MAX_USER_HINT_LENGTH
+              ? {
+                  questionTruncated: true,
+                  questionOriginalLength: question.length,
+                }
+              : {}),
           });
     },
   };

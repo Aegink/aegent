@@ -743,6 +743,43 @@ describe("question 问答面（B8b / T-P1-21）", () => {
     expect(lines.some((l) => l.includes("我按默认方案继续"))).toBe(true);
   });
 
+  it("C36：模型作者问题文本超 200 字符截断（T-P1-70）——提示有界、答复照常回喂", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-question-bound-"));
+    const longQuestion = "超长问题".repeat(80); // 320 字符 > 200 上界
+    const provider = scriptedProvider([
+      [
+        { type: "tool-call-delta", id: "qb", name: "question", argsDelta: JSON.stringify({ question: longQuestion }) },
+        { type: "done" },
+      ],
+      [{ type: "text-delta", text: "已按答复推进。" }, { type: "done" }],
+    ]);
+    const lines = await runScriptedSession(
+      {
+        provider,
+        assembly: {
+          workspaceRoot: workspace,
+          contextWindow: 200_000,
+          approvalTimeoutMs: 5_000,
+          questionTimeoutMs: 5_000,
+        },
+      },
+      async function* ({ waitFor }) {
+        yield "请回答我的问题";
+        // 提示面有界：问题按 MAX_USER_HINT_LENGTH=200 截断渲染
+        await waitFor((line) => line.includes("❓ 模型提问 [qb]"));
+        yield "/answer qb 好";
+        await waitFor((line) => line.includes("用户答复：好"));
+        await waitFor((line) => line.includes("── turn 1 结束（completed）"));
+      },
+    );
+    // ❓ 行渲染的是截断后文本（200 字符 = 50 次重复），不含完整 320 字符
+    const askLine = lines.find((l) => l.includes("❓ 模型提问 [qb]"));
+    expect(askLine).toBeDefined();
+    expect(askLine?.includes("超长问题".repeat(50))).toBe(true);
+    expect(askLine?.includes("超长问题".repeat(80))).toBe(false);
+    expect(lines.some((l) => l.includes("← 用户答复：好"))).toBe(true);
+  });
+
   it("meta-ops 直过：question 不弹权限审批（挂起即问答本身），plan 模式下仍可提问", async () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-question-plan-"));
     const provider = scriptedProvider([

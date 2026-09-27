@@ -30,6 +30,10 @@ describe("C35 · 自我修改防线（编辑器级）", () => {
     ]);
   });
 
+  it("C36：清单运行时冻结——mutate 直接 throw（T-P1-70）", () => {
+    expect(() => (SELF_EDIT_PROTECTED_NAMES as string[]).push(".evil")).toThrow();
+  });
+
   it("路径任一段命中即受保护，大小写不敏感", () => {
     expect(find("config/permissions.json")).toBe("permissions.json");
     expect(find("/repo/AGENTS.md")).toBe("AGENTS.md");
