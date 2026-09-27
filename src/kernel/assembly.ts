@@ -90,7 +90,7 @@ import {
   createSessionApprovalModule,
   proposeAmendment,
 } from "../policy/review-decision.js";
-import { createToolGateLayer } from "../policy/gate.js";
+import { createToolGateLayer, type ToolPolicyEvalOptions } from "../policy/gate.js";
 import { createApprovalAuditSink } from "../policy/audit-fields.js";
 import { createMetaOpsModule } from "../policy/meta-ops.js";
 import { PathGuard } from "../sandbox/path-guard.js";
@@ -325,6 +325,8 @@ export interface ChildAssemblyOptions {
 export interface ChildAssembly {
   /** 三个点位的层（gate / 上下文装配+压力测量 / 压缩）。 */
   layers: NonNullable<AgentLoopDeps["layers"]>;
+  /** C19/T-P1-75 dry-run 求值面（与 gate 层同一选项对象——同链保证）。 */
+  policyEvalOptions: ToolPolicyEvalOptions;
   /** PreTurn 压缩挂点（loop 的 beforeFirstModelRequest hook）。 */
   beforeFirstModelRequest(turn: number): Promise<void>;
   /** step 收尾记账（loop 的 onToolStepCompleted hook → 抖动断路器）。 */
@@ -731,17 +733,22 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
     }
   }
 
-  const toolGateLayer = createToolGateLayer({
+  // C19/T-P1-75：求值面选项单独成对象——gate 层与 dry-run（协议
+  // policy/check）消费同一形状，"同一条链"由共享对象结构性保证。
+  const toolGateEvalOptions: ToolPolicyEvalOptions = {
     chain: policyChain,
-    broker,
     sessionId,
-    onWarning: (warning) => logger?.warn("策略警告", { userContent: warning }),
     ...(ceiling !== undefined ? { ceiling } : {}),
     ...(planModeService ? { planMode: () => planModeService.isActive } : {}),
     // C11：未信任项目写/执行类出口降权（规则不得授权），缺省零行为变化
     ...(options.trustService !== undefined
       ? { trustState: () => options.trustService!.isTrusted() }
       : {}),
+  };
+  const toolGateLayer = createToolGateLayer({
+    ...toolGateEvalOptions,
+    broker,
+    onWarning: (warning) => logger?.warn("策略警告", { userContent: warning }),
   });
 
   // —— I1 hooks（T-P1-07）：registry 聚合层挂三点位外层（hooks → gate →
@@ -775,6 +782,7 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
 
   return {
     layers,
+    policyEvalOptions: toolGateEvalOptions,
     // F6/F13/T-P1-19：锚变化观测——rewritten 落 warn（前缀作废，换模时
     // 即违背 F13）；appended 落 info（位置性追加，F13 允许形态）。
     onCacheAnchorChange: (change) => {

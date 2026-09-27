@@ -96,6 +96,15 @@ export type AgentRequest =
       type: "config/refresh";
       patch: JsonRecord;
     }
+  | {
+      /** C19/T-P1-75 策略 dry-run：跑完整判定链而不执行工具——裁决经
+       * policy_verdict 回执返回（**不落事件流**：dry-run 不是状态变更，
+       * 落流会在历史里留下从未发生过的裁决）。args 为剥提案前的原始
+       * 参数（C48 剥除是求值管道的一部分）。 */
+      type: "policy/check";
+      tool: string;
+      args: JsonRecord;
+    }
   | { type: "dispose" };
 
 /** 子 → 父。 */
@@ -142,6 +151,17 @@ export type AgentMessage =
       type: "config_refreshed";
       applied: string[];
     }
+  | {
+      /** C19/T-P1-75：dry-run 裁决回执——action/reason/rule 是整链终裁
+       * 证据（C18 同源）；ask/abstain 一律回 "ask"（dry-run 不进 broker，
+       * 询问即"需审批"判定）。 */
+      type: "policy_verdict";
+      tool: string;
+      args: JsonRecord;
+      action: "allow" | "ask" | "deny";
+      reason: string;
+      rule?: string;
+    }
   | { type: "idle" }
   | { type: "error"; code: string; message: string };
 
@@ -165,6 +185,7 @@ const REQUEST_TYPES = new Set([
   "session/fork",
   "steer",
   "config/refresh",
+  "policy/check",
   "dispose",
 ]);
 const CANCEL_KINDS = new Set(["user", "parent", "disposed", "hook", "legacy"]);
@@ -207,6 +228,8 @@ export function decodeRequest(line: string): AgentRequest {
     position?: unknown;
     atSeq?: unknown;
     expectedTurn?: unknown;
+    tool?: unknown;
+    args?: unknown;
   };
   if (!REQUEST_TYPES.has(req.type)) {
     throw new ProtocolError("PROTOCOL_UNKNOWN_REQUEST", `未知请求类型 ${req.type}`);
@@ -330,6 +353,17 @@ export function decodeRequest(line: string): AgentRequest {
     }
     return { type: "config/refresh", patch: patch as JsonRecord };
   }
+  if (req.type === "policy/check") {
+    // C19/T-P1-75：tool 非空 + args 必须是 JSON 对象（dry-run 输入形状；
+    // 语义判定全在子进程求值管道）。
+    if (typeof req.tool !== "string" || req.tool === "") {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "policy/check 需要 tool 非空字符串");
+    }
+    if (typeof req.args !== "object" || req.args === null || Array.isArray(req.args)) {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "policy/check 需要 args 对象");
+    }
+    return { type: "policy/check", tool: req.tool, args: req.args as JsonRecord };
+  }
   if (req.type === "steer") {
     // A10/T-P1-47：expectedTurn 正整数必填（轮号从 1 起）、content 非空；
     // 目标校验在 agent-process（对 loop.activeTurn 权威面）——wire 面只做形状。
@@ -378,6 +412,9 @@ export function decodeMessage(line: string): AgentMessage {
     eventCount?: unknown;
     applied?: unknown;
     contents?: unknown;
+    action?: unknown;
+    reason?: unknown;
+    rule?: unknown;
   };
   switch (msg.type) {
     case "ready":
@@ -474,6 +511,37 @@ export function decodeMessage(line: string): AgentMessage {
         throw new ProtocolError("PROTOCOL_MALFORMED", "config_refreshed 需要 applied 字符串数组");
       }
       return { type: "config_refreshed", applied: msg.applied as string[] };
+    case "policy_verdict": {
+      // C19/T-P1-75：dry-run 裁决回执（tool 非空 + args 对象 + action 三值
+      // 闭集 + reason 非空；rule 缺席 = 非规则来源的裁决，C18 同源语义）
+      if (typeof msg.tool !== "string" || msg.tool === "") {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "policy_verdict 需要 tool 非空字符串");
+      }
+      if (typeof msg.args !== "object" || msg.args === null || Array.isArray(msg.args)) {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "policy_verdict 需要 args 对象");
+      }
+      if (
+        msg.action !== "allow" &&
+        msg.action !== "ask" &&
+        msg.action !== "deny"
+      ) {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "policy_verdict 需要 allow/ask/deny 之一");
+      }
+      if (typeof msg.reason !== "string" || msg.reason === "") {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "policy_verdict 需要 reason 非空字符串");
+      }
+      if (msg.rule !== undefined && typeof msg.rule !== "string") {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "policy_verdict 的 rule 须为字符串");
+      }
+      return {
+        type: "policy_verdict",
+        tool: msg.tool,
+        args: msg.args as JsonRecord,
+        action: msg.action,
+        reason: msg.reason,
+        ...(typeof msg.rule === "string" ? { rule: msg.rule } : {}),
+      };
+    }
     case "prompt_returned": {
       // A8/T-P1-52：取消后未消费输入退回（可为空数组？不——发送方仅在
       // 队列非空时发；wire 面仍校验数组形状）

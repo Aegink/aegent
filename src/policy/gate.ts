@@ -8,7 +8,7 @@
  * 截断跨层传播，链底（registry.dispatch）不发生——**不执行、不产生
  * 工具输出**，isError 结果回喂模型保 call/result 配平。
  *
- * 装配次序（本层内部，全部在 next 前）：
+ * 装配次序（本层内部，全部在 next 前，经 evaluateToolPolicy 统一承载）：
  *   1. stripProposedAmendments（C48：剥模型捎带的规则提案字段）；
  *   2. 策略链权威求值（规则/危险库/批准历史等模块，T-5-13 起陆续挂入）；
  *   3. enforceProtectedPaths（C46 硬拦）+ enforceSelfGuard（C35 防线，
@@ -17,6 +17,11 @@
  *   5. ask / abstain → broker：abstain 按不变量 3 默认落 ask（C3，
  *      "无规则默认询问"），ask 走审批出口（缺省 DenyPermissionBroker，
  *      无人应答即拒绝）；超时（C50）落类型化 isError 不炸轮次。
+ *
+ * C19 dry-run（T-P1-75）：1-4 的求值管道提取为独立导出函数
+ * evaluateToolPolicy——本层与 dry-run 入口（协议 policy/check）消费同一
+ * 函数，结构性保证"runs the same chain and executes nothing"：dry-run
+ * 在 ask/abstain 处原样返回裁决（不进 broker、不挂起、不执行）。
  *
  * 与 T-5-11 registry guard 的边界：gate 是 P0 规范执行面（toolCall 点位），
  * registry guard 留给无 gate 的旁路装配（如恢复路径）；两者同时启用时
@@ -48,17 +53,17 @@ import { PermissionTimeout } from "./pending.js";
 /** gate 级拒绝的错误码（deny 或审批拒绝）；审批超时另见 PERMISSION_TIMEOUT。 */
 export const TOOL_POLICY_DENIED = "TOOL_POLICY_DENIED";
 
-export interface ToolGateOptions {
+/**
+ * 求值面选项（C19/T-P1-75）：gate 选项中"执行前判定"需要的部分——
+ * dry-run 入口与 gate 层共用同一形状（broker 不在求值面内）。
+ */
+export interface ToolPolicyEvalOptions {
   /** 权威策略链（模块组装：规则集、危险库、会话批准历史……）。 */
   readonly chain: PolicyChain;
-  /** 审批出口（C51：缺省语义是拒绝——装配方不给 Manual 就没人能放行 ask）。 */
-  readonly broker: PermissionBrokerPort;
   /** 会话权威标识（C57：装配处取当前值）。 */
   readonly sessionId: string;
   /** 调用来源，缺省 model。 */
   readonly source?: string;
-  /** C48 剥出的提案夹带警告去向；缺省丢弃（记录面随 T-8）。 */
-  readonly onWarning?: (warning: string) => void;
   /** C49 来源上限（多来源交集折叠结果；缺省无上限——单来源装配零行为变化）。 */
   readonly ceiling?: CeilingProfile;
   /**
@@ -75,24 +80,72 @@ export interface ToolGateOptions {
   readonly trustState?: () => boolean | undefined;
 }
 
+export interface ToolGateOptions extends ToolPolicyEvalOptions {
+  /** 审批出口（C51：缺省语义是拒绝——装配方不给 Manual 就没人能放行 ask）。 */
+  readonly broker: PermissionBrokerPort;
+  /** C48 剥出的提案夹带与 C11 降权警告去向；缺省丢弃（记录面随 T-8）。 */
+  readonly onWarning?: (warning: string) => void;
+}
+
+/** 一次 dry-run 求值的产物：剥提案后的参数、整链裁决与全程警告。 */
+export interface ToolPolicyEvaluation {
+  /** C48 剥除提案字段后的参数（allow 放行 / broker 决定用的就是它）。 */
+  readonly args: JsonRecord;
+  /** 求值管道终裁（含五出口族）——ask/abstain 原样返回，不进 broker。 */
+  readonly verdict: Verdict;
+  /** 全程警告（C48 提案夹带 + C11 信任降权）——去向由调用方决定。 */
+  readonly warnings: readonly string[];
+}
+
+/**
+ * C19 dry-run 求值管道：可跑完整判定链而不执行工具（同 gate 层 1-4 步，
+ * 不进 broker 分支）。参数解析失败返回 null——gate 层据此交 registry 报
+ * TOOL_ARGUMENTS_INVALID（坏参数不属于权限判定，dry-run 亦然）。
+ */
+export async function evaluateToolPolicy(
+  toolName: string,
+  rawArguments: string,
+  options: ToolPolicyEvalOptions,
+): Promise<ToolPolicyEvaluation | null> {
+  let rawArgs: JsonRecord;
+  try {
+    const parsed: unknown = JSON.parse(rawArguments);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    rawArgs = parsed as JsonRecord;
+  } catch {
+    return null;
+  }
+  const warnings: string[] = [];
+  const { args, warnings: proposalWarnings } = stripProposedAmendments(rawArgs);
+  warnings.push(...proposalWarnings);
+
+  const call: PolicyCall = {
+    tool: toolName,
+    args,
+    sessionId: options.sessionId,
+    source: options.source ?? "model",
+  };
+  let verdict = await options.chain.evaluate(call);
+  verdict = enforceProtectedPaths(verdict, call);
+  verdict = enforceCeiling(verdict, call, options.ceiling);
+  verdict = enforceSelfGuard(verdict, call, { agentInitiated: true });
+  verdict = enforcePlanMode(verdict, call, options.planMode?.() ?? false);
+  const trusted = options.trustState?.();
+  verdict = enforceTrustGate(verdict, call, trusted);
+  if (verdict.action === "deny" && trusted === false) {
+    // C11 降权 deny 落可检索警告（出口降权不是常规策略裁决）
+    warnings.push(`trust-gate: ${call.tool} 因项目未信任被降权拒绝（C11 出口级）`);
+  }
+  return { args, verdict, warnings };
+}
+
 function deniedResult(verdict: Verdict, code: string): ToolExecutionResult {
   return {
     content: `被权限策略拒绝：${verdict.reason}`,
     isError: true,
     error: { name: "PolicyGate", code, reason: verdict.reason },
-  };
-}
-
-function policyCallOf(
-  e: ToolCallPayload,
-  args: JsonRecord,
-  options: ToolGateOptions,
-): PolicyCall {
-  return {
-    tool: e.name,
-    args,
-    sessionId: options.sessionId,
-    source: options.source ?? "model",
   };
 }
 
@@ -103,35 +156,13 @@ function policyCallOf(
 export function createToolGateLayer(
   options: ToolGateOptions,
 ): ChainLayer<LoopContext, ToolCallPayload, ToolExecutionResult> {
-  const source = options.source ?? "model";
   return async (_$, e, next) => {
-    // 参数先解析一次（坏参数直接交 registry 报 TOOL_ARGUMENTS_INVALID——
-    // 未解析的参数永远到不了执行，求值无需掺和）
-    let rawArgs: JsonRecord;
-    try {
-      const parsed: unknown = JSON.parse(e.arguments);
-      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-        return next(e);
-      }
-      rawArgs = parsed as JsonRecord;
-    } catch {
-      return next(e);
-    }
-    const { args, warnings } = stripProposedAmendments(rawArgs);
+    // 求值管道与 dry-run 共用 evaluateToolPolicy（C19 同链保证）：参数
+    // 解析失败返回 null → 交 registry 报 TOOL_ARGUMENTS_INVALID
+    const evaluation = await evaluateToolPolicy(e.name, e.arguments, options);
+    if (evaluation === null) return next(e);
+    const { args, verdict, warnings } = evaluation;
     for (const warning of warnings) options.onWarning?.(warning);
-
-    const call = policyCallOf(e, args, options);
-    let verdict = await options.chain.evaluate(call);
-    verdict = enforceProtectedPaths(verdict, call);
-    verdict = enforceCeiling(verdict, call, options.ceiling);
-    verdict = enforceSelfGuard(verdict, call, { agentInitiated: true });
-    verdict = enforcePlanMode(verdict, call, options.planMode?.() ?? false);
-    const trusted = options.trustState?.();
-    verdict = enforceTrustGate(verdict, call, trusted);
-    if (verdict.action === "deny" && trusted === false) {
-      // C11 降权 deny 落可检索警告（出口降权不是常规策略裁决）
-      options.onWarning?.(`trust-gate: ${call.tool} 因项目未信任被降权拒绝（C11 出口级）`);
-    }
 
     if (verdict.action === "allow") {
       return next({ ...e, arguments: JSON.stringify(args) });

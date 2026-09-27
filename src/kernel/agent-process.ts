@@ -38,6 +38,7 @@ import type { ModelIdentity } from "../models/identity.js";
 import { ForkError, InMemoryEventStorage, type EventStorage, SessionStore } from "../session/store.js";
 import { Projector } from "../session/project.js";
 import { createChildAssembly, createTodoUpdateEmitter, type ChildAssembly, type ChildAssemblyOptions } from "./assembly.js";
+import { evaluateToolPolicy } from "../policy/gate.js";
 import { ModelNotRegisteredError } from "./model-switch.js";
 import { createSubagentRunner } from "./subagent.js";
 import { registerBuiltinTools } from "./tools/builtin/index.js";
@@ -646,6 +647,58 @@ export async function runAgentChildStdio(
             message: e instanceof Error ? e.message : String(e),
           });
         }
+        return;
+      }
+      case "policy/check": {
+        // C19/T-P1-75：策略 dry-run——同链求值零执行（evaluateToolPolicy
+        // 与 gate 层共用；assembly 未装配 = 无链可跑，类型化拒绝）。裁决
+        // 经 policy_verdict 回执，不落事件流（dry-run 不是状态变更）。
+        // handleRequest 保持同步签名，求值 promise 就地消费。
+        const evalOptions = assembly?.policyEvalOptions;
+        if (evalOptions === undefined) {
+          send({
+            type: "error",
+            code: "POLICY_CHECK_UNAVAILABLE",
+            message: "子进程未装配策略闸门，dry-run 不可用",
+          });
+          return;
+        }
+        evaluateToolPolicy(req.tool, JSON.stringify(req.args), evalOptions)
+          .then((evaluation) => {
+            if (evaluation === null) {
+              send({
+                type: "error",
+                code: "POLICY_CHECK_MALFORMED",
+                message: "参数不是 JSON 对象，dry-run 无法求值",
+              });
+              return;
+            }
+            const { verdict } = evaluation;
+            // ask/abstain 一律回 "ask"：dry-run 不进 broker——显式 ask 规则
+            // 与"整链无人应答"（abstain，gate 层按 C3 默认落 ask）对 dry-run
+            // 消费方是同一件事：需审批。
+            const action =
+              verdict.action === "allow"
+                ? "allow"
+                : verdict.action === "deny"
+                  ? "deny"
+                  : "ask";
+            send({
+              type: "policy_verdict",
+              tool: req.tool,
+              args: evaluation.args,
+              action,
+              reason: verdict.reason,
+              ...(verdict.rule !== undefined ? { rule: verdict.rule } : {}),
+            });
+          })
+          .catch((e: unknown) => {
+            send({
+              type: "error",
+              code: "POLICY_CHECK_FAILED",
+              message: e instanceof Error ? e.message : String(e),
+            });
+          });
         return;
       }
       case "session/fork": {

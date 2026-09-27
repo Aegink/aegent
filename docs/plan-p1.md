@@ -1149,7 +1149,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 3. **C54 分类闭集与 codex 五类是映射不是照抄**：codex 按"审批流触发源"（sandbox 升级/execpolicy 规则/skill 脚本/工具请求/MCP elicitation），我方按"审批发起面"（gate 工具审批/question 提问/task 派发/预留 elicitation/预留 hook 复核）——映射关系卡内记档，不发明我方没有的执行面。
 4. **C30 批量收集不引入新执行模型**：loop 串行执行序不动（hermes "existing sequential executor" 对应物）——批量只发生在**答复收集侧**，执行侧照旧逐调用过 gate + 出口族 + revalidate。
 
-#### T-P1-75 · C19 · 策略 dry-run（求值管道提取 + CLI /check） `[ ]`
+#### T-P1-75 · C19 · 策略 dry-run（求值管道提取 + CLI /check） `[x]`
 - **依据需求**：C19（P1："策略 dry-run：可跑完整判定链而不执行工具"）——展卡核对结论②
 - **上游首选参考**：[claude-official·claude-code.d.ts:3229](../refs/claude-official/mods/types/claude-code.d.ts#L3229)（tool.check 事件：`next(e)` resolves to the engine's verdict；`$.tool.check` **runs the same chain and executes nothing**）
 - **取什么 / 别抄什么**：取"同一判定链、零执行"语义；不抄其 hooks 事件形状（我方求值管道在 gate 内，提取函数即达）
@@ -1158,6 +1158,8 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **验收**：`npx vitest run src/policy/gate.test.ts src/cli/cli.test.ts`（扩）——①dry-run 裁决 = 真执行前段裁决同形（allow/deny 用例各一）；②dry-run 零执行零挂起（无 broker 调用、无工具副作用断言）；③ask 裁决回显"需审批"而非挂起；④CLI /check 端到端可见；⑤既有 gate 回归全绿
 - **依赖**：无（批次 9 首卡）
 - **风险 / 未知**：提取后的函数签名含全部出口族选项（planMode/trustState/ceiling 活查询）——选项收敛进一个 options 对象，gate 与 dry-run 共用同形状
+- **偏离 / 建议**：①协议面扩展（卡面"CLI /check"的承载通道）：AgentRequest +policy/check 请求变体 + AgentMessage +policy_verdict 回执变体（config_refreshed 同款专用回执纪律）——dry-run 裁决**不落事件流**（不是状态变更，落流会留下从未发生过的裁决）；子进程未装配 gate 时 POLICY_CHECK_UNAVAILABLE 类型化拒绝。②abstain ≠ ask 的回执口径：链上无规则时 evaluateToolPolicy 返回 abstain（C32"整链无人应答"，C3 默认 ask 是 gate 层行为）——协议回执把 ask/abstain 统一映射为 "ask"（对 dry-run 消费方同一件事：需审批），allow/deny 原样；测试钉住 abstain 不被链伪造。③求值选项收敛为 ToolPolicyEvalOptions（ToolGateOptions extends 它 +broker/onWarning），assembly 构造同一对象展开复用——"同一条链"由共享对象结构性保证。④agent-protocol.ts 的 `reverted` 变体存在相邻重复声明（历史笔误，联合类型允许不报错）——仅文字提醒，不在本卡顺手改（AGENTS.md §4）。
+- **完成记录**：①gate.ts 提取 evaluateToolPolicy（async：chain.evaluate 是 Promise）——解析失败返回 null（gate 层交 registry 报 TOOL_ARGUMENTS_INVALID）、剥提案 args/verdict/warnings 三件套返回；createToolGateLayer 改为消费同一函数（warnings 转发 onWarning，行为等价迁移含 C11 trust-gate 警告）。②协议 policy/check（tool 非空 + args 对象校验）+ policy_verdict（action 三值闭集 + reason 必填 + rule 可选）；agent-process 分支（promise 链消费，handleRequest 保持同步签名）；assembly +policyEvalOptions 产物。③repl /check（本地坏 JSON/非对象即拒 + 参数按空白重组）+ policy_verdict 渲染（✔/✘/⏸ 前缀 + rule 证据）。④验收：`npx vitest run src/policy/gate.test.ts src/policy/exit-guard.test.ts src/policy/revalidate.test.ts src/kernel/agent-protocol.test.ts src/kernel/agent-process.test.ts src/cli/cli.test.ts` → **79 passed**（gate 16：dry-run allow 同链同形/deny 硬拦生效/ask 显式规则不挂起/abstain 如实透传/C48 剥提案收集/坏参数 null + CLI 21：/check 三态端到端 + 本地参数校验）——验收①~⑤全过；`npx tsc --noEmit` 干净。
 
 #### T-P1-76 · C25 · 工具激活与批准分离（四层 AND 激活层） `[ ]`
 - **依据需求**：C25（P1："工具激活与工具批准分离（工作区/档案/全局/会话四层按 AND 合成）"）——展卡核对结论③

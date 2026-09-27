@@ -213,3 +213,54 @@ describe("config/refresh 协议分型（B21/T-P1-63）", () => {
     );
   });
 });
+
+describe("policy/check 协议分型（C19/T-P1-75）", () => {
+  it("合法请求往返：tool + args 对象；缺 tool / args 非对象 → PROTOCOL_MALFORMED", () => {
+    expect(
+      decodeRequest(JSON.stringify({ type: "policy/check", tool: "bash", args: { command: "git status" } })),
+    ).toEqual({ type: "policy/check", tool: "bash", args: { command: "git status" } });
+    expectMalformed(() => decodeRequest(JSON.stringify({ type: "policy/check", args: {} })));
+    expectMalformed(() => decodeRequest(JSON.stringify({ type: "policy/check", tool: "bash", args: [1] })));
+  });
+
+  it("policy_verdict 回执往返：action 三值闭集 + reason 必填 + rule 可选；形状坏 → PROTOCOL_MALFORMED", () => {
+    expect(
+      decodeMessage(
+        JSON.stringify({
+          type: "policy_verdict",
+          tool: "bash",
+          args: { command: "git status" },
+          action: "allow",
+          reason: "放行（依规则 bash(git status)）",
+          rule: "bash(git status)",
+        }),
+      ),
+    ).toEqual({
+      type: "policy_verdict",
+      tool: "bash",
+      args: { command: "git status" },
+      action: "allow",
+      reason: "放行（依规则 bash(git status)）",
+      rule: "bash(git status)",
+    });
+    // rule 缺席 = 非规则来源裁决（C18 同源语义）
+    const noRule = decodeMessage(
+      JSON.stringify({
+        type: "policy_verdict",
+        tool: "write",
+        args: {},
+        action: "ask",
+        reason: "需审批",
+      }),
+    );
+    expect(noRule.type === "policy_verdict" && noRule.rule === undefined).toBe(true);
+    expectMalformed(() =>
+      decodeMessage(
+        JSON.stringify({ type: "policy_verdict", tool: "bash", args: {}, action: "abstain", reason: "x" }),
+      ),
+    );
+    expectMalformed(() =>
+      decodeMessage(JSON.stringify({ type: "policy_verdict", tool: "bash", args: {}, action: "allow" })),
+    );
+  });
+});

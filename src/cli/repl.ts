@@ -15,7 +15,7 @@ import {
   type AgentMessage,
   type AgentRequest,
 } from "../kernel/agent-protocol.js";
-import type { SessionEvent } from "../kernel/events.js";
+import type { JsonRecord, SessionEvent } from "../kernel/events.js";
 import { PERMISSION_PRESETS } from "../kernel/session-config.js";
 
 export interface AgentConnection {
@@ -224,7 +224,30 @@ export async function runCli(options: RunCliOptions): Promise<void> {
       connection.send({ type: "config/refresh", patch: { ...PERMISSION_PRESETS[preset as keyof typeof PERMISSION_PRESETS].values } });
       return;
     }
-    out(`未知命令 ${String(name)}。可用：/revert <seq> /cancel /steer <补充指令> /approve <id> allow|deny [理由] [--session] [--feedback 文本] /answer <id> <答复> /fork <新会话id> [before|after] [atSeq] /preset <readonly|workspace|yolo> /exit`);
+    if (name === "/check") {
+      // C19/T-P1-75 策略 dry-run：同链求值不执行——裁决经 policy_verdict
+      // 回执渲染；JSON 参数按空白重组（split 拆开的字段拼回原样）。
+      const tool = rest[0];
+      const argsRaw = rest.slice(1).join(" ");
+      if (tool === undefined || argsRaw === "") {
+        out("用法：/check <工具名> <json参数>（dry-run：跑完整判定链，不执行工具）");
+        return;
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(argsRaw);
+      } catch {
+        out("! /check 的参数不是合法 JSON");
+        return;
+      }
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        out("! /check 的参数必须是 JSON 对象");
+        return;
+      }
+      connection.send({ type: "policy/check", tool, args: parsed as JsonRecord });
+      return;
+    }
+    out(`未知命令 ${String(name)}。可用：/revert <seq> /cancel /steer <补充指令> /approve <id> allow|deny [理由] [--session] [--feedback 文本] /answer <id> <答复> /fork <新会话id> [before|after] [atSeq] /preset <readonly|workspace|yolo> /check <工具名> <json参数> /exit`);
   };
 
   // idle 观测（对象属性承载——TS 不跨闭包窄化可变捕获）
@@ -275,6 +298,14 @@ export async function runCli(options: RunCliOptions): Promise<void> {
           // B21/C8：刷新/预设切换回执——生效键可见（预设经 config/refresh
           // 通道切换，不新增协议命令）
           out(`✔ 配置已刷新：${msg.applied.join("、")}`);
+          break;
+        case "policy_verdict":
+          // C19：dry-run 裁决回执——同链求值、零执行（rule 缺席 = 非规则来源）
+          out(
+            `${msg.action === "allow" ? "✔" : msg.action === "deny" ? "✘" : "⏸"} ` +
+              `dry-run [${msg.tool}] ${msg.action}——${msg.reason}` +
+              (msg.rule !== undefined ? `（规则：${msg.rule}）` : ""),
+          );
           break;
         case "prompt_returned":
           // A8/T-P1-52：取消后未消费输入退回（"退回输入框"——不丢也不自动执行）

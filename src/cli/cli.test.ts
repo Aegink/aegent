@@ -772,6 +772,68 @@ describe("question 问答面（B8b / T-P1-21）", () => {
     expect(lines.some((l) => l.includes("✔ 配置已刷新：sandboxMode"))).toBe(true);
   });
 
+  it("C19：/check 策略 dry-run 端到端（T-P1-75）——allow/deny/ask 三态回执可见、零执行", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-check-"));
+    const provider = scriptedProvider([
+      [{ type: "text-delta", text: "好的。" }, { type: "done" }],
+    ]);
+    const lines = await runScriptedSession(
+      {
+        provider,
+        assembly: {
+          workspaceRoot: workspace,
+          contextWindow: 200_000,
+          approvalTimeoutMs: 5_000,
+          rules: [
+            { raw: "bash(git status)", action: "allow" },
+            { raw: "bash(git push)", action: "deny" },
+          ],
+        },
+      },
+      async function* ({ waitFor }) {
+        yield '/check bash {"command":"git status"}';
+        await waitFor((line) => line.includes("dry-run [bash] allow"));
+        yield '/check bash {"command":"git push"}';
+        await waitFor((line) => line.includes("dry-run [bash] deny"));
+        yield '/check bash {"command":"curl http://x.example"}';
+        // 无规则 → 整链 abstain → dry-run 面如实回"需审批"（不挂起不执行）
+        await waitFor((line) => line.includes("dry-run [bash] ask"));
+        yield "继续";
+        await waitFor((line) => line.includes("── turn 1 结束（completed）"));
+      },
+    );
+    expect(lines.some((l) => l.includes("✔ dry-run [bash] allow"))).toBe(true);
+    expect(lines.some((l) => l.includes("✘ dry-run [bash] deny"))).toBe(true);
+    expect(lines.some((l) => l.includes("⏸ dry-run [bash] ask"))).toBe(true);
+  });
+
+  it("C19：/check 本地参数校验——坏 JSON / 非对象参数本地即拒（不等子进程）", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-check-bad-"));
+    const provider = scriptedProvider([
+      [{ type: "text-delta", text: "好的。" }, { type: "done" }],
+    ]);
+    const lines = await runScriptedSession(
+      {
+        provider,
+        assembly: {
+          workspaceRoot: workspace,
+          contextWindow: 200_000,
+          approvalTimeoutMs: 5_000,
+        },
+      },
+      async function* ({ waitFor }) {
+        yield "/check bash {bad json";
+        await waitFor((line) => line.includes("不是合法 JSON"));
+        yield "/check bash [1,2]";
+        await waitFor((line) => line.includes("必须是 JSON 对象"));
+        yield "继续";
+        await waitFor((line) => line.includes("── turn 1 结束（completed）"));
+      },
+    );
+    expect(lines.some((l) => l.includes("! /check 的参数不是合法 JSON"))).toBe(true);
+    expect(lines.some((l) => l.includes("! /check 的参数必须是 JSON 对象"))).toBe(true);
+  });
+
   it("C36：模型作者问题文本超 200 字符截断（T-P1-70）——提示有界、答复照常回喂", async () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-question-bound-"));
     const longQuestion = "超长问题".repeat(80); // 320 字符 > 200 上界
