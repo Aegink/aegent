@@ -30,6 +30,8 @@ const retryWarnLogger = createLogger();
 interface ChildCliArgs {
   provider?: string;
   db?: string;
+  /** E14/T-P1-90 原始分片日志目录（缺省不写——旁路通道按需开启）。 */
+  rawLogDir?: string;
   workspace?: string;
   contextWindow?: number;
   approvalTimeoutMs?: number;
@@ -44,6 +46,7 @@ function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv): ChildCliArg
   const args: ChildCliArgs = {
     provider: env["AEGENT_PROVIDER"],
     db: env["AEGENT_DB"],
+    rawLogDir: env["AEGENT_RAW_LOG_DIR"],
     apiKey: env["AEGENT_API_KEY"],
     baseUrl: env["AEGENT_BASE_URL"],
     model: env["AEGENT_MODEL"],
@@ -52,6 +55,7 @@ function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv): ChildCliArg
     const a = argv[i];
     if (a === "--provider" && i + 1 < argv.length) args.provider = argv[++i];
     else if (a === "--db" && i + 1 < argv.length) args.db = argv[++i];
+    else if (a === "--raw-log-dir" && i + 1 < argv.length) args.rawLogDir = argv[++i];
     else if (a === "--workspace" && i + 1 < argv.length) args.workspace = argv[++i];
     else if (a === "--context-window" && i + 1 < argv.length)
       args.contextWindow = Number(argv[++i]);
@@ -109,6 +113,7 @@ async function main(): Promise<void> {
   // 构造 loop 后回填（provider 装配在 store 创建之前，只能经闭包桥接）。
   let retryObserver: ((o: RetryObservation) => void) | undefined;
   const options: AgentChildOptions = {
+    ...(cli.rawLogDir ? { rawLogDir: cli.rawLogDir } : {}),
     sessionId: process.env["AEGENT_SESSION"] ?? "s0",
     ...(storage ? { storage } : {}),
     ...(provider ? { provider, identity } : {}),

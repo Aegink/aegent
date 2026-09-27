@@ -42,6 +42,7 @@ import { BudgetExceededError, ParseBudget } from "./budget.js";
 import { normalizePromptVerdict, type PromptGate } from "./prompt-gate.js";
 import { MUTATION_RETRY_BUDGET_EXHAUSTED, type MutationRetryBudget } from "./tools/mutation-budget.js";
 import type { Logger } from "./logger.js";
+import type { RawChunkLog } from "./raw-chunk-log.js";
 import {
   type ChainExecutor,
   type ChainLayer,
@@ -316,6 +317,8 @@ export interface AgentLoopDeps {
   promptGate?: PromptGate;
   /** A13 拦截留痕（结构化 warn 可检索）；缺省 undefined = 不打日志。 */
   logger?: Logger;
+  /** E14/T-P1-90 原始分片诊断日志（装配注入；缺省不写——旁路通道）。 */
+  rawChunkLog?: RawChunkLog;
   /**
    * A14/T-P1-50 护栏一：单 turn 内最大 step 数（模型一直 continue 不停的
    * 强制收束）。缺省 0 = 不限（kimi configSection maxStepsPerTurn optional
@@ -1185,8 +1188,26 @@ export class AgentLoop {
           stream: timed,
         },
       ]);
+      // E14：provider 异常路径的已到达分片同样落诊断日志（保真不分顺逆）
+      this.deps.rawChunkLog?.write({
+        ts: Date.now(),
+        sessionId,
+        turn: payload.turn,
+        step: payload.step,
+        identity: payload.identity,
+        chunks: timed,
+      });
       throw e;
     }
+    // E14/T-P1-90：请求完成后分片序列落诊断日志（旁路通道——热路径零等待）
+    this.deps.rawChunkLog?.write({
+      ts: Date.now(),
+      sessionId,
+      turn: payload.turn,
+      step: payload.step,
+      identity: payload.identity,
+      chunks: timed,
+    });
     return {
       content,
       toolCalls: [...calls.values()],

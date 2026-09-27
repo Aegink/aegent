@@ -38,6 +38,7 @@ import type { ModelIdentity } from "../models/identity.js";
 import { ForkError, InMemoryEventStorage, type EventStorage, SessionStore } from "../session/store.js";
 import { Projector } from "../session/project.js";
 import { findInterruptedTurn, reconcileBootState } from "../session/boot-maintenance.js";
+import { RawChunkLog } from "./raw-chunk-log.js";
 import { createChildAssembly, createTodoUpdateEmitter, type ChildAssembly, type ChildAssemblyOptions } from "./assembly.js";
 import { evaluateToolPolicy } from "../policy/gate.js";
 import { ModelNotRegisteredError } from "./model-switch.js";
@@ -72,6 +73,8 @@ export function echoProvider(): ModelProvider {
 
 export interface AgentChildOptions {
   sessionId?: string;
+  /** E14/T-P1-90 原始分片日志目录（缺省不写——旁路通道按需开启）。 */
+  rawLogDir?: string;
   provider?: ModelProvider;
   identity?: ModelIdentity;
   /** 缺省用 process.stdin/stdout（测试可注入内存流做进程外单测）。 */
@@ -326,6 +329,9 @@ export async function runAgentChildStdio(
     // A13/T-P1-48：入队闸门与拦截留痕（缺省 undefined = 全放行零行为变化）
     ...(options.promptGate ? { promptGate: options.promptGate } : {}),
     ...(options.logger ? { logger: options.logger } : {}),
+    ...(options.rawLogDir
+      ? { rawChunkLog: new RawChunkLog({ logDir: options.rawLogDir }) }
+      : {}),
     // J6/J7：装配启用换模时，loop 每轮启动从捕获值取 provider/identity
     //（在途换模生效点在新 turn）；未启用时缺省固定 provider/identity。
     // J11：turn 失败通知 → 装配驱动换模回滚判据。
