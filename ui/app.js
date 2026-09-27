@@ -208,9 +208,20 @@ input.addEventListener("keydown", (ev) => {
 // WS 生命周期：hello → query 恢复 → live 流
 // ---------------------------------------------------------------------------
 
-function connect() {
+/** host 地址：Web 模式 = 当前页面 origin（同一 host 进程）；桌面壳模式 =
+ * WebView 从 tauri:// 协议加载（location.host 无意义）——直连本机 host
+ * 缺省端口（server.ts --port 缺省 8787），可用 URL 参数 ?host= 覆盖。 */
+function hostAddress() {
+  const params = new URLSearchParams(location.search);
+  const explicit = params.get("host");
+  if (explicit !== null && explicit !== "") return explicit;
+  if (IS_DESKTOP) return "ws://127.0.0.1:8787";
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  ws = new WebSocket(`${proto}//${location.host}/ws`);
+  return `${proto}//${location.host}`;
+}
+
+function connect() {
+  ws = new WebSocket(`${hostAddress()}/ws`);
   ws.addEventListener("open", () => {
     statusEl.textContent = "已连接";
     sendRaw({ type: "hello", version: PROTOCOL_VERSION, surfaceId: SURFACE_ID, deliveryKind: "push" });

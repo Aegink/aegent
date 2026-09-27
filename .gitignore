@@ -79,3 +79,7 @@ desktop.ini
 
 # ---- 一次性实验区（全局规则：_tmp_ 前缀与 scratch/ 不入库）----
 scratch/
+
+# Tauri 桌面壳构建产物（K2）——可再生产物不入库
+src-tauri/target/
+src-tauri/gen/schemas/
