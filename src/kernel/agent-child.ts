@@ -22,6 +22,7 @@ import { runAgentChildStdio, type AgentChildOptions } from "./agent-process.js";
 import { InvalidSessionIdError, isValidSessionId } from "../session/session-id.js";
 import { parseProviderConfig } from "../models/config.js";
 import { createOpenAiCompatProvider } from "../models/openai-compat.js";
+import { createAnthropicMessagesProvider } from "../models/anthropic-messages.js";
 import { withRetry, type RetryObservation } from "../models/retry.js";
 import { createLogger } from "./logger.js";
 
@@ -119,6 +120,28 @@ async function main(): Promise<void> {
       },
     });
     identity = { provider: "openai", modelId: cli.model ?? "gpt-4o-mini" };
+  } else if (cli.provider === "anthropic") {
+    // J5/T-P1-108：Anthropic Messages 适配（#16 追认的第二厂商——与
+    // openai 分支同构：配置不透明只校验语法 + withRetry 留痕）。
+    const config = parseProviderConfig({
+      name: "anthropic",
+      settingsConfig: JSON.stringify({
+        baseUrl: cli.baseUrl,
+        apiKey: cli.apiKey,
+        model: cli.model,
+      }),
+    });
+    provider = withRetry(createAnthropicMessagesProvider(config), {
+      onRetry: (o) => {
+        retryWarnLogger.warn("模型请求重试", {
+          attempt: o.attempt,
+          delayMs: o.delayMs,
+          ...o.error,
+        });
+        retryObserver?.(o);
+      },
+    });
+    identity = { provider: "anthropic", modelId: cli.model ?? "claude-sonnet-4-5" };
   }
 
   // J27/T-P1-61：retrying 事件落流观察者的 late-binding 槽——runAgentChildStdio
@@ -131,7 +154,7 @@ async function main(): Promise<void> {
     ...(provider ? { provider, identity } : {}),
     // F5/T-P1-18：真实 provider 时启用真摘要（LLM 生成 + 截断回退）——
     // echo 模式不给（P0 截断摘要，冷启动路径零变化）
-    ...(cli.provider === "openai" && provider && identity
+    ...((cli.provider === "openai" || cli.provider === "anthropic") && provider && identity
       ? { summarizerModel: { provider, identity } }
       : {}),
     ...(cli.provider === "openai" || cli.db || cli.workspace || cli.contextWindow !== undefined
