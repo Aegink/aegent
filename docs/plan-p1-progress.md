@@ -2,37 +2,32 @@
 
 > 本文件接续 [`plan-p0-progress.md`](plan-p0-progress.md)（P0 全程 + P1 批次 1-10，2026-09-27 收官，全量基线 1081 passed / 1 skipped，词汇表 23 事件）——**自批次 11 起的执行进度**（批次报告 / 待澄清 / 人工确认清单）记入本文件，旧文件定格不再追加。
 > 执行协议沿用 [`plan-p0.md`](plan-p0.md) §0（取卡 / 做卡 / 验收 / 打勾 / 提交 / 自动继续 / 四种停下情况）；计划本体在 [`plan-p1.md`](plan-p1.md)（执行会话只改任务卡的勾选框、「偏离 / 建议」「完成记录」三个字段）。
-> **待澄清编号接续旧文件（#16 起）**——避免跨文件引用歧义；词汇表立案管线不变（`l0-events.md` §8 落地记录全局连续，现为 18；**#16~#18 三案已经用户 2026-09-27 追认全部转正**——#16 选型 Anthropic、#17/#18 词汇表形状）。
+> **待澄清编号接续旧文件（#16 起）**——避免跨文件引用歧义；词汇表立案管线不变（`l0-events.md` §8 落地记录全局连续，现为 19；**#16~#18 已追认转正**——#16 选型 Anthropic、#17/#18 词汇表形状；#19 surface/attach + surface/detach 23→25 立案待追认，回退面齐备）。
 
 ---
 
-## 批次 12 提示词（当前活跃）
+## 批次 13 提示词（当前活跃）
 
 ```
-继续 aegent P1 批次 12 的实施（多端架构·无 UI；10 条需求 ID：K3 K4 K8 +
-N1 N2 N3 N7 N8 N9 N10）。推进模式不变：一会话一批次——本会话只做批次
-12，做完收官即停，批次 13 由下一会话接力。批次 12 尚未展卡：先照批次
-7~11 展卡先例逐条锚点核对 requirements.md §4（把卡序追加进
-docs/plan-p1.md，展卡核对结论落卡序头），再从第一张 [ ] 任务卡开始执行
-（执行协议沿用 docs/plan-p0.md §0）。上一批（批次 11）报告在
-docs/plan-p1-progress.md（批次 11 报告 + 待澄清 #16~#18 + 人工确认清单
-均在该文件）。本批特有的注意：
-1. K3 远程 host 是 K4/K8/N7/N8 的地基（圈定研究"K3 先行"）——展卡先定形
-   host/租约/协议层，K4 ACP 与 K8 端间协议是其消费面；N7/N8 是"每个界面
-   一个 host + roster"的多端模型。
-2. 接旧账三条：N2 ← C6 跨端应答通道（批次 9 在位——lease/answer 面）；
-   N9/N10 ← N1（配置跨设备同步的地基）；M9 记档"全局/会话两级上限结构
-   留 K3"（批次 6）+ M8/N4 execution epoch（批次 10）+ N6 lease 语义扩展
-   （批次 9 C6 卡记档"多端并发 holder 留 N7"）——多端打底逐条消费。
-3. 词汇表高风险预判（圈定研究）：N8 surface roster attach/detach 事件——
-   展卡时预判立案（编号接 #19 起）；批次 11 遗留案状态：#16 已追认
-   （Anthropic）——T-P1-108（J5 Anthropic Messages 适配）在本批展卡执行
-   （锚点照卡序头草案：opencode llm 分层 + pi-mono anthropic api）；#17
-   （compHash 载荷）/ #18（strategy 值域 + failureReason 载荷）已经用户
-   2026-09-27"全部认可"追认转正——无遗留待澄清案。
-4. 全量基线 1144 passed / 1 skipped；词汇表 23 事件。收官照批次 8~11
-   先例出组报告（写入本文件），更新本文件的批次 13 提示词与全量基线后
-   停止——不要开始批次 13。不要问要不要继续。
+继续 aegent P1 批次 13 的实施（多模态与工程纪律；8 条需求 ID：P1 P2 P3 +
+T1 T2 T5 T6 + L4）。推进模式不变：一会话一批次——本会话只做批次 13，做
+完收官即停，批次 14 由下一会话接力。批次 13 尚未展卡：先照批次 7~12 展
+卡先例逐条锚点核对 requirements.md §4（把卡序追加进 docs/plan-p1.md，
+展卡核对结论落卡序头），再从第一张 [ ] 任务卡开始执行（执行协议沿用
+docs/plan-p0.md §0）。上一批（批次 12）报告在 docs/plan-p1-progress.md
+（批次 12 报告 + 待澄清 #19 + 人工确认清单均在该文件）。本批特有的注意：
+1. 批次 12 遗留：#19（surface/attach + surface/detach 23→25，两枚 log-only
+   会话级元事件）待追认——若用户已表态追认则在 l0-events.md §8 落地记录
+   19 落"已追认"转正，未追认不阻塞批次 13（回退面齐备，可选字段前向兼
+   容口径）。批次 12 新产出多端地基（host/registry、host/protocol、acp/
+   、sync/ 四新域）与 J5 Anthropic 适配已收官——批次 13 的 T1 架构即代
+   码落地后可反哺后续批次展卡纪律。
+2. 词汇表影响预判（圈定研究标注"低"）：P 族附件若需事件承载（user/message
+   载荷扩展 vs 新事件）展卡时预判立案（编号接 #20 起）；L4 轨迹回放是纯
+   读面零扩展预判；T5/T6 小件预计零扩展。每处扩展仍走 Q9 单向门立案。
+3. 全量基线 1239 passed / 1 skipped；词汇表 25 事件（#19 待追认口径）。
+   收官照批次 8~12 先例出组报告（写入本文件），更新本文件的批次 14 提
+   示词与全量基线后停止——不要开始批次 14。不要问要不要继续。
 ```
 
 ---
@@ -63,7 +58,35 @@ docs/plan-p1-progress.md（批次 11 报告 + 待澄清 #16~#18 + 人工确认�
 
 ---
 
+## 批次 12 · 多端架构·无 UI（10 条：K3 K4 K8 + N1 N2 N3 N7 N8 N9 N10 + T-P1-108 J5）
+
+**状态**：✅ 收官（2026-09-27）——11 张卡全关（T-P1-110 ~ 118 + 108 + 120）；T-P1-108（J5 Anthropic，#16 追认后）本批展开执行完毕。
+
+**展卡注意**（承接批次 11 报告）——展卡核对结论已落卡序头（plan-p1.md 批次 12 卡序节）：
+1. 10 条锚点逐一打开核对零内容勘误（K3 agent-host-bridge.ts 全文 / K4 xai-acp-lib 8 文件结构 / K8 pi protocol 三件 / N7 zcode sessionRealtimePort / N8 claude-code.d.ts 🔴只学语义 / N9-N10 config_sync merge+crypto）；疑似覆盖核对：N4 关闭记档消费（T-P1-87 ExecutionEpoch 打底在位，本批不扩流内载荷）；M9 记档"全局/会话两级上限留 K3"兑现（T-P1-112 chainToolAcquire）。
+2. N7+N3 一卡承载（同一机制两面——N7 验收自引 Q6 互斥）；N9/N10 拆两卡（N10 合并纯函数先行、N9 子系统消费）。
+3. 词汇表预判立案：#19 = N8 surface/attach + surface/detach（两枚而非一枚 op 二值——判据字段差异 C14 自洽）；T-P1-108 J5 展开执行（#16 已追认 Anthropic）。
+
+### 批次 12 报告（收官于 2026-09-27）
+
+- **打勾情况**：11/11 卡全关（T-P1-110 N1 统一会话 ID / T-P1-111 N10 三方合并 / T-P1-112 K3 HostRegistry / T-P1-113 N7+N3 租约互斥 / T-P1-114 N8 roster 事件 / T-P1-115 K8 端间协议 / T-P1-116 N2 跨端审批 / T-P1-117 K4 ACP / T-P1-118 N9 同步子系统 / T-P1-108 J5 Anthropic / T-P1-120 收口），每勾附「命令 + 结果摘要」。
+- **展卡结论**：10 条锚点零勘误；K3"只学行为"落 host 包装不重写（pi-desktop 行为复用纪律）；K8"内核协议自有"落信封化我方词汇（AgentRequest/AgentMessage 复用，不取 CBOR/三级路由——YAGNI 记档）；K4"独立包"落 src/acp 独立域 + 三结构红线机内化（≤8 文件 / cli 零 import / 单向依赖——pnpm workspace 不引入记档）；N8 两事件而非单事件（判据字段差异 C14 自洽）；N9 KDF scrypt 替代 Argon2id（Node 内置，引原生依赖违反纪律——记档）。
+- **产出的文件**：四新域——`src/host/`（registry / lease / protocol / bridge / roster 五模块 + 五测试）、`src/acp/`（jsonrpc / acp-agent / main 三模块 + 测试，恰 4 文件 ≤8）、`src/sync/`（merge / vault / store / journal / coordinator 五模块 + 两测试）、`src/session/session-id.ts` + 测试、`src/models/anthropic-messages.ts` + 测试；扩 `kernel/events.ts`（词汇表 23→25）/ `kernel/agent-child.ts`（--session/--provider anthropic）/ `kernel/agent-process.ts`（toolAcquire 注入）/ `kernel/invariants.ts` + `session/project.ts`（surface 校验豁免）/ `cli/index.ts`（resolveChildSessionArgv）。
+- **验收台账**：全量 `npx vitest run` **1239 passed / 1 skipped**（批次 11 收官 1144 → 净增 95，139 文件）；`npx tsc --noEmit` 全程干净；`count-features.sh` = 310 不变；`check-doc-links.sh` 492 链接 0 失效（显式传参 4 文件）；`license-audit.sh` exit 0（LEAK 未命中/SOURCEMAP 无）。
+- **词汇表扩展**：**23→25 一案**——#19 `surface/attach {surfaceId, deliveryKind?}` + `surface/detach {surfaceId, reason?}`（log-only 会话级元事件，roster 持久面 + activeRoster 流重建恢复恒等）；落地记录 19 同步（§3.2 表格 24/25 行 + 原 22/23 缺行补齐）；回退面齐备（删两事件 + 校验/豁免/roster/hub 回调，约 1.5 小时全部新增面）。
+- **盘点结论**：八面零真冲突（T-P1-120 完成记录）：①三层并发次序（全局→会话→B17 RwLock，计数独立）；②两租约域分立（host 面 run 保护 × port 面命令准入——场景③钉死）；③roster log-only 零模型历史污染 + 恢复恒等 + 会话级/进程级分域；④两协议词汇同源（类型 import 编译期防漂移）；⑤ACP 映射边界（词汇不漏内核 + 三结构断言）；⑥跨连接审批审计链完整（source 自由文本，答复端闭集收口随批次 14 记档）；⑦vault × DPAPI 两套加密分域（import 零交叉）；⑧快照即规格 = bridge.test 场景③逐信封序列 + roster 落流三形状。
+- **新发现的约束或坑**：(a) **merge 缺席语义缺口**（对 T-P1-111 回修）——local 缺席曾被误判删除/冲突，按 pi"缺席仅在 base 有意义、显式墓碑才表达删除"补四条缺席分支（12 既有用例零回归）；(b) **per-device knownBase 设计发现**——全局单一 base 让后推设备静默取边（正是 N10 要防的"后写覆盖先写"），协调器加设备侧认可基线后冲突在前推方 pull 阶段显式撞出；(c) 内存桥 kill 只 end output 挂死——runAgentChildStdio 等 `Promise.race([readline close, output error])`，end() 不触发 error（test fixture 教训——须 end stdin）；(d) 连接身份真源在构造期（HostProtocolServerOptions.surfaceId）——hello 的 surfaceId 字段是校验回执非设定点；(e) HttpMock SseScript 无 event: 行（Anthropic data.type 兜底可用）且 includeDone 缺省注入 [DONE]（Anthropic wire 无此词——适配器解析容忍非闭集帧带 error 对象才抛）；(f) flaky 两例（llm-replay / http-mock 并行竞态各复现 1 次，隔离复跑全绿——批次 6/11 同形态）。
+- **偏离计划的地方**：逐卡「完成记录」已记档——要点：协议信封三处扩展（hello +surfaceId/deliveryKind、ServerEnvelope +notification、ClientEnvelope +lease——wire 形状非事件词汇表，批次 9 先例）；HostBridge 编排面新模块（N2 场景③的承载——卡面"零新机制"修正为"零新机制 + 编排面"，审批广播/回执匹配/租约校验是组合逻辑）；N9 coordinator + knownBase 与 result.base（设计发现 (b) 的落点）；K4 恰 4 文件（≤8 内——main/jsonrpc/acp-agent/测试，多余抽象不预建）。
+- **遗留风险与未知**（→ 人工确认清单）：#19 待追认（回退面齐备，未追认不阻塞）；真实网络传输层缺位（K8 的 TCP/WS 传输、N9 的 WebDav 远端、租约 TTL 心跳——接口面在位随批次 14/部署）；ACP 规范全文对齐随真实客户端联调；Anthropic 真实端点联调随 §6.2（含 cache_control 标记策略）；答复端闭集（APPROVAL_SURFACES 并入）随批次 14 真实端面。
+- **批次完成定义核对**：全部 ✅（见 plan-p1.md 批次 12 完成定义——11 卡全勾 + tsc 干净 + 310 不变 + 492 链接 0 失效 + license exit 0 + #19 立案 + 结构红线机内化 + 报告/提示词/基线更新）。
+- **下一批**：**批次 13 多模态与工程纪律（8 条：P1 P2 P3 + T1 T2 T5 T6 + L4）**——未展卡，下一会话先展卡（锚点核对 + 卡序落 plan-p1.md）再执行，做完收官即停。
+- **下一批提示词**：见本文件头部「批次 13 提示词（当前活跃）」。
+
+---
+
 ## 待澄清（执行会话新发现；接续旧文件编号——#16 起）
+
+
 
 | # | 需求ID | 我看到的（含路径:行） | 与需求文档的矛盾 | 建议 | 裁决与落实 |
 | --- | --- | --- | --- | --- | --- |
@@ -78,3 +101,7 @@ docs/plan-p1-progress.md（批次 11 报告 + 待澄清 #16~#18 + 人工确认�
 | --- | --- | --- | --- |
 | llm-replay flaky（批次 11 测试基建） | `llm-replay.test.ts` 回放等价用例在 93 文件并行负载下偶发失败（批次 11 期间复现 1 次，隔离复跑两次全绿）——疑似端口/时序资源竞态，非产品代码缺陷 | 多次全量跑观察复现率；若复现频繁，下一会话以 test-only 修复（如固定端口/串行化该文件） | 观察中（批次 6 T-P1-48 同形态） |
 | J16 健康探测真实端点（T-P1-107） | 探测的 reachability/degraded 判据已单测钉死，但真实厂商端点的 TTFB 分布未实测 | 下次真实厂商联调时顺带跑 `runHealthCheck`（degraded 阈值 6000ms 是否合理） | 待真实厂商联调（同 §6.2 终验窗口） |
+| #19 surface/attach + surface/detach（批次 12 词汇表 23→25） | 两枚 log-only 会话级元事件的词汇表扩展走 Q9 单向门——追认是用户决策项（§0 第 7 条第 3 款） | 追认则 l0-events.md §8 落地记录 19 落"已追认"转正；不追认按回退面删除（约 1.5 小时全部新增面，roster 回落内存面） | 待追认（回退面齐备，不阻塞批次 13） |
+| 真实网络传输层（批次 12 host 域） | K8 端间协议的 TCP/WS 传输、N9 的 WebDav 远端、租约 TTL 心跳均接口面在位未实装（无真实部署形态） | 批次 14 UI 部署形态定形时选传输并补端到端实测 | 待批次 14 / 真实部署 |
+| ACP 规范全文对齐 + Anthropic 真实端点（T-P1-117 / T-P1-108） | 方法映射按公开约定最小面（四方法）+ wire 语义 http-mock 钉死；真实 ACP 客户端与 Anthropic 端点未实测 | 真实客户端联调时对齐规范全文（fs 工具面/read_resource 等）；Anthropic 端点跑通一轮真实会话（cache_control 标记策略同窗口） | 待真实联调（§6.2 终验窗口） |
+| 全量 flaky 两例（llm-replay / http-mock，批次 12 期间各复现 1 次） | 93+ 文件并行负载下的端口/时序资源竞态（隔离复跑全绿）——批次 6 T-P1-48 同形态，非产品代码缺陷 | 多次全量跑观察复现率；若频繁，下一会话以 test-only 修复（固定端口/串行化该文件） | 观察中（与批次 11 llm-replay 在案项合并观察） |
