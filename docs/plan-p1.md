@@ -1085,7 +1085,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **验收**：`npx vitest run src/kernel/events.test.ts src/session/project.test.ts src/test-support/migration-asserts.test.ts`（扩）——①计数 21；②plugin 落流可投影、namespace 空拒；③旧流前向兼容；④C15：其他未知类型仍被拒（逃生舱只有一个）
 - **依赖**：无
 - **风险 / 未知**：20→21 需用户追认（三案一并）
-- **偏离 / 建议**：待澄清 #11 已按用户本会话开工表态（"待澄清表认可然后继续"）标关闭转正——该表态解读为覆盖批次 8 提示词所述"#9/#10/#11 三案一并追认"；#9/#10 开工时已先转正（落地记录 10/11），#11 随本卡落地即转正（落地记录 12，§3.2 正式计数 21）。若解读超出用户本意，回退面照落地记录 12 可执行（约 1.5 小时）。**此解读已在批次 8 组报告中显著记录，供用户复核。**
+- **偏离 / 建议**：待澄清 #11 口径已闭环——按用户本会话开工表态（"待澄清表认可然后继续"）解读转正（#9/#10 落地记录 10/11、#11 落地记录 12）后，**会话末用户"认可转正"复核确认**，21 事件为正式计数。
 - **完成记录**：①词汇表 20→21：新事件 `plugin {namespace, payload?}`（pi CustomEntry 同构；namespace 非空必填 + payload 可选 JsonValue；log-only 不进模型历史、投影不消费、O7 会话级元事件豁免）——events.ts（PluginEvent / EVENT_TYPES 21 / C16 编译闸门同步）/ project.ts（validation：namespace 空/ payload 不可序列化拒；isJsonValue 结构校验）/ invariants.ts（豁免面 +plugin）/ messages.ts default 分支天然不消费。②待澄清 #11 立案即关闭（见上）；l0-events.md §3.2 计数 21 + 第 21 行 + §8 落地记录 12。③验收：`npx vitest run src/kernel/events.test.ts src/session/project.test.ts src/test-support/migration-asserts.test.ts` → **33 passed**——①计数 21（SAMPLES 全型构造 + EVENT_TYPES 长度）✓；②plugin 落流可投影（投影不消费不炸）、namespace 空/payload 函数拒 ✓；③旧流前向兼容（migration-asserts"旧形状流"既有用例承载）✓；④C15：ghost/plugin 恒拒（逃生舱只有一个）✓；kernel/session/test-support 全目录 **510 passed** 回归；`npx tsc --noEmit` 干净。
 
 #### T-P1-73 · C8 · 权限预设成套切换 `[x]`
@@ -1122,6 +1122,6 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 
 - 9 张卡全部打勾 ✅，每勾附「命令 + 结果摘要」；`npx tsc --noEmit` 全程干净 ✅；`count-features.sh` = 310 不变 ✅、`check-doc-links.sh` 838 链接 0 失效 ✅、`license-audit.sh` 通过 ✅。
 - C41 展卡核对关闭（T-5-05 已覆盖，不占卡）——12 条中 11 条实卡 + 1 条核对关闭 ✅。
-- 词汇表一处扩展（C17 泛型逃生舱 20→21）走待澄清 #11 立案——三案（#9/#10/#11）可一并追认 ✅（经用户 2026-09-27 开工表态"待澄清表认可然后继续"三案全部转正，落地记录 10/11/12；§3.2 正式计数 21 事件）。
+- 词汇表一处扩展（C17 泛型逃生舱 20→21）走待澄清 #11 立案——三案（#9/#10/#11）可一并追认 ✅（#9/#10 经用户开工表态转正；#11 先行解读转正后经用户会话末"认可转正"复核确认——落地记录 10/11/12，§3.2 正式计数 21 事件）。
 - 权限出口族红线：C11 信任降权在出口级（规则不可授权）✅；C36 清单只追加 ✅；C13 ReadGate 可整体丢弃 ✅。
 - 六面盘点结论落批次报告（T-P1-74）✅（零真冲突）。
