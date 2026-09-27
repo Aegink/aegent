@@ -31,6 +31,14 @@ export type OwnerCommand =
       readonly reply: ApprovalReply;
     }
   | {
+      /** C30 审批批量（T-P1-81）：一次答复多个挂起请求——审批提前收集，
+       * 执行侧不动（loop 串行执行序是结构保证，答复序不影响它）；hermes
+       * terminal_approval_batch 同语义：only approval runs ahead。
+       * 逐项转达、部分失败不回滚（逐项结果回传调用方）。 */
+      readonly type: "respond_permission_batch";
+      readonly decisions: readonly { requestId: string; reply: ApprovalReply }[];
+    }
+  | {
       /** 停止当前生成（A7 取消的 owner 入口；handler 由 loop 装配注入）。 */
       readonly type: "stop_generation";
       readonly reason?: string;
@@ -86,6 +94,19 @@ export interface LeaseHandle {
 }
 
 // ---------------------------------------------------------------------------
+// 批量答复逐项结果（C30）
+// ---------------------------------------------------------------------------
+
+/** 批量答复的逐项结果：失败项带类型化 code（PERMISSION_REPLY_STALE 等），
+ * 成功项生效不回滚——部分失败是批量答复的常态而非异常。 */
+export interface BatchDecisionResult {
+  readonly requestId: string;
+  readonly ok: boolean;
+  readonly code?: string;
+  readonly message?: string;
+}
+
+// ---------------------------------------------------------------------------
 // 端口
 // ---------------------------------------------------------------------------
 
@@ -94,6 +115,14 @@ export interface OwnerPortHandlers {
     requestId: string,
     reply: ApprovalReply,
   ) => Promise<void>;
+  /**
+   * C30 批量答复处理（T-P1-81）：装配可提供整批处理器（返回逐项结果）；
+   * 缺省 fallback = 逐项调 respondPermission 并就地捕获失败（stale/
+   * unknown 逐项类型化返回，成功项生效——部分失败不回滚）。
+   */
+  readonly respondPermissionBatch?: (
+    decisions: readonly { requestId: string; reply: ApprovalReply }[],
+  ) => Promise<readonly BatchDecisionResult[]>;
   readonly stopGeneration?: (reason?: string) => Promise<void>;
   /** J6 换模处理（T-P1-04 装配注入；未启用换模的装配可不提供）。 */
   readonly modelSwitch?: (identity: ModelIdentity) => Promise<void> | void;
@@ -145,13 +174,38 @@ export class OwnerCommandPort {
   async requestOwnerCommand(
     lease: LeaseHandle,
     command: OwnerCommand,
-  ): Promise<void> {
+  ): Promise<unknown> {
     if (this.leaseId !== lease.id || this.leaseOwnerId !== lease.ownerId) {
       throw new NotLeaseHolderError(lease.ownerId);
     }
     switch (command.type) {
       case "respond_permission":
         return this.handlers.respondPermission(command.requestId, command.reply);
+      case "respond_permission_batch": {
+        // C30：逐项转达（顺序处理），部分失败不回滚——结果逐项回传。
+        // 返回类型 Promise<void> 特例允许携带值（TS void 语义）。
+        if (this.handlers.respondPermissionBatch !== undefined) {
+          return await this.handlers.respondPermissionBatch(command.decisions);
+        }
+        const results: BatchDecisionResult[] = [];
+        for (const decision of command.decisions) {
+          try {
+            await this.handlers.respondPermission(decision.requestId, decision.reply);
+            results.push({ requestId: decision.requestId, ok: true });
+          } catch (error) {
+            results.push({
+              requestId: decision.requestId,
+              ok: false,
+              code:
+                error instanceof Error && "code" in error
+                  ? String((error as { code: unknown }).code)
+                  : undefined,
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+        return results;
+      }
       case "stop_generation":
         return this.handlers.stopGeneration?.(command.reason);
       case "model/switch":

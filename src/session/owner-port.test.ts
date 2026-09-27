@@ -157,3 +157,95 @@ describe("N6 · 命令闭集与 stop_generation", () => {
     ).resolves.toBeUndefined();
   });
 });
+
+describe("C30 · 审批批量答复（T-P1-81）", () => {
+  it("批量答复全部生效：逐项 verdict 正确归属（两挂起一次答复）", async () => {
+    const { pending, port } = makePort();
+    const lease = port.acquireLease("cli");
+    const a = pending.ask(
+      { id: "b-a", sessionId: "s1", tool: "bash", args: { command: "git status" }, category: "tool" },
+      { timeoutMs: 5_000 },
+    );
+    const b = pending.ask(
+      { id: "b-b", sessionId: "s1", tool: "bash", args: { command: "git push" }, category: "tool" },
+      { timeoutMs: 5_000 },
+    );
+    const results = (await port.requestOwnerCommand(lease, {
+      type: "respond_permission_batch",
+      decisions: [
+        { requestId: "b-a", reply: { action: "allow" } },
+        { requestId: "b-b", reply: { action: "deny", reason: "不许推" } },
+      ],
+    })) as Array<{ requestId: string; ok: boolean }>;
+    expect(results).toEqual([
+      { requestId: "b-a", ok: true },
+      { requestId: "b-b", ok: true },
+    ]);
+    expect(await a).toMatchObject({ action: "allow" });
+    expect(await b).toMatchObject({ action: "deny" });
+    expect(pending.listPending()).toEqual([]);
+  });
+
+  it("部分失败不回滚：stale 项逐项类型化返回，成功项照常生效", async () => {
+    const { pending, port } = makePort();
+    const lease = port.acquireLease("cli");
+    const alive = pending.ask(
+      { id: "c-alive", sessionId: "s1", tool: "bash", args: {}, category: "tool" },
+      { timeoutMs: 5_000 },
+    );
+    // 制造一个 stale（先答复再批量重答）与一个 unknown（从未存在）
+    await pending.reply("c-alive", { action: "deny" });
+    const results = (await port.requestOwnerCommand(lease, {
+      type: "respond_permission_batch",
+      decisions: [
+        { requestId: "c-alive", reply: { action: "allow" } },
+        { requestId: "c-ghost", reply: { action: "allow" } },
+      ],
+    })) as Array<{ requestId: string; ok: boolean; code?: string }>;
+    expect(results[0]).toMatchObject({ requestId: "c-alive", ok: false, code: "PERMISSION_REPLY_STALE" });
+    expect(results[1]).toMatchObject({ requestId: "c-ghost", ok: false, code: "PERMISSION_REQUEST_UNKNOWN" });
+    void alive;
+  });
+
+  it("非持约端批量答复 → NotLeaseHolderError（审批权随 lease 移交——C6 前置）", async () => {
+    const { port } = makePort();
+    const lease = port.acquireLease("desktop");
+    lease.release();
+    const leaseB = port.acquireLease("feishu");
+    await expect(
+      port.requestOwnerCommand(lease, {
+        type: "respond_permission_batch",
+        decisions: [{ requestId: "x", reply: { action: "allow" } }],
+      }),
+    ).rejects.toThrow(NotLeaseHolderError);
+    // B 端（现持有者）批量答复可用
+    const pending = new PendingApprovals();
+    void pending;
+    await expect(
+      port.requestOwnerCommand(leaseB, {
+        type: "respond_permission_batch",
+        decisions: [],
+      }),
+    ).resolves.toEqual([]);
+  });
+
+  it("装配提供的 respondPermissionBatch 优先于 fallback（整批处理器接管）", async () => {
+    let batched: string[] | undefined;
+    const port = new OwnerCommandPort({
+      respondPermission: async () => {
+        throw new Error("fallback 不应被调");
+      },
+      respondPermissionBatch: async (decisions) => {
+        batched = decisions.map((d) => d.requestId);
+        return decisions.map((d) => ({ requestId: d.requestId, ok: true }));
+      },
+    });
+    const lease = port.acquireLease("cli");
+    const results = (await port.requestOwnerCommand(lease, {
+      type: "respond_permission_batch",
+      decisions: [{ requestId: "h-1", reply: { action: "allow" } }],
+    })) as Array<{ requestId: string; ok: boolean }>;
+    expect(batched).toEqual(["h-1"]);
+    expect(results).toEqual([{ requestId: "h-1", ok: true }]);
+  });
+});

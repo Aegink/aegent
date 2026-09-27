@@ -837,3 +837,34 @@ describe("C56 · 判官复核接线：allow/deny/abstain/预算/强制位（T-P1
     expect(await pendingAsk).toEqual({ content: "executed" });
   });
 });
+
+describe("C30 · 并发双挂起乱序答复 × 裁决正确归属（T-P1-81）", () => {
+  it("两个并发挂起乱序答复：各自 verdict 正确归属，互不串扰（执行侧守卫照常）", async () => {
+    const pending = new PendingApprovals();
+    const broker = new ManualPermissionBroker(pending, 5_000);
+    const layer = createToolGateLayer({
+      chain: assemblePolicyChain({ user: [rulesModule([["ask", "bash(git *)"]])] }),
+      broker,
+      sessionId: "s1",
+    });
+    const executed: string[] = [];
+    const next = makeNext(async (e2) => {
+      executed.push(JSON.parse(e2.arguments).command as string);
+      return { content: "executed" };
+    });
+    // 并发双挂起（T-P1-15 并行面）：first 后挂、second 先挂
+    const first = layer({ sessionId: "s1" }, payload({ command: "git status" }, "cc-1"), next);
+    const second = layer({ sessionId: "s1" }, payload({ command: "git push" }, "cc-2"), next);
+    await waitUntilRegistered(pending, "cc-1");
+    await waitUntilRegistered(pending, "cc-2");
+    expect(pending.listPending().map((r) => r.id)).toEqual(["cc-1", "cc-2"]);
+    // 乱序批量答复：second 先答（deny）、first 后答（allow）
+    await pending.reply("cc-2", { action: "deny", reason: "不许推" });
+    await pending.reply("cc-1", { action: "allow" });
+    const [r1, r2] = await Promise.all([first, second]);
+    expect(r1).toEqual({ content: "executed" });
+    expect(r2.isError).toBe(true);
+    // 执行侧守卫照常：allow 的调用真实执行（内容即其参数）、deny 的不执行
+    expect(executed).toEqual(["git status"]);
+  });
+});

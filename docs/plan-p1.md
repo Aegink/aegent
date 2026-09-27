@@ -1221,7 +1221,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **偏离 / 建议**：①裁决通道：pending.ask 返回类型升 ApprovalAnswer = Verdict & {modifiedInput?}（T-P1-79 同款）——判官 verdict 是独立闭集 JudgeVerdict（outcome 三值），**不改 Verdict**。②超时落法：gate 接线用 Promise.race + JUDGE_REVIEW_TIMEOUT_MS（导出常量被上层真复用——codex REVIEW_TIMEOUT pub const 纪律兑现）；超时/判官崩溃 = abstain 语义（"判官不可用：…"），不炸轮次。③预算记账次序 = 调前 hasBudget、调后 expend（输入字符 = JSON.stringify(judgeRequest).length——工具参数与原裁决证据都计入）；judgeBudget 缺省每次调用新建临时记账（装配面持久记账随真实需求）。④abstain × requireJudge：返回 isError(JUDGE_UNAVAILABLE) 而非 throw（类型化失败不炸轮次——C50 同款失败纪律）。⑤unattended × 判官次序：unattended 检查在前（ask 已转 deny，判官不被调）——无人值守下判官复核不发生（人不在场时判官 allow 放行会绕过无人值守语义；收口卡①详述）。
 - **完成记录**：①judge-port.ts 新建——JudgePort/JudgeRequest/JudgeVerdict 三值闭集（abstain 显式）+ JUDGE_INPUT_BUDGET_CHARS=8000 / JUDGE_REQUESTS_PER_SESSION=20 双面预算 + JudgeBudgetTracker（hasBudget/expend/usage 纯内存）+ JUDGE_REVIEW_TIMEOUT_MS=90_000（注释写明刻意宽松理由）+ JudgeUnavailableError（JUDGE_UNAVAILABLE）。②gate.ts：ToolGateOptions +judge/judgeBudget/requireJudge；ask 分支判官复核（unattended 之后 broker 之前）：allow → next（broker 零调用）/ deny → deniedResult（"判官拒绝：…"）/ abstain → requireJudge ? isError(JUDGE_UNAVAILABLE) : 落回 broker ask；预算耗尽判官不被调直接落回；race 超时按 abstain。③验收：`npx vitest run src/policy src/kernel src/session src/cli` → **728 passed**（judge-port 4：常量导出/双面预算耗尽/三值闭集/类型化错误 + gate 6：allow 免挂起/deny 带标记/abstain 落回人/预算耗尽不调判官/requireJudge 类型化失败/缺省零行为变化）——验收①~⑦全过；`npx tsc --noEmit` 干净。
 
-#### T-P1-81 · C30 · 审批批量（批量答复 + 执行序不变 + 守卫重跑） `[ ]`
+#### T-P1-81 · C30 · 审批批量（批量答复 + 执行序不变 + 守卫重跑） `[x]`
 - **依据需求**：C30（P1："审批可批量：审批提前收集、执行仍按原顺序、执行时守卫重跑"）——展卡核对结论④
 - **上游首选参考**：[hermes·terminal_approval_batch.py](../oss/hermes-agent/agent/terminal_approval_batch.py)（"Only command approval runs ahead... the existing sequential executor releases each worker and persists its result before releasing the next... the real execution still runs every command guard"）
 - **取什么 / 别抄什么**：取"审批提前收集 / 执行原序 / 守卫重跑"三纪律；不抄其 contextvars/thread 编排（我方批量发生在答复收集侧，执行侧 loop 串行不动）
@@ -1230,6 +1230,8 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **验收**：`npx vitest run src/session/owner-port.test.ts src/policy/gate.test.ts`（扩）——①批量答复全部生效（逐项 verdict 正确）；②部分 stale 部分成功（逐项结果不回滚）；③乱序答复 × 原序执行对照断言；④批量批准后执行面守卫照常（session 批准 + 出口族重算）；⑤单答复通道回归不破
 - **依赖**：T-P1-79（reply 形状含 modifiedInput/category 稳定后扩命令）
 - **风险 / 未知**：串行装配下批量 = 单答复退化（无第二挂起并存）——验收用并行工具装配（T-P1-15 在位）构造双挂起；纯串行退化语义记档
+- **偏离 / 建议**：①requestOwnerCommand 返回类型 Promise<void> → Promise<unknown>（void 返回特例兼容任何值——单答复调用方零破坏，批量逐项结果经返回值回传）。②逐项结果形状 BatchDecisionResult {requestId, ok, code?, message?}——失败项带 pending 层类型化 code（PERMISSION_REPLY_STALE / PERMISSION_REQUEST_UNKNOWN），部分失败不回滚（hermes "persist before releasing next" 语义的答复面对应物）。③双通道：装配可提供 respondPermissionBatch 整批处理器（优先）；缺省 fallback = 逐项 await respondPermission 就地捕获。④"执行仍按原顺序"的结构保证：loop 串行执行序 = 模型 toolCalls 序，答复面无执行序干预点（批量只解除挂起不调度执行）——乱序答复 × 裁决正确归属测试钉住"批量不改变裁决与执行的正确性"；守卫重跑由 C52 出口族重跑 + revalidate 既有语义承载（收口卡④并入清单）。⑤协议面 approve_batch 变体不做（CLI 批量 UI 随真实需求——N6 进程内闭集已备）。
+- **完成记录**：①owner-port.ts：OwnerCommand +respond_permission_batch（decisions 闭集载荷）+ OwnerPortHandlers.respondPermissionBatch?（整批优先）+ BatchDecisionResult + requestOwnerCommand batch 分支（lease 校验 → 双通道逐项转达 → 逐项结果回传，失败不回滚）。②验收：`npx vitest run src/policy src/kernel src/session src/cli` → **733 passed**（owner-port 12：批量全生效逐项归属/部分 stale+unknown 逐项类型化不回滚/非持约端 NotLeaseHolderError/整批处理器优先 + gate 35：并发双挂起乱序答复裁决正确归属且 deny 不执行 allow 真实执行（守卫照常））——验收①~⑤全过；`npx tsc --noEmit` 干净。
 
 #### T-P1-82 · C6 · 审批跨端回转（答复来源审计 + 场景③端到端） `[ ]`
 - **依据需求**：C6（P1："审批跨端回转——场景③：桌面发起 → 飞书 reply → 桌面继续"）——展卡核对结论①
