@@ -9,6 +9,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { decodeMessage, type AgentMessage } from "./agent-protocol.js";
 import { runAgentChildStdio, spawnAgentProcess } from "./agent-process.js";
 import { drainUntil, recvWithTimeout } from "../test-support/event-asserts.js";
+import type { ModelProvider } from "../models/provider.js";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const entryPath = path.join(root, "dist", "src", "kernel", "agent-child.js");
@@ -852,4 +853,153 @@ describe("config/refresh 协议链（B21/T-P1-63）", () => {
     input.end();
     await new Promise((r) => setTimeout(r, 50));
   }, 15_000);
+});
+
+// ---------------------------------------------------------------------------
+// M3/T-P1-86 崩溃续跑：协议级 session/resume 三路 + "历史含工具结果、不重调"
+// ---------------------------------------------------------------------------
+
+import { findInterruptedTurn, reconcileBootState } from "../session/boot-maintenance.js";
+import { InMemoryEventStorage } from "../session/store.js";
+import type { NewSessionEvent } from "./events.js";
+import type { AgentChildOptions } from "./agent-process.js";
+import type { ChatRequest } from "../models/provider.js";
+import type { SessionEvent } from "./events.js";
+
+describe("session/resume（M3/T-P1-86）", () => {
+  const letSeq = (start: number, events: NewSessionEvent[]): SessionEvent[] =>
+    events.map((e, i) => ({ ...e, seq: start + i, ts: 1_700_000_000_000 }) as SessionEvent);
+
+  const crashStorage = (): InMemoryEventStorage => {
+    const storage = new InMemoryEventStorage();
+    // 崩溃前缀：turn 1 step 1 完成（read 工具执行落流）→ step 2 开着 → 进程死亡
+    storage.appendBatch(
+      "s0",
+      letSeq(1, [
+        { type: "turn/start", turn: 1 },
+        { type: "user/message", turn: 1, message: { content: "查一下配置" }, source: "user", promptId: "p1" },
+        { type: "step/start", turn: 1, step: 1 },
+        { type: "tool/call", turn: 1, step: 1, callId: "c1", name: "read", arguments: "{}" },
+        { type: "tool/result", turn: 1, step: 1, callId: "c1", message: { content: "配置内容 X" } },
+        { type: "assistant/message", turn: 1, step: 1, message: { content: "第一步完成" }, stream: [] },
+        { type: "step/end", turn: 1, step: 1 },
+        { type: "step/start", turn: 1, step: 2 },
+      ]),
+    );
+    return storage;
+  };
+
+  const childHarness = (childOptions: AgentChildOptions = {}) => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    const running = runAgentChildStdio({ input, output, exit: () => {
+        input.end();
+      }, ...childOptions });
+    output.setEncoding("utf-8");
+    const items: AgentMessage[] = [];
+    const waiters: ((m: AgentMessage) => void)[] = [];
+    let buf = "";
+    output.on("data", (chunk: string) => {
+      buf += chunk;
+      for (;;) {
+        const nl = buf.indexOf("\n");
+        if (nl < 0) break;
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        const msg = decodeMessage(line);
+        const w = waiters.shift();
+        if (w) w(msg);
+        else items.push(msg);
+      }
+    });
+    return {
+      running,
+      items,
+      next: (timeoutMs = 10_000): Promise<AgentMessage> => {
+        const item = items.shift();
+        if (item) return Promise.resolve(item);
+        return new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error("收消息超时")), timeoutMs);
+          waiters.push((m) => {
+            clearTimeout(timer);
+            resolve(m);
+          });
+        });
+      },
+      send: (req: unknown): void => {
+        input.write(`${JSON.stringify(req)}` + "\n");
+      },
+      end: async (): Promise<void> => {
+        input.end();
+        await running.catch(() => undefined);
+      },
+    };
+  };
+
+  it("无可续跑轮（干净流）→ NO_INTERRUPTED_TURN 类型化 error 行", async () => {
+    const child = childHarness();
+    expect(await child.next()).toEqual({ type: "ready" });
+    child.send({ type: "session/resume" });
+    const error = await child.next();
+    expect(error).toMatchObject({ type: "error", code: "NO_INTERRUPTED_TURN" });
+    // 零自动执行：resume 被拒后无任何轮启动（无事件行）
+    expect(child.items.filter((m) => m.type === "event")).toHaveLength(0);
+    await child.end();
+  });
+
+  it("resume 全链：restore → 对账闭合 → resumed 回执 → 新轮以原输入重开且模型历史含工具结果（不重调）", async () => {
+    const storage = crashStorage();
+    // 旧进程视角：同一份 storage 上 findInterruptedTurn 定位（对账在 resume 内做）
+    const probe = childHarness({ storage });
+    expect(await probe.next()).toEqual({ type: "ready" });
+
+    const requests: ChatRequest[] = [];
+    const provider: ModelProvider = {
+      async *streamChat(req) {
+        requests.push(req);
+        yield { type: "text-delta", text: "续跑完成：配置已查明，无需重查" } as const;
+        yield { type: "done" } as const;
+      },
+    };
+    const child = childHarness({ storage, provider });
+    expect(await child.next()).toEqual({ type: "ready" });
+    await probe.end();
+
+    child.send({ type: "session/resume" });
+    // 对账闭合事件（ForwardingStore 转发）先于 resumed 回执到达——收集
+    // 全部事件（对账闭合 + 新轮）直到 resumed 之后的 turn/end
+    const events: SessionEvent[] = [];
+    let resumed: Extract<AgentMessage, { type: "resumed" }> | null = null;
+    for (;;) {
+      const m = await child.next();
+      if (m.type === "resumed") {
+        resumed = m;
+        continue;
+      }
+      if (m.type === "event") {
+        events.push(m.event);
+        if (resumed !== null && m.event.type === "turn/end") break;
+      }
+    }
+    expect(resumed).toEqual({ type: "resumed", fromTurn: 1 });
+    // 对账闭合先落（append-only：原轮 interrupted 闭合不删改）
+    const kinds = events.map((e) => (e.type === "turn/end" ? e.reason.kind : e.type));
+    expect(kinds[0]).toBe("step/end");
+    expect(kinds[1]).toBe("interrupted");
+    // 新轮以原输入重开（turn 2）并正常收束（M3 场景⑤）
+    expect(events.filter((e) => e.type === "turn/start").map((e) => e.turn)).toEqual([2]);
+    const resumedInput = events.find((e) => e.type === "user/message");
+    expect(resumedInput).toMatchObject({ turn: 2, message: { content: "查一下配置" } });
+    expect(kinds.at(-1)).toBe("completed");
+
+    // "不重复已完成副作用"：模型请求的历史含原轮工具结果（结构保证），剧本
+    // 只回话不调工具（行为结果）——工具没有第二次执行
+    expect(requests).toHaveLength(1);
+    const toolResults = requests[0]!.messages.filter((m) => m.role === "tool");
+    expect(JSON.stringify(toolResults)).toContain("配置内容 X");
+    const assistant = events.find((e) => e.type === "assistant/message");
+    expect(assistant).toMatchObject({ turn: 2, message: { content: "续跑完成：配置已查明，无需重查" } });
+    await child.end();
+  });
 });

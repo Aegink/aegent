@@ -111,6 +111,11 @@ export type AgentRequest =
       tool: string;
       args: JsonRecord;
     }
+  | {
+      /** M3/T-P1-86 崩溃续跑（显式动作）：对账（幂等）→ 定位最新 interrupted
+       * 轮 → 以原输入开新轮。busy / 无可续跑轮 → 类型化 error 行。 */
+      type: "session/resume";
+    }
   | { type: "dispose" };
 
 /** 子 → 父。 */
@@ -171,6 +176,12 @@ export type AgentMessage =
       reason: string;
       rule?: string;
     }
+  | {
+      /** M3/T-P1-86：续跑受理回执——fromTurn 是被续跑的崩溃轮号；新轮
+       * 以原输入重开（事实经 user/message/turn/start 落流可见）。 */
+      type: "resumed";
+      fromTurn: number;
+    }
   | { type: "idle" }
   | { type: "error"; code: string; message: string };
 
@@ -192,6 +203,7 @@ const REQUEST_TYPES = new Set([
   "model/switch",
   "question/answer",
   "session/fork",
+  "session/resume",
   "steer",
   "config/refresh",
   "policy/check",
@@ -367,6 +379,10 @@ export function decodeRequest(line: string): AgentRequest {
       ...(atSeq !== undefined ? { atSeq } : {}),
     };
   }
+  if (req.type === "session/resume") {
+    // M3/T-P1-86：无载荷——目标轮由子进程按流定位（最新 interrupted 轮）。
+    return { type: "session/resume" };
+  }
   if (req.type === "config/refresh") {
     // B21/T-P1-63：patch 必须是 JSON 对象（键值校验在 SessionConfigStore
     // ——白名单外键类型化拒绝、fail-closed 整包不应用）。
@@ -434,6 +450,7 @@ export function decodeMessage(line: string): AgentMessage {
     sessionId?: unknown;
     cutSeq?: unknown;
     eventCount?: unknown;
+    fromTurn?: unknown;
     applied?: unknown;
     contents?: unknown;
     action?: unknown;
@@ -540,6 +557,13 @@ export function decodeMessage(line: string): AgentMessage {
         throw new ProtocolError("PROTOCOL_MALFORMED", "forked 需要正整数 eventCount（lineage 标记至少 1 条）");
       }
       return { type: "forked", sessionId: msg.sessionId, cutSeq: msg.cutSeq, eventCount: msg.eventCount };
+    }
+    case "resumed": {
+      // M3/T-P1-86：续跑受理回执（fromTurn = 被续跑的崩溃轮号）
+      if (typeof msg.fromTurn !== "number" || !Number.isInteger(msg.fromTurn) || msg.fromTurn < 1) {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "resumed 需要正整数 fromTurn");
+      }
+      return { type: "resumed", fromTurn: msg.fromTurn };
     }
     case "config_refreshed":
       if (!Array.isArray(msg.applied) || msg.applied.some((k) => typeof k !== "string")) {

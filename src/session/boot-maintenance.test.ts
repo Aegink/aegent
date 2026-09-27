@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   STEP_INTERRUPTED_CODE,
   TURN_INTERRUPTED_CODE,
+  findInterruptedTurn,
   reconcileBootState,
 } from "./boot-maintenance.js";
 import { Projector } from "./project.js";
@@ -193,5 +194,89 @@ describe("reconcileBootState（T-8-04 · Q5）", () => {
     // 流内 plan 模式事实（无 plan_enter/exit 工具调用 → 普通模式）不受崩溃影响
     expect(events.filter((e) => e.type === "tool/call" && e.name === "plan_enter")).toHaveLength(0);
     storage2.db.close();
+  });
+});
+
+describe("findInterruptedTurn（M3/T-P1-86 崩溃续跑定位）", () => {
+  const seed = (store: SessionStore, sessionId: string, opts: { skipReconcile?: boolean } = {}): void => {
+    // 崩溃前缀：turn 1 的 step 1 完成（含工具执行）→ step 2 开着 → 进程死亡
+    store.append(sessionId, [
+      { type: "turn/start", turn: 1 },
+      {
+        type: "user/message",
+        turn: 1,
+        message: { content: "查一下配置再改" },
+        source: "user",
+        promptId: "p1",
+      },
+      { type: "step/start", turn: 1, step: 1 },
+      { type: "tool/call", turn: 1, step: 1, callId: "c1", name: "read", arguments: "{}" },
+      {
+        type: "tool/result",
+        turn: 1,
+        step: 1,
+        callId: "c1",
+        message: { content: "配置内容 X" },
+      },
+      {
+        type: "assistant/message",
+        turn: 1,
+        step: 1,
+        message: { content: "第一步完成" },
+        stream: [],
+      },
+      { type: "step/end", turn: 1, step: 1 },
+      { type: "step/start", turn: 1, step: 2 },
+    ]);
+    if (!opts.skipReconcile) reconcileBootState(store, sessionId); // resume 的前置：对账闭合
+  };
+
+  it("对账后的最新 interrupted 轮 → 返回该轮原始输入（turn/content/promptId）", () => {
+    const store = new SessionStore();
+    seed(store, "s0");
+    const info = findInterruptedTurn(store, "s0");
+    expect(info).not.toBeNull();
+    expect(info!.turn).toBe(1);
+    expect(info!.content).toBe("查一下配置再改");
+    expect(info!.promptId).toBe("p1");
+  });
+
+  it("多条 user/message（step 注入在后）取首条 = 崩溃前的输入", () => {
+    const store = new SessionStore();
+    // 崩溃前缀（同 seed）+ 崩溃前最后一刻的 steer 注入（同轮第二条 user/message）
+    seed(store, "s0", { skipReconcile: true });
+    store.append("s0", [
+      {
+        type: "user/message",
+        turn: 1,
+        message: { content: "（注入）补充要求" },
+        source: "injected",
+      },
+    ]);
+    reconcileBootState(store, "s0");
+    expect(findInterruptedTurn(store, "s0")?.content).toBe("查一下配置再改");
+  });
+
+  it("最新轮已正常收束 → 旧 interrupted 轮过期，返回 null", () => {
+    const store = new SessionStore();
+    seed(store, "s0");
+    // 用户重启后继续对话：turn 2 正常完成
+    store.append("s0", [
+      { type: "turn/start", turn: 2 },
+      { type: "user/message", turn: 2, message: { content: "新指令" }, source: "user" },
+      { type: "turn/end", turn: 2, reason: { kind: "completed" } },
+    ]);
+    expect(findInterruptedTurn(store, "s0")).toBeNull();
+  });
+
+  it("空流 / 从无崩溃 → null", () => {
+    const store = new SessionStore();
+    expect(findInterruptedTurn(store, "s0")).toBeNull();
+    store.append("s0", [
+      { type: "turn/start", turn: 1 },
+      { type: "user/message", turn: 1, message: { content: "hi" }, source: "user" },
+      { type: "turn/end", turn: 1, reason: { kind: "completed" } },
+    ]);
+    expect(findInterruptedTurn(store, "s0")).toBeNull();
   });
 });

@@ -43,6 +43,16 @@ export interface BootReconciliation {
   codes: readonly string[];
 }
 
+/** 可续跑的崩溃轮：M3/T-P1-86 的 resume 目标定位。 */
+export interface InterruptedTurnInfo {
+  /** 崩溃轮号（resume 开的新轮号 = 本值 + 1 起算，由 loop 分配）。 */
+  turn: number;
+  /** 崩溃前该轮的原始输入（resume 以它重开新轮——codex interrupted_turn "捕获已记录输入" 的同构）。 */
+  content: string;
+  /** 原输入的 promptId（A12 关联键——回执面透出，消费者可对照新旧轮）。 */
+  promptId?: string;
+}
+
 /**
  * 对一次会话做启动期对账：发现未闭合 step/turn → 追加闭合事件（append-only，
  * 绝不删改历史）→ 返回细分错误码报告。幂等：闭合后的流再跑一遍是 no-op
@@ -76,4 +86,33 @@ export function reconcileBootState(store: SessionStore, sessionId: string): Boot
     closedTurns: codes.filter((c) => c === TURN_INTERRUPTED_CODE).length,
     codes,
   };
+}
+
+/**
+ * 定位可续跑的崩溃轮（M3/T-P1-86）：**最新轮以 interrupted 收束**时返回
+ * 该轮的原始输入，否则 null。语义边界：
+ * - interrupted 只由对账发出（loop 永不实时发出——头注释），所以命中即"崩溃轮"；
+ * - 最新轮若已 completed/aborted/blocked/error，说明用户已继续对话——旧
+ *   interrupted 轮就此过期（续跑一个用户早已绕开的轮是时间倒流），返回 null；
+ * - 该轮的首条 user/message = 崩溃前的输入（runTurn 开轮落盘的那条；
+ *   steer/injected 注入都在其后）。
+ *
+ * 前置：先 reconcileBootState（resume 是显式动作，其前置就是对账闭合——
+ * 未闭合的流里没有 turn/end{interrupted} 可找，本函数自然返回 null）。
+ */
+export function findInterruptedTurn(store: SessionStore, sessionId: string): InterruptedTurnInfo | null {
+  const events = store.load(sessionId);
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const event = events[i]!;
+    if (event.type !== "turn/end") continue;
+    if (event.reason.kind !== "interrupted") return null;
+    const turn = event.turn;
+    for (const e of events) {
+      if (e.type === "user/message" && e.turn === turn) {
+        return { turn, content: e.message.content, ...(e.promptId !== undefined ? { promptId: e.promptId } : {}) };
+      }
+    }
+    return null; // interrupted 轮无输入（不可达防御）
+  }
+  return null;
 }

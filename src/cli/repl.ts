@@ -269,6 +269,12 @@ export async function runCli(options: RunCliOptions): Promise<void> {
       connection.send({ type: "policy/check", tool, args: parsed as JsonRecord });
       return;
     }
+    if (name === "/resume") {
+      // M3 崩溃续跑（显式动作）：对账 + 定位最新 interrupted 轮 + 原输入重开
+      // 新轮；无可续跑轮/在途轮 → 子进程类型化 error 行。
+      connection.send({ type: "session/resume" });
+      return;
+    }
     if (name === "/unattended") {
       // C33 无人值守开关（T-P1-77）：on = 每一个 ask 转 deny（保留检测只
       // 改结局）；off = 恢复正常审批。经 config/refresh 通道（unattended
@@ -281,7 +287,7 @@ export async function runCli(options: RunCliOptions): Promise<void> {
       connection.send({ type: "config/refresh", patch: { unattended: mode === "on" } });
       return;
     }
-    out(`未知命令 ${String(name)}。可用：/revert <seq> /cancel /steer <补充指令> /approve <id> allow|deny [理由] [--session] [--feedback 文本] [--args <json>] /answer <id> <答复> /fork <新会话id> [before|after] [atSeq] /preset <readonly|workspace|yolo> /check <工具名> <json参数> /unattended on|off /exit`);
+    out(`未知命令 ${String(name)}。可用：/revert <seq> /cancel /steer <补充指令> /approve <id> allow|deny [理由] [--session] [--feedback 文本] [--args <json>] /answer <id> <答复> /fork <新会话id> [before|after] [atSeq] /preset <readonly|workspace|yolo> /check <工具名> <json参数> /unattended on|off /resume /exit`);
   };
 
   // idle 观测（对象属性承载——TS 不跨闭包窄化可变捕获）
@@ -327,6 +333,10 @@ export async function runCli(options: RunCliOptions): Promise<void> {
         case "forked":
           // E5：fork 回执——新会话已创建（后续对话由新进程打开，本连接不动）
           out(`⑂ 已分支到新会话 ${msg.sessionId}（切点 seq=${msg.cutSeq}，复制 ${msg.eventCount} 条事件）`);
+          break;
+        case "resumed":
+          // M3：续跑受理回执——原输入已作为新轮重开（轮内事实经事件流渲染可见）
+          out(`↻ 续跑崩溃轮 turn ${msg.fromTurn}：原输入已重新入流（新轮进行中）`);
           break;
         case "config_refreshed":
           // B21/C8：刷新/预设切换回执——生效键可见（预设经 config/refresh

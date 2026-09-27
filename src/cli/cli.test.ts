@@ -25,6 +25,7 @@ import {
 import { runAgentChildStdio, type AgentChildOptions } from "../kernel/agent-process.js";
 import { decodeMessage } from "../kernel/agent-protocol.js";
 import type { ModelProvider } from "../models/provider.js";
+import { InMemoryEventStorage } from "../session/store.js";
 import type { StreamChunk } from "../kernel/events.js";
 
 // ---------------------------------------------------------------------------
@@ -975,5 +976,40 @@ describe("question 问答面（B8b / T-P1-21）", () => {
     );
     expect(lines.some((l) => l.includes("← 用户答复：先做迁移"))).toBe(true);
     expect(lines.some((l) => l.includes("plan 模式硬关"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M3/T-P1-86：/resume 端到端（REPL 快链——协议全链在 agent-process.test）
+// ---------------------------------------------------------------------------
+
+describe("/resume 崩溃续跑（M3 / T-P1-86）", () => {
+  it("/resume → resumed 回执渲染 + 新轮完成（原输入重开）", async () => {
+    const storage = new InMemoryEventStorage();
+    storage.appendBatch(
+      "s0",
+      [
+        { type: "turn/start", turn: 1 },
+        { type: "user/message", turn: 1, message: { content: "崩溃前的指令" }, source: "user", promptId: "p1" },
+        { type: "step/start", turn: 1, step: 1 },
+        { type: "step/start", turn: 1, step: 2 },
+      ].map((e, i) => ({ ...e, seq: i + 1, ts: 1_700_000_000_000 }) as Parameters<typeof storage.appendBatch>[1][number]),
+    );
+    const provider = scriptedProvider([
+      [{ type: "text-delta", text: "续跑完成" }, { type: "done" }],
+    ]);
+    const lines = await runScriptedSession(
+      { storage, provider },
+      async function* ({ waitFor }) {
+        yield "/resume";
+        await waitFor((line) => line.includes("↻ 续跑崩溃轮 turn 1"));
+        await waitFor((line) => line.includes("── turn 2 结束（completed）"));
+      },
+    );
+    expect(lines.some((l) => l.includes("↻ 续跑崩溃轮 turn 1"))).toBe(true);
+    // 新轮以原输入重开：assistant 回复行可见（user 原声是静默渲染类——
+    // 原输入 content 的流内断言在 agent-process.test 协议面）
+    expect(lines.some((l) => l.includes("续跑完成"))).toBe(true);
+    expect(lines.some((l) => l.includes("── turn 2 结束（completed）"))).toBe(true);
   });
 });

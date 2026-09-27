@@ -37,6 +37,7 @@ import type { ChatRequest, ModelProvider } from "../models/provider.js";
 import type { ModelIdentity } from "../models/identity.js";
 import { ForkError, InMemoryEventStorage, type EventStorage, SessionStore } from "../session/store.js";
 import { Projector } from "../session/project.js";
+import { findInterruptedTurn, reconcileBootState } from "../session/boot-maintenance.js";
 import { createChildAssembly, createTodoUpdateEmitter, type ChildAssembly, type ChildAssemblyOptions } from "./assembly.js";
 import { evaluateToolPolicy } from "../policy/gate.js";
 import { ModelNotRegisteredError } from "./model-switch.js";
@@ -157,6 +158,9 @@ export async function runAgentChildStdio(
       return committed;
     }
   })(options.storage ?? new InMemoryEventStorage());
+  // M3 resume 的 restore 前置：注入式 storage 才有跨进程历史可恢复
+  //（InMemory 每次启动都是空流，restore 无意义）。
+  const externalStorage = options.storage;
 
   // 审批宣告分型（B8b/T-P1-21）：question 工具的挂起/结算不是权限审批——
   // asked 转成 question_asked 协议行、settled 不经 approval_settled 面
@@ -408,19 +412,10 @@ export async function runAgentChildStdio(
     }
   };
 
-  const kick = (): void => {
+  // 轮启动的唯一入口（kick 消费队列与 M3 resume 共用——in-flight 管理、
+  // E11 打点、崩溃出口、A8 退回都在这条链上，绝不开旁路）。
+  const startTurn = (content: string): void => {
     if (inflight) return;
-    const next = queue.drain()[0];
-    if (!next) {
-      if (disposing) {
-        void finish();
-        return;
-      }
-      // T-8-01：宣告空闲（无在途轮且队列空）——CLI 的 EOF 语义据此等
-      // idle 再 dispose，避免"输入流关闭即取消在途轮"。
-      send({ type: "idle" });
-      return;
-    }
     // J20/T-P1-49：轮跑动期间持 admit 名额（active = 在途轮数）。
     // draining 后 admit 不再计数（admit 的拒绝面只对 handleRequest 的新
     // 请求）——存量队列照常跑完（EOF"处理完剩余工作"语义），进程将退，
@@ -436,7 +431,7 @@ export async function runAgentChildStdio(
           Projector.fold(store.load(sessionId)).projection.turnCount + 1;
         await assembly.checkpoint.capture(turn);
       }
-      return loop.runTurn(next.content);
+      return loop.runTurn(content);
     })()
       .then((reason) => {
         ended = reason;
@@ -462,6 +457,22 @@ export async function runAgentChildStdio(
         }
         kick(); // 收尾后再踢一次——completed 后队列续开；aborted 退回后队列空 → idle
       });
+  };
+
+  const kick = (): void => {
+    if (inflight) return;
+    const next = queue.drain()[0];
+    if (!next) {
+      if (disposing) {
+        void finish();
+        return;
+      }
+      // T-8-01：宣告空闲（无在途轮且队列空）——CLI 的 EOF 语义据此等
+      // idle 再 dispose，避免"输入流关闭即取消在途轮"。
+      send({ type: "idle" });
+      return;
+    }
+    startTurn(next.content);
   };
 
   const handleRequest = (req: AgentRequest): void => {
@@ -639,6 +650,46 @@ export async function runAgentChildStdio(
             message: e instanceof Error ? e.message : String(e),
           });
         }
+        return;
+      }
+      case "session/resume": {
+        // M3/T-P1-86 崩溃续跑（显式动作）：restore（有外部存储时——跨进程
+        // 历史进内存序）→ 对账（幂等）→ 定位最新 interrupted 轮 → 以原输入
+        // 开新轮。红线：resume 是唯一的续跑例外且必须经本请求显式触发——
+        // M8"重启绝不重放"的边界（无请求则零自动执行）。
+        void (async () => {
+          try {
+            if (inflight || loop.activeTurn !== null) {
+              send({
+                type: "error",
+                code: "AGENT_BUSY",
+                message: "有在途轮——resume 只在空闲时受理",
+              });
+              return;
+            }
+            if (externalStorage) {
+              await store.restore(sessionId);
+            }
+            reconcileBootState(store, sessionId); // 幂等：干净流 no-op
+            const interrupted = findInterruptedTurn(store, sessionId);
+            if (interrupted === null) {
+              send({
+                type: "error",
+                code: "NO_INTERRUPTED_TURN",
+                message: "没有可续跑的崩溃轮（最新轮已正常收束或无崩溃残留）",
+              });
+              return;
+            }
+            send({ type: "resumed", fromTurn: interrupted.turn });
+            startTurn(interrupted.content);
+          } catch (e) {
+            send({
+              type: "error",
+              code: "RESUME_FAILED",
+              message: e instanceof Error ? e.message : String(e),
+            });
+          }
+        })();
         return;
       }
       case "config/refresh": {
