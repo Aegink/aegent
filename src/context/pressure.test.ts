@@ -185,7 +185,8 @@ describe("F9：压缩发生在 turn 边界（turnEnd 点位）——次序断言
 
     await turnEndChain.run({ sessionId: SESSION }, { turn: 1, reason: { kind: "max-tokens" } });
     const events = store.load(SESSION);
-    const compaction = events.find((e) => e.type === "compaction");
+    // E17 两段化：settled 结算事件（最后一条）仍先于 turn/end（次序语义不变）
+    const compaction = [...events].reverse().find((e) => e.type === "compaction");
     const turnEnd = events.find((e) => e.type === "turn/end");
     expect(compaction).toBeDefined();
     expect(turnEnd).toBeDefined();

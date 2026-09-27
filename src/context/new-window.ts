@@ -44,11 +44,17 @@ export function startNewContextWindow(
   keepRules: NewWindowKeepRules = {},
 ): ChatMessage[] {
   const effective = effectiveEvents(events);
-  const compactions = effective.filter((e): e is Extract<SessionEvent, { type: "compaction" }> => e.type === "compaction");
+  // E17/T-P1-93：**切换权威只认已结算的压缩**（status 缺省 = completed 的
+  // 旧流兼容口径）——started（进行中/崩溃残留）与 failed（摘要失败）不是
+  // 状态变更的结算事实，以其切换窗口会让模型拿到空摘要。
+  const settledCompactions = effective.filter(
+    (e): e is Extract<SessionEvent, { type: "compaction" }> =>
+      e.type === "compaction" && (e.status === undefined || e.status === "completed"),
+  );
   // 无压缩（或压缩被 revert）：不抛——重建语义退化为全量现算
-  if (compactions.length === 0) return buildChatMessages(effective);
+  if (settledCompactions.length === 0) return buildChatMessages(effective);
   // 只认最新一次压缩：更早 compaction 的 seq 必然 ≤ 最新 retainedTail（被摘要覆盖）
-  const latest = compactions[compactions.length - 1]!;
+  const latest = settledCompactions[settledCompactions.length - 1]!;
   const { summary, retainedTail } = latest;
 
   const messages: ChatMessage[] = [];

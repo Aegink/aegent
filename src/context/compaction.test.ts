@@ -13,6 +13,9 @@ import type { NewSessionEvent, TokenUsage } from "../kernel/events.js";
 import { buildChatMessages, effectiveEvents } from "../session/messages.js";
 import { SessionStore } from "../session/store.js";
 import { expectPaired, expectTurnScoped } from "../test-support/event-asserts.js";
+import { compactionStats } from "../obs/compaction-stats.js";
+import { Projector } from "../session/project.js";
+import { startNewContextWindow } from "./new-window.js";
 import {
   CompactionEngine,
   type CompactionRunInput,
@@ -51,6 +54,19 @@ function scriptedSummarizer(script: string, log: string[][] = []): Summarizer {
   };
 }
 
+/**
+ * E17/T-P1-93 两段化后的取事件 helper：流内第一条 compaction 是 started
+ * （中间态）——测试断言的"压缩产物"取**已结算**（completed/旧流缺省）那条。
+ */
+function settledCompaction(events: readonly SessionEvent[]): Extract<SessionEvent, { type: "compaction" }> {
+  const settled = [...events]
+    .reverse()
+    .find((e): e is Extract<SessionEvent, { type: "compaction" }> =>
+      e.type === "compaction" && (e.status === undefined || e.status === "completed"));
+  if (!settled) throw new Error("流内无已结算的 compaction 事件");
+  return settled;
+}
+
 const localOverflowRequest: CompactionRunInput["request"] = {
   reason: "local-overflow",
   estimatedTokens: 9000,
@@ -79,7 +95,7 @@ describe("验收①：压缩产生 compaction 事件（载荷对齐词汇表 §3
     expect(result.kind).toBe("compacted");
     if (result.kind !== "compacted") return;
     const events = store.load(SESSION);
-    const compaction = events.find((e) => e.type === "compaction");
+    const compaction = settledCompaction(events);
     expect(compaction).toBeDefined();
     if (compaction?.type !== "compaction") return;
     expect(compaction.summary).toBe("剧情摘要");
@@ -119,7 +135,7 @@ describe("验收①：压缩产生 compaction 事件（载荷对齐词汇表 §3
       keepRules: { retainedFromEnd: 1 },
     });
     await engine.run({ turn: 2, phase: "PreTurn", request: localOverflowRequest });
-    const compaction = store.load(SESSION).find((e) => e.type === "compaction");
+    const compaction = settledCompaction(store.load(SESSION));
     if (compaction?.type !== "compaction") throw new Error("应当落盘 compaction 事件");
     // 被摘要区间 = 切点之前（seq ≤ retainedTail）——tool 配对块整块在内
     const covered = buildChatMessages(effectiveEvents(store.load(SESSION)), {
@@ -211,7 +227,7 @@ describe("验收③：相位（Q13 两相位）与 MidTurn 的 step 边界触发
     const result = await engine.run({ turn: 2, phase, request: localOverflowRequest });
     expect(result.kind).toBe("compacted");
     expect(phases).toEqual(["MidTurn"]);
-    const compaction = store.load(SESSION).find((e) => e.type === "compaction");
+    const compaction = settledCompaction(store.load(SESSION));
     expect(compaction?.turn).toBe(2); // 归属进行中的轮
   });
 
@@ -331,7 +347,7 @@ describe("真 LLM 摘要器（F5 / T-P1-18）", () => {
     const result = await engine.run({ turn: 2, phase: "PreTurn", request: localOverflowRequest });
 
     expect(result.kind).toBe("compacted");
-    const compaction = store.load(SESSION).find((e) => e.type === "compaction");
+    const compaction = settledCompaction(store.load(SESSION));
     if (compaction?.type !== "compaction") throw new Error("缺 compaction 事件");
     expect(compaction.summary).toBe("完成了压缩模块改造。");
     expect(compaction.title).toBe("重构会话");
@@ -362,7 +378,7 @@ describe("真 LLM 摘要器（F5 / T-P1-18）", () => {
     expect(request.messages[1]).toMatchObject({ role: "user" });
     expect((request.messages[1] as { content: string }).content).toContain("第一轮问题");
     // 头在 compaction 事件之前落流（先头后调用再结果的时间序）
-    const compaction = events.find((e) => e.type === "compaction")!;
+    const compaction = settledCompaction(events);
     expect(header!.seq < compaction.seq).toBe(true);
   });
 
@@ -384,13 +400,17 @@ describe("真 LLM 摘要器（F5 / T-P1-18）", () => {
     await engine.run({ turn: 2, phase: "PreTurn", request: localOverflowRequest });
     await engine.run({ turn: 2, phase: "PreTurn", request: localOverflowRequest });
 
+    // E17 两段化：2 次压缩 = 4 条事件（started×2 + completed×2）——title 判据
+    // 只认已结算压缩（started 不算），第二次压缩无标题
     const compactions = store
       .load(SESSION)
       .filter((e): e is Extract<SessionEvent, { type: "compaction" }> => e.type === "compaction");
-    expect(compactions).toHaveLength(2);
-    expect(compactions[0]!.title).toBe("首标题");
-    expect(compactions[1]!.title).toBeUndefined();
-    expect(compactions[1]!.summary).toBe("二次摘要");
+    expect(compactions).toHaveLength(4);
+    const settled = compactions.filter((e) => (e.status ?? "completed") === "completed");
+    expect(settled).toHaveLength(2);
+    expect(settled[0]!.title).toBe("首标题");
+    expect(settled[1]!.title).toBeUndefined();
+    expect(settled[1]!.summary).toBe("二次摘要");
   });
 
   it("截断回退：provider 失败（无剧本）→ 回退截断摘要落盘，降级不炸压缩，告警可检索", async () => {
@@ -399,7 +419,7 @@ describe("真 LLM 摘要器（F5 / T-P1-18）", () => {
     const result = await engine.run({ turn: 2, phase: "PreTurn", request: localOverflowRequest });
 
     expect(result.kind).toBe("compacted");
-    const compaction = store.load(SESSION).find((e) => e.type === "compaction");
+    const compaction = settledCompaction(store.load(SESSION));
     if (compaction?.type !== "compaction") throw new Error("缺 compaction 事件");
     // 截断摘要行为：[role] content 拼接
     expect(compaction.summary).toContain("[user] 第一轮问题");
@@ -446,7 +466,7 @@ describe("L8 六维度量（T-P1-92）：压缩载荷带六面 + 值域闭集", 
       request: { reason: "local-overflow", estimatedTokens: 9_000, contextWindow: 8_000 },
     });
     expect(result.kind).toBe("compacted");
-    const event = store.load(SESSION).find((e) => e.type === "compaction");
+    const event = settledCompaction(store.load(SESSION));
     expect(event).toMatchObject({
       trigger: "auto",
       phase: "mid_turn", // PascalCase 相位 → 事件面 snake_case（codex serde 同款）
@@ -483,10 +503,78 @@ describe("L8 六维度量（T-P1-92）：压缩载荷带六面 + 值域闭集", 
         } as never,
       ]),
     ).toThrow(/compaction.trigger 值域外/);
-    // 合法六维（含 P0 形状缺省）照常落流
+    // 合法六维（含 P0 形状缺省）照常落流（2 次拒绝 + 1 次放行 = 3 条流内事实）
     store.append(SESSION, [
       { type: "compaction", turn: 1, summary: "s", retainedTail: 0, tokensBefore: 1 },
     ]);
     expect(store.load(SESSION).filter((e) => e.type === "compaction")).toHaveLength(1);
+  });
+});
+
+describe("E17 中间态进事件流（T-P1-93）：投影不猜压缩中间态", () => {
+  it("started 先于 completed 落流（摘要调用前的事实）；失败路径落 failed 且异常照抛", async () => {
+    const store = new SessionStore();
+    store.append(SESSION, turnEvents(1, "第一轮问题", "第一轮回答", {
+      inputTokens: 700,
+      outputTokens: 100,
+      totalTokens: 800,
+    }));
+    // 摘要抛错（P0 假摘要面直接抛——不走 llm-summarizer 内部降级）
+    const engine = new CompactionEngine({
+      sessionId: SESSION,
+      store,
+      summarizer: async () => {
+        throw new Error("摘要 provider 崩溃");
+      },
+      keepRules: { retainedFromEnd: 1 },
+    });
+    await expect(engine.run({ turn: 1, phase: "PreTurn", request: localOverflowRequest })).rejects.toThrow(
+      "摘要 provider 崩溃",
+    );
+    const events = store.load(SESSION);
+    const compactions = events.filter(
+      (e): e is Extract<SessionEvent, { type: "compaction" }> => e.type === "compaction",
+    );
+    // E17：失败也落流内事实（started + failed）——"投影不猜"
+    expect(compactions.map((e) => e.status)).toEqual(["started", "failed"]);
+    expect(compactions[1]!.summary).toBe("");
+    // L8 归因面：failed 可统计
+    const stats = compactionStats(events);
+    expect(stats.byStatus).toEqual({ started: 1, failed: 1 });
+    expect(stats.failures).toHaveLength(1);
+  });
+
+  it("started 残留（模拟崩溃窗口）→ restore 后投影可见未完成压缩；新窗口不切换", async () => {
+    const store = new SessionStore();
+    store.append(SESSION, turnEvents(1, "第一轮问题", "第一轮回答", {
+      inputTokens: 700,
+      outputTokens: 100,
+      totalTokens: 800,
+    }));
+    store.append(SESSION, [
+      // 崩溃残留：只有 started（completed 永远不会到来）
+      {
+        type: "compaction",
+        turn: 1,
+        summary: "",
+        retainedTail: 0,
+        tokensBefore: 800,
+        reason: "context_limit",
+        trigger: "auto",
+        phase: "pre_turn",
+        implementation: "llm-summarizer",
+        strategy: "full_summary",
+        status: "started",
+      },
+    ]);
+    const events = store.load(SESSION);
+    // 投影可见"进行中/未完成"事实（restore 走同一 fold——崩溃恢复同路径）
+    const { projection } = Projector.fold(events);
+    const started = projection.compactions.at(-1);
+    expect(started?.status).toBe("started");
+    // 新窗口**不切换**：started 无摘要事实——重建语义退化为全量现算
+    const window = startNewContextWindow(events);
+    expect(window.some((m) => m.role === "user" && m.content.includes("会话压缩摘要"))).toBe(false);
+    expect(window.some((m) => m.role === "assistant" && m.content === "第一轮回答")).toBe(true);
   });
 });

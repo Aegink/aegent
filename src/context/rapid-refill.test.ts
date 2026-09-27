@@ -121,8 +121,9 @@ describe("验收：接入压缩入口的硬失败", () => {
     // 验收字面:错误对象含 consecutiveRapidRefills/toolTurnsSinceCompact 全计数
     expect(err.consecutiveRapidRefills).toBe(3);
     expect(err.toolTurnsSinceCompact).toBe(0);
-    // 硬失败的压缩未发生:只有 2 次 compaction 落盘
-    expect(store.load(SESSION).filter((e) => e.type === "compaction")).toHaveLength(2);
+    // 硬失败在入口（F28 拟算阻断，started 未落）——只有 2 次成功压缩 =
+    // started + completed ×2 = 4 条（E17/T-P1-93 两段化）
+    expect(store.load(SESSION).filter((e) => e.type === "compaction")).toHaveLength(4);
   });
 
   it("干活解锁:熔断后记录足够工具步骤 → 压缩放行", async () => {
@@ -143,7 +144,8 @@ describe("验收：接入压缩入口的硬失败", () => {
       guard.recordCompletedToolStep();
     }
     await compactOnce(engine, 1); // evaluate 拟算 0 → 放行
-    expect(store.load(SESSION).filter((e) => e.type === "compaction")).toHaveLength(2);
+    // 本用例 2 次成功压缩（首 + 解锁后）= started + completed ×2 = 4 条
+    expect(store.load(SESSION).filter((e) => e.type === "compaction")).toHaveLength(4);
     expect(guard.snapshot.consecutiveRapidRefills).toBe(0);
   });
 

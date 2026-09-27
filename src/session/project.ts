@@ -74,7 +74,17 @@ export interface SessionProjection {
   lastUsage: TokenUsage | null;
   /** lastUsage 所属事件的 seq（revert 切点截断判断用）。 */
   lastUsageSeq: number | null;
-  compactions: Array<{ seq: number; summary: string; retainedTail: number; tokensBefore: number }>;
+  /**
+   * E17/T-P1-93：status 可选（缺省 = completed 旧流兼容口径）——started/
+   * failed 的流内事实如实进投影（"投影不猜中间态"），消费方按 status 区分。
+   */
+  compactions: Array<{
+    seq: number;
+    summary: string;
+    retainedTail: number;
+    tokensBefore: number;
+    status?: "started" | "completed" | "failed";
+  }>;
   /** 非 null 时有效投影只含 seq ≤ revertedTo 的效果（E4：最新 session/revert 标记生效）。 */
   revertedTo: number | null;
   /**
@@ -413,11 +423,18 @@ export class Projector {
       case "assistant/retrying":
         break; // 重试可见性事实（J27）——投影不聚值，事件流即真相
       case "compaction":
+        // E17/T-P1-93：started/failed 也进投影（"投影不猜中间态"——崩溃
+        // 后 restore 可见"压缩进行中/未完成"事实）；status 缺省 = completed
+        // （旧流兼容口径）。
         s.compactions.push({
           seq: event.seq,
           summary: event.summary,
           retainedTail: event.retainedTail,
           tokensBefore: event.tokensBefore,
+          // 值域已由 validateCompactionMetrics 闭集校验（上面），收窄安全
+          ...(event.status !== undefined
+            ? { status: event.status as "started" | "completed" | "failed" }
+            : {}),
         });
         break;
       case "checkpoint":

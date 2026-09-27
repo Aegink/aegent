@@ -237,18 +237,64 @@ export class CompactionEngine {
       }
     }
 
+    // 生命周期第 1.5 段（E17/T-P1-93）：**started 中间态落流**——摘要调用前
+    // 的原子操作开始事实（"原子操作的中间态也进事件流，投影不猜"）。此后
+    // 崩溃 → 流内最后压缩事实是 started（restore 后投影可见"压缩进行中/未
+    // 完成"），绝不静默丢失。载荷形状：summary/retainedTail 在 started 时点
+    // 尚不存在——空串/0 是 started 时点的"完整状态"（E12），消费面按 status
+    // 区分（new-window 只认 completed；投影如实记录）。
+    store.append(sessionId, [
+      {
+        type: "compaction",
+        turn: input.turn,
+        summary: "",
+        retainedTail: 0,
+        tokensBefore,
+        reason: compactionReasonOf(input.request),
+        trigger: "auto",
+        phase: eventPhaseOf(input.phase),
+        implementation: "llm-summarizer",
+        strategy: "full_summary",
+        status: "started",
+      },
+    ]);
+
     // 摘要生成（被摘要区间 = 切点之前）。F5/T-P1-18：真摘要可带会话标题
     // （SummarizerOutput 的对象形状）；string 形状 = P0 假摘要注入面。
-    const output = await this.deps.summarizer({
-      messages: buildChatMessages(events, { upToSeq: retainedTail }),
-      invocation,
-    });
-    const generated =
-      typeof output === "string" ? { summary: output } : output;
-    // 标题只在**首摘要**记录（会话级元事实，首摘要定名；卡内定形"优先
-    // 复用既有载荷"——compaction 事件可选 title 字段）。events 是本次压缩
-    // 落盘前的有效视窗——其中无 compaction 事件即本次是首摘要。
-    const isFirstCompaction = !events.some((e) => e.type === "compaction");
+    let generated: { summary: string; title?: string };
+    try {
+      const output = await this.deps.summarizer({
+        messages: buildChatMessages(events, { upToSeq: retainedTail }),
+        invocation,
+      });
+      generated = typeof output === "string" ? { summary: output } : output;
+    } catch (e) {
+      // E17：摘要失败升**流内事实**（status:"failed"）再上抛（调用方
+      // failTurn 收轮的现状行为不变）——压缩失败从"静默降级/静默抛出"变
+      // "可归因"（L8 统计面 failures 可查）。
+      store.append(sessionId, [
+        {
+          type: "compaction",
+          turn: input.turn,
+          summary: "",
+          retainedTail: 0,
+          tokensBefore,
+          reason: compactionReasonOf(input.request),
+          trigger: "auto",
+          phase: eventPhaseOf(input.phase),
+          implementation: "llm-summarizer",
+          strategy: "full_summary",
+          status: "failed",
+        },
+      ]);
+      throw e;
+    }
+    // 标题只在**首摘要**记录（会话级元事实，首摘要定名）。events 是本次压缩
+    // 落盘前的有效视窗——其中无**已结算**压缩事件即本次是首摘要（E17 两段化
+    // 后流内 started/failed 不算——title 判据与 new-window 的切换权威同口径）。
+    const isFirstCompaction = !events.some(
+      (e) => e.type === "compaction" && (e.status === undefined || e.status === "completed"),
+    );
     const title =
       generated.title !== undefined && isFirstCompaction
         ? generated.title

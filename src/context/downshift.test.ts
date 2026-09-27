@@ -67,7 +67,8 @@ describe("验收：压缩先于切换（次序断言）+ 事件 reason=model_dow
 
     // compaction 事件 reason=model_downshift（F24 验收字面）
     const events = store.load(SESSION);
-    const compaction = events.find((e) => e.type === "compaction");
+    // E17 两段化：取最后一条（settled 结算事件；第一条是 started 中间态）
+    const compaction = [...events].reverse().find((e) => e.type === "compaction");
     expect(compaction).toBeDefined();
     if (compaction?.type !== "compaction") return;
     expect(compaction.reason).toBe("model_downshift");
@@ -119,7 +120,7 @@ describe("验收：压缩先于切换（次序断言）+ 事件 reason=model_dow
       turn: 2,
     });
     expect(decision.needsCompaction).toBe(true);
-    const compaction = store.load(SESSION).find((e) => e.type === "compaction");
+    const compaction = [...store.load(SESSION)].reverse().find((e) => e.type === "compaction");
     expect(compaction).toBeDefined();
   });
 
