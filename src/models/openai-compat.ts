@@ -19,6 +19,7 @@
 import type { StreamChunk } from "../kernel/events.js";
 import type { ModelIdentity } from "./identity.js";
 import { ProviderConfigError, type ProviderConfig } from "./config.js";
+import type { AuthMaterial, AuthResolver } from "./auth.js";
 import {
   ProviderHttpError,
   toTokenUsage,
@@ -57,20 +58,40 @@ export function parseOpenAiCompatSettings(config: ProviderConfig): OpenAiCompatS
   return { baseUrl: baseUrl.replace(/\/+$/, ""), apiKey };
 }
 
-export function createOpenAiCompatProvider(config: ProviderConfig): ModelProvider {
+/**
+ * J13/T-P1-106：authResolver 提供时每次请求前现取鉴权材料（apiKey 覆盖
+ * settings 的 Bearer；headers 并入额外头——令牌轮换/安全配置重读的接口面）；
+ * 缺省 undefined = 构造期 settings 定死（零行为变化）。resolver 每请求恰好
+ * 调用一次，抛错则该请求失败上抛（不吞），provider 可复用（下次重 resolve）。
+ */
+export function createOpenAiCompatProvider(
+  config: ProviderConfig,
+  options?: { authResolver?: AuthResolver },
+): ModelProvider {
   const settings = parseOpenAiCompatSettings(config);
-  return { streamChat: (req) => streamChatOpenAi(settings, req) };
+  return {
+    streamChat: async function* (req: ChatRequest) {
+      let material: AuthMaterial | undefined;
+      if (options?.authResolver !== undefined) {
+        material = await options.authResolver.resolve();
+      }
+      yield* streamChatOpenAi(settings, req, material);
+    },
+  };
 }
 
 async function* streamChatOpenAi(
   settings: OpenAiCompatSettings,
   req: ChatRequest,
+  auth?: AuthMaterial,
 ): AsyncGenerator<StreamChunk> {
+  const apiKey = auth?.apiKey ?? settings.apiKey;
   const res = await fetch(`${settings.baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${settings.apiKey}`,
+      authorization: `Bearer ${apiKey}`,
+      ...(auth?.headers ?? {}),
     },
     body: JSON.stringify({
       model: req.identity.modelId,
