@@ -12,7 +12,7 @@
  */
 
 import type { Verdict } from "./decision.js";
-import { PendingApprovals, type ApprovalRequest } from "./pending.js";
+import { PendingApprovals, type ApprovalAnswer, type ApprovalRequest } from "./pending.js";
 
 // ---------------------------------------------------------------------------
 // Port
@@ -20,8 +20,9 @@ import { PendingApprovals, type ApprovalRequest } from "./pending.js";
 
 export interface PermissionBrokerPort {
   readonly name: string;
-  /** 对一次待审批请求给出最终裁决。deny 是合法结果（resolve），不是异常。 */
-  decide(request: ApprovalRequest): Promise<Verdict>;
+  /** 对一次待审批请求给出最终裁决。deny 是合法结果（resolve），不是异常。
+   * 返回 ApprovalAnswer：裁决 + C52 修改后参数（allow 且答复人携带时）。 */
+  decide(request: ApprovalRequest): Promise<ApprovalAnswer>;
   /** 会话关闭时释放未决请求。缺省无操作。 */
   dispose?(): void;
 }
@@ -68,7 +69,7 @@ export class ManualPermissionBroker implements PermissionBrokerPort {
     private readonly timeoutMs: number,
   ) {}
 
-  decide(request: ApprovalRequest): Promise<Verdict> {
+  decide(request: ApprovalRequest): Promise<ApprovalAnswer> {
     return this.pending.ask(request, { timeoutMs: this.timeoutMs });
   }
 

@@ -625,3 +625,78 @@ describe("C54 · 关 tool 类 → gate ask 自动拒绝（T-P1-78）", () => {
     expect(allowed).toEqual({ content: "executed bash" });
   });
 });
+
+describe("C52 · modifiedInput 应用与出口族重跑（T-P1-79）", () => {
+  it("allow+modifiedInput：工具收到修改后参数执行（zcode ?? tc.input 同语义反面）", async () => {
+    const pending = new PendingApprovals();
+    const broker = new ManualPermissionBroker(pending, 5_000);
+    const layer = createToolGateLayer({
+      chain: assemblePolicyChain({ user: [rulesModule([["ask", "bash(git *)"]])] }),
+      broker,
+      sessionId: "s1",
+    });
+    const received: ToolCallPayload[] = [];
+    const next = makeNext(async (e2) => {
+      received.push(e2);
+      return { content: `executed` };
+    });
+    const pendingAsk = layer({ sessionId: "s1" }, payload({ command: "git push" }, "c-mi"), next);
+    await waitUntilRegistered(pending, "c-mi");
+    // 用户改参数后批准：git push → git status
+    await pending.reply("c-mi", { action: "allow", modifiedInput: { command: "git status" } });
+    await pendingAsk;
+    expect(received).toHaveLength(1);
+    expect(JSON.parse(received[0]!.arguments)).toEqual({ command: "git status" });
+  });
+
+  it("allow 不带 modifiedInput：原 args 照常执行（answer.modifiedInput ?? args）", async () => {
+    const pending = new PendingApprovals();
+    const broker = new ManualPermissionBroker(pending, 5_000);
+    const layer = createToolGateLayer({
+      chain: assemblePolicyChain({ user: [rulesModule([["ask", "bash(git *)"]])] }),
+      broker,
+      sessionId: "s1",
+    });
+    const received: ToolCallPayload[] = [];
+    const next = makeNext(async (e2) => {
+      received.push(e2);
+      return { content: `executed` };
+    });
+    const pendingAsk = layer({ sessionId: "s1" }, payload({ command: "git push" }, "c-orig"), next);
+    await waitUntilRegistered(pending, "c-orig");
+    await pending.reply("c-orig", { action: "allow" });
+    await pendingAsk;
+    expect(JSON.parse(received[0]!.arguments)).toEqual({ command: "git push" });
+  });
+
+  it("修改后参数写保护路径（.git/config）→ 出口族仍 deny（批准不可越硬拦）", async () => {
+    const pending = new PendingApprovals();
+    const broker = new ManualPermissionBroker(pending, 5_000);
+    const layer = createToolGateLayer({
+      chain: assemblePolicyChain({ user: [rulesModule([["ask", "write"]])] }),
+      broker,
+      sessionId: "s1",
+    });
+    const received: ToolCallPayload[] = [];
+    const next = makeNext(async (e2) => {
+      received.push(e2);
+      return { content: "不应执行" };
+    });
+    const pendingAsk = layer(
+      { sessionId: "s1" },
+      { ...payload({ path: "/tmp/ok.txt", content: "x" }), name: "write" },
+      next,
+    );
+    await waitUntilRegistered(pending, "c1");
+    // 用户批准时把路径改成 .git/config → 出口族硬拦压过批准
+    await pending.reply("c1", {
+      action: "allow",
+      modifiedInput: { path: "/repo/.git/config", content: "x" },
+    });
+    const result = await pendingAsk;
+    expect(received).toHaveLength(0);
+    expect(result.isError).toBe(true);
+    expect(result.content).toContain("修改后参数被出口族拒绝");
+    expect(result.content).toContain(".git");
+  });
+});

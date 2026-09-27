@@ -64,12 +64,16 @@ export interface ApprovalRequest {
  * C24 扩展（T-P1-02）：批准可带作用域（scope=session 由答复路径落
  * ApprovalScopeCache，同会话同规则免再问）与 feedback（落 L2 审计）；
  * deny 无物可记，scope 无意义。
+ * C52 扩展（T-P1-79）：allow 可携带修改后的参数（"改成这样再执行"）——
+ * deny 携带 modifiedInput 是编程错误（类型化拒绝）。
  */
 export interface ApprovalReply {
   readonly action: "allow" | "deny";
   readonly reason?: string;
   readonly scope?: "once" | "session";
   readonly feedback?: string;
+  /** C52：修改后的执行参数（仅 allow 有意义；gate 侧重跑出口族硬拦）。 */
+  readonly modifiedInput?: JsonRecord;
 }
 
 /** C31 主动宣告：三类事实，凡能显示审批的界面都应消费。settled 的
@@ -78,6 +82,12 @@ export type ApprovalAnnouncement =
   | { kind: "asked"; request: ApprovalRequest; timeoutMs: number }
   | { kind: "settled"; id: string; verdict: Verdict; tool: string; feedback?: string }
   | { kind: "timed-out"; id: string; timeoutMs: number; tool: string };
+
+/**
+ * ask 的结算形状：裁决（Verdict）+ C52 修改后参数（仅 allow 且答复人
+ * 携带时存在——gate 消费方据此以改后参数执行）。
+ */
+export type ApprovalAnswer = Verdict & { readonly modifiedInput?: JsonRecord };
 
 // ---------------------------------------------------------------------------
 // 类型化错误（C50：超时带类型失败；迟到 reply 带 stale 错误）
@@ -129,6 +139,18 @@ export class DuplicateApprovalError extends Error {
   }
 }
 
+/** C52：deny 答复携带 modifiedInput（被拒的调用无参数可改——编程错误）。 */
+export const APPROVAL_REPLY_MALFORMED = "APPROVAL_REPLY_MALFORMED";
+
+export class ApprovalReplyMalformedError extends Error {
+  readonly code = APPROVAL_REPLY_MALFORMED;
+  constructor(readonly requestId: string) {
+    super(
+      `审批请求 ${requestId} 的答复形状非法：deny 不能携带 modifiedInput（C52 修改后参数仅对 allow 有意义）`,
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 注册表
 // ---------------------------------------------------------------------------
@@ -154,7 +176,7 @@ function deferred<T>(): {
 interface PendingEntry {
   readonly request: ApprovalRequest;
   readonly timeoutMs: number;
-  readonly settle: (verdict: Verdict) => void;
+  readonly settle: (verdict: ApprovalAnswer) => void;
   readonly fail: (error: PermissionTimeout) => void;
   readonly timer: NodeJS.Timeout;
 }
@@ -187,7 +209,7 @@ export class PendingApprovals {
   ask(
     req: ApprovalRequest,
     options: { timeoutMs: number },
-  ): Promise<Verdict> {
+  ): Promise<ApprovalAnswer> {
     const { timeoutMs } = options;
     // C54：关类的 ask **自动拒绝而非放行**——关掉的是"问"，不是"允许"。
     // 结算同样宣告（C31：不宣告的结算与静默放行同罪）。
@@ -226,6 +248,10 @@ export class PendingApprovals {
    * （C31 迟到通知纪律），从未存在时抛 UnknownApprovalError。
    */
   async reply(id: string, reply: ApprovalReply): Promise<void> {
+    // C52：deny 携带 modifiedInput = 编程错误（被拒的调用无参数可改）
+    if (reply.action === "deny" && reply.modifiedInput !== undefined) {
+      throw new ApprovalReplyMalformedError(id);
+    }
     const entry = this.pending.get(id);
     if (entry === undefined) {
       const tombstone = this.settled.get(id);
@@ -237,9 +263,13 @@ export class PendingApprovals {
     this.pending.delete(id);
     this.settled.set(id, { settledWith: "reply" });
     clearTimeout(entry.timer);
-    const verdict: Verdict =
+    const verdict: ApprovalAnswer =
       reply.action === "allow"
-        ? { action: "allow", reason: reply.reason ?? "审批人放行" }
+        ? {
+            action: "allow",
+            reason: reply.reason ?? "审批人放行",
+            ...(reply.modifiedInput !== undefined ? { modifiedInput: reply.modifiedInput } : {}),
+          }
         : { action: "deny", reason: reply.reason ?? "审批人拒绝" };
     this.announce?.({
       kind: "settled",

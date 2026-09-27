@@ -126,9 +126,12 @@ export async function runCli(options: RunCliOptions): Promise<void> {
     if (name === "/approve") {
       // C24：--session 记入会话批准缓存（同会话同规则免再问）、--feedback
       // 落审计。标志剥离后再按位置参数解析，避免与理由文本混淆。
+      // C52：--args '<json>' 携带修改后的执行参数（仅 allow 有意义——
+      // deny 携带被子进程类型化拒绝）。
       const tokens = [...rest];
       let scope: "once" | "session" | undefined;
       let feedback: string | undefined;
+      let modifiedInput: JsonRecord | undefined;
       const feedbackIdx = tokens.indexOf("--feedback");
       if (feedbackIdx >= 0) {
         const text = tokens[feedbackIdx + 1];
@@ -140,10 +143,28 @@ export async function runCli(options: RunCliOptions): Promise<void> {
         tokens.splice(sessionIdx, 1);
         scope = "session";
       }
+      const argsIdx = tokens.indexOf("--args");
+      if (argsIdx >= 0) {
+        const raw = tokens[argsIdx + 1];
+        tokens.splice(argsIdx, raw === undefined ? 1 : 2);
+        if (raw !== undefined) {
+          try {
+            const parsed: unknown = JSON.parse(raw);
+            if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+              out("! --args 的值必须是 JSON 对象");
+              return;
+            }
+            modifiedInput = parsed as JsonRecord;
+          } catch {
+            out("! --args 的值不是合法 JSON");
+            return;
+          }
+        }
+      }
       const requestId = tokens[0];
       const action = tokens[1];
       if (!requestId || (action !== "allow" && action !== "deny")) {
-        out("用法：/approve <requestId> allow|deny [理由] [--session] [--feedback 文本]");
+        out("用法：/approve <requestId> allow|deny [理由] [--session] [--feedback 文本] [--args <json对象>]");
         return;
       }
       const reason = tokens.slice(2).join(" ");
@@ -154,6 +175,7 @@ export async function runCli(options: RunCliOptions): Promise<void> {
         ...(reason !== "" ? { reason } : {}),
         ...(scope !== undefined ? { scope } : {}),
         ...(feedback !== undefined ? { feedback } : {}),
+        ...(modifiedInput !== undefined ? { modifiedInput } : {}),
       });
       return;
     }
@@ -259,7 +281,7 @@ export async function runCli(options: RunCliOptions): Promise<void> {
       connection.send({ type: "config/refresh", patch: { unattended: mode === "on" } });
       return;
     }
-    out(`未知命令 ${String(name)}。可用：/revert <seq> /cancel /steer <补充指令> /approve <id> allow|deny [理由] [--session] [--feedback 文本] /answer <id> <答复> /fork <新会话id> [before|after] [atSeq] /preset <readonly|workspace|yolo> /check <工具名> <json参数> /unattended on|off /exit`);
+    out(`未知命令 ${String(name)}。可用：/revert <seq> /cancel /steer <补充指令> /approve <id> allow|deny [理由] [--session] [--feedback 文本] [--args <json>] /answer <id> <答复> /fork <新会话id> [before|after] [atSeq] /preset <readonly|workspace|yolo> /check <工具名> <json参数> /unattended on|off /exit`);
   };
 
   // idle 观测（对象属性承载——TS 不跨闭包窄化可变捕获）
@@ -286,7 +308,7 @@ export async function runCli(options: RunCliOptions): Promise<void> {
         }
         case "approval_requested":
           out(`⏸ 待审批 [${msg.requestId}] ${msg.tool} ${oneLine(JSON.stringify(msg.args), 120)}`);
-          out(`  /approve ${msg.requestId} allow|deny [理由] [--session] [--feedback 文本]（${Math.round(msg.timeoutMs / 1000)}s 内答复，超时按拒绝结算；--session 记住本会话）`);
+          out(`  /approve ${msg.requestId} allow|deny [理由] [--session] [--feedback 文本] [--args <json>]（${Math.round(msg.timeoutMs / 1000)}s 内答复，超时按拒绝结算；--session 记住本会话）`);
           break;
         case "approval_settled":
           out(msg.allowed ? `✔ 审批已放行 ${msg.requestId}` : `✘ 审批已拒绝 ${msg.requestId}`);

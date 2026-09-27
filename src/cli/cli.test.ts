@@ -806,6 +806,44 @@ describe("question 问答面（B8b / T-P1-21）", () => {
     expect(lines.some((l) => l.includes("⏸ 待审批"))).toBe(false);
   });
 
+
+  it("C52：/approve --args 携带修改后参数端到端（T-P1-79）——工具执行改后参数", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-mi-"));
+    const target = path.join(workspace, "mi.txt");
+    const provider = scriptedProvider([
+      [
+        {
+          type: "tool-call-delta",
+          id: "mi",
+          name: "write",
+          argsDelta: JSON.stringify({ path: target, content: "原始内容" }),
+        },
+        { type: "done" },
+      ],
+      [{ type: "text-delta", text: "完成。" }, { type: "done" }],
+    ]);
+    const lines = await runScriptedSession(
+      {
+        provider,
+        assembly: {
+          workspaceRoot: workspace,
+          contextWindow: 200_000,
+          approvalTimeoutMs: 5_000,
+        },
+      },
+      async function* ({ waitFor }) {
+        yield `把"原始内容"写进 ${target}`;
+        await waitFor((line) => line.includes("⏸ 待审批 [mi]"));
+        // 用户改内容后批准（"改成这样再执行"）
+        yield `/approve mi allow 改好了 --args {"path":"${target.split(String.fromCharCode(92)).join("/")}","content":"修改后的内容"}`;
+        await waitFor((line) => line.includes("── turn 1 结束（completed）"));
+      },
+    );
+    expect(lines.some((l) => l.includes("✔ 审批已放行 mi"))).toBe(true);
+    // 文件落盘的是**修改后**内容（工具收到改后 args）
+    expect(await readFile(target, "utf8")).toBe("修改后的内容");
+  });
+
   it("C19：/check 策略 dry-run 端到端（T-P1-75）——allow/deny/ask 三态回执可见、零执行", async () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-check-"));
     const provider = scriptedProvider([

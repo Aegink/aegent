@@ -12,6 +12,7 @@ import {
   APPROVAL_CATEGORIES,
   APPROVAL_CATEGORY_CLOSED,
   type ApprovalAnnouncement,
+  ApprovalReplyMalformedError,
   type ApprovalRequest,
 } from "./pending.js";
 
@@ -216,5 +217,33 @@ describe("C54 · 审批来源分类与关类自动拒绝（T-P1-78）", () => {
     await expect(registry.reply("re-1", { action: "allow" })).rejects.toThrow(
       StaleApprovalError,
     );
+  });
+});
+
+describe("C52 · modifiedInput 修改后参数（T-P1-79）", () => {
+  it("allow+modifiedInput：结算 verdict 携带修改后参数（gate 消费）", async () => {
+    const { registry } = makeRegistry();
+    const pending = registry.ask(makeRequest("mi-1"), { timeoutMs: 5_000 });
+    await registry.reply("mi-1", {
+      action: "allow",
+      modifiedInput: { command: "git status" },
+    });
+    const answer = await pending;
+    expect(answer.action).toBe("allow");
+    expect(answer.modifiedInput).toEqual({ command: "git status" });
+  });
+
+  it("deny 携带 modifiedInput → 类型化 APPROVAL_REPLY_MALFORMED（编程错误当场暴露）", async () => {
+    const { registry } = makeRegistry();
+    registry.ask(makeRequest("mi-2"), { timeoutMs: 5_000 });
+    await expect(
+      registry.reply("mi-2", { action: "deny", modifiedInput: { command: "x" } }),
+    ).rejects.toThrow(ApprovalReplyMalformedError);
+    // 类型化 code 可路由
+    try {
+      await registry.reply("mi-2", { action: "deny", modifiedInput: { command: "x" } });
+    } catch (e) {
+      expect((e as { code?: string }).code).toBe("APPROVAL_REPLY_MALFORMED");
+    }
   });
 });

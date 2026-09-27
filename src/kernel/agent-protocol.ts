@@ -52,6 +52,9 @@ export type AgentRequest =
       scope?: "once" | "session";
       /** C24：审批反馈，落 L2 审计记录。 */
       feedback?: string;
+      /** C52/T-P1-79：修改后的执行参数（仅 allow 携带；子进程 gate 侧重跑
+       * 出口族硬拦）。deny 携带 → 子进程类型化拒绝。 */
+      modifiedInput?: JsonRecord;
     }
   | {
       /** J6 运行时换模（T-P1-04）：立即受理，生效点在新 turn。identity
@@ -233,6 +236,7 @@ export function decodeRequest(line: string): AgentRequest {
     expectedTurn?: unknown;
     tool?: unknown;
     args?: unknown;
+    modifiedInput?: unknown;
   };
   if (!REQUEST_TYPES.has(req.type)) {
     throw new ProtocolError("PROTOCOL_UNKNOWN_REQUEST", `未知请求类型 ${req.type}`);
@@ -283,6 +287,14 @@ export function decodeRequest(line: string): AgentRequest {
     if (req.feedback !== undefined && typeof req.feedback !== "string") {
       throw new ProtocolError("PROTOCOL_MALFORMED", "approve 的 feedback 必须是字符串");
     }
+    // C52：modifiedInput 可选，出现时必须是 JSON 对象（deny 携带的语义
+    // 校验在子进程 pending.reply——类型化 APPROVAL_REPLY_MALFORMED）
+    if (
+      req.modifiedInput !== undefined &&
+      (typeof req.modifiedInput !== "object" || req.modifiedInput === null || Array.isArray(req.modifiedInput))
+    ) {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "approve 的 modifiedInput 必须是对象");
+    }
     return {
       type: "approve",
       requestId: req.requestId,
@@ -290,6 +302,9 @@ export function decodeRequest(line: string): AgentRequest {
       ...(typeof req.reason === "string" ? { reason: req.reason } : {}),
       ...(req.scope !== undefined ? { scope: req.scope } : {}),
       ...(typeof req.feedback === "string" ? { feedback: req.feedback } : {}),
+      ...(req.modifiedInput !== undefined
+        ? { modifiedInput: req.modifiedInput as JsonRecord }
+        : {}),
     };
   }
   if (req.type === "model/switch") {

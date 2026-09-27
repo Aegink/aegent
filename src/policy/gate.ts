@@ -114,6 +114,31 @@ export interface ToolPolicyEvaluation {
 }
 
 /**
+ * 出口族串联（T-P1-79 提取）：C46 → C49 → C35 → G7 → C11 五出口依序
+ * 施加（批次 8 盘点①次序终局清单——先后仅影响 deny reason 归属措辞，
+ * 任一出口 deny 即终局）。evaluateToolPolicy 与 modifiedInput 重跑共用。
+ */
+function enforceExitFamily(
+  verdict: Verdict,
+  call: PolicyCall,
+  options: ToolPolicyEvalOptions,
+): { verdict: Verdict; trustWarning?: string } {
+  let v = enforceProtectedPaths(verdict, call);
+  v = enforceCeiling(v, call, options.ceiling);
+  v = enforceSelfGuard(v, call, { agentInitiated: true });
+  v = enforcePlanMode(v, call, options.planMode?.() ?? false);
+  const trusted = options.trustState?.();
+  v = enforceTrustGate(v, call, trusted);
+  if (v.action === "deny" && trusted === false) {
+    return {
+      verdict: v,
+      trustWarning: `trust-gate: ${call.tool} 因项目未信任被降权拒绝（C11 出口级）`,
+    };
+  }
+  return { verdict: v };
+}
+
+/**
  * C19 dry-run 求值管道：可跑完整判定链而不执行工具（同 gate 层 1-4 步，
  * 不进 broker 分支）。参数解析失败返回 null——gate 层据此交 registry 报
  * TOOL_ARGUMENTS_INVALID（坏参数不属于权限判定，dry-run 亦然）。
@@ -144,16 +169,9 @@ export async function evaluateToolPolicy(
     source: options.source ?? "model",
   };
   let verdict = await options.chain.evaluate(call);
-  verdict = enforceProtectedPaths(verdict, call);
-  verdict = enforceCeiling(verdict, call, options.ceiling);
-  verdict = enforceSelfGuard(verdict, call, { agentInitiated: true });
-  verdict = enforcePlanMode(verdict, call, options.planMode?.() ?? false);
-  const trusted = options.trustState?.();
-  verdict = enforceTrustGate(verdict, call, trusted);
-  if (verdict.action === "deny" && trusted === false) {
-    // C11 降权 deny 落可检索警告（出口降权不是常规策略裁决）
-    warnings.push(`trust-gate: ${call.tool} 因项目未信任被降权拒绝（C11 出口级）`);
-  }
+  const exited = enforceExitFamily(verdict, call, options);
+  verdict = exited.verdict;
+  if (exited.trustWarning !== undefined) warnings.push(exited.trustWarning);
   return { args, verdict, warnings };
 }
 
@@ -226,7 +244,36 @@ export function createToolGateLayer(
         category: "tool",
       });
       if (answer.action === "allow") {
-        return next({ ...e, arguments: JSON.stringify(args) });
+        // C52（T-P1-79）：批准可携带修改后的参数（zcode turn-machine
+        // resolvePermission 同语义：`input: modifiedInput ?? tc.input`）。
+        // 改后参数**重跑五出口族**（硬拦面——批准不可越硬拦出口）；
+        // 规则面不重跑——人的显式批准是权威（C47 批准语义）。
+        let effectiveArgs = args;
+        if (answer.modifiedInput !== undefined) {
+          effectiveArgs = answer.modifiedInput;
+          const modifiedCall: PolicyCall = {
+            tool: e.name,
+            args: effectiveArgs,
+            sessionId: options.sessionId,
+            source: options.source ?? "model",
+          };
+          const exited = enforceExitFamily(
+            { action: "allow", reason: "审批人放行（修改后参数）" },
+            modifiedCall,
+            options,
+          );
+          if (exited.trustWarning !== undefined) options.onWarning?.(exited.trustWarning);
+          if (exited.verdict.action === "deny") {
+            return deniedResult(
+              {
+                action: "deny",
+                reason: `修改后参数被出口族拒绝：${exited.verdict.reason}`,
+              },
+              TOOL_POLICY_DENIED,
+            );
+          }
+        }
+        return next({ ...e, arguments: JSON.stringify(effectiveArgs) });
       }
       const askReason = verdict.reason ?? "默认询问（无匹配策略，不变量 3）";
       return deniedResult(
