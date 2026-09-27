@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "comment": "架构即代码策略（T1/T-P1-121）。规则语义见 tools/architecture-check.mjs 头注。渐进采用：managed=false 的存量域违规降级为警告（首次全量跑的警告清单即收紧路线基线）；managed=true 域硬失败。requires 白名单首轮从现状 import 反推（现状即事实——先声明后收紧：新增未声明依赖即违规）。publicEntrypoints 缺省为空 = 该域深导入检查未激活（随入口收敛逐域补）。",
+  "modules": [
+    { "id": "acp", "roots": ["src/acp"], "managed": true, "requires": ["kernel"], "publicEntrypoints": ["src/acp/main.ts"], "owner": "wangh" },
+    { "id": "cli", "roots": ["src/cli"], "managed": false, "requires": ["diagnostics", "kernel", "sandbox", "session", "test-support"], "publicEntrypoints": [], "owner": "wangh" },
+    { "id": "context", "roots": ["src/context"], "managed": false, "requires": ["kernel", "models", "sandbox", "session"], "publicEntrypoints": [], "owner": "wangh" },
+    { "id": "diagnostics", "roots": ["src/diagnostics"], "managed": true, "requires": ["sandbox", "session"], "publicEntrypoints": [], "owner": "wangh" },
+    { "id": "host", "roots": ["src/host"], "managed": true, "requires": ["kernel", "policy", "session"], "publicEntrypoints": [], "owner": "wangh" },
+    { "id": "kernel", "roots": ["src/kernel"], "managed": false, "requires": ["context", "lsp", "models", "policy", "sandbox", "session"], "publicEntrypoints": [], "owner": "wangh" },
+    { "id": "lsp", "roots": ["src/lsp"], "managed": false, "requires": ["kernel"], "publicEntrypoints": [], "owner": "wangh" },
+    { "id": "mcp", "roots": ["src/mcp"], "managed": false, "requires": ["kernel"], "publicEntrypoints": [], "owner": "wangh" },
+    { "id": "models", "roots": ["src/models"], "managed": false, "requires": ["kernel"], "publicEntrypoints": [], "owner": "wangh" },
+    { "id": "obs", "roots": ["src/obs"], "managed": true, "requires": ["kernel"], "publicEntrypoints": [], "owner": "wangh" },
+    { "id": "policy", "roots": ["src/policy"], "managed": false, "requires": ["kernel"], "publicEntrypoints": [], "owner": "wangh" },
+    { "id": "sandbox", "roots": ["src/sandbox"], "managed": false, "requires": ["kernel"], "publicEntrypoints": [], "owner": "wangh" },
+    { "id": "session", "roots": ["src/session"], "managed": false, "requires": ["kernel", "models", "policy"], "publicEntrypoints": [], "owner": "wangh" },
+    { "id": "sync", "roots": ["src/sync"], "managed": true, "requires": ["kernel"], "publicEntrypoints": [], "owner": "wangh" },
+    { "id": "test-support", "roots": ["src/test-support"], "managed": true, "requires": ["kernel", "models", "session"], "publicEntrypoints": [], "owner": "wangh" }
+  ],
+  "global": {
+    "maxFileLines": 400,
+    "forbidCycles": true,
+    "forbidDeepImports": true
+  },
+  "exceptions": []
+}
