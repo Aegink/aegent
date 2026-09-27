@@ -1314,7 +1314,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 3. **词汇表扩展每处走既有流程**：C16 assertNever 同步 + l0-events.md §8 落地记录 + 进度文件待澄清立案供追认；本批预判 4 案（#12~#15），执行中新发现照旧立案。
 4. **不做什么**（本批次）：不做 M4 空闲回收/M7 deadline 库/M11 闲时任务（P2）；不做 job 的 BUILTIN 工具与 CLI 面（无真实发起方）；不做 N1/N3/N7/N8 多端本体（批次 12，M8/N4 只打底）；不做 Q2 查询工具化/Q4 旧数据清理/Q8 归档档位（P2）；不做 E9 会话引用/E6 fork 树（P2）；不做 L5/L6/L9（P2）；E8 索引不做全文检索与查询语言（Q2 P2 域）。
 
-#### T-P1-85 · M1/M2 · JobRegistry（后台 job 底座 + 注册表状态可查可取消） `[ ]`
+#### T-P1-85 · M1/M2 · JobRegistry（后台 job 底座 + 注册表状态可查可取消） `[x]`
 - **依据需求**：M1（P1："后台 job——不阻塞对话"）+ M2（P1："job 注册表——job 状态可查、可取消"）
 - **上游首选参考**：[dsh·packages/jobs/jobs/src/index.ts:85](../oss/deepseek-harness/packages/jobs/jobs/src/index.ts#L85)（JobRegistry 抽象类：start spec preflight"Any preflight rejection leaves no job id or execution resource" + list/get/read/readAt/kill/wait/remove；view.ts:19 JobStatus 五值 running|stopping|completed|killed|failed；kill 返回 `requested|already-finished`）
 - **取什么 / 别抄什么**：取"注册表发 id / 后台启动即返回 / 输出 ring 按游标读 / kill 二值回执 / JobStatus 五值（含 stopping 中间态）"五形状；不抄其 Cordis Service 装配与 SessionId 归属面（我方单会话进程内，owner 归属随批次 12 多端）；tool-jobs 的 bash 后台化不取（无发起方）
@@ -1323,6 +1323,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **验收**：`npx vitest run src/kernel/jobs.test.ts`（新建）——①start 即返回、执行体在后台跑完、对话路径零阻塞（并行断言）；②list/get 状态可查（running→completed 迁移）；③read 游标增量 + ring 有界 lossy；④kill 活 job → stopping → killed（reason 进 detail）、kill 已完成 → already-finished；⑤wait 结算/超时两路；⑥执行体抛错 → failed 不毒化注册表
 - **依赖**：无（本批首卡）
 - **风险 / 未知**：job 执行体与 loop/工具的关系——本卡最小面是独立闭包宿主（不接 ToolContext）；bash 后台化是 S 组批次的消费面，接口形状留 spec.kind
+- **完成记录**：2026-09-27。产出：`src/kernel/jobs.ts`（JobRegistry：start(spec) 同步发 `${kind}-N` id 即返回——执行体异步闭包经 drive() 后台驱动、失败注册表接住落 failed 不毒化调用方；JobStatus 五值闭集 running/stopping/completed/killed/failed；输出经有界 ring（缺省 64KB 超限丢最旧整条、dropped 计数）+ read() 游标增量消费（lossy 判定 = dropped > cursor——存在未消费即被丢的条目时精确为 true）；kill() 二值回执 requested/already-finished + stopping 是**可观测中间态**（持续到执行体真正退出，kill 不等不阻塞）——执行体退出路径（resolve/reject）负责终态：abort 在途时 resolve 归 killed 不落 completed（取消是权威结局）、reject 归 killed（dsh "A producer throw propagates without changing job state" 同构——终态归 kill 语义非 failure）+ killReason 进 detail；wait(id, timeoutMs) 结算/超时两路（超时类型化报错不改 job 状态、回调摘除不泄漏）；onSettled 订阅（终态后注册立即回调）。job 面零事件流扩展（进程内事实 + 回调，批次 9 审批宣告面同款先例）。验收：`npx vitest run src/kernel/jobs.test.ts` → **8 passed**：①start 即返回、执行体未完成当下断言（零阻塞）→ wait 后 completed；②list/get running→completed 迁移与视图字段；③10 条×16B>64B 上限 ring 折损 + lossy + 游标推进后零增量；④kill→stopping（保持可观测）→killed reason 进 detail + already-finished；⑤wait 超时类型化 + 状态不变 + 后续结算可达；⑥failed 不毒化（后续 job 照常 completed）；⑦onSettled 结算/迟到注册两路；⑧UnknownJobError + kind-N 计数发号。`npx tsc --noEmit` 干净。偏离：①验收"对话路径零阻塞"落为 start 同步返回 + 执行体受控未完成断言（无真实 loop 装配——本卡最小面独立宿主）；②flaky 修复一处：settledAt>=createdAt（同毫秒结算合法，严格大于会同毫秒翻车——T-5-05 轮询消竞态同款警觉）。
 
 #### T-P1-86 · M3 · 崩溃续跑（场景⑤：显式 resume，不重复已完成副作用） `[ ]`
 - **依据需求**：M3（P1："崩溃续跑——场景⑤：重启后不重复已完成副作用"）；codex interrupted_turn 语义
