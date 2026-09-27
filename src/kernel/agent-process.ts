@@ -201,12 +201,31 @@ export async function runAgentChildStdio(
   // H1/H4/T-P1-42：subagent 选项不进 createChildAssembly（它只驱动 task
   // 工具注册，见下方 registerBuiltinTools）。
   const subagentOptions = options.assembly?.subagent;
+  // B21/T-P1-63：会话配置分层（可热刷新白名单 vs 会话内静态设置）——
+  // 初始值取装配面既有可配项（缺省 undefined = getter 返回 undefined，
+  // 未刷新路径零行为变化）；热刷新经协议命令 config/refresh。
+  // （先于 assembly 构造——C33 unattended 活查询引用它）
+  const configStore = new SessionConfigStore(
+    sessionId,
+    {
+      ...(options.assembly?.approvalTimeoutMs !== undefined
+        ? { approvalTimeoutMs: options.assembly.approvalTimeoutMs }
+        : {}),
+      ...(options.queueMaxSize !== undefined ? { queueMaxSize: options.queueMaxSize } : {}),
+    },
+    // C8：预设切换经 onInfo 留痕（logger.info——"预设事件保留用户意图"）
+    options.logger !== undefined ? { onInfo: (m) => options.logger?.info(m) } : undefined,
+  );
+
   const assembly: ChildAssembly | undefined = options.assembly
     ? createChildAssembly({
         sessionId,
         store,
         ...options.assembly,
         onApprovalAnnouncement: forwardApprovalAnnouncement,
+        // C33：无人值守活查询接 SessionConfigStore（config/refresh 通道
+        // 切换即生效；store getter 缺省 undefined → === true 为 false）
+        unattended: () => configStore.unattended === true,
       })
     : undefined;
 
@@ -233,20 +252,6 @@ export async function runAgentChildStdio(
     : undefined;
 
   const queue = new PromptQueue("one-at-a-time", options.queueMaxSize);
-  // B21/T-P1-63：会话配置分层（可热刷新白名单 vs 会话内静态设置）——
-  // 初始值取装配面既有可配项（缺省 undefined = getter 返回 undefined，
-  // 未刷新路径零行为变化）；热刷新经协议命令 config/refresh。
-  const configStore = new SessionConfigStore(
-    sessionId,
-    {
-      ...(options.assembly?.approvalTimeoutMs !== undefined
-        ? { approvalTimeoutMs: options.assembly.approvalTimeoutMs }
-        : {}),
-      ...(options.queueMaxSize !== undefined ? { queueMaxSize: options.queueMaxSize } : {}),
-    },
-    // C8：预设切换经 onInfo 留痕（logger.info——"预设事件保留用户意图"）
-    options.logger !== undefined ? { onInfo: (m) => options.logger?.info(m) } : undefined,
-  );
   // 工具装配（T-4-05 接线，兑现 T-4-02 偏离⑥）：注册表分发就是 toolCall 链的
   // 链底 terminal——executeTool 槽位由 registry.dispatch 充当，不存在旁路。
   // T-8-01：装配提供 PathGuard 时经它构造（写守卫唯一入口，T-6-01）。

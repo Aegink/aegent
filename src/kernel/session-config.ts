@@ -54,6 +54,7 @@ export const REFRESHABLE_CONFIG_KEYS = [
   "approvalTimeoutMs",
   "queueMaxSize",
   "sandboxMode",
+  "unattended",
 ] as const;
 
 export type RefreshableConfigKey = (typeof REFRESHABLE_CONFIG_KEYS)[number];
@@ -77,6 +78,9 @@ export interface SessionConfigValues {
   queueMaxSize?: number;
   /** 沙箱模式（C8 观测面 knob）——预设切换的目标值；消费面动态读随接线批次。 */
   sandboxMode?: SandboxMode;
+  /** C33 无人值守（T-P1-77）：true 时 gate 把每一个 ask/abstain 转为 deny
+   * （保留检测只改结局——agentscope DONT_ASK 语义）。缺省 undefined = 零行为变化。 */
+  unattended?: boolean;
 }
 
 export interface SessionConfigStoreOptions {
@@ -89,6 +93,7 @@ export class SessionConfigStore {
     approvalTimeoutMs: number | undefined;
     queueMaxSize: number | undefined;
     sandboxMode: SandboxMode | undefined;
+    unattended: boolean | undefined;
   };
 
   constructor(
@@ -100,6 +105,7 @@ export class SessionConfigStore {
       approvalTimeoutMs: initial?.approvalTimeoutMs,
       queueMaxSize: initial?.queueMaxSize,
       sandboxMode: initial?.sandboxMode,
+      unattended: initial?.unattended,
     };
   }
 
@@ -113,6 +119,11 @@ export class SessionConfigStore {
 
   get sandboxMode(): SandboxMode | undefined {
     return this.values.sandboxMode;
+  }
+
+  /** C33 无人值守开关（活查询消费面——gate 每调用读当前值）。 */
+  get unattended(): boolean | undefined {
+    return this.values.unattended;
   }
 
   /**
@@ -152,6 +163,12 @@ export class SessionConfigStore {
           throw new StaticConfigImmutableError(key);
         }
         this.values.sandboxMode = value as SandboxMode;
+        applied.push(key);
+      } else if (key === "unattended") {
+        if (typeof value !== "boolean") {
+          throw new StaticConfigImmutableError(key);
+        }
+        this.values.unattended = value;
         applied.push(key);
       }
     }

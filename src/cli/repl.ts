@@ -247,7 +247,19 @@ export async function runCli(options: RunCliOptions): Promise<void> {
       connection.send({ type: "policy/check", tool, args: parsed as JsonRecord });
       return;
     }
-    out(`未知命令 ${String(name)}。可用：/revert <seq> /cancel /steer <补充指令> /approve <id> allow|deny [理由] [--session] [--feedback 文本] /answer <id> <答复> /fork <新会话id> [before|after] [atSeq] /preset <readonly|workspace|yolo> /check <工具名> <json参数> /exit`);
+    if (name === "/unattended") {
+      // C33 无人值守开关（T-P1-77）：on = 每一个 ask 转 deny（保留检测只
+      // 改结局）；off = 恢复正常审批。经 config/refresh 通道（unattended
+      // 是白名单 knob），子进程 gate 活查询即刻生效。
+      const mode = rest[0];
+      if (mode !== "on" && mode !== "off") {
+        out("用法：/unattended on|off（on = 询问转为拒绝，off = 恢复审批）");
+        return;
+      }
+      connection.send({ type: "config/refresh", patch: { unattended: mode === "on" } });
+      return;
+    }
+    out(`未知命令 ${String(name)}。可用：/revert <seq> /cancel /steer <补充指令> /approve <id> allow|deny [理由] [--session] [--feedback 文本] /answer <id> <答复> /fork <新会话id> [before|after] [atSeq] /preset <readonly|workspace|yolo> /check <工具名> <json参数> /unattended on|off /exit`);
   };
 
   // idle 观测（对象属性承载——TS 不跨闭包窄化可变捕获）

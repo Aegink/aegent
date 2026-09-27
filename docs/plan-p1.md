@@ -1173,7 +1173,7 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **偏离 / 建议**：①匹配方言用我方 wildcardMatch（evaluate.ts 既有）替代 kimi 的 picomatch——工具名维度通配是活规则（`github__*` 命中命名空间全族），单卡不引新依赖；kimi 的 enabled 精确/disabled picomatch 双方言统一为 wildcardMatch 一种（记档）。②同层并存次序 = 先黑后白（disabled 命中即不可用，压过 enabled 收录——kimi 同序）。③激活检查与 dry-run 的边界：evaluateToolPolicy 是**批准层**（纯策略面），激活检查在 gate 层首步（批准层之前）——协议 policy/check 的 policy_verdict 反映"若该工具可达，策略链会怎么判"，未激活工具的不可达面由 gate 执行路径承载（两层各归其位，正是 C25 分离本意）；CLI/协议的激活面配置暴露随真实需求（YAGNI）。④enabled 空数组 = 白名单不设限（与缺席同义）——非空才收口，测试钉住。
 - **完成记录**：①tool-activation.ts 新建——ToolActivationLayer {enabled?, disabled?} + ToolActivationLayers 四层 + EMPTY_ACTIVATION + isToolActive（单层：先黑后白）+ isToolActiveComposed（四层 AND，kimi 同名意图）。②gate.ts：ToolGateOptions +activation、层内首步检查（evaluateToolPolicy 之前）→ TOOL_NOT_ACTIVE 独立错误码（reason 提及激活层，无 Verdict 形状）；assembly +activation 装配选项透传（ChildAssemblyOptions）。③验收：`npx vitest run src/policy/tool-activation.test.ts src/policy/gate.test.ts` → **25 passed**（tool-activation 5：disabled 通配/锚定、enabled 白名单非空才收口、先黑后白并存、四层 AND 逐层各一、全空零行为 + gate 20：TOOL_NOT_ACTIVE ≠ TOOL_POLICY_DENIED 且 broker 零调用、无 Verdict 形状、四层全放行照常执行、缺省零行为变化）——验收①~⑤全过；`npx tsc --noEmit` 干净。
 
-#### T-P1-77 · C33 · 无人值守模式（ASK→DENY 活查询开关） `[ ]`
+#### T-P1-77 · C33 · 无人值守模式（ASK→DENY 活查询开关） `[x]`
 - **依据需求**：C33（P1："无人值守模式：把每一个 ASK 转为 DENY（而非卸掉策略）"）——展卡核对结论⑤
 - **上游首选参考**：[agentscope·_types.py:61](../oss/agentscope/src/agentscope/permission/_types.py#L61)（DONT_ASK）+ [_engine.py:491](../oss/agentscope/src/agentscope/permission/_engine.py#L491)（_check_dont_ask：Deny→DENY / Ask→DENY converted / 安全 ASK→DENY converted——**保留检测只改结局**）
 - **取什么 / 别抄什么**：取"转换在判定出口、deny reason 带原询问理由"语义；不抄其 PermissionMode 四档枚举（我方只落 unattended 单开关——C3 默认 ask 是不变量，不发明其他档）
@@ -1182,6 +1182,8 @@ P2 段（批次 15a-e，48 条）：会话数据与生命周期 / 判官与权�
 - **验收**：`npx vitest run src/policy/gate.test.ts src/cli/cli.test.ts`（扩）——①unattended 时规则 ask → deny 且 reason 带原询问理由；②C3 默认 ask 兜底同转（保留检测）；③deny/allow 规则照常（不受开关影响）；④broker 零调用断言（不挂起不超时）；⑤CLI 开关切换端到端生效；⑥缺省零行为变化
 - **依赖**：T-P1-75（gate 结构）
 - **风险 / 未知**：与 C56 判官的组合次序（unattended 时判官复核是否还做）——收口卡定形记档
+- **偏离 / 建议**：①开关承载 = SessionConfigStore 白名单 knob `unattended`（布尔）——复用 config/refresh 通道（C8 sandboxMode 同款"白名单只追加的预期演进"），不新增协议命令；CLI /unattended on|off 即发 patch。②活查询注入链：agent-process 构造 assembly 时传 `() => configStore.unattended === true`（store getter 缺省 undefined → false）——装配选项 unattended?: () => boolean，gate 每调用读当前值（会话内动态切换即刻生效）。③转换位置在 **gate 层 ask/abstain 分支入口**（broker 之前）——evaluateToolPolicy（dry-run 面）不含转换：dry-run 如实反映"策略链会问"的事实，无人值守的"结局改写"是执行面行为（C56 × C33 组合次序收口卡继续定形）。
+- **完成记录**：①session-config.ts：REFRESHABLE_CONFIG_KEYS +unattended（布尔校验，非布尔 StaticConfigImmutableError 零写入）+ getter + 初始值面。②gate.ts：ToolGateOptions +unattended 活查询；ask/abstain 分支入口转换（reason = "无人值守：询问转为拒绝（原询问：…）"——agentscope converted 语义带原询问理由；broker 零调用）。③assembly +unattended 选项透传；agent-process 接 configStore 活查询（configStore 构造前移）。④repl /unattended on|off（本地校验 + config/refresh patch）。⑤验收：`npx vitest run src/policy/gate.test.ts src/kernel/session-config.test.ts src/kernel/agent-process.test.ts src/cli/cli.test.ts` → **66 passed**（gate 20：规则 ask→deny 带原询问理由/C3 默认 ask 同转/deny·allow 照常/活查询 on·off 动态切换/缺省零行为变化 + session-config 8：knob 布尔校验非布尔拒/闭集断言同步 + CLI 22：/unattended on 端到端无挂起提示 + off 恢复）——验收①~⑥全过；`npx tsc --noEmit` 干净。
 
 #### T-P1-78 · C54 · 审批来源分类 5 类（关类 = 自动拒绝） `[ ]`
 - **依据需求**：C54（P1："审批来源分类配置（5 类）；关闭某类 ≠ 放行 = 硬拒绝"）——展卡核对结论⑧

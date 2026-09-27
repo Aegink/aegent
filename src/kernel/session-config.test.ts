@@ -44,10 +44,29 @@ describe("SessionConfigStore —— B21 配置两类", () => {
 
   it("白名单闭集冻结只追加；未刷新路径 getter 返回装配初始值（零行为变化）", () => {
     // T-P1-73：sandboxMode 追加入白名单（C8 观测面 knob——只追加的预期演进）
-    expect(REFRESHABLE_CONFIG_KEYS).toEqual(["approvalTimeoutMs", "queueMaxSize", "sandboxMode"]);
+    // T-P1-77：unattended 追加入白名单（C33 无人值守开关）
+    expect(REFRESHABLE_CONFIG_KEYS).toEqual([
+      "approvalTimeoutMs",
+      "queueMaxSize",
+      "sandboxMode",
+      "unattended",
+    ]);
     const store = new SessionConfigStore("s1");
     expect(store.approvalTimeoutMs).toBeUndefined();
     expect(store.queueMaxSize).toBeUndefined();
+    expect(store.unattended).toBeUndefined();
+  });
+
+  it("C33 · unattended knob（T-P1-77）：布尔值生效；非布尔类型化拒绝（零写入）", () => {
+    const store = new SessionConfigStore("s1");
+    const { applied } = store.refresh({ unattended: true });
+    expect(applied).toEqual(["unattended"]);
+    expect(store.unattended).toBe(true);
+    expect(store.refresh({ unattended: false }).applied).toEqual(["unattended"]);
+    expect(store.unattended).toBe(false);
+    expect(() => store.refresh({ unattended: "on" })).toThrow(StaticConfigImmutableError);
+    expect(() => store.refresh({ unattended: 1 })).toThrow(StaticConfigImmutableError);
+    expect(store.unattended).toBe(false);
   });
 });
 

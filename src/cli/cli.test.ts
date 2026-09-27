@@ -772,6 +772,40 @@ describe("question 问答面（B8b / T-P1-21）", () => {
     expect(lines.some((l) => l.includes("✔ 配置已刷新：sandboxMode"))).toBe(true);
   });
 
+  it("C33：/unattended 无人值守端到端（T-P1-77）——on 时询问转拒绝不挂起、off 恢复审批", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-unattended-"));
+    let call = 0;
+    const provider = scriptedProvider([
+      // on 状态下：write 无规则 → abstain → 无人值守转 deny（不挂起）→
+      // 模型收到 isError 后收尾；第二轮 off 恢复 → 挂起
+      [{ type: "text-delta", text: "好的，已停下。" }, { type: "done" }],
+      [{ type: "text-delta", text: "好的。" }, { type: "done" }],
+    ]);
+    void call;
+    const lines = await runScriptedSession(
+      {
+        provider,
+        assembly: {
+          workspaceRoot: workspace,
+          contextWindow: 200_000,
+          approvalTimeoutMs: 5_000,
+        },
+      },
+      async function* ({ waitFor }) {
+        yield "/unattended on";
+        await waitFor((line) => line.includes("✔ 配置已刷新：unattended"));
+        yield `写点东西到 ${workspace}/x.txt`;
+        // 无人值守：无审批挂起提示（ask 已转 deny），轮正常收尾
+        await waitFor((line) => line.includes("── turn 1 结束（completed）"));
+        yield "/unattended off";
+        await waitFor((line) => line.includes("✔ 配置已刷新：unattended"));
+      },
+    );
+    expect(lines.some((l) => l.includes("✔ 配置已刷新：unattended"))).toBe(true);
+    // 轮内没有任何挂起提示（⏸ 待审批）——ask 被转换而非挂起
+    expect(lines.some((l) => l.includes("⏸ 待审批"))).toBe(false);
+  });
+
   it("C19：/check 策略 dry-run 端到端（T-P1-75）——allow/deny/ask 三态回执可见、零执行", async () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-check-"));
     const provider = scriptedProvider([

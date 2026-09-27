@@ -267,6 +267,13 @@ export interface ChildAssemblyOptions {
    */
   activation?: import("../policy/tool-activation.js").ToolActivationLayers;
   /**
+   * C33 无人值守活查询（T-P1-77）：true 时 gate 把每一个 ask/abstain 转
+   * 为 deny（保留检测只改结局）。装配侧接 SessionConfigStore 的活查询
+   * （agent-process 传 () => configStore.unattended === true）；缺省
+   * undefined = 零行为变化。
+   */
+  unattended?: () => boolean;
+  /**
    * G3/G6 会话目标（T-P1-12）：提供时构造 GoalService——新会话（流内无
    * goal 事实）以此落初始 goal/set 事件；已有 goal 事实的会话按流重建
    * （goalFromEvents，流内权威——J14 回放保护同款），选项初始值不落。
@@ -757,6 +764,8 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
     onWarning: (warning) => logger?.warn("策略警告", { userContent: warning }),
     // C25：激活四层（缺省 undefined = 零行为变化）
     ...(options.activation !== undefined ? { activation: options.activation } : {}),
+    // C33：无人值守活查询（缺省 undefined = 零行为变化）
+    ...(options.unattended !== undefined ? { unattended: options.unattended } : {}),
   });
 
   // —— I1 hooks（T-P1-07）：registry 聚合层挂三点位外层（hooks → gate →

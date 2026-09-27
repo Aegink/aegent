@@ -95,6 +95,12 @@ export interface ToolGateOptions extends ToolPolicyEvalOptions {
    * 缺省 undefined = 无激活面，零行为变化。
    */
   readonly activation?: ToolActivationLayers;
+  /**
+   * C33 无人值守活查询（T-P1-77）：true 时 ask/abstain 在进 broker 之前
+   * 转为 deny（保留检测只改结局——agentscope DONT_ASK 语义；deny/allow
+   * 规则照常）。每调用活查询；缺省 undefined = 零行为变化。
+   */
+  readonly unattended?: () => boolean;
 }
 
 /** 一次 dry-run 求值的产物：剥提案后的参数、整链裁决与全程警告。 */
@@ -195,6 +201,19 @@ export function createToolGateLayer(
     }
     if (verdict.action === "deny") {
       return deniedResult(verdict, TOOL_POLICY_DENIED);
+    }
+    // C33 无人值守：ask/abstain 在进 broker 之前转 deny（保留检测只改
+    // 结局）——broker 零调用（不挂起不超时），deny/allow 规则不受影响
+    if (options.unattended?.() === true) {
+      return {
+        content: `无人值守模式：${e.name} 的询问已转为拒绝（原询问：${verdict.reason}）`,
+        isError: true,
+        error: {
+          name: "PolicyGate",
+          code: TOOL_POLICY_DENIED,
+          reason: `无人值守：询问转为拒绝（原询问：${verdict.reason}）`,
+        },
+      };
     }
     // ask / abstain：abstain 按不变量 3 默认落 ask（C3 无规则默认询问）
     try {
