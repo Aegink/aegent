@@ -417,8 +417,20 @@ export class AgentLoop {
       point: "turnEnd",
       layers: deps.layers?.turnEnd ?? [],
       terminal: (_$, e) => {
+        // E18/T-P1-94：回合结局与产出一起结算——produced 由 loop（机器）
+        // 在收轮时点自报，消费者免事后反推"哪些 assistant 消息属于本回合"。
+        // abort 轮照报已产出部分（kimi turnSettled {outcome, produced} 同构）。
+        const produced = this.deps.store
+          .load(this.deps.sessionId)
+          .filter((ev) => ev.type === "assistant/message" && ev.turn === e.turn)
+          .map((ev) => ev.seq);
         this.deps.store.append(this.deps.sessionId, [
-          { type: "turn/end", turn: e.turn, reason: e.reason },
+          {
+            type: "turn/end",
+            turn: e.turn,
+            reason: e.reason,
+            ...(produced.length > 0 ? { produced } : {}),
+          },
         ]);
       },
     });
@@ -537,6 +549,11 @@ export class AgentLoop {
     if (!proj.openTurn) return; // 已闭合（竞态防御）
     const turn = proj.openTurn.turn;
     const openStep = [...proj.openSteps][0];
+    // E18/T-P1-94：强制收轮路径同口径自报 produced（abort 部分产出照报）
+    const produced = store
+      .load(sessionId)
+      .filter((ev) => ev.type === "assistant/message" && ev.turn === turn)
+      .map((ev) => ev.seq);
     const events: NewSessionEvent[] = [
       ...(openStep !== undefined
         ? [{ type: "step/end" as const, turn, step: openStep }]
@@ -545,6 +562,7 @@ export class AgentLoop {
         type: "turn/end" as const,
         turn,
         reason: { kind: "aborted" as const, cause: copyCause(cause) },
+        ...(produced.length > 0 ? { produced } : {}),
       },
     ];
     store.append(sessionId, events);

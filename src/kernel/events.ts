@@ -219,6 +219,15 @@ export interface TurnStartEvent extends EventBase {
 export interface TurnEndEvent extends EventBase {
   type: "turn/end";
   reason: TurnEndReason;
+  /**
+   * E18/T-P1-94：本回合产出的 assistant/message 事件 seq 按序列表——
+   * loop（机器）在收轮时点自报（kimi·engine.ts turnSettled {outcome,
+   * produced} 同构），消费者免事后反推"哪些消息属于本回合"；abort 轮
+   * 照报已产出部分（不丢不虚构）。可选缺省：旧流兼容 + 无 assistant
+   * 产出的轮（produced 为空数组时不落——空集与缺席同义）。
+   * 词汇表立案 #14（事件计数 21 不变——载荷扩展）。
+   */
+  produced?: number[];
 }
 
 export interface StepStartEvent extends EventBase {

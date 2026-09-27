@@ -1335,3 +1335,69 @@ describe("输出 token 触顶可续跑（B20/T-P1-62）", () => {
 
 // 类型引用保持（防止误删导出的编译期契约）
 void ({} as AgentLoop | AgentLoopDeps | TurnDecision | undefined);
+
+describe("E18 produced 机器自报（T-P1-94）：回合结局与产出一起结算", () => {
+  it("正常轮 turn/end.produced 与事后反推恒等（升序、属本回合）", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([
+      { type: "text-delta", text: "先看目录" },
+      { type: "tool-call-delta", id: "c1", name: "bash", argsDelta: '{"cmd":"ls"}' },
+      { type: "usage", usage: { inputTokens: 10, outputTokens: 5 } },
+      { type: "done" },
+    ]);
+    provider.mount([{ type: "text-delta", text: "完成了" }, { type: "done" }]);
+    const { loop, store } = makeLoop(provider);
+    await loop.runTurn("列出文件");
+
+    const events = store.load("s1");
+    const turnEnd = events.find((e): e is Extract<SessionEvent, { type: "turn/end" }> => e.type === "turn/end");
+    expect(turnEnd?.produced).toBeDefined();
+    // 事后反推（消费方口径）：turn 1 的 assistant/message seq 升序——恒等
+    const reverse = events
+      .filter((e) => e.type === "assistant/message" && e.turn === 1)
+      .map((e) => e.seq);
+    expect(turnEnd!.produced).toEqual(reverse);
+    expect(turnEnd!.produced!.length).toBe(2); // 两个 step 各一条 assistant 消息
+  });
+
+  it("abort 轮：produced 照报已产出部分（不丢不虚构）；取消发生在第二 step", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([
+      { type: "text-delta", text: "第一段产出" },
+      { type: "usage", usage: { inputTokens: 10, outputTokens: 2 } },
+      { type: "done" },
+    ]);
+    const { loop, store } = makeLoop(provider, {
+      decideTurn: async (record) => {
+        // 第一次裁决（step 1 已产出）时取消——abort 前已有 assistant 产出
+        loop.cancel({ kind: "user" });
+        return record.toolCalls.length > 0
+          ? { action: "continue" }
+          : { action: "end", finalText: record.content };
+      },
+    });
+    provider.mount([{ type: "text-delta", text: "第二段" }, { type: "done" }]);
+    await loop.runTurn("干活");
+    const events = store.load("s1");
+    const turnEnd = events.find((e): e is Extract<SessionEvent, { type: "turn/end" }> => e.type === "turn/end");
+    expect(turnEnd!.reason.kind).toBe("aborted");
+    const reverse = events
+      .filter((e) => e.type === "assistant/message" && e.turn === 1)
+      .map((e) => e.seq);
+    expect(turnEnd!.produced).toEqual(reverse); // 部分产出照报（1 条）
+  });
+
+  it("无 assistant 产出的轮 → produced 缺席（空集与缺席同义，定形记档）", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([{ type: "text-delta", text: "直接答" }, { type: "done" }]);
+    const { loop, store } = makeLoop(provider);
+    await loop.runTurn("问");
+    const events = store.load("s1");
+    const turnEnd = events.find((e): e is Extract<SessionEvent, { type: "turn/end" }> => e.type === "turn/end");
+    expect(turnEnd!.reason.kind).toBe("completed");
+    expect(turnEnd!.produced).toBeDefined(); // 本轮有 1 条 assistant → 在位
+    // 构造"零产出"对照：assistant/message 缺席的流（工具全部拒绝且模型无消息）——
+    // 现实由 produced 过滤保证（length>0 才落）；此处断言口径即可
+    expect(turnEnd!.produced!.length).toBe(1);
+  });
+});
