@@ -7,7 +7,7 @@ import { makeLoop, ScriptedProvider } from "../kernel/loop.test-utils.js";
 import { expectPaired } from "../test-support/event-asserts.js";
 import { DenyPermissionBroker, ManualPermissionBroker } from "./broker.js";
 import { PendingApprovals, PermissionTimeout } from "./pending.js";
-import { createToolGateLayer, evaluateToolPolicy, TOOL_POLICY_DENIED } from "./gate.js";
+import { createToolGateLayer, evaluateToolPolicy, TOOL_NOT_ACTIVE, TOOL_POLICY_DENIED } from "./gate.js";
 import { assemblePolicyChain } from "./chain.js";
 import { builtinRuleMatchers } from "./matchers.js";
 import { loadedRuleMatch, loadRules } from "./rule-loader.js";
@@ -309,6 +309,76 @@ describe("C19 · 策略 dry-run：evaluateToolPolicy 同链零执行（T-P1-75�
   it("参数解析失败返回 null（gate 层交 registry 报 TOOL_ARGUMENTS_INVALID）", async () => {
     const dry = await evaluateToolPolicy("bash", "{bad json", evalOptionsOf([]));
     expect(dry).toBeNull();
+  });
+});
+
+describe("C25 · 激活与批准分离：gate 首步激活检查（T-P1-76）", () => {
+  it("未激活：TOOL_NOT_ACTIVE 独立错误码（≠ 策略 deny），不进批准层（broker 零调用）", async () => {
+    const pending = new PendingApprovals();
+    const layer = createToolGateLayer({
+      chain: assemblePolicyChain({ user: [rulesModule([["allow", "bash"]])] }),
+      broker: new ManualPermissionBroker(pending, 5_000),
+      sessionId: "s1",
+      activation: { session: { disabled: ["bash"] } },
+    });
+    const result = await layer(
+      { sessionId: "s1" },
+      payload({ command: "git status" }),
+      makeNext(async () => ({ content: "不应执行" })),
+    );
+    expect(result.isError).toBe(true);
+    expect((result.error as { code: string }).code).toBe(TOOL_NOT_ACTIVE);
+    expect((result.error as { code: string }).code).not.toBe(TOOL_POLICY_DENIED);
+    // 批准层零触达：allow 规则在位也不放行、不挂起、不执行
+    expect(pending.listPending()).toHaveLength(0);
+  });
+
+  it("激活失败不产生 Verdict 形状：错误 reason 提及激活层而非策略", async () => {
+    const layer = createToolGateLayer({
+      chain: assemblePolicyChain({ user: [rulesModule([["allow", "write"]])] }),
+      broker: new DenyPermissionBroker(),
+      sessionId: "s1",
+      activation: { workspace: { enabled: ["read"] } },
+    });
+    const result = await layer(
+      { sessionId: "s1" },
+      { ...payload({ path: "/tmp/x" }), name: "write" },
+      makeNext(async () => ({ content: "不应执行" })),
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content).toContain("未激活");
+    expect(result.content).not.toContain("被权限策略拒绝");
+  });
+
+  it("四层 AND：任一层禁用 → 不可达；全层放行 → 照常执行（T-P1-15 并发面同款层语义）", async () => {
+    const layer = createToolGateLayer({
+      chain: assemblePolicyChain({ user: [rulesModule([["allow", "bash"]])] }),
+      broker: new DenyPermissionBroker(),
+      sessionId: "s1",
+      activation: {
+        workspace: {},
+        profile: {},
+        global: { enabled: ["bash", "read"] },
+        session: {},
+      },
+    });
+    const ok = await layer(
+      { sessionId: "s1" },
+      payload({ command: "git status" }),
+      makeNext(async () => ({ content: "executed" })),
+    );
+    expect(ok).toEqual({ content: "executed" });
+  });
+
+  it("缺省（activation 缺席）：零行为变化——既有 allow/ask/deny 全链不受影响", async () => {
+    const { layer, next, received } = makeGateHarness([["allow", "bash(git status)"]]);
+    const result = await layer(
+      { sessionId: "s1" },
+      payload({ command: "git status" }),
+      next,
+    );
+    expect(result).toEqual({ content: "executed bash" });
+    expect(received).toHaveLength(1);
   });
 });
 

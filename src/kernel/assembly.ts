@@ -261,6 +261,12 @@ export interface ChildAssemblyOptions {
    */
   readGate?: import("../policy/read-gate.js").ReadGateService;
   /**
+   * C25 工具激活四层（T-P1-76）：workspace/profile/global/session 纯 AND，
+   * 任一层禁用 → 工具不可达（gate 首步 TOOL_NOT_ACTIVE，不进批准层）。
+   * 缺省 undefined = 无激活面，零行为变化。
+   */
+  activation?: import("../policy/tool-activation.js").ToolActivationLayers;
+  /**
    * G3/G6 会话目标（T-P1-12）：提供时构造 GoalService——新会话（流内无
    * goal 事实）以此落初始 goal/set 事件；已有 goal 事实的会话按流重建
    * （goalFromEvents，流内权威——J14 回放保护同款），选项初始值不落。
@@ -749,6 +755,8 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
     ...toolGateEvalOptions,
     broker,
     onWarning: (warning) => logger?.warn("策略警告", { userContent: warning }),
+    // C25：激活四层（缺省 undefined = 零行为变化）
+    ...(options.activation !== undefined ? { activation: options.activation } : {}),
   });
 
   // —— I1 hooks（T-P1-07）：registry 聚合层挂三点位外层（hooks → gate →

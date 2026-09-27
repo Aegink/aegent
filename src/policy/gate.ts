@@ -49,9 +49,13 @@ import { enforceSelfGuard } from "./self-guard.js";
 import { stripProposedAmendments } from "./review-decision.js";
 import type { PermissionBrokerPort } from "./broker.js";
 import { PermissionTimeout } from "./pending.js";
+import { isToolActiveComposed, type ToolActivationLayers } from "./tool-activation.js";
 
 /** gate 级拒绝的错误码（deny 或审批拒绝）；审批超时另见 PERMISSION_TIMEOUT。 */
 export const TOOL_POLICY_DENIED = "TOOL_POLICY_DENIED";
+
+/** C25 激活失败错误码：不可达 ≠ 策略拒绝（不产生 Verdict、不进批准层）。 */
+export const TOOL_NOT_ACTIVE = "TOOL_NOT_ACTIVE";
 
 /**
  * 求值面选项（C19/T-P1-75）：gate 选项中"执行前判定"需要的部分——
@@ -85,6 +89,12 @@ export interface ToolGateOptions extends ToolPolicyEvalOptions {
   readonly broker: PermissionBrokerPort;
   /** C48 剥出的提案夹带与 C11 降权警告去向；缺省丢弃（记录面随 T-8）。 */
   readonly onWarning?: (warning: string) => void;
+  /**
+   * C25 工具激活四层（T-P1-76）：任一层禁用/白名单不含 → 工具不可达，
+   * 类型化 TOOL_NOT_ACTIVE（独立错误码——不是策略裁决，连 ask 都不进）。
+   * 缺省 undefined = 无激活面，零行为变化。
+   */
+  readonly activation?: ToolActivationLayers;
 }
 
 /** 一次 dry-run 求值的产物：剥提案后的参数、整链裁决与全程警告。 */
@@ -157,6 +167,22 @@ export function createToolGateLayer(
   options: ToolGateOptions,
 ): ChainLayer<LoopContext, ToolCallPayload, ToolExecutionResult> {
   return async (_$, e, next) => {
+    // C25 激活检查是层内首步（参数解析前）：未激活 = 不可达，独立错误码
+    // 不产生 Verdict——批准层（求值管道/broker）根本不被触达
+    if (
+      options.activation !== undefined &&
+      !isToolActiveComposed(options.activation, e.name)
+    ) {
+      return {
+        content: `工具 ${e.name} 未激活（C25 激活层禁用——不可达与权限裁决分离）`,
+        isError: true,
+        error: {
+          name: "PolicyGate",
+          code: TOOL_NOT_ACTIVE,
+          reason: `工具 ${e.name} 被激活层禁用（workspace/profile/global/session 四层 AND）`,
+        },
+      };
+    }
     // 求值管道与 dry-run 共用 evaluateToolPolicy（C19 同链保证）：参数
     // 解析失败返回 null → 交 registry 报 TOOL_ARGUMENTS_INVALID
     const evaluation = await evaluateToolPolicy(e.name, e.arguments, options);
