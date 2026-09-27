@@ -2,7 +2,7 @@
 
 > 本文件接续 [`plan-p0-progress.md`](plan-p0-progress.md)（P0 全程 + P1 批次 1-10，2026-09-27 收官，全量基线 1081 passed / 1 skipped，词汇表 23 事件）——**自批次 11 起的执行进度**（批次报告 / 待澄清 / 人工确认清单）记入本文件，旧文件定格不再追加。
 > 执行协议沿用 [`plan-p0.md`](plan-p0.md) §0（取卡 / 做卡 / 验收 / 打勾 / 提交 / 自动继续 / 四种停下情况）；计划本体在 [`plan-p1.md`](plan-p1.md)（执行会话只改任务卡的勾选框、「偏离 / 建议」「完成记录」三个字段）。
-> **待澄清编号接续旧文件（#16 起）**——避免跨文件引用歧义；词汇表立案管线不变（`l0-events.md` §8 落地记录全局连续，现为 19；**#16~#18 已追认转正**——#16 选型 Anthropic、#17/#18 词汇表形状；#19 surface/attach + surface/detach 23→25 立案待追认，回退面齐备）。
+> **待澄清编号接续旧文件（#16 起）**——避免跨文件引用歧义；词汇表立案管线不变（`l0-events.md` §8 落地记录全局连续，现为 19；**#16~#19 已全部追认转正**——#16 选型 Anthropic、#17/#18 词汇表形状、#19 surface/attach + surface/detach 23→25（2026-09-28 用户："认可#19"））。
 
 ---
 
@@ -93,7 +93,7 @@ docs/plan-p0.md §0）。上一批（批次 12）报告在 docs/plan-p1-progress
 | #16 | J5 | 展卡时开放问题（批次 11 提示词明示"展卡时先立案"）：第二厂商选型候选按参考仓覆盖面为 Anthropic（pi-mono·packages/ai/src/api/ 锚点最厚——anthropic-cache-split.ts 等）与 Gemini（qwen） | 非矛盾——用户决策项（技术选型，§0 第 7 条第 3 款） | 建议 **Anthropic**：pi-mono 锚点最厚（流式 wire/缓存切分/工具块映射均有同仓先例），且 F6/F13-F15 缓存族已按 pi-mono 语义落过锚；Gemini（qwen）备选 | **✅ 已追认（2026-09-27 用户："Anthropic"）**——T-P1-108（J5 第二厂商适配）照批次 12 提示词既定安排并入批次 12 展卡执行 |
 | #17 | F26 | T-P1-100 落地：`compaction` 事件载荷增可选字段 `compHash?: string`（events.ts CompactionEvent——压缩指纹，三次落盘 started/failed/completed 同值；`reason:"comp_hash_changed"` 是词汇表 2026-09-25 定稿注释中**预先声明**的 P1 槽位，非新值） | 无矛盾——载荷扩展按 Q9 封闭联合纪律走立案（事件计数 23 不变） | 追认 `compHash` 可选载荷；回退面 = 字段删除后旧流/新流均零影响（可选字段前向兼容，缺省读作"无指纹"不触发重压——codex turn.rs:1304"缺值不触发"纪律） | **✅ 已追认（2026-09-27 用户："全部认可"）——l0-events.md §8 落地记录 17 转正，词汇表正式形状 |
 | #18 | F11 | T-P1-101 落地：`compaction` 事件 (a) `strategy` 值域收闭集 `"full_summary" \| "recent_window_fallback"`（原注释"唯一直值"演进——F11 兜底检查点是真实第二策略）+ (b) 新增可选字段 `failureReason?: string`（**闭集** no_new_history/summary_budget/summary_provider/checkpoint_oversized——ADR 0302 纪律"closed vocabulary instead of provider error text"，provider 错误原文绝不落流） | 无矛盾——值域扩展 + 载荷扩展按 Q9 纪律走立案（事件计数 23 不变；旧流 strategy 缺省读作 full_summary 语义） | 追认 strategy 值域收闭集 + failureReason 可选载荷；回退面 = 删除字段后兜底检查点退回"failed 事件 + 上抛"旧行为（E17/T-P1-93 语义），旧流零影响 | **✅ 已追认（2026-09-27 用户："全部认可"）——l0-events.md §8 落地记录 18 转正，词汇表正式形状 |
-| #19 | N8 | T-P1-114 落地：词汇表 23→25——新增 `surface/attach {surfaceId, deliveryKind?}` 与 `surface/detach {surfaceId, reason?}` 两枚 log-only 会话级元事件（surface roster 生命周期——host 连接 connect/close/断线自动释放经 SurfaceHub onLifecycle → AgentHost emit → 装配方 append 落流；`src/host/roster.ts` activeRoster 纯函数流重建，恢复恒等） | 无矛盾——N8 验收"端的加入/离开是持久事件"要求落事件流（内存 roster 随进程消失）；两枚而非一枚 op 二值：attach/detach 判据字段差异大（C14 各自形状自洽，command/run+done 配对先例）；替代面已评估记档——plugin 逃生舱不专（roster 是核心域）、单事件 op 二值校验分支化 | 追认两枚新事件（23→25）；回退面 = 删两事件 + project/invariants/roster/hub 回调 + events.test 计数回 23（约 1.5 小时，全部新增面不触碰既有 23 事件语义），回退后 roster 回落内存面（持久验收缺失） | （待追认） |
+| #19 | N8 | T-P1-114 落地：词汇表 23→25——新增 `surface/attach {surfaceId, deliveryKind?}` 与 `surface/detach {surfaceId, reason?}` 两枚 log-only 会话级元事件（surface roster 生命周期——host 连接 connect/close/断线自动释放经 SurfaceHub onLifecycle → AgentHost emit → 装配方 append 落流；`src/host/roster.ts` activeRoster 纯函数流重建，恢复恒等） | 无矛盾——N8 验收"端的加入/离开是持久事件"要求落事件流（内存 roster 随进程消失）；两枚而非一枚 op 二值：attach/detach 判据字段差异大（C14 各自形状自洽，command/run+done 配对先例）；替代面已评估记档——plugin 逃生舱不专（roster 是核心域）、单事件 op 二值校验分支化 | 追认两枚新事件（23→25）；回退面 = 删两事件 + project/invariants/roster/hub 回调 + events.test 计数回 23（约 1.5 小时，全部新增面不触碰既有 23 事件语义），回退后 roster 回落内存面（持久验收缺失） | **✅ 已追认（2026-09-28 用户："认可#19"）——l0-events.md §8 落地记录 19 转正，词汇表正式形状，§3.2 正式计数 25 事件** |
 
 ## 人工确认清单（批次 11 起）
 
@@ -101,7 +101,7 @@ docs/plan-p0.md §0）。上一批（批次 12）报告在 docs/plan-p1-progress
 | --- | --- | --- | --- |
 | llm-replay flaky（批次 11 测试基建） | `llm-replay.test.ts` 回放等价用例在 93 文件并行负载下偶发失败（批次 11 期间复现 1 次，隔离复跑两次全绿）——疑似端口/时序资源竞态，非产品代码缺陷 | 多次全量跑观察复现率；若复现频繁，下一会话以 test-only 修复（如固定端口/串行化该文件） | 观察中（批次 6 T-P1-48 同形态） |
 | J16 健康探测真实端点（T-P1-107） | 探测的 reachability/degraded 判据已单测钉死，但真实厂商端点的 TTFB 分布未实测 | 下次真实厂商联调时顺带跑 `runHealthCheck`（degraded 阈值 6000ms 是否合理） | 待真实厂商联调（同 §6.2 终验窗口） |
-| #19 surface/attach + surface/detach（批次 12 词汇表 23→25） | 两枚 log-only 会话级元事件的词汇表扩展走 Q9 单向门——追认是用户决策项（§0 第 7 条第 3 款） | 追认则 l0-events.md §8 落地记录 19 落"已追认"转正；不追认按回退面删除（约 1.5 小时全部新增面，roster 回落内存面） | 待追认（回退面齐备，不阻塞批次 13） |
+| #19 surface/attach + surface/detach（批次 12 词汇表 23→25） | 两枚 log-only 会话级元事件的词汇表扩展走 Q9 单向门——追认是用户决策项（§0 第 7 条第 3 款） | 追认则 l0-events.md §8 落地记录 19 落"已追认"转正；不追认按回退面删除（约 1.5 小时全部新增面，roster 回落内存面） | **✅ 已追认转正（2026-09-28 用户："认可#19"）** |
 | 真实网络传输层（批次 12 host 域） | K8 端间协议的 TCP/WS 传输、N9 的 WebDav 远端、租约 TTL 心跳均接口面在位未实装（无真实部署形态） | 批次 14 UI 部署形态定形时选传输并补端到端实测 | 待批次 14 / 真实部署 |
 | ACP 规范全文对齐 + Anthropic 真实端点（T-P1-117 / T-P1-108） | 方法映射按公开约定最小面（四方法）+ wire 语义 http-mock 钉死；真实 ACP 客户端与 Anthropic 端点未实测 | 真实客户端联调时对齐规范全文（fs 工具面/read_resource 等）；Anthropic 端点跑通一轮真实会话（cache_control 标记策略同窗口） | 待真实联调（§6.2 终验窗口） |
 | 全量 flaky 两例（llm-replay / http-mock，批次 12 期间各复现 1 次） | 93+ 文件并行负载下的端口/时序资源竞态（隔离复跑全绿）——批次 6 T-P1-48 同形态，非产品代码缺陷 | 多次全量跑观察复现率；若频繁，下一会话以 test-only 修复（固定端口/串行化该文件） | 观察中（与批次 11 llm-replay 在案项合并观察） |
