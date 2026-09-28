@@ -49,6 +49,16 @@ export interface ProjectEntry {
   instructions?: string;
 }
 
+/** 价格表条目（U12/T-P3-111——obs/cost.ts ModelPricing 的配置面形状；表驱动计价无内置价格）。 */
+export interface PricingEntry {
+  provider: string;
+  modelId: string;
+  inputPerMTok: number;
+  cachedInputPerMTok: number;
+  outputPerMTok: number;
+  cacheWritePerMTok?: number;
+}
+
 export interface SettingsShape {
   version: 1;
   providers: ProviderEntry[];
@@ -65,6 +75,8 @@ export interface SettingsShape {
   /** 项目档（U11——多项目列表；activeProject 生效语义 = 新会话启动）。 */
   projects?: ProjectEntry[];
   activeProject?: string;
+  /** 价格表（U12——成本统计的计价来源；缺省无 = 成本如实缺席不虚构）。 */
+  pricing?: PricingEntry[];
 }
 
 /** 缺省配置（无文件无环境也能启动——echo provider 最小装配）。 */
@@ -79,7 +91,6 @@ export function defaultSettings(): SettingsShape {
     projects: [],
   };
 }
-
 export const SETTINGS_HINT =
   "修复指引：检查 settings.json 的 JSON 语法与字段类型；" +
   "若无法修复可删除该文件恢复缺省配置（凭据独立存储不受影响）";
@@ -239,6 +250,40 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
     }
   }
   out.activeProject = assertString(rec["activeProject"], "activeProject");
+  const pricing = rec["pricing"];
+  if (pricing !== undefined) {
+    if (!Array.isArray(pricing)) throw new SettingsError("pricing 须为数组");
+    for (const entry of pricing) {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+        throw new SettingsError("pricing 条目必须是对象");
+      }
+      const e = entry as Record<string, unknown>;
+      const provider = assertString(e["provider"], "pricing[].provider");
+      if (provider === undefined) throw new SettingsError("pricing[].provider 缺失");
+      const modelId = assertString(e["modelId"], "pricing[].modelId");
+      if (modelId === undefined) throw new SettingsError("pricing[].modelId 缺失");
+      for (const key of ["inputPerMTok", "cachedInputPerMTok", "outputPerMTok"] as const) {
+        if (typeof e[key] !== "number" || !Number.isFinite(e[key]) || (e[key] as number) < 0) {
+          throw new SettingsError(`pricing[].${key} 须为非负数`);
+        }
+      }
+      const cacheWrite = e["cacheWritePerMTok"];
+      if (cacheWrite !== undefined && (typeof cacheWrite !== "number" || !Number.isFinite(cacheWrite) || cacheWrite < 0)) {
+        throw new SettingsError("pricing[].cacheWritePerMTok 须为非负数");
+      }
+      out.pricing = [
+        ...(out.pricing ?? []),
+        {
+          provider,
+          modelId,
+          inputPerMTok: e["inputPerMTok"] as number,
+          cachedInputPerMTok: e["cachedInputPerMTok"] as number,
+          outputPerMTok: e["outputPerMTok"] as number,
+          ...(cacheWrite !== undefined ? { cacheWritePerMTok: cacheWrite as number } : {}),
+        },
+      ];
+    }
+  }
   return out;
 }
 

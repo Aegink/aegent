@@ -156,7 +156,7 @@
 - **风险 / 未知**：多项目并发会话的租约面（每会话独立租约——既有语义复用）
 - **完成记录（2026-09-29）**：验收 `npx vitest run src/session/settings.test.ts src/host/server.test.ts src/diagnostics/tauri-shell.test.ts` → **34 passed**（settings 15 + server 11 + tauri-shell 8；tsc 干净）。落地：①**settings 项目档**：SettingsShape 增 `projects: ProjectEntry[]`（name/workspace/instructions?——parseSettingsShape 形状校验 fail-closed：name/workspace 必填非空）+ `activeProject?`，patch 白名单加两段；②**ui 项目分节**（第八分节 data-section="projects"）：清单（★ 活动标记）+ 表单（名称/workspace/指令 textarea）+ 点击条目回填编辑 + 删除（连带清 activeProject）+ 设为活动——即改即存（projects/activeProject 段 patch 500ms 防抖合并）；③**切换语义（卡内定形 + 偏离记档）**：activeProject 生效 = **新会话以该项目 workspace 启动**（分节 hint 明示"当前会话不受影响"）——host 当前是单会话 spawn 语义（每 host 进程一个 agent 子进程 + 一个 sessionId），卡面预判的"每项目一 session（registry 已多会话）"需要 host 运行时按项目多开 agent 通道，属 U6 桌面壳分发之后的运行时面，本卡不擅自扩范围（§0.2 偏离记档；"跨项目切换路由"机验以 settings 往返 + sessions 历史清单〔跨会话只读已通〕替代）；④多项目切换不串会话：写命令路由仍限本会话（bridge send 校验）、跨会话查看只读（U3 既有）——隔离面既有机验不变。项目指令的会话生效（goal/set 注入面）与 U24 指令中心对齐执行（记档——避免两卡重复落注入链）。
 
-#### T-P3-111 · U12 · 用量与上下文可视化（检查器 + 成本页） `[ ]`
+#### T-P3-111 · U12 · 用量与上下文可视化（检查器 + 成本页） `[x]`
 - **依据需求**：U12（"上下文余量检查器（token 用量/窗口占比/压缩状态）、成本统计页（按会话/按轮）"）
 - **上游首选参考**：[pi-desktop·ContextUsageInspector](../oss/pi-desktop/apps/desktop/src/components) + [cc-switch·usage 组件族](../oss/cc-switch/src/components)（UsageFooter/UsageScriptModal）
 - **取什么 / 别抄什么**：取"余量可见可解释（含压缩状态）+ 成本两级聚合"行为；不抄其图表库（纯 DOM/SVG 最小面）
@@ -164,6 +164,7 @@
 - **验收**：ui 资产断言 + `npx vitest run src/obs/`（扩——聚合面既有）+ 数据源断言（usage 载荷单源）
 - **依赖**：P2 15e（J21）；T-P3-107
 - **风险 / 未知**：压缩状态的实时性（事件流推送——已有）
+- **完成记录（2026-09-29）**：验收 `npx vitest run src/obs/ src/session/settings.test.ts src/host/server.test.ts src/diagnostics/tauri-shell.test.ts` → **60 passed**（obs 9 + settings 17 + server 12 + tauri-shell 8；tsc 干净）。落地：①**query op:"usage"**（bridge 直答聚合面）：数据源**单源**——token 全部来自事件库 usage_rollup 视图（assistant/message usage 落流投影；bridge 幂等 ensureUsageView——本 host 是该视图首个生产消费方），压缩统计 = 会话流内 compaction 事件（compactionStats 纯函数），成本 = costRollup × 计价表；②**计价来源**：settings 增 `pricing` 段（PricingEntry 形状 = obs/cost.ts ModelPricing 同构——provider/modelId 非空 + 金额非负数 fail-closed；表驱动计价无内置价格，未配置 = 成本如实缺席不虚构——J21 纪律）；③**HostServerOptions.contextWindow**（生产 main 从最终 launchArgs 解析 --context-window、缺省 200_000 与 agent-child 同源）→ op:"usage" 返回占比分母；④**ui 用量面板**（📊 用量按钮 + #usage-panel 抽屉）：上下文检查器（ctx-meter 计量条——末轮 totalTokens ≈ 当前占用 / 窗口占比 %，≥80% 转警示色）+ 压缩状态（已压缩 N 次/失败数）+ 成本统计页（按会话表：token/成本 + pricing 未配置解释行）+ 按轮表（本会话 turns × cacheHitRate × 关联轮成本）——纯 DOM 表零图表库；⑤架构治理：architecture-policy host requires 增补 obs；⑥顺手修正 cost.test 既有隐患（`store.flush("s-d")` 未 await 即 close——竞态落"连接已关"unhandled rejection，被本卡改动暴露）。
 
 #### T-P3-112 · U13 · 通知与引导体验（五件套：通知/引导/恢复/更新横幅/发布说明） `[ ]`
 - **依据需求**：U13（"通知中心与 Toast、首次运行引导清单、启动恢复页（诊断+一键续跑）、更新横幅与发布说明弹窗"）

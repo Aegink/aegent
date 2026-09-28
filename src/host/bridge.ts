@@ -28,6 +28,10 @@ import { SqliteEventStorage } from "../session/db.js";
 import { querySessionsDb } from "../session/query.js";
 // U10/T-P3-109：op:"files" 的 workspace 只读列举
 import { listWorkspaceFiles } from "./files-list.js";
+// U12/T-P3-111：op:"usage" 的聚合消费面（usage 视图 / 成本聚合 / 压缩统计）
+import { ensureUsageView, usageBySession, usageByTurn } from "../obs/usage.js";
+import { costRollup } from "../obs/cost.js";
+import { compactionStats } from "../obs/compaction-stats.js";
 import { AgentHost } from "./registry.js";
 import {
   HostProtocolServer,
@@ -70,6 +74,12 @@ export interface HostBridgeOptions {
    * cwd（子进程缺省语义同款）。
    */
   workspaceRoot?: string;
+  /**
+   * U12/T-P3-111：上下文窗口 token 数（op:"usage" 的占比分母）——生产
+   * main 从最终 childArgs 的 --context-window 解析（缺省 200_000 与
+   * agent-child 同源）。
+   */
+  contextWindow?: number;
 }
 
 interface SurfaceRegistration {
@@ -294,6 +304,39 @@ export class HostBridge implements SessionRouter {
           return {
             tools: this.agentCapabilities?.tools ?? [],
             skills: this.agentCapabilities?.skills ?? [],
+          };
+        }
+        // U12/T-P3-111：用量与上下文可视化（聚合面消费端）——数据源单源：
+        // token 全部来自事件库 usage_rollup（assistant/message 的 usage 落流
+        // 投影）；成本 = costRollup × settings 计价（未配置 = 如实缺席）；
+        // 压缩统计 = 会话流内 compaction 事件（store 投影）。
+        if (query.op === "usage") {
+          const library = this.options.sessionsLibrary;
+          if (library === undefined) {
+            const error = new Error("host 未配置 SQLite 事件库，用量面不可用");
+            (error as unknown as { code: string }).code = "SESSIONS_UNAVAILABLE";
+            throw error;
+          }
+          // 幂等建视图（本 host 是 usage_rollup 的首个生产消费方——IF NOT
+          // EXISTS 语义见 obs/usage.ts，无迁移问题）
+          ensureUsageView(library.db);
+          const sessionId = this.options.host.sessionId;
+          const turns = usageByTurn(library.db, sessionId);
+          const lastUsage = turns.length > 0 ? turns[turns.length - 1] : undefined;
+          const pricing =
+            this.options.settingsGateway !== undefined
+              ? ((await this.options.settingsGateway.get()).pricing ?? [])
+              : [];
+          const stream = this.options.store?.load(sessionId) ?? [];
+          return {
+            contextWindow: this.options.contextWindow,
+            currentSession: {
+              turns,
+              contextTokens: lastUsage?.totalTokens,
+              compaction: compactionStats(stream),
+            },
+            sessions: usageBySession(library.db),
+            costs: costRollup(library.db, pricing),
           };
         }
         // 本会话：内存序读取（同步）：镜像 append 的直接产物——最新、无

@@ -117,7 +117,8 @@ describe("成本核算（J21）", () => {
         { type: "step/end", turn: 1, step: 1 },
         { type: "turn/end", turn: 1, reason: { kind: "completed" } },
     ]);
-    store.flush("s-d");
+    // 修正既有隐患：未 await 的 flush 在 close 后落库 → 连接已关拒绝
+    await store.flush("s-d");
 
     const report = costRollup(storage.db as unknown as Database, TABLE);
     // s-c 有价格（gpt-x）进成本；s-d（unknown-model）如实缺席

@@ -41,6 +41,7 @@ async function startServer(options: {
   settingsGateway?: import("./settings-gateway.js").SettingsGateway;
   sessionsLibrary?: SqliteEventStorage;
   workspaceRoot?: string;
+  contextWindow?: number;
 }): Promise<{ handle: HostServerHandle; port: number }> {
   const uiDir = makeUiFixture();
   uiFixtures.push(uiDir);
@@ -53,6 +54,7 @@ async function startServer(options: {
     ...(options.settingsGateway !== undefined ? { settingsGateway: options.settingsGateway } : {}),
     ...(options.sessionsLibrary !== undefined ? { sessionsLibrary: options.sessionsLibrary } : {}),
     ...(options.workspaceRoot !== undefined ? { workspaceRoot: options.workspaceRoot } : {}),
+    ...(options.contextWindow !== undefined ? { contextWindow: options.contextWindow } : {}),
   });
   const handle = await server.start();
   handles.push(handle);
@@ -758,6 +760,120 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
     expect(caps.tools).toContain("read");
     expect(caps.skills).toEqual([{ name: "demo", description: "演示技能" }]);
     client.close();
+  });
+
+  it("query op=usage（U12/T-P3-111）：token/成本/压缩单源聚合 + 无库类型化拒绝", async () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), "aegent-host-usage-"));
+    settingsTmpDirs.push(tmp);
+    const dbPath = path.join(tmp, "sessions.db");
+    const sessionDb = SqliteEventStorage.open({ path: dbPath });
+    // 预置用量事实（单源 = events 表：request/header 定价身份 + assistant/message usage）
+    sessionDb.appendBatch("s-h1", [
+      { type: "request/header", turn: 1, config: { provider: "openai", modelId: "gpt-x" }, seq: 1, ts: 1 } as never,
+      {
+        type: "assistant/message",
+        turn: 1,
+        message: { content: "r1" },
+        usage: { inputTokens: 100, outputTokens: 10, totalTokens: 110, cacheReadTokens: 50 },
+        seq: 2,
+        ts: 2,
+      } as never,
+      { type: "request/header", turn: 2, config: { provider: "openai", modelId: "gpt-x" }, seq: 3, ts: 3 } as never,
+      {
+        type: "assistant/message",
+        turn: 2,
+        message: { content: "r2" },
+        usage: { inputTokens: 200, outputTokens: 20, totalTokens: 220 },
+        seq: 4,
+        ts: 4,
+      } as never,
+    ]);
+    // 预置第二个会话（成本页按会话聚合面）
+    sessionDb.appendBatch("s-other", [
+      { type: "request/header", turn: 1, config: { provider: "openai", modelId: "gpt-x" }, seq: 1, ts: 1 } as never,
+      {
+        type: "assistant/message",
+        turn: 1,
+        message: { content: "s2" },
+        usage: { inputTokens: 50, outputTokens: 5, totalTokens: 55 },
+        seq: 2,
+        ts: 2,
+      } as never,
+    ]);
+    // settings：pricing 计价段（成本页数据源——文件即真源）
+    writeFileSync(
+      path.join(tmp, "settings.json"),
+      JSON.stringify({
+        version: 1,
+        providers: [],
+        pricing: [{ provider: "openai", modelId: "gpt-x", inputPerMTok: 1, cachedInputPerMTok: 0.1, outputPerMTok: 2 }],
+      }),
+    );
+    const gateway = new FileSettingsGateway(
+      path.join(tmp, "settings.json"),
+      new PlainFileCredentialStore(path.join(tmp, "credentials.bin")),
+      undefined,
+      sessionDb,
+    );
+    const agent = fakeAgent();
+    agent.emit({
+      type: "event",
+      event: { type: "compaction", turn: 1, summary: "s", retainedTail: 0, tokensBefore: 100, trigger: "auto", status: "completed" } as never,
+    });
+    const { port } = await startServer({
+      agent,
+      storage: sessionDb,
+      settingsGateway: gateway,
+      sessionsLibrary: sessionDb,
+      contextWindow: 200_000,
+    });
+    const client = await wsConnect(port);
+    await client.hello("web-u1");
+    const queryCall = (call: Record<string, unknown>) => {
+      const requestId = `u-${settingsCallSeq++}`;
+      client.raw({ type: "query", requestId, ...call });
+      return client.waitFor((e) => e.type === "response" && e.requestId === requestId, `query(${requestId})`) as Promise<Record<string, unknown>>;
+    };
+
+    const usage = await queryCall({ sessionId: "-", op: "usage" });
+    expect(usage.ok).toBe(true);
+    const u = usage.result as {
+      contextWindow?: number;
+      currentSession: { contextTokens?: number; turns: unknown[]; compaction: { total: number } };
+      sessions: { sessionId: string; totalTokens: number }[];
+      costs: { sessionId: string; costUsd: number; byTurn: { turn: number; costUsd: number }[] }[];
+    };
+    expect(u.contextWindow).toBe(200_000);
+    // 本会话末轮 totalTokens = 上下文占用投影；压缩统计来自流内 compaction 事件
+    expect(u.currentSession.contextTokens).toBe(220);
+    expect(u.currentSession.turns).toHaveLength(2);
+    expect(u.currentSession.compaction.total).toBe(1);
+    // 按会话聚合（两库会话 + host 自身——host 会话无 usage 不入聚合）
+    expect(u.sessions.some((s) => s.sessionId === "s-h1" && s.totalTokens === 330)).toBe(true);
+    // 成本：轮 1 = 非缓存输入 50×1/1M + 缓存读 50×0.1/1M + 输出 10×2/1M
+    const s1 = u.costs.find((c) => c.sessionId === "s-h1");
+    expect(s1).toBeDefined();
+    expect(s1!.costUsd).toBeCloseTo((50 * 1 + 50 * 0.1 + 10 * 2) / 1e6 + (200 * 1 + 20 * 2) / 1e6, 10);
+    expect(s1!.byTurn).toHaveLength(2);
+    client.close();
+    await new Promise((r) => setTimeout(r, 50)); // 镜像 write-behind flush 先于 close
+    sessionDb.close();
+
+    // 内存库 host → 用量面类型化不可用
+    const { port: port2 } = await startServer({
+      agent: fakeAgent(),
+      settingsGateway: new FileSettingsGateway(
+        path.join(tmp, "settings2.json"),
+        new PlainFileCredentialStore(path.join(tmp, "credentials2.bin")),
+      ),
+    });
+    const client2 = await wsConnect(port2);
+    await client2.hello("web-u2");
+    client2.raw({ type: "query", requestId: "u-no-db", sessionId: "-", op: "usage" });
+    const noUsage = await client2.waitFor((e) => e.type === "response" && e.requestId === "u-no-db", "无库用量回执");
+    expect((noUsage.error as { code: string }).code).toBe("SESSIONS_UNAVAILABLE");
+    client2.close();
+    await new Promise((r) => setTimeout(r, 50)); // Windows 句柄释放缓冲
   });
 });
 

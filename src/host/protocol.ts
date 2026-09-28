@@ -114,7 +114,7 @@ export interface HostProtocolServerOptions {
    */
   onQuery?: (query: {
     sessionId: string;
-    op: "events" | "sessions" | "search" | "files" | "meta";
+    op: "events" | "sessions" | "search" | "files" | "meta" | "usage";
     afterSeq?: number;
     criteria?: { contentLike: string; limit?: number; offset?: number };
   }) => Promise<unknown>;

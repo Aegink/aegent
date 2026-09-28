@@ -14,6 +14,7 @@
       <button id="lease-btn" type="button" hidden>取得写租约</button>
       <button id="history-btn" type="button" title="会话历史">☰ 历史</button>
       <button id="search-btn" type="button" title="跨会话搜索（Ctrl+Shift+F）">🔍 搜索</button>
+      <button id="usage-btn" type="button" title="用量与上下文">📊 用量</button>
       <button id="settings-btn" type="button" title="设置">⚙ 设置</button>
     </header>
     <main id="stream" aria-live="polite"></main>
@@ -121,6 +122,41 @@
         <section data-section="about">
           <h2>关于</h2>
           <p>aegent 0.1.0 —— 本地优先的 agent 工作台（事件即真相；配置即本页）。</p>
+        </section>
+      </div>
+    </aside>
+    <!-- U12/T-P3-111 用量面板：上下文检查器（占用/占比/压缩状态）+
+         成本统计页（按会话/按轮——J21 消费端，纯 DOM 表） -->
+    <aside id="usage-panel" hidden aria-label="用量与上下文">
+      <header class="settings-head">
+        <span>用量与上下文</span>
+        <button id="usage-close" type="button">关闭</button>
+      </header>
+      <div class="settings-body">
+        <section class="usage-section">
+          <h2>上下文检查器</h2>
+          <div class="ctx-meter"><div id="ctx-meter-fill"></div></div>
+          <p id="ctx-text" class="hint"></p>
+          <p id="compaction-text" class="hint"></p>
+        </section>
+        <section class="usage-section">
+          <h2>成本统计（按会话）</h2>
+          <table id="cost-table">
+            <thead>
+              <tr><th>会话</th><th>轮数</th><th>总 token</th><th>成本</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <p id="cost-hint" class="hint"></p>
+        </section>
+        <section class="usage-section">
+          <h2>按轮用量（本会话）</h2>
+          <table id="turn-table">
+            <thead>
+              <tr><th>轮</th><th>请求</th><th>输入</th><th>输出</th><th>缓存命中</th><th>成本</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
         </section>
       </div>
     </aside>

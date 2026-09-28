@@ -100,6 +100,26 @@ describe("parseSettingsShape / parseSettingsFile", () => {
     expect(defaultSettings().projects).toEqual([]);
     expect(defaultSettings().activeProject).toBeUndefined();
   });
+
+  it("pricing 段（U12/T-P3-111）：计价条目往返 + 负数/缺字段 fail-closed", () => {
+    const s = parseSettingsShape({
+      pricing: [
+        { provider: "openai", modelId: "gpt-x", inputPerMTok: 1.25, cachedInputPerMTok: 0.125, outputPerMTok: 10, cacheWritePerMTok: 0 },
+      ],
+    });
+    expect(s.pricing).toEqual([
+      { provider: "openai", modelId: "gpt-x", inputPerMTok: 1.25, cachedInputPerMTok: 0.125, outputPerMTok: 10, cacheWritePerMTok: 0 },
+    ]);
+    expect(() => parseSettingsShape({ pricing: [{ modelId: "m" }] })).toThrow(/provider 缺失/);
+    expect(() =>
+      parseSettingsShape({ pricing: [{ provider: "p", modelId: "m", inputPerMTok: -1, cachedInputPerMTok: 0, outputPerMTok: 1 }] }),
+    ).toThrow(/inputPerMTok 须为非负数/);
+    expect(() =>
+      parseSettingsShape({ pricing: [{ provider: "p", modelId: "m", cachedInputPerMTok: 0, outputPerMTok: 1 }] }),
+    ).toThrow(/inputPerMTok 须为非负数/);
+    // 缺省形状无 pricing（undefined——无价格不虚构）
+    expect(defaultSettings().pricing).toBeUndefined();
+  });
 });
 
 describe("loadSettings / saveSettings", () => {

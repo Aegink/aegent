@@ -895,3 +895,55 @@ mark.search-hit.active {
   border-radius: 4px;
   font: inherit;
 }
+
+/* U12/T-P3-111 用量面板：上下文计量条 + 成本/按轮表 */
+#usage-panel .usage-section {
+  margin-bottom: 14px;
+}
+
+#usage-panel h2 {
+  font-size: 13px;
+  margin: 8px 0 6px;
+}
+
+.ctx-meter {
+  height: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--panel);
+}
+
+#ctx-meter-fill {
+  height: 100%;
+  width: 0;
+  background: var(--ok);
+  transition: width 0.4s;
+}
+
+#ctx-meter-fill.ctx-hot {
+  background: var(--warn);
+}
+
+#cost-table,
+#turn-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+#cost-table th,
+#cost-table td,
+#turn-table th,
+#turn-table td {
+  border-bottom: 1px dashed var(--border);
+  padding: 3px 6px;
+  text-align: left;
+  word-break: break-all;
+}
+
+#cost-table th,
+#turn-table th {
+  color: var(--dim);
+  font-weight: normal;
+}

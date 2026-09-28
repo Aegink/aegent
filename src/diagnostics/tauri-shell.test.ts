@@ -210,6 +210,13 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(app).toContain("renderProjectList"); // U11 项目页 CRUD
     expect(app).toContain("markDirty(\"activeProject\")"); // 切换即改即存
     expect(app).toContain("project-instructions"); // 项目级指令编辑面
+    // U12/T-P3-111：用量面板（上下文检查器 + 成本统计页——J21 消费端）
+    expect(html).toContain('id="usage-panel"');
+    expect(html).toContain('id="ctx-meter-fill"');
+    expect(html).toContain('id="cost-table"');
+    expect(app).toContain('op: "usage"'); // 聚合数据源单源
+    expect(app).toContain("已压缩"); // 压缩状态可见
+    expect(app).toContain("pricing 段未配置"); // 无价格不虚构的成本解释面
     for (const marker of [".search-hit", ".mm-row", "#find-bar", "#minimap", ".ac-row", ".attachment-chip"]) {
       expect(css).toContain(marker);
     }

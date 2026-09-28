@@ -70,6 +70,8 @@ export interface HostServerOptions {
   sessionsLibrary?: SqliteEventStorage;
   /** U10/T-P3-109 workspace 根（op:"files" 扫描面——缺省进程 cwd）。 */
   workspaceRoot?: string;
+  /** U12/T-P3-111 上下文窗口 token 数（op:"usage" 占比分母——缺省 200_000）。 */
+  contextWindow?: number;
 }
 
 /** host 进程运行句柄（start 的产物——stop 收束全部资源）。 */
@@ -102,6 +104,7 @@ export class HostServer {
       ...(this.options.settingsGateway !== undefined ? { settingsGateway: this.options.settingsGateway } : {}),
       ...(this.options.sessionsLibrary !== undefined ? { sessionsLibrary: this.options.sessionsLibrary } : {}),
       ...(this.options.workspaceRoot !== undefined ? { workspaceRoot: this.options.workspaceRoot } : {}),
+      ...(this.options.contextWindow !== undefined ? { contextWindow: this.options.contextWindow } : {}),
     });
     // 会话流镜像（host 视角的读面）：非 roster 事件同步 append——
     // SessionStore.append 同步纪律（write-behind 持久化在 storage 端）。
@@ -375,6 +378,13 @@ async function main(argv: readonly string[]): Promise<void> {
     workspaceRoot: (() => {
       const i = launchArgs.indexOf("--workspace");
       return i >= 0 && i + 1 < launchArgs.length ? launchArgs[i + 1] : process.cwd();
+    })(),
+    // U12/T-P3-111：上下文窗口与子进程同源（--context-window > 200_000 缺省）。
+    contextWindow: (() => {
+      const i = launchArgs.indexOf("--context-window");
+      return i >= 0 && i + 1 < launchArgs.length
+        ? Number(launchArgs[i + 1]) || 200_000
+        : 200_000;
     })(),
   });
   const handle = await server.start();

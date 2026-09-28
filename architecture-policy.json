@@ -83,7 +83,8 @@
         "kernel",
         "models",
         "policy",
-        "session"
+        "session",
+        "obs"
       ],
       "publicEntrypoints": [],
       "owner": "wangh"
