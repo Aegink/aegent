@@ -67,4 +67,21 @@ describe("模型上下文快照（O1/O5）", () => {
     expect(text).toContain('"required"');
     expect(text).toContain('"description"');
   });
+
+  it("keyless 复核（O28）：同一快照重复渲染逐字节相等，易变值无一漏网", () => {
+    // 规格即断言（docs/test-policy.md §2）：同进程两遍逐字节等；跨进程由
+    // 全量测试多次运行覆盖（任何一次全量绿即一次复核）
+    const snap = createSnapshotter({ cwd: "/tmp/keyless-probe" })(
+      modelCall(randomUUID(), 1_700_000_000_000, "same"),
+      null,
+      { whyEnded: "turn/end", scenario: "keyless 复核" },
+    );
+    const first = snapshotToString(snap);
+    const second = snapshotToString(snap);
+    expect(first).toBe(second);
+    // 易变值三类漏网哨兵：UUID 原文 / ISO 时间 / 未归一路径不得出现在渲染文本
+    expect(first).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    expect(first).not.toContain("/tmp/keyless-probe");
+    expect(first).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
+  });
 });

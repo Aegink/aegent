@@ -478,7 +478,7 @@
 - **风险 / 未知**：既有快照测试的 diff 抖动（标签化后部分既有快照更新——有意行为收紧记档）
 - **完成记录**：2026-09-28。产出：①`src/test-support/normalize.ts` 扩——`MAX_SNAPSHOT_LINE_CHARS = 160`（codex·context_snapshot.rs:24 同值）+ `truncateLines(text, max?)`（逐行超长截到 max + `…[truncated N chars]` 尾标带截去量；短行零变化）+ `DirectiveRule` / `KNOWN_DIRECTIVES` / `tagKnownDirectives(text, rules?)`（已知长指引段整段替换 `[directive: <name>]`；内置最小集 = persona 段——真实依据：assembly 首落 system 是机制段 + 人格段拼接（T-P2-105 记录），段边界定形 = `# 人格：` 行起至下一 markdown 标题行或串尾）；②`snapshots.ts` 的 `snapshotToString` 接线——system 字段**值域**先 tag（JSON 转义后的整行无法按原文段匹配，值域处理是标签化的正确层）再 `truncateLines` 整体输出（超长 JSON 行被截——diff 不被淹没）。测试 `normalize.test.ts` 扩 4 用例（短行零变化 + 尾标量 / 自定义上限 + 常量 160 / persona 段真实拼接形状替换 + 无命中零变化 / snapshotToString 接线端到端：标签在、原文不在、截断在）。**验收**：`npx vitest run src/test-support/` → **64 passed**（60 → 净增 4）；既有快照消费方 `apply-patch.snapshot.test.ts` → 1 passed（**既有快照零破坏**——标签化只命中 persona 形状，既有快照无此形状故零更新，卡面预判的"diff 抖动"未发生）；`npx tsc --noEmit` 干净。**记档**：①codex 的 head/tail + hash 指纹截断形状不取（卡面定形头部保留——同内容行截断后仍逐字节稳定，hash 无消费方，YAGNI；known-diffs.md 已记）；②tag 只接线 system 字段（已知长指引的家——messages 内长文本由 truncateLines 行级兜底，值域全量 tag 会把工具结果等"非指引长文本"误标）。
 
-#### T-P2-506 · O28 · keyless 快照层测试政策（写下来的政策 + 包组升降级规则） `[ ]`
+#### T-P2-506 · O28 · keyless 快照层测试政策（写下来的政策 + 包组升降级规则） `[x]`
 - **依据需求**：O28（"keyless 快照层作为写下来的测试政策；测试基础设施自成包组且有升降级规则"）
 - **上游首选参考**：dsh·test-support（7 包 22k 行的包组形态——只取政策化行为）
 - **取什么 / 别抄什么**：取"测试基建是受治理的包组（有清单 + 有升降级规则）+ keyless（快照不依赖机器/时间/ID）"政策面；不抄其包组规模（我方 test-support 单域）
@@ -486,6 +486,7 @@
 - **验收**：文档落地 + keyless 复核（既有快照测试跑两遍逐字节等——既有断言即规格）
 - **依赖**：T-P2-505（快照行纪律先行）
 - **风险 / 未知**：无（政策件）
+- **完成记录**：2026-09-28。产出 `docs/test-policy.md` 四节：①**域清单**——test-support 十件（event-asserts/fault-server/http-mock/isolation/llm-replay/migration-asserts/normalize/render/snapshots/tmp-fs）逐件职责 + 来源需求 + 配套自测表；②**keyless 纪律成文**——两条：易变值必须归一化（占位符/稳定标签，禁止原始值落快照）+ 长文本必须有界（160 截断 + 指引标签化）；③**升降级规则**——入组条件（≥2 文件复用 or 需求机验载体）+ 入组动作（managed 域 + 头注释职责/来源/锚 + 配套自测强制）+ 废弃条件（无消费方一个批次周期 → 标记 deprecated 下批删，标记先行禁止直删）+ 变更纪律（输出语义变化必须全量回归 + 既有快照显式更新即收紧 + 记档）；④**使用规约**——十场景"用哪个件 + 禁止的替代做法"对照表（手写期望数组/手写 fetch stub/现场拼坏响应等散件做法逐项禁止）。keyless 复核：`snapshots.test.ts` 扩 1 用例——同一快照重复渲染逐字节相等 + 易变值三类漏网哨兵（UUID 原文/ISO 时间/未归一路径的 not.toMatch 断言）；跨进程逐字节等由全量测试多次运行覆盖（规格即断言，政策 §2 成文）。**验收**：`npx vitest run src/test-support/` → **65 passed**（64 → 净增 1）；`npx tsc --noEmit` 干净；`bash tools/check-doc-links.sh docs/test-policy.md` → 1 链接 0 失效。**记档**：dsh 7 包 22,817 行的包组规模不取（单域十件即达"受治理包组"语义——升降级规则才是需求的行为内核，known-diffs.md 已记）。
 
 #### T-P2-507 · O29 · 期望外错误 panic（测试 fixture 显式忽略臂） `[ ]`
 - **依据需求**：O29（"期望外的错误直接 panic；其余未识别事件走显式忽略臂"）
