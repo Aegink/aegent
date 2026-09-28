@@ -105,7 +105,12 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
     credentialKey = await createCredentialStore().getKey(settings.defaultProvider);
   }
   const { args: launchArgs } = resolveChildLaunchArgv(childArgs, process.env, settings, { credentialKey });
-  const { args } = resolveChildSessionArgv(launchArgs);
+  // U5/T-P3-104：settings 路径透传子进程（多注册表装配面——子进程自读
+  // 同一 settings.json/credentials.bin，单一事实源）。
+  const { args } = resolveChildSessionArgv([
+    ...launchArgs,
+    ...(settingsPath !== undefined ? ["--settings", settingsPath] : []),
+  ]);
   const connection = spawnAgentProcess({
     entryPath: entryPath ?? defaultChildEntryPath(),
     args,

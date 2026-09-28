@@ -15,6 +15,7 @@ import {
   type SettingsShape,
 } from "../session/settings.js";
 import { maskToken } from "../models/oauth.js";
+import { probeProvider, type HealthCheckResult } from "../models/health.js";
 import type { CredentialStore } from "../session/credentials.js";
 
 /** settings patch 白名单段（提段整体替换；version 不许 patch——迁移链单向门）。 */
@@ -49,13 +50,24 @@ export interface SettingsGateway {
   credentialsSet(provider: string, key: string): Promise<{ masked: string }>;
   credentialsDelete(provider: string): Promise<{ deleted: boolean }>;
   credentialsList(): Promise<{ name: string; updatedAt: string; masked?: string }[]>;
+  /**
+   * 健康探测（U5/T-P3-104——J16 probeProvider 的 UI 消费面）：按条目名
+   * 探测其 baseUrl 可达性；探测不触碰熔断器（J16 分域不变量）。
+   */
+  probeProvider(name: string): Promise<HealthCheckResult>;
 }
 
-/** 生产实现：settings.json 真文件 + credentials.bin 凭据库。 */
+/** 生产缺省探测依赖（真网络——tests 注入 fake）。 */
+function defaultHealthProbe(): (name: string, baseUrl: string) => Promise<HealthCheckResult> {
+  return (name, baseUrl) => probeProvider({ provider: name, baseUrl });
+}
+
+/** 生产实现：settings.json 真文件 + credentials.bin 凭据库 + J16 健康探测。 */
 export class FileSettingsGateway implements SettingsGateway {
   constructor(
     private readonly settingsPath: string,
     private readonly credentials: CredentialStore,
+    private readonly healthProbe: (name: string, baseUrl: string) => Promise<HealthCheckResult> = defaultHealthProbe(),
   ) {}
 
   async get(): Promise<SettingsShape> {
@@ -85,5 +97,21 @@ export class FileSettingsGateway implements SettingsGateway {
       out.push({ ...meta, ...(key !== undefined ? { masked: maskToken(key) } : {}) });
     }
     return out;
+  }
+
+  async probeProvider(name: string): Promise<HealthCheckResult> {
+    const settings = await this.get();
+    const entry = settings.providers.find((p) => p.name === name);
+    if (entry === undefined) {
+      const error = new Error(`provider「${name}」不在配置中`);
+      (error as unknown as { code: string }).code = "PROVIDER_NOT_FOUND";
+      throw error;
+    }
+    if (entry.baseUrl === undefined || entry.baseUrl.trim() === "") {
+      const error = new Error(`provider「${name}」未配置 baseUrl，无法探测`);
+      (error as unknown as { code: string }).code = "PROVIDER_NO_BASE_URL";
+      throw error;
+    }
+    return this.healthProbe(name, entry.baseUrl);
   }
 }

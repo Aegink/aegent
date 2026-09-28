@@ -345,8 +345,7 @@ async function main(argv: readonly string[]): Promise<void> {
     credentialKey = await createCredentialStore().getKey(settings.defaultProvider);
   }
   const { args: launchArgs } = resolveChildLaunchArgv(parsed.childArgs, process.env, settings, { credentialKey });
-  const storage = parsed.hostDbPath !== undefined
-    ? SqliteEventStorage.open({ path: parsed.hostDbPath })
+  const storage = parsed.hostDbPath !== undefined    ? SqliteEventStorage.open({ path: parsed.hostDbPath })
     : new InMemoryEventStorage();
   // U14/T-P3-103：settings 直答网关（生产 = 真文件——UI 改 → 文件变 → 重启生效）。
   const settingsGateway = new FileSettingsGateway(
@@ -358,7 +357,7 @@ async function main(argv: readonly string[]): Promise<void> {
     port: parsed.port,
     uiDir: parsed.uiDir,
     agentEntryPath: defaultAgentChildEntry(),
-    childArgs: launchArgs,
+    childArgs: [...launchArgs, ...(parsed.settingsPath !== undefined ? ["--settings", parsed.settingsPath] : [])],
     storage,
     settingsGateway,
   });

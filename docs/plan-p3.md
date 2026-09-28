@@ -64,7 +64,7 @@
 - **风险 / 未知**：即改即存的保存时序（防抖——卡内定形）
 - **完成记录（2026-09-29）**：验收 `npx vitest run src/diagnostics/tauri-shell.test.ts src/host/server.test.ts` → **14 passed**（含新增 settings 信封 e2e 两例）。落地三件：①**wire**：ClientEnvelope 增 `settings` 信封（op 闭集 get/update/credentials-set|delete|list；op 闭集与 patch 形状 parse 层校验、段白名单 gateway 层——双层分工，未知段回类型化 SETTINGS_PATCH_SECTION_UNKNOWN 且不落盘）；②**host**：`settings-gateway.ts`（FileSettingsGateway——get/update 段级合并 + applySettingsPatch 白名单校验 + 凭据三操作，list 只回掩码）+ bridge 透传 onSettings + HostServer 装配（生产 main = 真文件）；③**ui**：设置面板右侧抽屉六分节（providers/credentials/permission/sandbox/appearance/about）+ 状态栏齿轮导航 + 即改即存（段级 patch 500ms 防抖合并）+ 主题 CSS 变量化（`body[data-theme="light"]` 全端一致）+ 凭据 key 输入 type=password 不回显。**快照即规格（机验）**：update → 文件变 → 重新 loadSettings 一致（server.test e2e）。人工走查列入人工确认清单（视觉可读性）。无 gateway 的 host 回 SETTINGS_UNSUPPORTED（功能面缺省关闭）。
 
-#### T-P3-104 · U5 · 模型/端点管理 UI（多供应商切换 + 健康徽标） `[ ]`
+#### T-P3-104 · U5 · 模型/端点管理 UI（多供应商切换 + 健康徽标） `[x]`
 - **依据需求**：U5（"多供应商列表、会话期切换、健康徽标"）
 - **上游首选参考**：[cc-switch 核心形态](../oss/cc-switch)（多供应商配置一键切换——本仓的产品主题即此）
 - **取什么 / 别抄什么**：取"供应商卡片列表 + 一键切换 + 状态显示"的界面行为；不抄其 Claude/Codex/Gemini 特定配置语义
@@ -72,6 +72,7 @@
 - **验收**：`npx vitest run src/host/server.test.ts`（扩）+ ui 资产断言——切换请求往返 + 下一轮 request/header modelId 变化 + 健康探测触发
 - **依赖**：T-P3-101/102/103
 - **风险 / 未知**：切换时在途轮语义（J6 既有——新 turn 生效）
+- **完成记录（2026-09-29）**：验收 `npx vitest run src/host/server.test.ts` → **9 passed**（新增切模 e2e + probe 两例；+ui 资产断言/内核回归 50 passed）。落地：①**多注册表装配**（agent-child.ts `buildModelsRegistry`——未显式 --provider 且 settings.json providers 在位时全条目实例化（adapter→openai/anthropic 适配层 + withRetry；凭据按条目名从 credentials.bin 解密——子进程同用户 DPAPI 可解）进 models 注册表，initialIdentity = defaultProvider 条目；同 identity 去重、无 model 条目跳过；显式单模型分支零变化）；②**UI**：供应商列表项加"本会话切换"（model/switch 请求——非写命令免租约，新 turn 生效提示）+ "测健康"（settings op:probe 新 op → gateway.probeProvider → J16 probeProvider，UI 状态点 operational/degraded/unreachable + 10s 节流缓存）+ 编辑（点条目名回填表单保存=段替换）；③**wire**：settings op 闭集追加 probe（provider 校验 parse 层）；gateway 加 healthProbe 注入点（生产 = 真 J16 探测、测试注入 fake——**探测不触碰熔断器**的分域不变量随 J16）。验收断言：switch 往返 ok → 下一轮 request/header config.modelId = 新值 + model/switch 落流事件（J9）。
 
 #### T-P3-105 · U3 · 会话历史管理（列表/续聊/删除入口） `[ ]`
 - **依据需求**：U3（"历史会话列表/续聊/删除；崩溃恢复一键续跑"）

@@ -429,5 +429,111 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
     expect((unsupported.error as { code: string }).code).toBe("SETTINGS_UNSUPPORTED");
     client2.close();
   });
+
+  // ---------------------------------------------------------------------------
+  // U5/T-P3-104 会话期切换 + 健康徽标（J6 换模 × J16 探测的 wire 消费面）
+  // ---------------------------------------------------------------------------
+
+  it("model/switch 往返（内存桥真内核）：受理后下一轮 request/header modelId 变化", async () => {
+    // 双 echo 注册表（两条 identity——J6 ModelSwitchService 的最小多模型面）
+    const mkEcho = (tag: string) => {
+      const base = echoProvider();
+      return {
+        async *streamChat(req: import("../models/provider.js").ChatRequest) {
+          for await (const chunk of base.streamChat(req)) {
+            yield chunk.type === "text-delta" ? { type: "text-delta" as const, text: `${tag}:${chunk.text}` } : chunk;
+          }
+        },
+      };
+    };
+    const agent = startMemoryChild({
+      sessionId: "s-h1",
+      assembly: {
+        workspaceRoot: process.cwd(),
+        contextWindow: 200_000,
+        approvalTimeoutMs: 5000,
+        models: [
+          { identity: { provider: "echo", modelId: "echo-1" }, provider: mkEcho("one") },
+          { identity: { provider: "echo", modelId: "echo-2" }, provider: mkEcho("two") },
+        ],
+        initialIdentity: { provider: "echo", modelId: "echo-1" },
+      },
+    });
+    const { port } = await startServer({ agent });
+    const client = await wsConnect(port);
+    await client.hello("web-u5");
+    // prompt 是写命令（N7）——先取写租约
+    client.raw({ type: "lease", op: "acquire", surfaceId: "web-u5" });
+    await client.waitFor((e) => e.type === "response" && e.requestId === "(lease)", "lease 回执");
+
+    // 切换请求往返（model/switch 非写命令——无需租约，J6 立即受理）
+    const switchResponse = await client.request("s-h1", {
+      type: "model/switch",
+      identity: { provider: "echo", modelId: "echo-2" },
+    });
+    expect(switchResponse.ok).toBe(true);
+
+    // 下一轮 request/header：modelId 变化（在途语义 = 新 turn 生效）
+    await client.request("s-h1", { type: "prompt", messageId: "m-u5", content: "你好" });
+    const header = await client.waitFor(
+      (e) =>
+        e.type === "event" &&
+        (e.event as { type?: string }).type === "request/header" &&
+        (e.event as { turn?: number }).turn === 1,
+      "turn1 request/header",
+    );
+    const config = ((header.event as { config?: { modelId?: string } }).config ?? {}) as { modelId?: string };
+    expect(config.modelId).toBe("echo-2");
+    // model/switch 落流事件（J9）
+    await client.waitFor(
+      (e) => e.type === "event" && (e.event as { type?: string }).type === "model/switch",
+      "model/switch 事件",
+    );
+    client.close();
+    await agent.kill();
+  });
+
+  it("settings op=probe：条目存在走探测依赖（fake）；条目缺失类型化拒绝", async () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), "aegent-host-probe-"));
+    settingsTmpDirs.push(tmp);
+    const gateway = new FileSettingsGateway(
+      path.join(tmp, "settings.json"),
+      new PlainFileCredentialStore(path.join(tmp, "credentials.bin")),
+      async (name, baseUrl) => ({
+        status: "operational",
+        success: true,
+        message: `${name} 可达`,
+        responseTimeMs: 12,
+        httpStatus: 200,
+        testedAt: 0,
+        ...(baseUrl ? {} : {}),
+      }),
+    );
+    await gateway.update({
+      providers: [{ name: "main", baseUrl: "https://probe.example.com", model: "m1" }],
+      defaultProvider: "main",
+    });
+    const { port } = await startServer({ agent: fakeAgent(), settingsGateway: gateway });
+    const client = await wsConnect(port);
+    await client.hello("web-u5b");
+    const probeCall = (call: Record<string, unknown>) => {
+      const requestId = `s-probe-${settingsCallSeq++}`;
+      client.raw({ type: "settings", requestId, ...call });
+      return client.waitFor(
+        (e) => e.type === "response" && e.requestId === requestId,
+        `probe response(${requestId})`,
+      ) as Promise<Record<string, unknown>>;
+    };
+    const ok = await probeCall({ op: "probe", provider: "main" });
+    expect(ok.ok).toBe(true);
+    const health = (ok.result as { health: { status: string; message: string } }).health;
+    expect(health.status).toBe("operational");
+    expect(health.message).toContain("main");
+
+    const missing = await probeCall({ op: "probe", provider: "ghost" });
+    expect(missing.ok).toBe(false);
+    expect((missing.error as { code: string }).code).toBe("PROVIDER_NOT_FOUND");
+    client.close();
+  });
 });
 

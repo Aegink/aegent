@@ -116,7 +116,7 @@ export interface HostProtocolServerOptions {
    * 不落流；op 闭集 get/update/credentials-*——形状校验在 protocol-parse）。
    */
   onSettings?: (call: {
-    op: "get" | "update" | "credentials-set" | "credentials-delete" | "credentials-list";
+    op: "get" | "update" | "credentials-set" | "credentials-delete" | "credentials-list" | "probe";
     patch?: Record<string, unknown>;
     provider?: string;
     key?: string;

@@ -262,8 +262,12 @@ function renderProviderList() {
   for (const entry of settingsCache?.providers ?? []) {
     const li = document.createElement("li");
     const label = document.createElement("span");
-    label.textContent = `${entry.name}（${entry.adapter ?? "openai"}${entry.baseUrl ? ` · ${entry.baseUrl}` : ""}${entry.model ? ` · ${entry.model}` : ""}）`;
     const isDefault = settingsCache?.defaultProvider === entry.name;
+    const health = providerHealth[entry.name];
+    const dot = health ? { operational: "●", degraded: "◐", unreachable: "○" }[health.status] ?? "" : "";
+    label.textContent =
+      `${dot} ${entry.name}（${entry.adapter ?? "openai"}${entry.model ? ` · ${entry.model}` : ""}）` +
+      (health && health.message ? ` ${health.message}` : "");
     const defaultBtn = document.createElement("button");
     defaultBtn.type = "button";
     defaultBtn.textContent = isDefault ? "★ 默认" : "设为默认";
@@ -274,6 +278,30 @@ function renderProviderList() {
       renderProviderList();
       markDirty("defaultProvider");
     });
+    // U5/T-P3-104：会话期切换（J6——model/switch 请求，立即受理新 turn 生效）
+    const switchBtn = document.createElement("button");
+    switchBtn.type = "button";
+    switchBtn.textContent = "本会话切换";
+    switchBtn.addEventListener("click", async () => {
+      if (sessionIdValue === null) {
+        appendLine("会话未连接，无法切换（新会话将以默认供应商启动）", "warn");
+        return;
+      }
+      const envelope = await sendRequest(sessionIdValue, {
+        type: "model/switch",
+        identity: { provider: entry.adapter ?? "openai", modelId: entry.model ?? settingsCache.defaultModel ?? "" },
+      });
+      if (envelope.ok) {
+        appendLine(`已切换到 ${entry.adapter ?? "openai"}:${entry.model}（当前轮结束后新 turn 生效）`, "meta");
+      } else {
+        appendLine(`切换被拒：${envelope.error?.code ?? ""} ${envelope.error?.message ?? ""}`, "warn");
+      }
+    });
+    // U5：健康徽标（J16 probeProvider 消费——可达性探测不触碰熔断器；10s 节流）
+    const healthBtn = document.createElement("button");
+    healthBtn.type = "button";
+    healthBtn.textContent = "测健康";
+    healthBtn.addEventListener("click", () => void probeHealth(entry.name));
     const delBtn = document.createElement("button");
     delBtn.type = "button";
     delBtn.textContent = "删除";
@@ -284,9 +312,43 @@ function renderProviderList() {
       renderProviderList();
       markDirty("providers");
     });
-    li.append(label, defaultBtn, delBtn);
+    li.append(label, defaultBtn, switchBtn, healthBtn, delBtn);
     list.appendChild(li);
+    // U5：编辑（点击条目名 → 表单回填 → 提交 = 条目更新，providers 段替换）
+    label.style.cursor = "pointer";
+    label.title = "点击编辑该条目";
+    label.addEventListener("click", () => {
+      editingProviderName = entry.name;
+      document.getElementById("provider-name").value = entry.name;
+      document.getElementById("provider-adapter").value = entry.adapter ?? "openai";
+      document.getElementById("provider-baseurl").value = entry.baseUrl ?? "";
+      document.getElementById("provider-model").value = entry.model ?? "";
+      document.querySelector('#provider-form button[type="submit"]').textContent = "保存修改";
+    });
   }
+}
+
+/** 编辑态（非 null = 表单在修改既有条目）。 */
+let editingProviderName = null;
+
+/** 健康探测结果缓存（UI 侧节流——每 provider 10s 内复用上次结果）。 */
+const providerHealth = {};
+const HEALTH_THROTTLE_MS = 10_000;
+
+async function probeHealth(name) {
+  const cached = providerHealth[name];
+  const now = Date.now();
+  if (cached && now - cached.at < HEALTH_THROTTLE_MS) return;
+  const envelope = await sendSettings({ op: "probe", provider: name });
+  if (envelope.ok) {
+    const health = envelope.result.health;
+    providerHealth[name] = { ...health, at: now };
+    appendLine(`健康探测 ${name}：${health.message}`, health.status === "operational" ? "roster" : "warn");
+  } else {
+    providerHealth[name] = { status: "unreachable", message: envelope.error?.message ?? "探测失败", at: now, success: false };
+    appendLine(`健康探测 ${name} 失败：${envelope.error?.message ?? ""}`, "warn");
+  }
+  renderProviderList();
 }
 
 function renderCredentialList(credentials) {
@@ -330,27 +392,31 @@ settingsClose.addEventListener("click", () => {
   void flushSettings(); // 关面板前收尾保存
 });
 
-// 供应商新增（providers 段整体替换——列表语义）
+// 供应商新增/编辑（providers 段整体替换——列表语义）
 document.getElementById("provider-form").addEventListener("submit", (ev) => {
   ev.preventDefault();
   const name = document.getElementById("provider-name").value.trim();
   if (name === "" || !/^[A-Za-z0-9_.-]{1,64}$/.test(name)) return;
-  if ((settingsCache?.providers ?? []).some((p) => p.name === name)) return;
-  settingsCache.providers = [
-    ...(settingsCache.providers ?? []),
-    {
-      name,
-      adapter: document.getElementById("provider-adapter").value,
-      ...(document.getElementById("provider-baseurl").value.trim() !== ""
-        ? { baseUrl: document.getElementById("provider-baseurl").value.trim() }
-        : {}),
-      ...(document.getElementById("provider-model").value.trim() !== ""
-        ? { model: document.getElementById("provider-model").value.trim() }
-        : {}),
-    },
-  ];
-  if (!settingsCache.defaultProvider) settingsCache.defaultProvider = name;
+  const entry = {
+    name,
+    adapter: document.getElementById("provider-adapter").value,
+    ...(document.getElementById("provider-baseurl").value.trim() !== ""
+      ? { baseUrl: document.getElementById("provider-baseurl").value.trim() }
+      : {}),
+    ...(document.getElementById("provider-model").value.trim() !== ""
+      ? { model: document.getElementById("provider-model").value.trim() }
+      : {}),
+  };
+  const rest = (settingsCache.providers ?? []).filter(
+    (p) => p.name !== name && p.name !== editingProviderName,
+  );
+  settingsCache.providers = [...rest, entry];
+  if (!settingsCache.defaultProvider || settingsCache.defaultProvider === editingProviderName) {
+    settingsCache.defaultProvider = name;
+  }
+  editingProviderName = null;
   document.getElementById("provider-form").reset();
+  document.querySelector('#provider-form button[type="submit"]').textContent = "新增";
   renderProviderList();
   markDirty("providers");
 });

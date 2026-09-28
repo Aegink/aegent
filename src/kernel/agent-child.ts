@@ -21,10 +21,13 @@ import path from "node:path";
 
 import { runAgentChildStdio, type AgentChildOptions } from "./agent-process.js";
 import { InvalidSessionIdError, isValidSessionId } from "../session/session-id.js";
+import { loadSettings, type SettingsShape } from "../session/settings.js";
+import { createCredentialStore } from "../session/credentials.js";
 import { parseProviderConfig } from "../models/config.js";
 import { createOpenAiCompatProvider } from "../models/openai-compat.js";
 import { createAnthropicMessagesProvider } from "../models/anthropic-messages.js";
 import { withRetry, type RetryObservation } from "../models/retry.js";
+import type { RegisteredModel } from "./model-switch.js";
 import { createLogger } from "./logger.js";
 
 /** A5/T-P1-51 重试留痕 logger（openai 装配专用，模块级单例避免句柄膨胀）。 */
@@ -46,7 +49,12 @@ interface ChildCliArgs {
   apiKey?: string;
   baseUrl?: string;
   model?: string;
+  /** U5/T-P3-104：settings.json 显式路径（多注册表装配面；缺省 <home>/.aegent）。 */
+  settingsPath?: string;
 }
+
+/** A5/T-P1-51 重试留痕观察者（late-binding——装配在 store 创建前，闭包桥接）。 */
+let retryObserver: ((o: RetryObservation) => void) | undefined;
 
 /** 子进程自己的参数解析（父进程 spawn 时透传；环境变量作回退）。 */
 function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv): ChildCliArgs {
@@ -78,8 +86,64 @@ function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv): ChildCliArg
     else if (a === "--base-url" && i + 1 < argv.length) args.baseUrl = argv[++i];
     else if (a === "--api-key" && i + 1 < argv.length) args.apiKey = argv[++i];
     else if (a === "--model" && i + 1 < argv.length) args.model = argv[++i];
+    else if (a === "--settings" && i + 1 < argv.length) args.settingsPath = argv[++i];
   }
   return args;
+}
+
+/**
+ * settings 多注册表装配（U5/T-P3-104）——未显式给 --provider 且
+ * settings.json 有 providers 条目时：全部条目实例化进 models 注册表
+ * （J6 会话期换模的可选面——model/switch 请求在注册表内切换，新 turn
+ * 生效）。凭据按条目名从 credentials.bin 解密（同用户 DPAPI 可解）。
+ * identity = {provider: adapter, modelId}——同 identity 重复条目去重
+ * （后到先到同键，取先注册——记档）；无 model 的条目无法成 identity，
+ * 跳过。返回 initial（defaultProvider 选中条目）与注册表。
+ */
+async function buildModelsRegistry(
+  settings: SettingsShape,
+  settingsPath: string | undefined,
+): Promise<{ models: RegisteredModel[]; initial: RegisteredModel } | undefined> {
+  if (settings.defaultProvider === undefined || settings.providers.length === 0) return undefined;
+  const credStore = createCredentialStore();
+  const models: RegisteredModel[] = [];
+  let initial: RegisteredModel | undefined;
+  for (const entry of settings.providers) {
+    const adapter = entry.adapter ?? "openai";
+    const modelId = entry.model ?? settings.defaultModel;
+    if (modelId === undefined) continue;
+    const identity = { provider: adapter, modelId };
+    const existing = models.find(
+      (m) => m.identity.provider === identity.provider && m.identity.modelId === identity.modelId,
+    );
+    if (existing !== undefined) continue;
+    const config = parseProviderConfig({
+      name: entry.name,
+      settingsConfig: JSON.stringify({
+        baseUrl: entry.baseUrl,
+        apiKey: await credStore.getKey(entry.name),
+        model: modelId,
+      }),
+    });
+    const provider =
+      adapter === "anthropic"
+        ? createAnthropicMessagesProvider(config)
+        : createOpenAiCompatProvider(config);
+    const registered: RegisteredModel = {
+      identity,
+      provider: withRetry(provider, {
+        onRetry: (o) => {
+          retryWarnLogger.warn("模型请求重试", { attempt: o.attempt, delayMs: o.delayMs, ...o.error });
+          retryObserver?.(o);
+        },
+      }),
+    };
+    models.push(registered);
+    if (entry.name === settings.defaultProvider) initial = registered;
+  }
+  if (models.length === 0 || initial === undefined) return undefined;
+  void settingsPath; // --settings 显式路径已在 loadSettings 调用点消费（签名对称保留）
+  return { models, initial };
 }
 
 async function main(): Promise<void> {
@@ -154,9 +218,18 @@ async function main(): Promise<void> {
     identity = { provider: "anthropic", modelId: cli.model ?? "claude-sonnet-4-5" };
   }
 
-  // J27/T-P1-61：retrying 事件落流观察者的 late-binding 槽——runAgentChildStdio
-  // 构造 loop 后回填（provider 装配在 store 创建之前，只能经闭包桥接）。
-  let retryObserver: ((o: RetryObservation) => void) | undefined;
+  // U5/T-P3-104：settings 多注册表装配——未显式给 --provider 且
+  // settings.json providers 在位时，全条目实例化进 models 注册表
+  // （J6 会话期换模可选面；单模型显式分支不受影响，行为零变化）。
+  const settingsFile = (await loadSettings(cli.settingsPath)).settings;
+  const registry =
+    cli.provider === undefined ? await buildModelsRegistry(settingsFile, cli.settingsPath) : undefined;
+  if (registry !== undefined) {
+    provider = registry.initial.provider;
+    identity = registry.initial.identity;
+  }
+
+  // J27/T-P1-61：retrying 事件落流观察者的 late-binding 槽（模块级声明）。
   const options: AgentChildOptions = {
     ...(cli.rawLogDir ? { rawLogDir: cli.rawLogDir } : {}),
     sessionId,
@@ -164,7 +237,9 @@ async function main(): Promise<void> {
     ...(provider ? { provider, identity } : {}),
     // F5/T-P1-18：真实 provider 时启用真摘要（LLM 生成 + 截断回退）——
     // echo 模式不给（P0 截断摘要，冷启动路径零变化）
-    ...((cli.provider === "openai" || cli.provider === "anthropic") && provider && identity
+    ...((cli.provider === "openai" || cli.provider === "anthropic" || registry !== undefined) &&
+    provider &&
+    identity
       ? { summarizerModel: { provider, identity } }
       : {}),
     ...(cli.provider === "openai" || cli.db || cli.workspace || cli.contextWindow !== undefined
@@ -203,6 +278,11 @@ async function main(): Promise<void> {
             // Q2/T-P2-105：持久库在位时注册会话查询工具（session_query/
             // session_get——无 --db 的 echo 路径无历史面）
             ...(cli.db ? { sessionQuery: { dbPath: cli.db } } : {}),
+            // U5/T-P3-104：多注册表（J6 会话期换模——model/switch 在表内
+            // 切换，新 turn 生效；initialIdentity = defaultProvider 条目）
+            ...(registry !== undefined
+              ? { models: registry.models, initialIdentity: registry.initial.identity }
+              : {}),
           },
         }
       : {}),

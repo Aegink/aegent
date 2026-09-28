@@ -64,7 +64,7 @@ export type ClientEnvelope =
   | {
       type: "settings";
       requestId: string;
-      op: "get" | "update" | "credentials-set" | "credentials-delete" | "credentials-list";
+      op: "get" | "update" | "credentials-set" | "credentials-delete" | "credentials-list" | "probe";
       patch?: Record<string, unknown>;
       provider?: string;
       key?: string;
@@ -170,10 +170,11 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
       op !== "update" &&
       op !== "credentials-set" &&
       op !== "credentials-delete" &&
-      op !== "credentials-list"
+      op !== "credentials-list" &&
+      op !== "probe"
     ) {
       throw new Error(
-        `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list）`,
+        `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe）`,
       );
     }
     if (op === "update") {
@@ -191,9 +192,9 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
         throw new Error("settings op=credentials-set 需要 key 非空字符串");
       }
     }
-    if (op === "credentials-delete") {
+    if (op === "credentials-delete" || op === "probe") {
       if (typeof record["provider"] !== "string" || record["provider"] === "") {
-        throw new Error("settings op=credentials-delete 需要 provider 非空字符串");
+        throw new Error(`settings op=${op} 需要 provider 非空字符串`);
       }
     }
     return {

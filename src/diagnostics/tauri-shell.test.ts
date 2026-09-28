@@ -121,6 +121,11 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(app).toContain("credentials-set");
     expect(app).toContain("credentials-delete");
     expect(app).toContain("markDirty");
+    // U5/T-P3-104：会话期切换（model/switch）+ 健康徽标（probe 消费 + 节流）+ 编辑
+    expect(app).toContain('"model/switch"');
+    expect(app).toContain('op: "probe"');
+    expect(app).toContain("HEALTH_THROTTLE_MS");
+    expect(app).toContain("editingProviderName");
     // 主题全端一致：改动即应用 body[data-theme]（dataset.theme 赋值）
     expect(app).toContain("dataset.theme");
 

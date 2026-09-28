@@ -246,6 +246,9 @@ export class HostBridge implements SessionRouter {
         if (call.op === "credentials-delete") {
           return { deleted: (await gateway.credentialsDelete(call.provider!)).deleted };
         }
+        if (call.op === "probe") {
+          return { health: await gateway.probeProvider(call.provider!) };
+        }
         return { credentials: await gateway.credentialsList() };
       },
     };
