@@ -734,6 +734,33 @@ export interface ApprovalSupersededEvent extends EventBase {
   reason?: string;
 }
 
+/**
+ * S5/T-P2-404 用户反馈（`feedback/note`）：用户对消息/命令的 up/down 反馈
+ * 事实——**反馈是会话事实**（"用户在哪条消息/命令上表达了什么评价"是持久
+ * 历史，与进程内 job 生命周期不同——后者回调承载，M11 先例）。
+ * 锚点 codex·feedback_processor（结构化反馈：classification + reason +
+ * doctor 报告附件）；其遥测外发不取（我方本地落流——无上报，红线）。
+ * **log-only 元事件**（session/archive 同款纪律：不要求 turn/step 开合
+ * 上下文、不进模型历史、跨 compaction 保留）；targetSeq（关联流内事件
+ * 序号）与 commandId（关联 command/run 的 id）**二选一**——存在性校验在
+ * 提交面（obs/feedback.ts submitFeedback，查流内 seq 存在）；comment 与
+ * doctorSummary 可选（doctor 报告随附——codex attachment 同构）。
+ * 词汇表 28→29 立案 #24（回退面 = 删事件 + project 两处 + 豁免清单一行）。
+ */
+export interface FeedbackNoteEvent extends EventBase {
+  type: "feedback/note";
+  /** 评价方向闭集。 */
+  kind: "up" | "down";
+  /** 关联的流内事件序号（与 commandId 二选一）。 */
+  targetSeq?: number;
+  /** 关联的命令 id（与 targetSeq 二选一）。 */
+  commandId?: string;
+  /** 评语（可缺省——自由文本，非判据）。 */
+  comment?: string;
+  /** doctor 健康摘要随附（可缺省——codex doctor-report attachment 同构）。 */
+  doctorSummary?: string;
+}
+
 import type { AttachmentRef } from "../attachments/types.js";
 
 export type SessionEvent =
@@ -764,9 +791,10 @@ export type SessionEvent =
   | SurfaceDetachEvent
   | ImageOffloadEvent
   | SessionArchiveEvent
-  | ApprovalSupersededEvent;
+  | ApprovalSupersededEvent
+  | FeedbackNoteEvent;
 
-/** 28 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
+/** 29 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
 export const EVENT_TYPES = [
   "turn/start",
   "turn/end",
@@ -796,6 +824,7 @@ export const EVENT_TYPES = [
   "image/offload",
   "session/archive",
   "approval/superseded",
+  "feedback/note",
 ] as const;
 
 export type SessionEventType = (typeof EVENT_TYPES)[number];

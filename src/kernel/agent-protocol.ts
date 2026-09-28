@@ -154,6 +154,17 @@ export type AgentRequest =
       kind: "success" | "error";
       text?: string;
     }
+  | {
+      /** S5/T-P2-404 用户反馈（log-only 落流——feedback/note，turn=0）：
+       * kind 闭集 + targetSeq/commandId 二选一；seq 存在性在子进程侧校验
+       * （流是唯一真相）。 */
+      type: "feedback";
+      kind: "up" | "down";
+      targetSeq?: number;
+      commandId?: string;
+      comment?: string;
+      doctorSummary?: string;
+    }
   | { type: "dispose" };
 
 /** 子 → 父。 */
@@ -244,6 +255,7 @@ const REQUEST_TYPES = new Set([
   "session/resume",
   "command/run",
   "command/done",
+  "feedback",
   "steer",
   "config/refresh",
   "policy/check",
@@ -294,6 +306,8 @@ export function decodeRequest(line: string): AgentRequest {
     name?: unknown;
     kind?: unknown;
     text?: unknown;
+    comment?: unknown;
+    doctorSummary?: unknown;
     tool?: unknown;
     args?: unknown;
     modifiedInput?: unknown;
@@ -554,6 +568,39 @@ export function decodeRequest(line: string): AgentRequest {
       throw new ProtocolError("PROTOCOL_MALFORMED", "steer 需要 content 非空字符串");
     }
     return { type: "steer", expectedTurn: req.expectedTurn, content: req.content };
+  }
+  if (req.type === "feedback") {
+    // S5/T-P2-404：形状校验（kind 闭集 + 二选一 + 可选文本）；targetSeq
+    // 存在性在 agent-process 落流前校验（流内事实以流为准）。
+    const kind = req.kind;
+    if (kind !== "up" && kind !== "down") {
+      throw new ProtocolError("PROTOCOL_MALFORMED", `feedback 的 kind 须为 up|down，收到 ${String(kind)}`);
+    }
+    const hasSeq = req.targetSeq !== undefined && req.targetSeq !== null;
+    const hasCommand = req.commandId !== undefined && req.commandId !== null;
+    if (hasSeq === hasCommand) {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "feedback 需要 targetSeq 与 commandId 二选一");
+    }
+    if (hasSeq && (typeof req.targetSeq !== "number" || !Number.isInteger(req.targetSeq) || req.targetSeq < 0)) {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "feedback 的 targetSeq 须为非负整数");
+    }
+    if (hasCommand && (typeof req.commandId !== "string" || req.commandId === "")) {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "feedback 的 commandId 须为非空字符串");
+    }
+    for (const field of ["comment", "doctorSummary"] as const) {
+      const value = req[field];
+      if (value !== undefined && value !== null && typeof value !== "string") {
+        throw new ProtocolError("PROTOCOL_MALFORMED", `feedback 的 ${field} 须为字符串`);
+      }
+    }
+    return {
+      type: "feedback",
+      kind,
+      ...(hasSeq ? { targetSeq: req.targetSeq as number } : {}),
+      ...(hasCommand ? { commandId: req.commandId as string } : {}),
+      ...(typeof req.comment === "string" ? { comment: req.comment } : {}),
+      ...(typeof req.doctorSummary === "string" ? { doctorSummary: req.doctorSummary } : {}),
+    };
   }
   return { type: "dispose" };
 }

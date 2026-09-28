@@ -169,15 +169,22 @@ const SAMPLES: NewSessionEvent[] = [
     requestId: "call-1",
     byRequestId: "call-2",
   },
+  // S5/T-P2-404 的用户反馈（词汇表 28→29，见 l0-events.md §8 落地记录 24）
+  {
+    type: "feedback/note",
+    turn: 0,
+    kind: "up",
+    targetSeq: 3,
+  },
 ];
 
 describe("事件词汇表（l0-events.md §3 定稿）", () => {
-  it("联合成员恰 28 个（… + session/archive + approval/superseded——P2/T-P2-306 #23），且与 EVENT_TYPES 严格一致（验收①：Exclude 遍历断言的运行时面）", () => {
-    expect(EVENT_TYPES).toHaveLength(28);
+  it("联合成员恰 29 个（… + approval/superseded + feedback/note——P2/T-P2-404 #24），且与 EVENT_TYPES 严格一致（验收①：Exclude 遍历断言的运行时面）", () => {
+    expect(EVENT_TYPES).toHaveLength(29);
     const declared = new Set<string>(EVENT_TYPES);
     // 每个联合成员都能按其必填载荷构造，且 type 互不相同、并集等于 EVENT_TYPES。
     const constructed = SAMPLES.map((e) => e.type);
-    expect(new Set(constructed)).toHaveLength(28);
+    expect(new Set(constructed)).toHaveLength(29);
     expect(new Set(constructed)).toEqual(declared);
     // 编译期等价断言在 events.ts 的 _EVENT_TYPES_EXACT（tsc --noEmit 时生效）。
   });

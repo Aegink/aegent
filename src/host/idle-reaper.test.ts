@@ -158,7 +158,7 @@ describe("会话空闲回收（M4/T-P2-104）", () => {
 
     // 零事件扩展复核（卡面定形：回收是进程内运行时事实，不进词汇表——
     // EVENT_TYPES 28 基线（P2/T-P2-306 #23 审批取代后））
-    expect(EVENT_TYPES).toHaveLength(28);
+    expect(EVENT_TYPES).toHaveLength(29);
     storage.close();
   });
 });

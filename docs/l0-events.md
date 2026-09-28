@@ -123,7 +123,7 @@ interface EventBase {
 **`seq` / `ts` 由 store 分配**，照 pi 的 `NewEntry = Omit<Entry, "seq" | "timestamp">`（`types.ts:67`）。
 调用方给不出正确的 seq —— 它给一个就多一个不权威的顺序来源。
 
-### 3.2 事件联合（L0，正式计数 **27** 个）
+### 3.2 事件联合（L0，正式计数 **29** 个）
 
 | # | 事件 | 载荷 | 覆盖需求 |
 | --- | --- | --- | --- |
@@ -155,6 +155,7 @@ interface EventBase {
 | 26 | `image/offload` | `{targets: [{seq, imageIndexes}]}` | P2（T-P1-125 追加，✅ 已追认——落地记录 21） |
 | 27 | `session/archive` | `{reason?}` | Q8（T-P2-102 追加，✅ 已追认——落地记录 22；log-only 会话级元事件，归档前落流尾） |
 | 28 | `approval/superseded` | `{requestId, byRequestId, reason?}` | I10（T-P2-306 追加，✅ 已追认——落地记录 23；log-only 元事件，取代链投影消费） |
+| 29 | `feedback/note` | `{kind: "up"|"down", targetSeq?, commandId?, comment?, doctorSummary?}` | S5（T-P2-404 追加——落地记录 24；log-only 元事件，targetSeq/commandId 二选一） |
 
 `user/message.source` 必须是联合：照 DSH 的 `types.ts:309` 注释，人类 prompt、注入上下文、
 目标续跑**三者都逐字投影 content，靠 `source` 区分**。没有 `source` 就再也分不开。
@@ -338,3 +339,5 @@ type CancelCause =
 
 - **落地记录 23（2026-09-28，T-P2-306 执行会话）**：词汇表 **27→28（一处新事件）**——I10 要求"hook 复核结论可被 superseded，且取代本身是持久事实；复核可被后续复核取代"（plan-p2.md T-P2-306 明文；zcode·session.events.ts 的 `WorkspaceHookReviewSuperseded{interactionId, supersededByInteractionId}` 行为同构——取代事件落流）。已新增 **`approval/superseded {requestId, byRequestId, reason?}`**（log-only 元事件：session/archive / plugin 同款纪律——不要求 turn/step 开合上下文、turn 挂流内最后轮空流兜 0、不进模型历史、跨 compaction 保留）。**语义三层**：①取代 ≠ 撤销——被取代的事实仍在流内（历史全保留），本条是叠加事实；②链式——取代者之后还可被再取代（A←B←C），投影沿链取值；③单链约束——一个 requestId 至多被取代一次（出度 ≤1；入度不限，分叉汇聚合法）。**投影消费（C31 三事实的第四面）**：project.ts 维护取代链索引 `approvalSupersessions`（整值全记 + revert 切点切割）+ 查询面 `effectiveApproval`（链尾 = 最新有效）/`supersessionChain`（全链读取原语）；**投影期 fail-closed**——重复取代 / 成环（含自取代 A←A）类型化 ProjectError 拒绝投影（坏流拒绝，image/offload 引用校验同款）。**同步面**：events.ts（ApprovalSupersededEvent / EVENT_TYPES 28 / 编译闸门）/ project.ts（validation 形状 + 投影消费 + 两查询导出）/ invariants.ts（O7 会话级元事件豁免面 +approval/superseded）/ events.test（计数 28 + 样本）/ obs/replay.test（计数断言 28）/ host/idle-reaper.test（基线断言 28）/ l0-events.md 本记录 + §3.2 行 28。**不追认的回退面**：events.ts 删事件/联合成员/EVENT_TYPES 行、project.ts 删校验与消费分支与两查询、invariants.ts 删豁免、events.test/replay.test/idle-reaper.test 计数回 27——约 1.5 小时，全部为新增面（不触碰既有 27 事件语义）；回退后审批取代关系无流内持久事实（取代链查询面消失）。
 > **#23 追认于 2026-09-28（用户："全部认可"），此案关闭——§3.2 的正式计数为 28 事件定案。**
+
+- **落地记录 24（2026-09-28，T-P2-404 执行会话）**：词汇表 **28→29（一处新事件）**——S5 要求"用户可对消息/命令反馈，反馈结构化"（plan-p2.md T-P2-404 明文；codex·feedback_processor 的结构化面同构——classification+reason+附件；其遥测外发不取，我方本地落流）。已新增 **`feedback/note {kind: "up"|"down", targetSeq?, commandId?, comment?, doctorSummary?}`**（log-only 元事件：session/archive 同款纪律——不要求 turn/step 开合上下文、turn 挂 0、不进模型历史、跨 compaction 保留）。**立案理由**：反馈是会话事实（"用户在哪条消息/命令上表达了什么评价"是持久历史）——与 M11 闲时核销不同（后者是进程内 job 生命周期事实走 onSettled 回调，#24 预判的另一候选定形零扩展）。**语义约束**：targetSeq（流内事件序号，存在性校验在提交面与子进程落流前——流是唯一真相）与 commandId（command/run 的 id）**二选一**；comment/doctorSummary 可选自由文本（doctor 随附 = codex doctor-report attachment 同构；"反馈提交永不依赖 doctor 成功"）。**同步面**：events.ts（FeedbackNoteEvent / EVENT_TYPES 29 / 编译闸门）/ project.ts（validation 形状 + 投影不消费）/ invariants.ts（豁免面 +feedback/note）/ obs/feedback.ts（submitFeedback 提交面 + FeedbackValidationError + MAX_FEEDBACK_TEXT_LENGTH 防呆）/ agent-protocol.ts（wire feedback 请求 + 编解码校验 + REQUEST_TYPES）/ agent-process.ts（落流分支 + seq 存在性校验）/ cli/repl.ts（/feedback 命令 + KNOWN_COMMANDS）/ events.test（计数 29 + 样本）/ obs/replay.test（计数断言 29）/ host/idle-reaper.test（基线断言 29）/ l0-events.md 本记录 + §3.2 行 29。**不追认的回退面**：删事件 + project 校验分支 + 豁免行 + wire 请求面 + 提交面 + 三处计数回 28——约 1.5 小时，全部为新增面（不触碰既有 28 事件语义）；回退后用户反馈无流内承载。

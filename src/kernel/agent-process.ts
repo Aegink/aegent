@@ -846,6 +846,33 @@ export async function runAgentChildStdio(
           },
         ]);
         return;
+      case "feedback":
+        // S5/T-P2-404：用户反馈落流（feedback/note log-only，turn=0）。
+        // seq 存在性在此校验（流是唯一真相——kernel 不依赖 obs 域，提交面
+        // obs/feedback.ts 的完整校验供库面消费方；形状校验已在协议层做）。
+        if (req.targetSeq !== undefined) {
+          const exists = store.load(sessionId).some((e) => e.seq === req.targetSeq);
+          if (!exists) {
+            send({
+              type: "error",
+              code: "FEEDBACK_INVALID",
+              message: `feedback 的 targetSeq ${String(req.targetSeq)} 不在会话流内`,
+            });
+            return;
+          }
+        }
+        store.append(sessionId, [
+          {
+            type: "feedback/note",
+            turn: 0,
+            kind: req.kind,
+            ...(req.targetSeq !== undefined ? { targetSeq: req.targetSeq } : {}),
+            ...(req.commandId !== undefined ? { commandId: req.commandId } : {}),
+            ...(req.comment !== undefined ? { comment: req.comment } : {}),
+            ...(req.doctorSummary !== undefined ? { doctorSummary: req.doctorSummary } : {}),
+          },
+        ]);
+        return;
       case "config/refresh": {
         // B21/T-P1-63：热刷新——白名单键逐键应用并回执 applied；静态设置
         // 出现 → 类型化拒绝（STATIC_CONFIG_IMMUTABLE，整包不应用）。在途

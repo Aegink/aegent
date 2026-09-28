@@ -446,6 +446,32 @@ export class Projector {
           throw new ProjectError("approval/superseded 的 reason 须为字符串");
         }
         break;
+      case "feedback/note":
+        // S5/T-P2-404 用户反馈（log-only 元事件）：kind 闭集 + targetSeq/
+        // commandId 二选一（存在性校验在提交面——这里校验形状）；comment/
+        // doctorSummary 可选字符串。投影不消费（反馈是流内事实本身）。
+        if (event.kind !== "up" && event.kind !== "down") {
+          throw new ProjectError(`feedback/note 的 kind 须为 up|down，收到 ${String(event.kind)}`);
+        }
+        if (
+          (event.targetSeq === undefined && event.commandId === undefined) ||
+          (event.targetSeq !== undefined && event.commandId !== undefined)
+        ) {
+          throw new ProjectError("feedback/note 需要 targetSeq 与 commandId 二选一");
+        }
+        if (event.targetSeq !== undefined && (!Number.isInteger(event.targetSeq) || event.targetSeq < 0)) {
+          throw new ProjectError("feedback/note 的 targetSeq 须为非负整数");
+        }
+        if (event.commandId !== undefined && event.commandId === "") {
+          throw new ProjectError("feedback/note 的 commandId 须为非空字符串");
+        }
+        if (event.comment !== undefined && typeof event.comment !== "string") {
+          throw new ProjectError("feedback/note 的 comment 须为字符串");
+        }
+        if (event.doctorSummary !== undefined && typeof event.doctorSummary !== "string") {
+          throw new ProjectError("feedback/note 的 doctorSummary 须为字符串");
+        }
+        break;
       case "image/offload": {
         // P2/T-P1-125 图片卸载决策（dsh required-on-read 语义——校验闭面）：
         // targets 非空；每项 seq 必须指向流内携带附件的 user/message；
@@ -658,6 +684,8 @@ export class Projector {
         break; // E5 lineage 是子流头部事实：投影不消费（读流头部即可查）
       case "session/archive":
         break; // Q8 归档标记是 log-only 流尾事实：投影不消费（归档档读取面消费）
+      case "feedback/note":
+        break; // S5 反馈是 log-only 流内事实本身：投影不消费（读面直接可见）
       case "approval/superseded": {
         // I10：取代链索引（C31 三事实的第四面）——单链约束（一个
         // requestId 至多被取代一次）与无环由投影期强制（坏流拒绝投影，

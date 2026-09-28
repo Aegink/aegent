@@ -113,7 +113,7 @@ export async function runCli(options: RunCliOptions): Promise<void> {
   // 不记（进程退出路径，done 无结算点——记档）。
   const KNOWN_COMMANDS = new Set([
     "revert", "cancel", "approve", "answer", "steer", "fork",
-    "preset", "check", "unattended", "resume",
+    "preset", "check", "unattended", "resume", "feedback",
   ]);
   let commandCounter = 0;
   const recordCommand = (name: string, rest: string[], known: boolean): void => {
@@ -217,6 +217,27 @@ export async function runCli(options: RunCliOptions): Promise<void> {
         return;
       }
       connection.send({ type: "question/answer", requestId, answer: rest.slice(1).join(" ") });
+      return;
+    }
+    if (name === "/feedback") {
+      // S5/T-P2-404：/feedback <up|down> <seq|commandId> [评语...]——
+      // 数字 target 是流内事件序号（targetSeq），c 前缀是命令 id。
+      // --doctor 随附最近诊断摘要（子进程落流时随事件携带）。
+      const direction = rest[0];
+      const target = rest[1];
+      if ((direction !== "up" && direction !== "down") || target === undefined) {
+        out("用法：/feedback <up|down> <seq|commandId> [评语...]（数字 = 事件序号，c 前缀 = 命令 id）");
+        return;
+      }
+      const comment = rest.slice(2).join(" ");
+      const isCommand = /^c[0-9]+$/.test(target);
+      const targetSeq = Number(target);
+      connection.send({
+        type: "feedback",
+        kind: direction,
+        ...(isCommand ? { commandId: target } : { targetSeq }),
+        ...(comment !== "" ? { comment } : {}),
+      });
       return;
     }
     if (name === "/steer") {
