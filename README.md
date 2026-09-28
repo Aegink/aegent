@@ -7,7 +7,7 @@
 
 | 文件 | 作用 |
 | --- | --- |
-| **[`docs/requirements.md`](docs/requirements.md)** | **要做什么** —— 唯一权威的需求文档（19 层 / 310 项 / 104 项 P0） |
+| **[`docs/requirements.md`](docs/requirements.md)** | **要做什么** —— 唯一权威的需求文档（20 层 / 337 项：P0 · P1 · P2 · P3 四层） |
 | **[`docs/reference-cases.md`](docs/reference-cases.md)** | **照着谁做** —— 按功能 ID 查的首选参考索引，带可点击的源码链接 |
 | **[`AGENTS.md`](AGENTS.md)** | 怎么写 —— 仓库级开发规范（优先级最高） |
 
@@ -38,8 +38,17 @@ aegent/
 ├── docs/
 │   ├── requirements.md        ★★ 需求文档（要做什么）
 │   ├── reference-cases.md     ★★ 参考案例索引（照着谁做）
-│   ├── l0-events.md           L0 事件词汇表设计（13 事件 + E4 revert 标记 = 14，§8 有落地记录）
+│   ├── l0-events.md           L0 事件词汇表设计（正式形状 26 事件——P0 起步 14 经 #16~#27 演进，§8 有落地记录）
 │   ├── l0-eval.md             L0 内核评估
+│   ├── plan-p0.md             ★ P0 计划（执行协议 §0 全局沿用）+ plan-p0-progress.md 执行记录
+│   ├── plan-p1.md             ★ P1 计划（批次 1-14 收官）+ plan-p1-progress.md 记录/待澄清/确认清单
+│   ├── plan-p2.md             ★ P2 计划（48 条/五批/52 卡，已展卡）+ plan-p2-progress.md
+│   ├── plan-p3.md             ★ P3 产品化计划（U 域 27 条/四批/31 卡，已展卡）+ plan-p3-progress.md
+│   ├── 20260925_P0功能全景与借鉴映射.md   段收官产出（P0）
+│   ├── 20260926_P1功能全景与借鉴映射.md   段收官产出（P1）
+│   ├── 20260926_P1剩余批次全量圈定研究.md  P1 批次 3-14 圈定 + P2 段粗规划
+│   ├── 20260926_P2研究_批次圈定建议.md     P2 八组归并研究（48/48 锚点核对）
+│   ├── vocabulary/            领域词汇表（kernel/policy/models 三件，_Avoid_ 纪律）
 │   ├── review-prompt.md       独立复核提示词（**查错不是补漏**，先有计划文档再跑）
 │   └── research/              调研产出（为什么），地图见其 README.md
 │       ├── 00-inventory.md       本机仓库盘点
