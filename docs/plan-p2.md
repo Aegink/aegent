@@ -558,7 +558,7 @@
 - **风险 / 未知**：载荷扩展管线（#27）
 - **完成记录**：2026-09-28。**#27 立案落地（事件计数 29 不变——#9 前向兼容同款载荷扩展，落地记录 26 在案待追认）**：`step/end.timing` 嵌套扩展可选 `segments?: {modelMs, toolsMs}`——modelMs = 模型流时长（与 streamDurationMs 同源同值，零新打点复用 B19 埋点）；toolsMs = 本 step 工具执行**累计墙钟**（serial 逐调用 dispatchTool 计时累加 + parallel 整批 runParallelTools 计时——perf_hooks 单调时钟；0 = 无工具执行，"无工具"是有价值事实）。仅随 timing 携带（有模型请求的 step——B19 既有规则，interrupted/裸落路径零变化）。loop.ts 三处：serial 分支计时插入（:929 附近）/ parallel 分支计时（:967 附近）/ 主路径 step/end 填充 segments。测试 loop.test.ts 扩 1 用例（独立 describe）：带工具 step 的 segments 落流（modelMs === streamDurationMs + toolsMs ≥ 0）+ 纯文本 step toolsMs = 0。**验收**：`npx vitest run src/kernel/loop.test.ts src/kernel/events.test.ts` → **55 passed**；`npx tsc --noEmit` 干净；`vocabulary:check` 0 问题。**记档**：①"mcp / tools 各自打点"的定形——MCP 工具与 builtin 工具同走 dispatchTool（工具族分型不改变计时路径——mcp 单独分列随需要）；②segments 是 timing 的嵌套可选字段非平级字段（载荷形状向后兼容——旧流 timing 无 segments 合法，restore/投影零改动）。
 
-#### T-P2-514 · L5 · HTTP 级录制（调试模型交互） `[ ]`
+#### T-P2-514 · L5 · HTTP 级录制（调试模型交互） `[x]`
 - **依据需求**：L5（"HTTP 级录制；调试模型交互"）
 - **上游首选参考**：opencode·http-recorder（录制/回放的形态）
 - **取什么 / 别抄什么**：取"请求/响应成对录制 + 敏感头掩码 + 回放驱动测试"行为；不抄其包结构（我方 test-support 域）
@@ -566,6 +566,7 @@
 - **验收**：`npx vitest run src/test-support/http-recorder.test.ts`——录制往返 + 掩码断言 + 回放生成
 - **依赖**：T-P2-506（test 政策同域）
 - **风险 / 未知**：录制文件的入库边界（fixture 化须掩码复核——政策面）
+- **完成记录**：2026-09-28。产出 `src/test-support/http-recorder.ts`：①**录制面**——`HttpRecorder.install()` 替换全局 fetch 成对记录（请求体/响应体过 `redactSecrets` 掩码 sk- 模式 + `authorization/cookie/x-api-key` 整值掩码 `[REDACTED:authorization]`——D14 同源；响应体 clone 读取，调用方流不截断）+ `restore()` 恢复（幂等）+ `serializeRecorded/parseRecorded` JSONL roundtrip（掩码固化在录制物里——入库即掩码，卡面风险点兑现）；②**录制开关**——env `AEGENT_HTTP_RECORD=1`（`HTTP_RECORD_ENV` 常量），生产缺省关：未设置 install 返回 false **零包装零记录**；③**回放面**——`toHttpMockScripts(recorded)`：SSE 体 → `SseScript{includeDone:false}`（原始体 `[DONE]` 剔除防二次追加——首版被测试当场抓出）、其余 → `RawScript{status,body}`——与 http-mock 既有回放基建对接（O2/O15 面）。测试 `http-recorder.test.ts` 4 用例（真实 HttpMock 端到端）：录制往返（SSE 体完整 + restore 恢复）/ 掩码断言（authorization 整值 + sk- 掩码 + roundtrip 保持）/ 回放生成（SSE→SseScript + 429→RawScript）/ 开关关 = 零包装。**验收**：`npx vitest run src/test-support/http-recorder.test.ts` → **4 passed**；`npx tsc --noEmit` 干净。**记档**：①opencode 双向回放（录制样本直接驱动 fetch mock）不取——我方回放落点 = http-mock 脚本（同一回放基建复用，不建第二套 mock 面）；②install 包装全局 fetch 是测试域专用面（test-support managed 域——生产路径不 import）。
 
 #### T-P2-515 · L6 · 审计报表（汇总危险操作与审批） `[ ]`
 - **依据需求**：L6（"审计报表；汇总危险操作与审批"）
