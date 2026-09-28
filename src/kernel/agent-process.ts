@@ -18,7 +18,7 @@
 import { createInterface } from "node:readline";
 import { spawn } from "node:child_process";
 
-import type { CancelCause, TurnEndReason } from "./events.js";
+import type { CancelCause, SessionRef, TurnEndReason } from "./events.js";
 import { AgentLoop, type AgentLoopDeps, type ToolExecutionMode } from "./loop.js";
 import { PromptQueue, QueueFullError } from "./queue.js";
 import { validateAttachments, AttachmentLimitError } from "../attachments/limits.js";
@@ -27,6 +27,11 @@ import type { AttachmentRef } from "../attachments/types.js";
 import type { AttachmentStore } from "../attachments/store.js";
 import { offloadOldestImages } from "../attachments/offload.js";
 import { effectiveEvents } from "../session/messages.js";
+import {
+  ReferenceError,
+  assertNoReferenceCycle,
+  refsOfEvents,
+} from "../session/reference.js";
 import { ToolClassLimiter, TurnAdmission } from "./admission.js";
 import { isWriteExecuteTool } from "../policy/protected-paths.js";
 import { SessionConfigStore, StaticConfigImmutableError } from "./session-config.js";
@@ -468,7 +473,11 @@ export async function runAgentChildStdio(
 
   // 轮启动的唯一入口（kick 消费队列与 M3 resume 共用——in-flight 管理、
   // E11 打点、崩溃出口、A8 退回都在这条链上，绝不开旁路）。
-  const startTurn = (content: string, attachments?: AttachmentRef[]): void => {
+  const startTurn = (
+    content: string,
+    attachments?: AttachmentRef[],
+    sessionRefs?: SessionRef[],
+  ): void => {
     if (inflight) return;
     // J20/T-P1-49：轮跑动期间持 admit 名额（active = 在途轮数）。
     // draining 后 admit 不再计数（admit 的拒绝面只对 handleRequest 的新
@@ -485,7 +494,7 @@ export async function runAgentChildStdio(
           Projector.fold(store.load(sessionId)).projection.turnCount + 1;
         await assembly.checkpoint.capture(turn);
       }
-      return loop.runTurn(content, attachments);
+      return loop.runTurn(content, attachments, sessionRefs);
     })()
       .then((reason) => {
         ended = reason;
@@ -526,7 +535,7 @@ export async function runAgentChildStdio(
       send({ type: "idle" });
       return;
     }
-    startTurn(next.content, next.attachments);
+    startTurn(next.content, next.attachments, next.sessionRefs);
   };
 
   const handleRequest = (req: AgentRequest): void => {
@@ -569,10 +578,28 @@ export async function runAgentChildStdio(
           }
           attachmentRefs = req.attachments.map((att) => options.attachmentStore!.save(att));
         }
+        // E9/T-P2-107：会话引用编排面——环检测（fail-closed：A 引 B、B 引 A
+        // 被拒）+ 引用目标形状已在 wire 层校验；引用**只落指针不落内容**，
+        // 快照注入在投影面（resolveSessionRef 装配）。
+        let sessionRefs: SessionRef[] | undefined;
+        if (req.sessionRefs?.length) {
+          try {
+            assertNoReferenceCycle(sessionId, req.sessionRefs, {
+              refsOf: (id) => refsOfEvents(store.load(id)),
+            });
+          } catch (e) {
+            if (e instanceof ReferenceError) {
+              send({ type: "error", code: e.code, message: e.message });
+              return;
+            }
+            throw e;
+          }
+          sessionRefs = [...req.sessionRefs];
+        }
         // A9：先收执、再入队/开轮——accepted 只证明 admission。
         // M9/T-P1-48：队列满（有限队列）类型化拒绝——收执不发、消息不入队。
         try {
-          queue.enqueue(req.content, attachmentRefs);
+          queue.enqueue(req.content, attachmentRefs, sessionRefs);
         } catch (e) {
           if (e instanceof QueueFullError) {
             send({ type: "error", code: e.code, message: e.message });

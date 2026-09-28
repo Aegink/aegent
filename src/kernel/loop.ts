@@ -37,6 +37,7 @@ import {
 import type { AttachmentRef } from "../attachments/types.js";
 import type { AttachmentStore } from "../attachments/store.js";
 import { buildChatMessages, effectiveEvents } from "../session/messages.js";
+import { buildReferenceExcerpt } from "../session/reference.js";
 import { Projector } from "../session/project.js";
 import type { SessionStore } from "../session/store.js";
 import { computeCacheAnchor, type PrefixChange } from "../context/prefix-anchor.js";
@@ -62,6 +63,7 @@ import type {
   JsonValue,
   LlmFailure,
   NewSessionEvent,
+  SessionRef,
   TimedStreamChunk,
   TokenUsage,
   TurnEndReason,
@@ -605,7 +607,11 @@ export class AgentLoop {
    * 返回结束原因（硬退出的 error 也不抛——终态在事件流里，pi 同款
    * "error responses remain hard exits"）。
    */
-  async runTurn(prompt: string, attachments?: readonly AttachmentRef[]): Promise<TurnEndReason> {
+  async runTurn(
+    prompt: string,
+    attachments?: readonly AttachmentRef[],
+    sessionRefs?: readonly SessionRef[],
+  ): Promise<TurnEndReason> {
     const { store, sessionId } = this.deps;
     // A3：turn 尝试开始即 busy（先于任何校验与落盘）——若本 turn 半途崩溃，
     // busy 停留，由恢复路径归位。
@@ -642,6 +648,8 @@ export class AgentLoop {
         promptId: this.nextPromptId(),
         // P1/T-P1-124：附件引用随消息落流（流存引用不存字节）；无附件零变化
         ...(attachments !== undefined && attachments.length > 0 ? { attachments: [...attachments] } : {}),
+        // E9/T-P2-107：会话引用随消息落流（流存引用不存内容）；无引用零变化
+        ...(sessionRefs !== undefined && sessionRefs.length > 0 ? { sessionRefs: [...sessionRefs] } : {}),
       },
     ]);
     try {
@@ -743,6 +751,10 @@ export class AgentLoop {
           source: "user",
           // A12/T-P1-53：steer 注入的每条输入各得一枚关联 id（新输入）
           promptId: this.nextPromptId(),
+          // E9/T-P2-107：引用随 steer 消息落流（流存引用不存内容）
+          ...(p.sessionRefs !== undefined && p.sessionRefs.length > 0
+            ? { sessionRefs: [...p.sessionRefs] }
+            : {}),
         }),
       ),
     );
@@ -1453,6 +1465,14 @@ export class AgentLoop {
             },
           }
         : {}),
+      // E9/T-P2-107：会话引用 resolver——被引会话从 store 内存序读取
+      // （读不到返回 null 不注入），快照构建有界（reference.ts 纯函数；
+      // 流存引用不存内容——内容只在此处现算进请求面）
+      resolveSessionRef: (ref) => {
+        const referenced = this.deps.store.load(ref.sessionId);
+        if (referenced.length === 0) return null;
+        return buildReferenceExcerpt(referenced, ref);
+      },
     });
     // F8/T-P1-104：投影级裁剪（请求面视图变换——事件流不改写，因果链不破）
     return this.deps.resultTrim !== undefined

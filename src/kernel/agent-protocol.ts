@@ -36,8 +36,10 @@ import {
   type JsonRecord,
   type JsonValue,
   type SessionEvent,
+  type SessionRef,
 } from "./events.js";
 import type { IncomingAttachment } from "../attachments/types.js";
+import { validateSessionRefs } from "../session/reference.js";
 
 /** 父 → 子。 */
 export type AgentRequest =
@@ -56,6 +58,12 @@ export type AgentRequest =
        * 校验限额并落 store 后以 ref 落流。可选——无附件零变化。
        */
       attachments?: IncomingAttachment[];
+      /**
+       * 本条消息引用的其他会话（E9/T-P2-107——wire 形状扩展，附件先例：
+       * wire 形状非事件词汇表）。编排面校验形状/限额/引用环后随
+       * user/message 落流（**流存引用不存内容**）。可选——无引用零变化。
+       */
+      sessionRefs?: SessionRef[];
     }
   | { type: "cancel"; cause: CancelCause }
   | { type: "revert"; targetSeq: number }
@@ -329,6 +337,20 @@ export function decodeRequest(line: string): AgentRequest {
         ...(att["name"] !== undefined ? { name: att["name"] as string } : {}),
       }),
     );
+    // E9/T-P2-107：会话引用可选字段校验（wire 面 T6——形状/上限 fail-closed；
+    // 环检测在编排面做（需要会话流——wire 层无 store））
+    const rawRefs = (req as { sessionRefs?: unknown }).sessionRefs;
+    let parsedRefs: SessionRef[] | undefined;
+    if (rawRefs !== undefined) {
+      try {
+        parsedRefs = validateSessionRefs(rawRefs);
+      } catch (error) {
+        throw new ProtocolError(
+          "PROTOCOL_MALFORMED",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
     return {
       type: "prompt",
       messageId: req.messageId,
@@ -337,6 +359,7 @@ export function decodeRequest(line: string): AgentRequest {
       ...(parsedAttachments !== undefined && parsedAttachments.length > 0
         ? { attachments: parsedAttachments }
         : {}),
+      ...(parsedRefs !== undefined && parsedRefs.length > 0 ? { sessionRefs: parsedRefs } : {}),
     };
   }
   if (req.type === "offload") {

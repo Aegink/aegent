@@ -20,6 +20,7 @@
  */
 
 import type { AttachmentRef } from "../attachments/types.js";
+import type { SessionRef } from "./events.js";
 
 export type QueueMode = "all" | "one-at-a-time";
 
@@ -37,6 +38,12 @@ export interface QueuedPrompt {
    * （queue 语义零变化）。
    */
   attachments?: AttachmentRef[];
+  /**
+   * 会话引用（E9/T-P2-107）：编排面（agent-process）已过环检测与限额的
+   * 引用列表，随 prompt 穿队列到 runTurn 落流（**只落引用不落内容**——
+   * 被引会话的内容字节绝不进本会话的流）；无引用缺省缺字段（零变化）。
+   */
+  sessionRefs?: SessionRef[];
 }
 
 /** M9/T-P1-48 有限队列：超限入队类型化拒绝（fail-closed 不静默丢）。 */
@@ -71,7 +78,11 @@ export class PromptQueue {
    * 没有回调、没有 per-prompt 结果可等（A9）。
    * 队列已满时抛 QueueFullError（M9 fail-closed）——消息不收执不排队。
    */
-  enqueue(content: string, attachments?: readonly AttachmentRef[]): EnqueueReceipt {
+  enqueue(
+    content: string,
+    attachments?: readonly AttachmentRef[],
+    sessionRefs?: readonly SessionRef[],
+  ): EnqueueReceipt {
     if (this.items.length >= this.maxSize) {
       throw new QueueFullError(this.maxSize, this.mode);
     }
@@ -80,6 +91,7 @@ export class PromptQueue {
       messageId,
       content,
       ...(attachments !== undefined && attachments.length > 0 ? { attachments: [...attachments] } : {}),
+      ...(sessionRefs !== undefined && sessionRefs.length > 0 ? { sessionRefs: [...sessionRefs] } : {}),
     });
     return { messageId };
   }

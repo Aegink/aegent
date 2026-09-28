@@ -117,6 +117,37 @@ describe("agent-protocol —— T9 可序列化协议", () => {
     expect(() => decodeRequest('{"type":"prompt","messageId":"m","content":""}')).toThrow(
       /content/,
     );
+    // E9/T-P2-107：会话引用 wire 形状——合法解析 + 去重 + 空数组剥键 + 坏形状拒绝
+    expect(
+      decodeRequest('{"type":"prompt","messageId":"m4","content":"引用","sessionRefs":[{"sessionId":"s-a","upToSeq":3}]}'),
+    ).toEqual({
+      type: "prompt",
+      messageId: "m4",
+      content: "引用",
+      sessionRefs: [{ sessionId: "s-a", upToSeq: 3 }],
+    });
+    expect(
+      decodeRequest(
+        '{"type":"prompt","messageId":"m5","content":"x","sessionRefs":[{"sessionId":"s-a"},{"sessionId":"s-a"}]}',
+      ),
+    ).toHaveProperty("sessionRefs", [{ sessionId: "s-a" }]);
+    expect(decodeRequest('{"type":"prompt","messageId":"m6","content":"x","sessionRefs":[]}')).not.toHaveProperty("sessionRefs");
+    for (const [bad, frag] of [
+      ['{"type":"prompt","messageId":"m","content":"x","sessionRefs":"nope"}', "sessionRefs 必须是数组"],
+      ['{"type":"prompt","messageId":"m","content":"x","sessionRefs":[{"sessionId":""}]}', "sessionId"],
+      ['{"type":"prompt","messageId":"m","content":"x","sessionRefs":[{"sessionId":"s","upToSeq":0}]}', "upToSeq"],
+      [
+        '{"type":"prompt","messageId":"m","content":"x","sessionRefs":[{"sessionId":"a"},{"sessionId":"b"},{"sessionId":"c"},{"sessionId":"d"}]}',
+        "最多引用 3 个",
+      ],
+    ] as const) {
+      try {
+        decodeRequest(bad);
+        expect.unreachable(`应拒绝：${frag}`);
+      } catch (e) {
+        expect((e as Error).message).toContain(frag);
+      }
+    }
     expect(() => decodeRequest('{"type":"cancel","cause":{"kind":"nuclear"}}')).toThrow(
       /kind 白名单/,
     );

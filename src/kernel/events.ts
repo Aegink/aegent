@@ -284,7 +284,29 @@ export interface UserMessageEvent extends EventBase {
    * （缺值读作"无附件"，投影零变化）。
    */
   attachments?: AttachmentRef[];
+  /**
+   * 本条消息引用的其他会话（E9/T-P2-107——载荷扩展，事件计数不变）：
+   * **流存引用不存内容**（附件同款纪律——只落 {sessionId, upToSeq?}，
+   * 被引会话的内容字节绝不进本会话的流）。注入发生在投影面
+   * （buildChatMessages 经 resolveSessionRef 注入有界快照文本——头部 N 条
+   * + 字符预算 + 不可信背景警示）；upToSeq 是引用视窗（缺省 = 引用方可见
+   * 的最新）。引用图必须 DAG（创建时环检测 fail-closed——见
+   * session/reference.ts）。字段缺省——旧流前向兼容（投影零变化）。
+   */
+  sessionRefs?: SessionRef[];
 }
+
+/**
+ * 会话引用（E9——引用是流内事实：只带指针不带内容；`upToSeq` 是视窗上界）。
+ * 声明为 type 别名而非 interface：TS 的 interface 无隐式索引签名，无法满足
+ * wire 层 `Exclude<AgentRequest, JsonValue>` 的可序列化型证（AttachmentRef
+ * 同款形式纪律）。
+ */
+export type SessionRef = {
+  readonly sessionId: string;
+  /** 引用视窗：只引用 seq ≤ upToSeq 的部分（缺省 = 引用方可见的最新）。 */
+  readonly upToSeq?: number;
+};
 
 export interface SystemMessageEvent extends EventBase {
   type: "system/message";

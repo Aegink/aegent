@@ -8,7 +8,7 @@
 
 import type { AttachmentRef } from "../attachments/types.js";
 import type { ChatImage, ChatMessage } from "../models/provider.js";
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent, SessionRef } from "../kernel/events.js";
 import { coalesceEvents } from "./coalescer.js";
 
 export interface BuildMessagesOptions {
@@ -22,6 +22,14 @@ export interface BuildMessagesOptions {
    * 定位——调用方可按需忽略）。
    */
   resolveImage?: (ref: AttachmentRef, imageIndex: number) => ChatImage | null;
+  /**
+   * 会话引用解析注入（E9/T-P2-107——投影保持纯函数，被引会话的读取由调用
+   * 方注入；**流存引用不存内容**：会话流里只有 {sessionId, upToSeq?}）。
+   * 返回的文本（有界快照——session/reference.ts 的 buildReferenceExcerpt）
+   * 追加到该条 user/message 的 content 之后。返回 null = 该引用不注入；
+   * 缺省不注入 = 引用只落流不进请求（零行为变化）。
+   */
+  resolveSessionRef?: (ref: SessionRef) => string | null;
 }
 
 export function buildChatMessages(
@@ -86,9 +94,21 @@ export function buildChatMessages(
           });
           if (resolved.length > 0) images = resolved;
         }
+        // E9/T-P2-107：会话引用注入（流里只有 {sessionId, upToSeq?} 指针；
+        // 快照文本由 resolver 现算——引用不展开全量，有界快照见 reference.ts）
+        let refSections = "";
+        if (e.sessionRefs?.length && opts.resolveSessionRef) {
+          for (const ref of e.sessionRefs) {
+            const text = opts.resolveSessionRef(ref);
+            if (text !== null && text !== "") refSections += `\n\n${text}`;
+          }
+        }
         messages.push({
           role: "user",
-          content: placeholderLines !== "" ? `${e.message.content}${placeholderLines}` : e.message.content,
+          content:
+            refSections !== "" || placeholderLines !== ""
+              ? `${e.message.content}${refSections}${placeholderLines}`
+              : e.message.content,
           ...(images ? { images } : {}),
         });
         break;

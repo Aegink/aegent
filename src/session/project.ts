@@ -279,6 +279,27 @@ export class Projector {
         ) {
           throw new ProjectError("user/message 的 promptId 非法（须为非空字符串或缺省）");
         }
+        // E9/T-P2-107：sessionRefs 可选载荷校验（引用只带指针——形状闭面；
+        // 内容字节绝不进流由写入面保证，此处只查引用形状）。
+        if (event.sessionRefs !== undefined) {
+          if (!Array.isArray(event.sessionRefs)) {
+            throw new ProjectError("user/message 的 sessionRefs 须为数组或缺省");
+          }
+          for (const ref of event.sessionRefs) {
+            if (ref === null || typeof ref !== "object") {
+              throw new ProjectError("user/message 的 sessionRefs 成员须为对象");
+            }
+            if (typeof ref.sessionId !== "string" || ref.sessionId === "") {
+              throw new ProjectError("user/message 的 sessionRefs 成员需要 sessionId 非空字符串");
+            }
+            if (
+              ref.upToSeq !== undefined &&
+              (typeof ref.upToSeq !== "number" || !Number.isInteger(ref.upToSeq) || ref.upToSeq < 1)
+            ) {
+              throw new ProjectError("user/message 的 sessionRefs 成员 upToSeq 须为正整数或缺省");
+            }
+          }
+        }
         break;
       case "assistant/message":
       case "assistant/attempt":
