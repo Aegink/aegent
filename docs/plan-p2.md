@@ -181,7 +181,7 @@
 
 **词汇表预判（#23 候选）**：I10 superseded log-only 元事件；I4 插件生命周期（plugin/attach 等）若需落流走同一管线。I5/I7/I8/I11/I14/H6/D12 预判零事件。
 
-#### T-P2-301 · M7 · 统一 deadline 库（超时原语集中） `[ ]`
+#### T-P2-301 · M7 · 统一 deadline 库（超时原语集中） `[x]`
 - **依据需求**：M7（"统一 deadline 库；超时逻辑集中，不在各工具里重复实现"）
 - **上游首选参考**：dsh·util/timeout/src/index.ts（deadline token + 剩余时间 + 超时组合的行为）
 - **取什么 / 别抄什么**：取"deadline 是可查询的共享原语（不是每次 setTimeout）"行为；不抄其包结构（我方单域文件）
@@ -189,6 +189,7 @@
 - **验收**：`npx vitest run src/kernel/deadline.test.ts`——remaining/expired/combine + 工具层回归（M6 既有用例全绿）
 - **依赖**：无（本批首卡）
 - **风险 / 未知**：无
+- **完成记录**：2026-09-28。产出：①`src/kernel/deadline.ts` 新件（超时原语的家）——`Deadline` 类（构造器 private，唯一入口 `fromTimeoutMs(code, timeoutMs, now?)` 过 J24 闸换算绝对时点；`remainingMs(now?)` 可为负〔已超期量〕/ `expired(now?)` 到点即过期〔剩余 ≤ 0〕/ `throwIfExpired(now?)` 抛类型化 TimeoutError〔code 报归属、timeoutMs 报**起算预算**——J22 归属纪律〕/ `expiredError()`）+ `Deadline.combine(...ds)`（最早到期者胜且 **code 一并继承**——先到层是到期错误的归属层；undefined 过滤、全无效返回 undefined 如实表达"无约束"不虚构永不过期、同时点取先入稳定）+ `withDeadline(deadline, promise)`（withTimeout 的原语化形态：无 deadline 直通；**拿到手已过期立即 reject 不武装定时器**〔combine 出的外层剩余耗尽场景——剩余查询的价值兑现〕；内层 promise 不被抛弃纪律原样保留）+ `TOOL_TIMEOUT`/`MAX_TIMER_DELAY_MS`/`assertTimerDelayMs`/`TimeoutError` 家四件自 timeout.ts 迁入（J22/J24/C14 注释随家迁移）。②`src/kernel/timeout.ts` 变薄壳——家四件 re-export（env.ts/loop.ts 消费面零变动）+ `withTimeout` 薄壳（= fromTimeoutMs + withDeadline，校验/错误形状/内层不抛弃全收敛到原语层）+ clampTimeout（B18）与 IdleWatchdog（J23）原样保留。③registry M6 段接线——`effectiveTimeoutMs` 经 `Deadline.fromTimeoutMs(TOOL_TIMEOUT, ...)` 造 token + `withDeadline(budget, ...)` 武装（预算以可查询/可组合的 deadline token 表达，不再是裸 setTimeout）；catch 的 J22 code 归属判定零变化。**时钟纪律**：now 参数显式注入（测试显式时钟不依赖 fake timers），缺省 Date.now() 是绝对截止抽象的固有需要（头注释写明）。测试 `src/kernel/deadline.test.ts` 14 用例：remaining 递减与负值 / expired 到点边界 / J24 闸四路 / throwIfExpired 类型化归属 / combine 五态（早者胜+code 继承+外层先到+undefined 过滤+同点先入）/ withDeadline 六态（直通同一实例/结算透传/超时 reject/内层 rejection 原样/迟到结算零 unhandled/已过期立即 settle）。**验收**：`npx vitest run src/kernel/deadline.test.ts src/kernel/timeout.test.ts src/kernel/tools/registry.test.ts` → **46 passed**（14 新 + timeout 17〔J22/B18/J24/J23 既有全绿——薄壳化语义零变化〕+ registry 15〔M6 既有全绿〕）；`npx tsc --noEmit` 干净。**零事件定形（M7）**：deadline 是纯内存原语零落流零词汇表扩展（EVENT_TYPES 27 基线不变，收口复核）。**记档**：①dsh 的 signal 融合形态（AbortSignal.any + Symbol.dispose）不取——我方 P0 是 promise 风格，等价纪律 = 错误带 code 调用方按 code 路由（J22 既有定形）；②dsh 的 `timeoutMs <= 0` 无超时哨兵不取（我方纪律：禁用由不构造/不武装表达——combine 全无效返回 undefined 同源）；③clampTimeout 留守 timeout.ts（B18 参数合并语义，产出 ms 数值非 deadline token，与原语分层）。
 
 #### T-P2-302 · I5 · 插件 SDK（第三方可写不碰内核） `[ ]`
 - **依据需求**：I5（"插件 SDK；第三方可写插件而不碰内核"）

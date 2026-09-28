@@ -1,42 +1,31 @@
 /**
- * 超时错误码作用域（J22）——超时是带 code 的结构化错误，不是裸 signal
- * （形状取 dsh·timeout-policy：TOOL_TIMEOUT 常量同时作 deadline 分类码与
- * 结构化错误 code，"without racing or abandoning the tool promise"）。
+ * 超时原语的 promise 包装与看门狗（M7 统一后：原语家在 ./deadline.ts——
+ * TimeoutError / TOOL_TIMEOUT / J24 守卫随原语集中迁移，本文件 re-export
+ * 保持既有导入面零变动）。
  *
- * 作用域纪律（J22 的验收本体）：嵌套的多层超时靠 **code 判定归属**——
- * 内层先到时 TimeoutError{code: 内层} 作为普通 rejection 透传给外层，
- * 外层不得把它误读成自己的超时；反之外层先到时内层 promise 不受影响、
- * 继续执行到自然结算。这与 DSH 的 `timeoutOf(signal, code)` 判定同构。
+ * 本文件保留三件超时设施：
+ * - clampTimeout：超时参数三档合并（B18）；
+ * - withTimeout：总时长预算的 promise 包装（薄壳——内部消费 deadline
+ *   原语，超时逻辑集中不再各写一份 setTimeout）；
+ * - IdleWatchdog：空闲 / 可重臂空闲看门狗（J23）。
  *
- * DSH 的"signal 换回/恢复"是其洋葱链 exec 形状的机制（dispatch 期间临时
- * 换派生 signal、finally 恢复上游）——我方 P0 是 promise 风格，无 exec 可换；
- * 等价纪律即"错误带 code，调用方按 code 路由"，链上的 signal 接线在
- * 阶段 3/4（T-3-04 取消、T-4-05 ToolContext）定形时照本注释落实。
+ * 三种超时语义的分工：withTimeout/deadline 是**总时长**（从起点计，不管
+ * 活动）；IdleWatchdog 是**空闲**（无活动才计时）；可重臂是空闲的续期
+ * 用法（pulse）。
  *
- * C14 提醒：TimeoutError 是 Error 实例，不得直接落事件载荷；落盘时转
- * JsonRecord（如 {code, timeoutMs, message}）。
+ * J22 超时错误码作用域纪律（注释本体随家迁至 deadline.ts）：嵌套的多层
+ * 超时靠 code 判定归属——内层先到时 TimeoutError{code: 内层} 作为普通
+ * rejection 透传给外层，外层不得把它误读成自己的超时。
  */
 
-/** DSH 同款：本模块拥有的默认码（模型调用/工具调用的超时归属判定）。 */
-export const TOOL_TIMEOUT = "TOOL_TIMEOUT";
+import { assertTimerDelayMs, Deadline, withDeadline, TimeoutError } from "./deadline.js";
 
-/**
- * Node setTimeout 的最大可靠延迟（J24）：超过 2^31-1 毫秒的 delay 会被
- * Node **静默钳到 1ms**——超时立刻误触发。本模块所有定时器武装点必须过
- * assertTimerDelayMs 显式抛错（dsh assertTimerDelay 同款：主动暴露坏输入，
- * 不是模仿静默钳）。
- */
-export const MAX_TIMER_DELAY_MS = 2_147_483_647;
-
-/** J24 武装点过闸：非正 / 非有限 / 超 2^31-1 一律抛错。 */
-export function assertTimerDelayMs(ms: number, name = "timeoutMs"): number {
-    if (!Number.isFinite(ms) || ms <= 0 || ms > MAX_TIMER_DELAY_MS) {
-        throw new Error(
-            `${name} 必须是不超过 ${String(MAX_TIMER_DELAY_MS)} 的正有限毫秒数，收到 ${String(ms)}`,
-        );
-    }
-    return ms;
-}
+export {
+    TOOL_TIMEOUT,
+    MAX_TIMER_DELAY_MS,
+    assertTimerDelayMs,
+    TimeoutError,
+} from "./deadline.js";
 
 /**
  * 超时参数三档合并（B18，dsh clampTimeout 同构）：提示（requested）缺省时用
@@ -56,43 +45,16 @@ export function clampTimeout(
     return Math.min(requested ?? def, max);
 }
 
-export class TimeoutError extends Error {
-    /** 触发超时的作用域码（如 TOOL_TIMEOUT）——嵌套场景下的"谁超时"判据 */
-    readonly code: string;
-    readonly timeoutMs: number;
-
-    constructor(code: string, timeoutMs: number) {
-        super(`操作在 ${timeoutMs}ms 内未完成（code=${code}）`);
-        this.name = "TimeoutError";
-        this.code = code;
-        this.timeoutMs = timeoutMs;
-    }
-}
-
 /**
  * 给 promise 套上 ms 毫秒预算：超时 reject TimeoutError{code, timeoutMs}；
- * 未超时正常结算并清除定时器。
- *
- * 内层 promise 绝不被抛弃：无论它最终成功还是失败，.then 都挂着 handler
- * （超时后内层的结果只是 no-op），因此"内层完成晚于超时"不会产生
- * unhandled rejection——这是验收的第二条，也是 Promise.race 裸写法
- * （内层 rejection 无人接）会踩的坑。
+ * 未超时正常结算并清除定时器。M7 起为 deadline 原语的薄壳
+ * （fromTimeoutMs 换算绝对截止 + withDeadline 武装——校验、错误形状与
+ * "内层 promise 绝不被抛弃"纪律全部收敛到原语层，本函数只保留既有
+ * 调用面）。内层完成晚于超时不会产生 unhandled rejection（withDeadline
+ * 纪律）。
  */
 export function withTimeout<T>(code: string, ms: number, promise: Promise<T>): Promise<T> {
-    assertTimerDelayMs(ms);
-    return new Promise<T>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new TimeoutError(code, ms)), ms);
-        promise.then(
-            (value) => {
-                clearTimeout(timer);
-                resolve(value);
-            },
-            (reason: unknown) => {
-                clearTimeout(timer);
-                reject(reason);
-            },
-        );
-    });
+    return withDeadline(Deadline.fromTimeoutMs(code, ms), promise);
 }
 
 /**

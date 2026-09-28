@@ -1,6 +1,6 @@
 # 上游参考仓库快照
 
-> 由 `tools/snapshot.sh` 于 2026-09-27 生成，**请勿手改**。刷新：`bash tools/snapshot.sh`
+> 由 `tools/snapshot.sh` 于 2026-09-28 生成，**请勿手改**。刷新：`bash tools/snapshot.sh`
 >
 > 调研报告中引用代码或行为时，必须能对应到下表 commit，否则结论不可复现。
 

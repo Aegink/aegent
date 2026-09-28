@@ -24,7 +24,8 @@ import path from "node:path";
 import type { ChatTool } from "../../models/provider.js";
 import type { JsonRecord, JsonValue } from "../events.js";
 import type { ToolExecutionResult } from "../loop.js";
-import { TOOL_TIMEOUT, TimeoutError, withTimeout } from "../timeout.js";
+import { TOOL_TIMEOUT, TimeoutError } from "../timeout.js";
+import { Deadline, withDeadline } from "../deadline.js";
 import { isContractResult, projectResult, type ContractResult } from "./contract.js";
 import type { ToolContext } from "./context.js";
 import type { ExecutionEnv } from "./env.js";
@@ -333,15 +334,17 @@ export class ToolRegistry {
     };
     // M6：工具声明 timeoutMs 则在执行外包总预算——超时转结构化 isError
     // 结果（code=TOOL_TIMEOUT，dsh toolTimeoutResult 同构：模型看到的是
-    // 可路由的错误码而非静默失败）。内层工具 promise 不被抛弃（withTimeout
+    // 可路由的错误码而非静默失败）。内层工具 promise 不被抛弃（withDeadline
     // 纪律），迟到结算被丢弃且零 unhandled rejection；code 判据保持 J22
     // 作用域纪律——内层自有码的超时不在此误捕。B16：call.runtimeMeta 是
-    // step 开始时的快照——提供时优先于 def 现值。
+    // step 开始时的快照——提供时优先于 def 现值。M7：预算以 deadline token
+    // 表达（可查询/可组合的共享原语），不再是裸 setTimeout。
     const effectiveTimeoutMs = call.runtimeMeta?.timeoutMs ?? def.timeoutMs;
-    const raw =
+    const budget =
       effectiveTimeoutMs !== undefined
-        ? withTimeout(TOOL_TIMEOUT, effectiveTimeoutMs, Promise.resolve(def.execute(args, ctx)))
-        : def.execute(args, ctx);
+        ? Deadline.fromTimeoutMs(TOOL_TIMEOUT, effectiveTimeoutMs)
+        : undefined;
+    const raw = withDeadline(budget, Promise.resolve(def.execute(args, ctx)));
     let executed: ToolExecution;
     try {
       executed = await raw;
