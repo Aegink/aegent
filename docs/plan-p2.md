@@ -518,7 +518,7 @@
 - **风险 / 未知**：预判部分覆盖——核对后可能缩为小补丁
 - **完成记录**：2026-09-28。**盘点清单（三类启发式计数 × 排空复位语义）**：①**loop 内 per-turn 计数——复位已在位**（loop.ts:622-628：A14 强制收轮标记与残留看门狗 / B13 预算耗尽标记〔计数作用域按 promptId 本就不跨〕/ B20 输出触顶续跑计数，均随 runTurn 开始复位——与 cancelCause 同步）；②**F28 抖动计数（RapidRefillGuard）——不复位是设计**：抖动检测的正是"压缩-填充循环无法收敛"的**会话级跨轮模式**，干活（toolTurnsSinceCompact 拉过阈值）自然归 0 是其解锁机制（rapid-refill.ts 头注释）；排空复位反而放过跨 prompt 的抖动循环，记档；③**J19 熔断计数（fault-tolerance.ts）——不复位是设计**：熔断器是端点健康状态，恢复机制 = 半开探测而非输入边界，跨 turn 持续；④**I11 重复工具提醒计数——缺口补齐（本卡增量）**：guard.ts `repeat-tool-reminder` 的连续重复计数此前跨轮持续，新输入后的重复调用被上一轮计数污染（A16"计数污染"正中此处）——订阅面扩 `["tool/call", "user/message"]`，advise 遇 user/message（**排空点 = drainQueue 注入落 user/message，与常规输入同形状**——queue.ts:16 排空点语义）复位 lastKey/count。测试 guard.test 扩 1 用例（排空复位后两次重复不达阈档 + 复位后重新数到 3 正常触发——污染面与复位面双向断言）。**验收**：`npx vitest run src/mcp/guard.test.ts src/kernel/loop.test.ts src/kernel/queue.test.ts` → **61 passed**；`npx tsc --noEmit` 干净。**记档**：①zcode 锚 turn-loop.ts 的"排空点复位"在我方对应时点是 user/message 落流（我方 queue 排空在 step 边界、注入形状 = 常规输入——词汇表内 user/message 就是输入的流内事实，无独立 drain 事件，词汇表零扩展）；②promptCounter/traceCounter 是单调 id 发生器非启发式计数，不在盘点面。
 
-#### T-P2-510 · F19 · 压缩分两级（microcompact 与 compact 各有边界事件） `[ ]`
+#### T-P2-510 · F19 · 压缩分两级（microcompact 与 compact 各有边界事件） `[x]`
 - **依据需求**：F19（"压缩分两级（microcompact 与 compact 各有边界事件）；两级"）
 - **上游首选参考**：zcode·session.events.ts（两级压缩的事件分型行为）
 - **取什么 / 别抄什么**：取"两级各自有边界事件、语义分型"行为；不抄其事件 schema（我方词汇表管线）
@@ -526,6 +526,7 @@
 - **验收**：`npx vitest run src/context/ src/session/messages.test.ts`（扩）——两级触发边界 + 词汇表管线（若立案）
 - **依赖**：无（压缩引擎 P0 已落）
 - **风险 / 未知**：microcompact 的事件语义是本卡最大定形点（展卡预判 → 执行定形立案 #26）
+- **完成记录**：2026-09-28。**#26 定形结论：零事件扩展（不立案）**——定形过程中发现我方 microcompact 层**已存在**：F8 result-trim（T-P1-104，批次 7）即轮内轻量裁剪（工具结果旧副本裁剪）。两级各自边界：①**micro 层 = F8 result-trim**——确定性投影规则（keepLast=4 尾部保留 + maxChars=2000 公开常量、幂等、无决策点），裁剪视图 = 事件流 + 规则的**可重算派生物**，无新事实需事件承载；②**full 层 = compaction 引擎**——摘要内容是不可重算的外部事实，已两段落流（T-P1-93 started/completed/failed + #18 strategy 闭集 {full_summary, recent_window_fallback}）。**定形判据**：不是"是否改变请求面"（卡面判据字面——我方裁剪确实改变请求面）而是"事实是否可从流重算"——zcode 落 `microcompact_boundary` 事件（payload 含 trigger/strategy/pre-post token/cleared/kept toolCallIds）是因为其 microcompact 是**引擎决策**（cleared/kept 选择不可重算）；我方是纯规则投影，E6 深度零扩展（派生事实）与 M4 回收零扩展（进程内事实）同一纪律族。zcode 事件不取，known-diffs.md 记档。**两级边界语义文档化**：result-trim.ts 头注释新增两级总述（micro = 确定性投影零事件 / full = 溢出·换模·指纹触发两段落流；次序 = 溢出判定按**未裁尺寸**〔assembly.ts:993 detectLocalOverflow 输入自 startNewContextWindow 原始投影〕、请求面按**裁剪视图**〔loop.buildMessages 尾部〕）。测试 `src/context/two-level.test.ts` 2 用例：①次序语义钉死——同一窗口"未裁超限、裁剪后不超限"仍判溢出（判定不消费裁剪视图，反证双视图分离）；②两级并存——micro 裁剪幂等 + 未超 maxChars 零动作（触发边界）+ compaction 四触发源（溢出/换模/指纹）与裁剪判据互不依赖。**验收**：`npx vitest run src/context/ src/session/messages.test.ts` → **142 passed**（134 + 8）；`npx tsc --noEmit` 干净。**记档**：①"何时 micro 何时 full"的操作面：micro 每次请求面构建确定性执行（无开关无触发条件——规则即触发）；full 由 F1 溢出 / F24 换模 / F26 指纹 / F11 兜底链驱动，两层无互锁（micro 裁剪不解除 full 溢出——判定按未裁尺寸）；②EVENT_TYPES 29 基线不变（events.test 计数断言复核）。
 
 #### T-P2-511 · F27 · 压缩策略具名（摘要式 / 前缀式闭集） `[ ]`
 - **依据需求**：F27（"压缩策略具名（摘要式 / 前缀式）；Memento / PrefixCompaction"）
