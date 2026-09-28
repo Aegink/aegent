@@ -2,14 +2,59 @@
 
 > 本文件接续 [`plan-p1-progress.md`](plan-p1-progress.md)（P0 全程 + P1 批次 1-14，2026-09-28 P1 全部收官定格，全量基线 **1293 passed / 1 skipped**，词汇表 26 事件）——**自批次 15（P2 段）起的执行进度**（批次报告 / 待澄清 / 人工确认清单）记入本文件。
 > 执行协议沿用 [`plan-p0.md`](plan-p0.md) §0；计划本体在 [`plan-p2.md`](plan-p2.md)（48 条 / 五批 / 52 卡，2026-09-28 一次展卡——P0 式全阶段计划）。
-> **待澄清编号接续（#22 起）**——词汇表立案管线不变（`l0-events.md` §8 落地记录全局连续，批次 15a 收官后现为 **27 事件**；**最新全量基线 1337 passed / 1 skipped**）。
-> **批次进度**：15a ✅（2026-09-28 收官，本文件报告）→ 15b（下一批）→ 15c → 15d → 15e。
+> **待澄清编号接续（#22 起）**——词汇表立案管线不变（`l0-events.md` §8 落地记录全局连续，批次 15b 收官后仍为 **27 事件**；**最新全量基线 1379 passed / 1 skipped**）。
+> **批次进度**：15a ✅（2026-09-28）→ 15b ✅（2026-09-28 收官，本文件报告）→ 15c（下一批）→ 15d → 15e。
 
 ---
 
 > **P3 已立项**（2026-09-28 用户裁决）：U 域 8 条产品化层见 [`plan-p3.md`](plan-p3.md)——本文件提示词链执行到 15e 收官后，接 `plan-p3-progress.md` 的批次 16 提示词。
 
-## 批次 15b 提示词（当前活跃）
+## 批次 15c 提示词（当前活跃）
+
+```
+继续 aegent 批次 15c 的实施（P2 段第三批：插件生态与远程后端；10 条需求 ID：M7
+I5 I4 I7 I8 I10 I11 I14 H6 D12）。推进模式不变：一会话一批次——本会话只做批次
+15c，做完收官即停，批次 15d 由下一会话接力。批次 15c 卡序已展（docs/plan-p2.md
+§5，11 张 T-P2-301~311），读 §1 全局约束后从第一张 [ ] 任务卡开始执行（执行协议
+沿用 docs/plan-p0.md §0）。本批特有的注意：
+1. 展卡锚点核对以 20260926_P2研究_批次圈定建议.md（48/48 零勘误）为底，plan-p2.md
+   各批卡序头已落展卡核对结论——执行中若发现锚点与实际不符仍走 §0 待澄清。
+2. 词汇表预判（#23 候选）：I10 superseded——`approval/superseded {requestId,
+   byRequestId, reason?}` log-only 元事件；I4 插件生命周期若需落流走同一管线；
+   M7/I5/I7/I8/I11/I14/H6/D12 预判零事件——执行时逐条定形并复核 EVENT_TYPES 27
+   基线。
+3. 全量基线 1379 passed / 1 skipped；词汇表 27 事件；工程纪律工具链四件收官必跑。
+   收官出组报告（写入本文件），更新本文件的批次 15d 提示词与全量基线后停止——
+   不要开始 15d。不要问要不要继续。
+```
+
+## 批次 15b · 判官与权限 P2（3 条：C40 C55 C42）
+
+**状态**：✅ 收官（2026-09-28）——4 张卡全关（T-P2-201 ~ 204）。
+
+**展卡注意**（承接展卡核对结论，卡序头在 plan-p2.md §4）：
+1. 3 条锚点以 P2 研究 48/48 核对为底，展卡抽核 qwen·classifier.ts 与 codex·execpolicy 全部命中——零勘误。
+2. C42 是本批大件（C56 批次 9 已落四件接口面——abstain 落回人/预算/超时常量/受管可强制，判官本体是兑现卡）；C40 的 literal 分型 key:value 文本解析在 P1 T-P1-67/68 已部分落地——执行中发现并按增量定形。
+3. 词汇表预判零新事件候选（C42 判官裁决走审计面不走事件、C40/C55 规则结构扩展非事件）——执行兑现。
+
+### 批次 15b 报告（收官于 2026-09-28）
+
+- **打勾情况**：4/4 卡全关（T-P2-201 C40 具名参数匹配 / T-P2-202 C55 拒绝面纪律 / T-P2-203 C42 两阶段 LLM 判官 / T-P2-204 收口四面盘点 + 快照），每勾附「命令 + 结果摘要」。
+- **展卡结论**：3 条锚点零勘误；三处关键定形——①C40 增量=声明式 `paramMatchers`（RuleSource 新字段，加载时与解析产物合并为单一 `toolParamMatchers`）+ 全分型 AND（command/path/domain 在 specifier 命中后再 AND 参数 matcher，`evaluateParamMatchers` 提取为共享原语）+ linter `unknown-param-name`（knownToolParams 缺省面取 `builtinToolParamNames()` 真实 schema 派生）；②C55 的"justification 必填"定形=声明时必须非空白（codex 同款），"forbidden 须给替代做法"=deny 规则缺 alternatives 由 linter 检出（警告不拦截——既有纪律不动，拦截会违反"既有拒绝零变化"）；③C42 语义分流——qwen 失败落 shouldBlock=true，我方 C56 已裁决 unavailable→abstain 落回人（fail-closed 到人）；abort 在判官内消化为 abstain（非失败、审计 phase:"aborted"）。
+- **产出的文件**：`src/policy/` 六新件（judge.ts / denial.ts / rule-match.ts〔自 rule-loader 分出——行数纪律〕 + judge.test.ts / judge.snapshot.test.ts / denial.test.ts / param-matchers.test.ts 四测试件中的三个新文件 + 分出件）；扩 `rule-loader.ts`（RuleSource/LoadedRule 声明面字段 + 加载归一 + re-export）/ `specifier-kinds.ts`（evaluateParamMatchers 共享原语）/ `linter.ts`（unknown-param-name + missing-alternatives 两检出 + knownToolParams 选项）/ `rules.ts`（ruleDenial 回调）/ `chain.ts`（PolicyOutcome.denial）/ `decision.ts`（Verdict.denial 透传）/ `gate.ts`（deniedResult 渲染接线）/ `judge-port.ts`（JudgeRequest.signal 槽位）/ `assembly.ts`（knownToolParams + judgeModel/requireJudge 装配 + builtinToolParamNames 接入）/ `tools/builtin/index.ts`（builtinToolParamNames——桩依赖注册表读真实 schema，模块级缓存）/ `architecture-policy.json`（policy.requires += models——judge 的真实依赖入册）+ 测试扩（gate.test 判官全链 5 用例与 C40 两用例、linter.test、builtin.test 漂移对账）。
+- **验收台账**：全量 `npx vitest run` **1379 passed / 1 skipped**（批次入口基线 1337 → 净增 42，158 文件）；`npx tsc --noEmit` 全程干净；`count-features.sh` = **337（层数 20；P2=48）不变**；`check-doc-links.sh`（显式传参 12 文件）**1232 链接 0 失效**；`license-audit.sh` exit 0（CLEAN-ROOM 无明确声明 / SOURCEMAP 无）；`architecture:check` 全程 0 error / 21 warning（基线保持）；`vocabulary:check` 0 问题。
+- **词汇表扩展**：**零扩展**（27 事件不变）——C42 判官裁决走 L2 审计面（`JudgeAuditRecord`，logger 宣告面与审批审计同款）不走事件流；C40/C55 均为规则结构扩展非事件。EVENT_TYPES 27 基线复核在位（events.test 计数断言）。
+- **盘点结论**：四面零真冲突（T-P2-204 完成记录）：①判官只在 gate ask/abstain 分支被咨询（快照行为断言 allow/deny 规则命中时判官零调用零审计）；②匹配在参数 JSON 校验后（坏参数直达链底 TOOL_ARGUMENTS_INVALID，规则与判官零触达）；③既有拒绝面零破坏（逐字节等值断言 + 全量回归绿）；④快照即规格 = `judge.snapshot.test.ts` 一条链（git push 无规则命中 → 链 abstain → gate ask 分支 → 判官 Stage1 risky→Stage2 abstain → PendingApprovals 挂起 → 人答 deny 生效，全程零执行）。
+- **新发现的约束或坑**：(a) **host server 静态托管用例偶发端口竞争**（server.test 在全量并行下两度偶发失败、单跑复证通过——Windows 测试基建面，非回归；两次均重跑全量绿）；(b) **测试文件 400 行上限**——rule-loader.test/rule-loader.ts/judge.test 三度触线，拆出 param-matchers.test.ts / rule-match.ts（rule-loader re-export 保持导入面零变动）/ 判官 gate 集成段并入 gate.test.ts（基线 21 warning 保持）；(c) **policy.requires 白名单**——judge.ts import models/{identity,provider} 触发两处 requires 警告，判官是真实的 provider 消费方（C42 卡面明示），按"先声明后收紧"纪律把 models 声明进 policy.requires（architecture-policy.json）；(d) **合并信号的取消/超时区分**——AbortSignal.any 合并用户信号与超时信号后，catch 里必须判 `userSignal.aborted`（超时触发的是合并信号、用户信号未中止），否则取消会被误标 unavailable；(e) **builtinToolParamNames 的桩依赖面**——registerBuiltinTools 按 deps 门控注册（todo/webfetch/question/task/session_query 等），桩面须补齐（todoEmit noop / createNetworkGuard({policy:"deny"}) / new PendingApprovals() / runSubagent stub / {dbPath:"stub"}）才能派生全量参数名表。
+- **偏离计划的地方**：逐卡「完成记录」已记档——要点：C40 文本 DSL 的 key:value 解析保持 literal 分型 only（Windows 盘符 `C:\` 形状守卫——扩分型解析会违反"既有规则零变化"），声明式 paramMatchers 承担其余分型；C55 "justification 必填"非"每条规则必填"（破坏既有配置）而是"声明时非空白"；T-P2-204 盘点面②的"C17 JsonValue 校验"需求 ID 与原文不符（C17=插件事件泛型逃生舱，requirements.md:279）——按实质执行（匹配在参数校验后）不阻塞记档。
+- **遗留风险与未知**（→ 人工确认清单）：**新增 1 项**——判官 prompt 质量（机验只钉结构：Stage1 闭集/Stage2 标签格式/三值路由；语义质量需真实判官模型联调评估）。技术债记档：gate→判官的 turn 级 signal 未接线（LoopContext 无信号面——JudgeRequest.signal 槽位已在）；ChatRequest 无 maxOutputTokens 面（Stage1 低 token 由 prompt 纪律承担）；会话历史不喂判官（JudgeRequest 无历史面）；MCP 工具的参数 matcher 拒配（qwen 支持、我方 fail-closed 记档——15c I4/I5 插件面或需回头扩展）；qwen 的 MCP 参数匹配面不取。
+- **批次完成定义核对**：全部 ✅（plan-p2.md §8 的 15b 相关项——4 卡全勾 + tsc 干净 + 337 不变 + 1232 链接 0 失效 + license exit 0 + 零扩展复核 EVENT_TYPES 27 + 报告/提示词/基线更新）。
+- **下一批**：**批次 15c 插件生态与远程后端（10 条：M7 I5 I4 I7 I8 I10 I11 I14 H6 D12）**——卡序已展（plan-p2.md §5，11 张 T-P2-301~311），下一会话直接执行，做完收官即停。
+- **下一批提示词**：见本文件头部「批次 15c 提示词（当前活跃）」。
+
+---
+
+## 批次 15b 提示词（已执行归档）
 
 ```
 继续 aegent 批次 15b 的实施（P2 段第二批：判官与权限 P2；3 条需求 ID：C40 C55
@@ -85,3 +130,4 @@ docs/plan-p0.md §0）。本批特有的注意：
 | 需求ID / 批次 | 为什么不能机验 | 人工要怎么确认 | 状态 |
 | --- | --- | --- | --- |
 | —（批次 15a） | 本批无新增项——全部验收机可验（本地库/内存面，无真实端点/平台联调；维护 CLI 已本机端到端实测） | — | 无需人工确认 |
+| C42（批次 15b） | 判官 prompt 的语义质量机验只钉结构（Stage1 闭集 / Stage2 标签格式 / 三值路由——judge.test 钉死）；真实模型下"safe/risky 分界是否合理、Stage2 理由是否可信"需联调评估 | 配置 J3 judge 段（AssemblyOptions.judgeModel）接真实判官模型，跑若干真实 ask 场景：核对 judge-audit 日志里 reviewed 的 outcome/reason 是否与人的判断一致（假阳性修正率），unavailable/aborted 比例是否可接受 | 待人工确认（判官模型接入时） |
