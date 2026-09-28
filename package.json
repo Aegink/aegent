@@ -23,7 +23,8 @@
     "sandbox:provision": "npm run build && node dist/src/cli/provision.js",
     "mock:llm": "npm run build && node dist/src/cli/mock-llm-run.js",
     "tauri:build": "tauri build",
-    "tauri:dev": "tauri dev"
+    "tauri:dev": "tauri dev",
+    "architecture:read": "node tools/architecture-read.mjs"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

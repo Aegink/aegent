@@ -428,7 +428,7 @@
 
 **词汇表预判（#26/#27 候选）**：F19 microcompact 边界事件 / F27 strategy 值域扩展 / I10（15c）superseded / A16 零扩展预判 / L9 计时载荷扩展（step/end timing 已有——分段计时的载荷扩展候选）。执行时逐条立案。
 
-#### T-P2-501 · T3 · 模块阅读包命令（architecture:read <module>） `[ ]`
+#### T-P2-501 · T3 · 模块阅读包命令（architecture:read <module>） `[x]`
 - **依据需求**：T3（"给定模块 id 产出读该模块所需的上下文包；降低读一个模块要开十个文件的成本"）
 - **上游首选参考**：zcode·architecture-policy.yaml（policy 元数据驱动的行为）
 - **取什么 / 别抄什么**：取"policy 元数据 → 阅读清单"行为；不抄其 yaml（我方 policy.json）
@@ -436,6 +436,7 @@
 - **验收**：`node tools/architecture-read.mjs host`——输出含 server.ts/protocol.ts + requires 邻接；坏模块 id 类型化拒绝；`npx vitest run src/diagnostics/architecture-read.test.ts`（fixture 隔离）
 - **依赖**：无（本批首卡）
 - **风险 / 未知**：无
+- **完成记录**：2026-09-28。产出 `tools/architecture-read.mjs`——`collectReadingPack(policy, moduleId, repoRoot)` 纯函数（policy 对象注入——fixture 测试与真实 CLI 同一组装面；未知 id throw"未知模块 id：…可用模块：…"类型化错误）+ CLI（`node tools/architecture-read.mjs <id> [--json]`；人读分节文本 / --json 机器消费；坏 id stderr + exit 1、缺参数 exit 2）；阅读包四件：①本模块 publicEntrypoints（存在性过滤）；②域内文件（roots 递归 .ts，实现/测试分列——test-utils 计入测试面）；③requires 邻接模块逐个给 entrypoints（优先）+ 顶层 .ts（未收敛域的常用入口——不递归）+ 域内计数；④missing 模块如实标注（requires 引用悬空）。policy 元数据单一事实源（复用 architecture-check.mjs 的 loadPolicy 带形状自检）。package.json `architecture:read` script 在位。测试 `src/diagnostics/architecture-read.test.ts` 4 用例（fixture 隔离 tmp 目录）：四件齐（入口 + 域内/测试分列 + 邻接顶层不递归 + fileCount 含嵌套）/ 邻接 entrypoints 优先且存在性过滤 / 未知 id 类型化拒绝（列可用 id）/ roots 不存在空清单（形状自检是 loadPolicy 职责，fail-soft 如实表达）。**验收**：`node tools/architecture-read.mjs host` → 阅读包含 src/host/server.ts、protocol.ts 全 12 实现件 + 11 测试件 + requires 邻接 kernel/policy/session 三模块（kernel 顶层文件 + 域内 100 个 .ts）；`node tools/architecture-read.mjs nosuch` → exit 1 类型化错误；`npx vitest run src/diagnostics/architecture-read.test.ts` → **4 passed**；`npx tsc --noEmit` 干净；`--json` 机器面 + `npm run architecture:read -- policy` 复验通过。**记档**：①反向面（consumers——谁 requires 本模块）不取（卡面四件清单之外，YAGNI——改动影响面走 architecture:check 的既有检查）；②邻接模块"无收敛入口"给顶层 .ts 是阅读可用性定形（严格只给 entrypoints 会让 16/21 个模块的邻接条目为空）。
 
 #### T-P2-502 · T4 · 架构豁免带理由（现状核对 + 强制面收口） `[ ]`
 - **依据需求**：T4（"架构豁免必须带理由，写在同一条抑制语句上"）
