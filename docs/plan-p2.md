@@ -394,7 +394,7 @@
 - **风险 / 未知**：Tauri 双窗口最小面（conf 声明即可达——交互随人工确认）
 
 - **完成记录**：2026-09-28。验收 `npx vitest run src/diagnostics/tauri-shell.test.ts`——19 passed 全组（双窗口形状断言：main+pip、alwaysOnTop/visible:false/尺寸/url=pip.html；capabilities 双窗口 core:default 不变；pip 三资产在位 + 只读渲染面断言〔含"不发 prompt/approve 写命令"负断言〕）；`npx vitest run src/scheduler/computer.test.ts src/host/ src/diagnostics/` 99 passed；`npx tsc --noEmit` 干净。产出：①tauri.conf.json windows 数组 +pip 第二窗口（320×240、alwaysOnTop、visible:false、url=pip.html——conf 声明即可达）+ capabilities windows=["main","pip"]（core:default 最小面不变）；②ui/ 三新件 pip.html/pip.js/pip.css——**S4 操作审计消费端**：同一 WS 事件流过滤 computer_* 的 tool/call+tool/result，渲染动作标注（参数摘要）+ 操作截图（tool/result meta.data base64）；surfaceId 前缀 pip- 观察端不参与租约竞取，**零写命令**（只读渲染面）；③N5 分型四→五类（+computer_operation——wire 载荷闭集非事件，词汇表零扩展）+ S4 `ComputerDeps.notify` 桥接点（装配方桥到 NotificationHub.publish——K9 联动线）。zcode 锚的桌面服务集成不取（🔴 只学行为）。视觉面 → 人工确认清单。
-#### T-P2-410 · K6+K7 · 飞书与 Slack 端（场景③ IM 端，一卡两适配器） `[ ]`
+#### T-P2-410 · K6+K7 · 飞书与 Slack 端（场景③ IM 端，一卡两适配器） `[x]`
 - **依据需求**：K6（"飞书；场景③ 的 IM 端"）+ K7（"Slack；有现成参考"）——一卡承载（同构适配器两份，锚点行为一致）
 - **上游首选参考**：pideck·FeishuBridge.ts + opencode·packages/slack（webhook 入站 + 消息格式化 + 审批应答回传的同构行为）
 - **取什么 / 别抄什么**：取"IM = webhook 入站 + 事件流格式化出站 + 审批卡片应答"三行为；不抄其平台 SDK 依赖（HTTP API 直调——fetch 零依赖）；凭据环境变量（全局约束 3）
@@ -403,6 +403,7 @@
 - **依赖**：T-P2-405（N5 分型）、T-P2-403（webhook 面复用）
 - **风险 / 未知**：平台 API 真实联调（mock 面 + 人工确认清单）；replySource 闭集扩展走立案
 
+- **完成记录**：2026-09-28。验收 `npx vitest run src/host/im-feishu.test.ts src/host/im-slack.test.ts`——14 passed（两实现各 7：凭据缺省跳过 + url_verification 握手 + 消息→prompt 派发抢约序 + 审批应答链 source 标识 + deny/回环过滤/摘要出站/token 缓存/错误面）；`npx vitest run src/host/` 80 passed；`npx tsc --noEmit` 干净；architecture:check 0 error / 21 warning。产出：①**#25 立案落地**——APPROVAL_SURFACES 闭集追加 "feishu"/"slack"（闭集扩展非事件，词汇表零扩展；应答经 approve.source 走既有 replySource 审计面——C6 通道零改线）；②`src/host/im-surface.ts`（同构 ImSurface 接口 + parseApprovalCommand 文本指令协议 + dispatchPrompt/dispatchApproval〔**抢约派发**：acquire→命令→release——N7 单 holder 下 IM 应答 = 声明控制端，卡内定形记档〕+ summarizeEvent 摘要渲染）；③`src/host/im-feishu.ts`（tenant_access_token 缓存 + im/v1/messages 出站 + im.message.receive_v1 入站）；④`src/host/im-slack.ts`（chat.postMessage Bearer + Events API + bot_id 回环过滤）。两锚点的平台 SDK/Electron/CardKit 不抄（fetch 直调零依赖）；凭据环境变量注入零落盘（缺省跳过）。平台真实联调 → 人工确认清单。
 #### T-P2-411 · 收口 · 15d 盘点 + 快照 `[ ]`
 - **依据需求**：批次 15d 收口
 - **要产出**：盘点面：①S1/M11/S2 三消费方 × M1/M2 job 底座（派发/取号/核销语义一致性）；②S4 最强审批 × unattended 恒拒（C 族 fail-closed 不变量在操作类工具上的兑现）；③K9 画中画 × S4 操作审计（消费端同源）；④K6/K7 IM × APPROVAL_SURFACES 追加（#25 立案状态）+ replySource 链路（L2 审计）；⑤N5 四类分型 × deliveryKind push/poll 两语义；⑥P4 语音 × 附件域白名单扩展纪律；⑦快照即规格：webhook 入站 → job 派发 → 会话 → N5 通知一条

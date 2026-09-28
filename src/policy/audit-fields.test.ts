@@ -20,7 +20,7 @@ function makeAuditedPending() {
 
 describe("L2 · 字段闭集（多端真实端面已并入）", () => {
   it("surface 与 approver 是封闭清单（批次 14 并入 web/desktop——只追加不替换）", () => {
-    expect([...APPROVAL_SURFACES]).toEqual(["cli", "web", "desktop"]);
+    expect([...APPROVAL_SURFACES]).toEqual(["cli", "web", "desktop", "feishu", "slack"]);
     expect([...APPROVAL_APPROVERS]).toEqual(["user", "timeout"]);
   });
 

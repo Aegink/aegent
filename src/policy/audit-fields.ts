@@ -19,8 +19,13 @@ import type { ApprovalAnnouncement } from "./pending.js";
 // 字段闭集（P0 单端起步；批次 14 多端真实端面并入——只追加不替换）
 // ---------------------------------------------------------------------------
 
-/** 审批发起的界面端。P0 只有 CLI；批次 14（K5/K2·T-P1-128）并入 web/desktop。 */
-export const APPROVAL_SURFACES = ["cli", "web", "desktop"] as const;
+/**
+ * 审批发起的界面端。P0 只有 CLI；批次 14（K5/K2·T-P1-128）并入
+ * web/desktop；批次 15d（K6/K7·T-P2-410）并入 IM 端 feishu/slack
+ * （**#25 立案**：闭集扩展非事件——词汇表零扩展；IM 端应答经
+ * approve.source 走既有 replySource 审计面）。
+ */
+export const APPROVAL_SURFACES = ["cli", "web", "desktop", "feishu", "slack"] as const;
 export type ApprovalSurface = (typeof APPROVAL_SURFACES)[number];
 
 /** 审批人：人（经 owner 通道）/ 审批超时（C50）。 */
