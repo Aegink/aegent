@@ -677,7 +677,7 @@ export interface SurfaceDetachEvent extends EventBase {
  * 切掉卸载事件即自然失效（用户显式回退优先于容量决策）。
  * 会话级投影事实：session/revert 同款纪律——不要求 turn/step 开合上下文
  * （turn 挂流内最后轮）；触发面 = offload wire 命令（编排面选定后落流）。
- * 词汇表 25→26 立案 #21（待追认）；回退面 = 删事件 + 校验/投影/触发面接线。
+ * 词汇表 25→26 立案 #21（✅ 已追认 2026-09-28）；回退面 = 删事件 + 校验/投影/触发面接线。
  */
 export interface ImageOffloadTarget {
   /** 被卸载图片所在的 user/message 事件 seq。 */
@@ -700,7 +700,7 @@ export interface ImageOffloadEvent extends EventBase {
  * 同款纪律：不要求 turn/step 开合上下文、turn 挂流内最后轮空流兜 0、不进
  * 模型历史、跨 compaction 保留）。reason 可选自由文本（清理超保留/手动/
  * 外部触发——展示与检索用，非判据字段）。
- * 词汇表 26→27 立案 #22（待追认）；回退面 = 删事件 + project 校验 + 归档器
+ * 词汇表 26→27 立案 #22（✅ 已追认 2026-09-28）；回退面 = 删事件 + project 校验 + 归档器
  * 落流接线（约 1.5 小时，全部为新增面——不触碰既有 26 事件语义）。
  */
 export interface SessionArchiveEvent extends EventBase {
