@@ -8,7 +8,9 @@ import { expectPaired } from "../test-support/event-asserts.js";
 import { DenyPermissionBroker, ManualPermissionBroker } from "./broker.js";
 import { PendingApprovals, PermissionTimeout, type ApprovalAnnouncement } from "./pending.js";
 import { createToolGateLayer, evaluateToolPolicy, TOOL_NOT_ACTIVE, TOOL_POLICY_DENIED } from "./gate.js";
-import { JudgeBudgetTracker, JUDGE_INPUT_BUDGET_CHARS } from "./judge-port.js";
+import { createLlmJudge } from "./judge.js";
+import { JudgeBudgetTracker, JUDGE_INPUT_BUDGET_CHARS, JUDGE_REQUESTS_PER_SESSION } from "./judge-port.js";
+import { modelIdentity } from "../models/identity.js";
 import { assemblePolicyChain } from "./chain.js";
 import { builtinRuleMatchers } from "./matchers.js";
 import { loadedRuleMatch, loadRules } from "./rule-loader.js";
@@ -942,5 +944,139 @@ describe("C40 · gate 层参数上下文喂入匹配（T-P2-201）", () => {
     );
     expect(denied.isError).toBe(true);
     expect(received).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C42 判官 × gate 全链（T-P2-203；mock provider——C56 槽位兑现；
+// payload/makeNext 复用本文件既有 helper）。
+
+const judgeAbortErr = (): Error =>
+  Object.assign(new Error("This operation was aborted"), { name: "AbortError" });
+
+/** 判官旁路脚本机（ judge.test.ts 的 scriptedProvider 同款，本文件独立一份）。 */
+function judgeScriptedProvider(responses: string[]): {
+  provider: import("../models/provider.js").ModelProvider;
+  calls: import("../models/provider.js").ChatRequest[];
+} {
+  const calls: import("../models/provider.js").ChatRequest[] = [];
+  let i = 0;
+  return {
+    calls,
+    provider: {
+      async *streamChat(req: import("../models/provider.js").ChatRequest): AsyncIterable<import("../kernel/events.js").StreamChunk> {
+        calls.push(req);
+        const text = responses[i] ?? "";
+        i++;
+        if (req.signal?.aborted === true) throw judgeAbortErr();
+        yield { type: "text-delta", text };
+        yield { type: "done" };
+      },
+    },
+  };
+}
+
+function gateWithJudge(
+  responses: string[],
+  gateOpts?: { judgeBudget?: JudgeBudgetTracker },
+) {
+  const scripted = judgeScriptedProvider(responses);
+  const judge = createLlmJudge({
+    provider: scripted.provider,
+    identity: modelIdentity("mock", "judge-fast"),
+  });
+  const received: ToolCallPayload[] = [];
+  const layer = createToolGateLayer({
+    chain: assemblePolicyChain({
+      user: [
+        createRuleSetModule({
+          name: "user-rules",
+          rules: loadRules([{ raw: "bash(git push)", action: "ask" }], builtinRuleMatchers),
+          match: loadedRuleMatch(),
+          ruleText: (r) => r.raw,
+        }),
+      ],
+    }),
+    broker: new DenyPermissionBroker(),
+    sessionId: "s1",
+    judge,
+    judgeBudget: gateOpts?.judgeBudget ?? new JudgeBudgetTracker(),
+  });
+  const next = makeNext(async (e2) => {
+    received.push(e2);
+    return { content: `executed ${e2.name}` };
+  });
+  return { layer, next, received };
+}
+
+describe("C42 · mock provider 全链（gate × C56 槽位）", () => {
+  it("judge allow → 放行执行（broker 零调用——假阳性免挂起）", async () => {
+    const { layer, next, received } = gateWithJudge(["safe"]);
+    const result = await layer(
+      { sessionId: "s1" },
+      payload({ command: "git push" }),
+      next,
+    );
+    expect(result).toEqual({ content: "executed bash" });
+    expect(received).toHaveLength(1);
+  });
+
+  it("judge deny → 类型化拒绝（content 带判官拒绝与理由）", async () => {
+    const { layer, next, received } = gateWithJudge([
+      "risky",
+      "<verdict>deny</verdict><reason>强推危险</reason>",
+    ]);
+    const result = await layer(
+      { sessionId: "s1" },
+      payload({ command: "git push" }),
+      next,
+    );
+    expect(result.isError).toBe(true);
+    expect((result.error as { code: string }).code).toBe(TOOL_POLICY_DENIED);
+    expect(result.content).toContain("判官拒绝");
+    expect(result.content).toContain("强推危险");
+    expect(received).toHaveLength(0);
+  });
+
+  it("judge abstain → 落回 broker ask（C56 槽位——缺省 Deny broker 下拒绝）", async () => {
+    const { layer, next, received } = gateWithJudge([
+      "risky",
+      "<verdict>abstain</verdict><reason>无法判断</reason>",
+    ]);
+    const result = await layer(
+      { sessionId: "s1" },
+      payload({ command: "git push" }),
+      next,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content).toContain("未配置审批客户端");
+    expect(received).toHaveLength(0);
+  });
+
+  it("预算耗尽 → 判官不被调直接落回 ask（预算耗尽不放行）", async () => {
+    const budget = new JudgeBudgetTracker();
+    // JUDGE_REQUESTS_PER_SESSION 次记账把次数耗尽
+    for (let i = 0; i < JUDGE_REQUESTS_PER_SESSION; i++) budget.expend(1);
+    const { layer, next, received } = gateWithJudge(["safe"], { judgeBudget: budget });
+    const result = await layer(
+      { sessionId: "s1" },
+      payload({ command: "git push" }),
+      next,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content).toContain("未配置审批客户端");
+    expect(received).toHaveLength(0);
+  });
+
+  it("字符预算耗尽同样跳过判官（input budget 槽位）", async () => {
+    const budget = new JudgeBudgetTracker();
+    budget.expend(JUDGE_INPUT_BUDGET_CHARS);
+    const { layer, next } = gateWithJudge(["safe"], { judgeBudget: budget });
+    const result = await layer(
+      { sessionId: "s1" },
+      payload({ command: "git push" }),
+      next,
+    );
+    expect(result.isError).toBe(true);
   });
 });

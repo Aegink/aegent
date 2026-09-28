@@ -33,6 +33,12 @@ export interface JudgeRequest {
   readonly sessionId: string;
   /** 原裁决理由（便宜路径为何落到 ask——判官修正假阳性的依据）。 */
   readonly askReason: string;
+  /**
+   * 取消信号（C42/T-P2-203 判官本体的 abort 语义面）：用户取消 → 判官
+   * abstain（非失败、不计错误）。gate 当前无 turn 级 signal 面，缺省
+   * 不传——信号接线随 loop 信号面扩展（记档）。
+   */
+  readonly signal?: AbortSignal;
 }
 
 /** 判官裁决闭集：abstain 是显式结果（不是缺省、不是失败吞没）。 */

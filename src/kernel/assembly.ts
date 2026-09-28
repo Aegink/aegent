@@ -127,6 +127,8 @@ import {
 } from "./goal.js";
 import type { ModelIdentity } from "../models/identity.js";
 import { createLlmSummarizer, truncatingSummarizer } from "../context/llm-summarizer.js";
+import { createLlmJudge } from "../policy/judge.js";
+import { JudgeBudgetTracker } from "../policy/judge-port.js";
 
 // truncatingSummarizer（P0 内置摘要器）随 F5/T-P1-18 移入 context/llm-
 // summarizer.ts（context 不反向依赖 kernel/assembly）——此处 re-export
@@ -328,6 +330,21 @@ export interface ChildAssemblyOptions {
     provider: import("../models/provider.js").ModelProvider;
     identity: ModelIdentity;
   };
+  /**
+   * C42/T-P2-203 判官模型（J3 配置面独立 judge 段）：提供时装配构造
+   * createLlmJudge（两阶段 LLM 复核）挂 gate 的 judge 槽位 + 会话级
+   * JudgeBudgetTracker（C56 预算槽）。缺省 undefined = 无判官（零行为
+   * 变化——ask 全部落人，可降级运行）。
+   */
+  judgeModel?: {
+    provider: import("../models/provider.js").ModelProvider;
+    identity: ModelIdentity;
+  };
+  /**
+   * C56 受管强制位：true 且判官 abstain/不可用 → 类型化失败非静默落回
+   * （judgeModel 未提供时无判官可强制——此位只随 judgeModel 生效）。
+   */
+  requireJudge?: boolean;
   /**
    * B8a/T-P1-20 网络档（D3）：提供时装配创建 NetworkGuard（工具层唯一
    * 网络入口）并注册 webfetch 工具；缺省 undefined = 无网络工具（P0
@@ -828,6 +845,32 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
     ...(options.activation !== undefined ? { activation: options.activation } : {}),
     // C33：无人值守活查询（缺省 undefined = 零行为变化）
     ...(options.unattended !== undefined ? { unattended: options.unattended } : {}),
+    // C42/T-P2-203：判官本体（J3 独立 judge 段）+ 会话级预算记账（C56
+    // 预算槽）+ L2 审计（judge 决策可追溯——logger 宣告面，与审批审计
+    // 同款；零词汇表事件）。缺省 undefined = 无判官（ask 全部落人）。
+    ...(options.judgeModel !== undefined
+      ? {
+          judge: createLlmJudge({
+            provider: options.judgeModel.provider,
+            identity: options.judgeModel.identity,
+            audit: (record) =>
+              logger?.info("judge-audit", {
+                phase: record.phase,
+                tool: record.tool,
+                ...(record.outcome !== undefined ? { outcome: record.outcome } : {}),
+                ...(record.reason !== undefined ? { reason: record.reason } : {}),
+                ...(record.stage !== undefined ? { stage: record.stage } : {}),
+                ...(record.model !== undefined ? { model: record.model } : {}),
+                ...(record.durationMs !== undefined
+                  ? { durationMs: record.durationMs }
+                  : {}),
+              }),
+            onWarn: (message) => logger?.warn("judge", { userContent: message }),
+          }),
+          judgeBudget: new JudgeBudgetTracker(),
+          ...(options.requireJudge === true ? { requireJudge: true } : {}),
+        }
+      : {}),
   });
 
   // —— I1 hooks（T-P1-07）：registry 聚合层挂三点位外层（hooks → gate →
