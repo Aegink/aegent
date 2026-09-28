@@ -344,7 +344,7 @@
 
 - **完成记录**：2026-09-28。验收 `npx vitest run src/obs/feedback.test.ts`——6 passed（落流 + 关联校验 + commandId 面 + 校验闭面 + doctor 随附 + 词汇表计数）；全量 `npx vitest run` 1558 passed / 1 skipped（首跑 1 偶发失败复跑全绿——Windows 并行偶发先例）；`npx tsc --noEmit` 干净；vocabulary:check 0 问题。产出：①**词汇表 28→29 立案 #24**——`feedback/note {kind, targetSeq?, commandId?, comment?, doctorSummary?}` log-only 元事件（反馈是会话事实——与 M11 进程内事实分野定形；l0-events.md §3.2 行 29 + §8 落地记录 24 + §3.2 标题计数残留 27 顺手校正为 29）；②`src/obs/feedback.ts`（submitFeedback 提交面：kind 闭集/二选一/seq 存在性/长度防呆 + doctorSummary 随附——codex attachment 同构）；③wire 面：AgentRequest +feedback 请求（协议校验 + REQUEST_TYPES）+ agent-process 落流分支（seq 存在性 kernel 侧内联——kernel 不依赖 obs 防环）+ repl `/feedback <up|down> <seq|commandId> [评语]` 命令。偏离：repl 最小面不带 --doctor 标志（doctorSummary 字段承载随附，调用方生成——CLI 面后续按需接）。
 
-#### T-P2-405 · N5 · 推送（状态变更分类推送到端） `[ ]`
+#### T-P2-405 · N5 · 推送（状态变更分类推送到端） `[x]`
 - **依据需求**：N5（"状态变更可推送到端"；自研无锚点）
 - **上游首选参考**：自研（需求明示）——行为参照我方 host 域既有 broadcast 面
 - **取什么 / 别抄什么**：——
@@ -353,6 +353,7 @@
 - **依赖**：T-P2-402/403（job 面的分类源）
 - **风险 / 未知**：poll 补投的游标存续（连接级内存——重连走 query 恢复复用）
 
+- **完成记录**：2026-09-28。验收 `npx vitest run src/host/notify.test.ts`——12 passed（四类分型闭集 + publish 形状/拒绝 + push 订阅/异常隔离 + poll 游标补投/环形缓冲 + HostBridge 三类归类集成 4）；`npx vitest run src/host/` 65 passed 无回归；`npx tsc --noEmit` 干净。产出：①`src/host/notify.ts`——`NotificationHub`（NOTIFICATION_KINDS 四类闭集 fail-closed + NotificationPayload {kind, seq, at, data?} wire 载荷非事件——词汇表零扩展）+ push 即时回调（监听器异常隔离）+ poll 游标补投（连接级环形缓冲缺省 256 条，`poll(cursor)` 取 seq 后缀——游标推进由调用方以最大 seq 表达，重放安全）；②HostBridge 集成——approval_requested/question_asked → approval_pending、turn/end 事件 → turn_settled、roster attach/detach → surface_changed（**既有 notification 广播零变化**——分型是附加发布面，notifyHub 不提供时零行为变化）；③job_settled 分型的 job 源桥接随装配域（K6/K7 卡消费 N5 分型时接线——本卡交付 Hub 面）。
 #### T-P2-406 · P4 · 语音转文字（附件域 STT 扩展） `[ ]`
 - **依据需求**：P4（"语音转文字；非必需"）
 - **上游首选参考**：dsh·api-speech-to-text（STT provider 调用 + 文本落流的行为）

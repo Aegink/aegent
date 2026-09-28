@@ -30,6 +30,7 @@ import {
   type SessionRouter,
 } from "./protocol.js";
 import type { DeliveryKind } from "./lease.js";
+import { NotificationHub } from "./notify.js";
 
 /** 写命令闭集（租约校验适用面——只读查询如 policy/check 不在此列）。 */
 const WRITE_COMMANDS = new Set(["prompt", "steer", "cancel", "approve", "question/answer"]);
@@ -46,6 +47,9 @@ export interface HostBridgeOptions {
   agent: AgentChannel;
   /** roster 事件的落流面（提供时 surface 注册/断开 append 进会话流）。 */
   store?: SessionStore;
+  /** N5 分类通知面（提供时挂起/轮结算/端面变化按分型发布——既有
+   * notification 广播零变化，分型是附加发布面）。 */
+  notifyHub?: NotificationHub;
 }
 
 interface SurfaceRegistration {
@@ -77,6 +81,14 @@ export class HostBridge implements SessionRouter {
     const sessionId = this.options.host.sessionId;
     if (message.type === "event") {
       for (const listener of this.listeners) listener(sessionId, message.event);
+      // N5 分型：轮结算事实的分类发布（turn/end 是结算时点）
+      if (message.event.type === "turn/end") {
+        this.options.notifyHub?.publish("turn_settled", {
+          sessionId,
+          turn: message.event.turn,
+          reason: message.event.reason,
+        });
+      }
       return;
     }
     if (message.type === "accepted") {
@@ -108,6 +120,10 @@ export class HostBridge implements SessionRouter {
     const { type: name, ...payload } = message as { type: string } & Record<string, unknown>;
     for (const registration of this.registrations.values()) {
       registration.server.notify(sessionId, name, payload);
+    }
+    // N5 分型：挂起类事实的分类发布（approval_requested/question_asked）
+    if (name === "approval_requested" || name === "question_asked") {
+      this.options.notifyHub?.publish("approval_pending", { sessionId, name, payload });
     }
   }
 
@@ -251,5 +267,12 @@ export class HostBridge implements SessionRouter {
     for (const event2 of committed) {
       for (const listener of this.listeners) listener(this.options.host.sessionId, event2);
     }
+    // N5 分型：端面进退的分类发布
+    this.options.notifyHub?.publish("surface_changed", {
+      sessionId: this.options.host.sessionId,
+      type,
+      surfaceId,
+      ...(rest as Record<string, unknown>),
+    });
   }
 }
