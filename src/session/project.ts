@@ -112,6 +112,12 @@ export interface SessionProjection {
    * 的引用校验数据源（全流维护；校验按流内事实）。
    */
   userAttachments: Map<number, readonly AttachmentRef[]>;
+  /**
+   * I10/T-P2-306 审批取代链（approval/superseded 的事实源）：每条取代
+   * 关系整值全记（E12 同款）——链式查询与 revert 切割都在数组上做。
+   * 单链约束（出度 ≤1）与无环由投影期校验保证（见消费分支）。
+   */
+  approvalSupersessions: Array<{ seq: number; requestId: string; byRequestId: string }>;
   /** 已卸载图片出现集合（键 `${seq}:${index}`）——重复卸载拒绝判据（只进不退）。 */
   offloadedImages: Set<string>;
 }
@@ -134,6 +140,7 @@ function emptyProjection(): SessionProjection {
     todos: [],
     goals: [],
     userAttachments: new Map(),
+    approvalSupersessions: [],
     offloadedImages: new Set(),
   };
 }
@@ -425,6 +432,20 @@ export class Projector {
           throw new ProjectError("session/archive 的 reason 须为字符串");
         }
         break;
+      case "approval/superseded":
+        // I10/T-P2-306 审批取代（log-only 元事件）：两 id 非空字符串 +
+        // reason 可选字符串（形状校验）；单链/无环等语义约束在投影期
+        // （那里的消费分支是唯一消费面，fail-closed 一处）。
+        if (typeof event.requestId !== "string" || event.requestId === "") {
+          throw new ProjectError("approval/superseded 需要 requestId 非空字符串");
+        }
+        if (typeof event.byRequestId !== "string" || event.byRequestId === "") {
+          throw new ProjectError("approval/superseded 需要 byRequestId 非空字符串");
+        }
+        if (event.reason !== undefined && typeof event.reason !== "string") {
+          throw new ProjectError("approval/superseded 的 reason 须为字符串");
+        }
+        break;
       case "image/offload": {
         // P2/T-P1-125 图片卸载决策（dsh required-on-read 语义——校验闭面）：
         // targets 非空；每项 seq 必须指向流内携带附件的 user/message；
@@ -637,6 +658,36 @@ export class Projector {
         break; // E5 lineage 是子流头部事实：投影不消费（读流头部即可查）
       case "session/archive":
         break; // Q8 归档标记是 log-only 流尾事实：投影不消费（归档档读取面消费）
+      case "approval/superseded": {
+        // I10：取代链索引（C31 三事实的第四面）——单链约束（一个
+        // requestId 至多被取代一次）与无环由投影期强制（坏流拒绝投影，
+        // 与 image/offload 的引用校验同款 fail-closed）。
+        const existing = s.approvalSupersessions.find((a) => a.requestId === event.requestId);
+        if (existing !== undefined) {
+          throw new ProjectError(
+            `approval/superseded 重复取代：${event.requestId} 已被 ${existing.byRequestId} 取代` +
+              `（单链约束——一个请求至多被取代一次）`,
+          );
+        }
+        // 成环检测：沿取代者的链走（谁取代了取代者→…），触达被取代者即成环
+        let cursor: string | undefined = event.byRequestId;
+        const seen = new Set<string>();
+        while (cursor !== undefined && !seen.has(cursor)) {
+          if (cursor === event.requestId) {
+            throw new ProjectError(
+              `approval/superseded 成环：${event.requestId} 与 ${event.byRequestId} 的取代链互为前后（无最新有效裁决）`,
+            );
+          }
+          seen.add(cursor);
+          cursor = s.approvalSupersessions.find((a) => a.requestId === cursor)?.byRequestId;
+        }
+        s.approvalSupersessions.push({
+          seq: event.seq,
+          requestId: event.requestId,
+          byRequestId: event.byRequestId,
+        });
+        break;
+      }
       case "plugin":
         break; // C17 泛型逃生舱是 log-only 载荷：投影不消费（消费方按 namespace 自取）
       case "command/run":
@@ -665,6 +716,7 @@ export class Projector {
       modelSwitches: s.modelSwitches.filter((m) => m.seq <= cut),
       todos: s.todos.filter((t) => t.seq <= cut),
       goals: s.goals.filter((g) => g.seq <= cut),
+      approvalSupersessions: s.approvalSupersessions.filter((a) => a.seq <= cut),
       openTurn: s.openTurn && s.openTurn.seq <= cut ? s.openTurn : null,
     };
   }
@@ -673,4 +725,32 @@ export class Projector {
 /** 便捷全量投影（E3 基准入口 / E4 消费入口）：events → 有效会话投影。 */
 export function project(events: readonly SessionEvent[]): SessionProjection {
   return Projector.fold(events).effectiveProjection();
+}
+
+/**
+ * I10 消费面一：沿取代链找**最新有效裁决**的 requestId（链尾——没有
+ * 再被取代的那个）。入参是链上任一节点的 id（被取代者或当前有效者都
+ * 接受——有效者返回自身）。取代 ≠ 撤销：被取代的历史节点仍在流内，
+ * 此函数只回答"现在该看谁"。
+ */
+export function effectiveApproval(state: SessionProjection, requestId: string): string {
+  const chain = supersessionChain(state, requestId);
+  return chain[chain.length - 1]!;
+}
+
+/**
+ * I10 消费面二：完整取代链 [起点, 取代者, …, 最新有效]（历史全保留的
+ * 读取原语——链上每一跳都是流内持久事实）。未知 id 返回 [id] 单元素
+ * （不是取代链成员就是没被取代——两义在"链尾 = 最新有效"下同解）。
+ */
+export function supersessionChain(state: SessionProjection, requestId: string): readonly string[] {
+  const chain: string[] = [requestId];
+  const seen = new Set<string>([requestId]);
+  let cursor = state.approvalSupersessions.find((a) => a.requestId === requestId)?.byRequestId;
+  while (cursor !== undefined && !seen.has(cursor)) {
+    chain.push(cursor);
+    seen.add(cursor);
+    cursor = state.approvalSupersessions.find((a) => a.requestId === cursor)?.byRequestId;
+  }
+  return chain;
 }

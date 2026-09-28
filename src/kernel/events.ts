@@ -709,6 +709,31 @@ export interface SessionArchiveEvent extends EventBase {
   reason?: string;
 }
 
+/**
+ * I10/T-P2-306 审批复核取代（`approval/superseded`）：一条审批裁决被后续
+ * 裁决取代的事实——**取代本身是持久事实**（zcode·workspace_hook_review_
+ * superseded 的行为：`{interactionId, supersededByInteractionId}` 落流）。
+ * 语义三层：①取代 ≠ 撤销——被取代的事实仍在流内（历史全保留），本条是
+ * 叠加事实；②链式——取代者之后还可被再取代（A←B←C），投影沿链取值；
+ * ③单链约束——一个 requestId 至多被取代一次（重复取代/成环在投影期
+ * 类型化拒绝，fail-closed）。
+ * **log-only 元事件**（session/archive / plugin 同款纪律：不要求 turn/step
+ * 开合上下文、不进模型历史、跨 compaction 保留）；投影消费 = 取代链索引
+ * （supersededBy/supersedes 两向，C31 三事实的第四面——"最新有效裁决"的
+ * 查询底座）。requestId/byRequestId 是审批请求 id（tool callId 面）。
+ * reason 可选自由文本（非判据）。
+ * 词汇表 27→28 立案 #23（回退面 = 删事件 + project 两处 + 索引消费）。
+ */
+export interface ApprovalSupersededEvent extends EventBase {
+  type: "approval/superseded";
+  /** 被取代的审批请求 id。 */
+  requestId: string;
+  /** 取代它的审批请求 id。 */
+  byRequestId: string;
+  /** 取代原因（可缺省——自由文本，非判据）。 */
+  reason?: string;
+}
+
 import type { AttachmentRef } from "../attachments/types.js";
 
 export type SessionEvent =
@@ -738,9 +763,10 @@ export type SessionEvent =
   | SurfaceAttachEvent
   | SurfaceDetachEvent
   | ImageOffloadEvent
-  | SessionArchiveEvent;
+  | SessionArchiveEvent
+  | ApprovalSupersededEvent;
 
-/** 27 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
+/** 28 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
 export const EVENT_TYPES = [
   "turn/start",
   "turn/end",
@@ -769,6 +795,7 @@ export const EVENT_TYPES = [
   "surface/detach",
   "image/offload",
   "session/archive",
+  "approval/superseded",
 ] as const;
 
 export type SessionEventType = (typeof EVENT_TYPES)[number];

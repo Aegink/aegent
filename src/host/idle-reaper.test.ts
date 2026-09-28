@@ -157,8 +157,8 @@ describe("会话空闲回收（M4/T-P2-104）", () => {
     expect(JSON.stringify(storage.readAll("s-child"))).toBe(before);
 
     // 零事件扩展复核（卡面定形：回收是进程内运行时事实，不进词汇表——
-    // EVENT_TYPES 27 基线不变）
-    expect(EVENT_TYPES).toHaveLength(27);
+    // EVENT_TYPES 28 基线（P2/T-P2-306 #23 审批取代后））
+    expect(EVENT_TYPES).toHaveLength(28);
     storage.close();
   });
 });

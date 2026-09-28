@@ -3,7 +3,7 @@ import { performance } from "node:perf_hooks";
 import { describe, expect, it } from "vitest";
 
 import type { NewSessionEvent, SessionEvent } from "../kernel/events.js";
-import { Projector, project, ProjectError } from "./project.js";
+import { effectiveApproval, Projector, project, ProjectError, supersessionChain } from "./project.js";
 import { SessionStore } from "./store.js";
 
 /** 一轮完整 turn 的 8 个事件（turn → user → step → assistant → tool 对 → step 闭 → turn 闭）。 */
@@ -383,3 +383,4 @@ describe("与 SessionStore 的接线（E16 写入前校验）", () => {
     expect(store.load("s1")).toHaveLength(7);
   });
 });
+

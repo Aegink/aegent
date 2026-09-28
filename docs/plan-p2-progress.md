@@ -124,6 +124,7 @@ docs/plan-p0.md §0）。本批特有的注意：
 | # | 需求ID | 我看到的（含路径:行） | 与需求文档的矛盾 | 建议 | 裁决与落实 |
 | --- | --- | --- | --- | --- | --- |
 | #22 | Q8 | 归档动作需要"何时因何归档"的流内落点，但词汇表 26 事件无承载（plan-p2.md §3 展卡预判的 #22 候选；codex·rollout/src/lib.rs:87 `ARCHIVED_SESSIONS_SUBDIR` 锚） | 无矛盾——需求未明示事件形状，属"状态变更必须有事件承载"（不变量 1）的补齐 | 新增 `session/archive {reason?}` log-only 会话级元事件（归档前落流尾，随数据进归档档；幂等——流尾已有不重复追加）；词汇表 26→27；回退面齐备（约 1.5 小时） | 2026-09-28 立案（T-P2-102 落地）；events.ts / project.ts / invariants.ts / archive.ts 已接线，events.test 计数 27；l0-events.md §8 落地记录 22 在案；**#22 追认于 2026-09-28（用户："认可22"），此案关闭，§3.2 正式计数 27 事件定案** |
+| #23 | I10 | 取代事实需要流内持久落点，但词汇表 27 事件无承载（plan-p2.md §5 展卡预判的 #23 候选；zcode·session.events.ts `WorkspaceHookReviewSuperseded{interactionId, supersededByInteractionId}` 锚——取代事件落流） | 无矛盾——需求明示"取代本身是持久事实"（不变量 1 的直接要求） | 新增 `approval/superseded {requestId, byRequestId, reason?}` log-only 元事件（单链约束：一个 requestId 至多被取代一次；投影消费 = 取代链索引 + effectiveApproval/supersessionChain 查询；投影期重复/成环 fail-closed 拒绝）；词汇表 27→28；回退面齐备（约 1.5 小时） | 2026-09-28 立案（T-P2-306 落地）；events.ts / project.ts（校验+消费+查询）/ invariants.ts 已接线，events.test/replay.test/idle-reaper.test 计数 28；l0-events.md §8 落地记录 23 在案；**待用户追认** |
 
 ## 人工确认清单（批次 15 起）
 
