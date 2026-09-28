@@ -93,7 +93,56 @@ export interface ChainNext<E, R> {
   readonly trace: ChainTrace;
   /** I13（P1）槽位：单层预算。P0 恒为空槽。 */
   readonly budget: ChainBudget;
+  /**
+   * I14（T-P2-308）跨层跳：跳到名为 target 的层继续本分派——中间层**零
+   * 执行零回程**（进与出都不经过），目标层及其内层正常执行并回程，结果
+   * 直接返回本层（claude-official 的 `next.to(e, tier)` 语义：continues
+   * this dispatch at a tier——🔴 只学语义零代码摘取）。
+   *
+   * 跳层是**显式声明面**（fail-closed 三重闸）：①只有 composeChain 的
+   * skippableLayers 白名单内的层名**可以**被跳过（缺省空名单 = 无跳层
+   * 能力）；②审批层（UNSKIPPABLE_LAYER_NAMES）恒不可跳——即使误配置进
+   * 白名单也拒绝（C 族不变量）；③target 层名必须存在（从本层向内首个
+   * 匹配；找不到拒绝）。三种拒绝都是类型化 ChainJumpError——配置错误
+   * 大声失败不静默。to 与 next 共用"每层至多一次"配额（跳层也是一次
+   * 交棒）。
+   */
+  to?: (e: E, target: string) => Promise<R>;
 }
+
+/** I14 跨层跳的类型化拒绝（配置错误 fail-closed——不静默降级为普通 next）。 */
+export class ChainJumpError extends Error {
+  readonly code: "JUMP_TARGET_NOT_FOUND" | "JUMP_TARGET_NOT_ALLOWED" | "JUMP_LAYER_PROTECTED";
+  constructor(
+    code: "JUMP_TARGET_NOT_FOUND" | "JUMP_TARGET_NOT_ALLOWED" | "JUMP_LAYER_PROTECTED",
+    message: string,
+  ) {
+    super(message);
+    this.name = "ChainJumpError";
+    this.code = code;
+  }
+}
+
+/**
+ * I14 跳层调用入口：无 to 的 next 上跳层 = 类型化拒绝（不静默 undefined）。
+ */
+export function jumpTo<E, R>(next: ChainNext<E, R>, e: E, target: string): Promise<R> {
+  if (next.to === undefined) {
+    throw new ChainJumpError(
+      "JUMP_TARGET_NOT_ALLOWED",
+      `本 next 未装配跳层能力（跳向 ${target}）——composeChain 装配的链恒带 to；` +
+        "手工构造的 next 需显式装配（I14 显式声明面）",
+    );
+  }
+  return next.to(e, target);
+}
+
+/**
+ * I14 审批层硬保护名单（C 族不变量）：这些名字的层**恒不可被跳过**——
+ * 即使装配方误把它们写进 skippableLayers 也拒绝（权限判定不可被跳层
+ * 绕过；fail-closed 纪律的机制面兑现）。
+ */
+export const UNSKIPPABLE_LAYER_NAMES = ["gate"] as const;
 
 /** 链底：引擎自身动作（工具真的执行 / 请求真的发出 / turn 真的收尾）。 */
 export type ChainTerminal<C, E, R> = ($: C, e: E) => R | Promise<R>;
@@ -151,9 +200,16 @@ export function composeChain<C, E, R>(options: {
   budgetMs?: number;
   /** 时钟注入（T-2-03 纪律：可测性优于读全局钟）；缺省 Date.now。 */
   now?: () => number;
+  /**
+   * I14：可被跳过的层名白名单（`next.to` 的授权面）。缺省空名单 = 无跳层
+   * 能力（to 恒拒绝——零行为变化 + fail-closed 缺省）；审批层名单
+   * （UNSKIPPABLE_LAYER_NAMES）在本名单之上硬保护，列出也恒拒。
+   */
+  skippableLayers?: readonly string[];
 }): ChainExecutor<C, E, R> {
   const { point, terminal, layers } = options;
   const nowFn = options.now ?? Date.now;
+  const skippable = options.skippableLayers ?? [];
 
   const dispatch = async (
     index: number,
@@ -183,29 +239,78 @@ export function composeChain<C, E, R>(options: {
         : Object.freeze({
             remaining: options.budgetMs - (nowFn() - startedAt),
           });
+    const runFrom = (startIndex: number, e2: E): Promise<R> =>
+      dispatch(
+        startIndex,
+        $,
+        e2,
+        [...walked, { layer: index, name: layerNameOf(layer, index) }],
+        startedAt,
+      ).then((inner) => {
+        innerTruncated = inner.truncated;
+        return inner.value;
+      });
     const next: ChainNext<E, R> = Object.assign(
       (e2: E) => {
         if (nextCalled) {
           throw new Error(
-            `洋葱链第 ${index} 层重复调用 next（point=${point}）——每层至多一次`,
+            `洋葱链第 ${index} 层重复调用 next/to（point=${point}）——每层至多一次`,
           );
         }
         nextCalled = true;
-        return dispatch(
-          index + 1,
-          $,
-          e2,
-          [...walked, { layer: index, name: layerNameOf(layer, index) }],
-          startedAt,
-        ).then((inner) => {
-          innerTruncated = inner.truncated;
-          return inner.value;
-        });
+        return runFrom(index + 1, e2);
       },
       {
         point,
         trace: Object.freeze([...walked]) as ChainTrace,
         budget,
+        to: (e2: E, target: string) => {
+          if (nextCalled) {
+            throw new Error(
+              `洋葱链第 ${index} 层重复调用 next/to（point=${point}）——每层至多一次`,
+            );
+          }
+          nextCalled = true;
+          // 目标解析：从本层向内首个名字匹配的层（同名多层确定性地取最近）
+          let targetIndex = -1;
+          for (let i = index + 1; i < layers.length; i++) {
+            if (layerNameOf(layers[i], i) === target) {
+              targetIndex = i;
+              break;
+            }
+          }
+          if (targetIndex === -1) {
+            throw new ChainJumpError(
+              "JUMP_TARGET_NOT_FOUND",
+              `跨层跳目标不存在：${target}（point=${point}，本层 index=${String(index)}——从本层向内无此名）`,
+            );
+          }
+          // 中间层三重闸：显式命名 → 硬保护（审批层）→ 白名单授权
+          for (let i = index + 1; i < targetIndex; i++) {
+            const name = layerNameOf(layers[i], i);
+            if ((layers[i] as { chainLayerName?: string }).chainLayerName === undefined) {
+              throw new ChainJumpError(
+                "JUMP_TARGET_NOT_ALLOWED",
+                `跳层经过未命名层（layer#${String(i)}）——跳层是显式声明面，` +
+                  `被跳层必须显式命名（point=${point}）`,
+              );
+            }
+            if ((UNSKIPPABLE_LAYER_NAMES as readonly string[]).includes(name)) {
+              throw new ChainJumpError(
+                "JUMP_LAYER_PROTECTED",
+                `跳层经过受保护层「${name}」——审批层不可被跳过（C 族不变量，point=${point}）`,
+              );
+            }
+            if (!skippable.includes(name)) {
+              throw new ChainJumpError(
+                "JUMP_TARGET_NOT_ALLOWED",
+                `跳层经过未授权层「${name}」——不在 skippableLayers 白名单（point=${point}；` +
+                  `已授权：${skippable.length > 0 ? skippable.join(", ") : "无（缺省无跳层能力）"}）`,
+              );
+            }
+          }
+          return runFrom(targetIndex, e2);
+        },
       },
     );
     const value = await layer($, e, next);

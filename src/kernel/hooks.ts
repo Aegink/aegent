@@ -118,7 +118,27 @@ export class HookRegistry {
           },
           // trace/budget 透传链上真实 next 的视图（hook 层在链上是一层，
           // hook 间嵌套不新增 trace 条目——I13 的粒度是链层）。
-          { point, trace: next.trace, budget: next.budget },
+          {
+            point,
+            trace: next.trace,
+            budget: next.budget,
+            // I14：to 转发——hook 是链上的一层，不切断链自身的跳层能力
+            // （配额与 next 共享：转发入口同样受 nextCalled 守卫，跳层
+            // 也是一次交棒）。
+            ...(next.to !== undefined
+              ? {
+                  to: (e2: E, target: string) => {
+                    if (nextCalled) {
+                      throw new Error(
+                        `hook「${reg.name}」重复调用 next/to（point=${point}）——每 hook 至多一次`,
+                      );
+                    }
+                    nextCalled = true;
+                    return next.to!(e2, target);
+                  },
+                }
+              : {}),
+          },
         );
         // 与策略层 T-5-01 同款：崩溃上抛（fail-open 禁止）。
         return (await reg.run($, event, hookNext)) as R;
@@ -148,7 +168,18 @@ export class HookRegistry {
               "（能力白名单 = 只观察，截断/换载荷/驱动内核均为 trusted 轨能力）",
           );
         },
-        { point, trace: Object.freeze([]) as never, budget: Object.freeze({}) },
+        {
+          point,
+          trace: Object.freeze([]) as never,
+          budget: Object.freeze({}),
+          // I14：跳层同属能力越界（观察轨不给 to 语义——调用即越界错误）。
+          to: (() => {
+            throw new Error(
+              `untrusted hook 能力越界（point=${point}）——观察轨不可调 to` +
+                "（跳层 = 驱动内核链，超观察白名单）",
+            );
+          }) as (e2: E, target: string) => Promise<R>,
+        },
       );
       const runFrom = async (index: number, event: E): Promise<R> => {
         const reg = snapshot[index];
