@@ -12,6 +12,7 @@ import Database from "better-sqlite3";
 
 import type { SessionEvent } from "../kernel/events.js";
 import type { EventStorage } from "./store.js";
+import { isValidSessionId } from "./session-id.js";
 import { MIGRATIONS, planMigrationChain } from "./migrate.js";
 
 export const CURRENT_SCHEMA_VERSION = 5;
@@ -153,6 +154,70 @@ export class SqliteEventStorage implements EventStorage {
     }
     const rows = this.selectAll.all(sessionId) as Array<{ payload: string }>;
     return rows.map((row) => JSON.parse(row.payload) as SessionEvent);
+  }
+
+  /**
+   * U3/T-P3-105 会话历史清单（session_index 全表 + 标题）：标题 = 每会话
+   * 首条 user/message 的内容前 60 字（pi-desktop 会话列表的信息架构——
+   * 时间/标题/规模）。SQLite bare-column 语义：min(seq) 行的 payload。
+   */
+  listSessionSummaries(limit = 100): {
+    sessionId: string;
+    eventCount: number;
+    createdTs: number;
+    updatedTs: number;
+    title?: string;
+  }[] {
+    const rows = this.db
+      .prepare(
+        "SELECT session_id, event_count, created_ts, updated_ts FROM session_index ORDER BY updated_ts DESC LIMIT ?",
+      )
+      .all(limit) as Array<{ session_id: string; event_count: number; created_ts: number; updated_ts: number }>;
+    const titles = this.db
+      .prepare(
+        "SELECT session_id, payload FROM events WHERE type = 'user/message' AND session_id IN (SELECT session_id FROM session_index) GROUP BY session_id HAVING seq = MIN(seq)",
+      )
+      .all() as Array<{ session_id: string; payload: string }>;
+    const titleOf = new Map(
+      titles.map((t) => {
+        try {
+          const event = JSON.parse(t.payload) as { message?: { content?: unknown } };
+          const raw = event.message?.content;
+          const text = typeof raw === "string" ? raw.trim().replace(/\s+/g, " ") : "";
+          return [t.session_id, text !== "" ? (text.length > 60 ? `${text.slice(0, 60)}…` : text) : undefined];
+        } catch {
+          return [t.session_id, undefined];
+        }
+      }),
+    );
+    return rows.map((row) => ({
+      sessionId: row.session_id,
+      eventCount: row.event_count,
+      createdTs: row.created_ts,
+      updatedTs: row.updated_ts,
+      ...(titleOf.get(row.session_id) !== undefined ? { title: titleOf.get(row.session_id) } : {}),
+    }));
+  }
+
+  /**
+   * U3/T-P3-105 单会话删除（CLI/UI 的删除入口——硬删除三表事务）。
+   * 存在才删（返回 true）；已归档会话同删（归档账本行一并清除——删除即
+   * 全域移除，与"归档保留账本"语义相反面，卡内定形）。
+   */
+  deleteSession(sessionId: string): boolean {
+    if (typeof sessionId !== "string" || !isValidSessionId(sessionId)) {
+      throw new Error(`会话 id 不合法：${String(sessionId)}`);
+    }
+    const exists = this.db.prepare("SELECT 1 AS hit FROM sessions WHERE id = ?").get(sessionId);
+    if (exists === undefined) return false;
+    const remove = this.db.transaction((sid: string) => {
+      this.db.prepare("DELETE FROM events WHERE session_id = ?").run(sid);
+      this.db.prepare("DELETE FROM session_index WHERE session_id = ?").run(sid);
+      this.db.prepare("DELETE FROM archived_sessions WHERE session_id = ?").run(sid);
+      this.db.prepare("DELETE FROM sessions WHERE id = ?").run(sid);
+    });
+    remove(sessionId);
+    return true;
   }
 
   close(): void {

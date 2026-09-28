@@ -17,6 +17,7 @@ import {
 import { maskToken } from "../models/oauth.js";
 import { probeProvider, type HealthCheckResult } from "../models/health.js";
 import type { CredentialStore } from "../session/credentials.js";
+import type { SqliteEventStorage } from "../session/db.js";
 
 /** settings patch 白名单段（提段整体替换；version 不许 patch——迁移链单向门）。 */
 export const SETTINGS_PATCH_SECTIONS = [
@@ -55,6 +56,8 @@ export interface SettingsGateway {
    * 探测其 baseUrl 可达性；探测不触碰熔断器（J16 分域不变量）。
    */
   probeProvider(name: string): Promise<HealthCheckResult>;
+  /** U3/T-P3-105：会话删除（硬删除三表事务；库未配置时类型化拒绝）。 */
+  sessionDelete(sessionId: string): Promise<{ deleted: boolean }>;
 }
 
 /** 生产缺省探测依赖（真网络——tests 注入 fake）。 */
@@ -68,6 +71,8 @@ export class FileSettingsGateway implements SettingsGateway {
     private readonly settingsPath: string,
     private readonly credentials: CredentialStore,
     private readonly healthProbe: (name: string, baseUrl: string) => Promise<HealthCheckResult> = defaultHealthProbe(),
+    /** U3：会话删除的目标库（host 的 SQLite 事件库——未配置 = 删除面不可用）。 */
+    private readonly sessionDb?: SqliteEventStorage,
   ) {}
 
   async get(): Promise<SettingsShape> {
@@ -113,5 +118,14 @@ export class FileSettingsGateway implements SettingsGateway {
       throw error;
     }
     return this.healthProbe(name, entry.baseUrl);
+  }
+
+  async sessionDelete(sessionId: string): Promise<{ deleted: boolean }> {
+    if (this.sessionDb === undefined) {
+      const error = new Error("host 未配置 SQLite 事件库，会话删除不可用");
+      (error as unknown as { code: string }).code = "SESSION_DB_UNAVAILABLE";
+      throw error;
+    }
+    return { deleted: this.sessionDb.deleteSession(sessionId) };
   }
 }

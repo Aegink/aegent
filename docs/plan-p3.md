@@ -74,7 +74,7 @@
 - **风险 / 未知**：切换时在途轮语义（J6 既有——新 turn 生效）
 - **完成记录（2026-09-29）**：验收 `npx vitest run src/host/server.test.ts` → **9 passed**（新增切模 e2e + probe 两例；+ui 资产断言/内核回归 50 passed）。落地：①**多注册表装配**（agent-child.ts `buildModelsRegistry`——未显式 --provider 且 settings.json providers 在位时全条目实例化（adapter→openai/anthropic 适配层 + withRetry；凭据按条目名从 credentials.bin 解密——子进程同用户 DPAPI 可解）进 models 注册表，initialIdentity = defaultProvider 条目；同 identity 去重、无 model 条目跳过；显式单模型分支零变化）；②**UI**：供应商列表项加"本会话切换"（model/switch 请求——非写命令免租约，新 turn 生效提示）+ "测健康"（settings op:probe 新 op → gateway.probeProvider → J16 probeProvider，UI 状态点 operational/degraded/unreachable + 10s 节流缓存）+ 编辑（点条目名回填表单保存=段替换）；③**wire**：settings op 闭集追加 probe（provider 校验 parse 层）；gateway 加 healthProbe 注入点（生产 = 真 J16 探测、测试注入 fake——**探测不触碰熔断器**的分域不变量随 J16）。验收断言：switch 往返 ok → 下一轮 request/header config.modelId = 新值 + model/switch 落流事件（J9）。
 
-#### T-P3-105 · U3 · 会话历史管理（列表/续聊/删除入口） `[ ]`
+#### T-P3-105 · U3 · 会话历史管理（列表/续聊/删除入口） `[x]`
 - **依据需求**：U3（"历史会话列表/续聊/删除；崩溃恢复一键续跑"）
 - **上游首选参考**：[pi-desktop 会话列表行为](../oss/pi-desktop)（🔴 只学行为：列表信息架构）+ P2 15a 的 Q2 检索面
 - **取什么 / 别抄什么**：取"列表（时间/标题/状态）+ 点开续聊 + 删除确认"的信息架构；机制全部复用（Q2/resume/Q4）——入口面
@@ -82,6 +82,7 @@
 - **验收**：`npx vitest run src/session/sessions-cli.test.ts src/host/server.test.ts`（扩）——三面 + resume 一键 + UI 资产断言
 - **依赖**：P2 15a（Q2/Q4）；T-P3-101
 - **风险 / 未知**：wire query 扩展形状（op 枚举追加——批次 12/14 先例）
+- **完成记录（2026-09-29）**：验收 `npx vitest run src/session/sessions-cli.test.ts src/host/server.test.ts` → **16 passed**（+db/cli/内核回归 65 passed）。落地：①**SQL 面**（db.ts）：`listSessionSummaries`（session_index 清单 + SQLite bare-column 取每会话首条 user/message 前 60 字做标题）+ `deleteSession`（sessions/events/session_index/archived_sessions 四表事务硬删除；非法 id 拒绝、幂等 false）；②**CLI**（`src/cli/sessions.ts`）：`aegent sessions list [--db]`（缺省 ~/.aegent/sessions.db）/`delete <id> --yes`（无 --yes 闸住——硬删除确认）/`resume <id>`（index.ts 分流 = 以 --session <id> 正常启动 REPL——续聊即同一会话 id 再开进程，机制复用零新增）；③**wire**：query op 枚举追加 `sessions`（清单）+ events 放宽为任意会话只读（跨会话直接回源 SQLite 库——历史会话不在内存镜像；本会话仍内存序；写命令仍限本会话）；settings op 追加 `session-delete`（gateway.sessionDelete——sessionDb 可选依赖，未配置回 SESSION_DB_UNAVAILABLE）；④**UI**：历史侧栏（☰ 按钮 → 清单：标题/id/事件数/时间 + 查看〔只读恢复视图 + resume 提示〕+ 删除〔window.confirm 确认〕）。崩溃恢复一键续跑 = resume 面同链（M3 boot-maintenance 在启动时自动跑，既有）。
 
 #### T-P3-106 · 收口 · 16a 盘点 `[ ]`
 - **依据需求**：批次 16a 收口

@@ -43,14 +43,16 @@ export type ClientEnvelope =
   /**
    * K5/T-P1-128 只读查询面（bridge 直答——lease 信封同构：不经 agent）。
    * op:"events" = 恢复视图（连接前的会话事件可查——UI 重连/刷新的快照面，
-   * pi·client "快照先行 + 流续播"的重连行为）；afterSeq 可选游标（只回
-   * seq 大于它的部分）。只读不落流——零事件零载荷扩展。
+   * pi·client "快照先行 + 流续播"的重连行为；U3 起放宽为任意会话只读——
+   * 历史查看的入口面，写命令仍限本 host 会话）；afterSeq 可选游标（只回
+   * seq 大于它的部分）。op:"sessions" = 会话历史清单（U3/T-P3-105——
+   * session_index 摘要，SQLite 库在位才有数据）。只读不落流。
    */
   | {
       type: "query";
       requestId: string;
       sessionId: string;
-      op: "events";
+      op: "events" | "sessions";
       afterSeq?: number;
     }
   /**
@@ -64,10 +66,19 @@ export type ClientEnvelope =
   | {
       type: "settings";
       requestId: string;
-      op: "get" | "update" | "credentials-set" | "credentials-delete" | "credentials-list" | "probe";
+      op:
+        | "get"
+        | "update"
+        | "credentials-set"
+        | "credentials-delete"
+        | "credentials-list"
+        | "probe"
+        | "session-delete";
       patch?: Record<string, unknown>;
       provider?: string;
       key?: string;
+      /** op=session-delete：目标会话 id（U3 删除入口的 wire 面）。 */
+      sessionId?: string;
     };
 
 function rejectUnknownKeys(value: Record<string, unknown>, allowed: readonly string[]): string | null {
@@ -134,9 +145,10 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
     if (typeof record["sessionId"] !== "string" || record["sessionId"] === "") {
       throw new Error("query 需要 sessionId 非空字符串");
     }
-    if (record["op"] !== "events") {
-      throw new Error(`query 的 op 非法：${String(record["op"])}（合法：events）`);
+    if (record["op"] !== "events" && record["op"] !== "sessions") {
+      throw new Error(`query 的 op 非法：${String(record["op"])}（合法：events|sessions）`);
     }
+    const op = record["op"] as "events" | "sessions";
     if (
       record["afterSeq"] !== undefined &&
       (typeof record["afterSeq"] !== "number" || !Number.isInteger(record["afterSeq"]) || record["afterSeq"] < 0)
@@ -147,7 +159,7 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
       type: "query",
       requestId: record["requestId"],
       sessionId: record["sessionId"],
-      op: "events",
+      op,
       ...(record["afterSeq"] !== undefined ? { afterSeq: record["afterSeq"] as number } : {}),
     };
   }
@@ -159,6 +171,7 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
       "patch",
       "provider",
       "key",
+      "sessionId",
     ]);
     if (unknownKey) throw new Error(`settings 信封${unknownKey}`);
     if (typeof record["requestId"] !== "string" || record["requestId"] === "") {
@@ -171,11 +184,17 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
       op !== "credentials-set" &&
       op !== "credentials-delete" &&
       op !== "credentials-list" &&
-      op !== "probe"
+      op !== "probe" &&
+      op !== "session-delete"
     ) {
       throw new Error(
-        `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe）`,
+        `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete）`,
       );
+    }
+    if (op === "session-delete") {
+      if (typeof record["sessionId"] !== "string" || record["sessionId"] === "") {
+        throw new Error("settings op=session-delete 需要 sessionId 非空字符串");
+      }
     }
     if (op === "update") {
       if (record["patch"] === null || typeof record["patch"] !== "object" || Array.isArray(record["patch"])) {
@@ -204,6 +223,7 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
       ...(record["patch"] !== undefined ? { patch: record["patch"] as Record<string, unknown> } : {}),
       ...(typeof record["provider"] === "string" ? { provider: record["provider"] } : {}),
       ...(typeof record["key"] === "string" ? { key: record["key"] } : {}),
+      ...(typeof record["sessionId"] === "string" ? { sessionId: record["sessionId"] } : {}),
     };
   }
   if (type === "request") {

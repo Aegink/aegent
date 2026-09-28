@@ -108,18 +108,32 @@ export interface HostProtocolServerOptions {
   onLease?: (lease: { op: "acquire" | "release"; surfaceId: string }) => Promise<unknown>;
   /**
    * query 信封回调（K5/T-P1-128 恢复视图——bridge 直答只读，不经 agent）。
+   * U3 起 op:"sessions" = 会话历史清单；op:"events" 放宽为任意会话只读。
    * reject（Error 带 code）→ ok:false response。
    */
-  onQuery?: (query: { sessionId: string; op: "events"; afterSeq?: number }) => Promise<unknown>;
+  onQuery?: (query: {
+    sessionId: string;
+    op: "events" | "sessions";
+    afterSeq?: number;
+  }) => Promise<unknown>;
   /**
    * settings 信封回调（U14/T-P3-103 host 面配置——bridge 直答，不经 agent、
-   * 不落流；op 闭集 get/update/credentials-*——形状校验在 protocol-parse）。
+   * 不落流；op 闭集 get / update / credentials 系列 / probe / session-delete
+   * ——形状校验在 protocol-parse）。
    */
   onSettings?: (call: {
-    op: "get" | "update" | "credentials-set" | "credentials-delete" | "credentials-list" | "probe";
+    op:
+      | "get"
+      | "update"
+      | "credentials-set"
+      | "credentials-delete"
+      | "credentials-list"
+      | "probe"
+      | "session-delete";
     patch?: Record<string, unknown>;
     provider?: string;
     key?: string;
+    sessionId?: string;
   }) => Promise<unknown>;
 }
 

@@ -12,6 +12,7 @@
       <span id="surface-id"></span>
       <span id="lease-status"></span>
       <button id="lease-btn" type="button" hidden>取得写租约</button>
+      <button id="history-btn" type="button" title="会话历史">☰ 历史</button>
       <button id="settings-btn" type="button" title="设置">⚙ 设置</button>
     </header>
     <main id="stream" aria-live="polite"></main>
@@ -90,6 +91,18 @@
           <h2>关于</h2>
           <p>aegent 0.1.0 —— 本地优先的 agent 工作台（事件即真相；配置即本页）。</p>
         </section>
+      </div>
+    </aside>
+    <!-- U3/T-P3-105 会话历史侧栏：列表（id/标题/时间/规模）+ 只读查看 +
+         删除确认；续聊 = aegent sessions resume <id>（入口提示） -->
+    <aside id="history-panel" hidden aria-label="会话历史">
+      <header class="settings-head">
+        <span>会话历史</span>
+        <button id="history-close" type="button">关闭</button>
+      </header>
+      <div class="settings-body">
+        <ul id="history-list"></ul>
+        <p class="hint">查看 = 只读恢复视图；续聊请在终端执行 aegent sessions resume &lt;id&gt;。</p>
       </div>
     </aside>
     <script type="module" src="/app.js"></script>

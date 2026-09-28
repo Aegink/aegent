@@ -19,6 +19,7 @@ import { InvalidSessionIdError, createSessionId, isValidSessionId } from "../ses
 import { createCredentialStore } from "../session/credentials.js";
 import { loadSettings, resolveChildLaunchArgv } from "../session/settings.js";
 import { runKeyCommand } from "./key.js";
+import { runSessionsCommand } from "./sessions.js";
 import { runCli } from "./repl.js";
 
 /** 编译产物旁的子进程入口（dist/src/cli/index.js → dist/src/kernel/agent-child.js）。 */
@@ -92,19 +93,41 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
     if (code !== 0) process.exitCode = 1;
     return;
   }
+  // U3/T-P3-105：`aegent sessions` 分流——resume 换成 --session <id> 继续
+  // 正常 REPL 启动（续聊 = 同一会话 id 再开进程，机制复用）；list/delete
+  // 是管理命令（无 spawn）。
+  let effectiveArgs = childArgs;
+  if (childArgs[0] === "sessions") {
+    const rest = childArgs.slice(1);
+    if (rest[0] === "resume" && rest[1] !== undefined) {
+      if (!isValidSessionId(rest[1])) {
+        process.stderr.write(`会话 id 不合法：${rest[1]}\n`);
+        process.exitCode = 1;
+        return;
+      }
+      effectiveArgs = ["--session", rest[1], ...rest.slice(2)];
+    } else {
+      const code = await runSessionsCommand(rest, {
+        out: (line) => process.stdout.write(`${line}\n`),
+        err: (line) => process.stderr.write(`${line}\n`),
+      });
+      if (code !== 0) process.exitCode = 1;
+      return;
+    }
+  }
   // U1/T-P3-101：settings 装配（损坏 fail-closed——SettingsError 直达启动
   // 失败出口，错误消息自带行列号与修复指引）。三入口共用同一翻译面。
   const { settings } = await loadSettings(settingsPath);
   // U2：凭据装配——仅当 provider 槽完全空缺（文件档条目会被选中）时提前
   // decrypt defaultProvider 的凭据（DPAPI 是异步子进程面，同步注入点）。
   const providerFree =
-    !childArgs.includes("--provider") &&
+    !effectiveArgs.includes("--provider") &&
     (process.env["AEGENT_PROVIDER"] === undefined || process.env["AEGENT_PROVIDER"] === "");
   let credentialKey: string | undefined;
   if (providerFree && settings.defaultProvider !== undefined) {
     credentialKey = await createCredentialStore().getKey(settings.defaultProvider);
   }
-  const { args: launchArgs } = resolveChildLaunchArgv(childArgs, process.env, settings, { credentialKey });
+  const { args: launchArgs } = resolveChildLaunchArgv(effectiveArgs, process.env, settings, { credentialKey });
   // U5/T-P3-104：settings 路径透传子进程（多注册表装配面——子进程自读
   // 同一 settings.json/credentials.bin，单一事实源）。
   const { args } = resolveChildSessionArgv([

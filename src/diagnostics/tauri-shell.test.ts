@@ -134,6 +134,13 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(css).toContain('body[data-theme="light"]');
     expect(css).toContain("--bg:");
     expect(css).toContain("--accent:");
+    // U3/T-P3-105：会话历史侧栏（清单/只读查看/删除确认/resume 提示）
+    expect(html).toContain('id="history-panel"');
+    expect(html).toContain('id="history-list"');
+    expect(app).toContain('op: "sessions"');
+    expect(app).toContain('op: "session-delete"');
+    expect(app).toContain("window.confirm"); // 硬删除确认对话框
+    expect(app).toContain("aegent sessions resume"); // 续聊入口提示
   });
 
   it("K9/T-P2-409 · 画中画资产在位：pip.html + pip.js + pip.css（S4 操作审计消费端——只读渲染面）", () => {

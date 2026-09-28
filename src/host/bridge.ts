@@ -23,6 +23,7 @@ import type { AgentMessage, AgentRequest } from "../kernel/agent-protocol.js";
 import type { SessionEvent } from "../kernel/events.js";
 import { NotLeaseHolderError } from "../session/owner-port.js";
 import type { SessionStore } from "../session/store.js";
+import { SqliteEventStorage } from "../session/db.js";
 import { AgentHost } from "./registry.js";
 import {
   HostProtocolServer,
@@ -53,6 +54,12 @@ export interface HostBridgeOptions {
   /** U14/T-P3-103 settings 直答网关（提供时 settings 信封可用——host 面
    * 配置读写与凭据管理，不经 agent 不落流）。 */
   settingsGateway?: import("./settings-gateway.js").SettingsGateway;
+  /**
+   * U3/T-P3-105 会话清单库（SQLite 事件库本体——op:"sessions" 与
+   * session-delete 的数据面；未提供 = 清单/删除类型化不可用。与 settings
+   * 网关的 sessionDb 同一实例——生产 main 组装）。
+   */
+  sessionsLibrary?: SqliteEventStorage;
 }
 
 interface SurfaceRegistration {
@@ -211,20 +218,37 @@ export class HostBridge implements SessionRouter {
         return { released };
       },
       // K5/T-P1-128 恢复视图（只读直答——不落流、不经 agent、不需要租约）。
+      // U3/T-P3-105：op:"sessions" = 会话历史清单（SQLite 库在位才有数据）；
+      // op:"events" 放宽为任意会话只读（历史查看入口——写命令仍限本会话）。
       onQuery: async (query) => {
-        if (query.sessionId !== this.options.host.sessionId) {
-          const error = new Error(`会话 ${query.sessionId} 没有 host 注册`);
-          (error as unknown as { code: string }).code = "UNKNOWN_HOST_SESSION";
-          throw error;
-        }
         const store = this.options.store;
         if (store === undefined) {
-          const error = new Error("host 未配置事件存储，恢复视图不可用");
+          const error = new Error("host 未配置事件存储，查询面不可用");
           (error as unknown as { code: string }).code = "STORE_UNAVAILABLE";
           throw error;
         }
-        // 内存序读取（同步）：镜像 append 的直接产物——最新、无 write-behind
-        // 缓冲滞后（restore/readAll 只见已 flush 部分——E1 纪律的读面选择）。
+        if (query.op === "sessions") {
+          const library = this.options.sessionsLibrary;
+          if (library === undefined) {
+            const error = new Error("host 未配置 SQLite 事件库，会话清单不可用");
+            (error as unknown as { code: string }).code = "SESSIONS_UNAVAILABLE";
+            throw error;
+          }
+          return { sessions: library.listSessionSummaries() };
+        }
+        // 本会话：内存序读取（同步）：镜像 append 的直接产物——最新、无
+        // write-behind 缓冲滞后（restore/readAll 只见已 flush 部分——E1
+        // 纪律的读面选择）。U3：跨会话（历史查看入口）直接回源 SQLite 库
+        // ——历史会话不在内存镜像；库未配置 = 空流（无历史可看）。
+        if (query.sessionId !== this.options.host.sessionId) {
+          if (this.options.sessionsLibrary === undefined) return { events: [] };
+          const archived = this.options.sessionsLibrary.readAll(query.sessionId);
+          const events =
+            query.afterSeq !== undefined
+              ? archived.filter((e) => e.seq > query.afterSeq!)
+              : [...archived];
+          return { events };
+        }
         const all = store.load(query.sessionId);
         const events =
           query.afterSeq !== undefined ? all.filter((e) => e.seq > query.afterSeq!) : [...all];
@@ -248,6 +272,9 @@ export class HostBridge implements SessionRouter {
         }
         if (call.op === "probe") {
           return { health: await gateway.probeProvider(call.provider!) };
+        }
+        if (call.op === "session-delete") {
+          return gateway.sessionDelete(call.sessionId!);
         }
         return { credentials: await gateway.credentialsList() };
       },

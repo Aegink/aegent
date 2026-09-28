@@ -16,6 +16,7 @@ import WebSocket from "ws";
 import { echoProvider } from "../kernel/agent-process.js";
 import type { AgentRequest } from "../kernel/agent-protocol.js";
 import { InMemoryEventStorage } from "../session/store.js";
+import { SqliteEventStorage } from "../session/db.js";
 import { FileSettingsGateway } from "./settings-gateway.js";
 import { PlainFileCredentialStore } from "../session/credentials.js";
 import { handles, makeUiFixture, startMemoryChild, fakeAgent, uiFixtures, type FakeAgent } from "./server.test-utils.js";
@@ -28,7 +29,8 @@ let settingsCallSeq = 1;
 afterEach(() => {
   while (settingsTmpDirs.length > 0) {
     const dir = settingsTmpDirs.pop();
-    if (dir) rmSync(dir, { recursive: true, force: true });
+    // maxRetries：Windows 上 SQLite close 后句柄释放有缓冲——重试面防 EBUSY
+    if (dir) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });
 
@@ -37,6 +39,7 @@ async function startServer(options: {
   agent?: AgentChannel;
   storage?: EventStorage;
   settingsGateway?: import("./settings-gateway.js").SettingsGateway;
+  sessionsLibrary?: SqliteEventStorage;
 }): Promise<{ handle: HostServerHandle; port: number }> {
   const uiDir = makeUiFixture();
   uiFixtures.push(uiDir);
@@ -47,6 +50,7 @@ async function startServer(options: {
     storage: options.storage ?? new InMemoryEventStorage(),
     ...(options.agent !== undefined ? { agent: options.agent } : {}),
     ...(options.settingsGateway !== undefined ? { settingsGateway: options.settingsGateway } : {}),
+    ...(options.sessionsLibrary !== undefined ? { sessionsLibrary: options.sessionsLibrary } : {}),
   });
   const handle = await server.start();
   handles.push(handle);
@@ -204,10 +208,12 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
       "surface/attach",
     ]);
 
-    // 未知会话 → 类型化拒绝（bridge 直答面）
+    // U3 起 events 放宽为任意会话只读（历史查看入口）：查镜像外的会话 =
+    // 空流（内存镜像无数据）而非拒绝；写命令仍限本会话（send 校验不变）
     client.raw({ type: "query", requestId: "q-3", sessionId: "s-other", op: "events" });
-    const errorResponse = await client.waitFor((e) => e.type === "response" && e.requestId === "q-3", "坏会话回执");
-    expect((errorResponse.error as { code: string }).code).toBe("UNKNOWN_HOST_SESSION");
+    const otherResponse = await client.waitFor((e) => e.type === "response" && e.requestId === "q-3", "他会话回执");
+    expect(otherResponse.ok).toBe(true);
+    expect((otherResponse.result as { events: unknown[] }).events).toEqual([]);
 
     // 坏 afterSeq（负数）→ 协议校验拒绝（坏行回执 requestId 统一 "(unparsed)"）
     client.raw({ type: "query", requestId: "q-4", sessionId: "s-h1", op: "events", afterSeq: -1 });
@@ -534,6 +540,99 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
     expect(missing.ok).toBe(false);
     expect((missing.error as { code: string }).code).toBe("PROVIDER_NOT_FOUND");
     client.close();
+  });
+
+  // ---------------------------------------------------------------------------
+  // U3/T-P3-105 会话历史 wire 面：query op:"sessions"（SQLite 库清单）+
+  // events 任意会话只读放宽 + settings op:"session-delete"
+  // ---------------------------------------------------------------------------
+
+  it("query op=sessions 清单 + events 任意会话只读 + session-delete 删除", async () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), "aegent-host-hist-"));
+    settingsTmpDirs.push(tmp);
+    const dbPath = path.join(tmp, "sessions.db");
+    // 预置历史会话（host 自己的 SQLite 库；appendBatch 不分配 seq/ts——写面纪律）
+    const seed = SqliteEventStorage.open({ path: dbPath });
+    seed.appendBatch("s-old1", [
+      { type: "user/message", turn: 1, message: { content: "历史会话一" }, source: "user", seq: 1, ts: 1_700_000_000_000 } as never,
+    ]);
+    seed.appendBatch("s-old2", [
+      { type: "user/message", turn: 1, message: { content: "历史会话二" }, source: "user", seq: 1, ts: 1_700_000_000_001 } as never,
+    ]);
+    seed.close();
+    const sessionDb = SqliteEventStorage.open({ path: dbPath });
+    const gateway = new FileSettingsGateway(
+      path.join(tmp, "settings.json"),
+      new PlainFileCredentialStore(path.join(tmp, "credentials.bin")),
+      undefined,
+      sessionDb,
+    );
+    // 生产语义：host storage 与 gateway 的删除目标库、会话清单库是同一 SQLite 实例
+    const { port } = await startServer({
+      agent: fakeAgent(),
+      storage: sessionDb,
+      settingsGateway: gateway,
+      sessionsLibrary: sessionDb,
+    });
+    const client = await wsConnect(port);
+    await client.hello("web-h1");
+
+    const queryCall = (call: Record<string, unknown>) => {
+      const requestId = `h-${settingsCallSeq++}`;
+      client.raw({ type: "query", requestId, ...call });
+      return client.waitFor((e) => e.type === "response" && e.requestId === requestId, `query(${requestId})`) as Promise<Record<string, unknown>>;
+    };
+    const settingsCall = (call: Record<string, unknown>) => {
+      const requestId = `s-hist-${settingsCallSeq++}`;
+      client.raw({ type: "settings", requestId, ...call });
+      return client.waitFor((e) => e.type === "response" && e.requestId === requestId, `settings(${requestId})`) as Promise<Record<string, unknown>>;
+    };
+
+    // 清单：历史会话在列（host 自己的 s-h1 也会因 roster/镜像进索引）
+    const listed = await queryCall({ sessionId: "-", op: "sessions" });
+    if (!listed.ok) console.warn("清单回执错误：", JSON.stringify(listed.error));
+    expect(listed.ok).toBe(true);
+    const sessions = (listed.result as { sessions: { sessionId: string; title?: string }[] }).sessions;
+    const listedIds = sessions.map((s) => s.sessionId);
+    expect(listedIds).toContain("s-old1");
+    expect(listedIds).toContain("s-old2");
+    expect(sessions.find((s) => s.sessionId === "s-old1")?.title).toBe("历史会话一");
+
+    // events 任意会话只读（历史查看入口——写命令仍限本会话）
+    const view = await queryCall({ sessionId: "s-old1", op: "events" });
+    expect(view.ok).toBe(true);
+    const events = (view.result as { events: { type: string }[] }).events;
+    expect(events.some((e) => e.type === "user/message")).toBe(true);
+
+    // 删除：session-delete → 清单只剩一个
+    const del = await settingsCall({ op: "session-delete", sessionId: "s-old2" });
+    expect(del.ok).toBe(true);
+    expect((del.result as { deleted: boolean }).deleted).toBe(true);
+    const relisted = await queryCall({ sessionId: "-", op: "sessions" });
+    const rest = (relisted.result as { sessions: { sessionId: string }[] }).sessions.map((s) => s.sessionId);
+    expect(rest).toContain("s-old1");
+    expect(rest).not.toContain("s-old2");
+
+    // 内存库 host（无 SQLite 库）→ 会话清单/删除类型化不可用
+    const { port: port2 } = await startServer({
+      agent: fakeAgent(),
+      settingsGateway: new FileSettingsGateway(
+        path.join(tmp, "settings2.json"),
+        new PlainFileCredentialStore(path.join(tmp, "credentials2.bin")),
+      ),
+    });
+    const client2 = await wsConnect(port2);
+    await client2.hello("web-h2");
+    client2.raw({ type: "query", requestId: "h-no-db", sessionId: "-", op: "sessions" });
+    const noDb = await client2.waitFor((e) => e.type === "response" && e.requestId === "h-no-db", "无库清单回执");
+    expect((noDb.error as { code: string }).code).toBe("SESSIONS_UNAVAILABLE");
+    client2.raw({ type: "settings", requestId: "s-no-db", op: "session-delete", sessionId: "s-old1" });
+    const noDel = await client2.waitFor((e) => e.type === "response" && e.requestId === "s-no-db", "无库删除回执");
+    expect((noDel.error as { code: string }).code).toBe("SESSION_DB_UNAVAILABLE");
+    client2.close();
+    client.close();
+    sessionDb.close();
+    await new Promise((r) => setTimeout(r, 50)); // Windows 句柄释放缓冲
   });
 });
 
