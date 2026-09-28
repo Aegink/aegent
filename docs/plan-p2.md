@@ -333,7 +333,7 @@
 - **风险 / 未知**：入站面与 K5 静态托管的端口共存（路径分型——/webhook/* 归 webhook）
 
 - **完成记录**：2026-09-28。验收 `npx vitest run src/scheduler/webhook.test.ts`——8 passed（真实 HTTP 往返 port 0 随机：派发 1 + token 401 + 405 + 路径透传 404 + 非 JSON 400 + HMAC 通/缺/错 3 + 413 上限 1）；`npx tsc --noEmit` 干净；`architecture:check` 0 error / 21 warning。产出 `src/scheduler/webhook.ts`：①`WebhookEndpoint.handle` 处理器面（不自建监听——host server 按路径分型挂载，`false` = 路径不归我静态面接手——卡面端口共存风险当面兑现）；②鉴权两层：路径 token timingSafeEqual 恒定时间比对（凭据调用方环境变量注入零落盘）+ HMAC-SHA256 可配（`x-signature: sha256=<hex>` 对 raw body）；③fire-and-forget：校验过即派发 job（kind="webhook"，payload 原文进 log ring）回 202 `{"accepted,jobId"}` 不阻塞响应 + onDispatch 装配钩子；④payload 上限防呆（缺省 1MB）：超限后**丢弃内容继续收完再 413**（初版 `req.destroy()` 中途断流——客户端只见 socket error 收不到 413，实测改排空策略）。dsh 锚的 workspace 归属 invariant / Cordis 集成不抄（单会话 host payload 透传最小面）。
-#### T-P2-404 · S5 · 反馈上报（消息/命令反馈 + doctor 随报） `[ ]`
+#### T-P2-404 · S5 · 反馈上报（消息/命令反馈 + doctor 随报） `[x]`
 - **依据需求**：S5（"用户可对消息/命令反馈；doctor 报告随反馈一起报"）
 - **上游首选参考**：codex·feedback_processor.rs（反馈的结构化面 + 诊断随报）
 - **取什么 / 别抄什么**：取"反馈是结构化事实（关联消息/命令 + 类型）+ doctor 报告可随附"行为；不抄其上报远端（我方本地落流——无遥测外发，红线）
@@ -341,6 +341,8 @@
 - **验收**：`npx vitest run src/obs/feedback.test.ts`——反馈落流 + 关联校验（targetSeq 存在）+ doctor 随附
 - **依赖**：无（独立面）
 - **风险 / 未知**：无
+
+- **完成记录**：2026-09-28。验收 `npx vitest run src/obs/feedback.test.ts`——6 passed（落流 + 关联校验 + commandId 面 + 校验闭面 + doctor 随附 + 词汇表计数）；全量 `npx vitest run` 1558 passed / 1 skipped（首跑 1 偶发失败复跑全绿——Windows 并行偶发先例）；`npx tsc --noEmit` 干净；vocabulary:check 0 问题。产出：①**词汇表 28→29 立案 #24**——`feedback/note {kind, targetSeq?, commandId?, comment?, doctorSummary?}` log-only 元事件（反馈是会话事实——与 M11 进程内事实分野定形；l0-events.md §3.2 行 29 + §8 落地记录 24 + §3.2 标题计数残留 27 顺手校正为 29）；②`src/obs/feedback.ts`（submitFeedback 提交面：kind 闭集/二选一/seq 存在性/长度防呆 + doctorSummary 随附——codex attachment 同构）；③wire 面：AgentRequest +feedback 请求（协议校验 + REQUEST_TYPES）+ agent-process 落流分支（seq 存在性 kernel 侧内联——kernel 不依赖 obs 防环）+ repl `/feedback <up|down> <seq|commandId> [评语]` 命令。偏离：repl 最小面不带 --doctor 标志（doctorSummary 字段承载随附，调用方生成——CLI 面后续按需接）。
 
 #### T-P2-405 · N5 · 推送（状态变更分类推送到端） `[ ]`
 - **依据需求**：N5（"状态变更可推送到端"；自研无锚点）
