@@ -1,6 +1,6 @@
 # P3 实施计划（产品化层）
 
-> **性质**：P3 优先级层全阶段计划（U 域 21 条 / 批次 16a+16b+16c / 24 张卡），2026-09-28 展卡（同日两次扩充——①UI 功能组：用户裁决"UI 精美化太少了，参考仓库成熟软件的多个功能多个 UI"；②产品扩展组：用户裁决"再多看看各个仓库，还可以补充更多"——深读 pi-desktop·workpanel/services、cc-switch·mcp/prompts/profiles/providers 子域、pi·tui 编辑器组件后新增 U15~U21）——**"让 aegent 从内核变成产品"**。
+> **性质**：P3 优先级层全阶段计划（U 域 26 条 / 批次 16a+16b+16c+16d / 30 张卡），2026-09-28 展卡（同日三次扩充——①UI 功能组；②产品扩展组（深读 pi-desktop·workpanel/services、cc-switch·mcp/prompts/profiles、pi·tui 后新增 U15~U21）；③管理面组（用户提供 pi-desktop 子智能体管理页截图并裁决"还有技能、子智能体等功能"——深读 AgentSubagentsPage/SkillEditorSheet/SkillMarketPanel/KeyboardShortcutsSection 后新增 U22~U26）——**"让 aegent 从内核变成产品"**。
 > **执行协议**：沿用 [`plan-p0.md`](plan-p0.md) §0；推进模式一会话一批次（16a → 16b）。
 > **锚点纪律**：U 域 21 条锚点于 2026-09-28 展卡逐一核对——两轮深读：①产品 UI 清单（cc-switch·src/components 38 件 + pi-desktop·src/components 46 件——ComposerAutocomplete 五类补全图标集 / StartupRecovery 的 startup-watchdog 诊断面 / cc-switch settings 的 AuthCenter·BackupList·Proxy·Language 分节）；②产品扩展面（pi-desktop·workpanel 五 Tab——ReviewTab 的 `reviewChangesFromMessages`+`summarizeReviewChanges` 与 SubagentPanel 的 delegation 状态/耗时/失败收集、cc-switch·mcp 向导四件/prompts 五件/profiles 两件/providers·FailoverPriorityBadge、settings·EnhancementModelCard（ADR 0121 辅助模型）、deeplink 三确认、pi·tui editor/kill-ring/alt-screen-search/fuzzy 编辑器组件——行为证据取自组件名与源码头注释）。
 > **执行前置**：批次 16a/16b/16c 在批次 15a~15e（P2，[`plan-p2.md`](plan-p2.md)）收官之后——U3 依赖 15a 的 Q2、U12 依赖 15e 的 J21、U13 依赖 15d 的 N5 与 M3、U15 依赖 15a 的 Q2 与 P1 的 E5/H2、U18 依赖 15b 的 C42、U19 依赖 P1 的 J15、U8 依赖 15d/15b/15c 面。
@@ -12,7 +12,7 @@
 3. **构建链最小化**：不引入前端框架（React/Vite 不取——ui/ 原生 ES module 已工作，重写无验收收益）；渲染增强用 marked（MIT）+ highlight.js（BSD-3）两个纯库 vendor 本地化（`ui/vendor/`，THIRD_PARTY 登记）。
 4. **渲染安全防呆**：markdown 渲染只作用于**模型产出**（assistant），用户输入不渲染（注入面禁足）；marked 配置禁 HTML 透传。
 5. **体积目标分列陈述**：§6.1 的 60MB 是"壳"目标；U6 引入运行时随包后安装器体积分列（壳 + runtime），不混用旧口径。
-6. **工程纪律不变**：新域 managed:true 入册；工具链四件收官必跑；count-features = **331**（P3 列 21 条）。
+6. **工程纪律不变**：新域 managed:true 入册；工具链四件收官必跑；count-features = **336**（P3 列 26 条）。
 
 ## §3 批次 16a 卡序（6 张：U1/U2/U14/U5/U3 + 收口——产品地基：配置与设置中心；2026-09-28 展卡）
 
@@ -252,16 +252,80 @@
 - **依赖**：无（独立面——16c 可并行）
 - **风险 / 未知**：Windows 终端按键差异（Ctrl+W 等——跨终端兼容负例记档）
 
-#### T-P3-124 · 收口 · 16c 盘点 + P3 全段对账 `[ ]`
+#### T-P3-124 · 收口 · 16c 盘点 `[ ]`
 - **依据需求**：批次 16c 收口 + P3 全段终验收
 - **要产出**：盘点面：①U15 变更提取纯函数 × 流轻量纪律（从流算不建状态）；②U16 用户模板 × I8 系统预设分界；③U18 辅助模型 × 主模型回退链；④U20 导入确认 × 不可信输入面（C 族防线）；⑤U21 CLI 增强 × 既有命令零回归；⑥P3 全段对账（21 条状态表）+ 人工确认清单闭环复核
 - **验收**：`npx vitest run`（全量）+ 工具链四件（count-features = 331）+ license-audit
 - **依赖**：T-P3-101 ~ 123 全部
 - **风险 / 未知**：无
 
-## §6 批次完成定义
+## §6 批次 16d 卡序（6 张：U22/U23/U24/U25/U26 + 收口——管理面组；2026-09-28 展卡）
+
+**展卡核对结论（16d）**：
+1. **U23 是本轮实证最重的卡**（用户提供 pi-desktop 子智能体管理页截图）：内置五预设（探索者 Task(explorer)·Read/Glob/Grep/Bash、代码审查员 Task(code-reviewer)·Read/Glob/Grep、测试执行者 Task(test-runner)、修复者 Task(fixer)·+Edit/Write、UI 设计师 Task(ui-designer)·+BrowserPreview）+ 用户自定义分区（~/.agents/subagents——我方 ~/.aegent/subagents）+ 启用开关 + 工具权限 chips；pi-desktop 更有 **SubagentModelPicker + SubagentFallbackModels（每个子代理独立模型与回退链）**——我方数据面全在（H1-H5 批次 5 已落：task 工具/结算栅栏/权限降级/隔离上下文；H6 后端可插 P2 15c；工具集权限面 H3/H5）——缺管理 UI 与预设内容。
+2. **U22 技能面分两半**：技能目录本体 I2 已落（P1，skills.test.ts + tool-load.ts）——本卡是管理 UI（清单/开关）+ 编辑器（SkillEditorSheet 形态）+ 来源目录管理（RepoManager 形态）；"技能市场"真实渠道不建（市场面 = 本地/目录安装最小化——与 U20 导入面呼应）。
+3. **U24 指令中心**：pi-desktop"指令"页 + 我方 C22 规则作用域（project/user 档——P1 已落规则面）的 UI 化；与 U11 项目指令页的分界：U11 管"项目档"（workspace 组合），U24 管"指令与规则文件本体"（全局 AGENTS.md + 用户级规则编辑）。
+4. **U25 快捷键系统**：KeyboardShortcutsSection 形态——清单/自定义/冲突提示三件。
+5. **U26 语音**：截图"语音【实验性】"位 + pi-desktop speech-service——我方 P2 P4（STT 面）的 UI 消费端（设置页 + Composer 麦克风按钮）。
+
+**词汇表预判**：16d 全部零事件预判（管理面/配置面——既有词汇在位）。
+
+#### T-P3-125 · U22 · 技能管理（清单/编辑器/来源目录） `[ ]`
+- **依据需求**：U22（"技能清单页、技能编辑器、来源目录管理；I2 已落——本卡是管理 UI 与编辑器面"）
+- **上游首选参考**：[cc-switch·skills 四件](../oss/cc-switch/src/components/skills)（SkillsPage/SkillCard/RepoManagerPanel/UnifiedSkillsPanel）+ [pi-desktop·SkillEditorSheet/SkillMarketPanel](../oss/pi-desktop/apps/desktop/src/components/settings)（🔴 只学行为）
+- **取什么 / 别抄什么**：取"清单+卡片+开关+编辑器+来源目录管理"形态；技能市场真实渠道不建（目录安装最小化）
+- **要产出**：ui/ 技能页（settings 分节）：清单（卡片：名称/描述/内置与用户标记/启用开关——I2 技能目录的消费）+ 编辑器（新建/编辑：名称/描述/提示词/工具集多选——写回技能目录）+ 来源目录管理（清单/增删——RepoManager 形态）+ 停用生效面（技能清单装配消费 disabled 集）
+- **验收**：`npx vitest run src/kernel/skills.test.ts`（扩——disabled 集消费）+ ui 资产断言 + 编辑器往返
+- **依赖**：I2（P1 已落）；T-P3-103（设置页）
+- **风险 / 未知**：技能格式扩展（编辑器写回须保持 I2 目录纪律——坏文件 fail-closed）
+
+#### T-P3-126 · U23 · 子智能体管理（内置五预设 + 自定义 + 模型 fallback 链） `[ ]`
+- **依据需求**：U23（"内置预设五例、用户自定义、启用开关、per-subagent 模型与 fallback 链、工具权限 chips"）
+- **上游首选参考**：[pi-desktop·AgentSubagentsPage/SubagentEditorSheet/SubagentModelPicker/SubagentFallbackModels](../oss/pi-desktop/apps/desktop/src/components/settings)（🔴 只学行为——用户截图实证形态：探索者/代码审查员/测试执行者/修复者/UI 设计师五内置）
+- **取什么 / 别抄什么**：取"预设卡片（名称/Task(slug)/描述/工具 chips/开关）+ 编辑器 + 独立模型与 fallback 链"形态；预设内容按我方工具集映射（UI 设计师的 BrowserPreview 对应 S3 浏览器面——S3 为 P2 项，预设记为依赖面）
+- **要产出**：`src/session/subagents-config.ts`（预设定义：五内置（探索者/代码审查员/测试执行者/修复者/UI 设计师——提示词+工具集+模型档）+ 用户自定义 CRUD——~/.aegent/subagents）+ 消费面（task 工具的预设名解析——H1 面扩展：`task --agent code-reviewer` 形态）+ ui/ 子智能体页（卡片+编辑器+模型 picker+fallback 链编辑+权限 chips）
+- **验收**：`npx vitest run src/session/subagents-config.test.ts` + `src/kernel/tools/builtin.test.ts`（扩——task 预设解析）+ 五预设内置断言 + ui 资产断言
+- **依赖**：P1 H1-H5；P2 15c H6；T-P3-120（模型档面）
+- **风险 / 未知**：预设随版本升级的合并策略（内置更新 vs 用户改动——只追加纪律）
+
+#### T-P3-127 · U24 · 指令中心（全局/项目指令与规则编辑） `[ ]`
+- **依据需求**：U24（"全局与项目级指令文件集中管理、用户级规则文件编辑——C22 四档作用域的 UI 面"）
+- **上游首选参考**：[pi-desktop 指令页行为](../oss/pi-desktop/apps/desktop/src/components/settings)（🔴 只学行为）+ 我方 C22 规则作用域面
+- **取什么 / 别抄什么**：取"层级清晰的指令/规则编辑 + 模板辅助"形态
+- **要产出**：ui/ 指令中心页：全局 AGENTS.md 查看/编辑（保存前确认）+ 用户级规则文件编辑（规则语法校验——linter 面复用）+ 项目级指令入口（U11 联动）+ 模板插入辅助
+- **验收**：ui 资产断言 + `npx vitest run src/policy/`（扩——规则文件校验往返）+ 保存确认面
+- **依赖**：T-P3-103；C22（P1）
+- **风险 / 未知**：编辑写回的安全面（文件路径受限——protected 面前移）
+
+#### T-P3-128 · U25 · 快捷键系统（清单/自定义/冲突提示） `[ ]`
+- **依据需求**：U25（"全局快捷键清单可查、可自定义绑定、冲突提示"）
+- **上游首选参考**：[pi-desktop·KeyboardShortcutsSection](../oss/pi-desktop/apps/desktop/src/components/settings)（🔴 只学行为）
+- **取什么 / 别抄什么**：取"清单 + 绑定编辑 + 冲突提示"三件
+- **要产出**：`ui/keymap.js`（快捷键注册表 + 绑定逻辑——面板/发送/搜索/会话切换/新会话）+ settings 快捷键分节（清单/编辑/冲突提示——浏览器快捷键冲突的提示面）+ 绑定持久化（settings）
+- **验收**：ui 资产断言 + 键位注册表往返 + 冲突检测用例（`npx vitest run src/diagnostics/keymap.test.ts` 新——注册表纯逻辑直测）
+- **依赖**：T-P3-103
+- **风险 / 未知**：浏览器保留键冲突（提示不拦截——卡内定形）
+
+#### T-P3-129 · U26 · 语音设置与输入（实验性） `[ ]`
+- **依据需求**：U26（"STT/TTS 配置页 + Composer 语音输入按钮；P4 的 UI 消费端"）
+- **上游首选参考**：pi-desktop 语音设置形态（🔴 只学行为——用户截图的"语音【实验性】"位）+ [speech-service](../oss/pi-desktop/apps/desktop/electron/main/services)
+- **取什么 / 别抄什么**：取"设置页（引擎选择）+ 输入按钮（按住说话）"形态；TTS 播报最小面（可先只落 STT 侧——卡内定形）
+- **要产出**：settings 语音分节（实验性标记；STT 引擎配置——OpenAI 协议端点复用）+ Composer 麦克风按钮（MediaRecorder → P4 的 STT 链 → 文本填入输入框）+ 权限拒绝降级（麦克风权限）
+- **验收**：ui 资产断言 + `npx vitest run src/attachments/`（扩——STT 链复用）+ 人工走查（真实麦克风）
+- **依赖**：P2 15d P4（STT 面）
+- **风险 / 未知**：浏览器 MediaRecorder 编码格式与 STT 端点兼容（webm/opus——卡内定形）
+
+#### T-P3-130 · 收口 · 16d 盘点 + P3 全段终验收 `[ ]`
+- **依据需求**：批次 16d 收口 + P3 全段终验收
+- **要产出**：盘点面：①U22 技能开关 × I2 装配链；②U23 五预设 × H 族权限降级（预设工具集即 H3/H5 的声明面）；③U23 模型 fallback 链 × U18 辅助模型档一致性；④U24 指令编辑 × protected 路径防线；⑤U25 键位 × 浏览器保留键；⑥U26 STT 链 × P4 面；⑦P3 全段对账（26 条状态表）+ 人工确认清单闭环复核
+- **验收**：`npx vitest run`（全量）+ 工具链四件（count-features = 336）+ license-audit
+- **依赖**：T-P3-101 ~ 129 全部
+- **风险 / 未知**：无
+
+## §7 批次完成定义
 
 - **16a**：6 张卡全勾 ✅；CLI 不带环境变量可启动（读配置）✅；凭据零明文 ✅；设置中心人工走查 ✅；报告入 `plan-p3-progress.md` ✅。
 - **16b**：10 张卡全勾 ✅；渲染安全评审 ✅；**双击 exe 可对话（人工验收）** ✅；人工确认清单全部闭环（转正/放弃两态）✅；`count-features.sh` = **324** ✅；`check-doc-links.sh` 显式传参 0 失效 ✅；`license-audit.sh` exit 0（vendor 登记）✅。
 - **16c**：8 张卡全勾 ✅；工作面板三 Tab 可用（文件树/变更评审/子代理监控）✅；提示词库/MCP 向导/辅助模型卡/Profiles/导入导出/CLI TUI 各面验收 ✅；报告入 `plan-p3-progress.md` ✅。
-- P3 对账：21 条逐条状态表（落地/放弃理由）入 progress ✅。
+- **16d**：6 张卡全勾 ✅；技能管理（清单/编辑器/来源目录）✅；子智能体管理（内置五预设/自定义/模型 fallback 链/权限 chips）✅；指令中心/快捷键/语音设置各面验收 ✅。
+- P3 对账：26 条逐条状态表（落地/放弃理由）入 progress ✅。

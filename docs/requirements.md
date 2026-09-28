@@ -633,7 +633,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 
 ---
 
-### U. Product / 产品化（21 项，P3 层——2026-09-28 用户裁决新增；同日两次扩充：UI 功能组 + 产品扩展组）
+### U. Product / 产品化（26 项，P3 层——2026-09-28 用户裁决新增；同日三次扩充：UI 功能组 + 产品扩展组 + 管理面组）
 
 > **P3 层定位**：P0/P1/P2 做完"内核与能力"，本层做"让 aegent 从内核变成产品"——
 > 配置面、界面体验、分发与真实平台闭环。全部条目挂已有产品形态参考仓的锚点
@@ -661,6 +661,11 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | U19 | **Profiles 配置档与故障转移徽标**：配置组合档（provider+模型+权限的一键场景切换）与多供应商故障转移优先级徽标（J15 的 UI 消费端） | P3 | [cc-switch·ProfileSwitcher/ProfileManageDialog](../oss/cc-switch/src/components/profiles) + [FailoverPriorityBadge](../oss/cc-switch/src/components/providers) | 场景一键切换；故障转移顺序可见可调 |
 | U20 | **配置导入导出与深链分享**：配置包导出/导入（含备份列表）、深链导入的确认面（MCP/提示词/技能三类导入确认） | P3 | [cc-switch·ImportExportSection/BackupListSection](../oss/cc-switch/src/components/settings) + [deeplink 三确认](../oss/cc-switch/src/components/deeplink) | 配置可迁移可分享；导入必有确认 |
 | U21 | **CLI 终端体验升级（TUI 增强）**：REPL 编辑器升级——kill-ring 剪贴环、模糊历史搜索（Alt-Screen 搜索面）、多行编辑（CLI 是 K1 主入口，产品化不能只顾图形端） | P3 | [pi·tui·editor/kill-ring/alt-screen-search/fuzzy](../oss/pi/packages/tui/src)（完整 TUI 编辑器组件——🔴 只学行为） | CLI 编辑手感达现代 TUI 水平 |
+| U22 | **技能管理**：技能清单页（卡片/描述/内置与用户标记/启用开关）、技能编辑器（新建/编辑名称·描述·提示词·工具集）、技能来源目录管理（RepoManager 形态）；技能目录本体 I2 已落——本卡是管理 UI 与编辑器面 | P3 | [cc-switch·skills 四件](../oss/cc-switch/src/components/skills)（SkillsPage/SkillCard/RepoManagerPanel/UnifiedSkillsPanel）+ [pi-desktop·SkillEditorSheet/SkillMarketPanel](../oss/pi-desktop/apps/desktop/src/components/settings)（🔴 只学行为） | 技能可装可停可编；来源目录可管 |
+| U23 | **子智能体管理**：内置预设五例（探索者/代码审查员/测试执行者/修复者/UI 设计师——截图形态，映射我方工具集与提示词）+ 用户自定义（编辑器：名称/提示词/工具集/模型）+ 启用开关 + **per-subagent 模型与 fallback 链**（SubagentModelPicker/SubagentFallbackModels）+ 工具权限 chips 可视化（H3/H5 降级面） | P3 | [pi-desktop·AgentSubagentsPage/SubagentEditorSheet/SubagentModelPicker/SubagentFallbackModels](../oss/pi-desktop/apps/desktop/src/components/settings)（🔴 只学行为——用户截图实证形态） | 内置五预设可开关；自定义子代理带独立模型与权限 chips |
+| U24 | **指令中心**：全局与项目级指令文件的集中管理（AGENTS.md 查看/编辑、用户级规则文件编辑——C22 四档作用域的 UI 面）、模板辅助 | P3 | [pi-desktop 指令页行为](../oss/pi-desktop/apps/desktop/src/components/settings)（🔴 只学行为）+ 我方 C22 规则作用域面 | 指令与规则可查可改；层级（全局/项目）清晰 |
+| U25 | **快捷键系统**：全局快捷键清单（面板开合/发送/搜索/会话切换/新建会话）可查、可自定义绑定、冲突提示 | P3 | [pi-desktop·KeyboardShortcutsSection](../oss/pi-desktop/apps/desktop/src/components/settings)（🔴 只学行为） | 快捷键清单全、可改、冲突有提示 |
+| U26 | **语音设置（实验性）**：STT/TTS 配置页（引擎选择——OpenAI 协议端点复用）+ Composer 语音输入按钮（按住说话 → STT → 填入输入框）；P4（STT 功能面）的 UI 消费端 | P3 | pi-desktop 语音设置形态（🔴 只学行为——用户截图"语音【实验性】"位）+ [speech-service](../oss/pi-desktop/apps/desktop/electron/main/services) | 语音输入可用；实验性标记在位 |
 | U8 | **真实平台联调收尾**：Anthropic 真实端点（cache_control 策略）、飞书/Slack 真实机器人、STT 真实端点、OAuth 真实流程、ACP 真实客户端——人工确认清单逐项闭环 | P3 | 各平台真实环境（凭据由用户提供，掩码入 `private/`） | 人工确认清单全部转正或明确放弃 |
 
 ## 5. 合计（由 `bash tools/count-features.sh` 统计，非手工）
