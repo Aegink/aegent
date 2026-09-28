@@ -17,6 +17,7 @@
  */
 
 import type { JsonRecord } from "../kernel/events.js";
+import type { DenialShape } from "./denial.js";
 import { abstainVerdict, verdictFromOutcome, type Verdict } from "./decision.js";
 
 // ---------------------------------------------------------------------------
@@ -53,6 +54,12 @@ export interface PolicyOutcome {
   readonly rule?: string;
   /** 模块自述理由（C18）；缺席时由链以模块名合成。 */
   readonly reason?: string;
+  /**
+   * C55 结构化拒绝面（T-P2-202）：命中规则声明了 justification/
+   * alternatives 时附带（reason 字段 = 规则原文，与 rule 证据同源）。
+   * 渲染在 gate 层（renderDenial）——链只搬运结构不做人话。
+   */
+  readonly denial?: DenialShape;
 }
 
 export interface PolicyModule {

@@ -86,7 +86,13 @@ import {
 import { ManualPermissionBroker, type PermissionBrokerPort } from "../policy/broker.js";
 import { assemblePolicyChain } from "../policy/chain.js";
 import { createRuleSetModule } from "../policy/rules.js";
-import { type RuleSource, loadRules, loadedRuleMatch, loadedRuleText } from "../policy/rule-loader.js";
+import {
+  type RuleSource,
+  loadRules,
+  loadedRuleMatch,
+  loadedRuleText,
+  loadedRuleDenial,
+} from "../policy/rule-loader.js";
 import { builtinRuleMatchers } from "../policy/matchers.js";
 import { createShellSemanticsModule } from "../policy/shell-semantics.js";
 import {
@@ -489,6 +495,9 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
               rules: loadedRules,
               match: loadedRuleMatch(),
               ruleText: loadedRuleText,
+              // C55（T-P2-202）：命中规则声明了 justification/alternatives
+              // 时附带结构化拒绝面——gate 渲染"怎么办"。
+              ruleDenial: loadedRuleDenial,
             }),
           ],
         }

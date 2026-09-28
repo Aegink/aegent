@@ -19,7 +19,8 @@
  * 规则均有匹配语义）、basename-unanchored（C53 basename 未绑绝对路径）、
  * unknown-param-name（C40 参数 matcher 的 key 不在工具参数 schema 中——
  * T-P2-201；knownToolParams 由调用方提供 schema 名单，无 schema 的工具
- * 跳过不误报）。
+ * 跳过不误报）、missing-alternatives（C55 deny 规则未声明替代做法——
+ * T-P2-202）。
  *
  * linter 只警告不拦截：装一条死规则是用户配置错误，不是攻击面——
  * 拒绝装配会让有其他活规则的配置整体不可用，过狠（样例矛盾才拒，
@@ -38,7 +39,8 @@ export type LintIssueKind =
   | "incomplete-namespace-name"
   | "empty-value-pattern"
   | "basename-unanchored"
-  | "unknown-param-name";
+  | "unknown-param-name"
+  | "missing-alternatives";
 
 export interface LintIssue {
   readonly kind: LintIssueKind;
@@ -221,6 +223,19 @@ export function lintRules(
           });
         }
       }
+    }
+    // C55 拒绝纪律（T-P2-202）：forbidden（deny）类规则必须给替代做法
+    // （alternatives）——"拒绝要能告诉用户怎么办"。缺声明即检出（警告
+    // 不拦截——linter 既有纪律：拦截会让既有 deny 配置整体不可用，违反
+    // "既有拒绝零变化"）；替代做法的渲染在 gate 层（renderDenial）。
+    if (rule.action === "deny" && rule.alternatives === undefined) {
+      issues.push({
+        kind: "missing-alternatives",
+        raw: rule.raw,
+        ...(rule.line !== undefined ? { line: rule.line } : {}),
+        detail:
+          "forbidden（deny）规则未声明 alternatives 替代做法——被拒的调用无法知道怎么办（C55）；请在规则声明面补 alternatives",
+      });
     }
   }
   return issues;

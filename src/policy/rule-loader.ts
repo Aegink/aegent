@@ -21,17 +21,9 @@
  * 两者参数维度共用同一通配方言（bashRuleMatcher 内部就是 wildcardMatch）。
  */
 
-import type { PolicyAction, PolicyCall } from "./chain.js";
+import type { PolicyAction } from "./chain.js";
 import type { RuleMatchable } from "./matchers.js";
-import { bashRuleMatcher } from "./matchers.js";
-import { wildcardMatch } from "./evaluate.js";
-import {
-  getSpecifierKind,
-  domainRuleMatcher,
-  pathRuleMatcher,
-  literalRuleMatcher,
-  evaluateParamMatchers,
-} from "./specifier-kinds.js";
+import { getSpecifierKind } from "./specifier-kinds.js";
 
 // ---------------------------------------------------------------------------
 // 类型
@@ -62,6 +54,16 @@ export interface LoadedRule {
    * 原文形状做 fail-closed 载体，不参与匹配）。
    */
   readonly plainSpecifier?: string;
+  /**
+   * C55 规则理由（T-P2-202，codex·execpolicy 同名字段同构——这条规则
+   * 为什么存在；声明时必须非空，空白归一为 undefined 并 linter 检出）。
+   */
+  readonly justification?: string;
+  /**
+   * C55 替代做法（T-P2-202）——deny（forbidden 类）规则须声明（linter
+   * 检出缺失）；条目须非空空白串。
+   */
+  readonly alternatives?: readonly string[];
 }
 
 /**
@@ -91,6 +93,16 @@ export interface RuleSource {
    * toolParamMatchers（AND 语义，顺序无关）——既有文本规则零变化。
    */
   readonly paramMatchers?: readonly ToolParamMatcher[];
+  /**
+   * C55 规则理由（T-P2-202）：声明时必须非空白（codex `justification
+   * cannot be empty` 同款——空白归一为 undefined + linter 检出）。
+   */
+  readonly justification?: string;
+  /**
+   * C55 替代做法（T-P2-202）：deny（forbidden 类）规则须声明（linter
+   * 检出缺失）；条目空白串在加载时剔除，剔后为空归一 undefined。
+   */
+  readonly alternatives?: readonly string[];
 }
 
 /** 样例校验失败明细（加载报错时全部列出，不止第一条）。 */
@@ -237,6 +249,20 @@ export function loadRules(
       parsed.toolParamMatchers !== undefined || declared !== undefined
         ? [...(parsed.toolParamMatchers ?? []), ...(declared ?? [])]
         : undefined;
+    // C55 声明面归一（T-P2-202）：justification 空白 = 未声明（codex
+    // 注册期拒绝空串的对应面——我方声明面是代码级，空白声明零信息，
+    // 归一 + 记档）；alternatives 剔空白条目，剔后为空归一 undefined。
+    const justification =
+      source.justification !== undefined && source.justification.trim() !== ""
+        ? source.justification.trim()
+        : undefined;
+    const alternatives = source.alternatives?.filter(
+      (a) => a.trim() !== "",
+    );
+    const effectiveAlternatives =
+      alternatives !== undefined && alternatives.length > 0
+        ? alternatives
+        : undefined;
     return {
       raw: parsed.raw,
       toolName: parsed.toolName,
@@ -248,6 +274,10 @@ export function loadRules(
         : {}),
       ...(parsed.plainSpecifier !== undefined
         ? { plainSpecifier: parsed.plainSpecifier }
+        : {}),
+      ...(justification !== undefined ? { justification } : {}),
+      ...(effectiveAlternatives !== undefined
+        ? { alternatives: effectiveAlternatives }
         : {}),
       action: source.action,
       invalid: false,
@@ -322,62 +352,10 @@ function pushAllViolations(
   }
 }
 
-// ---------------------------------------------------------------------------
-// 链上匹配（配 createRuleSetModule 使用；C39 分型路由 T-P1-68）
-// ---------------------------------------------------------------------------
-
-/**
- * 链上规则匹配函数（C21/C39/C40）：工具名维度通配 + 参数维度按
- * getSpecifierKind(call.tool) 分型路由——command → bashRuleMatcher 的
- * shell glob（既有方言）、path → gitignore 风格、domain → host 后缀、
- * literal → 精确 + key:value。invalid 规则永不命中；MCP 命名空间工具
- * （server__tool）的规则带 specifier 时永不命中（qwen 同款 reject——
- * 工具名已编码 server+tool 身份，specifier 无从解释；C40 声明式参数
- * matcher 同样计入 specifier——带参的 MCP 规则 fail-closed 不静默放行，
- * qwen 的 MCP 参数匹配面我方不取，记档 T-P2-201）。
- *
- * C40（T-P2-201）：规则带 toolParamMatchers（文本解析产物或声明式合并）
- * 时，command/path/domain 分型在 specifier 命中后**再 AND 参数 matcher**
- * （qwen evaluateParamMatchers 在标准分支同位共享的语义）；无 matcher 的
- * 规则零变化。
- */
-export function loadedRuleMatch(): (rule: LoadedRule, call: PolicyCall) => PolicyAction | undefined {
-  return (rule, call) => {
-    if (rule.invalid) return undefined;
-    if (!wildcardMatch(call.tool, rule.toolName)) return undefined;
-    const hasSpecifier =
-      rule.argPattern !== undefined || rule.toolParamMatchers !== undefined;
-    if (!hasSpecifier) return rule.action;
-    // MCP 命名空间带 specifier 拒配（不静默忽略——qwen 同款语义）
-    if (call.tool.includes("__")) return undefined;
-    if (
-      rule.toolParamMatchers !== undefined &&
-      !evaluateParamMatchers(rule.toolParamMatchers, call.args)
-    ) {
-      return undefined;
-    }
-    switch (getSpecifierKind(call.tool)) {
-      case "command":
-        return bashRuleMatcher.matchesRule(rule.argPattern ?? "", call)
-          ? rule.action
-          : undefined;
-      case "path":
-        return pathRuleMatcher.matchesRule(rule.argPattern ?? "", call)
-          ? rule.action
-          : undefined;
-      case "domain":
-        return domainRuleMatcher.matchesRule(rule.argPattern ?? "", call)
-          ? rule.action
-          : undefined;
-      case "literal":
-        return literalRuleMatcher.matchesLoadedRule(rule, call)
-          ? rule.action
-          : undefined;
-    }
-  };
-}
-
-/** verdict.rule 的规则原文回显（createRuleSetModule 的 ruleText 回调）。 */
-export function loadedRuleText(rule: LoadedRule): string {
-  return rule.raw;
-}
+// 链上匹配（loadedRuleMatch/loadedRuleText/loadedRuleDenial）自 T-P2-202
+// 起住在 ./rule-match.ts（文件行数纪律）——此处 re-export 保持既有导入面。
+export {
+  loadedRuleMatch,
+  loadedRuleText,
+  loadedRuleDenial,
+} from "./rule-match.js";

@@ -14,6 +14,7 @@
  * max() 聚合是 T-5-06（aggregate.ts）的事，此处不做。
  */
 
+import type { DenialShape } from "./denial.js";
 import type { PolicyAction, PolicyOutcome } from "./chain.js";
 
 /** C 层四值决策（C32）：allow / ask / deny / abstain。 */
@@ -25,6 +26,8 @@ export interface Verdict {
   /** 命中的规则原文（如 Bash(git push:*)）；非规则来源的裁决缺席。 */
   readonly rule?: string;
   readonly reason: string;
+  /** C55 结构化拒绝面（T-P2-202）：命中规则声明面数据——gate 渲染"怎么办"。 */
+  readonly denial?: DenialShape;
 }
 
 /**
@@ -40,6 +43,7 @@ export function verdictFromOutcome(
   return {
     action: outcome.action,
     ...(outcome.rule !== undefined ? { rule: outcome.rule } : {}),
+    ...(outcome.denial !== undefined ? { denial: outcome.denial } : {}),
     reason:
       outcome.rule !== undefined && outcome.reason === undefined
         ? `${base}（依规则 ${outcome.rule}）`

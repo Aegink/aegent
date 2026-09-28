@@ -41,6 +41,7 @@ import type {
 import type { JsonRecord } from "../kernel/events.js";
 import type { PolicyCall, PolicyChain } from "./chain.js";
 import type { Verdict } from "./decision.js";
+import { buildDenial, renderDenial } from "./denial.js";
 import { enforceProtectedPaths } from "./protected-paths.js";
 import { enforcePlanMode } from "./plan-guard.js";
 import { enforceTrustGate } from "./project-trust.js";
@@ -194,8 +195,15 @@ export async function evaluateToolPolicy(
 }
 
 function deniedResult(verdict: Verdict, code: string): ToolExecutionResult {
+  // C55（T-P2-202）：命中规则声明了 justification/alternatives 时渲染
+  // 结构化拒绝（主因 + 规则理由 + 编号替代清单——"拒绝要能告诉用户怎么
+  // 办"）；无声明数据维持既有单行文本（既有拒绝零变化）。
+  const denial = buildDenial(verdict.reason, verdict.denial);
   return {
-    content: `被权限策略拒绝：${verdict.reason}`,
+    content:
+      denial !== undefined
+        ? renderDenial(denial)
+        : `被权限策略拒绝：${verdict.reason}`,
     isError: true,
     error: { name: "PolicyGate", code, reason: verdict.reason },
   };

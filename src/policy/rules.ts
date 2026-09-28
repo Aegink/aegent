@@ -16,6 +16,7 @@ import type {
   PolicyModule,
   PolicyOutcome,
 } from "./chain.js";
+import type { DenialShape } from "./denial.js";
 
 export interface RuleSetOptions<R> {
   readonly name: string;
@@ -29,6 +30,12 @@ export interface RuleSetOptions<R> {
    * 不带 rule 字段。
    */
   readonly ruleText?: (rule: R) => string;
+  /**
+   * C55 结构化拒绝面（T-P2-202）：命中规则声明了 justification/
+   * alternatives 时构造拒绝形状（reason 字段 = 规则原文，与 ruleText
+   * 同源）；不提供或规则无声明数据则裁决不带 denial——渲染在 gate 层。
+   */
+  readonly ruleDenial?: (rule: R) => DenialShape | undefined;
 }
 
 /**
@@ -38,16 +45,18 @@ export interface RuleSetOptions<R> {
 export function createRuleSetModule<R>(
   options: RuleSetOptions<R>,
 ): PolicyModule {
-  const { name, rules, match, ruleText } = options;
+  const { name, rules, match, ruleText, ruleDenial } = options;
   return {
     name,
     async evaluate(call: PolicyCall): Promise<PolicyOutcome | undefined> {
       for (const rule of rules) {
         const action = match(rule, call);
         if (action !== undefined) {
+          const denial = ruleDenial !== undefined ? ruleDenial(rule) : undefined;
           return {
             action,
             ...(ruleText !== undefined ? { rule: ruleText(rule) } : {}),
+            ...(denial !== undefined ? { denial } : {}),
           };
         }
       }
