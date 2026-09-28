@@ -21,7 +21,8 @@
 
 | # | 上游仓库 | Commit | 许可证 | 引用文件 | 我方位置 | 是否修改 | 日期 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| — | *(暂无)* | | | | | | |
+| 1 | markedjs/marked（npm `marked@16.4.2`） | v16.4.2 | MIT | `lib/marked.esm.js`、`LICENSE.md` | `ui/vendor/marked.esm.js`、`ui/vendor/LICENSE.marked.md`（U4 渲染管线——模型产出 markdown 渲染） | 否（原样复制） | 2026-09-29 |
+| 2 | highlightjs/highlight.js（npm `highlight.js@11.12.0`） | v11.12.0 | BSD-3-Clause | `lib/common.js`、`LICENSE` | `ui/vendor/highlight.esm.js`（esbuild bundle 成浏览器 ESM——含 36 common 语言）、`ui/vendor/LICENSE.highlight.js`（U4 代码块高亮） | 是（仅打包形态：CJS → ESM bundle，库本体零修改） | 2026-09-29 |
 
 ## 许可分级实况（2026-09-23 实测）
 

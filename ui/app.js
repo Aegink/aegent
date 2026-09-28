@@ -5,6 +5,10 @@
  * → request/lease（写命令持约）→ event/notification（流渲染）。
  */
 
+// U4/T-P3-107 渲染分层：assistant 走 markdown+高亮管线（render.js——
+// 用户输入不走此管线，注入面防呆）；vendor 本地化见 ui/vendor/README.md
+import { buildDiffLines, parseDenial, renderMarkdown } from "./render.js";
+
 // 桌面壳检测：Tauri 2 WebView 注入 __TAURI_INTERNALS__ 全局（无需 @tauri-apps/api）。
 // surfaceId 前缀 web-/desktop- 是审计答复端（replySource）的来源约定。
 const IS_DESKTOP = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -49,10 +53,18 @@ function sendRaw(envelope) {
 }
 
 function appendLine(text, cls = "") {
+  stream.appendChild(lineEl(text, cls));
+  scrollBottom();
+}
+
+function lineEl(text, cls = "") {
   const div = document.createElement("div");
   div.className = `line ${cls}`.trim();
   div.textContent = text;
-  stream.appendChild(div);
+  return div;
+}
+
+function scrollBottom() {
   stream.scrollTop = stream.scrollHeight;
 }
 
@@ -61,51 +73,278 @@ function oneLine(text, limit = 400) {
   return flat.length > limit ? `${flat.slice(0, limit)}…` : flat;
 }
 
-/** 事件 → 单行摘要（cli/repl.ts renderEventSummary 的 UI 同源简化版）。 */
-function renderEvent(e) {
+function safeParseArgs(raw) {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// U4/T-P3-107 渲染分层：assistant=markdown 气泡（流式打字回放）、工具=折叠卡
+// （callId 成对 + 写操作 diff）、其余=单行摘要（repl renderEventSummary 同源）。
+// ---------------------------------------------------------------------------
+
+const STREAM_MAX_MS = 2000;
+
+function endKindText(reason) {
+  if (reason === undefined || reason === null) return "?";
+  switch (reason.kind) {
+    case "completed":
+      return "completed";
+    case "aborted":
+      return `aborted（${reason.cause?.kind ?? "?"}）`;
+    case "blocked":
+      return "blocked";
+    case "error":
+      return `error：${reason.error?.code ?? ""} ${reason.error?.message ?? ""}`.trim();
+    case "max-tokens":
+      return "max-tokens";
+    case "interrupted":
+      return "interrupted";
+    default:
+      return reason.kind;
+  }
+}
+
+/** 流式打字：text-delta 节流追加（rAF 消费 TimedStreamChunk 时间轴——事件
+ * 自带流记录即回放输入，零新增 wire 面）；终态换完整 markdown+高亮渲染。 */
+function typeStream(bubble, chunks, finalContent) {
+  const deltas = [];
+  for (const c of chunks) {
+    if (c?.chunk?.type === "text-delta") deltas.push({ t: Number(c.time) || 0, text: String(c.chunk.text ?? "") });
+  }
+  if (deltas.length === 0) {
+    bubble.innerHTML = renderMarkdown(finalContent);
+    scrollBottom();
+    return;
+  }
+  const t0 = deltas[0].t;
+  const total = Math.max((deltas[deltas.length - 1]?.t ?? t0) - t0, 1);
+  const speed = total > STREAM_MAX_MS ? STREAM_MAX_MS / total : 1; // 超长流压缩到 ≤2s
+  let i = 0;
+  let acc = "";
+  const start = performance.now();
+  const tick = () => {
+    const elapsed = (performance.now() - start) / speed;
+    while (i < deltas.length && deltas[i].t - t0 <= elapsed) {
+      acc += deltas[i].text;
+      i++;
+    }
+    bubble.textContent = acc; // 打字过程纯文本增量追加（不重排）
+    scrollBottom();
+    if (i < deltas.length) {
+      requestAnimationFrame(tick);
+    } else {
+      bubble.innerHTML = renderMarkdown(finalContent);
+      scrollBottom();
+    }
+  };
+  requestAnimationFrame(tick);
+}
+
+function diffEl(lines) {
+  const wrap = document.createElement("div");
+  wrap.className = "diff";
+  for (const l of lines) {
+    const row = document.createElement("div");
+    row.className = `diff-row ${l.kind}`;
+    row.textContent = l.text;
+    wrap.appendChild(row);
+  }
+  return wrap;
+}
+
+/** C55 alternatives 展示（拒绝卡——"被拒之后可以怎么办"编号清单）。 */
+function denialEl(denial) {
+  const wrap = document.createElement("div");
+  wrap.className = "denial";
+  const reason = document.createElement("div");
+  reason.textContent = `被权限策略拒绝：${denial.reason}`;
+  wrap.appendChild(reason);
+  if (denial.justification !== undefined) {
+    const just = document.createElement("div");
+    just.className = "denial-just";
+    just.textContent = `规则理由：${denial.justification}`;
+    wrap.appendChild(just);
+  }
+  if (denial.alternatives.length > 0) {
+    const head = document.createElement("div");
+    head.textContent = "替代做法：";
+    const ol = document.createElement("ol");
+    for (const alt of denial.alternatives) {
+      const li = document.createElement("li");
+      li.textContent = alt;
+      ol.appendChild(li);
+    }
+    wrap.append(head, ol);
+  }
+  return wrap;
+}
+
+function buildToolCard(e) {
+  const card = document.createElement("details");
+  card.className = "tool-card";
+  card.dataset.callId = e.callId;
+  const summary = document.createElement("summary");
+  const args = safeParseArgs(e.arguments);
+  summary.textContent = `→ ${e.name} ${oneLine(args !== null ? JSON.stringify(args) : e.arguments, 160)}`;
+  const body = document.createElement("div");
+  body.className = "tool-body";
+  const argsPre = document.createElement("pre");
+  argsPre.className = "card-args";
+  argsPre.textContent = args !== null ? JSON.stringify(args, null, 2) : String(e.arguments ?? "");
+  body.appendChild(argsPre);
+  const diff = args !== null ? buildDiffLines(e.name, args) : null;
+  if (diff !== null) body.appendChild(diffEl(diff)); // 写操作 diff 对照
+  card.append(summary, body);
+  return card;
+}
+
+function settleToolCard(e) {
+  const content = e.message?.content ?? "";
+  const isError = e.message?.isError === true;
+  const existing = stream.querySelector(`details[data-call-id="${CSS.escape(e.callId)}"]`);
+  if (existing !== null) {
+    existing.classList.toggle("error", isError);
+    const body = existing.querySelector(".tool-body");
+    const denial = isError ? parseDenial(content) : null;
+    if (denial !== null) {
+      body.appendChild(denialEl(denial)); // C55 结构化拒绝面
+    } else {
+      const resultPre = document.createElement("pre");
+      resultPre.className = `card-args ${isError ? "warn" : ""}`.trim();
+      resultPre.textContent = content; // 工具结果原样（不渲染 markdown）
+      body.appendChild(resultPre);
+    }
+    return null; // 已并入 call 卡——不再追加节点
+  }
+  // 历史恢复/乱序兜底：result 单独成卡（callId 标注可追溯）
+  const card = document.createElement("details");
+  card.className = `tool-card result-only ${isError ? "error" : ""}`.trim();
+  card.dataset.callId = e.callId;
+  const summary = document.createElement("summary");
+  summary.textContent = `${isError ? "✗" : "←"} ${oneLine(content, 160)}`;
+  const body = document.createElement("div");
+  body.className = "tool-body";
+  const denial = isError ? parseDenial(content) : null;
+  if (denial !== null) {
+    body.appendChild(denialEl(denial));
+  } else {
+    const resultPre = document.createElement("pre");
+    resultPre.className = `card-args ${isError ? "warn" : ""}`.trim();
+    resultPre.textContent = content;
+    body.appendChild(resultPre);
+  }
+  card.append(summary, body);
+  return card;
+}
+
+/** 最近一条用户输入（错误重试交互的重发面——turn/end error 卡的按钮）。 */
+let lastUserPrompt = "";
+
+function attachRetry(el, error) {
+  if (lastUserPrompt === "") return;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "retry-btn";
+  btn.textContent = `↻ 重试上一条（${error?.code ?? "error"}）`;
+  btn.addEventListener("click", () => {
+    btn.disabled = true;
+    void sendRequest(sessionId(), {
+      type: "prompt",
+      messageId: `m-${nextRequestId++}`,
+      content: lastUserPrompt,
+    });
+  });
+  el.appendChild(document.createTextNode(" "));
+  el.appendChild(btn);
+}
+
+/** 事件 → DOM 节点（U4 分层版）；null = 不展示或已并入既有卡。 */
+function renderEvent(e, options = {}) {
   switch (e.type) {
     case "turn/start":
-      return [`── turn ${e.turn} 开始`, "meta"];
-    case "turn/end":
-      return [`── turn ${e.turn} 结束（${e.reason?.kind ?? "?"}）`, "meta"];
-    case "user/message":
-      return e.source === "injected"
-        ? [`（注入）${oneLine(e.message?.content ?? "")}`, "dim"]
-        : [`你：${oneLine(e.message?.content ?? "")}`, "user"];
-    case "assistant/message":
-      return e.interrupted
-        ? [`⚠（中断，前缀）${oneLine(e.message?.content ?? "")}`, "warn"]
-        : [e.message?.content === "" ? "⬢ （模型转入工具调用）" : `⬢ ${oneLine(e.message?.content ?? "")}`, "agent"];
+      return lineEl(`── turn ${e.turn} 开始`, "meta");
+    case "turn/end": {
+      const el = lineEl(`── turn ${e.turn} 结束（${endKindText(e.reason)}）`, "meta");
+      if (e.reason?.kind === "error") attachRetry(el, e.reason.error); // 错误重试交互
+      return el;
+    }
+    case "user/message": {
+      // 用户输入不渲染（注入面防呆——textContent 原样，不走 markdown 管线）
+      const el = document.createElement("div");
+      el.className = `bubble user ${e.source === "injected" ? "dim" : ""}`.trim();
+      el.textContent = e.message?.content ?? "";
+      if (e.source !== "injected") lastUserPrompt = e.message?.content ?? "";
+      return el;
+    }
+    case "assistant/message": {
+      const bubble = document.createElement("div");
+      bubble.className = `bubble agent ${e.interrupted ? "warn" : ""}`.trim();
+      const content = e.message?.content ?? "";
+      if (content === "") return lineEl("⬢ （模型转入工具调用）", "agent");
+      if (options.live) {
+        typeStream(bubble, e.message?.stream ?? [], content); // 流式打字节流
+      } else {
+        bubble.innerHTML = renderMarkdown(content); // 恢复视图直接终态
+      }
+      return bubble;
+    }
     case "tool/call":
-      return [`→ ${e.name} ${oneLine(e.arguments ?? "", 160)}`, "tool"];
+      return buildToolCard(e);
     case "tool/result":
-      return [`${e.message?.isError ? "✗" : "←"} ${oneLine(e.message?.content ?? "")}`, e.message?.isError ? "warn" : "tool"];
+      return settleToolCard(e);
     case "compaction":
-      return [`◇ 压缩：${e.reason ?? e.strategy ?? ""}`, "meta"];
+      return lineEl(`◇ 压缩：${e.reason ?? e.strategy ?? ""}`, "meta");
     case "image/offload":
-      return [`◇ 图片卸载：${(e.targets ?? []).length} 组`, "meta"];
+      return lineEl(`◇ 图片卸载：${(e.targets ?? []).length} 组`, "meta");
     case "surface/attach":
-      return [`＋ surface ${e.surfaceId} 接入`, "roster"];
+      return lineEl(`＋ surface ${e.surfaceId} 接入`, "roster");
     case "surface/detach":
-      return [`－ surface ${e.surfaceId} 离开`, "roster"];
+      return lineEl(`－ surface ${e.surfaceId} 离开`, "roster");
     default:
       return null; // wire 细节类静默（request/header 等——repl 同款纪律）
   }
 }
 
 function renderEventEnvelope(envelope) {
-  const rendered = renderEvent(envelope.event);
-  if (rendered !== null) appendLine(rendered[0], rendered[1]);
+  const node = renderEvent(envelope.event, { live: true });
+  if (node !== null) {
+    stream.appendChild(node);
+    scrollBottom();
+  }
 }
 
 /** 恢复视图：历史事件一次性渲染（query 快照；此后走 event 流续播）。 */
 function renderHistory(events) {
   for (const e of events) {
-    const rendered = renderEvent(e);
-    if (rendered !== null) appendLine(rendered[0], rendered[1]);
+    const node = renderEvent(e);
+    if (node !== null) stream.appendChild(node);
   }
   if (events.length > 0) appendLine(`── 已恢复 ${events.length} 条历史事件 ──`, "meta");
+  scrollBottom();
 }
+
+// 代码块复制按钮（U4：事件委托——动态内容免逐个绑）
+stream.addEventListener("click", (ev) => {
+  const btn = ev.target instanceof Element ? ev.target.closest(".code-copy") : null;
+  if (btn === null) return;
+  const code = btn.parentElement?.querySelector("code");
+  const text = code?.textContent ?? "";
+  navigator.clipboard
+    ?.writeText(text)
+    .then(() => {
+      btn.textContent = "已复制";
+      setTimeout(() => {
+        btn.textContent = "复制";
+      }, 1500);
+    })
+    .catch(() => {
+      btn.textContent = "复制失败";
+    });
+});
 
 // ---------------------------------------------------------------------------
 // 审批 / 提问卡（notification 面驱动——"任何通道可答"）
@@ -126,6 +365,22 @@ function buildCard(name, payload) {
   title.className = "card-title";
   if (name === "approval_requested") {
     title.textContent = `审批请求：${payload.tool}`;
+    // C54 审批来源分类 chip + 超时倒计时（审批卡优化——U4/T-P3-107）
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.textContent = String(payload.category ?? "tool");
+    title.appendChild(chip);
+    const countdown = document.createElement("span");
+    countdown.className = "countdown";
+    title.appendChild(countdown);
+    const deadline = Date.now() + (Number(payload.timeoutMs) || 0);
+    const timer = setInterval(() => {
+      if (!countdown.isConnected) {
+        clearInterval(timer);
+        return;
+      }
+      countdown.textContent = `${Math.max(0, Math.ceil((deadline - Date.now()) / 1000))}s`;
+    }, 1000);
     const args = document.createElement("pre");
     args.className = "card-args";
     args.textContent = JSON.stringify(payload.args, null, 2);

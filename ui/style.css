@@ -400,3 +400,273 @@ body {
 #history-btn:hover {
   border-color: var(--accent);
 }
+
+/* U4/T-P3-107 渲染分层：气泡（用户纯文本/模型 markdown）、工具折叠卡、
+   代码块（复制按钮 + hljs token 色）、写操作 diff、拒绝面、重试按钮 */
+.bubble {
+  margin: 6px 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  max-width: 92%;
+  word-break: break-word;
+}
+
+.bubble.user {
+  background: var(--panel);
+  margin-left: auto;
+}
+
+.bubble.agent {
+  border-color: transparent;
+  padding-left: 8px;
+}
+
+.bubble.agent.warn {
+  border-color: var(--warn);
+}
+
+.bubble.dim {
+  color: var(--dim);
+}
+
+/* markdown 排版（agent 气泡内） */
+.bubble.agent p {
+  margin: 4px 0;
+}
+
+.bubble.agent ul,
+.bubble.agent ol {
+  margin: 4px 0;
+  padding-left: 22px;
+}
+
+.bubble.agent h1,
+.bubble.agent h2,
+.bubble.agent h3,
+.bubble.agent h4 {
+  margin: 8px 0 4px;
+}
+
+.bubble.agent blockquote {
+  margin: 4px 0;
+  padding: 2px 10px;
+  border-left: 3px solid var(--accent);
+  color: var(--dim);
+}
+
+.bubble.agent a {
+  color: var(--accent);
+}
+
+.bubble.agent table {
+  border-collapse: collapse;
+  margin: 4px 0;
+}
+
+.bubble.agent th,
+.bubble.agent td {
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+}
+
+.bubble.agent code {
+  background: var(--panel);
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+
+.md-html-raw {
+  color: var(--warn);
+}
+
+.code-block {
+  position: relative;
+  margin: 6px 0;
+}
+
+.code-block pre {
+  margin: 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.code-copy {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  padding: 1px 8px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--dim);
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.code-block:hover .code-copy {
+  opacity: 1;
+}
+
+.code-copy:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* highlight.js token 色（最小调色板——暗/亮共用，色值取中间对比档） */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-section,
+.hljs-doctag,
+.hljs-type,
+.hljs-name,
+.hljs-strong {
+  color: #b18ce8;
+}
+
+.hljs-string,
+.hljs-title,
+.hljs-attr,
+.hljs-attribute,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition,
+.hljs-quote {
+  color: #57c785;
+}
+
+.hljs-comment,
+.hljs-meta {
+  color: #7c828e;
+}
+
+.hljs-number,
+.hljs-regexp,
+.hljs-link,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-deletion {
+  color: #e8a15c;
+}
+
+.tool-card {
+  margin: 6px 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  max-width: 92%;
+}
+
+.tool-card summary {
+  padding: 4px 10px;
+  cursor: pointer;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tool-card summary:hover {
+  color: var(--text);
+}
+
+.tool-card.error {
+  border-color: var(--danger);
+}
+
+.tool-card.error summary {
+  color: var(--danger);
+}
+
+.tool-body {
+  padding: 0 10px 8px;
+  border-top: 1px dashed var(--border);
+}
+
+.tool-card.result-only summary {
+  color: var(--text);
+}
+
+.diff {
+  margin: 4px 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow-x: auto;
+  font-size: 13px;
+}
+
+.diff-row {
+  padding: 0 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.diff-row.meta {
+  color: var(--dim);
+  border-bottom: 1px dashed var(--border);
+}
+
+.diff-row.add {
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  color: var(--ok);
+}
+
+.diff-row.del {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+  text-decoration: line-through;
+}
+
+.denial {
+  border-left: 3px solid var(--danger);
+  padding-left: 10px;
+  margin: 4px 0;
+  white-space: pre-wrap;
+}
+
+.denial .denial-just {
+  color: var(--dim);
+}
+
+.denial ol {
+  margin: 4px 0;
+  padding-left: 22px;
+}
+
+.retry-btn {
+  padding: 1px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.retry-btn:hover {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.retry-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 审批卡优化（U4/T-P3-107）：C54 分类 chip + 超时倒计时 */
+.card-title .chip {
+  margin-left: 8px;
+  padding: 0 8px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--dim);
+}
+
+.card-title .countdown {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--warn);
+}

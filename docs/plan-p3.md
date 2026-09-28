@@ -116,7 +116,7 @@
 
 **词汇表预判**：16b 全部零事件预判（渲染/导航/分发面）；U10 粘贴图走 P1 附件链（attachments 载荷已有）；无立案候选。
 
-#### T-P3-107 · U4 · UI 渲染分层基础（markdown/高亮/流式/工具卡/diff） `[ ]`
+#### T-P3-107 · U4 · UI 渲染分层基础（markdown/高亮/流式/工具卡/diff） `[x]`
 - **依据需求**：U4（"markdown 与代码高亮渲染（含代码块复制按钮）、流式打字节流、工具调用卡展开、审批卡优化、错误与重试交互；一份资产两端共用"）
 - **上游首选参考**：[pi·client](../oss/pi/packages/client)（🔴 只学行为：渲染分层与增量更新纪律）
 - **取什么 / 别抄什么**：取"渲染分层（纯文本/markdown/代码）+ 增量追加不重排"行为；不抄其 React 框架（全局约束 3——原生 + marked/highlight.js 两 vendor 库）
@@ -124,6 +124,7 @@
 - **验收**：`npx vitest run src/diagnostics/tauri-shell.test.ts`（扩）+ ui 资产冒烟 + **人工走查列确认清单**（XSS 评审落完成记录）
 - **依赖**：T-P3-106（16a 收口）
 - **风险 / 未知**：XSS 面（marked 配置白名单策略）
+- **完成记录（2026-09-29）**：验收 `npx vitest run src/diagnostics/tauri-shell.test.ts src/diagnostics/ui-render.test.ts` → **18 passed**（tauri-shell 8 扩 + ui-render 10 新；`node --check` 两 JS 语法过；tsc 干净）。落地：①**vendor 本地化**：`ui/vendor/`（marked 16.4.2 原样 `lib/marked.esm.js` + highlight.js 11.12.0 `lib/common.js` 经 esbuild bundle 成浏览器 ESM〔36 common 语言，npm 包内 `es/` 是 Node 双包互操作面浏览器不可 import——bundle 产物入库、UI 消费端仍零构建链〕+ 两 LICENSE + 出处 README + esbuild devDep〔同时服务 T-P3-113〕+ THIRD_PARTY.md 两条登记）；②**渲染管线** `ui/render.js`（纯函数模块）：marked 禁 HTML 透传（renderer.html 恒转义 `md-html-raw` 可见不执行）+ href 协议白名单（javascript:/data: 恒 "#"，链接 `rel="noopener noreferrer"`）+ 代码块 hljs 高亮 + 复制按钮；③**app.js 分层**：assistant 走 markdown 气泡（流式打字 `typeStream`——rAF 消费事件自带 `TimedStreamChunk` 时间轴〔零新增 wire 面〕，超长流压缩 ≤2s，终态换完整渲染；恢复视图直接终态），**用户输入 textContent 原样不渲染**（注入面禁足）；工具卡 `tool/call`→`tool/result` 以 `callId` 成对折叠（args JSON 格式化 + write/edit 写操作 diff 对照〔del/add 着色〕+ result 原样不渲染）；④审批卡优化：C54 分类 chip + 超时倒计时 + C55 拒绝面结构化展示（`parseDenial` 解析 renderDenial 同源文本 → 编号替代做法清单）；⑤错误重试交互：`turn/end` reason.kind=error 卡挂"重试上一条"按钮（重发最近 user prompt）。**XSS 评审（落完成记录）**：机验面 = `ui-render.test.ts` 十例（script/img 标签恒转义不落地、javascript:/data: href 恒 "#"、hljs 输出转义、safeHref 白名单直测）；设计面 = 渲染只作用于 assistant 事件（app.js 的 `renderMarkdown` 调用点全部在 assistant 分支——typeStream 终态与 assistant 气泡；user 气泡恒 textContent）、工具结果/args 恒 textContent、marked 无其他 innerHTML 注入点、vendor 纯库无网络面；**残余面**：marked/hljs 零-day 为上游风险（vendor 固定版本可控），人工走查列入确认清单。
 
 #### T-P3-108 · U9 · 对话导航与检索 UI（搜索两级 + 长会话小地图） `[ ]`
 - **依据需求**：U9（"会话内搜索、跨会话搜索、长会话小地图"）

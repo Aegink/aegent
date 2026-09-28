@@ -144,6 +144,52 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(app).toContain("aegent sessions resume"); // 续聊入口提示
   });
 
+  it("U4/T-P3-107 · 渲染分层资产：vendor 本地化 + THIRD_PARTY 登记 + 分层标记（XSS 防呆面在位）", () => {
+    const uiDir = path.resolve(import.meta.dirname, "..", "..", "ui");
+    // vendor 本地化（P3 §1 全局约束 3——两纯库 + 两 LICENSE + 出处 README）
+    for (const name of [
+      "vendor/marked.esm.js",
+      "vendor/highlight.esm.js",
+      "vendor/LICENSE.marked.md",
+      "vendor/LICENSE.highlight.js",
+      "vendor/README.md",
+    ]) {
+      expect(statSync(path.join(uiDir, ...name.split("/"))).isFile()).toBe(true);
+    }
+    const thirdParty = readFileSync(
+      path.resolve(import.meta.dirname, "..", "..", "THIRD_PARTY.md"),
+      "utf8",
+    );
+    expect(thirdParty).toContain("marked@16.4.2");
+    expect(thirdParty).toContain("highlight.js@11.12.0");
+
+    const render = readFileSync(path.join(uiDir, "render.js"), "utf8");
+    // XSS 防呆在管线内固化（行为机验见 ui-render.test.ts 动态 import 直测）
+    expect(render).toContain("./vendor/marked.esm.js");
+    expect(render).toContain("./vendor/highlight.esm.js");
+    expect(render).toContain("md-html-raw"); // 禁 HTML 透传（转义可见）
+    expect(render).toContain("/^(https?:|mailto:)/i"); // href 协议白名单
+    expect(render).toContain("parseDenial"); // C55 拒绝面解析
+    expect(render).toContain("buildDiffLines"); // 写操作 diff 对照
+
+    const app = readFileSync(path.join(uiDir, "app.js"), "utf8");
+    // 分层：assistant 走管线（import renderMarkdown）；用户输入 textContent 不渲染
+    expect(app).toContain('from "./render.js"');
+    expect(app).toContain("typeStream"); // 流式打字（rAF 节流）
+    expect(app).toContain("requestAnimationFrame");
+    expect(app).toContain("data-call-id"); // 工具卡 callId 成对
+    expect(app).toContain(".code-copy"); // 代码块复制（事件委托）
+    expect(app).toContain("retry-btn"); // 错误重试交互
+    expect(app).toContain('className = "chip"'); // 审批卡 C54 分类 chip
+    expect(app).toContain("countdown"); // 审批卡超时倒计时
+
+    const css = readFileSync(path.join(uiDir, "style.css"), "utf8");
+    // 气泡/工具卡/代码块/diff/拒绝面样式在位 + hljs token 色
+    for (const marker of [".bubble", ".tool-card", ".code-block", ".diff-row", ".denial", ".hljs-keyword"]) {
+      expect(css).toContain(marker);
+    }
+  });
+
   it("K9/T-P2-409 · 画中画资产在位：pip.html + pip.js + pip.css（S4 操作审计消费端——只读渲染面）", () => {
     const uiDir = path.resolve(import.meta.dirname, "..", "..", "ui");
     for (const name of ["pip.html", "pip.js", "pip.css"]) {
