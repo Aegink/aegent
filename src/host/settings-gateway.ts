@@ -29,6 +29,7 @@ export const SETTINGS_PATCH_SECTIONS = [
   "projects",
   "activeProject",
   "pricing",
+  "onboardingDone",
   "defaultProvider",
   "defaultModel",
 ] as const;

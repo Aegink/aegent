@@ -37,6 +37,7 @@ import { InMemoryEventStorage, SessionStore, type EventStorage } from "../sessio
 import { createCredentialStore } from "../session/credentials.js";
 import { FileSettingsGateway } from "./settings-gateway.js";
 import { HostBridge, type AgentChannel } from "./bridge.js";
+import { NotificationHub } from "./notify.js";
 import { HostRegistry } from "./registry.js";
 
 /** 静态资产扩展名 → content-type（ui/ 资产的最小表）。 */
@@ -72,6 +73,11 @@ export interface HostServerOptions {
   workspaceRoot?: string;
   /** U12/T-P3-111 上下文窗口 token 数（op:"usage" 占比分母——缺省 200_000）。 */
   contextWindow?: number;
+  /**
+   * U13/T-P3-112 N5 分类通知面（提供时 bridge 分类发布 + 全端以
+   * notification name="n5" 广播——UI 通知中心的数据源；生产 main 创建）。
+   */
+  notifyHub?: NotificationHub;
 }
 
 /** host 进程运行句柄（start 的产物——stop 收束全部资源）。 */
@@ -105,6 +111,12 @@ export class HostServer {
       ...(this.options.sessionsLibrary !== undefined ? { sessionsLibrary: this.options.sessionsLibrary } : {}),
       ...(this.options.workspaceRoot !== undefined ? { workspaceRoot: this.options.workspaceRoot } : {}),
       ...(this.options.contextWindow !== undefined ? { contextWindow: this.options.contextWindow } : {}),
+      ...(this.options.notifyHub !== undefined ? { notifyHub: this.options.notifyHub } : {}),
+    });
+    // U13/T-P3-112：N5 分类通知 → 全端 WS 广播（notification name="n5"——
+    // UI 通知中心数据源）；unsub 在 stop 收束。
+    const hubUnsub = this.options.notifyHub?.subscribe((n) => {
+      bridge.notifyAll("n5", n);
     });
     // 会话流镜像（host 视角的读面）：非 roster 事件同步 append——
     // SessionStore.append 同步纪律（write-behind 持久化在 storage 端）。
@@ -149,6 +161,7 @@ export class HostServer {
     return {
       port,
       stop: async () => {
+        if (hubUnsub !== undefined) hubUnsub(); // U13：通知订阅随 stop 收束
         for (const client of wss.clients) client.terminate(); // 强制断开（未 close 的测试客户端/慢端）
         await new Promise<void>((resolve) => wss.close(() => resolve()));
         await new Promise<void>((resolve) => httpServer.close(() => resolve()));
@@ -386,6 +399,8 @@ async function main(argv: readonly string[]): Promise<void> {
         ? Number(launchArgs[i + 1]) || 200_000
         : 200_000;
     })(),
+    // U13/T-P3-112：N5 分类通知面（bridge 发布 + 全端 WS 广播）。
+    notifyHub: new NotificationHub(),
   });
   const handle = await server.start();
   process.stdout.write(

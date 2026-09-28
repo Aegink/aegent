@@ -219,4 +219,34 @@ describe("HostBridge × N5 三类归类集成", () => {
         expect(true).toBe(true); // 不炸即通过
         void bridge;
     });
+
+    it("U13/T-P3-112 分型消费：bridge.notifyAll 把 hub 转发的 n5 通知广播到端（wire 面）", async () => {
+        const hub = new NotificationHub();
+        const agent = new FakeAgentChannel();
+        const bridge = new HostBridge({
+            host: new HostRegistry().register({ sessionId: "s1" }),
+            agent,
+            store: new SessionStore(new InMemoryEventStorage()),
+            notifyHub: hub,
+        });
+        const notified: Array<{ type?: string; name?: string; payload?: { kind?: string; data?: { turn?: number } } }> = [];
+        const handle = bridge.connectSurface({
+            surfaceId: "web-1",
+            write: (out) => notified.push(JSON.parse(out)),
+        });
+        // server.ts start() 的接线形状：hub.subscribe → bridge.notifyAll("n5", n)
+        const unsub = hub.subscribe((n) => bridge.notifyAll("n5", n));
+        agent.emit({
+            type: "event",
+            event: { type: "turn/end", seq: 1, ts: 1, turn: 1, reason: { kind: "completed" } } as never,
+        });
+        await Promise.resolve();
+        const n5 = notified.filter((n) => n.type === "notification" && n.name === "n5");
+        expect(n5).toHaveLength(1);
+        expect(n5[0]?.payload?.kind).toBe("turn_settled");
+        expect(n5[0]?.payload?.data?.turn).toBe(1);
+        unsub();
+        handle.close();
+        void bridge;
+    });
 });

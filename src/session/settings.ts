@@ -77,6 +77,8 @@ export interface SettingsShape {
   activeProject?: string;
   /** 价格表（U12——成本统计的计价来源；缺省无 = 成本如实缺席不虚构）。 */
   pricing?: PricingEntry[];
+  /** 首跑引导（U13——引导清单完成标记；缺省 undefined = 未完成）。 */
+  onboardingDone?: boolean;
 }
 
 /** 缺省配置（无文件无环境也能启动——echo provider 最小装配）。 */
@@ -250,6 +252,10 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
     }
   }
   out.activeProject = assertString(rec["activeProject"], "activeProject");
+  if (rec["onboardingDone"] !== undefined && typeof rec["onboardingDone"] !== "boolean") {
+    throw new SettingsError("onboardingDone 须为布尔值");
+  }
+  if (rec["onboardingDone"] === true) out.onboardingDone = true;
   const pricing = rec["pricing"];
   if (pricing !== undefined) {
     if (!Array.isArray(pricing)) throw new SettingsError("pricing 须为数组");

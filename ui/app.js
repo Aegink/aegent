@@ -327,6 +327,7 @@ function renderHistory(events) {
   }
   if (events.length > 0) appendLine(`── 已恢复 ${events.length} 条历史事件 ──`, "meta");
   scrollBottom();
+  showRecoveryIfInterrupted(events); // U13：M3 启动恢复可视化（流尾未闭合轮）
 }
 
 // 代码块复制按钮（U4：事件委托——动态内容免逐个绑）
@@ -1365,6 +1366,145 @@ document.getElementById("usage-close").addEventListener("click", () => {
   usagePanel.hidden = true;
 });
 
+// ---------------------------------------------------------------------------
+// U13/T-P3-112 五件套：通知中心（N5 分型消费）+ Toast 轻提示 + 首次引导
+// 清单（settings 首跑标记）+ 启动恢复横幅（M3 诊断 + 一键续跑）+ 更新
+// 横幅与发布说明弹窗（U7 消费端——真实更新源 T-P3-114 接线）。
+// ---------------------------------------------------------------------------
+
+// —— 通知中心 + Toast（N5 五类分型的 UI 消费——kind 图标与文案分型）
+const KIND_ICONS = {
+  approval_pending: "⏸",
+  turn_settled: "✔",
+  job_settled: "⚙",
+  surface_changed: "⇄",
+  computer_operation: "🖥",
+};
+const notifications = [];
+const notifyPanel = document.getElementById("notify-panel");
+const notifyBadge = document.getElementById("notify-badge");
+
+function toast(text, kind) {
+  const area = document.getElementById("toast-area");
+  const t = document.createElement("div");
+  t.className = "toast";
+  t.textContent = `${(KIND_ICONS[kind] ?? "🔔") + " "}${text}`;
+  area.appendChild(t);
+  setTimeout(() => t.remove(), 4000); // 轻提示——不打断（4s 自散）
+}
+
+function renderNotifyList() {
+  const list = document.getElementById("notify-list");
+  list.replaceChildren();
+  for (const n of [...notifications].reverse()) {
+    const li = document.createElement("li");
+    li.textContent = `${KIND_ICONS[n.kind] ?? "🔔"} [${n.kind}] ${oneLine(JSON.stringify(n.data ?? {}), 160)} · ${fmtTime(n.at)}`;
+    list.appendChild(li);
+  }
+  notifyBadge.hidden = notifications.length === 0;
+  notifyBadge.textContent = String(notifications.length);
+}
+
+function consumeN5(payload) {
+  notifications.push(payload);
+  if (notifications.length > 50) notifications.shift(); // 面板容量防呆
+  toast(n5ToastText(payload), payload.kind);
+  renderNotifyList();
+}
+
+function n5ToastText(n) {
+  const d = n.data ?? {};
+  switch (n.kind) {
+    case "turn_settled":
+      return `turn ${d.turn} 结束`;
+    case "approval_pending":
+      return d.name === "question_asked" ? "模型有提问待答复" : "有审批待处理";
+    case "job_settled":
+      return "后台任务已结算";
+    case "surface_changed":
+      return `端面 ${d.surfaceId ?? ""} ${d.event ?? ""}`;
+    case "computer_operation":
+      return "屏幕操作回显";
+    default:
+      return oneLine(JSON.stringify(d), 80);
+  }
+}
+
+document.getElementById("notify-btn").addEventListener("click", () => {
+  renderNotifyList();
+  notifyPanel.hidden = !notifyPanel.hidden;
+});
+document.getElementById("notify-close").addEventListener("click", () => {
+  notifyPanel.hidden = true;
+});
+document.getElementById("notify-clear").addEventListener("click", () => {
+  notifications.length = 0;
+  renderNotifyList();
+});
+
+// —— 首次引导（settings 首跑标记——完成即写 onboardingDone）
+async function maybeOnboard() {
+  const envelope = await sendSettings({ op: "get" });
+  if (!envelope.ok) return;
+  settingsCache = envelope.result.settings;
+  if (settingsCache.onboardingDone === true) return;
+  document.getElementById("onboarding").hidden = false;
+}
+document.getElementById("ob-done").addEventListener("click", async () => {
+  settingsCache.onboardingDone = true;
+  document.getElementById("onboarding").hidden = true;
+  await sendSettings({ op: "update", patch: { onboardingDone: true } });
+});
+
+// —— 启动恢复横幅（M3 可视化）：恢复视图流尾存在未闭合轮 → 诊断 + 一键续跑
+function showRecoveryIfInterrupted(events) {
+  const open = new Map();
+  for (const e of events) {
+    if (e.type === "turn/start") open.set(e.turn, true);
+    if (e.type === "turn/end") open.delete(e.turn);
+  }
+  const openTurns = [...open.keys()].sort((a, b) => a - b);
+  if (openTurns.length === 0) return;
+  const banner = document.getElementById("recovery-banner");
+  document.getElementById("recovery-text").textContent =
+    `检测到中断的轮：turn ${openTurns.join("、")} 未正常收束（M3 续跑在子进程启动时已自动执行）`;
+  const retry = document.getElementById("recovery-retry");
+  retry.hidden = lastUserPrompt === "";
+  banner.hidden = false;
+}
+document.getElementById("recovery-retry").addEventListener("click", () => {
+  document.getElementById("recovery-banner").hidden = true;
+  if (lastUserPrompt !== "") {
+    void sendRequest(sessionId(), {
+      type: "prompt",
+      messageId: `m-${nextRequestId++}`,
+      content: lastUserPrompt,
+    });
+  }
+});
+document.getElementById("recovery-dismiss").addEventListener("click", () => {
+  document.getElementById("recovery-banner").hidden = true;
+});
+
+// —— 更新横幅 + 发布说明弹窗（U7 消费端：宿主面更新器经
+// window.aegentShowUpdate(version, notes) 触发——T-P3-114 接线点）
+function showUpdateBanner(version, notes) {
+  document.getElementById("update-text").textContent = `新版本可用：${version}`;
+  document.getElementById("rn-version").textContent = `发布说明 · ${version}`;
+  document.getElementById("rn-body").textContent = notes ?? "（无发布说明）";
+  document.getElementById("update-banner").hidden = false;
+}
+window.aegentShowUpdate = (version, notes) => showUpdateBanner(version, notes);
+document.getElementById("update-details").addEventListener("click", () => {
+  document.getElementById("release-notes").hidden = false;
+});
+document.getElementById("update-dismiss").addEventListener("click", () => {
+  document.getElementById("update-banner").hidden = true;
+});
+document.getElementById("rn-close").addEventListener("click", () => {
+  document.getElementById("release-notes").hidden = true;
+});
+
 document.getElementById("search-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const q = searchInput.value.trim();
@@ -1525,6 +1665,7 @@ function handleEnvelope(envelope) {
         inflight.set(requestId, null);
         sendRaw({ type: "query", requestId, sessionId: sessionIdValue, op: "events" });
       }
+      void maybeOnboard(); // U13：首跑引导（settings onboardingDone 标记）
       break;
     case "response": {
       if (envelope.requestId === "(lease)") {
@@ -1559,7 +1700,9 @@ function handleEnvelope(envelope) {
       renderEventEnvelope(envelope);
       break;
     case "notification":
-      if (envelope.name === "approval_requested" || envelope.name === "question_asked") {
+      if (envelope.name === "n5") {
+        consumeN5(envelope.payload ?? {}); // U13：N5 分型通知中心消费
+      } else if (envelope.name === "approval_requested" || envelope.name === "question_asked") {
         if (sessionIdValue === null) sessionIdValue = envelope.sessionId;
         buildCard(envelope.name, envelope.payload ?? {});
       } else if (envelope.name === "approval_settled") {

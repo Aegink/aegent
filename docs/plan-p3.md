@@ -166,7 +166,7 @@
 - **风险 / 未知**：压缩状态的实时性（事件流推送——已有）
 - **完成记录（2026-09-29）**：验收 `npx vitest run src/obs/ src/session/settings.test.ts src/host/server.test.ts src/diagnostics/tauri-shell.test.ts` → **60 passed**（obs 9 + settings 17 + server 12 + tauri-shell 8；tsc 干净）。落地：①**query op:"usage"**（bridge 直答聚合面）：数据源**单源**——token 全部来自事件库 usage_rollup 视图（assistant/message usage 落流投影；bridge 幂等 ensureUsageView——本 host 是该视图首个生产消费方），压缩统计 = 会话流内 compaction 事件（compactionStats 纯函数），成本 = costRollup × 计价表；②**计价来源**：settings 增 `pricing` 段（PricingEntry 形状 = obs/cost.ts ModelPricing 同构——provider/modelId 非空 + 金额非负数 fail-closed；表驱动计价无内置价格，未配置 = 成本如实缺席不虚构——J21 纪律）；③**HostServerOptions.contextWindow**（生产 main 从最终 launchArgs 解析 --context-window、缺省 200_000 与 agent-child 同源）→ op:"usage" 返回占比分母；④**ui 用量面板**（📊 用量按钮 + #usage-panel 抽屉）：上下文检查器（ctx-meter 计量条——末轮 totalTokens ≈ 当前占用 / 窗口占比 %，≥80% 转警示色）+ 压缩状态（已压缩 N 次/失败数）+ 成本统计页（按会话表：token/成本 + pricing 未配置解释行）+ 按轮表（本会话 turns × cacheHitRate × 关联轮成本）——纯 DOM 表零图表库；⑤架构治理：architecture-policy host requires 增补 obs；⑥顺手修正 cost.test 既有隐患（`store.flush("s-d")` 未 await 即 close——竞态落"连接已关"unhandled rejection，被本卡改动暴露）。
 
-#### T-P3-112 · U13 · 通知与引导体验（五件套：通知/引导/恢复/更新横幅/发布说明） `[ ]`
+#### T-P3-112 · U13 · 通知与引导体验（五件套：通知/引导/恢复/更新横幅/发布说明） `[x]`
 - **依据需求**：U13（"通知中心与 Toast、首次运行引导清单、启动恢复页（诊断+一键续跑）、更新横幅与发布说明弹窗"）
 - **上游首选参考**：[pi-desktop·NotificationCenter/OnboardingChecklist/StartupRecovery/UpdateBanner/ReleaseNotesDialog](../oss/pi-desktop/apps/desktop/src/components)（🔴 只学行为——StartupRecovery 的 startup-watchdog 诊断面）
 - **取什么 / 别抄什么**：取"通知分型聚合 + 引导不挡路 + 恢复诊断一键续跑 + 更新不打断"四行为；发布说明弹窗内容本地化（CHANGELOG 摘要）
@@ -174,6 +174,7 @@
 - **验收**：ui 资产断言 + `npx vitest run src/host/notify.test.ts`（扩——分型消费）+ 人工走查
 - **依赖**：P2 15d N5；T-P3-107；T-P3-114（更新器——横幅消费端，卡序内后置接线）
 - **风险 / 未知**：引导清单的内容定形（首跑检测——settings 标记）
+- **完成记录（2026-09-29）**：验收 `npx vitest run src/host/notify.test.ts src/host/server.test.ts src/session/settings.test.ts src/diagnostics/tauri-shell.test.ts` → **51 passed**（notify 14 + server 13 + settings 17 + tauri-shell 8；node --check 过、tsc 干净）。落地：①**通知中心**：production main 建 NotificationHub → bridge.publish 分型（既有）→ **hub.subscribe → bridge.notifyAll("n5", n) → 全端 WS notification 信封**（server.test e2e：turn/end → turn_settled → n5 回端）→ UI 消费（🔔 按钮 + 面板清单 + 4s Toast 轻提示 + 未读徽标 + 50 条容量——KIND_ICONS 五类分型图标文案）；②**首次引导**：settings 增 `onboardingDone` 位（parse 布尔校验 + patch 白名单）——hello 后取 settings，未完成显示四步清单覆盖层（设置中心/输入区/检索/用量），"开始使用"即写标记；③**启动恢复页**：renderHistory 后扫描流尾未闭合轮（turn/start 无 turn/end）→ 恢复横幅（诊断文本含 M3 自动续跑说明 + "重试上一条"一键续跑〔复用 lastUserPrompt〕+ 知道了收敛）；④**更新横幅 + 发布说明弹窗**：横幅元素 + `window.aegentShowUpdate(version, notes)` 宿主接线钩子——真实更新源随 T-P3-114 接线（记档：本卡只落 UI 消费端与钩子形状，updater 未接前横幅恒隐藏）；⑤发布说明弹窗 = 横幅"查看发布说明"打开（版本 + notes 文本）。人工走查列入确认清单（Toast 手感/引导时机/恢复横幅误报面——活跃会话恢复视图可能误报未闭合轮，收敛方式 = "知道了"一键关闭，记档）。
 
 #### T-P3-113 · U6 · 桌面壳 sidecar 分发（双击即用） `[ ]`
 - **依据需求**：U6（"壳管理 host 进程生命周期（启动/健康/退出收束）；node 运行时随包；双击即用"）

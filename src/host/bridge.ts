@@ -159,12 +159,18 @@ export class HostBridge implements SessionRouter {
     }
     // 审批/提问/退回/空闲：非会话流事实 → notification 广播
     const { type: name, ...payload } = message as { type: string } & Record<string, unknown>;
-    for (const registration of this.registrations.values()) {
-      registration.server.notify(sessionId, name, payload);
-    }
+    this.notifyAll(name, payload);
     // N5 分型：挂起类事实的分类发布（approval_requested/question_asked）
     if (name === "approval_requested" || name === "question_asked") {
       this.options.notifyHub?.publish("approval_pending", { sessionId, name, payload });
+    }
+  }
+
+  /** 全端广播一条 notification 信封（agent 消息与 N5 hub 转发共用面）。 */
+  notifyAll(name: string, payload: unknown): void {
+    const sessionId = this.options.host.sessionId;
+    for (const registration of this.registrations.values()) {
+      registration.server.notify(sessionId, name, payload);
     }
   }
 

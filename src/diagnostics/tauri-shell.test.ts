@@ -217,6 +217,18 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(app).toContain('op: "usage"'); // 聚合数据源单源
     expect(app).toContain("已压缩"); // 压缩状态可见
     expect(app).toContain("pricing 段未配置"); // 无价格不虚构的成本解释面
+    // U13/T-P3-112 五件套：通知中心/Toast/引导/恢复横幅/更新横幅（消费端钩子）
+    expect(html).toContain('id="notify-panel"');
+    expect(html).toContain('id="toast-area"');
+    expect(html).toContain('id="onboarding"');
+    expect(html).toContain('id="recovery-banner"');
+    expect(html).toContain('id="update-banner"');
+    expect(html).toContain('id="release-notes"');
+    expect(app).toContain('name === "n5"'); // N5 分型消费
+    expect(app).toContain("consumeN5");
+    expect(app).toContain("onboardingDone"); // 首跑标记（settings）
+    expect(app).toContain("showRecoveryIfInterrupted"); // M3 可视化
+    expect(app).toContain("aegentShowUpdate"); // U7 接线点（T-P3-114）
     for (const marker of [".search-hit", ".mm-row", "#find-bar", "#minimap", ".ac-row", ".attachment-chip"]) {
       expect(css).toContain(marker);
     }

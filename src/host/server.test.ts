@@ -19,6 +19,7 @@ import { InMemoryEventStorage } from "../session/store.js";
 import { SqliteEventStorage } from "../session/db.js";
 import { FileSettingsGateway } from "./settings-gateway.js";
 import { PlainFileCredentialStore } from "../session/credentials.js";
+import { NotificationHub } from "./notify.js";
 import { handles, makeUiFixture, startMemoryChild, fakeAgent, uiFixtures, type FakeAgent } from "./server.test-utils.js";
 import { HostServer, type HostServerHandle } from "./server.js";
 import type { EventStorage } from "../session/store.js";
@@ -42,6 +43,7 @@ async function startServer(options: {
   sessionsLibrary?: SqliteEventStorage;
   workspaceRoot?: string;
   contextWindow?: number;
+  notifyHub?: NotificationHub;
 }): Promise<{ handle: HostServerHandle; port: number }> {
   const uiDir = makeUiFixture();
   uiFixtures.push(uiDir);
@@ -55,6 +57,7 @@ async function startServer(options: {
     ...(options.sessionsLibrary !== undefined ? { sessionsLibrary: options.sessionsLibrary } : {}),
     ...(options.workspaceRoot !== undefined ? { workspaceRoot: options.workspaceRoot } : {}),
     ...(options.contextWindow !== undefined ? { contextWindow: options.contextWindow } : {}),
+    ...(options.notifyHub !== undefined ? { notifyHub: options.notifyHub } : {}),
   });
   const handle = await server.start();
   handles.push(handle);
@@ -874,6 +877,26 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
     expect((noUsage.error as { code: string }).code).toBe("SESSIONS_UNAVAILABLE");
     client2.close();
     await new Promise((r) => setTimeout(r, 50)); // Windows 句柄释放缓冲
+  });
+
+  it("notification name=n5（U13/T-P3-112）：notifyHub 分类通知全端 WS 广播", async () => {
+    const hub = new NotificationHub();
+    const agent = fakeAgent();
+    const { port } = await startServer({ agent, notifyHub: hub });
+    const client = await wsConnect(port);
+    await client.hello("web-n1");
+    // turn/end 事件经 bridge → turn_settled 分型发布 → n5 信封回端
+    agent.emit({
+      type: "event",
+      event: { type: "turn/end", seq: 1, ts: 1, turn: 1, reason: { kind: "completed" } } as never,
+    });
+    const n5 = await client.waitFor(
+      (e) => e.type === "notification" && e.name === "n5",
+      "n5 通知信封",
+    );
+    expect((n5.payload as { kind: string }).kind).toBe("turn_settled");
+    expect((n5.payload as { data: { turn: number } }).data.turn).toBe(1);
+    client.close();
   });
 });
 

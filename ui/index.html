@@ -15,6 +15,7 @@
       <button id="history-btn" type="button" title="会话历史">☰ 历史</button>
       <button id="search-btn" type="button" title="跨会话搜索（Ctrl+Shift+F）">🔍 搜索</button>
       <button id="usage-btn" type="button" title="用量与上下文">📊 用量</button>
+      <button id="notify-btn" type="button" title="通知中心">🔔<span id="notify-badge" hidden></span></button>
       <button id="settings-btn" type="button" title="设置">⚙ 设置</button>
     </header>
     <main id="stream" aria-live="polite"></main>
@@ -158,6 +159,50 @@
             <tbody></tbody>
           </table>
         </section>
+      </div>
+    </aside>
+    <!-- U13/T-P3-112 五件套：Toast 轻提示容器 / 恢复横幅 / 更新横幅 +
+         发布说明弹窗 / 首次引导清单 / 通知中心面板 -->
+    <div id="toast-area" aria-live="polite"></div>
+    <div id="recovery-banner" hidden>
+      <span id="recovery-text"></span>
+      <button id="recovery-retry" type="button">↻ 重试上一条</button>
+      <button id="recovery-dismiss" type="button">知道了</button>
+    </div>
+    <div id="update-banner" hidden>
+      <span id="update-text"></span>
+      <button id="update-details" type="button">查看发布说明</button>
+      <button id="update-dismiss" type="button">稍后</button>
+    </div>
+    <div id="onboarding" hidden>
+      <div class="ob-card">
+        <h2>欢迎使用 aegent</h2>
+        <p class="hint">四步上手（不挡路——可随时在设置里回看）：</p>
+        <ul id="ob-list">
+          <li>⚙ <b>设置中心</b>——供应商/凭据/沙箱档即改即存（右上角 ⚙）</li>
+          <li>⌨ <b>输入区</b>——@ 补全文件、/ 补全命令，Shift+Enter 换行，可粘贴图片</li>
+          <li>🔍 <b>检索</b>——Ctrl+F 会话内搜索，🔍 按钮跨会话搜索</li>
+          <li>📊 <b>用量</b>——上下文余量与成本随时可查</li>
+        </ul>
+        <button id="ob-done" type="button">开始使用</button>
+      </div>
+    </div>
+    <div id="release-notes" hidden>
+      <div class="ob-card">
+        <h2 id="rn-version"></h2>
+        <pre id="rn-body" class="card-args"></pre>
+        <button id="rn-close" type="button">关闭</button>
+      </div>
+    </div>
+    <aside id="notify-panel" hidden aria-label="通知中心">
+      <header class="settings-head">
+        <span>通知中心</span>
+        <button id="notify-clear" type="button">清空</button>
+        <button id="notify-close" type="button">关闭</button>
+      </header>
+      <div class="settings-body">
+        <ul id="notify-list"></ul>
+        <p class="hint">审批/提问以卡片弹出（不进清单）；此处为轮结算/后台任务/端面变化的分型通知。</p>
       </div>
     </aside>
     <!-- U9/T-P3-108 跨会话搜索面板：query op:"search"（Q2 检索的 UI 消费）——
