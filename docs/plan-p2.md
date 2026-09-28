@@ -578,7 +578,7 @@
 - **风险 / 未知**：无
 - **完成记录**：2026-09-28。产出：①`src/policy/audit-fields.ts` 扩——`ApprovalAuditRecord` settled 加可选 `outcome?: "approved" | "denied"`（verdict.action 派生：allow→approved / deny→denied，其余裁决不落——只记真实发生的人答复；asked/timed-out 不带）；`createApprovalAuditSink` settled 分支填 outcome（"审批率"维度的数据来源——此前 settled 记录无裁决值，审批率不可算，这是本卡必需的形状补齐）。②`src/obs/audit-report.ts`——`auditReport(records, {fromTs?, toTs?})` 纯函数：**输入 = L2 审计记录流**（结构化最小面 `AuditRecordLike` 本地声明——避免 obs→policy 新静态依赖，架构基线 21 warning 不动）；三维度：①危险操作计数（asked 按 tool 分组 escalations 降序——危险操作被拦截升级的事实）②审批率（approved/denied/timedOut 分列 + approvalRate = settled+timedOut / asked，**空窗 null 不除零**）③判官介入率（judge reviewed 数 / asked 数——C42 后的判官面）；时间窗含界过滤。测试 `audit-report.test.ts` 3 用例（三维度聚合 + byTool 分组降序 / 空窗与零审批请求双零除防呆 / 时间窗含界过滤）。**验收**：`npx vitest run src/obs/audit-report.test.ts src/policy/audit-fields.test.ts` → **9 passed**（audit-fields 既有零回归）；`npx tsc --noEmit` 干净；`architecture:check` 0 error / 21 warning（基线）。**记档**：①窗口是记录级过滤不是请求级配对过滤（asked 在窗外、settled 在窗内时 rate 可 >1——如实表达窗口内事实，聚合口径记档）；②audit_report 只读工具化（Q2 工具面复用）是卡面"候选"——报表是库面原语，工具暴露随需要记档。
 
-#### T-P2-516 · J21 · 成本核算（token → 成本，按会话/轮可查） `[ ]`
+#### T-P2-516 · J21 · 成本核算（token → 成本，按会话/轮可查） `[x]`
 - **依据需求**：J21（"成本核算；token → 成本可算；按会话/按轮可查"）
 - **上游首选参考**：hermes·billing_usage.py（价格表 + 聚合的行为）
 - **取什么 / 别抄什么**：取"价格表驱动 + 会话/轮两级聚合"行为；不抄其计费账户面
@@ -586,6 +586,7 @@
 - **验收**：核对结论落完成记录 +（若落）cost 聚合测试
 - **依赖**：T-P2-105（查询面）
 - **风险 / 未知**：预判部分覆盖——核对后可能缩为关闭记档（J25/L10 先例）
+- **完成记录**：2026-09-28。**核对结论：L3 已落 token 分列（usage_rollup 视图：input/output/cache_read/cache_creation/total 五列，会话/轮两粒度——T-8-03）但 `total_cost_usd` 未建列**（usage.ts:11 头注释明记"P0 无定价输入（成本核算 J21 是 P2），列留给届时同批"）——**本卡补**（非核对关闭）。产出 `src/obs/cost.ts`：①**价格表驱动**——`ModelPricing`（provider+modelId 精确匹配 + 四单价 $/Mtok：input/cachedInput/output/cacheWrite）+ `PricingTable` 构造注入（**不硬编码厂商价格**——价格随时间漂移，硬编码会成为流内谎言；真实价格表随用户配置——人工确认清单）+ `findPricing` 精确匹配（前缀匹配不取——误配对即错误计价）；②`costOfUsage` 纯函数——**J25 加权四类分价**（非缓存输入/缓存读/缓存写/输出各自单价；**计价语义显式声明**：OpenAI 语义 inputTokens 含 cacheReadTokens〔toTokenUsage 映射实测确认〕故非缓存 = max(0, input−cacheRead)——max(0) 防御病态数据负成本）；③`costRollup(db, table)`——会话/轮两级 SQL 聚合（模型身份 = 该 turn 最后一次 request/header 的 config.modelId 关联——换模按末次请求归因记档；**未配置价格的模型如实缺席**不虚构成本；只 SELECT 无第二份轨迹——L1 否定性纪律与 usage.ts 同源）。测试 `cost.test.ts` 3 用例：加权四类分价（手算逐项 closeTo + 无分列退化 + 病态防御）/ 两级聚合（模型关联 + 分轮细分）/ 无价模型缺席 + 精确匹配。**验收**：`npx vitest run src/obs/cost.test.ts` → **3 passed**；`npx tsc --noEmit` 干净；`vocabulary:check` 0 问题（零词汇表扩展——成本是派生投影非流事实）。**记档**：①Anthropic 语义差异（input_tokens 不含 cache_read——anthropic-messages 适配器面）记档，成本精确性随真实联调；②测试坑两枚：flush 未 await 落库竞态（write-behind 面）、events 表 config 在 payload JSON 内非独立列。
 
 #### T-P2-517 · J17 · OAuth（独立模块不侵入内核） `[ ]`
 - **依据需求**：J17（"OAuth；独立成模块，不侵入内核"）
