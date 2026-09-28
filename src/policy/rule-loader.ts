@@ -30,6 +30,7 @@ import {
   domainRuleMatcher,
   pathRuleMatcher,
   literalRuleMatcher,
+  evaluateParamMatchers,
 } from "./specifier-kinds.js";
 
 // ---------------------------------------------------------------------------
@@ -63,7 +64,11 @@ export interface LoadedRule {
   readonly plainSpecifier?: string;
 }
 
-/** literal 分型 key:value 参数 matcher（qwen 同构：{key, valuePattern}）。 */
+/**
+ * 具名参数 matcher（C40，qwen toolParamMatchers 同构：{key, valuePattern}）
+ * ——key 对 args 顶层平面参数名（深路径 YAGNI，T-P2-201 记档），value 按
+ * evaluate.ts 通配方言匹配值的字符串形状。
+ */
 export interface ToolParamMatcher {
   readonly key: string;
   readonly valuePattern: string;
@@ -78,6 +83,14 @@ export interface RuleSource {
   readonly matchExamples?: readonly string[];
   /** C44 反样例：这些样本必须不命中本规则。 */
   readonly notMatchExamples?: readonly string[];
+  /**
+   * C40 声明式参数 matcher（T-P2-201）：不经过文本 DSL 解析、直接挂在
+   * 规则上的具名参数匹配——文本 DSL 的 key:value 只对 literal 分型解析
+   * （Windows 盘符形状守卫），声明式面让任意分型的规则都能带参数 matcher
+   * （managed 层/宿主代码按结构声明）。加载时与解析产物合并为单一
+   * toolParamMatchers（AND 语义，顺序无关）——既有文本规则零变化。
+   */
+  readonly paramMatchers?: readonly ToolParamMatcher[];
 }
 
 /** 样例校验失败明细（加载报错时全部列出，不止第一条）。 */
@@ -212,14 +225,26 @@ export function loadRules(
         ...(source.line !== undefined ? { line: source.line } : {}),
       };
     }
+    // C40 声明式 matcher 合并（T-P2-201）：与解析产物合成单一
+    // toolParamMatchers（AND 语义）。空数组归一为 undefined——bare 规则
+    // 带 [] 不得变成"带 specifier"（会让无参规则意外进入分型匹配而
+    // never-match，fail-open 于匹配语义的反面）。
+    const declared =
+      source.paramMatchers !== undefined && source.paramMatchers.length > 0
+        ? source.paramMatchers
+        : undefined;
+    const mergedMatchers =
+      parsed.toolParamMatchers !== undefined || declared !== undefined
+        ? [...(parsed.toolParamMatchers ?? []), ...(declared ?? [])]
+        : undefined;
     return {
       raw: parsed.raw,
       toolName: parsed.toolName,
       ...(parsed.argPattern !== undefined
         ? { argPattern: parsed.argPattern }
         : {}),
-      ...(parsed.toolParamMatchers !== undefined
-        ? { toolParamMatchers: parsed.toolParamMatchers }
+      ...(mergedMatchers !== undefined
+        ? { toolParamMatchers: mergedMatchers }
         : {}),
       ...(parsed.plainSpecifier !== undefined
         ? { plainSpecifier: parsed.plainSpecifier }
@@ -302,12 +327,19 @@ function pushAllViolations(
 // ---------------------------------------------------------------------------
 
 /**
- * 链上规则匹配函数（C21/C39）：工具名维度通配 + 参数维度按
+ * 链上规则匹配函数（C21/C39/C40）：工具名维度通配 + 参数维度按
  * getSpecifierKind(call.tool) 分型路由——command → bashRuleMatcher 的
  * shell glob（既有方言）、path → gitignore 风格、domain → host 后缀、
  * literal → 精确 + key:value。invalid 规则永不命中；MCP 命名空间工具
  * （server__tool）的规则带 specifier 时永不命中（qwen 同款 reject——
- * 工具名已编码 server+tool 身份，specifier 无从解释）。
+ * 工具名已编码 server+tool 身份，specifier 无从解释；C40 声明式参数
+ * matcher 同样计入 specifier——带参的 MCP 规则 fail-closed 不静默放行，
+ * qwen 的 MCP 参数匹配面我方不取，记档 T-P2-201）。
+ *
+ * C40（T-P2-201）：规则带 toolParamMatchers（文本解析产物或声明式合并）
+ * 时，command/path/domain 分型在 specifier 命中后**再 AND 参数 matcher**
+ * （qwen evaluateParamMatchers 在标准分支同位共享的语义）；无 matcher 的
+ * 规则零变化。
  */
 export function loadedRuleMatch(): (rule: LoadedRule, call: PolicyCall) => PolicyAction | undefined {
   return (rule, call) => {
@@ -318,6 +350,12 @@ export function loadedRuleMatch(): (rule: LoadedRule, call: PolicyCall) => Polic
     if (!hasSpecifier) return rule.action;
     // MCP 命名空间带 specifier 拒配（不静默忽略——qwen 同款语义）
     if (call.tool.includes("__")) return undefined;
+    if (
+      rule.toolParamMatchers !== undefined &&
+      !evaluateParamMatchers(rule.toolParamMatchers, call.args)
+    ) {
+      return undefined;
+    }
     switch (getSpecifierKind(call.tool)) {
       case "command":
         return bashRuleMatcher.matchesRule(rule.argPattern ?? "", call)

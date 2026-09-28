@@ -868,3 +868,79 @@ describe("C30 · 并发双挂起乱序答复 × 裁决正确归属（T-P1-81）"
     expect(executed).toEqual(["git status"]);
   });
 });
+
+describe("C40 · gate 层参数上下文喂入匹配（T-P2-201）", () => {
+  /** 带声明式/具名参数规则的 harness（rulesModule 只收 [动作, 原文] 对）。 */
+  function paramRulesHarness(
+    sources: Parameters<typeof loadRules>[0],
+  ) {
+    const rules = loadRules(sources, builtinRuleMatchers);
+    const layer = createToolGateLayer({
+      chain: assemblePolicyChain({
+        user: [
+          createRuleSetModule({
+            name: "user-rules",
+            rules,
+            match: loadedRuleMatch(),
+            ruleText: (r) => r.raw,
+          }),
+        ],
+      }),
+      broker: new DenyPermissionBroker(),
+      sessionId: "s1",
+    });
+    const received: ToolCallPayload[] = [];
+    const next = makeNext(async (e2) => {
+      received.push(e2);
+      return { content: `executed ${e2.name}` };
+    });
+    return { layer, next, received };
+  }
+
+  it("工具参数是匹配上下文：task(model:opus) 规则按 args 放行/拦下（缺省 broker 拒兜底）", async () => {
+    const { layer, next, received } = paramRulesHarness([
+      { raw: "task(model:opus)", action: "allow" },
+    ]);
+    // model=opus：参数命中 → gate 放行执行（无需 broker）
+    const ok = await layer(
+      { sessionId: "s1" },
+      { turn: 1, step: 1, callId: "c1", name: "task", arguments: JSON.stringify({ model: "opus", prompt: "x" }) },
+      next,
+    );
+    expect(ok).toEqual({ content: "executed task" });
+    expect(received).toHaveLength(1);
+
+    // model=sonnet：规则不命中 → 链 abstain → 缺省 broker ask 拒绝
+    const denied = await layer(
+      { sessionId: "s1" },
+      { turn: 1, step: 1, callId: "c2", name: "task", arguments: JSON.stringify({ model: "sonnet", prompt: "x" }) },
+      next,
+    );
+    expect(received).toHaveLength(1); // 第二次不执行
+    expect(denied.isError).toBe(true);
+    expect((denied.error as { code: string }).code).toBe(TOOL_POLICY_DENIED);
+  });
+
+  it("声明式 matcher 在 gate 层同样生效（bash specifier × 参数 AND）", async () => {
+    const { layer, next, received } = paramRulesHarness([
+      {
+        raw: "bash(git *)",
+        action: "allow",
+        paramMatchers: [{ key: "dry_run", valuePattern: "true" }],
+      },
+    ]);
+    const ok = await layer(
+      { sessionId: "s1" },
+      payload({ command: "git push", dry_run: "true" }),
+      next,
+    );
+    expect(ok).toEqual({ content: "executed bash" });
+    const denied = await layer(
+      { sessionId: "s1" },
+      payload({ command: "git push" }),
+      next,
+    );
+    expect(denied.isError).toBe(true);
+    expect(received).toHaveLength(1);
+  });
+});

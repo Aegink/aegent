@@ -96,7 +96,7 @@ import {
   type PermissionSourceProfile,
 } from "../policy/intersect.js";
 import { lintRules } from "../policy/linter.js";
-import { BUILTIN_TOOL_NAMES } from "./tools/builtin/index.js";
+import { BUILTIN_TOOL_NAMES, builtinToolParamNames } from "./tools/builtin/index.js";
 import {
   ApprovalScopeCache,
   createSessionApprovalModule,
@@ -205,6 +205,13 @@ export interface ChildAssemblyOptions {
    * 工具。装配面注入 registry 名单（动态注册工具时由装配方传入）。
    */
   knownToolNames?: readonly string[];
+  /**
+   * C40 linter 的工具参数名名单（unknown-param-name 判定面，T-P2-201）：
+   * 工具名 → 参数 schema 属性名。缺省 builtinToolParamNames()（内置工具
+   * 真实 schema 派生）；注册了 MCP 等动态工具的装配方传入合并表——无
+   * 条目的工具跳过参数名警告（宁可漏报不误报）。
+   */
+  knownToolParams?: Readonly<Record<string, readonly string[]>>;
   /**
    * C49 权限来源画像（多来源时交集折叠为有效上限，opaque 相遇即抛——
    * 拒绝启动，fail-closed）。缺省无 = 单来源装配零行为变化（T-P1-03）。
@@ -461,6 +468,9 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
   // （装配会让有其他活规则的配置整体不可用过狠）——警告落日志可检索。
   const lintIssues = lintRules(loadedRules, {
     knownToolNames: options.knownToolNames ?? BUILTIN_TOOL_NAMES,
+    // C40（T-P2-201）：缺省面 = 内置工具真实 schema 派生的参数名表
+    // （builtinToolParamNames 模块级缓存）；MCP 等动态工具由装配方合并。
+    knownToolParams: options.knownToolParams ?? builtinToolParamNames(),
   });
   for (const issue of lintIssues) {
     logger?.warn(`policy-lint: [${issue.kind}] ${issue.raw} —— ${issue.detail}`);

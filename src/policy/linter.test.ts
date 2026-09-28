@@ -94,3 +94,78 @@ describe("C53 · basename 参数规则绑绝对路径（T-P1-68）", () => {
     expect(lint("read(secrets)", 1).map((i) => i.kind)).toEqual([]); // path 分型非 basename 语义
   });
 });
+
+describe("C40 · 参数名存在性警告（T-P2-201）", () => {
+  const KNOWN_PARAMS: Record<string, readonly string[]> = {
+    agent: ["model", "type", "depth"],
+    bash: ["command"],
+  };
+
+  function lintWith(
+    sources: Parameters<typeof loadRules>[0],
+    knownToolParams: Readonly<Record<string, readonly string[]>> | undefined,
+  ) {
+    const rules = loadRules(sources, builtinRuleMatchers);
+    return lintRules(rules, {
+      knownToolNames: [...KNOWN_TOOLS, "agent"],
+      ...(knownToolParams !== undefined ? { knownToolParams } : {}),
+    });
+  }
+
+  it("验收⑥：matcher key 不在工具参数 schema 中报 unknown-param-name（可检索）", () => {
+    const issues = lintWith(
+      [{ raw: "agent(modle:opus)", action: "allow", line: 3 }],
+      KNOWN_PARAMS,
+    );
+    const unknown = issues.filter((i) => i.kind === "unknown-param-name");
+    expect(unknown).toHaveLength(1);
+    expect(unknown[0]).toMatchObject({ raw: "agent(modle:opus)", line: 3 });
+    expect(unknown[0]?.detail).toContain("modle");
+
+    // key 在名单内不报
+    expect(
+      lintWith([{ raw: "agent(model:opus)", action: "allow" }], KNOWN_PARAMS).filter(
+        (i) => i.kind === "unknown-param-name",
+      ),
+    ).toEqual([]);
+  });
+
+  it("声明式 matcher 的 key 同样受检（合并后单一字段）", () => {
+    const issues = lintWith(
+      [
+        {
+          raw: "bash(git *)",
+          action: "allow",
+          paramMatchers: [{ key: "dryrun", valuePattern: "true" }],
+        },
+      ],
+      KNOWN_PARAMS, // bash 只有 command
+    );
+    const unknown = issues.filter((i) => i.kind === "unknown-param-name");
+    expect(unknown).toHaveLength(1);
+    expect(unknown[0]?.detail).toContain("dryrun");
+  });
+
+  it("无 schema 名单（缺省/无条目）与未知工具、通配工具名都跳过——宁可漏报不误报", () => {
+    // 不提供 knownToolParams：完全不检查
+    expect(
+      lintWith([{ raw: "agent(wat:1)", action: "allow" }], undefined).filter(
+        (i) => i.kind === "unknown-param-name",
+      ),
+    ).toEqual([]);
+    // 工具在名单但无 schema 条目：跳过
+    expect(
+      lintWith(
+        [{ raw: "glob(pat:*?)", action: "allow" }],
+        KNOWN_PARAMS,
+      ).filter((i) => i.kind === "unknown-param-name"),
+    ).toEqual([]);
+    // 未知工具：unknown-tool 另报，参数名不重复报
+    const ghost = lintWith(
+      [{ raw: "ghost(wat:1)", action: "allow" }],
+      KNOWN_PARAMS,
+    );
+    expect(ghost.map((i) => i.kind)).toContain("unknown-tool");
+    expect(ghost.map((i) => i.kind)).not.toContain("unknown-param-name");
+  });
+});

@@ -327,3 +327,4 @@ describe("C21 · 参数匹配委托（链上路径）", () => {
     expect(match(rules[0]!, bashCall("C:\evil\git.exe status"))).toBeUndefined();
   });
 });
+

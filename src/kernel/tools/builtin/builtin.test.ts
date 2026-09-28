@@ -8,6 +8,8 @@ import { PathGuard } from "../../../sandbox/path-guard.js";
 import { seedTextFile } from "../../../test-support/tmp-fs.js";
 import { registerBuiltinTools } from "./index.js";
 import { ReadGateService } from "../../../policy/read-gate.js";
+import { PendingApprovals } from "../../../policy/pending.js";
+import { createPlanModeService } from "../../plan-mode.js";
 
 const tmpDirs: string[] = [];
 afterEach(() => {
@@ -928,5 +930,36 @@ describe("会话查询工具（Q2/T-P2-105）", () => {
     } finally {
       storage.close();
     }
+  });
+});
+
+describe("builtinToolParamNames（C40 · T-P2-201）", () => {
+  it("从真实注册 schema 派生，与注册表 toChatTools 逐工具一致（漂移免疫）", async () => {
+    const { builtinToolParamNames } = await import("./index.js");
+    const map = builtinToolParamNames();
+    // 与独立构造的注册表逐工具对账（同一 stub 依赖面）
+    const registry = new ToolRegistry();
+    registerBuiltinTools(registry, {
+      todoEmit: () => {},
+      planMode: createPlanModeService(),
+      savePlanArtifact: () => ({ path: "stub" }),
+      networkGuard: createNetworkGuard({ policy: "deny" }),
+      question: { pending: new PendingApprovals(), sessionId: "param-names", timeoutMs: 1 },
+      task: {
+        runSubagent: async () => ({ sessionId: "stub", stopReason: "cancelled", output: "" }),
+      },
+      sessionQuery: { dbPath: "stub" },
+    });
+    for (const tool of registry.toChatTools()) {
+      const props =
+        (tool.parameters as { properties?: Record<string, unknown> } | undefined)
+          ?.properties ?? {};
+      expect(map[tool.name]).toEqual(Object.keys(props));
+    }
+    // 关键工具形状抽核（C40 验收例的承载工具在表中）
+    expect(map["task"]).toContain("prompt");
+    expect(map["bash"]).toContain("command");
+    // 两次调用同一缓存对象（模块级 memo）
+    expect(builtinToolParamNames()).toBe(map);
   });
 });

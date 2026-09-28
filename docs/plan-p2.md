@@ -130,7 +130,7 @@
 
 **词汇表预判**：C42 判官裁决是审批面扩展（C31 三事实已有——判官裁决走 approval 面 source 标记，无新事件预判）；C40 规则结构扩展非事件。零新事件候选。
 
-#### T-P2-201 · C40 · 规则可匹配具名参数（toolParamMatchers） `[ ]`
+#### T-P2-201 · C40 · 规则可匹配具名参数（toolParamMatchers） `[x]`
 - **依据需求**：C40（"规则可匹配具名参数（如 `Agent(model:opus)`）；`toolParamMatchers`"）
 - **上游首选参考**：qwen·permissions（toolParamMatchers 的规则结构与匹配语义）
 - **取什么 / 别抄什么**：取"具名参数匹配器挂在规则上 + 参数名/值两维匹配 + 通配"行为；不抄其规则 DSL 解析器（我方 C 族规则结构已有——声明性扩展）
@@ -138,6 +138,7 @@
 - **验收**：`npx vitest run src/policy/`（扩）——精确值/通配/多参数 AND/无 matcher 零变化四用例 + linter 警告
 - **依赖**：无（本批首卡）
 - **风险 / 未知**：参数嵌套路径（`args.model.id` 深路径）——平面参数名即达验收（深路径 YAGNI 记档）
+- **完成记录**：2026-09-28。**执行中发现本需求的核心面在 P1 已部分落地**（T-P1-67/68：文本 DSL `Tool(key:value)` 解析〔literal 分型〕+ `matchLiteralSpecifier` 消费——`Agent(model:opus)` 形态已可解析可匹配），本卡增量定形为三件：①**声明式 paramMatchers**（RuleSource 新字段——不经过文本 DSL、直接挂在规则上的具名参数匹配，加载时与解析产物合并为单一 `toolParamMatchers`〔AND 语义，解析在前声明在后〕；空数组归一 undefined——bare 规则不因 `[]` 误变 never-match）；②**全分型 AND**（loadedRuleMatch：command/path/domain 分型在 specifier 命中后再 AND 参数 matcher——qwen evaluateParamMatchers 标准分支同位共享语义；`evaluateParamMatchers` 从 matchLiteralSpecifier 提取为共享原语〔specifier-kinds.ts〕，匹配语义单点；MCP `__` 规则带声明式 matcher 同样计入 specifier 拒配〔fail-closed〕——qwen 的 MCP 参数匹配面不取记档）；③**linter unknown-param-name**（lintRules 新增 `knownToolParams?` 选项——工具参数名名单，matcher key 不在名单报 `unknown-param-name`；名单缺该工具/未知工具/通配工具名跳过不误报）。**装配缺省面**：`builtinToolParamNames()`（tools/builtin/index.ts 新导出——桩依赖构造注册表后读 toChatTools 真实 schema 派生工具→参数名表，模块级缓存；单一事实源漂移免疫，测试与独立注册表逐工具对账钉死）经 assembly `knownToolParams` 选项（可覆盖，MCP 动态工具由装配方合并）接入 lintRules。gate 层喂入面零改动（PolicyCall.args 既流经匹配——gate.test 补两层用例钉死）。**文本 DSL 的 key:value 解析保持 literal 分型 only**（Windows 盘符形状守卫保留——`edit(C:\Users\foo)` 的 `C` 会误中 PARAM_KEY_RE，扩分型解析违反"既有规则零变化"）。测试：`src/policy/param-matchers.test.ts` 新 7 用例（四验收 + 声明式合并 + MCP 拒配 + 空数组归一；从 rule-loader.test.ts 分出——文件行数纪律）+ linter.test 扩 3 用例（unknown-param-name 三态）+ gate.test 扩 2 用例（gate 层参数喂入：literal 文本 DSL + 声明式 × command AND）+ builtin.test 扩 1 用例（参数名表漂移免疫对账）。**验收**：`npx vitest run src/policy/` → **264 passed**（30 文件）；关联 builtin.test/gate.test 全绿；`npx tsc --noEmit` 干净；`architecture:check` 0 error / 21 warning（基线保持）；`vocabulary:check` 0 问题。**记档**：①深路径（`args.model.id`）不取——平面参数名即达验收（卡面预判兑现）；②qwen 的 matchesParamValuePattern 大小写不敏感 + 线性匹配不取——我方统一 wildcardMatch 方言（大小写敏感，evaluate.ts 既有纪律）；③builtinToolParamNames 的桩依赖（PendingApprovals/createNetworkGuard({policy:"deny"}) 等）只被闭包捕获永不执行；④bash 工具参数含 `justification` 字段（发现于对账断言）——C55 的规则 justification 是规则声明面字段，与此工具参数无关，命名巧合记档。
 
 #### T-P2-202 · C55 · 拒绝面纪律（justification 必填 + forbidden 给替代做法） `[ ]`
 - **依据需求**：C55（"`justification` 必填；`forbidden` 须给替代做法；拒绝要能告诉用户怎么办"）

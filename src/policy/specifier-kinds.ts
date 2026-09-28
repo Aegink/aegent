@@ -149,6 +149,24 @@ export const domainRuleMatcher: RuleMatchable = {
 // ---------------------------------------------------------------------------
 
 /**
+ * 具名参数 matcher 求值（C40 共享原语，T-P2-201）：全部 matcher 通过才
+ * 命中（AND）。qwen evaluateParamMatchers 同构——args[key] 必须存在且为
+ * string/number（缺 key = 不命中，不是跳过），值字符串按 evaluate.ts
+ * 通配方言匹配 valuePattern。literal 分型与 command/path/domain 分型的
+ * 声明式 matcher（rule-loader 合并产物）共用本函数——匹配语义单点。
+ */
+export function evaluateParamMatchers(
+  matchers: readonly ToolParamMatcher[],
+  args: PolicyCall["args"],
+): boolean {
+  return matchers.every((m) => {
+    const v = (args as Record<string, unknown>)[m.key];
+    if (typeof v !== "string" && typeof v !== "number") return false;
+    return wildcardMatch(String(v), m.valuePattern);
+  });
+}
+
+/**
  * literal 分型参数匹配（qwen matchesRule literal 分支 +
  * evaluateParamMatchers 同构）：
  *   - positional specifier（plain 部分）与 args 的任一顶层
@@ -175,11 +193,7 @@ export function matchLiteralSpecifier(
   if (!specifierMatched) return false;
   if (paramMatchers === undefined) return true;
   if (paramMatchers.length === 0) return true;
-  return paramMatchers.every((m) => {
-    const v = (args as Record<string, unknown>)[m.key];
-    if (typeof v !== "string" && typeof v !== "number") return false;
-    return wildcardMatch(String(v), m.valuePattern);
-  });
+  return evaluateParamMatchers(paramMatchers, args);
 }
 
 /** literal 分型参数匹配器：按 LoadedRule 的 plain/matchers 双面判定。 */

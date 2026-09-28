@@ -9,8 +9,10 @@
 
 import { PathGuard } from "../../../sandbox/path-guard.js";
 import type { SandboxBackend, SandboxMode } from "../../../sandbox/backend.js";
-import type { PendingApprovals } from "../../../policy/pending.js";
-import type { ToolRegistry } from "../registry.js";
+import { PendingApprovals } from "../../../policy/pending.js";
+import { createNetworkGuard } from "../../../sandbox/network.js";
+import { createPlanModeService } from "../../plan-mode.js";
+import { ToolRegistry } from "../registry.js";
 import { WriteQueue } from "../write-queue.js";
 import { createApplyPatchTool } from "./apply-patch.js";
 import { createBashTool } from "./bash.js";
@@ -35,6 +37,7 @@ import { createWebfetchTool } from "./webfetch.js";
 import { createWriteTool } from "./write.js";
 import type { PlanModeService } from "../../plan-mode.js";
 import type { NetworkGuard } from "../../../sandbox/network.js";
+
 
 /** 内置工具名清单（C45 linter 的 unknown-tool 判定缺省面；与
  * registerBuiltinTools 的注册清单同步维护，新增工具两处都加）。
@@ -184,4 +187,45 @@ export function registerBuiltinTools(
   ]) {
     registry.registerTool(def);
   }
+}
+
+/**
+ * 内置工具参数名表（C40 linter 的 knownToolParams 缺省面，T-P2-201）：
+ * 工具名 → 参数 schema 的属性名清单。从真实注册 schema 派生（一次性构造
+ * 桩依赖注册表后读 toChatTools——单一事实源，schema 漂移免疫；桩依赖只
+ * 被闭包捕获、永不执行），模块级缓存（内置工具工厂是静态面）。
+ * 无 properties 的工具不入表——linter 对无 schema 条目的工具跳过参数名
+ * 警告（宁可漏报不误报）。
+ */
+let builtinParamNamesCache: Readonly<Record<string, readonly string[]>> | undefined;
+
+export function builtinToolParamNames(): Readonly<Record<string, readonly string[]>> {
+  if (builtinParamNamesCache !== undefined) return builtinParamNamesCache;
+  const registry = new ToolRegistry();
+  registerBuiltinTools(registry, {
+    todoEmit: () => {},
+    planMode: createPlanModeService(),
+    savePlanArtifact: () => ({ path: "stub" }),
+    networkGuard: createNetworkGuard({ policy: "deny" }),
+    question: { pending: new PendingApprovals(), sessionId: "param-names", timeoutMs: 1 },
+    task: {
+      runSubagent: async () => ({
+        sessionId: "stub",
+        stopReason: "cancelled",
+        output: "",
+      }),
+    },
+    sessionQuery: { dbPath: "stub" },
+  });
+  const out: Record<string, readonly string[]> = {};
+  for (const tool of registry.toChatTools()) {
+    const params = tool.parameters as
+      | { properties?: Record<string, unknown> }
+      | undefined;
+    if (params?.properties !== undefined && typeof params.properties === "object") {
+      out[tool.name] = Object.keys(params.properties);
+    }
+  }
+  builtinParamNamesCache = Object.freeze(out);
+  return builtinParamNamesCache;
 }

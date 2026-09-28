@@ -16,7 +16,10 @@
  * empty-value-pattern（C26 key:value 空值模式）与 no-matcher-for-args
  * （带参规则永不命中的三类来源：未知工具 / 通配工具名无法静态确认 /
  * MCP 命名空间名带 specifier 拒配——T-P1-68 分型路由后已知工具的带参
- * 规则均有匹配语义）、basename-unanchored（C53 basename 未绑绝对路径）。
+ * 规则均有匹配语义）、basename-unanchored（C53 basename 未绑绝对路径）、
+ * unknown-param-name（C40 参数 matcher 的 key 不在工具参数 schema 中——
+ * T-P2-201；knownToolParams 由调用方提供 schema 名单，无 schema 的工具
+ * 跳过不误报）。
  *
  * linter 只警告不拦截：装一条死规则是用户配置错误，不是攻击面——
  * 拒绝装配会让有其他活规则的配置整体不可用，过狠（样例矛盾才拒，
@@ -34,7 +37,8 @@ export type LintIssueKind =
   | "wildcard-tool-name"
   | "incomplete-namespace-name"
   | "empty-value-pattern"
-  | "basename-unanchored";
+  | "basename-unanchored"
+  | "unknown-param-name";
 
 export interface LintIssue {
   readonly kind: LintIssueKind;
@@ -106,6 +110,13 @@ export function lintRules(
   options: {
     /** 注册表现存工具名（未知工具名判定依据）。 */
     knownToolNames: readonly string[];
+    /**
+     * C40（T-P2-201）工具 → 参数名名单（工具参数 schema 的属性名）：
+     * 提供且工具名精确命中名单时，参数 matcher 的 key 不在名单内报
+     * unknown-param-name。缺省/无该工具条目 = 无 schema 可依，跳过不误报
+     * （装配缺省面取 builtinToolParamNames()——真实 schema 派生）。
+     */
+    knownToolParams?: Readonly<Record<string, readonly string[]>>;
   },
 ): LintIssue[] {
   const known = new Set(options.knownToolNames);
@@ -193,6 +204,22 @@ export function lintRules(
           ...(rule.line !== undefined ? { line: rule.line } : {}),
           detail: `key "${m.key}" 的值为空模式——只匹配空字符串；需匹配任意值请用 "*"`,
         });
+      }
+    }
+    // C40 参数名存在性（T-P2-201）：工具名可静态确认（注册表精确命中、
+    // 无通配）且 schema 名单在位时，matcher key 不在名单 = 永不命中。
+    // 名单缺该工具 = 无 schema 可依，跳过（宁可漏报不误报）。
+    const paramNames = options.knownToolParams?.[rule.toolName];
+    if (paramNames !== undefined && known.has(rule.toolName) && !hasGlob) {
+      for (const m of rule.toolParamMatchers ?? []) {
+        if (!paramNames.includes(m.key)) {
+          issues.push({
+            kind: "unknown-param-name",
+            raw: rule.raw,
+            ...(rule.line !== undefined ? { line: rule.line } : {}),
+            detail: `参数 matcher 的 key "${m.key}" 不在工具 "${rule.toolName}" 的参数 schema 中（永不命中；请核对参数名——平面参数名，深路径不支持）`,
+          });
+        }
       }
     }
   }
