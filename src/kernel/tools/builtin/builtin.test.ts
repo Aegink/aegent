@@ -963,3 +963,28 @@ describe("builtinToolParamNames（C40 · T-P2-201）", () => {
     expect(builtinToolParamNames()).toBe(map);
   });
 });
+
+describe("task 的 --backend 参数面（H6 · T-P2-309）", () => {
+  it("backend 参数透传 runSubagent（缺省不发键；坏形状类型化拒绝）", async () => {
+    const { createTaskTool } = await import("./task.js");
+    const seen: (string | undefined)[] = [];
+    const tool = createTaskTool({
+      runSubagent: async (_prompt, _desc, opts) => {
+        seen.push(opts?.backend);
+        return { sessionId: "s-ext", stopReason: "completed", output: "ok" };
+      },
+    });
+    // 缺省：opts 不带 backend 键
+    await tool.execute({ description: "d", prompt: "p" }, { toolCallId: "c1" });
+    expect(seen).toEqual([undefined]);
+    // 显式：透传
+    await tool.execute({ description: "d", prompt: "p", backend: "acp" }, { toolCallId: "c2" });
+    expect(seen).toEqual([undefined, "acp"]);
+    // 坏形状：非字符串 / 空串 → 类型化 isError（不下发）
+    const bad = await tool.execute({ description: "d", prompt: "p", backend: 7 }, { toolCallId: "c3" });
+    expect(bad.isError).toBe(true);
+    const empty = await tool.execute({ description: "d", prompt: "p", backend: "" }, { toolCallId: "c4" });
+    expect(empty.isError).toBe(true);
+    expect(seen).toEqual([undefined, "acp"]);
+  });
+});

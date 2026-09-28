@@ -42,7 +42,7 @@ export interface TaskToolDeps {
   readonly runSubagent: (
     prompt: string,
     description: string,
-    opts?: { signal?: AbortSignal },
+    opts?: { signal?: AbortSignal; backend?: string },
   ) => Promise<SubagentRunResult>;
 }
 
@@ -61,6 +61,11 @@ export function createTaskTool(deps: TaskToolDeps): ToolDef {
         prompt: {
           type: "string",
           description: "交给子代理执行的完整任务指令（子代理从全新上下文开始，prompt 即其全部任务背景）",
+        },
+        backend: {
+          type: "string",
+          description:
+            "子代理执行后端名（H6/T-P2-309；缺省进程内 fork——装配方按注册表选后端，未知后端会被类型化拒绝）",
         },
       },
       required: ["description", "prompt"],
@@ -82,13 +87,20 @@ export function createTaskTool(deps: TaskToolDeps): ToolDef {
           "task 需要 prompt（非空字符串——子代理从全新上下文开始，prompt 是它的全部任务背景）",
         );
       }
+      const backend = args["backend"];
+      if (backend !== undefined && (typeof backend !== "string" || backend === "")) {
+        return toolError("TaskError", "INVALID_ARGUMENTS", "task 的 backend 须为非空字符串");
+      }
       let result: SubagentRunResult;
       try {
         // T-P1-43 取消联动：ctx.signal（本 turn 取消信号）传给 runner——
         // 父轮取消 → 子轮取消（CancelCause "parent"），子 loop 在 await
         // 边界收轮，结算 cancelled（dsh activation stop 传播同构）。
+        // H6：backend（可选）随 opts 透传——装配方的 runSubagent 实现按
+        // 注册表选后端（缺省 = 进程内）。
         result = await deps.runSubagent(prompt, description, {
           ...(ctx.signal ? { signal: ctx.signal } : {}),
+          ...(backend !== undefined ? { backend } : {}),
         });
       } catch (err) {
         if (err instanceof SubagentDepthError) {
