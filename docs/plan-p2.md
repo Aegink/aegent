@@ -448,7 +448,7 @@
 - **风险 / 未知**：预判部分覆盖——展卡核对后可能直接关闭（J25/L10 先例）
 - **完成记录**：2026-09-28。**核对关闭（零缺口——需求语义已被 T-P1-121 完整覆盖，检查器不重复实现）**。核对四面：①**检查器强制在位**——`tools/architecture-check.mjs:68` 形状自检 `exception 必须带 path 与 reason`，缺 reason 即 problems（error 级、退出码非零）——T-P1-121（批次 13）已落且负例在位；②**负例在位**——`src/diagnostics/architecture-check.test.ts:51-63`「缺 reason 的 exception 都拒绝」+ `:139-144`「带 reason 的豁免生效」两用例即本需求的机验面；③**exceptions 现状为空集**——architecture-policy.json `exceptions: []`，当前全仓零豁免在用（21 warning 全为 managed=false 域渐进警告与存量 cycle 警告，未动用豁免），"每条豁免已带 reason"在空集上平凡成立；④**无内联豁免机制**——全仓 grep `architecture:disable / architecture:ignore / eslint-disable` 零命中，我方唯一豁免面 = 策略文件 exceptions 条目（path 与 reason 同对象承载，即需求"写在同一条抑制语句上"的语义对应——卡面预判"核对关闭"兑现）。若未来引入内联抑制机制，须同语句带理由（本核对结论为后续卡的纪律依据）。
 
-#### T-P2-503 · T7 · 性能断言进测试套件（防复杂度退化） `[ ]`
+#### T-P2-503 · T7 · 性能断言进测试套件（防复杂度退化） `[x]`
 - **依据需求**：T7（"性能断言进测试套件防复杂度退化（不是防慢）；断言的是复杂度不是耗时"）
 - **上游首选参考**：kimi·tree-sitter-bash/README.md（复杂度断言纪律——实测溢出点 + 余量倍数；T-P1-123 同锚同纪律先例）
 - **取什么 / 别抄什么**：取"断言复杂度形状（增长曲线）不断言绝对耗时"行为；已有先例盘点（project 10k=10.8ms 阈值 200ms——T-1-04 计时断言已是复杂度断言形态）
@@ -456,8 +456,9 @@
 - **验收**：`npx vitest run src/session/project.test.ts src/session/query.test.ts`（扩）——增长曲线断言三件 + 既有零回归
 - **依赖**：T-P2-105（query 面——15a）
 - **风险 / 未知**：增长曲线断言的机器方差（比值断言比绝对值稳——2× 余量定形）
+- **完成记录**：2026-09-28。产出 `src/session/complexity.test.ts`（独立文件——project.test.ts 已 386 行触 400 上限，supersession.test 拆出先例）：**热点增长曲线断言三件**——①project fold 全量（7500 vs 15000 事件，实测比值 0.49）；②buildChatMessages（7500 vs 15000 事件，实测比值 1.26——视窗折叠面近线性）；③querySessions 检索（3k vs 6k 行真实 sqlite，实测比值 1.16——索引面不随库容超线性）。**纪律定形**：断言形状不断言绝对耗时（kimi README 同款）——比值上界 `LINEAR_RATIO_CEILING = 4`（线性理论比值 2 的 2× 余量，卡面定形兑现）+ 每档 min-of-3 降噪（JIT 预热与 GC 抖动取下界）+ 绝对耗时只 `console.info` 作基线记录不打闸。**已有断言盘点**（落完成记录）：project.test.ts:50 的 project(10k)<200ms 绝对阈值（T-1-04）是既有的计时形态——其 20 倍余量使它实际是复杂度哨兵（超线性退化先于阈值爆），本卡的增长曲线三件是其形状级补强；plan-p0-progress.md 记档"project(10k) 基线是本机数字，CI 方差出现前不拆独立 bench 文件"——本卡响应该记档（独立 complexity.test 而非 bench 基建）。**验收**：`npx vitest run src/session/complexity.test.ts` → **3 passed**；关联 `project.test.ts / query.test.ts / messages.test.ts` → **28 passed**（既有零回归）；`npx tsc --noEmit` 干净。**记档**：①比值实测 0.49（<1）说明 min-of-3 下小档仍含预热残余——比值断言只设上界，低比值非异常、超高才退化，语义如实；②测试库容量定在 3k/6k 行（真实 sqlite I/O 有固定开销，行数再大测试时长劣化而比值信息量不增）。
 
-#### T-P2-504 · T8 · known-diffs 清单（以某上游为蓝本须产出分歧清单） `[ ]`
+#### T-P2-504 · T8 · known-diffs 清单（以某上游为蓝本须产出分歧清单） `[x]`
 - **依据需求**：T8（"以某上游为蓝本须产出 known-diffs 清单（对齐 + 记录分歧）"）
 - **上游首选参考**：kimi·known-diffs.txt（逐条分歧 + 理由的清单形态）
 - **取什么 / 别抄什么**：取清单纪律（格式 + 逐条理由）；不抄其语料域内容
@@ -465,6 +466,7 @@
 - **验收**：文档落地 + 抽查 5 域与完成记录一致 + check-doc-links 传参通过
 - **依赖**：无
 - **风险 / 未知**：无（文档件）
+- **完成记录**：2026-09-28。产出 `docs/known-diffs.md`——**18 个蓝本域逐条登记**（对齐了什么 / 分歧是什么 + 理由 / 证据 pin 到计划卡号）：词汇表（三家实测不抄任何一家）、会话存储（←DSH）、投影器（←codex，合并器≠投影器）、host 协议（←pi·protocol 五形状）、ACP（←xai-acp-lib）、附件（←kimi/pi-desktop）、权限匹配（←zcode）、沙箱 Win32（←dsh+codex）、提示词缓存（语义自定）、写队列（←pi）、快照归一（←codex/dsh/kimi）、工具并发（←codex/pi）、插件分轨（←pi-desktop 🔴）、fork（←pi）、M7 deadline（←dsh）、I5 SDK（←opencode）、I7 hook 兼容（←dsh）、E9 引用（←dsh）——P0/P1 卡面"不抄什么"行回溯汇拢 + P2 条目随收官回填；**文件头写明随卡追加纪律**（只追加不替换；分歧消失标记不删除；格式对齐 kimi·known-diffs.txt 逐条偏差 + pin）。**验收**：①文档落地 ✅；②抽查 5 域与完成记录一致（词汇表 plan-p0.md:152 / 会话存储 :164 / 投影器 :188 / 权限匹配 :501 / host 协议 plan-p1.md:1741——分歧表述与完成记录"不抄什么"行逐字对上，核对记录落文件尾）；③`bash tools/check-doc-links.sh docs/known-diffs.md` → **5 链接 0 失效**。
 
 #### T-P2-505 · O27 · 快照长行截断 + 长指引标签化 `[ ]`
 - **依据需求**：O27（"长行截断（160 字符）+ 已知长指引替换成一行标签；MAX_SNAPSHOT_LINE_CHARS"）
