@@ -84,12 +84,13 @@
 - **风险 / 未知**：wire query 扩展形状（op 枚举追加——批次 12/14 先例）
 - **完成记录（2026-09-29）**：验收 `npx vitest run src/session/sessions-cli.test.ts src/host/server.test.ts` → **16 passed**（+db/cli/内核回归 65 passed）。落地：①**SQL 面**（db.ts）：`listSessionSummaries`（session_index 清单 + SQLite bare-column 取每会话首条 user/message 前 60 字做标题）+ `deleteSession`（sessions/events/session_index/archived_sessions 四表事务硬删除；非法 id 拒绝、幂等 false）；②**CLI**（`src/cli/sessions.ts`）：`aegent sessions list [--db]`（缺省 ~/.aegent/sessions.db）/`delete <id> --yes`（无 --yes 闸住——硬删除确认）/`resume <id>`（index.ts 分流 = 以 --session <id> 正常启动 REPL——续聊即同一会话 id 再开进程，机制复用零新增）；③**wire**：query op 枚举追加 `sessions`（清单）+ events 放宽为任意会话只读（跨会话直接回源 SQLite 库——历史会话不在内存镜像；本会话仍内存序；写命令仍限本会话）；settings op 追加 `session-delete`（gateway.sessionDelete——sessionDb 可选依赖，未配置回 SESSION_DB_UNAVAILABLE）；④**UI**：历史侧栏（☰ 按钮 → 清单：标题/id/事件数/时间 + 查看〔只读恢复视图 + resume 提示〕+ 删除〔window.confirm 确认〕）。崩溃恢复一键续跑 = resume 面同链（M3 boot-maintenance 在启动时自动跑，既有）。
 
-#### T-P3-106 · 收口 · 16a 盘点 `[ ]`
+#### T-P3-106 · 收口 · 16a 盘点 `[x]`
 - **依据需求**：批次 16a 收口
 - **要产出**：盘点面：①U1 优先级链 × 三入口一致性；②U2 凭据零明文全链扫描；③U14 设置分节 × settings 模块一一对应；④U5 切换 × J6 语义（新 turn 生效）；⑤快照即规格：设置改 → 文件变 → 重启生效一条
 - **验收**：`npx vitest run`（全量）+ 工具链四件 + license-audit
 - **依赖**：T-P3-101 ~ 105
 - **风险 / 未知**：无
+- **完成记录（2026-09-29）**：全量 `npx vitest run` → **1710 passed / 7 skipped**（196 文件；7 skipped 中 6 例 = live-p2 真实端点联调条件跳过——本会话无凭据环境，P2 15e 已 6/6 跑过）；`tsc --noEmit` 干净；工具链五件全绿：architecture:check **0 error / 21 warning**（基线保持；治理：session+sandbox / host+models / cli+models requires 增补 + 2 条长 e2e 测试文件 exceptions 豁免）、vocabulary:check 0 问题（零事件兑现）、count-features **337** 不变、check-doc-links 显式传参 **1206 链接 0 失效**、license-audit exit 0。五项盘点与快照即规格机验全部落 `plan-p3-progress.md` 收官报告；人工确认清单新增 U14/U5/U3 三条走查项（U6/U8/U4 随 16b）。批次 16b 提示词已更新。
 
 ## §4 批次 16b 卡序（10 张：U4/U9/U10/U11/U12/U13/U6/U7/U8 + 收口——体验与分发；2026-09-28 展卡）
 

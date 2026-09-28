@@ -37,6 +37,7 @@
       "requires": [
         "diagnostics",
         "kernel",
+        "models",
         "sandbox",
         "session",
         "test-support"
@@ -80,6 +81,7 @@
       "managed": true,
       "requires": [
         "kernel",
+        "models",
         "policy",
         "session"
       ],
@@ -240,5 +242,14 @@
     "forbidCycles": true,
     "forbidDeepImports": true
   },
-  "exceptions": []
+  "exceptions": [
+    {
+      "path": "src/diagnostics/live-p2.test.ts",
+      "reason": "U3/T-P3-105 收口记档：P2 15e 的真实端点联调端到端测试（427 行）——脚本化场景内聚在一个文件，拆分降低可读性；豁免只限测试文件，产品代码仍受上限约束（文件拆分列为后续重构候选）。"
+    },
+    {
+      "path": "src/host/server.test.ts",
+      "reason": "U3/T-P3-105 收口记档：K5 WS 传输 e2e 主测试 + 16a 批次 settings/probe/历史 wire 端到端（639 行）——共享 rig 与 ws 客户端的 e2e 内聚面；豁免只限测试文件，settings e2e 增量如再增长应拆 server-settings.test.ts（复用 server.test-utils）。"
+    }
+  ]
 }
