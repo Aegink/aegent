@@ -15,6 +15,11 @@
  * - 与压缩分域：裁剪是请求面视图变换（不落流），压缩是流内事实（compaction
  *   事件）——两者可叠加不互扰（先裁剪视图再判溢出是保守方向反例：溢出判定
  *   按未裁尺寸，见卡内定形）。
+ * - 两级压缩（F19/T-P2-510 定形）：本模块是 **micro 层**——轮内轻量裁剪，
+ *   确定性规则（幂等、可从流重算，零事件）；compaction 引擎是 **full 层**
+ *   （溢出/换模/指纹触发，两段落流）。次序 = 溢出判定按未裁尺寸（assembly
+ *   detectLocalOverflow 的输入自 startNewContextWindow 原始投影），请求面
+ *   按裁剪视图（loop.buildMessages 尾部接线）。#26 零事件结论见卡面完成记录。
  */
 
 import type { ChatMessage } from "../models/provider.js";
