@@ -56,6 +56,23 @@ CREATE TABLE IF NOT EXISTS session_index (
 );
 `;
 
+/**
+ * v2→v3：归档账本表（Q8/T-P2-102 地基）——记录"哪些会话已归档到
+ * ARCHIVED_SESSIONS_SUBDIR 的独立归档档"（归档 ≠ 删除：账本是**去向标记**，
+ * 不是数据副本。主库读面凭它 fail-closed 拒绝，归档档读取面凭各归档文件的
+ * 元数据自足可查——账本丢失不丢归档）。archive_file 存相对文件名（目录随
+ * 主库位置解析——库可搬家）。
+ */
+export const SCHEMA_V3_ARCHIVE_LEDGER_DDL = `
+CREATE TABLE IF NOT EXISTS archived_sessions (
+    session_id   TEXT    PRIMARY KEY,
+    archived_at  INTEGER NOT NULL,
+    event_count  INTEGER NOT NULL,
+    reason       TEXT,
+    archive_file TEXT    NOT NULL
+);
+`;
+
 export const MIGRATIONS: readonly SchemaMigration[] = [
   { from: 0, to: 1, apply: applyBaseSchema },
   {
@@ -75,6 +92,14 @@ export const MIGRATIONS: readonly SchemaMigration[] = [
         FROM sessions s LEFT JOIN events e ON e.session_id = s.id
         GROUP BY s.id
       `);
+    },
+  },
+  {
+    from: 2,
+    to: 3,
+    // 只加表不加列（payload 整事件 JSON 存取，schema 演进零数据重排）
+    apply: (db) => {
+      db.exec(SCHEMA_V3_ARCHIVE_LEDGER_DDL);
     },
   },
 ];

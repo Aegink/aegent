@@ -14,7 +14,18 @@ import type { SessionEvent } from "../kernel/events.js";
 import type { EventStorage } from "./store.js";
 import { MIGRATIONS, planMigrationChain } from "./migrate.js";
 
-export const CURRENT_SCHEMA_VERSION = 2;
+export const CURRENT_SCHEMA_VERSION = 3;
+
+/** 归档后从主库读该会话的 fail-closed 拒绝（Q8/T-P2-102）——归档 ≠ 删除，
+ * 数据在归档档（archive.ts 的 readArchivedSession 可查），主库读路径必须
+ * 显式拒绝而不是返回空流（"查无此会话"与"已归档"是两类事实）。 */
+export class SessionArchivedError extends Error {
+  readonly code = "SESSION_ARCHIVED";
+  constructor(readonly sessionId: string) {
+    super(`会话 ${sessionId} 已归档（Q8）：数据在归档档（ARCHIVED_SESSIONS_SUBDIR），主库不再持有`);
+    this.name = "SessionArchivedError";
+  }
+}
 
 export interface OpenDbOptions {
   /** 文件路径；":memory:" 时全内存。 */
@@ -25,6 +36,7 @@ export class SqliteEventStorage implements EventStorage {
   private readonly insertEvent: Database.Statement;
   private readonly ensureSession: Database.Statement;
   private readonly selectAll: Database.Statement;
+  private readonly selectArchived: Database.Statement;
 
   private constructor(public readonly db: Database.Database) {
     db.pragma("journal_mode = WAL");
@@ -37,6 +49,10 @@ export class SqliteEventStorage implements EventStorage {
     );
     this.selectAll = db.prepare(
       "SELECT payload FROM events WHERE session_id = ? ORDER BY seq ASC",
+    );
+    // Q8/T-P2-102：归档账本查询（readAll 的 fail-closed 判据源）
+    this.selectArchived = db.prepare(
+      "SELECT 1 AS hit FROM archived_sessions WHERE session_id = ?",
     );
   }
 
@@ -130,6 +146,11 @@ export class SqliteEventStorage implements EventStorage {
   }
 
   readAll(sessionId: string): SessionEvent[] {
+    // Q8/T-P2-102：已归档会话在主库读面 fail-closed——归档 ≠ 删除，但主库
+    // 不再持有其数据；静默返回空流会把"已归档"误报成"查无此会话"。
+    if (this.selectArchived.get(sessionId) !== undefined) {
+      throw new SessionArchivedError(sessionId);
+    }
     const rows = this.selectAll.all(sessionId) as Array<{ payload: string }>;
     return rows.map((row) => JSON.parse(row.payload) as SessionEvent);
   }

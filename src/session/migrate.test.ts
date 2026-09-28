@@ -131,6 +131,7 @@ describe("迁移链（Q1/T-P1-89）", () => {
             throw new Error("注入的迁移中途失败");
           },
         },
+        ...MIGRATIONS.slice(2), // v2→v3 起后续真实迁移（链完整性不参与本次注入）
       ]);
       assertMigrationAtomic(
         () => {

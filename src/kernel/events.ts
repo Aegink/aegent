@@ -669,6 +669,24 @@ export interface ImageOffloadEvent extends EventBase {
   targets: ImageOffloadTarget[];
 }
 
+/**
+ * 会话归档标记（Q8，T-P2-102）——"归档是独立一档（ARCHIVED_SESSIONS_SUBDIR），
+ * 不是删除"（codex·rollout/compression.rs 的归档目录先例：归档与删除分型）。
+ * 归档动作把会话数据从主库移出到独立归档档**之前**落本条流尾——事件随会话
+ * 数据一起进入归档档（归档档自带"这条会话何时因何归档"的流内事实，不依赖
+ * 主库账本旁证）。**log-only 会话级元事件**（session/fork / plugin / command
+ * 同款纪律：不要求 turn/step 开合上下文、turn 挂流内最后轮空流兜 0、不进
+ * 模型历史、跨 compaction 保留）。reason 可选自由文本（清理超保留/手动/
+ * 外部触发——展示与检索用，非判据字段）。
+ * 词汇表 26→27 立案 #22（待追认）；回退面 = 删事件 + project 校验 + 归档器
+ * 落流接线（约 1.5 小时，全部为新增面——不触碰既有 26 事件语义）。
+ */
+export interface SessionArchiveEvent extends EventBase {
+  type: "session/archive";
+  /** 归档原因（可缺省——自由文本，非判据）。 */
+  reason?: string;
+}
+
 import type { AttachmentRef } from "../attachments/types.js";
 
 export type SessionEvent =
@@ -697,9 +715,10 @@ export type SessionEvent =
   | CommandDoneEvent
   | SurfaceAttachEvent
   | SurfaceDetachEvent
-  | ImageOffloadEvent;
+  | ImageOffloadEvent
+  | SessionArchiveEvent;
 
-/** 25 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
+/** 27 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
 export const EVENT_TYPES = [
   "turn/start",
   "turn/end",
@@ -727,6 +746,7 @@ export const EVENT_TYPES = [
   "surface/attach",
   "surface/detach",
   "image/offload",
+  "session/archive",
 ] as const;
 
 export type SessionEventType = (typeof EVENT_TYPES)[number];

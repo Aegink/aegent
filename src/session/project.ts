@@ -397,6 +397,13 @@ export class Projector {
           throw new ProjectError("surface/detach 的 reason 须为字符串");
         }
         break;
+      case "session/archive":
+        // Q8/T-P2-102 归档标记（log-only 会话级元事件）：reason 可选自由
+        // 文本（非判据）；投影不消费（归档事实的消费方是归档档读取面）。
+        if (event.reason !== undefined && typeof event.reason !== "string") {
+          throw new ProjectError("session/archive 的 reason 须为字符串");
+        }
+        break;
       case "image/offload": {
         // P2/T-P1-125 图片卸载决策（dsh required-on-read 语义——校验闭面）：
         // targets 非空；每项 seq 必须指向流内携带附件的 user/message；
@@ -607,6 +614,8 @@ export class Projector {
         break;
       case "session/fork":
         break; // E5 lineage 是子流头部事实：投影不消费（读流头部即可查）
+      case "session/archive":
+        break; // Q8 归档标记是 log-only 流尾事实：投影不消费（归档档读取面消费）
       case "plugin":
         break; // C17 泛型逃生舱是 log-only 载荷：投影不消费（消费方按 namespace 自取）
       case "command/run":

@@ -123,7 +123,7 @@ interface EventBase {
 **`seq` / `ts` 由 store 分配**，照 pi 的 `NewEntry = Omit<Entry, "seq" | "timestamp">`（`types.ts:67`）。
 调用方给不出正确的 seq —— 它给一个就多一个不权威的顺序来源。
 
-### 3.2 事件联合（L0，正式计数 **25** 个）
+### 3.2 事件联合（L0，正式计数 **27** 个）
 
 | # | 事件 | 载荷 | 覆盖需求 |
 | --- | --- | --- | --- |
@@ -152,6 +152,8 @@ interface EventBase {
 | 23 | `command/done` | `{commandId, kind, text?}` | L7（同上，run/done 配对结算） |
 | 24 | `surface/attach` | `{surfaceId, deliveryKind?}` | N8（T-P1-114 追加，✅ 已追认——落地记录 19，23→25；log-only 会话级元事件） |
 | 25 | `surface/detach` | `{surfaceId, reason?}` | N8（同上，attach/detach 配对维护 roster） |
+| 26 | `image/offload` | `{targets: [{seq, imageIndexes}]}` | P2（T-P1-125 追加，✅ 已追认——落地记录 21） |
+| 27 | `session/archive` | `{reason?}` | Q8（T-P2-102 追加——落地记录 22，待追认 #22；log-only 会话级元事件，归档前落流尾） |
 
 `user/message.source` 必须是联合：照 DSH 的 `types.ts:309` 注释，人类 prompt、注入上下文、
 目标续跑**三者都逐字投影 content，靠 `source` 区分**。没有 `source` 就再也分不开。
@@ -329,3 +331,5 @@ type CancelCause =
 - **落地记录 20（2026-09-28，T-P1-124 执行会话；✅ 已追认（2026-09-28 用户："全部认可"））**：P1 要求"附件上传（类型化协议 + 存储抽象）；图片/文件可随消息附上"（kimi·transcript attachment.ts 锚点）。**user/message 载荷扩展**：新增可选字段 **`attachments?: AttachmentRef[]`**（`AttachmentRef = {attachmentId, mediaType, name?, size}`——`src/attachments/types.ts`）——**流存引用不存字节**：字节在 AttachmentStore（`src/attachments/store.ts`，本地文件/内存两实现 + 远端接口随部署），事件流只落引用（流轻量纪律——L1"事件即轨迹"不变成"事件即 blob"）。重建路径 = ref → store.read（恢复/回放时经 resolveImage 注入——buildChatMessages 纯函数保持，store 读取在装配边界）。**事件计数 25 不变**（载荷扩展非新事件）。字段缺省——旧流前向兼容（缺值读作"无附件"，投影零变化）。**不追认的回退面**：events.ts 删字段 + types.ts 删 AttachmentRef + messages.ts/loop.ts 删投影展开与落流 + agent-protocol/agent-process/queue 删 wire 与编排透传 + tests（约 2 小时，全部为新增面——不触碰既有 25 事件语义）；回退后 prompt 附件能力关闭（ATTACHMENTS_UNSUPPORTED 恒拒绝），既有会话流零影响（旧流本就无该字段）。
 - **落地记录 21（2026-09-28，T-P1-125 执行会话；✅ 已追认（2026-09-28 用户："全部认可"））**：P2 要求"图片从上下文卸载且可回取，防 token 膨胀"（dsh·image-offload-events.md implemented 版锚点——专用事件持久化决策，不替换消息节点）。**词汇表 25→26（一处新事件）**：新增 **`image/offload {targets: [{seq, imageIndexes}]}`**——`targets` 逐项指认被卸载的图片出现（user/message 的 seq + attachments 下标）。**事件级投影事实（非 log-only）**：buildChatMessages 消费它把被卸出现从模型请求面替换为占位文本（`[image offloaded: <name> (<mediaType>, <size>B, id=<attachmentId>)]`——id 即回取键）；投影校验闭面（required-on-read）：坏 seq/索引越界/乱序/重复卸载全 ProjectError 拒绝。**只进不退**：卸载决策落流后无自动恢复（词汇表无 image/restore 形状——结构性保证）；回取 = AttachmentStore.read(attachmentId) 显式动作（P1 面复用）。选择面 = `offloadOldestImages(events, count)` 纯函数（最老优先、重放同流同选——dsh 稳定性纪律；视窗截断由调用方做——attachments 域不依赖 session 防模块环，architecture:check 机内化）；触发面 = agent-protocol `offload {count}` wire 命令（wire 形状扩展批次 9 先例，A9 无回执——事实经事件行可见；无可卸载 → OFFLOAD_NO_IMAGES 类型化 error）。**不追认的回退面**：events.ts 删事件 + project.ts 删校验与索引 + messages.ts 删投影消费 + offload.ts/wire/编排接线删除（约 2.5 小时，全部新增面）；事件计数回 25，既有流零影响（旧流无该事件）。
 > **#20/#21 追认于 2026-09-28（用户："全部认可"），两案关闭，§3.2 的正式计数为 26 事件。**
+
+- **落地记录 22（2026-09-28，T-P2-102 执行会话；待追认 #22）**：词汇表 **26→27（一处新事件）**——Q8 要求"归档是独立一档（`ARCHIVED_SESSIONS_SUBDIR`），不是删除"（plan-p2.md T-P2-102 明文；codex·rollout/src/lib.rs:87 的归档子目录常量 + compression.rs 的归档域纪律同构最小面）。已新增 **`session/archive {reason?}`**（log-only 会话级元事件：session/fork / plugin / command / surface 同款纪律——不要求 turn/step 开合上下文、turn 挂流内最后轮空流兜 0、不进模型历史（messages.ts default 分支不消费）、跨 compaction 保留；reason 可选自由文本——展示与检索用、非判据字段）。**落流时点 = 归档动作把会话导出到归档档并把主库删除之前**（落流尾，随数据一起进归档档——归档档自带"何时因何归档"的流内事实，不依赖主库账本旁证）；**幂等规则**：流尾已存在本事件时不再追加第二枚（崩溃重试路径——不重复追加）。**同步面**：events.ts（SessionArchiveEvent / EVENT_TYPES 27 / 编译闸门）/ project.ts（validation：reason 可选字符串 + 投影不消费）/ invariants.ts（O7 会话级元事件豁免面 +session/archive）/ archive.ts（session/archive 落流接线）/ events.test（计数 27 + 样本）/ obs/replay.test（计数断言 27）/ l0-events.md 本记录 + §3.2 行 26/27（顺带补回落地记录 21 遗漏的 image/offload 表格行）。**不追认的回退面**：events.ts 删事件/联合成员/EVENT_TYPES 行、project.ts 删校验、invariants.ts 删豁免、archive.ts 删标记落流段、events.test/replay.test 计数回 26——约 1.5 小时，全部为新增面（不触碰既有 26 事件语义）；回退后归档档无"因何归档"的流内事实（元数据仅在归档档表头）。

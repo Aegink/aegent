@@ -72,7 +72,8 @@ export function expectTurnScoped(events: readonly SessionEvent[]): void {
       e.type === "command/run" ||
       e.type === "command/done" ||
       e.type === "surface/attach" ||
-      e.type === "surface/detach"
+      e.type === "surface/detach" ||
+      e.type === "session/archive"
     ) {
       continue;
     }
