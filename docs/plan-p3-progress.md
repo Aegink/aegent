@@ -21,6 +21,11 @@
 4. **U5 切换 × J6 语义（新 turn 生效）** ✅——server.test e2e：model/switch 请求往返 ok（非写命令免租约）→ 下一轮 request/header 的 config.modelId = 新值 + model/switch 落流事件（J9）可见；在途轮用启动时捕获值跑完（J6/J7 既有语义，装配多注册表零语义新增）。
 5. **快照即规格：设置改 → 文件变 → 重启生效一条** ✅——server.test e2e：settings update（theme+providers+defaultProvider）→ response 返回合并结果 → 磁盘 settings.json 内容断言 → 重新 loadSettings（重启模拟）读回一致。
 
+**U 域原文与锚点核对（收口补做，2026-09-29——用户质疑待澄清表"无"的核对支撑后补）**：
+- **方法**：①docs/requirements.md:644-654 U1/U2/U3/U14/U5 原文逐字对照 plan-p3.md 卡面摘录与落地实现；②`bash tools/snapshot.sh` 刷新 oss/SOURCES.lock——**全部上游 commit SHA 零漂移**（仅生成日期变化，已还原）；③16a 引用的 7 个上游锚点（cc-switch config.rs/app_store.rs/settings 组件族/theme-provider.tsx、codex dpapi.rs、pi-desktop、cc-switch）存在性全 OK；④抽查 config.rs 默认值面与 settings 组件族清单。
+- **核对结论**：U1 ✅（五要素+优先级链+fail-closed 指行+无 env 启动全覆盖）；U2 ✅（CLI/UI 双通道+DPAPI+往返+零明文）；U5 ✅（列表/会话期切换/健康徽标全覆盖）；**U3 路径偏离记档**（非失真）——原文"复用 Q2 SQL 查询"，落地列表走 session_index 聚合（Q1 v2/E8 面，`listSessionSummaries`）而非 query.ts 的 querySessions 函数：列表是索引聚合、Q2 是内容检索，语义本不同面，功能达成；Q2 的 UI 消费按计划在 U9 跨会话搜索（16b）。**U14 缺口 → #28 立案**（原文"日志"分节未落且无卡内豁免——上游 LogConfigPanel.tsx 行为锚在位）。
+- **流程教训**：执行会话开工三件套应为 ①读 plan 卡序 + ②**requirements.md 对应域原文逐字核对** + ③`snapshot.sh` 锚点漂移检查——16a 开工时只做了①，②③在收官后由用户质疑触发补做。
+
 **卡内定形记档**（16a 特有）：
 - settings 信封（U14）：host 面配置直答通道——op 闭集 get/update/credentials-set/delete/list/probe/session-delete；段白名单在 gateway 层（parse 层只管信封形状——双层分工），未知段回 SETTINGS_PATCH_SECTION_UNKNOWN 且不落盘。
 - settings patch 语义：段级整体替换（providers 数组整体替换、对象段整体替换）——UI 发整段，防抖 500ms 合并。
@@ -32,7 +37,7 @@
 
 | # | 需求ID | 我看到的（含路径:行） | 与需求文档的矛盾 | 建议 | 裁决与落实 |
 | --- | --- | --- | --- | --- | --- |
-| （16a 无——执行中未发现需求文档/锚点失真） | | | | | |
+| #28 | U14 | requirements.md:653 原文列"…沙箱档/**代理**/语言/**日志**/关于的多分节设置页"；上游行为锚 oss/cc-switch/src/components/settings/**LogConfigPanel.tsx** 在位。16a 落地六分节（providers/credentials/permission/sandbox/appearance/about）——无日志分节；plan-p3.md T-P3-103 卡"取什么"未明示日志分节不取（"代理"有展卡 YAGNI 裁决，"日志"没有）。缺口在收口后补核 requirements 原文时发现（用户质疑待澄清表"无"的核对支撑，2026-09-29）。 | U14"日志"分节未落地且无卡内豁免记录——原文与实现不符 | 建议补落"日志"分节（settings v1 增 logging 段：E14 rawLogDir 开关/目录——LogConfigPanel 行为映射），可随 16c 提示词库或 16d 设置扩展顺手做；或用户裁决豁免记档 | 待裁决 |
 
 ## 人工确认清单（批次 16）
 
@@ -68,6 +73,9 @@ U4 U9 U10 U11 U12 U13 U6 U7 U8）。推进模式不变：一会话一批次—�
    模块兼容（展卡预判 ①案失败即回退 ②案便携 node.exe）；U4 的 marked/
    highlight.js vendor 本地化 + XSS 评审（人工走查列确认清单）；U8 是人工
    确认清单的闭环卡——需要用户供给真实凭据，跑不掉的明确"放弃"记档。
-3. 收官出组报告（写入本文件），更新本文件的批次 16c 提示词与全量基线后
+3. 待澄清 #28（U14"日志"分节未落——见 progress 待澄清表）待用户裁决：
+   若用户裁决补落，可随 16b 的 U13 或顺路的设置面改动一并做（settings v1
+   增 logging 段 + ui 日志分节），若未裁决则保持悬挂不擅动。
+4. 收官出组报告（写入本文件），更新本文件的批次 16c 提示词与全量基线后
    停止。不要问要不要继续。
 ```

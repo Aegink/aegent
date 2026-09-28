@@ -63,6 +63,7 @@
 - **依赖**：T-P3-101/102（settings + 凭据模块）
 - **风险 / 未知**：即改即存的保存时序（防抖——卡内定形）
 - **完成记录（2026-09-29）**：验收 `npx vitest run src/diagnostics/tauri-shell.test.ts src/host/server.test.ts` → **14 passed**（含新增 settings 信封 e2e 两例）。落地三件：①**wire**：ClientEnvelope 增 `settings` 信封（op 闭集 get/update/credentials-set|delete|list；op 闭集与 patch 形状 parse 层校验、段白名单 gateway 层——双层分工，未知段回类型化 SETTINGS_PATCH_SECTION_UNKNOWN 且不落盘）；②**host**：`settings-gateway.ts`（FileSettingsGateway——get/update 段级合并 + applySettingsPatch 白名单校验 + 凭据三操作，list 只回掩码）+ bridge 透传 onSettings + HostServer 装配（生产 main = 真文件）；③**ui**：设置面板右侧抽屉六分节（providers/credentials/permission/sandbox/appearance/about）+ 状态栏齿轮导航 + 即改即存（段级 patch 500ms 防抖合并）+ 主题 CSS 变量化（`body[data-theme="light"]` 全端一致）+ 凭据 key 输入 type=password 不回显。**快照即规格（机验）**：update → 文件变 → 重新 loadSettings 一致（server.test e2e）。人工走查列入人工确认清单（视觉可读性）。无 gateway 的 host 回 SETTINGS_UNSUPPORTED（功能面缺省关闭）。
+- **偏离记档（2026-09-29 收口补核）**：原文"代理/日志"分节——"代理"展卡已裁决不取（YAGNI）；"日志"分节未落且卡内未明示豁免（上游 LogConfigPanel.tsx 行为锚在位）→ **#28 立案待裁决**（见 plan-p3-progress.md）。
 
 #### T-P3-104 · U5 · 模型/端点管理 UI（多供应商切换 + 健康徽标） `[x]`
 - **依据需求**：U5（"多供应商列表、会话期切换、健康徽标"）
