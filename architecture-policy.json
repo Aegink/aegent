@@ -202,7 +202,8 @@
         "attachments",
         "kernel",
         "models",
-        "policy"
+        "policy",
+        "sandbox"
       ],
       "publicEntrypoints": [],
       "owner": "wangh"

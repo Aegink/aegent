@@ -44,7 +44,7 @@
 - **风险 / 未知**：配置 schema 版本迁移（v1 起步——迁移链 sqlite 同款纪律）
 - **完成记录（2026-09-29）**：验收 `npx vitest run src/session/settings.test.ts src/cli/index.test.ts` → **16 passed**（+回归 agent-process/agent-protocol/model-switch/cli/server 82 passed）。落地：`settings.ts`（SettingsShape v1 + SettingsError 行列号+修复指引 + parse/load/save〔tmp 原子替换〕+ `resolveChildLaunchArgv` 三档优先级纯函数）；`--settings <path>` 入 CLI/host 两入口 argv；agent-child parseArgs 补 `--base-url/--api-key/--model` argv 面；桌面壳经 host（壳只加载 ui 静态资产）。**卡内定形两点**：①provider 槽是适配器名空间、条目名是供应商别名——文件档**整体生效或不生效**（defaultProvider 选中条目整体注入 adapter/baseUrl/model，cc-switch 配置切换同款语义；env 占用时条目不参与）；②settings.json 永不承载 apiKey（零明文，U2 凭据面接管）。`locateJsonError` 从 models/config.ts 导出复用（单一扫描器）。测试窗口：index.test.ts 用假子进程入口写 argv 观察窗（写完即退防 messages 悬挂）。
 
-#### T-P3-102 · U2 · 凭据管理入口（录入/更换/删除 + DPAPI 落盘） `[ ]`
+#### T-P3-102 · U2 · 凭据管理入口（录入/更换/删除 + DPAPI 落盘） `[x]`
 - **依据需求**：U2（"key 的录入/更换/删除走 CLI/UI；落盘经 DPAPI 加密；配置文件与日志零明文"）
 - **上游首选参考**：[cc-switch·app_store.rs](../oss/cc-switch/src-tauri/src/app_store.rs)（凭据隔离存储）+ [codex·dpapi.rs](../oss/codex/codex-rs/windows-sandbox-rs/src/dpapi.rs)（P0 D8 已落加密面）
 - **取什么 / 别抄什么**：取"凭据与配置分离存储 + 专用管理命令"行为；DPAPI 面复用 D8
@@ -52,6 +52,7 @@
 - **验收**：`npx vitest run src/session/credentials.test.ts`——往返 + 加密断言 + 删除面 + 零明文 + 非 Windows 回退
 - **依赖**：T-P3-101
 - **风险 / 未知**：DPAPI 非交互会话可用性（P0 已验证面）
+- **完成记录（2026-09-29）**：验收 `npx vitest run src/session/credentials.test.ts` → **13 passed**（含 Windows 真 PowerShell DPAPI 往返；+dpapi.test 7 passed 回归）。落地：`credentials.ts`（CredentialStore 接口 + DpapiCredentialStore〔包 SecureKeyStore——本卡为其补 deleteKey/listKeys 对称扩展〕+ PlainFileCredentialStore〔0600 + tmp 原子替换 + 损坏 fail-closed 带指引〕+ createCredentialStore 平台工厂〔platform 注入〕）；CLI `aegent key set|get|delete|list`（`src/cli/key.ts`——key 从 stdin 读不进命令行、get 只出掩码 maskToken、幂等删除、空 key 拒绝）；**装配消费**：CLI/host main 在文件档条目将被选中时提前 decrypt defaultProvider 凭据 → `resolveChildLaunchArgv` 的 credentialKey 槽（apiKey 槽序：显式 > env > 凭据）。零明文断言：凭据文件 sk- 证伪 + settings.json 无 apiKey 字段。architecture-policy：session requires 增补 sandbox（DPAPI 依赖——声明在案）。UI 录入面随 T-P3-103 设置中心（AuthCenter 分节映射）。
 
 #### T-P3-103 · U14 · 设置中心与主题（U1/U2/U5 的完整渲染端） `[ ]`
 - **依据需求**：U14（"provider 管理/凭据/权限档/沙箱档/代理/语言/日志/关于的多分节设置页 + 暗/亮主题切换"）

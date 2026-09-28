@@ -35,6 +35,7 @@ import { createSessionId, isValidSessionId } from "../session/session-id.js";
 import { SqliteEventStorage } from "../session/db.js";
 import { InMemoryEventStorage, SessionStore, type EventStorage } from "../session/store.js";
 import { loadSettings, resolveChildLaunchArgv } from "../session/settings.js";
+import { createCredentialStore } from "../session/credentials.js";
 import { HostBridge, type AgentChannel } from "./bridge.js";
 import { HostRegistry } from "./registry.js";
 
@@ -327,7 +328,15 @@ async function main(argv: readonly string[]): Promise<void> {
   // U1/T-P3-101：settings 装配（CLI 同款三入口共用面——损坏 fail-closed
   // 直达启动失败出口）。host 的 childArgs 与 CLI 同走 resolveChildLaunchArgv。
   const { settings } = await loadSettings(parsed.settingsPath);
-  const { args: launchArgs } = resolveChildLaunchArgv(parsed.childArgs, process.env, settings);
+  // U2/T-P3-102：凭据装配——CLI 同款（仅文件档条目会被选中时提前 decrypt）。
+  const providerFree =
+    !parsed.childArgs.includes("--provider") &&
+    (process.env["AEGENT_PROVIDER"] === undefined || process.env["AEGENT_PROVIDER"] === "");
+  let credentialKey: string | undefined;
+  if (providerFree && settings.defaultProvider !== undefined) {
+    credentialKey = await createCredentialStore().getKey(settings.defaultProvider);
+  }
+  const { args: launchArgs } = resolveChildLaunchArgv(parsed.childArgs, process.env, settings, { credentialKey });
   const storage = parsed.hostDbPath !== undefined
     ? SqliteEventStorage.open({ path: parsed.hostDbPath })
     : new InMemoryEventStorage();

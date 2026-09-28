@@ -251,7 +251,16 @@ function parseChildArgs(childArgs: readonly string[]): {
   approvalTimeoutMs?: number;
   contextWindow?: number;
 } {
-  const out: LaunchSlots = {};
+  const out: {
+    provider?: string;
+    model?: string;
+    apiKey?: string;
+    db?: string;
+    workspace?: string;
+    network?: string;
+    approvalTimeoutMs?: number;
+    contextWindow?: number;
+  } = {};
   const pick = (flag: string): string | undefined => {
     const i = childArgs.indexOf(flag);
     return i >= 0 && i + 1 < childArgs.length ? childArgs[i + 1] : undefined;
@@ -287,6 +296,9 @@ export function resolveChildLaunchArgv(
   childArgs: readonly string[],
   env: NodeJS.ProcessEnv,
   settings: SettingsShape,
+  /** U2/T-P3-102：defaultProvider 条目的凭据材料（调用方提前 decrypt——
+   * DPAPI 是异步子进程面；优先级位于显式参数与环境变量之后）。 */
+  options?: { credentialKey?: string },
 ): { args: string[] } {
   const explicit = parseChildArgs(childArgs);
   const envProvider = env["AEGENT_PROVIDER"];
@@ -297,17 +309,24 @@ export function resolveChildLaunchArgv(
     if (value === undefined || value === "") return;
     if (!childArgs.includes(flag)) args.push(flag, value);
   };
+  let entrySelected = false;
   if (!providerOccupied && settings.defaultProvider !== undefined) {
     const entry = settings.providers.find((p) => p.name === settings.defaultProvider);
     if (entry !== undefined) {
+      entrySelected = true;
       inject("--provider", entry.adapter ?? "openai");
       inject("--model", entry.model ?? settings.defaultModel);
       inject("--base-url", entry.baseUrl);
     }
   }
-  // 非模型槽位（与 provider 无耦合）：显式 > env > file。env 有值时注入 env
-  // 同值（agent-child 内 argv 覆盖 env 的结果不变）；无值时文件档补位。
-  inject("--api-key", explicit.apiKey ?? env["AEGENT_API_KEY"]);
+  // apiKey 槽（U2：凭据跟条目走——只在文件档条目被选中时参与，且优先级位于
+  // 显式参数与环境变量之后）。其余非模型槽位（与 provider 无耦合）：显式 >
+  // env > file。env 有值时注入 env 同值（agent-child 内 argv 覆盖 env 的结果
+  // 不变）；无值时文件档补位。
+  inject(
+    "--api-key",
+    explicit.apiKey ?? env["AEGENT_API_KEY"] ?? (entrySelected ? options?.credentialKey : undefined),
+  );
   inject("--db", explicit.db ?? env["AEGENT_DB"] ?? settings.sandbox?.db);
   inject("--workspace", explicit.workspace ?? settings.sandbox?.workspace);
   inject("--network", explicit.network ?? settings.sandbox?.network);

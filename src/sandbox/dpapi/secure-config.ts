@@ -57,6 +57,24 @@ export class SecureKeyStore {
     return unprotect(entry.blob, this.options.dpapi);
   }
 
+  /** 删除条目（U2/T-P3-102；不存在 = no-op 返回 false——幂等删除面）。 */
+  async deleteKey(name: string): Promise<boolean> {
+    assertKeyName(name);
+    const file = await this.read();
+    if (file.keys[name] === undefined) return false;
+    const keys: Record<string, SecureKeyEntry> = { ...file.keys };
+    delete keys[name];
+    await mkdir(path.dirname(this.configPath), { recursive: true });
+    await writeFile(this.configPath, `${JSON.stringify({ version: 1, keys } satisfies SecureConfigFile, null, 2)}\n`, "utf8");
+    return true;
+  }
+
+  /** 条目名清单（掩码展示面用——只有名字与时间，无任何材料）。 */
+  async listKeys(): Promise<{ name: string; updatedAt: string }[]> {
+    const file = await this.read();
+    return Object.entries(file.keys).map(([name, entry]) => ({ name, updatedAt: entry.updatedAt }));
+  }
+
   private async read(): Promise<SecureConfigFile> {
     let raw: string;
     try {

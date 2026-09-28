@@ -16,7 +16,9 @@ import { fileURLToPath } from "node:url";
 
 import { spawnAgentProcess } from "../kernel/agent-process.js";
 import { InvalidSessionIdError, createSessionId, isValidSessionId } from "../session/session-id.js";
+import { createCredentialStore } from "../session/credentials.js";
 import { loadSettings, resolveChildLaunchArgv } from "../session/settings.js";
+import { runKeyCommand } from "./key.js";
 import { runCli } from "./repl.js";
 
 /** 编译产物旁的子进程入口（dist/src/cli/index.js → dist/src/kernel/agent-child.js）。 */
@@ -81,10 +83,28 @@ export function resolveChildSessionArgv(
 
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
   const { smoke, entryPath, settingsPath, childArgs } = parseCliArgv(argv);
+  // U2/T-P3-102：`aegent key` 是管理命令（无会话装配无 spawn）——最先分流。
+  if (childArgs[0] === "key") {
+    const code = await runKeyCommand(childArgs.slice(1), {
+      out: (line) => process.stdout.write(`${line}\n`),
+      err: (line) => process.stderr.write(`${line}\n`),
+    });
+    if (code !== 0) process.exitCode = 1;
+    return;
+  }
   // U1/T-P3-101：settings 装配（损坏 fail-closed——SettingsError 直达启动
   // 失败出口，错误消息自带行列号与修复指引）。三入口共用同一翻译面。
   const { settings } = await loadSettings(settingsPath);
-  const { args: launchArgs } = resolveChildLaunchArgv(childArgs, process.env, settings);
+  // U2：凭据装配——仅当 provider 槽完全空缺（文件档条目会被选中）时提前
+  // decrypt defaultProvider 的凭据（DPAPI 是异步子进程面，同步注入点）。
+  const providerFree =
+    !childArgs.includes("--provider") &&
+    (process.env["AEGENT_PROVIDER"] === undefined || process.env["AEGENT_PROVIDER"] === "");
+  let credentialKey: string | undefined;
+  if (providerFree && settings.defaultProvider !== undefined) {
+    credentialKey = await createCredentialStore().getKey(settings.defaultProvider);
+  }
+  const { args: launchArgs } = resolveChildLaunchArgv(childArgs, process.env, settings, { credentialKey });
   const { args } = resolveChildSessionArgv(launchArgs);
   const connection = spawnAgentProcess({
     entryPath: entryPath ?? defaultChildEntryPath(),
