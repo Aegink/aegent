@@ -25,6 +25,7 @@ export const SETTINGS_PATCH_SECTIONS = [
   "permission",
   "sandbox",
   "appearance",
+  "logging",
   "defaultProvider",
   "defaultModel",
 ] as const;

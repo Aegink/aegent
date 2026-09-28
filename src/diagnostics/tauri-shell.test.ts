@@ -105,9 +105,10 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
   it("U14/T-P3-103 · 设置中心资产：分节齐全 + 主题变量在位 + 导航入口（分节与 settings 模块一一对应）", () => {
     const uiDir = path.resolve(import.meta.dirname, "..", "..", "ui");
     const html = readFileSync(path.join(uiDir, "index.html"), "utf8");
-    // 六分节（providers/credentials/permission/sandbox/appearance/about——
-    // settings.json 各段一一对应；U5 卡在 providers 分节扩展切换与健康徽标）
-    for (const section of ["providers", "credentials", "permission", "sandbox", "appearance", "about"]) {
+    // 七分节（providers/credentials/permission/sandbox/appearance/logging/about——
+    // settings.json 各段一一对应；U5 卡在 providers 分节扩展切换与健康徽标；
+    // logging 为 T-P3-132 #28 补落）
+    for (const section of ["providers", "credentials", "permission", "sandbox", "appearance", "logging", "about"]) {
       expect(html).toContain(`data-section="${section}"`);
     }
     // 导航入口（状态栏齿轮）与凭据不回显（U2 面注入防呆）

@@ -69,6 +69,20 @@ describe("parseSettingsShape / parseSettingsFile", () => {
     expect(() => parseSettingsFile("[1]")).toThrow(/顶层必须是 JSON 对象/);
     expect(() => parseSettingsFile('{"version": 2}')).toThrow(/不支持的配置版本/);
   });
+
+  it("logging 段（U14/T-P3-132 #28 补落）：rawLogDir 往返 + 非法值 fail-closed", () => {
+    const s = parseSettingsShape({ logging: { rawLogDir: "C:/logs/raw" } });
+    expect(s.logging).toEqual({ rawLogDir: "C:/logs/raw" });
+    // 往返：save → load 读回一致
+    const round = parseSettingsShape(JSON.parse(JSON.stringify(s)));
+    expect(round.logging).toEqual({ rawLogDir: "C:/logs/raw" });
+    // 空串与非字符串 fail-closed
+    expect(() => parseSettingsShape({ logging: { rawLogDir: "" } })).toThrow(/非空字符串/);
+    expect(() => parseSettingsShape({ logging: { rawLogDir: 3 } })).toThrow(/非空字符串/);
+    expect(() => parseSettingsShape({ logging: "x" })).toThrow(/logging 须为对象/);
+    // 缺省形状含空 logging 段
+    expect(defaultSettings().logging).toEqual({});
+  });
 });
 
 describe("loadSettings / saveSettings", () => {
@@ -167,5 +181,21 @@ describe("resolveChildLaunchArgv（优先级链：显式 > env > file > 缺省�
     expect(bare).not.toContain("--api-key"); // settings 零 key——apiKey 仅 env/显式
     const { args: withEnv } = resolveChildLaunchArgv([], { AEGENT_API_KEY: "sk-env" }, settings);
     expect(withEnv[withEnv.indexOf("--api-key") + 1]).toBe("sk-env");
+  });
+
+  it("logging.rawLogDir 装配注入（T-P3-132）：file 档补位 / env 同值 / 显式占用不覆盖", () => {
+    const withLog = parseSettingsShape({ logging: { rawLogDir: "C:/file-logs" } });
+    // 文件档 → --raw-log-dir 注入（agent-child 既有 argv 面零改动）
+    const { args } = resolveChildLaunchArgv([], {}, withLog);
+    expect(args[args.indexOf("--raw-log-dir") + 1]).toBe("C:/file-logs");
+    // env 有值 → 注入 env 同值（子进程内 argv 覆盖 env，结果不变）
+    const { args: envWins } = resolveChildLaunchArgv([], { AEGENT_RAW_LOG_DIR: "E:/env-logs" }, withLog);
+    expect(envWins[envWins.indexOf("--raw-log-dir") + 1]).toBe("E:/env-logs");
+    // 显式参数最高（childArgs 已有槽位不重复注入）
+    const { args: explicit } = resolveChildLaunchArgv(["--raw-log-dir", "C:/cli-logs"], {}, withLog);
+    expect(explicit.filter((a) => a === "--raw-log-dir")).toHaveLength(1);
+    expect(explicit[explicit.indexOf("--raw-log-dir") + 1]).toBe("C:/cli-logs");
+    // 无 logging 档 → 不注入
+    expect(resolveChildLaunchArgv([], {}, settings).args).not.toContain("--raw-log-dir");
   });
 });

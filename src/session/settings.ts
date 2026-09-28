@@ -50,6 +50,8 @@ export interface SettingsShape {
   sandbox?: { network?: "allow" | "deny"; workspace?: string; db?: string };
   /** 外观（U14 主题全端一致暗/亮；语言 zh-CN 缺省）。 */
   appearance?: { theme?: "dark" | "light"; language?: "zh-CN" | "en" };
+  /** 日志（U14/T-P3-132 #28 补落——E14 原始分片日志目录的持久化位；空 = 缺省不写）。 */
+  logging?: { rawLogDir?: string };
 }
 
 /** 缺省配置（无文件无环境也能启动——echo provider 最小装配）。 */
@@ -60,6 +62,7 @@ export function defaultSettings(): SettingsShape {
     permission: {},
     sandbox: {},
     appearance: { theme: "dark", language: "zh-CN" },
+    logging: {},
   };
 }
 
@@ -189,6 +192,17 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
       ...(language !== undefined ? { language: language as "zh-CN" | "en" } : {}),
     };
   }
+  const logging = rec["logging"];
+  if (logging !== undefined) {
+    if (logging === null || typeof logging !== "object") {
+      throw new SettingsError("logging 须为对象");
+    }
+    out.logging = {
+      ...(assertString((logging as Record<string, unknown>)["rawLogDir"], "logging.rawLogDir") !== undefined
+        ? { rawLogDir: (logging as Record<string, unknown>)["rawLogDir"] as string }
+        : {}),
+    };
+  }
   return out;
 }
 
@@ -250,6 +264,7 @@ function parseChildArgs(childArgs: readonly string[]): {
   network?: string;
   approvalTimeoutMs?: number;
   contextWindow?: number;
+  rawLogDir?: string;
 } {
   const out: {
     provider?: string;
@@ -260,6 +275,7 @@ function parseChildArgs(childArgs: readonly string[]): {
     network?: string;
     approvalTimeoutMs?: number;
     contextWindow?: number;
+    rawLogDir?: string;
   } = {};
   const pick = (flag: string): string | undefined => {
     const i = childArgs.indexOf(flag);
@@ -271,6 +287,7 @@ function parseChildArgs(childArgs: readonly string[]): {
   out.db = pick("--db");
   out.workspace = pick("--workspace");
   out.network = pick("--network");
+  out.rawLogDir = pick("--raw-log-dir");
   const timeout = pick("--approval-timeout");
   if (timeout !== undefined) out.approvalTimeoutMs = Number(timeout);
   const window = pick("--context-window");
@@ -330,6 +347,9 @@ export function resolveChildLaunchArgv(
   inject("--db", explicit.db ?? env["AEGENT_DB"] ?? settings.sandbox?.db);
   inject("--workspace", explicit.workspace ?? settings.sandbox?.workspace);
   inject("--network", explicit.network ?? settings.sandbox?.network);
+  // U14/T-P3-132（#28）：日志分节的装配消费——E14 原始分片日志目录随配置档
+  // 注入（agent-child 既有 --raw-log-dir / AEGENT_RAW_LOG_DIR 面零改动）。
+  inject("--raw-log-dir", explicit.rawLogDir ?? env["AEGENT_RAW_LOG_DIR"] ?? settings.logging?.rawLogDir);
   if (explicit.approvalTimeoutMs === undefined && settings.permission?.approvalTimeoutMs !== undefined) {
     inject("--approval-timeout", String(settings.permission.approvalTimeoutMs));
   }

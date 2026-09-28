@@ -373,6 +373,7 @@ function fillSettingsForm() {
   document.getElementById("sandbox-db").value = settingsCache?.sandbox?.db ?? "";
   document.getElementById("appearance-theme").value = settingsCache?.appearance?.theme ?? "dark";
   document.getElementById("appearance-language").value = settingsCache?.appearance?.language ?? "zh-CN";
+  document.getElementById("logging-rawdir").value = settingsCache?.logging?.rawLogDir ?? "";
   renderProviderList();
 }
 
@@ -478,6 +479,12 @@ document.getElementById("appearance-theme").addEventListener("change", (ev) => {
 document.getElementById("appearance-language").addEventListener("change", (ev) => {
   settingsCache.appearance = { ...settingsCache.appearance, language: ev.target.value };
   markDirty("appearance");
+});
+// U14/T-P3-132（#28）：日志分节（E14 原始分片目录持久化位——即改即存）
+document.getElementById("logging-rawdir").addEventListener("change", (ev) => {
+  const value = ev.target.value.trim();
+  settingsCache.logging = { ...settingsCache.logging, ...(value !== "" ? { rawLogDir: value } : {}) };
+  markDirty("logging");
 });
 
 // ---------------------------------------------------------------------------

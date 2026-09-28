@@ -375,6 +375,24 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
     const { loadSettings } = await import("../session/settings.js");
     expect((await loadSettings(settingsPath)).settings.defaultProvider).toBe("main");
 
+    // logging 段（U14/T-P3-132 #28 补落）：白名单往返 → 文件变 → 重启读回一致
+    const logUpdate = await settingsCall({
+      op: "update",
+      patch: { logging: { rawLogDir: path.join(tmp, "raw-logs") } },
+    });
+    expect(logUpdate.ok).toBe(true);
+    const logMerged = (
+      logUpdate.result as { settings: { logging?: { rawLogDir?: string } } }
+    ).settings;
+    expect(logMerged.logging?.rawLogDir).toBe(path.join(tmp, "raw-logs"));
+    expect(
+      (JSON.parse(readFileSync(settingsPath, "utf8")) as { logging?: { rawLogDir?: string } }).logging
+        ?.rawLogDir,
+    ).toBe(path.join(tmp, "raw-logs"));
+    expect((await loadSettings(settingsPath)).settings.logging?.rawLogDir).toBe(
+      path.join(tmp, "raw-logs"),
+    );
+
     // 凭据面：set 回掩码（明文不回信封）→ list 见掩码 → delete
     const setCred = await settingsCall({ op: "credentials-set", provider: "main", key: "sk-e2e-0123456789abcdefghij" });
     expect(setCred.ok).toBe(true);
