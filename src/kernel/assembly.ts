@@ -332,6 +332,12 @@ export interface ChildAssemblyOptions {
     identity: ModelIdentity;
   };
   /**
+   * F27/T-P2-511 压缩策略（配置选择）：prefix_window = 保留更大近期原文
+   * 窗口、摘要只覆盖更早区间（活前缀缓存友好）。缺省 full_summary 零行为
+   * 变化。策略入指纹（strategy 变更跨进程对拍可见 → 重压）。
+   */
+  compactionStrategy?: import("../context/compaction.js").CompactionStrategy;
+  /**
    * C42/T-P2-203 判官模型（J3 配置面独立 judge 段）：提供时装配构造
    * createLlmJudge（两阶段 LLM 复核）挂 gate 的 judge 槽位 + 会话级
    * JudgeBudgetTracker（C56 预算槽）。缺省 undefined = 无判官（零行为
@@ -564,6 +570,10 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
         : "truncating",
     retainedFromEnd: DEFAULT_RETAINED_FROM_END,
     developerBudgetTokens: DEFAULT_DEVELOPER_BUDGET_TOKENS,
+    // F27/T-P2-511：策略入指纹——prefix_window 改变摘要覆盖区间，变更后重压
+    ...(options.compactionStrategy !== undefined
+      ? { strategy: options.compactionStrategy }
+      : {}),
   });
   const engineDeps: ConstructorParameters<typeof CompactionEngine>[0] = {
     sessionId,
@@ -582,6 +592,10 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
         : truncatingSummarizer()),
     rapidRefillGuard: guard,
     compHash: () => fingerprint,
+    // F27/T-P2-511：配置选择的压缩策略（prefix_window 活前缀切点）
+    ...(options.compactionStrategy !== undefined
+      ? { strategy: options.compactionStrategy }
+      : {}),
     // F11/T-P1-101：兜底检查点的硬安全复检预算 + 摘要器尺寸预检/分块的窗口面
     contextWindow,
   };

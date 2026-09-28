@@ -115,6 +115,11 @@ export interface CompactionFingerprintInput {
   retainedFromEnd: number;
   /** F23 developer 注入消息的独立保留预算（新窗口重建面配置）。 */
   developerBudgetTokens: number;
+  /**
+   * F27/T-P2-511：压缩策略——prefix_window 改变摘要覆盖区间与重建形状，
+   * 属"影响摘要内容或重建"的配置面（策略变更后指纹失明 = 漏报重压）。
+   */
+  strategy?: string;
 }
 
 /**
@@ -131,6 +136,7 @@ export function compactionFingerprint(input: CompactionFingerprintInput): string
     summarizerKind: input.summarizerKind,
     retainedFromEnd: input.retainedFromEnd,
     developerBudgetTokens: input.developerBudgetTokens,
+    strategy: input.strategy,
   });
   let hash = 0x811c9dc5;
   for (let i = 0; i < stable.length; i++) {
@@ -251,6 +257,22 @@ export interface KeepRules {
   retainedFromEnd?: number;
 }
 
+/**
+ * F27/T-P2-511：压缩策略具名闭集（codex·compact.rs:483 CompactionStrategy
+ * 枚举同旨——策略落流可归因）。
+ * - full_summary：全摘要（缺省）——摘要覆盖切点前全部，尾部只留 retainedFromEnd
+ *   条 user/system 边界的原文尾巴；
+ * - prefix_window：前缀式——保留更大的近期原文窗口（PREFIX_WINDOW_RETAINED_FROM_END
+ *   条边界），摘要只覆盖更早区间——活前缀越长，后续请求与上次请求的公共前缀
+ *   越长（F15 缓存族思想；Memento/PrefixCompaction 二分的 prefix 侧对应）。
+ * 事件 strategy 载荷同值落流（#18 闭集追加：{full_summary, recent_window_fallback,
+ * prefix_window}——recent_window_fallback 是失败兜底路径的策略分型，与配置策略正交）。
+ */
+export type CompactionStrategy = "full_summary" | "prefix_window";
+
+/** prefix_window 的保留边界数（活前缀窗口——比缺省大一个数量级的原文保留）。 */
+export const PREFIX_WINDOW_RETAINED_FROM_END = 8;
+
 export type CompactionResult =
   | {
       kind: "compacted";
@@ -286,6 +308,12 @@ export interface CompactionEngineDeps {
    * （近期窗口原文超窗 → checkpoint_oversized）。缺省 undefined = 跳过该复检。
    */
   contextWindow?: number;
+  /**
+   * F27/T-P2-511：压缩策略（配置选择——缺省 full_summary 零行为变化）。
+   * prefix_window 的切点用 PREFIX_WINDOW_RETAINED_FROM_END（keepRules.
+   * retainedFromEnd 显式配置时以 keepRules 为准——显式切点优先于策略缺省）。
+   */
+  strategy?: CompactionStrategy;
 }
 
 /** 压缩触发入参：相位与轮号由触发方（turn 边界 / step 边界装配）决定。 */
@@ -320,13 +348,19 @@ export class CompactionEngine {
     }
     // F26：压缩指纹（本 run 的配置指纹——三次落盘同值，取值时点在 run 入口）。
     const compHash = this.deps.compHash?.();
+    // F27：本 run 的策略值（started/failed/completed 落流同值——可归因）。
+    const strategy: CompactionStrategy = this.deps.strategy ?? "full_summary";
 
     const events = effectiveEvents(store.load(sessionId));
     const tokensBefore = tokensBeforeOf(events);
-    const retainedTail = chooseRetainedTail(
-      events,
-      this.deps.keepRules?.retainedFromEnd ?? DEFAULT_RETAINED_FROM_END,
-    );
+    // F27/T-P2-511：切点按策略——prefix_window 用大保留窗口（活前缀）；
+    // keepRules.retainedFromEnd 显式配置时优先于策略缺省。
+    const retainedFromEnd =
+      this.deps.keepRules?.retainedFromEnd ??
+      (this.deps.strategy === "prefix_window"
+        ? PREFIX_WINDOW_RETAINED_FROM_END
+        : DEFAULT_RETAINED_FROM_END);
+    const retainedTail = chooseRetainedTail(events, retainedFromEnd);
 
     const invocation: CompactionInvocation = {
       sessionId,
@@ -362,7 +396,7 @@ export class CompactionEngine {
         trigger: input.trigger ?? "auto",
         phase: eventPhaseOf(input.phase),
         implementation: "llm-summarizer",
-        strategy: "full_summary",
+        strategy,
         status: "started",
         ...(compHash !== undefined ? { compHash } : {}),
       },
@@ -394,7 +428,7 @@ export class CompactionEngine {
             trigger: input.trigger,
             phase: eventPhaseOf(input.phase),
             implementation: "llm-summarizer",
-            strategy: "full_summary",
+            strategy,
             status: "failed",
             failureReason,
             ...(compHash !== undefined ? { compHash } : {}),
@@ -428,7 +462,7 @@ export class CompactionEngine {
           trigger: input.trigger ?? "auto",
           phase: eventPhaseOf(input.phase),
           implementation: "llm-summarizer",
-          strategy: "full_summary",
+          strategy,
           status: "failed",
           failureReason: fallback.reason,
           ...(compHash !== undefined ? { compHash } : {}),
@@ -463,7 +497,7 @@ export class CompactionEngine {
         trigger: input.trigger ?? "auto",
         phase: eventPhaseOf(input.phase),
         implementation: "llm-summarizer",
-        strategy: "full_summary",
+        strategy,
         status: "completed",
         ...(title !== undefined ? { title } : {}),
         ...(generated.usage !== undefined ? { usage: generated.usage } : {}),
