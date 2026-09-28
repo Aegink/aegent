@@ -73,6 +73,38 @@ CREATE TABLE IF NOT EXISTS archived_sessions (
 );
 `;
 
+/**
+ * v3→v4：运维账本两表（Q4/T-P2-103 地基）——`audit_log`（L2 审批审计记录
+ * 的落库面）与 `task_runs`（任务运行记录）。两表都是**运维账本**而非会话
+ * 轨迹（L1 纪律不破：会话事实仍在 events 表；审计/运行记录本就无事件词汇
+ * 承载——L2 审计按设计走宣告通道）。清理判据列（at / task_id+started_at）
+ * 建索引（保留策略清理按这两列删扫）。
+ */
+export const SCHEMA_V4_MAINTENANCE_DDL = `
+CREATE TABLE IF NOT EXISTS audit_log (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind       TEXT    NOT NULL,
+    phase      TEXT    NOT NULL,
+    request_id TEXT    NOT NULL,
+    tool       TEXT    NOT NULL,
+    surface    TEXT    NOT NULL,
+    approver   TEXT    NOT NULL,
+    at         INTEGER NOT NULL,
+    payload    TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audit_log_at ON audit_log (at);
+
+CREATE TABLE IF NOT EXISTS task_runs (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id    TEXT    NOT NULL,
+    status     TEXT    NOT NULL,
+    started_at INTEGER NOT NULL,
+    ended_at   INTEGER,
+    detail     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_task_runs_task ON task_runs (task_id, started_at DESC);
+`;
+
 export const MIGRATIONS: readonly SchemaMigration[] = [
   { from: 0, to: 1, apply: applyBaseSchema },
   {
@@ -100,6 +132,13 @@ export const MIGRATIONS: readonly SchemaMigration[] = [
     // 只加表不加列（payload 整事件 JSON 存取，schema 演进零数据重排）
     apply: (db) => {
       db.exec(SCHEMA_V3_ARCHIVE_LEDGER_DDL);
+    },
+  },
+  {
+    from: 3,
+    to: 4,
+    apply: (db) => {
+      db.exec(SCHEMA_V4_MAINTENANCE_DDL);
     },
   },
 ];
