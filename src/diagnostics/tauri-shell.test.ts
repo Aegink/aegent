@@ -105,10 +105,10 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
   it("U14/T-P3-103 · 设置中心资产：分节齐全 + 主题变量在位 + 导航入口（分节与 settings 模块一一对应）", () => {
     const uiDir = path.resolve(import.meta.dirname, "..", "..", "ui");
     const html = readFileSync(path.join(uiDir, "index.html"), "utf8");
-    // 七分节（providers/credentials/permission/sandbox/appearance/logging/about——
+    // 八分节（providers/credentials/permission/sandbox/appearance/logging/projects/about——
     // settings.json 各段一一对应；U5 卡在 providers 分节扩展切换与健康徽标；
-    // logging 为 T-P3-132 #28 补落）
-    for (const section of ["providers", "credentials", "permission", "sandbox", "appearance", "logging", "about"]) {
+    // logging 为 T-P3-132 #28 补落；projects 为 U11/T-P3-110 项目档）
+    for (const section of ["providers", "credentials", "permission", "sandbox", "appearance", "logging", "projects", "about"]) {
       expect(html).toContain(`data-section="${section}"`);
     }
     // 导航入口（状态栏齿轮）与凭据不回显（U2 面注入防呆）
@@ -207,6 +207,9 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(app).toContain("UI_COMMANDS"); // 斜杠命令本地集
     expect(app).toContain("addAttachment"); // 粘贴图 → 附件链
     expect(app).toContain("MAX_ATTACHMENT_BYTES"); // 限额防呆与 limits.ts 同源
+    expect(app).toContain("renderProjectList"); // U11 项目页 CRUD
+    expect(app).toContain("markDirty(\"activeProject\")"); // 切换即改即存
+    expect(app).toContain("project-instructions"); // 项目级指令编辑面
     for (const marker of [".search-hit", ".mm-row", "#find-bar", "#minimap", ".ac-row", ".attachment-chip"]) {
       expect(css).toContain(marker);
     }

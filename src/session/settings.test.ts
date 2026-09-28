@@ -83,6 +83,23 @@ describe("parseSettingsShape / parseSettingsFile", () => {
     // 缺省形状含空 logging 段
     expect(defaultSettings().logging).toEqual({});
   });
+
+  it("projects/activeProject 段（U11/T-P3-110）：项目档往返 + 形状 fail-closed", () => {
+    const s = parseSettingsShape({
+      projects: [{ name: "aegent", workspace: "F:/aegent", instructions: "遵守 AGENTS.md" }],
+      activeProject: "aegent",
+    });
+    expect(s.projects).toEqual([{ name: "aegent", workspace: "F:/aegent", instructions: "遵守 AGENTS.md" }]);
+    expect(s.activeProject).toBe("aegent");
+    // 缺 name / 缺 workspace fail-closed
+    expect(() => parseSettingsShape({ projects: [{ workspace: "X" }] })).toThrow(/name 缺失/);
+    expect(() => parseSettingsShape({ projects: [{ name: "x" }] })).toThrow(/workspace 缺失/);
+    expect(() => parseSettingsShape({ projects: {} })).toThrow(/projects 须为数组/);
+    expect(() => parseSettingsShape({ projects: [{ name: "x", workspace: 1 }] })).toThrow(/非空字符串/);
+    // 缺省形状含空 projects 段、activeProject undefined
+    expect(defaultSettings().projects).toEqual([]);
+    expect(defaultSettings().activeProject).toBeUndefined();
+  });
 });
 
 describe("loadSettings / saveSettings", () => {

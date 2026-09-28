@@ -864,3 +864,34 @@ mark.search-hit.active {
 #composer {
   position: relative;
 }
+
+/* U11/T-P3-110 项目页（分节清单样式与供应商清单同源） */
+#project-list {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+}
+
+#project-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+#project-list li span {
+  flex: 1;
+  word-break: break-all;
+  color: var(--text);
+}
+
+#project-form textarea {
+  width: 100%;
+  resize: vertical;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: inherit;
+}

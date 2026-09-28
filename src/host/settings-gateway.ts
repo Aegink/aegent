@@ -26,6 +26,8 @@ export const SETTINGS_PATCH_SECTIONS = [
   "sandbox",
   "appearance",
   "logging",
+  "projects",
+  "activeProject",
   "defaultProvider",
   "defaultModel",
 ] as const;

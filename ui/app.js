@@ -898,6 +898,7 @@ function fillSettingsForm() {
   document.getElementById("appearance-language").value = settingsCache?.appearance?.language ?? "zh-CN";
   document.getElementById("logging-rawdir").value = settingsCache?.logging?.rawLogDir ?? "";
   renderProviderList();
+  renderProjectList();
 }
 
 async function openSettings() {
@@ -1008,6 +1009,74 @@ document.getElementById("logging-rawdir").addEventListener("change", (ev) => {
   const value = ev.target.value.trim();
   settingsCache.logging = { ...settingsCache.logging, ...(value !== "" ? { rawLogDir: value } : {}) };
   markDirty("logging");
+});
+
+// ---------------------------------------------------------------------------
+// U11/T-P3-110 项目页：项目档 CRUD（projects 段整体替换）+ 设为活动
+// （activeProject——生效语义 = 新会话以该项目 workspace 启动）+ 项目指令。
+// ---------------------------------------------------------------------------
+
+function renderProjectList() {
+  const list = document.getElementById("project-list");
+  list.replaceChildren();
+  for (const p of settingsCache?.projects ?? []) {
+    const li = document.createElement("li");
+    const isActive = settingsCache?.activeProject === p.name;
+    const label = document.createElement("span");
+    label.textContent = `${isActive ? "★ " : ""}${p.name} → ${p.workspace}${p.instructions ? "（含指令）" : ""}`;
+    const activateBtn = document.createElement("button");
+    activateBtn.type = "button";
+    activateBtn.textContent = isActive ? "★ 活动" : "设为活动";
+    activateBtn.className = isActive ? "default-mark" : "";
+    activateBtn.addEventListener("click", () => {
+      settingsCache.activeProject = p.name;
+      dirtySections.add("activeProject");
+      renderProjectList();
+      markDirty("activeProject");
+    });
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.textContent = "删除";
+    delBtn.className = "danger";
+    delBtn.addEventListener("click", () => {
+      settingsCache.projects = settingsCache.projects.filter((x) => x.name !== p.name);
+      if (settingsCache.activeProject === p.name) settingsCache.activeProject = undefined;
+      dirtySections.add("projects");
+      dirtySections.add("activeProject");
+      renderProjectList();
+      markDirty("projects");
+      markDirty("activeProject");
+    });
+    li.append(label, activateBtn, delBtn);
+    list.appendChild(li);
+    label.style.cursor = "pointer";
+    label.title = "点击编辑该项目";
+    label.addEventListener("click", () => {
+      editingProjectName = p.name;
+      document.getElementById("project-name").value = p.name;
+      document.getElementById("project-workspace").value = p.workspace;
+      document.getElementById("project-instructions").value = p.instructions ?? "";
+      document.querySelector('#project-form button[type="submit"]').textContent = "保存修改";
+    });
+  }
+}
+
+let editingProjectName = null;
+
+document.getElementById("project-form").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const name = document.getElementById("project-name").value.trim();
+  const workspace = document.getElementById("project-workspace").value.trim();
+  const instructions = document.getElementById("project-instructions").value.trim();
+  if (name === "" || workspace === "") return;
+  const entry = { name, workspace, ...(instructions !== "" ? { instructions } : {}) };
+  const rest = (settingsCache.projects ?? []).filter((p) => p.name !== name && p.name !== editingProjectName);
+  settingsCache.projects = [...rest, entry];
+  editingProjectName = null;
+  document.getElementById("project-form").reset();
+  document.querySelector('#project-form button[type="submit"]').textContent = "新增";
+  renderProjectList();
+  markDirty("projects");
 });
 
 // ---------------------------------------------------------------------------

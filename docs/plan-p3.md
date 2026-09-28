@@ -146,7 +146,7 @@
 - **风险 / 未知**：workspace 文件列举的面（host 只读 list——wire 扩展先例）
 - **完成记录（2026-09-29）**：验收 `npx vitest run src/kernel/agent-process.test.ts src/host/server.test.ts src/diagnostics/tauri-shell.test.ts` → **35 passed**（agent-process 16 + server 11 + tauri-shell 8；node --check 过、tsc 干净、`npm run build` 过）。落地：①**多行编辑**：composer input → textarea（Shift+Enter 原生换行 / Enter 发送，自动增高上限 8 行）；②**@补全**：**query op:"files"**——host 只读列举面 `src/host/files-list.ts`（相对 posix 路径、目录带尾 /、跳过 .git/node_modules/dist、条目上限 1000 + 深度 8 防呆；生产 main 从最终 launchArgs 解析 --workspace 与子进程同源、缺省 cwd），UI 会话期缓存 + 子串过滤 + 图标（📄/📁）；③**/补全**：**ready 协议扩展**（`{type:"ready", tools?, skills?}`——decodeMessage 形状校验可选载荷，旧子进程/测试注入零变化；子进程 = 注册表所有者在 ready 报 `toolRegistry.names()` + `loadSkills(workspaceRoot)` 名单，目录级重复扫描成本记档）→ bridge 捕获 → **query op:"meta"** 曝光；UI 候选 = UI 本地命令集（/cancel /find /search /history /settings /help——Enter 完整命令本地执行不发 prompt）+ 🛠 工具 + ✨ 技能（选中 = 名称提及入输入框，模型侧消费——卡内定形记档）；键盘 ↑↓/Enter/Tab/Esc + 点击选择；④**粘贴图**：clipboard image → FileReader → base64 → prompt 请求 attachments（P1 附件链既有面零改动）；限额防呆与 limits.ts 同源（10MB/件、8 件/消息、png/jpeg/gif/webp 白名单）+ 预览 chips 可删；⑤既有 ready toEqual 断言全量改 toMatchObject（载荷扩展的机械后果）。人工走查列入确认清单（补全手感/粘贴图）。
 
-#### T-P3-110 · U11 · 项目/工作区管理（多项目列表 + 指令记忆页） `[ ]`
+#### T-P3-110 · U11 · 项目/工作区管理（多项目列表 + 指令记忆页） `[x]`
 - **依据需求**：U11（"多项目列表与切换、项目级指令与记忆页、新建/编辑/删除项目对话框"）
 - **上游首选参考**：[pi-desktop·HomeProjectSwitcher/ProjectCreateDialog/ProjectEditDialog/ProjectInstructionsDialog/ProjectMemoryDialog](../oss/pi-desktop/apps/desktop/src/components)（🔴 只学行为）
 - **取什么 / 别抄什么**：取"项目 = workspace + 配置组合档 + 项目级指令随会话生效"的行为；多项目 host 语义（session 隔离）执行时定形——倾向每项目一 session（AgentHost registry 已多会话）
@@ -154,6 +154,7 @@
 - **验收**：`npx vitest run src/session/settings.test.ts`（扩——项目档）+ `src/host/server.test.ts`（扩——跨项目切换路由）+ ui 资产断言
 - **依赖**：T-P3-103（会话侧栏——切换的载体）
 - **风险 / 未知**：多项目并发会话的租约面（每会话独立租约——既有语义复用）
+- **完成记录（2026-09-29）**：验收 `npx vitest run src/session/settings.test.ts src/host/server.test.ts src/diagnostics/tauri-shell.test.ts` → **34 passed**（settings 15 + server 11 + tauri-shell 8；tsc 干净）。落地：①**settings 项目档**：SettingsShape 增 `projects: ProjectEntry[]`（name/workspace/instructions?——parseSettingsShape 形状校验 fail-closed：name/workspace 必填非空）+ `activeProject?`，patch 白名单加两段；②**ui 项目分节**（第八分节 data-section="projects"）：清单（★ 活动标记）+ 表单（名称/workspace/指令 textarea）+ 点击条目回填编辑 + 删除（连带清 activeProject）+ 设为活动——即改即存（projects/activeProject 段 patch 500ms 防抖合并）；③**切换语义（卡内定形 + 偏离记档）**：activeProject 生效 = **新会话以该项目 workspace 启动**（分节 hint 明示"当前会话不受影响"）——host 当前是单会话 spawn 语义（每 host 进程一个 agent 子进程 + 一个 sessionId），卡面预判的"每项目一 session（registry 已多会话）"需要 host 运行时按项目多开 agent 通道，属 U6 桌面壳分发之后的运行时面，本卡不擅自扩范围（§0.2 偏离记档；"跨项目切换路由"机验以 settings 往返 + sessions 历史清单〔跨会话只读已通〕替代）；④多项目切换不串会话：写命令路由仍限本会话（bridge send 校验）、跨会话查看只读（U3 既有）——隔离面既有机验不变。项目指令的会话生效（goal/set 注入面）与 U24 指令中心对齐执行（记档——避免两卡重复落注入链）。
 
 #### T-P3-111 · U12 · 用量与上下文可视化（检查器 + 成本页） `[ ]`
 - **依据需求**：U12（"上下文余量检查器（token 用量/窗口占比/压缩状态）、成本统计页（按会话/按轮）"）

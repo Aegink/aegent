@@ -39,6 +39,16 @@ export interface ProviderEntry {
   model?: string;
 }
 
+/** 项目档（U11/T-P3-110——workspace + 项目级指令的组合档）。 */
+export interface ProjectEntry {
+  /** 项目名（人读标识；activeProject 指它）。 */
+  name: string;
+  /** workspace 根目录（新会话 --workspace 的取值）。 */
+  workspace: string;
+  /** 项目级指令（随会话的提示面；运行时注入随 U24 指令中心对齐）。 */
+  instructions?: string;
+}
+
 export interface SettingsShape {
   version: 1;
   providers: ProviderEntry[];
@@ -52,6 +62,9 @@ export interface SettingsShape {
   appearance?: { theme?: "dark" | "light"; language?: "zh-CN" | "en" };
   /** 日志（U14/T-P3-132 #28 补落——E14 原始分片日志目录的持久化位；空 = 缺省不写）。 */
   logging?: { rawLogDir?: string };
+  /** 项目档（U11——多项目列表；activeProject 生效语义 = 新会话启动）。 */
+  projects?: ProjectEntry[];
+  activeProject?: string;
 }
 
 /** 缺省配置（无文件无环境也能启动——echo provider 最小装配）。 */
@@ -63,6 +76,7 @@ export function defaultSettings(): SettingsShape {
     sandbox: {},
     appearance: { theme: "dark", language: "zh-CN" },
     logging: {},
+    projects: [],
   };
 }
 
@@ -203,6 +217,28 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
         : {}),
     };
   }
+  const projects = rec["projects"];
+  if (projects !== undefined) {
+    if (!Array.isArray(projects)) throw new SettingsError("projects 须为数组");
+    for (const entry of projects) {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+        throw new SettingsError("projects 条目必须是对象");
+      }
+      const e = entry as Record<string, unknown>;
+      const name = assertString(e["name"], "projects[].name");
+      if (name === undefined) throw new SettingsError("projects[].name 缺失");
+      const workspace = assertString(e["workspace"], "projects[].workspace");
+      if (workspace === undefined) throw new SettingsError("projects[].workspace 缺失");
+      out.projects!.push({
+        name,
+        workspace,
+        ...(assertString(e["instructions"], "projects[].instructions") !== undefined
+          ? { instructions: e["instructions"] as string }
+          : {}),
+      });
+    }
+  }
+  out.activeProject = assertString(rec["activeProject"], "activeProject");
   return out;
 }
 

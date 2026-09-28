@@ -395,6 +395,26 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
       path.join(tmp, "raw-logs"),
     );
 
+    // projects/activeProject 段（U11/T-P3-110）：项目档 patch → 文件变 → 重启读回
+    const projUpdate = await settingsCall({
+      op: "update",
+      patch: {
+        projects: [{ name: "p1", workspace: path.join(tmp, "p1-ws"), instructions: "遵守 AGENTS.md" }],
+        activeProject: "p1",
+      },
+    });
+    expect(projUpdate.ok).toBe(true);
+    const projMerged = (
+      projUpdate.result as {
+        settings: { projects?: { name: string; workspace: string }[]; activeProject?: string };
+      }
+    ).settings;
+    expect(projMerged.projects?.[0]?.name).toBe("p1");
+    expect(projMerged.activeProject).toBe("p1");
+    const reloaded = await loadSettings(settingsPath);
+    expect(reloaded.settings.projects?.[0]?.workspace).toBe(path.join(tmp, "p1-ws"));
+    expect(reloaded.settings.activeProject).toBe("p1");
+
     // 凭据面：set 回掩码（明文不回信封）→ list 见掩码 → delete
     const setCred = await settingsCall({ op: "credentials-set", provider: "main", key: "sk-e2e-0123456789abcdefghij" });
     expect(setCred.ok).toBe(true);
