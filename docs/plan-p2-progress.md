@@ -2,14 +2,40 @@
 
 > 本文件接续 [`plan-p1-progress.md`](plan-p1-progress.md)（P0 全程 + P1 批次 1-14，2026-09-28 P1 全部收官定格，全量基线 **1293 passed / 1 skipped**，词汇表 26 事件）——**自批次 15（P2 段）起的执行进度**（批次报告 / 待澄清 / 人工确认清单）记入本文件。
 > 执行协议沿用 [`plan-p0.md`](plan-p0.md) §0；计划本体在 [`plan-p2.md`](plan-p2.md)（48 条 / 五批 / 52 卡，2026-09-28 一次展卡——P0 式全阶段计划）。
-> **待澄清编号接续（#22 起）**——词汇表立案管线不变（`l0-events.md` §8 落地记录全局连续，批次 15c 收官后为 **28 事件**〔#23 已追认〕；**最新全量基线 1493 passed / 1 skipped**）。
-> **批次进度**：15a ✅（2026-09-28）→ 15b ✅（2026-09-28）→ 15c ✅（2026-09-28 收官，本文件报告）→ 15d（下一批）→ 15e。
+> **待澄清编号接续（#22 起）**——词汇表立案管线不变（`l0-events.md` §8 落地记录全局连续，批次 15d 收官后为 **29 事件**〔#23 已追认；#24 feedback/note 已立案待追认〕；**最新全量基线 1625 passed / 1 skipped**）。
+> **批次进度**：15a ✅ → 15b ✅ → 15c ✅ → 15d ✅（2026-09-28 收官，本文件报告）→ 15e（下一批，P2 收官批）。
 
 ---
 
 > **P3 已立项**（2026-09-28 用户裁决）：U 域 8 条产品化层见 [`plan-p3.md`](plan-p3.md)——本文件提示词链执行到 15e 收官后，接 `plan-p3-progress.md` 的批次 16 提示词。
 
-## 批次 15d 提示词（当前活跃）
+## 批次 15e 提示词（当前活跃）
+
+```
+继续 aegent 批次 15e 的实施（P2 段收官批：观测与工程纪律 P2；17 条需求 ID：
+T3 T4 T7 T8 O27 O28 O29 O30 A16 F19 F27 F16 L9 L5 L6 J21 J17）。推进模式不变：
+一会话一批次——本会话只做批次 15e，做完 P2 段收官（出组报告 + 词汇表/基线
+定格）即停，批次 16（P3 产品化）由 plan-p3.md 接力。批次 15e 卡序已展
+（docs/plan-p2.md §7，18 张 T-P2-501~518），读 §1 全局约束后从第一张 [ ]
+任务卡开始执行（执行协议沿用 docs/plan-p0.md §0）。本批特有的注意：
+1. 展卡锚点核对以 20260926_P2研究_批次圈定建议.md（48/48 零勘误）为底——
+   执行中若发现锚点与实际不符仍走 §0 待澄清。
+2. 词汇表预判（#26/#27 候选）：F19 两级压缩 microcompact 边界事件（strategy
+   值域扩展或新事件）；F27 策略具名 Memento/PrefixCompaction（strategy 值域
+   收闭集扩展）；L9 分段计时载荷扩展；T4/T8/O 族/A16/J21 预判零扩展——执行
+   时逐条定形并复核 EVENT_TYPES 29 基线（#24 feedback/note 本批已立案待
+   追认）。J21 成本核算先核对批次 10 L3 是否已落 total_cost_usd 分列（已落
+   则核对后记档，未落则本卡补）。
+3. 全量基线 1625 passed / 1 skipped；词汇表 29 事件（#24 待追认、#23/#22
+   已追认定案）；工程纪律工具链四件收官必跑（T4 豁免理由检查器若重复实现
+   核对后可关闭记档）。收官出组报告（写入本文件），更新本文件与
+   plan-p3-progress.md 的批次 16 提示词衔接 + 全量基线定格后停止——
+   不要开始批次 16。不要问要不要继续。
+```
+
+---
+
+## 批次 15d 提示词（已执行归档）
 
 ```
 继续 aegent 批次 15d 的实施（P2 段第四批：端与自动化；11 条需求 ID：S1 M11 S2 S5
@@ -31,7 +57,24 @@ docs/plan-p0.md §0）。本批特有的注意：
 
 ## 批次 15d · 端与自动化（11 条：S1 M11 S2 S5 N5 P4 S3 S4 K9 K6 K7）
 
-**状态**：🚧 进行中（2026-09-28 开工）——台账：T-P2-401 S1 定时任务 ✅（cron 最小解析器 + v5 CronStore + 被动轮询派发，39 passed）。T-P2-402 M11 闲时任务 ✅（OffPeakQueue 四步取号/窗口/核销/幂等，12 passed；#24 候选定形零事件）。T-P2-403 S2 webhook ✅（处理器面 + token/HMAC 鉴权 + 202 fire-and-forget + 上限防呆，8 passed）。T-P2-404 S5 反馈上报 ✅（#24 立案 feedback/note 词汇表 28→29 + 提交面/wire 面/CLI 面全链，6 passed）。T-P2-405 N5 推送 ✅（NotificationHub 四类分型 + poll 游标补投 + bridge 三类归类，12 passed）。T-P2-406 P4 语音转文字 ✅（白名单 4→7 + transcribeAudio mock 面 + 投影转写文本，39 passed）。T-P2-407 S3 浏览器使用 ✅（CDP 直连三工具 + 域白名单 + 每导航强制审批 + NOTICE 描述，13 passed）。T-P2-408 S4 计算机使用 ✅（最强审批三层 + 四操作 + L2 审计全落 + helper 存根，13 passed）。T-P2-409 K9 画中画 ✅（Tauri 双窗口 + pip 只读渲染资产 + N5 五类分型，19 passed）。T-P2-410 K6+K7 飞书/Slack 端 ✅（#25 立案 APPROVAL_SURFACES 追加 + 同构 ImSurface 两实现 + 抢约派发语义，14 passed）。
+**状态**：✅ 收官（2026-09-28）——11 张卡全关（T-P2-401 ~ 411）。台账：T-P2-401 S1 定时任务 ✅（cron 最小解析器 + v5 CronStore + 被动轮询派发，39 passed）。T-P2-402 M11 闲时任务 ✅（OffPeakQueue 四步取号/窗口/核销/幂等，12 passed；#24 候选定形零事件）。T-P2-403 S2 webhook ✅（处理器面 + token/HMAC 鉴权 + 202 fire-and-forget + 上限防呆，8 passed）。T-P2-404 S5 反馈上报 ✅（#24 立案 feedback/note 词汇表 28→29 + 提交面/wire 面/CLI 面全链，6 passed）。T-P2-405 N5 推送 ✅（NotificationHub 四类分型 + poll 游标补投 + bridge 三类归类，12 passed）。T-P2-406 P4 语音转文字 ✅（白名单 4→7 + transcribeAudio mock 面 + 投影转写文本，39 passed）。T-P2-407 S3 浏览器使用 ✅（CDP 直连三工具 + 域白名单 + 每导航强制审批 + NOTICE 描述，13 passed）。T-P2-408 S4 计算机使用 ✅（最强审批三层 + 四操作 + L2 审计全落 + helper 存根，13 passed）。T-P2-409 K9 画中画 ✅（Tauri 双窗口 + pip 只读渲染资产 + N5 五类分型，19 passed）。T-P2-410 K6+K7 飞书/Slack 端 ✅（#25 立案 APPROVAL_SURFACES 追加 + 同构 ImSurface 两实现 + 抢约派发语义，14 passed）。T-P2-411 收口 ✅（七面盘点 + p15d 快照三环一条链 + 工具链四件）。
+
+---
+
+### 批次 15d 报告（收官于 2026-09-28）
+
+- **打勾情况**：11/11 卡全关（T-P2-401 S1 定时任务 / T-P2-402 M11 闲时任务 / T-P2-403 S2 webhook / T-P2-404 S5 反馈上报 / T-P2-405 N5 推送 / T-P2-406 P4 语音转文字 / T-P2-407 S3 浏览器使用 / T-P2-408 S4 计算机使用 / T-P2-409 K9 画中画 / T-P2-410 K6+K7 飞书与 Slack 端 / T-P2-411 收口七面盘点 + 快照），每勾附「命令 + 结果摘要」。
+- **展卡结论**：11 条锚点零勘误（执行期逐条复核：codex·ScheduledTaskWeekday/kimi·cron-store/zcode·offPeakDispatchSettlement/dsh·webhook/codex·feedback_processor/qwen·browser-use 含 NOTICE/codex·computer_use_config/zcode·cuaPipSession〔🔴 只学行为〕/pideck·FeishuBridge/opencode·slack 全部命中）。关键定形九处——①cron 解析器自写最小面（`*`/列表/步进三形态、区间 YAGNI、dom/dow 双受限 vixie OR）；②M11 四步状态机（取号→窗口→核销→幂等）+ transient 重试上限（zcode"确定性失败不无限重试"纪律）；③webhook 处理器面不自建监听（host server 路径分型挂载）；④反馈是会话事实落流 vs M11 进程内事实走回调（#24 两候选的分野判据 = "事实是否持久"）；⑤N5 分型是 wire 载荷非事件 + push/poll 双投递语义；⑥STT 转写文本端侧上送（agent 子进程零 STT 依赖）；⑦浏览器/计算机双操作类工具的审批纵深（链上 gate 是外层 + 工具面 approve 回调缺省恒拒）；⑧S4 最强审批三层（unattended 恒拒先于审批）；⑨IM 抢约派发（IM 发消息 = 声明控制端，N7 单 holder 兼容）。
+- **产出的文件**：`src/scheduler/` 新域八件（cron.ts/offpeak.ts/webhook.ts/computer.ts/browser.ts + 三测试 + p15d.snapshot.test.ts）——architecture-policy 入册 managed:true（requires=[kernel]）；`src/session/migrate.ts` v4→v5（SCHEMA_V5_CRON_DDL 运维账本第三张）+ db.ts 版本 bump；`src/attachments/` 四新扩（limits.ts IMAGE/AUDIO 分型白名单 4→7、stt.ts、types.ts transcription 字段、store.ts 双实现透传）；`src/host/` 五件（notify.ts NotificationHub、im-surface.ts 同构接口、im-feishu.ts、im-slack.ts、bridge.ts N5 三类归类集成）；`src/obs/feedback.ts`；`src/kernel/` 扩（events.ts 词汇表 29 + FeedbackNoteEvent、agent-protocol.ts feedback wire 请求、agent-process.ts feedback/审计落流分支、invariants.ts 豁免）；`src/session/project.ts`（feedback/note 校验+投影分支）；`src/session/messages.ts`（音频转写文本投影占位行）；`src/policy/audit-fields.ts`（#25 APPROVAL_SURFACES 追加）；`src/cli/repl.ts`（/feedback 命令）；ui/ 三新件（pip.html/pip.js/pip.css）；`src-tauri/`（tauri.conf.json 双窗口 + capabilities 双窗口）；`src/kernel/tools/descriptions/` 七新件（browser_* 三 + computer_* 四——NOTICE 风险标注）；win32-helper Rust `computer` 动作存根。
+- **验收台账**：全量 `npx vitest run` **1625 passed / 1 skipped**（180 文件；批次入口基线 1493 → 净增 132）；`npx tsc --noEmit` 全程干净；`count-features.sh` = **337（层数 20；P2=48）不变**；`check-doc-links.sh`（显式传参 12 文件）**1002 链接 0 失效**；`license-audit.sh` exit 0（LEAK 未命中 / CLEAN-ROOM 无明确声明 / SOURCEMAP 无）；`architecture:check` 全程 0 error / 21 warning（基线保持）；`vocabulary:check` 0 问题；`cargo check` exit 0。
+- **词汇表扩展**：**28→29 一案 + #25 立案（非事件）+ 两处零扩展定形**——①`feedback/note {kind, targetSeq?, commandId?, comment?, doctorSummary?}`（S5/T-P2-404——log-only 会话级元事件；**#24 待追认**；l0-events.md §8 落地记录 24 在案）；②#25 = APPROVAL_SURFACES 闭集追加 feishu/slack（K6/K7——**闭集扩展非事件**，词汇表单向门不触发）；③M11 闲时核销零扩展定形（进程内 job 生命周期事实走 onSettled 回调——jobs.ts/M4 onReap 同款纪律）；④N5 分型四→五类（+computer_operation，wire 载荷非事件）。EVENT_TYPES 29 基线复核在位。
+- **盘点结论**：七面零真冲突（T-P2-411 完成记录详载）：①S1/M11/S2 × M1/M2 同一 JobRegistry 三消费方语义一致；②S4 最强审批三层 × unattended 恒拒（拒绝与执行同权落审计）；③K9 × S4 消费端同源（pip 只读渲染 + notify 桥接）；④K6/K7 × #25 replySource 链路零改线；⑤N5 五类 × push/poll 双语义（既有广播零变化）；⑥P4 × 白名单纪律（存储面/请求面分型）；⑦快照即规格 = p15d.snapshot.test.ts 三环一条链。
+- **新发现的约束或坑**：(a) **JSDoc 注释含 `*/` 字面量提前闭合块注释**（cron.ts TS1443——注释改写不含 `*/` 序列）；(b) **parseField restricted 判定**：全星号位图全 true ≠ restricted（写明具体值才算——vixie OR 的判据面，纯星号不算、`*/step` 算）；(c) **webhook 413 防呆**：超限 `req.destroy()` 会把响应一起断（客户端只见 socket error）——改"丢弃内容继续收完再 413"；(d) **CdpConnection 内部自建 ws 与测试 fake 分家**（emit 落孤儿实例超时——构造注入 WebSocketImpl + instances 取连接真正持有的实例）；(e) **asyncIterator 方法简写内 this 指向迭代器对象**（快照泵静默死亡三查——`const self = this` 捕获实例，notify.test 同款坑二次确认）；(f) **Windows 并行偶发一例**（首跑 1 失败复跑全绿——15b/15c 先例）。
+- **偏离计划的地方**：逐卡「完成记录」已记档——要点：T-P2-404 #24 编号归 S5（预判里 M11/S5 两候选共用编号，M11 定形零扩展）；T-P2-406 转写接线定形为端侧上送（卡面未明说接线点）；T-P2-407 工具描述走 B2 描述文件（卡面"工具描述与审批面"的承载方式）；T-P2-408 Rust 面按卡面落存根（NOT_IMPLEMENTED 结构化 fail-closed——真实 Win32 实现随人工确认）；T-P2-409 N5 分型扩五类（卡面预判"computer_operation 分型"兑现为闭集扩展）。
+- **遗留风险与未知**（→ 人工确认清单）：**新增 5 项**——P4 真实 STT 端点联调（随用户供给端点）；S3 真实浏览器 CDP 联调；S4 真实屏幕操作（Win32 实现补齐 + Windows 会话环境）；K6/K7 平台真实联调（飞书/Slack 凭据与 webhook 配置）；K9 画中画视觉面。15c 遗留 2 项（真实 sshd / 真实 ACP agent）维持待确认（本批无新增环境）。技术债记档：S1/M11/S2 的装配接线（host server 面消费 tick/drain/endpoint——本批交付域面，进程装配随托管层）；S4 computer 审计的 recordAudit 落库接线（结构已对齐 audit_log 表）；IM 端 webhook 路径挂载到 host server（/im/feishu、/im/slack 路径分型随装配）；判官/跳层/白名单等 15b/15c 记档的技术债不变。
+- **批次完成定义核对**：全部 ✅（plan-p2.md §8 的 15d 相关项——11 卡全勾 + tsc 干净 + 337 不变 + 1002 链接 0 失效 + license exit 0 + #24 立案在案〔待追认〕+ #25 立案在案 + M11/N5 零扩展复核 EVENT_TYPES 29 + 报告/提示词/基线更新）。
+- **下一批**：**批次 15e 观测与工程纪律 P2（17 条：T3 T4 T7 T8 O27 O28 O29 O30 A16 F19 F27 F16 L9 L5 L6 J21 J17）**——卡序已展（plan-p2.md §7，18 张 T-P2-501~518），下一会话直接执行，做完收官即停；15e 收官后 P2 段完成，接 plan-p3.md 批次 16。
+- **下一批提示词**：见本文件头部「批次 15e 提示词（当前活跃）」。
 
 ---
 
@@ -179,6 +222,8 @@ docs/plan-p0.md §0）。本批特有的注意：
 | --- | --- | --- | --- | --- | --- |
 | #22 | Q8 | 归档动作需要"何时因何归档"的流内落点，但词汇表 26 事件无承载（plan-p2.md §3 展卡预判的 #22 候选；codex·rollout/src/lib.rs:87 `ARCHIVED_SESSIONS_SUBDIR` 锚） | 无矛盾——需求未明示事件形状，属"状态变更必须有事件承载"（不变量 1）的补齐 | 新增 `session/archive {reason?}` log-only 会话级元事件（归档前落流尾，随数据进归档档；幂等——流尾已有不重复追加）；词汇表 26→27；回退面齐备（约 1.5 小时） | 2026-09-28 立案（T-P2-102 落地）；events.ts / project.ts / invariants.ts / archive.ts 已接线，events.test 计数 27；l0-events.md §8 落地记录 22 在案；**#22 追认于 2026-09-28（用户："认可22"），此案关闭，§3.2 正式计数 27 事件定案** |
 | #23 | I10 | 取代事实需要流内持久落点，但词汇表 27 事件无承载（plan-p2.md §5 展卡预判的 #23 候选；zcode·session.events.ts `WorkspaceHookReviewSuperseded{interactionId, supersededByInteractionId}` 锚——取代事件落流） | 无矛盾——需求明示"取代本身是持久事实"（不变量 1 的直接要求） | 新增 `approval/superseded {requestId, byRequestId, reason?}` log-only 元事件（单链约束：一个 requestId 至多被取代一次；投影消费 = 取代链索引 + effectiveApproval/supersessionChain 查询；投影期重复/成环 fail-closed 拒绝）；词汇表 27→28；回退面齐备（约 1.5 小时） | 2026-09-28 立案（T-P2-306 落地）；events.ts / project.ts（校验+消费+查询）/ invariants.ts 已接线，events.test/replay.test/idle-reaper.test 计数 28；l0-events.md §8 落地记录 23 在案；**#23 追认于 2026-09-28（用户："全部认可"），此案关闭，§3.2 正式计数 28 事件定案** |
+| #24 | S5 | 反馈事实需要流内持久落点，但词汇表 28 事件无承载（plan-p2.md §6 展卡预判的 #24 候选——预判里 M11 job/offer 与 S5 feedback/note 两候选共用编号；执行定形：M11 闲时核销是进程内 job 生命周期事实走 onSettled 回调零扩展，S5 反馈是会话事实落流——分野判据 = "事实是否持久"；codex·feedback_processor 结构化面锚） | 无矛盾——需求明示"用户可对消息/命令反馈"（结构化反馈 + 不变量 1：状态变更必须有事件承载） | 新增 `feedback/note {kind: "up"\|"down", targetSeq?, commandId?, comment?, doctorSummary?}` log-only 会话级元事件（targetSeq/commandId 二选一，存在性校验在提交面；doctor 随附 = codex attachment 同构；遥测外发不取——本地落流）；词汇表 28→29；回退面齐备（约 1.5 小时） | 2026-09-28 立案（T-P2-404 落地）；events.ts / project.ts / invariants.ts / obs/feedback.ts / agent-protocol.ts（wire feedback 请求）/ agent-process.ts / cli/repl.ts 已接线，events.test/replay.test/idle-reaper.test 计数 29；l0-events.md §8 落地记录 24 在案；**待追认** |
+| #25 | K6/K7 | IM 端审批应答需要 replySource 身份承载，但 APPROVAL_SURFACES 闭集 ["cli","web","desktop"] 无 IM 端成员（plan-p2.md §6 展卡预判的 #25 候选；audit-fields.ts:23 闭集锚） | 无矛盾——需求明示场景③"审批经 IM 应答"；闭集扩展非事件（词汇表单向门不触发）——**本条是字段闭集扩展的记录性立案**（不占词汇表管线，走"只追加不替换"纪律：audit-fields.ts 文件头明示批次 14 多端先例） | APPROVAL_SURFACES 追加 "feishu"/"slack"（T-P2-410 落地）；IM 应答经 approve.source 走既有 replySource 审计面（C6 通道零改线）；audit-fields.test 断言同步 | 2026-09-28 立案并落地（T-P2-410）；闭集五值在位；无回退面风险（追加面，回退 = 删两成员） |
 
 ## 人工确认清单（批次 15 起）
 
@@ -188,3 +233,8 @@ docs/plan-p0.md §0）。本批特有的注意：
 | C42（批次 15b） | 判官 prompt 的语义质量机验只钉结构（Stage1 闭集 / Stage2 标签格式 / 三值路由——judge.test 钉死）；真实模型下"safe/risky 分界是否合理、Stage2 理由是否可信"需联调评估 | 配置 J3 judge 段（AssemblyOptions.judgeModel）接真实判官模型，跑若干真实 ask 场景：核对 judge-audit 日志里 reviewed 的 outcome/reason 是否与人的判断一致（假阳性修正率），unavailable/aborted 比例是否可接受 | 待人工确认（判官模型接入时） |
 | D12（批次 15c） | 测试全走命令注入 mock（无真实 sshd 环境）；probe 对不可达/认证失败/网络超时的真实行为、远端命令真实退出码/编码面、Windows OpenSSH client 实测均未联调 | 在有可用 sshd 的环境实测：SshExecutionEnv.probe() 对不可达主机（255→SshConnectionError）、认证失败（BatchMode 禁交互快速失败）、远端命令执行的编码与退出码 | 待人工确认（有 sshd 环境时） |
 | H6（批次 15c） | ACP 后端经内存桥测试（真实协议往返）；transport 缺省 spawn 实现（真进程）与真实 ACP agent 的协议面（initialize 版本协商、session/update 通知方言、长请求超时行为）未联调 | 起一个真实 ACP agent 进程，跑 createAcpBackend 的 spawn 全链：核对 initialize/session/new/session/prompt 往返与 stopReason 映射 | 待人工确认（有 ACP agent 可联调时） |
+| P4（批次 15d） | transcribeAudio 全走 mock fetch（OpenAI 协议 multipart 契约钉死）；真实 STT 端点（baseURL/模型名/鉴权）未实测——用户未供给端点 | 配置真实 STT 端点（SttConfig.baseUrl/apiKey/model），录一段真实音频跑 transcribeAudio 全链：核对 multipart 兼容性、language 参数效果与响应 text 字段形状 | 待人工确认（随用户供给 STT 端点） |
+| S3（批次 15d） | CDP 往返全走 fake ws（协议形状钉死）；真实系统浏览器（Chrome/Edge --remote-debugging-port）未联调——页面导航/截图/文本抽取的真实渲染、跨域页面行为、CSP 干扰未验证 | 启动系统浏览器 --remote-debugging-port=9222，跑 cdpWsUrlOf + browserNavigate/Screenshot/Extract 全链：核对三工具真实往返与域白名单在真实页面的行为 | 待人工确认（有调试端口的浏览器环境时） |
+| S4（批次 15d） | helper `computer` 动作为存根（请求校验 + 操作分发给全，四操作 NOT_IMPLEMENTED fail-closed）——SendInput/BitBlt 的 Win32 实现未写、Windows 会话隔离环境的屏幕捕获/注入真实可用性未验证 | 人工确认 Windows 会话环境后补齐 win32-helper 四操作的 Win32 实现（windows-sys 需加 GDI/Input features），跑真实 screenshot/click/type/key 验证 | 待人工确认（Windows 会话环境 + 实现补齐时） |
+| K6/K7（批次 15d） | 飞书/Slack HTTP API 全走 mock fetch（token 缓存/握手/消息形状钉死）；真实平台联调未做——tenant_access_token 时效、事件订阅签名校验、rate limit、卡片消息格式未实测 | 配置真实飞书应用（appId/secret）与 Slack bot（xoxb token），完成事件订阅 URL 配置后跑端到端：核对消息收发、审批卡片应答与 replySource=feishu/slack 审计落地 | 待人工确认（有平台凭据与 webhook 配置时） |
+| K9（批次 15d） | 画中画双窗口形状机验钉死（conf/资产/只读面），视觉面（窗口尺寸/置顶/截图渲染效果/交互）未人工确认 | 跑 tauri:dev 打开双窗口，主面触发 computer_* 操作：核对 PiP 窗口 always-on-top 显示、操作截图与动作标注的渲染效果 | 待人工确认（视觉面） |

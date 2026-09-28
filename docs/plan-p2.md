@@ -404,12 +404,16 @@
 - **风险 / 未知**：平台 API 真实联调（mock 面 + 人工确认清单）；replySource 闭集扩展走立案
 
 - **完成记录**：2026-09-28。验收 `npx vitest run src/host/im-feishu.test.ts src/host/im-slack.test.ts`——14 passed（两实现各 7：凭据缺省跳过 + url_verification 握手 + 消息→prompt 派发抢约序 + 审批应答链 source 标识 + deny/回环过滤/摘要出站/token 缓存/错误面）；`npx vitest run src/host/` 80 passed；`npx tsc --noEmit` 干净；architecture:check 0 error / 21 warning。产出：①**#25 立案落地**——APPROVAL_SURFACES 闭集追加 "feishu"/"slack"（闭集扩展非事件，词汇表零扩展；应答经 approve.source 走既有 replySource 审计面——C6 通道零改线）；②`src/host/im-surface.ts`（同构 ImSurface 接口 + parseApprovalCommand 文本指令协议 + dispatchPrompt/dispatchApproval〔**抢约派发**：acquire→命令→release——N7 单 holder 下 IM 应答 = 声明控制端，卡内定形记档〕+ summarizeEvent 摘要渲染）；③`src/host/im-feishu.ts`（tenant_access_token 缓存 + im/v1/messages 出站 + im.message.receive_v1 入站）；④`src/host/im-slack.ts`（chat.postMessage Bearer + Events API + bot_id 回环过滤）。两锚点的平台 SDK/Electron/CardKit 不抄（fetch 直调零依赖）；凭据环境变量注入零落盘（缺省跳过）。平台真实联调 → 人工确认清单。
-#### T-P2-411 · 收口 · 15d 盘点 + 快照 `[ ]`
+#### T-P2-411 · 收口 · 15d 盘点 + 快照 `[x]`
 - **依据需求**：批次 15d 收口
 - **要产出**：盘点面：①S1/M11/S2 三消费方 × M1/M2 job 底座（派发/取号/核销语义一致性）；②S4 最强审批 × unattended 恒拒（C 族 fail-closed 不变量在操作类工具上的兑现）；③K9 画中画 × S4 操作审计（消费端同源）；④K6/K7 IM × APPROVAL_SURFACES 追加（#25 立案状态）+ replySource 链路（L2 审计）；⑤N5 四类分型 × deliveryKind push/poll 两语义；⑥P4 语音 × 附件域白名单扩展纪律；⑦快照即规格：webhook 入站 → job 派发 → 会话 → N5 通知一条
 - **验收**：`npx vitest run`（全量）+ 工具链四件 + license-audit
 - **依赖**：T-P2-401 ~ 410 全部
 - **风险 / 未知**：无
+
+- **完成记录**：2026-09-28。**七面盘点**（每面零真冲突，证据在各自卡与快照）：①**S1/M11/S2 三消费方 × M1/M2 job 底座**——派发/取号/核销语义一致：S1 tick→jobs.start（kind="cron"，游标先行重入幂等）、M11 drain→jobs.start（kind="offpeak:<label>"，onSettled 回流状态机单向）、S2 handle→jobs.start（kind="webhook"，202 即受理）——三者共用 JobRegistry 单一注册表（快照面 jobs.read 三来源可读），job 面零事件词汇扩展（生命周期全走 onSettled 回调）；②**S4 最强审批 × unattended 恒拒**——三层纵深钉死：isUnattended 先于审批（回调放行也拒）→ 每操作 approve（缺省恒拒）→ helper 执行；拒绝与执行同权落 L2 审计（phase=denied/unattended-denied/executed）——C 族 fail-closed 在操作类工具的兑现（unattended 语义与 N6 unattendedCeiling 同向）；③**K9 画中画 × S4 操作审计**——消费端同源：pip.js 只读渲染面过滤 computer_* 的 tool/call+tool/result（audit 流的 wire 侧），S4 notify 桥接点 → N5 computer_operation 分型（截图 base64 进回显）；④**K6/K7 IM × APPROVAL_SURFACES 追加（#25 立案）+ replySource 链路**——闭集 ["cli","web","desktop","feishu","slack"]；IM 应答经 approve.source 走 C6 既有 replySource 审计通道零改线；抢约派发（acquire→命令→release）与 N7 单 holder 兼容（语义记档：IM 发消息 = 声明控制端）；⑤**N5 五类分型 × deliveryKind push/poll 两语义**——push 即时回调（监听器异常隔离）、poll 游标补投（连接级环形缓冲 256，cursor 后缀重放安全）；HostBridge 三类归类发布（挂起/轮结算/端面变化）既有广播零变化；⑥**P4 语音 × 附件域白名单扩展纪律**——IMAGE/AUDIO 分型常量、存储面契约 4→7、请求面分型（图片视觉直投影 / 音频转写文本投影 / 其余不进）；转写文本流存 AttachmentRef.transcription（引用不存字节纪律不破）；⑦**快照即规格** = `p15d.snapshot.test.ts` 三环一条链（S2 入站 202→M1/M2 ring 持 payload → 会话审批挂起→N5 approval_pending→K6 飞书面应答回传 source=feishu〔抢约三步〕→ S4 操作回显→N5 computer_operation〔K9 契约〕）。
+- **验收台账**：全量 `npx vitest run` **1625 passed / 1 skipped**（180 文件；批次入口基线 1493 → 净增 132）；`npx tsc --noEmit` 全程干净；`architecture:check` 0 error / 21 warning（scheduler 新域入册 managed:true）；`vocabulary:check` 0 问题；`count-features.sh` = **337（层数 20；P2=48）不变**；`check-doc-links.sh`（显式传参 12 文件）**1002 链接 0 失效**；`cargo check`（win32-helper computer 动作存根）exit 0；license-audit 见报告（后台完成）。
+- **词汇表**：**28→29 一案（#24 = S5 feedback/note，待追认）+ M11 零扩展定形 + #25 立案（APPROVAL_SURFACES 闭集扩展非事件）**；EVENT_TYPES 29 基线复核在位（events.test/replay.test/idle-reaper.test/feedback.test 计数断言同步）。
 
 ## §7 批次 15e 卡序（18 张：T3/T4/T7/T8/O27/O28/O29/O30/A16/F19/F27/F16/L9/L5/L6/J21/J17 + 收口；2026-09-28 展卡）
 
