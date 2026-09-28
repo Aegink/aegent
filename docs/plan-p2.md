@@ -538,7 +538,7 @@
 - **风险 / 未知**：prefix 策略与 F26 指纹的交互（策略入指纹——指纹内容已含 strategy? 核对）
 - **完成记录**：2026-09-28。产出：①`src/context/compaction.ts`——`CompactionStrategy = "full_summary" | "prefix_window"` 具名闭集（codex·compact.rs:483 Memento/PrefixCompaction 枚举同旨——策略落流可归因）+ `PREFIX_WINDOW_RETAINED_FROM_END = 8`（活前缀窗口——比缺省 1 大一个数量级的原文保留；F15 缓存族"重放活前缀不冷写"思想）+ 引擎 deps 加 `strategy?`（配置选择——缺省 full_summary 零行为变化；keepRules.retainedFromEnd 显式配置优先于策略缺省）+ 四处落流值（started/manual-failed/infeasible-failed/completed 同值可归因；兜底 recent_window_fallback 路径不动——失败兜底分型与配置策略正交）；②**卡面风险点核对兑现——策略入指纹**：CompactionFingerprintInput 加 `strategy?`（核对结论：原指纹含 retainedFromEnd〔策略的结果〕但**不含 strategy**〔策略的原因〕——"策略变但保留数碰巧同值"会指纹失明）+ 装配 fingerprint 传入；③装配触发面——`AssemblyOptions.compactionStrategy?` → engineDeps.strategy + fingerprint.strategy（缺省 undefined 零行为变化）。**闭集扩展管线**：strategy 是载荷值域扩展非新事件（#18 同款追加——EVENT_TYPES 29 不变，词汇表单向门不触发），l0-events.md 落地记录 25 在案（待追认）。测试新 `src/context/strategy.test.ts` 3 用例（compaction.test 已 991 行——独立文件先例）：prefix_window 往返（12 轮 → 摘要覆盖前 4 轮 + 新窗口含近 8 条原文 + 策略值落流）/ full_summary 缺省零行为变化（切点 DEFAULT_RETAINED_FROM_END=1）/ **策略入指纹**（full vs prefix 指纹异 + 缺席 vs 显式异——重启换策略必然重压）。**验收**：`npx vitest run src/context/ src/kernel/assembly.compaction.test.ts` → **132 passed**（既有零回归）；`npx tsc --noEmit` 干净；`vocabulary:check` 0 问题。**记档**：①Memento（全摘要重放）与 full_summary 的对应关系记档——我方 full_summary 即"摘要式"，prefix_window 即"前缀式"，codex 枚举名不取（我方命名贴合既有 strategy 词族）；②测试坑复证：CompactionRequest 形状是 `{reason, estimatedTokens, contextWindow}`（非 kind 判别联合——首版 `{kind:"overflow"}` 被投影校验当场拒绝）。
 
-#### T-P2-512 · F16 · 缓存健康可诊断（前缀漂移 / thinking 剥离分型） `[ ]`
+#### T-P2-512 · F16 · 缓存健康可诊断（前缀漂移 / thinking 剥离分型） `[x]`
 - **依据需求**：F16（"缓存健康可诊断：区分前缀漂移与 thinking 被剥离，并记录读/写 token 数；缓存命中率下降可定因"）
 - **上游首选参考**：pi-mono·cache-retention.ts（🔴 新仓锚——缓存保留与诊断的行为）
 - **取什么 / 别抄什么**：取"命中率下降可归因（分型：前缀漂移 / thinking 剥离）+ 读写 token 记录"行为；不抄其 retention 策略实现
@@ -546,6 +546,7 @@
 - **验收**：`npx vitest run src/models/cache-health.test.ts`——命中率统计 + 漂移归因 mock 用例 + thinking 剥离用例（真实端点样本 fixture）
 - **依赖**：无（L3/usage 已有）
 - **风险 / 未知**：归因是启发式（分型准确率人工面——机验钉统计与比对结构）
+- **完成记录**：2026-09-28。产出 `src/models/cache-health.ts`——`CacheHealthTracker`（逐请求 record + report）：①**逐请求统计**——CacheHealthSample{index, modelId, usage 分列透传（L3 cacheReadTokens/cacheWriteTokens 已有面），prefixFingerprint（逐消息 `role:len:hash8`——FNV-1a 与 compaction 指纹同款，有界不落全文）}；②**命中率**——hit = cacheRead>0，无分列样本不进分母（不编造）；③**归因三型**（启发式——机验钉统计与比对结构，卡面预判兑现）：`prefix_drift`（前缀公共长度回退 = 上下文重建/前缀断点——`detectPrefixDrift` 纯追加健康、回退漂移）/ `thinking_stripped`（流内产 reasoning 但请求面 assistant 不携带——deepseek reasoning_content 不回传前缀的真实面；结构性事实每追踪器报一次）/ `provider_no_cache`（usage 无分列——端点不报告如实标注）。**零落流零词汇表扩展**（诊断是读面——in-memory 报告，事件流零触碰）。pi-mono 锚只取"可观测可归因"行为（retention 配置解析不取——我方无 per-request retention 配置面，known-diffs.md 记档）。测试 `cache-health.test.ts` 4 用例：命中率统计（无分列不进分母）/ 前缀漂移（纯追加健康 + 压缩重建回退检出带证据）/ **thinking 剥离 deepseek 风格 fixture**（streamHadReasoning + 续话不携带 → 检出 atIndex）/ 指纹原语（同序列同指纹 + 不落原文 + 首轮零漂移）。**验收**：`npx vitest run src/models/cache-health.test.ts` → **4 passed**；`npx tsc --noEmit` 干净。**记档**：①tracker 的装配接线（loop/provider 面逐请求喂样本）不在本卡面——诊断原语已齐，接线随真实推理模型联调需要（人工确认清单）；②`carriesReasoning` 按请求面 assistant 消息的 reasoning 字段核对（我方 ChatMessage 当前无 reasoning 字段——结构性恒剥离，deepseek 联调时若增加回传面则检测自动通过）。
 
 #### T-P2-513 · L9 · 循环内分段计时（mcp / tools 各自打点） `[ ]`
 - **依据需求**：L9（"循环内分段计时（mcp / tools 各自打点）；各段耗时可见"）
