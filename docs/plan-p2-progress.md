@@ -2,14 +2,60 @@
 
 > 本文件接续 [`plan-p1-progress.md`](plan-p1-progress.md)（P0 全程 + P1 批次 1-14，2026-09-28 P1 全部收官定格，全量基线 **1293 passed / 1 skipped**，词汇表 26 事件）——**自批次 15（P2 段）起的执行进度**（批次报告 / 待澄清 / 人工确认清单）记入本文件。
 > 执行协议沿用 [`plan-p0.md`](plan-p0.md) §0；计划本体在 [`plan-p2.md`](plan-p2.md)（48 条 / 五批 / 52 卡，2026-09-28 一次展卡——P0 式全阶段计划）。
-> **待澄清编号接续（#22 起）**——词汇表立案管线不变（`l0-events.md` §8 落地记录全局连续，批次 15b 收官后仍为 **27 事件**；**最新全量基线 1379 passed / 1 skipped**）。
-> **批次进度**：15a ✅（2026-09-28）→ 15b ✅（2026-09-28 收官，本文件报告）→ 15c（下一批）→ 15d → 15e。
+> **待澄清编号接续（#22 起）**——词汇表立案管线不变（`l0-events.md` §8 落地记录全局连续，批次 15c 收官后为 **28 事件**〔#23 已立案、待追认〕；**最新全量基线 1493 passed / 1 skipped**）。
+> **批次进度**：15a ✅（2026-09-28）→ 15b ✅（2026-09-28）→ 15c ✅（2026-09-28 收官，本文件报告）→ 15d（下一批）→ 15e。
 
 ---
 
 > **P3 已立项**（2026-09-28 用户裁决）：U 域 8 条产品化层见 [`plan-p3.md`](plan-p3.md)——本文件提示词链执行到 15e 收官后，接 `plan-p3-progress.md` 的批次 16 提示词。
 
-## 批次 15c 提示词（当前活跃）
+## 批次 15d 提示词（当前活跃）
+
+```
+继续 aegent 批次 15d 的实施（P2 段第四批：端与自动化；11 条需求 ID：S1 M11 S2 S5
+N5 P4 S3 S4 K9 K6 K7）。推进模式不变：一会话一批次——本会话只做批次 15d，做完
+收官即停，批次 15e 由下一会话接力。批次 15d 卡序已展（docs/plan-p2.md §6，11 张
+T-P2-401~411），读 §1 全局约束后从第一张 [ ] 任务卡开始执行（执行协议沿用
+docs/plan-p0.md §0）。本批特有的注意：
+1. 展卡锚点核对以 20260926_P2研究_批次圈定建议.md（48/48 零勘误）为底，plan-p2.md
+   各批卡序头已落展卡核对结论——执行中若发现锚点与实际不符仍走 §0 待澄清。
+2. 词汇表预判（#24 候选）：M11 闲时核销 `job/offer {jobId, window}` log-only；
+   S5 反馈 `feedback/note` log-only；K6/K7 的 replySource 闭集扩展（APPROVAL_SURFACES
+   追加 feishu/slack——#25 候选）——执行时逐条定形并复核 EVENT_TYPES 28 基线。
+3. 全量基线 1493 passed / 1 skipped；词汇表 28 事件（#23 approval/superseded 已
+   立案待追认）；工程纪律工具链四件收官必跑。15c 遗留人工确认 2 项（真实 sshd
+   联调 T-P2-310 / 真实 ACP agent 进程联调 T-P2-309）随本批端面联调一并处理。
+   收官出组报告（写入本文件），更新本文件的批次 15e 提示词与全量基线后停止——
+   不要开始 15e。不要问要不要继续。
+```
+
+## 批次 15c · 插件生态与远程后端（10 条：M7 I5 I4 I7 I8 I10 I11 I14 H6 D12）
+
+**状态**：✅ 收官（2026-09-28）——11 张卡全关（T-P2-301 ~ 311）。
+
+**展卡注意**（承接展卡核对结论，卡序头在 plan-p2.md §5）：
+1. 10 条锚点以 P2 研究 48/48 核对为底，展卡抽核 pi-desktop·plugin-websocket.ts 与 dsh·subagent 包目录（全部命中）——零勘误。执行中锚点语义逐条复核：pi-desktop 锚实为"出站 socket 宿主代理"（取有界/随插件死/transport 可注入三行为）；dsh guard 两包正是需求点名的两例（重复工具提醒/超时策略）。
+2. M7 deadline 是横切底座先行（M6/J23 三语义已落——本批收敛为共享原语）；I5 SDK → I4 ws → I7 兼容 → I11 治理的插件生态链；I10 是 #23 立案卡（词汇表 27→28）；H6 五后端取两实落（进程内 + ACP）；D12 三层取命令行包装最小面。
+3. 词汇表预判执行兑现：#23 `approval/superseded` 立案落地（词汇表 27→28）；其余九条零事件（M7/I5/I7/I8/I11/I14/H6/D12 逐条定形零扩展）。
+
+### 批次 15c 报告（收官于 2026-09-28）
+
+- **打勾情况**：11/11 卡全关（T-P2-301 M7 统一 deadline 库 / T-P2-302 I5 插件 SDK / T-P2-303 I4 进程外插件 ws / T-P2-304 I7 hook 协议兼容 / T-P2-305 I8 人格预设 / T-P2-306 I10 #23 superseded 立案 / T-P2-307 I11 治理可插拔 / T-P2-308 I14 跨层跳 / T-P2-309 H6 子代理后端可插 / T-P2-310 D12 SSH 后端 / T-P2-311 收口七面盘点 + 快照），每勾附「命令 + 结果摘要」。
+- **展卡结论**：10 条锚点零勘误；关键定形——①M7 deadline 原语（Deadline 绝对截止 token + combine 取最近 + withDeadline），timeout.ts 薄壳化（既有语义零变化）；②I5 SDK 受限能力 token（属性闭集 + 内核句柄零暴露）；③I4 ws 插件（hello 版本握手复用 host/protocol + 审批位缺省全拒 + 执行往返 + 断线能力注销）；④I7 双方言桥只桥工具前后两点位 + 事件闭集 fail-closed；⑤I8 人格段进首落 system/message（非独立落流——事件归属纪律）；⑥I10 取代链（单链约束 + 投影期 fail-closed）；⑦I11 建议非强制（治理 ≠ 策略）；⑧I14 跳层三重闸（显式命名/审批层硬保护/白名单）；⑨H6 两后端同语义（词汇同源收敛）；⑩D12 命令行包装（零新依赖 + 凭据零落盘）。
+- **产出的文件**：`src/kernel/` 三新件（deadline.ts / deadline.test.ts / chain-jump.test.ts + chain.ts 扩展 + hooks.ts 转发面）；`src/mcp/` 八新件（plugin-sdk.ts / ws-plugin.ts / hook-compat.ts / guard.ts / p15c.snapshot.test.ts + 四测试）；`src/session/` 四新件（persona.ts / subagent-backend.ts / supersession.test.ts + 两测试）；`src/sandbox/ssh-backend.ts`（+ 测试）；扩 `src/kernel/events.ts`（词汇表 28 + ApprovalSupersededEvent）/ `project.ts`（校验 + 取代链消费 + effectiveApproval/supersessionChain）/ `invariants.ts`（豁免）/ `assembly.ts`（personaId）/ `agent-child.ts`（--persona）/ `tools/registry.ts`（deadline 消费）/ `tools/builtin/task.ts`（--backend）+ `architecture-policy.json`（mcp.requires += host）+ `docs/l0-events.md`（§3.2 行 28 + §8 落地记录 23）。
+- **验收台账**：全量 `npx vitest run` **1493 passed / 1 skipped**（批次入口基线 1379 → 净增 114，169 文件）；`npx tsc --noEmit` 全程干净；`count-features.sh` = **337（层数 20；P2=48）不变**；`check-doc-links.sh`（显式传参 11 文件）**987 链接 0 失效**；`license-audit.sh` exit 0（LEAK 未命中 / CLEAN-ROOM 无明确声明 / SOURCEMAP 无）；`architecture:check` 全程 0 error / 21 warning（基线保持）；`vocabulary:check` 0 问题。
+- **词汇表扩展**：**27→28 一案 + 九条零扩展**——①`approval/superseded {requestId, byRequestId, reason?}`（I10/T-P2-306——log-only 元事件，**#23 已立案待追认**；l0-events.md §8 落地记录 23 在案、§3.2 行 28）；②其余九条（M7/I5/I4/I7/I8/I11/I14/H6/D12）逐条定形**零事件**（deadline 纯原语 / 插件机制 / 人格走既有 system/message / 取代以外的治理与执行后端全走既有面）——EVENT_TYPES 28 基线复核在位（events.test/replay.test/idle-reaper.test 计数断言同步）。
+- **盘点结论**：七面零真冲突（T-P2-311 完成记录）：①M7 deadline × M6/J23（薄壳化后既有 46 用例全绿）；②I5 能力受限 × 句柄零暴露（闭集 + 源码证伪 + 无 ctx）；③I4 不可信边界 × C 族审批（trust 恒 untrusted + 缺省全拒）；④I10 取代 ≠ 撤销（历史保留 + 叠加事实）；⑤H6 两后端同语义（字段集合相等）；⑥D12 第二实现零接口变化 + 凭据零落盘；⑦快照即规格 = `p15c.snapshot.test.ts` 两条链（ws 插件全链 + SDK×桥共存）。
+- **新发现的约束或坑**：(a) **架构检查两次实战拦截**——ws-plugin import host/protocol 触发 mcp→host 跨域（按"先声明后收紧"声明 mcp.requires += host）；subagent-backend 初版 import src/acp/jsonrpc 同时触发**深导入 + 新依赖环**（session→acp→…→session）——改为协议形状复用 + 编解码自持（acp 域"仅 8 文件"硬约束下唯一无环解）；(b) **ChainNext.to 必填破坏 16 处 fake next 构造**——to 可选化（"能力如实表达"+composeChain 恒装配）+ hooks 生产转发面 + jumpTo 判空入口；(c) **ws 测试清理纪律**——fake server 须先 terminate 活跃连接再 close（宿主未 dispose 时 server.close 等待连接自然关闭挂死 afterEach）；(d) **project.test/chain.test 行数临界**——新用例拆独立文件（supersession.test / chain-jump.test / p15c.snapshot.test）；(e) Windows 全量并行偶发一例（llm-replay 单跑复证通过——非回归）；(f) **hooks.ts 的 hookNext 需转发 to**——hook 是链上一环不切断跳层能力（配额守卫同款）。
+- **偏离计划的地方**：逐卡「完成记录」已记档——要点：T-P2-301 timeout.ts 薄壳化（原计划仅"工具层接线"，实际做了原语家迁移使 withTimeout 收敛薄壳）；T-P2-305 消费点选卡面"或"字的 agent-child --persona 分支（会话期动态切换需 wire 命令扩展，记档）；T-P2-306 验收文字"26→27"系展卡笔误（按 27→28 执行）；T-P2-309 "src/acp 复用"降级为"协议形状复用"（架构环约束）；T-P2-310 runner 注入 + probe 显式（exec 255 歧义记档）。
+- **遗留风险与未知**（→ 人工确认清单）：**新增 2 项**——真实 sshd 联调（T-P2-310，测试全走命令注入 mock）；真实 ACP agent 进程联调（T-P2-309，transport 缺省 spawn 未实测）。技术债记档：ws 插件与 SDK 插件的工具登记到 ToolRegistry 的装配接线（本批交付登记面与审批位）；治理建议的宿主消费点（注入上下文/展示）随装配域；跳层能力的装配配置（skippableLayers）随 15d/托管层；15d 端面（S2 webhook/M11 闲时）将消费本批 deadline 原语与 job 面。
+- **批次完成定义核对**：全部 ✅（plan-p2.md §8 的 15c 相关项——11 卡全勾 + tsc 干净 + 337 不变 + 987 链接 0 失效 + license exit 0 + #23 立案在案〔待追认〕+ 九条零扩展复核 EVENT_TYPES 28 + 报告/提示词/基线更新）。
+- **下一批**：**批次 15d 端与自动化（11 条：S1 M11 S2 S5 N5 P4 S3 S4 K9 K6 K7）**——卡序已展（plan-p2.md §6，11 张 T-P2-401~411），下一会话直接执行，做完收官即停。
+- **下一批提示词**：见本文件头部「批次 15d 提示词（当前活跃）」。
+
+---
+
+## 批次 15c 提示词（已执行归档）
 
 ```
 继续 aegent 批次 15c 的实施（P2 段第三批：插件生态与远程后端；10 条需求 ID：M7
@@ -27,6 +73,8 @@ I5 I4 I7 I8 I10 I11 I14 H6 D12）。推进模式不变：一会话一批次—�
    收官出组报告（写入本文件），更新本文件的批次 15d 提示词与全量基线后停止——
    不要开始 15d。不要问要不要继续。
 ```
+
+---
 
 ## 批次 15b · 判官与权限 P2（3 条：C40 C55 C42）
 
@@ -132,3 +180,5 @@ docs/plan-p0.md §0）。本批特有的注意：
 | --- | --- | --- | --- |
 | —（批次 15a） | 本批无新增项——全部验收机可验（本地库/内存面，无真实端点/平台联调；维护 CLI 已本机端到端实测） | — | 无需人工确认 |
 | C42（批次 15b） | 判官 prompt 的语义质量机验只钉结构（Stage1 闭集 / Stage2 标签格式 / 三值路由——judge.test 钉死）；真实模型下"safe/risky 分界是否合理、Stage2 理由是否可信"需联调评估 | 配置 J3 judge 段（AssemblyOptions.judgeModel）接真实判官模型，跑若干真实 ask 场景：核对 judge-audit 日志里 reviewed 的 outcome/reason 是否与人的判断一致（假阳性修正率），unavailable/aborted 比例是否可接受 | 待人工确认（判官模型接入时） |
+| D12（批次 15c） | 测试全走命令注入 mock（无真实 sshd 环境）；probe 对不可达/认证失败/网络超时的真实行为、远端命令真实退出码/编码面、Windows OpenSSH client 实测均未联调 | 在有可用 sshd 的环境实测：SshExecutionEnv.probe() 对不可达主机（255→SshConnectionError）、认证失败（BatchMode 禁交互快速失败）、远端命令执行的编码与退出码 | 待人工确认（有 sshd 环境时） |
+| H6（批次 15c） | ACP 后端经内存桥测试（真实协议往返）；transport 缺省 spawn 实现（真进程）与真实 ACP agent 的协议面（initialize 版本协商、session/update 通知方言、长请求超时行为）未联调 | 起一个真实 ACP agent 进程，跑 createAcpBackend 的 spawn 全链：核对 initialize/session/new/session/prompt 往返与 stopReason 映射 | 待人工确认（有 ACP agent 可联调时） |
