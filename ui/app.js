@@ -20,6 +20,10 @@ const leaseEl = document.getElementById("lease-status");
 const leaseBtn = document.getElementById("lease-btn");
 const input = document.getElementById("prompt-input");
 const sendBtn = document.getElementById("send-btn");
+// U14/T-P3-103 设置中心
+const settingsPanel = document.getElementById("settings-panel");
+const settingsBtn = document.getElementById("settings-btn");
+const settingsClose = document.getElementById("settings-close");
 
 surfaceEl.textContent = SURFACE_ID;
 let ws = null;
@@ -205,6 +209,208 @@ input.addEventListener("keydown", (ev) => {
 });
 
 // ---------------------------------------------------------------------------
+// U14/T-P3-103 设置中心：settings 信封直答（get/update + credentials-*），
+// 即改即存（段级 patch，500ms 防抖合并），主题全端一致（CSS 变量）。
+// ---------------------------------------------------------------------------
+
+let settingsCache = null;
+let saveTimer = null;
+const dirtySections = new Set();
+
+function sendSettings(call) {
+  const requestId = `s-${nextRequestId++}`;
+  return new Promise((resolve) => {
+    inflight.set(requestId, resolve);
+    sendRaw({ type: "settings", requestId, ...call });
+  });
+}
+
+function applyTheme(theme) {
+  document.body.dataset.theme = theme === "light" ? "light" : "dark";
+}
+
+/** 改动 → 标脏 → 防抖合并成一次段级 update（即改即存的保存时序）。 */
+function markDirty(section) {
+  dirtySections.add(section);
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flushSettings, 500);
+}
+
+async function flushSettings() {
+  if (dirtySections.size === 0 || settingsCache === null) return;
+  const patch = {};
+  for (const section of dirtySections) {
+    if (section === "defaultProvider") {
+      patch.defaultProvider = settingsCache.defaultProvider;
+    } else {
+      patch[section] = settingsCache[section] ?? {};
+    }
+  }
+  dirtySections.clear();
+  const envelope = await sendSettings({ op: "update", patch });
+  if (envelope.ok) {
+    settingsCache = envelope.result.settings;
+    applyTheme(settingsCache.appearance?.theme);
+  } else {
+    appendLine(`设置保存失败：${envelope.error?.message ?? ""}`, "warn");
+  }
+}
+
+function renderProviderList() {
+  const list = document.getElementById("provider-list");
+  list.replaceChildren();
+  for (const entry of settingsCache?.providers ?? []) {
+    const li = document.createElement("li");
+    const label = document.createElement("span");
+    label.textContent = `${entry.name}（${entry.adapter ?? "openai"}${entry.baseUrl ? ` · ${entry.baseUrl}` : ""}${entry.model ? ` · ${entry.model}` : ""}）`;
+    const isDefault = settingsCache?.defaultProvider === entry.name;
+    const defaultBtn = document.createElement("button");
+    defaultBtn.type = "button";
+    defaultBtn.textContent = isDefault ? "★ 默认" : "设为默认";
+    defaultBtn.className = isDefault ? "default-mark" : "";
+    defaultBtn.addEventListener("click", () => {
+      settingsCache.defaultProvider = entry.name;
+      dirtySections.add("defaultProvider");
+      renderProviderList();
+      markDirty("defaultProvider");
+    });
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.textContent = "删除";
+    delBtn.addEventListener("click", () => {
+      settingsCache.providers = settingsCache.providers.filter((p) => p.name !== entry.name);
+      if (isDefault) settingsCache.defaultProvider = undefined;
+      dirtySections.add("providers");
+      renderProviderList();
+      markDirty("providers");
+    });
+    li.append(label, defaultBtn, delBtn);
+    list.appendChild(li);
+  }
+}
+
+function renderCredentialList(credentials) {
+  const list = document.getElementById("credential-list");
+  list.replaceChildren();
+  for (const meta of credentials) {
+    const li = document.createElement("li");
+    li.textContent = `${meta.name}  ${meta.masked ?? ""}（更新于 ${meta.updatedAt}）`;
+    list.appendChild(li);
+  }
+}
+
+function fillSettingsForm() {
+  document.getElementById("perm-timeout").value =
+    settingsCache?.permission?.approvalTimeoutMs ?? "";
+  document.getElementById("sandbox-network").value = settingsCache?.sandbox?.network ?? "";
+  document.getElementById("sandbox-workspace").value = settingsCache?.sandbox?.workspace ?? "";
+  document.getElementById("sandbox-db").value = settingsCache?.sandbox?.db ?? "";
+  document.getElementById("appearance-theme").value = settingsCache?.appearance?.theme ?? "dark";
+  document.getElementById("appearance-language").value = settingsCache?.appearance?.language ?? "zh-CN";
+  renderProviderList();
+}
+
+async function openSettings() {
+  const envelope = await sendSettings({ op: "get" });
+  if (!envelope.ok) {
+    appendLine(`设置读取失败：${envelope.error?.message ?? ""}`, "warn");
+    return;
+  }
+  settingsCache = envelope.result.settings;
+  applyTheme(settingsCache.appearance?.theme);
+  fillSettingsForm();
+  const creds = await sendSettings({ op: "credentials-list" });
+  if (creds.ok) renderCredentialList(creds.result.credentials ?? []);
+  settingsPanel.hidden = false;
+}
+
+settingsBtn.addEventListener("click", () => void openSettings());
+settingsClose.addEventListener("click", () => {
+  settingsPanel.hidden = true;
+  void flushSettings(); // 关面板前收尾保存
+});
+
+// 供应商新增（providers 段整体替换——列表语义）
+document.getElementById("provider-form").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const name = document.getElementById("provider-name").value.trim();
+  if (name === "" || !/^[A-Za-z0-9_.-]{1,64}$/.test(name)) return;
+  if ((settingsCache?.providers ?? []).some((p) => p.name === name)) return;
+  settingsCache.providers = [
+    ...(settingsCache.providers ?? []),
+    {
+      name,
+      adapter: document.getElementById("provider-adapter").value,
+      ...(document.getElementById("provider-baseurl").value.trim() !== ""
+        ? { baseUrl: document.getElementById("provider-baseurl").value.trim() }
+        : {}),
+      ...(document.getElementById("provider-model").value.trim() !== ""
+        ? { model: document.getElementById("provider-model").value.trim() }
+        : {}),
+    },
+  ];
+  if (!settingsCache.defaultProvider) settingsCache.defaultProvider = name;
+  document.getElementById("provider-form").reset();
+  renderProviderList();
+  markDirty("providers");
+});
+
+// 凭据（U2 的 UI 面——key 经 settings 信封 credentials-set，不落配置文件）
+document.getElementById("credential-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const provider = document.getElementById("credential-provider").value.trim();
+  const key = document.getElementById("credential-key").value;
+  if (provider === "" || key === "") return;
+  const envelope = await sendSettings({ op: "credentials-set", provider, key });
+  document.getElementById("credential-key").value = "";
+  if (envelope.ok) {
+    appendLine(`凭据已保存：${provider} ${envelope.result.masked}`, "meta");
+    const creds = await sendSettings({ op: "credentials-list" });
+    if (creds.ok) renderCredentialList(creds.result.credentials ?? []);
+  } else {
+    appendLine(`凭据保存失败：${envelope.error?.message ?? ""}`, "warn");
+  }
+});
+
+document.getElementById("credential-delete").addEventListener("click", async () => {
+  const provider = document.getElementById("credential-provider").value.trim();
+  if (provider === "") return;
+  const envelope = await sendSettings({ op: "credentials-delete", provider });
+  if (envelope.ok) {
+    appendLine(`凭据已删除：${provider}`, "meta");
+    const creds = await sendSettings({ op: "credentials-list" });
+    if (creds.ok) renderCredentialList(creds.result.credentials ?? []);
+  }
+});
+
+// 即改即存：字段改动 → 缓存 + 标脏（防抖合并）
+document.getElementById("perm-timeout").addEventListener("change", (ev) => {
+  const ms = Number(ev.target.value);
+  settingsCache.permission = { ...settingsCache.permission, ...(Number.isFinite(ms) && ms > 0 ? { approvalTimeoutMs: ms } : {}) };
+  markDirty("permission");
+});
+document.getElementById("sandbox-network").addEventListener("change", (ev) => {
+  settingsCache.sandbox = { ...settingsCache.sandbox, ...(ev.target.value !== "" ? { network: ev.target.value } : {}) };
+  markDirty("sandbox");
+});
+for (const [id, field] of [["sandbox-workspace", "workspace"], ["sandbox-db", "db"]]) {
+  document.getElementById(id).addEventListener("change", (ev) => {
+    const value = ev.target.value.trim();
+    settingsCache.sandbox = { ...settingsCache.sandbox, ...(value !== "" ? { [field]: value } : {}) };
+    markDirty("sandbox");
+  });
+}
+document.getElementById("appearance-theme").addEventListener("change", (ev) => {
+  settingsCache.appearance = { ...settingsCache.appearance, theme: ev.target.value };
+  applyTheme(ev.target.value);
+  markDirty("appearance");
+});
+document.getElementById("appearance-language").addEventListener("change", (ev) => {
+  settingsCache.appearance = { ...settingsCache.appearance, language: ev.target.value };
+  markDirty("appearance");
+});
+
+// ---------------------------------------------------------------------------
 // WS 生命周期：hello → query 恢复 → live 流
 // ---------------------------------------------------------------------------
 
@@ -281,7 +487,7 @@ function handleEnvelope(envelope) {
         } else {
           appendLine(`恢复视图失败：${envelope.error?.code ?? ""} ${envelope.error?.message ?? ""}`, "warn");
         }
-      } else if (!envelope.ok) {
+      } else if (!envelope.ok && !envelope.requestId.startsWith("s-")) {
         appendLine(`请求被拒：${envelope.error?.code ?? ""} ${envelope.error?.message ?? ""}`, "warn");
       }
       break;

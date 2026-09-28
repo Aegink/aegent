@@ -50,6 +50,9 @@ export interface HostBridgeOptions {
   /** N5 分类通知面（提供时挂起/轮结算/端面变化按分型发布——既有
    * notification 广播零变化，分型是附加发布面）。 */
   notifyHub?: NotificationHub;
+  /** U14/T-P3-103 settings 直答网关（提供时 settings 信封可用——host 面
+   * 配置读写与凭据管理，不经 agent 不落流）。 */
+  settingsGateway?: import("./settings-gateway.js").SettingsGateway;
 }
 
 interface SurfaceRegistration {
@@ -226,6 +229,24 @@ export class HostBridge implements SessionRouter {
         const events =
           query.afterSeq !== undefined ? all.filter((e) => e.seq > query.afterSeq!) : [...all];
         return { events };
+      },
+      // U14/T-P3-103 settings 直答（host 面配置——不经 agent 不落流）。
+      onSettings: async (call) => {
+        const gateway = this.options.settingsGateway;
+        if (gateway === undefined) {
+          const error = new Error("host 未配置 settings 面");
+          (error as unknown as { code: string }).code = "SETTINGS_UNSUPPORTED";
+          throw error;
+        }
+        if (call.op === "get") return { settings: await gateway.get() };
+        if (call.op === "update") return { settings: await gateway.update(call.patch ?? {}) };
+        if (call.op === "credentials-set") {
+          return { masked: (await gateway.credentialsSet(call.provider!, call.key!)).masked };
+        }
+        if (call.op === "credentials-delete") {
+          return { deleted: (await gateway.credentialsDelete(call.provider!)).deleted };
+        }
+        return { credentials: await gateway.credentialsList() };
       },
     };
     const server = new HostProtocolServer(this, serverOptions);

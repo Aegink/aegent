@@ -54,7 +54,7 @@
 - **风险 / 未知**：DPAPI 非交互会话可用性（P0 已验证面）
 - **完成记录（2026-09-29）**：验收 `npx vitest run src/session/credentials.test.ts` → **13 passed**（含 Windows 真 PowerShell DPAPI 往返；+dpapi.test 7 passed 回归）。落地：`credentials.ts`（CredentialStore 接口 + DpapiCredentialStore〔包 SecureKeyStore——本卡为其补 deleteKey/listKeys 对称扩展〕+ PlainFileCredentialStore〔0600 + tmp 原子替换 + 损坏 fail-closed 带指引〕+ createCredentialStore 平台工厂〔platform 注入〕）；CLI `aegent key set|get|delete|list`（`src/cli/key.ts`——key 从 stdin 读不进命令行、get 只出掩码 maskToken、幂等删除、空 key 拒绝）；**装配消费**：CLI/host main 在文件档条目将被选中时提前 decrypt defaultProvider 凭据 → `resolveChildLaunchArgv` 的 credentialKey 槽（apiKey 槽序：显式 > env > 凭据）。零明文断言：凭据文件 sk- 证伪 + settings.json 无 apiKey 字段。architecture-policy：session requires 增补 sandbox（DPAPI 依赖——声明在案）。UI 录入面随 T-P3-103 设置中心（AuthCenter 分节映射）。
 
-#### T-P3-103 · U14 · 设置中心与主题（U1/U2/U5 的完整渲染端） `[ ]`
+#### T-P3-103 · U14 · 设置中心与主题（U1/U2/U5 的完整渲染端） `[x]`
 - **依据需求**：U14（"provider 管理/凭据/权限档/沙箱档/代理/语言/日志/关于的多分节设置页 + 暗/亮主题切换"）
 - **上游首选参考**：[cc-switch·settings/ 组件族](../oss/cc-switch/src/components/settings)（About/AuthCenter/DirectorySettings/LanguageSettings/GlobalProxySettings/BackupListSection 分节形态）+ [theme-provider](../oss/cc-switch/src/components/theme-provider.tsx)
 - **取什么 / 别抄什么**：取"多分节设置页 + 分节即改即存 + 主题全端一致"行为；AuthCenter 分节映射我方凭据页（U2）；代理/备份分节不取（无对应面——YAGNI 记档）
@@ -62,6 +62,7 @@
 - **验收**：ui 资产断言（分节齐全/主题变量在位）+ settings 往返（UI 改 → 文件变 → 重启生效）+ 人工走查列确认清单
 - **依赖**：T-P3-101/102（settings + 凭据模块）
 - **风险 / 未知**：即改即存的保存时序（防抖——卡内定形）
+- **完成记录（2026-09-29）**：验收 `npx vitest run src/diagnostics/tauri-shell.test.ts src/host/server.test.ts` → **14 passed**（含新增 settings 信封 e2e 两例）。落地三件：①**wire**：ClientEnvelope 增 `settings` 信封（op 闭集 get/update/credentials-set|delete|list；op 闭集与 patch 形状 parse 层校验、段白名单 gateway 层——双层分工，未知段回类型化 SETTINGS_PATCH_SECTION_UNKNOWN 且不落盘）；②**host**：`settings-gateway.ts`（FileSettingsGateway——get/update 段级合并 + applySettingsPatch 白名单校验 + 凭据三操作，list 只回掩码）+ bridge 透传 onSettings + HostServer 装配（生产 main = 真文件）；③**ui**：设置面板右侧抽屉六分节（providers/credentials/permission/sandbox/appearance/about）+ 状态栏齿轮导航 + 即改即存（段级 patch 500ms 防抖合并）+ 主题 CSS 变量化（`body[data-theme="light"]` 全端一致）+ 凭据 key 输入 type=password 不回显。**快照即规格（机验）**：update → 文件变 → 重新 loadSettings 一致（server.test e2e）。人工走查列入人工确认清单（视觉可读性）。无 gateway 的 host 回 SETTINGS_UNSUPPORTED（功能面缺省关闭）。
 
 #### T-P3-104 · U5 · 模型/端点管理 UI（多供应商切换 + 健康徽标） `[ ]`
 - **依据需求**：U5（"多供应商列表、会话期切换、健康徽标"）

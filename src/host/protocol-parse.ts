@@ -52,6 +52,22 @@ export type ClientEnvelope =
       sessionId: string;
       op: "events";
       afterSeq?: number;
+    }
+  /**
+   * U14/T-P3-103 settings 直答信封（host 面配置——不经 agent、不落流）：
+   * op:"get" 读整份配置；op:"update" 段级补丁（providers/permission/sandbox/
+   * appearance/defaultProvider/defaultModel——提段整体替换，白名单外拒绝）；
+   * op:"credentials-set|delete|list" 凭据管理（U2——key 材料只在 set 载荷，
+   * list/get 只回掩码面）。补丁与凭据操作是 host 配置面写操作，不属于会话
+   * 写命令（不参与 run 租约——host 单实例本机面，记档）。
+   */
+  | {
+      type: "settings";
+      requestId: string;
+      op: "get" | "update" | "credentials-set" | "credentials-delete" | "credentials-list";
+      patch?: Record<string, unknown>;
+      provider?: string;
+      key?: string;
     };
 
 function rejectUnknownKeys(value: Record<string, unknown>, allowed: readonly string[]): string | null {
@@ -133,6 +149,60 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
       sessionId: record["sessionId"],
       op: "events",
       ...(record["afterSeq"] !== undefined ? { afterSeq: record["afterSeq"] as number } : {}),
+    };
+  }
+  if (type === "settings") {
+    const unknownKey = rejectUnknownKeys(record, [
+      "type",
+      "requestId",
+      "op",
+      "patch",
+      "provider",
+      "key",
+    ]);
+    if (unknownKey) throw new Error(`settings 信封${unknownKey}`);
+    if (typeof record["requestId"] !== "string" || record["requestId"] === "") {
+      throw new Error("settings 需要 requestId 非空字符串");
+    }
+    const op = record["op"];
+    if (
+      op !== "get" &&
+      op !== "update" &&
+      op !== "credentials-set" &&
+      op !== "credentials-delete" &&
+      op !== "credentials-list"
+    ) {
+      throw new Error(
+        `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list）`,
+      );
+    }
+    if (op === "update") {
+      if (record["patch"] === null || typeof record["patch"] !== "object" || Array.isArray(record["patch"])) {
+        throw new Error("settings op=update 需要 patch 对象");
+      }
+      // 段白名单在 gateway 层（applySettingsPatch——业务规则回类型化
+      // SETTINGS_PATCH_SECTION_UNKNOWN；parse 层只管信封形状）
+    }
+    if (op === "credentials-set") {
+      if (typeof record["provider"] !== "string" || record["provider"] === "") {
+        throw new Error("settings op=credentials-set 需要 provider 非空字符串");
+      }
+      if (typeof record["key"] !== "string" || record["key"] === "") {
+        throw new Error("settings op=credentials-set 需要 key 非空字符串");
+      }
+    }
+    if (op === "credentials-delete") {
+      if (typeof record["provider"] !== "string" || record["provider"] === "") {
+        throw new Error("settings op=credentials-delete 需要 provider 非空字符串");
+      }
+    }
+    return {
+      type: "settings",
+      requestId: record["requestId"],
+      op,
+      ...(record["patch"] !== undefined ? { patch: record["patch"] as Record<string, unknown> } : {}),
+      ...(typeof record["provider"] === "string" ? { provider: record["provider"] } : {}),
+      ...(typeof record["key"] === "string" ? { key: record["key"] } : {}),
     };
   }
   if (type === "request") {

@@ -111,6 +111,16 @@ export interface HostProtocolServerOptions {
    * reject（Error 带 code）→ ok:false response。
    */
   onQuery?: (query: { sessionId: string; op: "events"; afterSeq?: number }) => Promise<unknown>;
+  /**
+   * settings 信封回调（U14/T-P3-103 host 面配置——bridge 直答，不经 agent、
+   * 不落流；op 闭集 get/update/credentials-*——形状校验在 protocol-parse）。
+   */
+  onSettings?: (call: {
+    op: "get" | "update" | "credentials-set" | "credentials-delete" | "credentials-list";
+    patch?: Record<string, unknown>;
+    provider?: string;
+    key?: string;
+  }) => Promise<unknown>;
 }
 
 export class HostProtocolServer {
@@ -265,6 +275,42 @@ export class HostProtocolServer {
             typeof (error as unknown as { code?: unknown }).code === "string"
               ? (error as unknown as { code: string }).code
               : "QUERY_ERROR";
+          const message = bounded(error instanceof Error ? error.message : String(error));
+          this.write({
+            type: "response",
+            requestId: envelope.requestId,
+            ok: false,
+            error: { code, message },
+          });
+        });
+      return;
+    }
+    if (envelope.type === "settings") {
+      if (!this.options.onSettings) {
+        this.write({
+          type: "response",
+          requestId: envelope.requestId,
+          ok: false,
+          error: { code: "SETTINGS_UNSUPPORTED", message: bounded("本连接未配置 settings 面") },
+        });
+        return;
+      }
+      void this.options
+        .onSettings(envelope)
+        .then((result) => {
+          this.write({
+            type: "response",
+            requestId: envelope.requestId,
+            ok: true,
+            ...(result !== undefined ? { result } : {}),
+          });
+        })
+        .catch((error: unknown) => {
+          const code =
+            error instanceof Error &&
+            typeof (error as unknown as { code?: unknown }).code === "string"
+              ? (error as unknown as { code: string }).code
+              : "SETTINGS_ERROR";
           const message = bounded(error instanceof Error ? error.message : String(error));
           this.write({
             type: "response",

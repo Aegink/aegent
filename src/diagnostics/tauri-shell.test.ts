@@ -102,6 +102,35 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(app).toContain('"desktop"');
   });
 
+  it("U14/T-P3-103 · 设置中心资产：分节齐全 + 主题变量在位 + 导航入口（分节与 settings 模块一一对应）", () => {
+    const uiDir = path.resolve(import.meta.dirname, "..", "..", "ui");
+    const html = readFileSync(path.join(uiDir, "index.html"), "utf8");
+    // 六分节（providers/credentials/permission/sandbox/appearance/about——
+    // settings.json 各段一一对应；U5 卡在 providers 分节扩展切换与健康徽标）
+    for (const section of ["providers", "credentials", "permission", "sandbox", "appearance", "about"]) {
+      expect(html).toContain(`data-section="${section}"`);
+    }
+    // 导航入口（状态栏齿轮）与凭据不回显（U2 面注入防呆）
+    expect(html).toContain('id="settings-btn"');
+    expect(html).toContain('type="password"');
+
+    const app = readFileSync(path.join(uiDir, "app.js"), "utf8");
+    // settings 信封直答（get/update + credentials-*）与即改即存（防抖合并）
+    expect(app).toContain('op: "get"');
+    expect(app).toContain('op: "update"');
+    expect(app).toContain("credentials-set");
+    expect(app).toContain("credentials-delete");
+    expect(app).toContain("markDirty");
+    // 主题全端一致：改动即应用 body[data-theme]（dataset.theme 赋值）
+    expect(app).toContain("dataset.theme");
+
+    const css = readFileSync(path.join(uiDir, "style.css"), "utf8");
+    // 主题变量在位（亮色覆盖 + 暗色缺省——CSS 变量方案）
+    expect(css).toContain('body[data-theme="light"]');
+    expect(css).toContain("--bg:");
+    expect(css).toContain("--accent:");
+  });
+
   it("K9/T-P2-409 · 画中画资产在位：pip.html + pip.js + pip.css（S4 操作审计消费端——只读渲染面）", () => {
     const uiDir = path.resolve(import.meta.dirname, "..", "..", "ui");
     for (const name of ["pip.html", "pip.js", "pip.css"]) {

@@ -34,8 +34,9 @@ import { spawnAgentProcess } from "../kernel/agent-process.js";
 import { createSessionId, isValidSessionId } from "../session/session-id.js";
 import { SqliteEventStorage } from "../session/db.js";
 import { InMemoryEventStorage, SessionStore, type EventStorage } from "../session/store.js";
-import { loadSettings, resolveChildLaunchArgv } from "../session/settings.js";
+import { loadSettings, resolveChildLaunchArgv, defaultSettingsPath } from "../session/settings.js";
 import { createCredentialStore } from "../session/credentials.js";
+import { FileSettingsGateway } from "./settings-gateway.js";
 import { HostBridge, type AgentChannel } from "./bridge.js";
 import { HostRegistry } from "./registry.js";
 
@@ -64,6 +65,8 @@ export interface HostServerOptions {
   childArgs?: readonly string[];
   /** host 面事件存储（镜像 + roster 落流；测试注入 InMemory——bridge.test 先例）。 */
   storage?: EventStorage;
+  /** U14/T-P3-103 settings 直答网关（生产 = FileSettingsGateway；测试注入内存面）。 */
+  settingsGateway?: import("./settings-gateway.js").SettingsGateway;
 }
 
 /** host 进程运行句柄（start 的产物——stop 收束全部资源）。 */
@@ -89,7 +92,12 @@ export class HostServer {
         entryPath: this.options.agentEntryPath ?? "",
         args: ["--session", sessionId, ...(this.options.childArgs ?? [])],
       });
-    const bridge = new HostBridge({ host, agent, store });
+    const bridge = new HostBridge({
+      host,
+      agent,
+      store,
+      ...(this.options.settingsGateway !== undefined ? { settingsGateway: this.options.settingsGateway } : {}),
+    });
     // 会话流镜像（host 视角的读面）：非 roster 事件同步 append——
     // SessionStore.append 同步纪律（write-behind 持久化在 storage 端）。
     bridge.onEvent((_sid, event) => {
@@ -340,6 +348,11 @@ async function main(argv: readonly string[]): Promise<void> {
   const storage = parsed.hostDbPath !== undefined
     ? SqliteEventStorage.open({ path: parsed.hostDbPath })
     : new InMemoryEventStorage();
+  // U14/T-P3-103：settings 直答网关（生产 = 真文件——UI 改 → 文件变 → 重启生效）。
+  const settingsGateway = new FileSettingsGateway(
+    parsed.settingsPath ?? defaultSettingsPath(),
+    createCredentialStore(),
+  );
   const server = new HostServer({
     sessionId: parsed.sessionId,
     port: parsed.port,
@@ -347,6 +360,7 @@ async function main(argv: readonly string[]): Promise<void> {
     agentEntryPath: defaultAgentChildEntry(),
     childArgs: launchArgs,
     storage,
+    settingsGateway,
   });
   const handle = await server.start();
   process.stdout.write(

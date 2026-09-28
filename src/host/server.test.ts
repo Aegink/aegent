@@ -6,21 +6,37 @@
  * helper（agent 注入件 / rig / ws 客户端）在 server.test-utils.ts。
  */
 
-import { describe, expect, it } from "vitest";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import { describe, expect, it, afterEach } from "vitest";
 import WebSocket from "ws";
 
 import { echoProvider } from "../kernel/agent-process.js";
 import type { AgentRequest } from "../kernel/agent-protocol.js";
 import { InMemoryEventStorage } from "../session/store.js";
+import { FileSettingsGateway } from "./settings-gateway.js";
+import { PlainFileCredentialStore } from "../session/credentials.js";
 import { handles, makeUiFixture, startMemoryChild, fakeAgent, uiFixtures, type FakeAgent } from "./server.test-utils.js";
 import { HostServer, type HostServerHandle } from "./server.js";
 import type { EventStorage } from "../session/store.js";
 import type { AgentChannel } from "./bridge.js";
 
+const settingsTmpDirs: string[] = [];
+let settingsCallSeq = 1;
+afterEach(() => {
+  while (settingsTmpDirs.length > 0) {
+    const dir = settingsTmpDirs.pop();
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 
 async function startServer(options: {
   agent?: AgentChannel;
   storage?: EventStorage;
+  settingsGateway?: import("./settings-gateway.js").SettingsGateway;
 }): Promise<{ handle: HostServerHandle; port: number }> {
   const uiDir = makeUiFixture();
   uiFixtures.push(uiDir);
@@ -30,6 +46,7 @@ async function startServer(options: {
     uiDir,
     storage: options.storage ?? new InMemoryEventStorage(),
     ...(options.agent !== undefined ? { agent: options.agent } : {}),
+    ...(options.settingsGateway !== undefined ? { settingsGateway: options.settingsGateway } : {}),
   });
   const handle = await server.start();
   handles.push(handle);
@@ -300,6 +317,117 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
     if (plain.status === 200) {
       expect(await plain.text()).not.toContain("name"); // 非仓库 package.json
     }
+  });
+
+  // ---------------------------------------------------------------------------
+  // U14/T-P3-103 settings 直答：get/update/credentials-* 信封端到端 + 快照即
+  // 规格（UI 改 → 文件变 → 重启生效——真临时文件 FileSettingsGateway）。
+  // ---------------------------------------------------------------------------
+
+  it("settings 信封：get → update 落文件 → 重新 loadSettings（重启生效）→ credentials 往返", async () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), "aegent-host-settings-"));
+    settingsTmpDirs.push(tmp);
+    const settingsPath = path.join(tmp, "settings.json");
+    const gateway = new FileSettingsGateway(
+      settingsPath,
+      new PlainFileCredentialStore(path.join(tmp, "credentials.bin")),
+    );
+    const { port } = await startServer({ agent: fakeAgent(), settingsGateway: gateway });
+    const client = await wsConnect(port);
+    await client.hello("web-s1");
+
+    const settingsCall = (call: Record<string, unknown>) => {
+      const requestId = `s-test-${settingsCallSeq++}`;
+      client.raw({ type: "settings", requestId, ...call });
+      return client.waitFor(
+        (e) => e.type === "response" && e.requestId === requestId,
+        `settings response(${requestId})`,
+      ) as Promise<Record<string, unknown>>;
+    };
+
+    // get：文件缺失 → 缺省配置
+    const got = await settingsCall({ op: "get" });
+    expect(got.ok).toBe(true);
+    expect((got.result as { settings: { version: number } }).settings.version).toBe(1);
+
+    // update：段级补丁 → 返回合并结果 + 文件真变化
+    const updated = await settingsCall({
+      op: "update",
+      patch: {
+        providers: [{ name: "main", adapter: "anthropic", baseUrl: "https://x.example.com", model: "m1" }],
+        defaultProvider: "main",
+        appearance: { theme: "light", language: "zh-CN" },
+      },
+    });
+    expect(updated.ok).toBe(true);
+    const merged = (updated.result as { settings: { defaultProvider?: string; appearance?: { theme?: string } } }).settings;
+    expect(merged.defaultProvider).toBe("main");
+    expect(merged.appearance?.theme).toBe("light");
+    const onDisk = JSON.parse(readFileSync(settingsPath, "utf8")) as { defaultProvider?: string };
+    expect(onDisk.defaultProvider).toBe("main");
+    // 重启生效模拟：重新 loadSettings 读同一文件
+    const { loadSettings } = await import("../session/settings.js");
+    expect((await loadSettings(settingsPath)).settings.defaultProvider).toBe("main");
+
+    // 凭据面：set 回掩码（明文不回信封）→ list 见掩码 → delete
+    const setCred = await settingsCall({ op: "credentials-set", provider: "main", key: "sk-e2e-0123456789abcdefghij" });
+    expect(setCred.ok).toBe(true);
+    expect((setCred.result as { masked: string }).masked).not.toContain("sk-e2e-0123456789abcdefghij");
+    const listCred = await settingsCall({ op: "credentials-list" });
+    const credentials = (listCred.result as { credentials: { name: string; masked?: string }[] }).credentials;
+    expect(credentials).toHaveLength(1);
+    expect(credentials[0]?.name).toBe("main");
+    // 凭据库文件真在位（PlainFile 结构），删除后清单为空
+    expect(readFileSync(path.join(tmp, "credentials.bin"), "utf8")).toContain("version");
+    const delCred = await settingsCall({ op: "credentials-delete", provider: "main" });
+    expect(delCred.ok).toBe(true);
+    const listAfter = await settingsCall({ op: "credentials-list" });
+    expect((listAfter.result as { credentials: unknown[] }).credentials).toHaveLength(0);
+    client.close();
+  });
+
+  it("settings 信封坏形状：未知 patch 段类型化拒绝且不落盘；未知 op 协议拒绝；无 gateway 回 SETTINGS_UNSUPPORTED", async () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), "aegent-host-settings-"));
+    settingsTmpDirs.push(tmp);
+    const settingsPath = path.join(tmp, "settings.json");
+    const { port } = await startServer({
+      agent: fakeAgent(),
+      settingsGateway: new FileSettingsGateway(settingsPath, new PlainFileCredentialStore(path.join(tmp, "credentials.bin"))),
+    });
+    const client = await wsConnect(port);
+    await client.hello("web-s2");
+    const settingsCall = (call: Record<string, unknown>) => {
+      const requestId = `s-test-${settingsCallSeq++}`;
+      client.raw({ type: "settings", requestId, ...call });
+      return client.waitFor(
+        (e) => e.type === "response" && e.requestId === requestId,
+        `settings response(${requestId})`,
+      ) as Promise<Record<string, unknown>>;
+    };
+
+    const badSection = await settingsCall({ op: "update", patch: { hax: 1 } });
+    expect(badSection.ok).toBe(false);
+    expect((badSection.error as { code: string }).code).toBe("SETTINGS_PATCH_SECTION_UNKNOWN");
+    expect(existsSync(settingsPath)).toBe(false); // 拒绝即不落盘
+
+    client.raw({ type: "settings", requestId: "s-bad-op", op: "frobnicate" });
+    // op 闭集校验在 parse 层——坏行回 PROTOCOL_MALFORMED（requestId "(unparsed)"）
+    const badOp = await client.waitFor(
+      (e) => e.type === "response" && e.requestId === "(unparsed)",
+      "坏 op 回执",
+    );
+    expect(badOp.ok).toBe(false);
+    expect((badOp.error as { code: string }).code).toBe("PROTOCOL_MALFORMED");
+    client.close();
+
+    // 无 gateway 的 host → SETTINGS_UNSUPPORTED（功能面缺省关闭）
+    const { port: port2 } = await startServer({ agent: fakeAgent() });
+    const client2 = await wsConnect(port2);
+    await client2.hello("web-s3");
+    client2.raw({ type: "settings", requestId: "s-no-gw", op: "get" });
+    const unsupported = await client2.waitFor((e) => e.type === "response" && e.requestId === "s-no-gw", "无 gateway 回执");
+    expect((unsupported.error as { code: string }).code).toBe("SETTINGS_UNSUPPORTED");
+    client2.close();
   });
 });
 
