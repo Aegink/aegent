@@ -633,7 +633,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 
 ---
 
-### U. Product / 产品化（14 项，P3 层——2026-09-28 用户裁决新增；同日二次扩充 UI 功能组）
+### U. Product / 产品化（21 项，P3 层——2026-09-28 用户裁决新增；同日两次扩充：UI 功能组 + 产品扩展组）
 
 > **P3 层定位**：P0/P1/P2 做完"内核与能力"，本层做"让 aegent 从内核变成产品"——
 > 配置面、界面体验、分发与真实平台闭环。全部条目挂已有产品形态参考仓的锚点
@@ -654,6 +654,13 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | U5 | **模型/端点管理 UI**：多供应商列表、会话期切换（J6 wire 面的消费端）、健康徽标（J16 探测的消费端） | P3 | [cc-switch 核心形态](../oss/cc-switch)（多供应商配置一键切换——本仓的产品主题即此） | UI 切换模型即时生效下一轮；健康状态可见 |
 | U6 | **桌面壳 sidecar 分发（双击即用）**：壳管理 host 进程生命周期（启动/健康/退出收束）；node 运行时随包（方案对比 SEA/便携 node/打包目录，卡内定形——体积目标与 §6.1 的 60MB 壳目标分列陈述） | P3 | [cc-switch·tauri 侧](../oss/cc-switch/src-tauri)（externalBin sidecar 形态） | 真实机器双击 exe → 自起 host → UI 可对话（人工验收） |
 | U7 | **自动更新**：updater 插件 + 版本清单 + 签名校验（本地演示面——分发渠道不建） | P3 | [cc-switch·tauri-plugin-updater](../oss/cc-switch/src-tauri/Cargo.toml)（pubkey + endpoints 形态） | 升级包签名校验通过/拒绝两路可演示 |
+| U15 | **工作面板（WorkPanel 三 Tab）**：文件树浏览（workspace 只读树+打开预览）、变更评审 Tab（从消息流提取 agent 改了哪些文件——增删改清单+汇总统计）、子代理监控 Tab（委派状态/耗时/失败一览——E5/H2 面的可视化） | P3 | [pi-desktop·workpanel 五件](../oss/pi-desktop/apps/desktop/src/components/workpanel)（WorkPanel/FilesTab/ReviewTab/SubagentPanel——ReviewTab 的 reviewChangesFromMessages + summarizeReviewChanges 行为） | agent 干活过程可视化：改了什么/子代理状态一目了然 |
+| U16 | **提示词库**：用户自建/编辑/删除 prompt 模板（库列表+表单+条目），Composer 斜杠调用时列出可选 | P3 | [cc-switch·prompts 五件](../oss/cc-switch/src/components/prompts)（PromptLibrary/PromptFormPanel/PromptListItem——用户提示词库形态；区别于 I8 的系统人格预设） | 模板 CRUD 可用；输入时 / 可唤出 |
+| U17 | **MCP 管理向导**：MCP server 的向导式添加（分步表单）、统一管理面板（启停/编辑/删除）、连接校验 | P3 | [cc-switch·mcp 四件](../oss/cc-switch/src/components/mcp)（McpWizardModal/McpFormModal/UnifiedMcpPanel/useMcpValidation——向导+校验形态） | 向导添加一个 MCP server 全程不查文档 |
+| U18 | **辅助模型配置卡**：判官/摘要/标题等增强任务的模型独立配置（选哪个模型 + reasoning 档位），与主对话模型分离 | P3 | [pi-desktop·EnhancementModelCard](../oss/pi-desktop/apps/desktop/src/components/settings)（ADR 0121："Which model rewrites the Composer draft, and with how much reasoning"）——C42 判官（P2 15b）的配置 UI 面 | 辅助任务与主模型分档可配；缺省回退主模型 |
+| U19 | **Profiles 配置档与故障转移徽标**：配置组合档（provider+模型+权限的一键场景切换）与多供应商故障转移优先级徽标（J15 的 UI 消费端） | P3 | [cc-switch·ProfileSwitcher/ProfileManageDialog](../oss/cc-switch/src/components/profiles) + [FailoverPriorityBadge](../oss/cc-switch/src/components/providers) | 场景一键切换；故障转移顺序可见可调 |
+| U20 | **配置导入导出与深链分享**：配置包导出/导入（含备份列表）、深链导入的确认面（MCP/提示词/技能三类导入确认） | P3 | [cc-switch·ImportExportSection/BackupListSection](../oss/cc-switch/src/components/settings) + [deeplink 三确认](../oss/cc-switch/src/components/deeplink) | 配置可迁移可分享；导入必有确认 |
+| U21 | **CLI 终端体验升级（TUI 增强）**：REPL 编辑器升级——kill-ring 剪贴环、模糊历史搜索（Alt-Screen 搜索面）、多行编辑（CLI 是 K1 主入口，产品化不能只顾图形端） | P3 | [pi·tui·editor/kill-ring/alt-screen-search/fuzzy](../oss/pi/packages/tui/src)（完整 TUI 编辑器组件——🔴 只学行为） | CLI 编辑手感达现代 TUI 水平 |
 | U8 | **真实平台联调收尾**：Anthropic 真实端点（cache_control 策略）、飞书/Slack 真实机器人、STT 真实端点、OAuth 真实流程、ACP 真实客户端——人工确认清单逐项闭环 | P3 | 各平台真实环境（凭据由用户提供，掩码入 `private/`） | 人工确认清单全部转正或明确放弃 |
 
 ## 5. 合计（由 `bash tools/count-features.sh` 统计，非手工）

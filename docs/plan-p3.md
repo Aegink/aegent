@@ -1,9 +1,9 @@
 # P3 实施计划（产品化层）
 
-> **性质**：P3 优先级层全阶段计划（U 域 14 条 / 批次 16a+16b / 16 张卡），2026-09-28 展卡（同日二次扩充 UI 功能组——用户裁决："UI 精美化太少了，参考仓库成熟软件的多个功能多个 UI"）——**"让 aegent 从内核变成产品"**。
+> **性质**：P3 优先级层全阶段计划（U 域 21 条 / 批次 16a+16b+16c / 24 张卡），2026-09-28 展卡（同日两次扩充——①UI 功能组：用户裁决"UI 精美化太少了，参考仓库成熟软件的多个功能多个 UI"；②产品扩展组：用户裁决"再多看看各个仓库，还可以补充更多"——深读 pi-desktop·workpanel/services、cc-switch·mcp/prompts/profiles/providers 子域、pi·tui 编辑器组件后新增 U15~U21）——**"让 aegent 从内核变成产品"**。
 > **执行协议**：沿用 [`plan-p0.md`](plan-p0.md) §0；推进模式一会话一批次（16a → 16b）。
-> **锚点纪律**：U 域 14 条锚点于 2026-09-28 展卡逐一核对——本轮**深读了两个产品仓的组件清单**（cc-switch·src/components 38 件 + pi-desktop·src/components 46 件），行为证据取自组件名与其源码头注释（ComposerAutocomplete 五类补全图标集 / StartupRecovery 的 startup-watchdog 诊断面 / cc-switch settings 的 AuthCenter·BackupList·Proxy·Language 分节 / skills 的 RepoManager 形态）。
-> **执行前置**：批次 16a/16b 在批次 15a~15e（P2，[`plan-p2.md`](plan-p2.md)）收官之后——U3 依赖 15a 的 Q2、U12 依赖 15e 的 J21、U13 依赖 15d 的 N5 与 M3、U8 依赖 15d/15b/15c 面。
+> **锚点纪律**：U 域 21 条锚点于 2026-09-28 展卡逐一核对——两轮深读：①产品 UI 清单（cc-switch·src/components 38 件 + pi-desktop·src/components 46 件——ComposerAutocomplete 五类补全图标集 / StartupRecovery 的 startup-watchdog 诊断面 / cc-switch settings 的 AuthCenter·BackupList·Proxy·Language 分节）；②产品扩展面（pi-desktop·workpanel 五 Tab——ReviewTab 的 `reviewChangesFromMessages`+`summarizeReviewChanges` 与 SubagentPanel 的 delegation 状态/耗时/失败收集、cc-switch·mcp 向导四件/prompts 五件/profiles 两件/providers·FailoverPriorityBadge、settings·EnhancementModelCard（ADR 0121 辅助模型）、deeplink 三确认、pi·tui editor/kill-ring/alt-screen-search/fuzzy 编辑器组件——行为证据取自组件名与源码头注释）。
+> **执行前置**：批次 16a/16b/16c 在批次 15a~15e（P2，[`plan-p2.md`](plan-p2.md)）收官之后——U3 依赖 15a 的 Q2、U12 依赖 15e 的 J21、U13 依赖 15d 的 N5 与 M3、U15 依赖 15a 的 Q2 与 P1 的 E5/H2、U18 依赖 15b 的 C42、U19 依赖 P1 的 J15、U8 依赖 15d/15b/15c 面。
 
 ## §1 全局约束（P3 段）
 
@@ -12,7 +12,7 @@
 3. **构建链最小化**：不引入前端框架（React/Vite 不取——ui/ 原生 ES module 已工作，重写无验收收益）；渲染增强用 marked（MIT）+ highlight.js（BSD-3）两个纯库 vendor 本地化（`ui/vendor/`，THIRD_PARTY 登记）。
 4. **渲染安全防呆**：markdown 渲染只作用于**模型产出**（assistant），用户输入不渲染（注入面禁足）；marked 配置禁 HTML 透传。
 5. **体积目标分列陈述**：§6.1 的 60MB 是"壳"目标；U6 引入运行时随包后安装器体积分列（壳 + runtime），不混用旧口径。
-6. **工程纪律不变**：新域 managed:true 入册；工具链四件收官必跑；count-features = **324**（P3 列 14 条）。
+6. **工程纪律不变**：新域 managed:true 入册；工具链四件收官必跑；count-features = **331**（P3 列 21 条）。
 
 ## §3 批次 16a 卡序（6 张：U1/U2/U14/U5/U3 + 收口——产品地基：配置与设置中心；2026-09-28 展卡）
 
@@ -176,8 +176,92 @@
 - **依赖**：T-P3-101 ~ 115 全部
 - **风险 / 未知**：无
 
-## §5 批次完成定义
+## §5 批次 16c 卡序（8 张：U15/U16/U17/U18/U19/U20/U21 + 收口——产品扩展组；2026-09-28 展卡）
+
+**展卡核对结论（16c）**：
+1. **U15 工作面板是本轮最大发现**：pi-desktop 把"agent 干活的过程可视化"做成三 Tab——ReviewTab 从消息流提取变更（`reviewChangesFromMessages` 纯函数 + `summarizeReviewChanges` 汇总）+ SubagentPanel 收集委派状态/耗时/失败（`collectDelegation*` 三收集器）——我方数据面全在（tool/call·result 流内事实 + E5/H2 子代理事件），缺的是可视化面板。
+2. **U16 提示词库 ≠ I8 人格预设**：I8 是系统级 agent 预设（persona），U16 是用户自建模板库（cc-switch PromptLibrary 五件——库/表单/条目）；调用面共用 Composer 斜杠补全（U10）。
+3. **U17 MCP 向导**：cc-switch 的 McpWizardModal 分步向导 + useMcpValidation 校验——我方 mcp 域（P0 已落）的管理 UI 空白面。
+4. **U18 辅助模型卡 = C42 的配置 UI 面**：pi-desktop ADR 0121 原文"哪个模型改写 Composer 草稿、带多少 reasoning"——判官/摘要/标题等辅助任务的模型与主对话模型分离配置；我方 C42（P2 15b）判官的 provider 独立配置正对应此卡。
+5. **U19 Profiles = 配置组合档**（provider+模型+权限一键切场景）+ FailoverPriorityBadge（J15 故障转移顺序的 UI 消费——P1 已落故障转移队列库面）。
+6. **U20 导入导出/深链**：cc-switch 的 BackupListSection/ImportExportSection + deeplink 三确认（MCP/提示词/技能导入必确认——安全面：深链导入是不可信输入，确认面是 C 族防线）。
+7. **U21 CLI 也是产品入口**（K1）：pi·tui 的编辑器组件（kill-ring 剪贴环/alt-screen-search/fuzzy 模糊搜索）是现代 TUI 手感的三件——REPL（readline 行式）升级为自绘编辑面的渐进路线执行时定形（倾向 kill-ring+模糊历史搜索先行，全 TUI 重绘 YAGNI 记档）。
+
+**词汇表预判**：16c 全部零事件预判（面板/库/向导/配置面——既有事件与 wire 词汇在位）。
+
+#### T-P3-117 · U15 · 工作面板三 Tab（文件树/变更评审/子代理监控） `[ ]`
+- **依据需求**：U15（"文件树浏览、变更评审 Tab、子代理监控 Tab"）
+- **上游首选参考**：[pi-desktop·workpanel 五件](../oss/pi-desktop/apps/desktop/src/components/workpanel)（WorkPanel/FilesTab/ReviewTab/SubagentPanel——🔴 只学行为）
+- **取什么 / 别抄什么**：取"三 Tab 工作面板 + 变更从消息流提取纯函数 + 委派状态收集器"三行为；不抄其 React 状态管理
+- **要产出**：①ui/ 工作面板（侧栏第二 Tab 区）：文件树 Tab（workspace 只读树——U10 的列举面复用 + 点击预览）；②变更评审 Tab（从事件流提取 write/edit/bash 写操作的文件清单——新增/修改/删除分组 + 会话汇总统计——**纯函数从流提取**，不另建状态）；③子代理监控 Tab（子代理会话列表 + 委派状态/耗时/失败——H2 面的 query 消费）
+- **验收**：ui 资产断言 + `npx vitest run src/session/review-changes.test.ts`（新——提取纯函数：从流算变更清单/汇总）+ 子代理监控数据源断言 + 人工走查
+- **依赖**：T-P3-107（16b 渲染基础）；P2 15a Q2；P1 E5/H2
+- **风险 / 未知**：文件树在大 workspace 的性能（懒加载子目录——按需记档）
+
+#### T-P3-118 · U16 · 提示词库（用户模板 CRUD + 斜杠调用） `[ ]`
+- **依据需求**：U16（"用户自建/编辑/删除 prompt 模板；Composer 斜杠调用时列出"）
+- **上游首选参考**：[cc-switch·prompts 五件](../oss/cc-switch/src/components/prompts)（PromptLibrary/PromptFormPanel/PromptListItem——🔴 只学行为）
+- **取什么 / 别抄什么**：取"库列表 + 表单编辑 + 条目管理"形态；与 I8 persona 的分界记档（系统预设 vs 用户模板）
+- **要产出**：`src/session/prompt-library.ts`（模板 CRUD——settings 同域存储或独立档）+ ui/ 库页（列表/表单/删除确认）+ Composer `/` 补全并入库内模板（U10 补全面扩展）+ 选中即填入输入框（模板变量占位符 `{{var}}` 最小面）
+- **验收**：`npx vitest run src/session/prompt-library.test.ts`——CRUD + 变量占位 + settings 隔离断言 + ui 资产断言
+- **依赖**：T-P3-103（U14/U10 面）
+- **风险 / 未知**：模板变量语法（`{{var}}` 单一约定——YAGNI 记档）
+
+#### T-P3-119 · U17 · MCP 管理向导（分步添加 + 校验 + 统一面板） `[ ]`
+- **依据需求**：U17（"MCP server 的向导式添加、统一管理面板（启停/编辑/删除）、连接校验"）
+- **上游首选参考**：[cc-switch·mcp 四件](../oss/cc-switch/src/components/mcp)（McpWizardModal/McpFormModal/UnifiedMcpPanel/useMcpValidation——🔴 只学行为）
+- **取什么 / 别抄什么**：取"向导分步（类型选择→参数→校验→保存）+ 统一面板 + 连接校验"三行为；不抄其特定生态预设
+- **要产出**：ui/ MCP 管理页（settings 分节扩展）：向导式添加（stdio/http 两型分步表单）+ 统一面板（清单/启停/编辑/删除）+ 连接校验（launch 测试——mcp 域既有连接面）+ 配置落 settings（MCP server 清单——mcp 域装配消费）
+- **验收**：`npx vitest run src/mcp/`（扩——settings 装配面）+ ui 资产断言 + 向导往返
+- **依赖**：P0 mcp 域；T-P3-103（设置页）
+- **风险 / 未知**：MCP server 真实进程的校验演示（echo 型 mock server——真实生态联调随 U8）
+
+#### T-P3-120 · U18 · 辅助模型配置卡（判官/摘要等增强任务分档） `[ ]`
+- **依据需求**：U18（"判官/摘要/标题等增强任务的模型独立配置（选哪个模型 + reasoning 档位），与主对话模型分离"）
+- **上游首选参考**：[pi-desktop·EnhancementModelCard](../oss/pi-desktop/apps/desktop/src/components/settings)（ADR 0121："Which model rewrites the Composer draft, and with how much reasoning"）
+- **取什么 / 别抄什么**：取"辅助任务模型独立配置 + reasoning 档位 + 缺省回退主模型"三行为；我方增强任务面 = C42 判官（P2 15b）+ F5 摘要（P1 已落 summarizer）
+- **要产出**：settings 增强模型分节（judge/summarizer 两任务各配 provider+model+reasoning 档——缺省 = 主模型回退）+ 消费端接线（C42 判官配置 / F5 summarizer 配置读此档——P2 15b 卡的 judge 配置面与本卡对齐）+ ui/ 设置页分节（U14 扩展）
+- **验收**：`npx vitest run src/session/settings.test.ts`（扩）+ `src/policy/judge.test.ts`（扩——配置读取）+ ui 资产断言
+- **依赖**：P2 15b（C42 判官）；T-P3-101
+- **风险 / 未知**：增强任务清单（判官/摘要两个起步——标题生成无独立面记档）
+
+#### T-P3-121 · U19 · Profiles 配置档与故障转移徽标 `[ ]`
+- **依据需求**：U19（"配置组合档一键切场景；多供应商故障转移优先级徽标"）
+- **上游首选参考**：[cc-switch·ProfileSwitcher/ProfileManageDialog](../oss/cc-switch/src/components/profiles) + [FailoverPriorityBadge](../oss/cc-switch/src/components/providers)（🔴 只学行为）
+- **取什么 / 别抄什么**：取"组合档 = 子配置集一键切换 + 优先级可见可调"行为；不抄其多应用切换语义
+- **要产出**：①settings Profiles 档（组合：默认 provider+模型+权限档+沙箱档的命名组合）+ ui/ 管理页（建/删/切换——切换 = 批量改 settings 生效值）+ 状态栏快速切换器；②供应商列表的故障转移优先级拖拽排序（settings 的 provider 顺序 = failover 顺序——J15 消费断言）
+- **验收**：`npx vitest run src/session/settings.test.ts`（扩——Profiles 往返 + 顺序语义）+ ui 资产断言 + J15 消费链断言
+- **依赖**：T-P3-104（供应商列表）；P1 J15
+- **风险 / 未知**：切换时在途会话的语义（新 turn 生效——J6 同款）
+
+#### T-P3-122 · U20 · 配置导入导出与深链分享（备份/迁移/导入确认） `[ ]`
+- **依据需求**：U20（"配置包导出/导入（含备份列表）、深链导入的确认面"）
+- **上游首选参考**：[cc-switch·ImportExportSection/BackupListSection](../oss/cc-switch/src/components/settings) + [deeplink 三确认](../oss/cc-switch/src/components/deeplink)（🔴 只学行为）
+- **取什么 / 别抄什么**：取"导出包 + 导入确认 + 备份列表"行为；深链协议（自定义 scheme）最小面——aegent://import?data= 形态（Tauri deep-link 插件或浏览器协议——执行时定形）；**导入必确认**（不可信输入面）
+- **要产出**：`src/session/settings-transfer.ts`——导出（settings+providers 打包 JSON——**凭据不打包**零明文纪律）+ 导入（校验 → 确认对话框逐项列出变更 → 应用）+ 自动备份（导入前快照旧配置——保留最近 N 份）+ ui/ 导入导出分节（U14 扩展）+ 深链确认页
+- **验收**：`npx vitest run src/session/settings-transfer.test.ts`——往返 + 凭据排除断言 + 备份滚动 + 坏包拒绝 + ui 资产断言
+- **依赖**：T-P3-101/102
+- **风险 / 未知**：深链 scheme 注册（Tauri 插件面——U7 同款插件解禁逻辑）
+
+#### T-P3-123 · U21 · CLI 终端体验升级（kill-ring/模糊搜索/多行编辑） `[ ]`
+- **依据需求**：U21（"REPL 编辑器升级——kill-ring、模糊历史搜索、多行编辑；CLI 是 K1 主入口，产品化不能只顾图形端"）
+- **上游首选参考**：[pi·tui·editor/kill-ring/alt-screen-search/fuzzy](../oss/pi/packages/tui/src)（🔴 只学行为——完整 TUI 编辑器组件）
+- **取什么 / 别抄什么**：取"kill-ring（Ctrl+K/U/W 剪贴环）+ 模糊历史搜索 + 多行编辑"三行为；全 TUI 重绘（alt-screen/鼠标/组件框架）不取——渐进路线（readline 之上增强，倾向 kill-ring + 模糊历史搜索先行，全重绘 YAGNI 记档）
+- **要产出**：`src/cli/editor.ts`——输入行编辑增强（kill-ring 面向 REPL 历史/当前行的剪贴操作 + Ctrl+R 模糊历史搜索 + 反斜杠续行的多行输入）+ 接线 repl.ts（既有命令零变化）
+- **验收**：`npx vitest run src/cli/editor.test.ts`（新）+ `src/cli/cli.test.ts`（扩）——三行为用例 + 既有 REPL 命令零回归
+- **依赖**：无（独立面——16c 可并行）
+- **风险 / 未知**：Windows 终端按键差异（Ctrl+W 等——跨终端兼容负例记档）
+
+#### T-P3-124 · 收口 · 16c 盘点 + P3 全段对账 `[ ]`
+- **依据需求**：批次 16c 收口 + P3 全段终验收
+- **要产出**：盘点面：①U15 变更提取纯函数 × 流轻量纪律（从流算不建状态）；②U16 用户模板 × I8 系统预设分界；③U18 辅助模型 × 主模型回退链；④U20 导入确认 × 不可信输入面（C 族防线）；⑤U21 CLI 增强 × 既有命令零回归；⑥P3 全段对账（21 条状态表）+ 人工确认清单闭环复核
+- **验收**：`npx vitest run`（全量）+ 工具链四件（count-features = 331）+ license-audit
+- **依赖**：T-P3-101 ~ 123 全部
+- **风险 / 未知**：无
+
+## §6 批次完成定义
 
 - **16a**：6 张卡全勾 ✅；CLI 不带环境变量可启动（读配置）✅；凭据零明文 ✅；设置中心人工走查 ✅；报告入 `plan-p3-progress.md` ✅。
 - **16b**：10 张卡全勾 ✅；渲染安全评审 ✅；**双击 exe 可对话（人工验收）** ✅；人工确认清单全部闭环（转正/放弃两态）✅；`count-features.sh` = **324** ✅；`check-doc-links.sh` 显式传参 0 失效 ✅；`license-audit.sh` exit 0（vendor 登记）✅。
-- P3 对账：14 条逐条状态表（落地/放弃理由）入 progress ✅。
+- **16c**：8 张卡全勾 ✅；工作面板三 Tab 可用（文件树/变更评审/子代理监控）✅；提示词库/MCP 向导/辅助模型卡/Profiles/导入导出/CLI TUI 各面验收 ✅；报告入 `plan-p3-progress.md` ✅。
+- P3 对账：21 条逐条状态表（落地/放弃理由）入 progress ✅。
