@@ -633,7 +633,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 
 ---
 
-### U. Product / 产品化（8 项，P3 层——2026-09-28 用户裁决新增）
+### U. Product / 产品化（14 项，P3 层——2026-09-28 用户裁决新增；同日二次扩充 UI 功能组）
 
 > **P3 层定位**：P0/P1/P2 做完"内核与能力"，本层做"让 aegent 从内核变成产品"——
 > 配置面、界面体验、分发与真实平台闭环。全部条目挂已有产品形态参考仓的锚点
@@ -644,7 +644,13 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | U1 | **配置文件面**：settings 持久化（provider 列表、默认端点/模型、权限档、沙箱档、外观）；优先级 环境变量 > 配置文件 > 默认值；损坏配置 fail-closed 且给出修复指引 | P3 | [cc-switch·src/config.rs](../oss/cc-switch/src-tauri/src/config.rs) + [app_store.rs](../oss/cc-switch/src-tauri/src/app_store.rs)（配置读写/迁移/默认值的产品形态） | CLI **不带环境变量可启动**（读配置）；坏配置启动即报且指行 |
 | U2 | **凭据管理入口**：key 的录入/更换/删除走 CLI/UI（落盘经 DPAPI 加密——D8 延伸）；配置文件与日志零明文 | P3 | [cc-switch·app_store.rs](../oss/cc-switch/src-tauri/src/app_store.rs)（凭据隔离存储）+ [codex·dpapi.rs](../oss/codex/codex-rs/windows-sandbox-rs/src/dpapi.rs) | 录入→加密落盘→读取解密往返；`grep` 配置目录无明文 |
 | U3 | **会话历史管理**：历史会话列表（复用 P2 15a 的 Q2 SQL 查询）/ 续聊（M3 resume 库面的入口）/ 删除；崩溃恢复一键续跑 | P3 | [pi-desktop·会话列表行为](../oss/pi-desktop)（🔴 只学行为）+ dsh·session-query（P2 已落检索面） | 列表/续聊/删除三面可用；resume 一键触发 |
-| U4 | **UI 精美化**：markdown 与代码高亮渲染、流式打字、工具调用卡展开（args/result 折叠、写操作 diff 视图）、审批卡优化、错误与重试交互；**仍一份 ui/ 资产两端共用**（K2/K5 不漂移） | P3 | [pi·client](../oss/pi/packages/client)（🔴 只学行为：渲染分层与更新纪律） | 渲染可读性达产品级；桌面/网页同一份资产 |
+| U4 | **UI 渲染分层基础**：markdown 与代码高亮渲染（含代码块复制按钮）、流式打字节流、工具调用卡展开（args/result 折叠、写操作 diff 视图）、审批卡优化、错误与重试交互；**仍一份 ui/ 资产两端共用**（K2/K5 不漂移） | P3 | [pi·client](../oss/pi/packages/client)（🔴 只学行为：渲染分层与更新纪律） | 渲染可读性达产品级；桌面/网页同一份资产 |
+| U9 | **对话导航与检索 UI**：会话内搜索（高亮 + 跳转）、跨会话搜索（P2 15a Q2 检索面的 UI 消费）、长会话小地图（消息结构导航条——"第几轮在哪儿"一眼可见） | P3 | [pi-desktop·SearchDialog/SearchSessionResults/ConversationMinimap](../oss/pi-desktop/apps/desktop/src/components)（🔴 只学行为） | 长会话找内容不再滚屏；跨会话搜索命中可跳转 |
+| U10 | **输入区升级（Composer）**：多行编辑、@文件/@目录补全（workspace 清单驱动）、斜杠命令与技能补全、粘贴图片入附件面 | P3 | [pi-desktop·ComposerAutocomplete](../oss/pi-desktop/apps/desktop/src/components)（补全面：文件/文件夹/斜杠/插件/技能五类）+ [pi·tui·autocomplete](../oss/pi/packages/tui)（🔴 只学行为） | 补全面可用且不误触；粘贴图走 P1 附件链 |
+| U11 | **项目/工作区管理**：多项目列表与切换、项目级指令与记忆页（工作区配置 + goal/set 面的入口化）、新建/编辑/删除项目对话框 | P3 | [pi-desktop·HomeProjectSwitcher/ProjectCreateDialog/ProjectEditDialog/ProjectInstructionsDialog/ProjectMemoryDialog](../oss/pi-desktop/apps/desktop/src/components)（🔴 只学行为） | 多项目切换不串会话；项目级指令随会话生效 |
+| U12 | **用量与上下文可视化**：上下文余量检查器（token 用量/窗口占比/压缩状态——F 族与 E17 的 UI 消费端）、成本统计页（J21 消费端，按会话/按轮） | P3 | [pi-desktop·ContextUsageInspector](../oss/pi-desktop/apps/desktop/src/components) + [cc-switch·usage 组件族](../oss/cc-switch/src/components)（UsageFooter/UsageScriptModal） | 上下文快满可见可解释；成本按会话可查 |
+| U13 | **通知与引导体验**：通知中心与 Toast（N5 分型的 UI 消费）、首次运行引导清单、启动恢复页（M3 可视化——诊断信息 + 一键续跑）、更新横幅与发布说明弹窗（U7 消费端） | P3 | [pi-desktop·NotificationCenter/OnboardingChecklist/StartupRecovery/UpdateBanner/ReleaseNotesDialog](../oss/pi-desktop/apps/desktop/src/components)（🔴 只学行为） | 引导不挡路、恢复一键可达、更新不打断 |
+| U14 | **设置中心与主题**：U1/U2 的完整渲染端（provider 管理/凭据/权限档/沙箱档/代理/语言/日志/关于的多分节设置页）+ 暗/亮主题切换（全端一致） | P3 | [cc-switch·settings/ 组件族](../oss/cc-switch/src/components/settings)（About/AuthCenter/DirectorySettings/LanguageSettings 等）+ [theme-provider](../oss/cc-switch/src/components/theme-provider.tsx) | 设置全覆盖可改即生效；主题切换全端一致 |
 | U5 | **模型/端点管理 UI**：多供应商列表、会话期切换（J6 wire 面的消费端）、健康徽标（J16 探测的消费端） | P3 | [cc-switch 核心形态](../oss/cc-switch)（多供应商配置一键切换——本仓的产品主题即此） | UI 切换模型即时生效下一轮；健康状态可见 |
 | U6 | **桌面壳 sidecar 分发（双击即用）**：壳管理 host 进程生命周期（启动/健康/退出收束）；node 运行时随包（方案对比 SEA/便携 node/打包目录，卡内定形——体积目标与 §6.1 的 60MB 壳目标分列陈述） | P3 | [cc-switch·tauri 侧](../oss/cc-switch/src-tauri)（externalBin sidecar 形态） | 真实机器双击 exe → 自起 host → UI 可对话（人工验收） |
 | U7 | **自动更新**：updater 插件 + 版本清单 + 签名校验（本地演示面——分发渠道不建） | P3 | [cc-switch·tauri-plugin-updater](../oss/cc-switch/src-tauri/Cargo.toml)（pubkey + endpoints 形态） | 升级包签名校验通过/拒绝两路可演示 |

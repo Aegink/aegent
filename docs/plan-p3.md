@@ -1,112 +1,183 @@
 # P3 实施计划（产品化层）
 
-> **性质**：P3 优先级层全阶段计划（U 域 8 条 / 批次 16 / 9 张卡），2026-09-28 展卡——**用户裁决新增层**："让 aegent 从内核变成产品"。
-> **执行协议**：沿用 [`plan-p0.md`](plan-p0.md) §0；推进模式一会话一批次（批次 16 单批，可在批次 15e 收官后接力执行）。
-> **锚点纪律**：U 域 8 条锚点于 2026-09-28 展卡逐一核对（cc-switch 的 config.rs/app_store.rs/tauri 侧、pi·client、pi-desktop、codex·dpapi——产品形态锚全部命中；cc-switch 的**产品主题就是多供应商配置切换**，U1/U2/U5 的行为蓝本）。
-> **执行前置**：批次 16 在批次 15a~15e（P2，[`plan-p2.md`](plan-p2.md)）收官之后——U3 依赖 15a 的 Q2 检索面、U8 依赖 15d 的 IM/webhook 端与 15b/15c 面。
+> **性质**：P3 优先级层全阶段计划（U 域 14 条 / 批次 16a+16b / 16 张卡），2026-09-28 展卡（同日二次扩充 UI 功能组——用户裁决："UI 精美化太少了，参考仓库成熟软件的多个功能多个 UI"）——**"让 aegent 从内核变成产品"**。
+> **执行协议**：沿用 [`plan-p0.md`](plan-p0.md) §0；推进模式一会话一批次（16a → 16b）。
+> **锚点纪律**：U 域 14 条锚点于 2026-09-28 展卡逐一核对——本轮**深读了两个产品仓的组件清单**（cc-switch·src/components 38 件 + pi-desktop·src/components 46 件），行为证据取自组件名与其源码头注释（ComposerAutocomplete 五类补全图标集 / StartupRecovery 的 startup-watchdog 诊断面 / cc-switch settings 的 AuthCenter·BackupList·Proxy·Language 分节 / skills 的 RepoManager 形态）。
+> **执行前置**：批次 16a/16b 在批次 15a~15e（P2，[`plan-p2.md`](plan-p2.md)）收官之后——U3 依赖 15a 的 Q2、U12 依赖 15e 的 J21、U13 依赖 15d 的 N5 与 M3、U8 依赖 15d/15b/15c 面。
 
 ## §1 全局约束（P3 段）
 
-1. **一份资产两端共用不变**：U4 精美化只动 `ui/`——桌面壳（K2）与网页（K5）同时受益，不出现第二份 UI。
-2. **凭据红线全程**：U2 的 key 管理走 DPAPI/私有档（D8 延伸），配置文件与日志零明文；U8 各平台凭据由用户提供、掩码入 `private/`。
-3. **构建链最小化**：U4 不引入前端框架（React/Vite 不取——ui/ 原生 ES module 已工作，重写无验收收益）；渲染增强用 marked（MIT）+ highlight.js（BSD-3）两个纯库 vendor 本地化（`ui/vendor/`，THIRD_PARTY 登记）。
-4. **体积目标分列陈述**：§6.1 的 60MB 是"壳"目标（无 node runtime）；U6 引入运行时随包后安装器体积重新陈述（壳 + runtime 分列，不混用旧口径）。
-5. **工程纪律不变**：新域 managed:true 入册；工具链四件收官必跑；count-features = **318**（P3 列已扩）。
+1. **一份资产两端共用不变**：全部 UI 条目只动 `ui/`——桌面壳（K2）与网页（K5）同时受益，不出现第二份 UI。
+2. **凭据红线全程**：U2 的 key 管理走 DPAPI/私有档，配置文件与日志零明文；U8 各平台凭据由用户提供、掩码入 `private/`。
+3. **构建链最小化**：不引入前端框架（React/Vite 不取——ui/ 原生 ES module 已工作，重写无验收收益）；渲染增强用 marked（MIT）+ highlight.js（BSD-3）两个纯库 vendor 本地化（`ui/vendor/`，THIRD_PARTY 登记）。
+4. **渲染安全防呆**：markdown 渲染只作用于**模型产出**（assistant），用户输入不渲染（注入面禁足）；marked 配置禁 HTML 透传。
+5. **体积目标分列陈述**：§6.1 的 60MB 是"壳"目标；U6 引入运行时随包后安装器体积分列（壳 + runtime），不混用旧口径。
+6. **工程纪律不变**：新域 managed:true 入册；工具链四件收官必跑；count-features = **324**（P3 列 14 条）。
 
-## §2 批次 16 卡序（9 张：U1/U2/U3/U5/U4/U6/U7/U8 + 收口；2026-09-28 展卡）
+## §3 批次 16a 卡序（6 张：U1/U2/U14/U5/U3 + 收口——产品地基：配置与设置中心；2026-09-28 展卡）
 
-**展卡核对结论（我方现状 × 8 条）**：
-1. **U1/U2/U5 的行为蓝本就是 cc-switch 的产品主题**（多供应商配置切换）——config.rs 的配置读写/迁移/默认值分层 + app_store.rs 的凭据隔离存储直接映射我方 settings 面；我方增量 = `~/.aegent/settings.json` + 优先级链（环境变量 > 配置文件 > 默认值）+ 启动装载接进 CLI/host/桌面三入口（现三者全靠环境变量——实测发现的真实空白）。
-2. **U2 是 D8 的产品化延伸**：DPAPI 加密（P0 已落）+ cc-switch 的凭据隔离存储行为 → key 的录入/更换/删除 CLI 命令（`aegent config set-key <provider>` 形态）+ UI 设置页；零明文断言复用 license-audit 思路（grep 配置目录）。
-3. **U3 消费两个既有面**：Q2 SQL 检索（P2 15a 将落）+ M3 resume（P0 已落）——本卡是"入口面"（UI 侧栏 + CLI 子命令），不是新机制；pi-desktop 只学"会话列表的信息架构"行为。
-4. **U4 渲染增强两库**（marked/highlight.js）而非框架重写（全局约束 3）；流式打字 = 事件流渲染的节拍面（text-delta 追加节流）；工具卡展开 = 既有通知渲染的折叠增强；diff 视图 = write/apply 类工具的 args/result 对照。
-5. **U6 的真实定形点**（展卡预判）：node 运行时随包三案——①node 22 SEA（需 esbuild 先 bundle 成单文件 CJS——SEA 对多文件 ESM 支持有限）②便携 node.exe 随安装包（+~80MB，最稳）③要求用户自装 node（现状——不满足"双击即用"验收）。**倾向 ①**（真单文件 ~50MB，esbuild 是新 devDep）；执行时按 SEA 实测定形，失败回退 ②。
-6. **U7 依赖 U6 的分发形态**（updater 升级包就是 sidecar 产物的版本化）；签名走 minisign（cc-switch pubkey 形态——Tauri updater 内置支持）。
-7. **U8 是人工确认清单的闭环卡**：P1/P2 累积的真实联调项（Anthropic wire/飞书/Slack/STT/OAuth/ACP 客户端）逐项跑掉——每项都需要用户供给真实凭据/环境；跑不掉的明确"放弃"也记档（不悬挂）。
+**展卡核对结论（16a）**：
+1. **U1/U2/U14/U5 的行为蓝本就是 cc-switch 的产品主题**（多供应商配置切换）——settings/ 组件族分节形态（AuthCenter 凭据/DirectorySettings/LanguageSettings/GlobalProxySettings/AboutSection）直接映射我方设置中心分节；我方增量 = `~/.aegent/settings.json` + 优先级链 + 三入口接线（实测发现 CLI/host/桌面全靠环境变量——真实空白）。
+2. **U14 设置中心是 U1/U2/U5 的渲染端**——一卡承载避免"配置面落两次"（CLI 命令与 UI 页共用同一 settings 模块）；主题面按 cc-switch theme-provider 行为（全端一致暗/亮）。
+3. **U3 消费两个既有面**（Q2 检索 + M3 resume）——本卡是入口面（UI 侧栏 + CLI 子命令），不是新机制。
 
-**词汇表预判**：U1~U7 零事件预判（全部是入口/渲染/分发面——既有 wire 与事件词汇在位）；U8 联调若暴露协议缺口走 §0 待澄清。无 #28 立案候选预判。
+**词汇表预判**：16a 全部零事件（入口/渲染/分发面——既有词汇在位）。
 
 #### T-P3-101 · U1 · 配置文件面（settings 持久化 + 优先级链） `[ ]`
-- **依据需求**：U1（"settings 持久化；环境变量 > 配置文件 > 默认值；损坏配置 fail-closed 且给出修复指引"）
+- **依据需求**：U1（"settings 持久化（provider 列表、默认端点/模型、权限档、沙箱档、外观）；环境变量 > 配置文件 > 默认值；损坏配置 fail-closed 且给出修复指引"）
 - **上游首选参考**：[cc-switch·src/config.rs](../oss/cc-switch/src-tauri/src/config.rs) + [app_store.rs](../oss/cc-switch/src-tauri/src/app_store.rs)（配置读写/迁移/默认值的产品形态）
-- **取什么 / 别抄什么**：取"配置分层（默认值 → 文件 → 环境变量覆盖）+ 损坏 fail-closed + 迁移版本号"行为；不抄其 Rust 结构（TS 实现）与其多应用切换语义（我方单应用）
-- **要产出**：`src/session/settings.ts`——`SettingsShape`（provider 列表/默认 provider+model/权限档/沙箱档/外观/语言）+ `loadSettings(dir?)`（`~/.aegent/settings.json`：损坏 → SettingsError 带行列号与修复指引——parseProviderConfig 同款定位纪律）+ 优先级合并（env > file > default——agent-child 的 AEGENT_* 与此对接）+ `--settings <path>` 参数面；CLI/host server/agent-child 三入口接线（不带环境变量可启动）
-- **验收**：`npx vitest run src/session/settings.test.ts src/cli/index.test.ts`（扩）——优先级三档合并 + 损坏 fail-closed（错误带指引）+ 默认值启动（无 env 无文件）+ 三入口接线断言
-- **依赖**：无（P3 首卡）
-- **风险 / 未知**：配置 schema 版本迁移（v1 起步——迁移链 P1 sqlite 同款纪律）
+- **取什么 / 别抄什么**：取"配置分层（默认值 → 文件 → 环境变量覆盖）+ 损坏 fail-closed + 迁移版本号"行为；不抄其 Rust 结构与其多应用切换语义（我方单应用）
+- **要产出**：`src/session/settings.ts`——`SettingsShape`（provider 列表/默认 provider+model/权限档/沙箱档/外观/语言）+ `loadSettings(dir?)`（`~/.aegent/settings.json`：损坏 → SettingsError 带行列号与修复指引）+ 优先级合并（env > file > default——AEGENT_* 对接）+ `--settings <path>` 参数面；CLI/host/桌面三入口接线（不带环境变量可启动）
+- **验收**：`npx vitest run src/session/settings.test.ts src/cli/index.test.ts`（扩）——三档优先级合并 + 损坏 fail-closed（错误带指引）+ 默认值启动 + 三入口接线断言
+- **依赖**：无（16a 首卡）
+- **风险 / 未知**：配置 schema 版本迁移（v1 起步——迁移链 sqlite 同款纪律）
 
 #### T-P3-102 · U2 · 凭据管理入口（录入/更换/删除 + DPAPI 落盘） `[ ]`
 - **依据需求**：U2（"key 的录入/更换/删除走 CLI/UI；落盘经 DPAPI 加密；配置文件与日志零明文"）
 - **上游首选参考**：[cc-switch·app_store.rs](../oss/cc-switch/src-tauri/src/app_store.rs)（凭据隔离存储）+ [codex·dpapi.rs](../oss/codex/codex-rs/windows-sandbox-rs/src/dpapi.rs)（P0 D8 已落加密面）
-- **取什么 / 别抄什么**：取"凭据与配置分离存储 + 专用管理命令"行为；DPAPI 面复用 D8（win32-helper 已有）
-- **要产出**：`src/session/credentials.ts`——`setKey/getKey/deleteKey`（provider 维度；DPAPI 加密落 `~/.aegent/credentials.bin`——非 Windows 回退 0600 权限文件记档）+ CLI `aegent key set/get/delete <provider>` 命令 + settings 面集成（provider 配置引用凭据档——settings.json 零 key 断言）+ license-audit 式零明文扫描
-- **验收**：`npx vitest run src/session/credentials.test.ts`——往返 + 加密断言（落盘字节非明文）+ 删除面 + settings 零明文 + 非Windows 回退
-- **依赖**：T-P3-101（settings 面）
-- **风险 / 未知**：DPAPI 在非交互会话的可用性（P0 已验证面）；UI 录入页随 U4（本卡 CLI 面）
+- **取什么 / 别抄什么**：取"凭据与配置分离存储 + 专用管理命令"行为；DPAPI 面复用 D8
+- **要产出**：`src/session/credentials.ts`——`setKey/getKey/deleteKey`（provider 维度；DPAPI 加密落 `~/.aegent/credentials.bin`——非 Windows 回退 0600 权限文件记档）+ CLI `aegent key set/get/delete <provider>` + settings 面集成（settings.json 零 key 断言）+ 零明文扫描
+- **验收**：`npx vitest run src/session/credentials.test.ts`——往返 + 加密断言 + 删除面 + 零明文 + 非 Windows 回退
+- **依赖**：T-P3-101
+- **风险 / 未知**：DPAPI 非交互会话可用性（P0 已验证面）
 
-#### T-P3-103 · U3 · 会话历史管理（列表/续聊/删除入口） `[ ]`
-- **依据需求**：U3（"历史会话列表/续聊/删除；崩溃恢复一键续跑"）
-- **上游首选参考**：[pi-desktop 会话列表行为](../oss/pi-desktop)（🔴 只学行为：列表信息架构）+ P2 15a 的 Q2 检索面
-- **取什么 / 别抄什么**：取"列表（时间/标题/状态）+ 点开续聊 + 删除确认"的信息架构；机制全部复用（Q2 查询/resume/删除走 Q4 清理面）——本卡是入口面
-- **要产出**：①CLI：`aegent sessions list/resume/delete` 子命令（Q2 查询 + session/resume 请求 + Q4 删除面）；②UI 侧栏：历史列表 + 续聊按钮（query 信封扩展 `op:"sessions"` 或独立只读面——wire 形状扩展先例）+ 删除确认对话框
-- **验收**：`npx vitest run src/session/sessions-cli.test.ts src/host/server.test.ts`（扩）——列表/续聊/删除三面 + resume 一键（interrupted 会话续跑）+ UI 资产断言
-- **依赖**：P2 15a（Q2/Q4 面）；T-P3-101（settings）
-- **风险 / 未知**：wire query 扩展的形状（op 枚举追加——批次 12/14 先例）
+#### T-P3-103 · U14 · 设置中心与主题（U1/U2/U5 的完整渲染端） `[ ]`
+- **依据需求**：U14（"provider 管理/凭据/权限档/沙箱档/代理/语言/日志/关于的多分节设置页 + 暗/亮主题切换"）
+- **上游首选参考**：[cc-switch·settings/ 组件族](../oss/cc-switch/src/components/settings)（About/AuthCenter/DirectorySettings/LanguageSettings/GlobalProxySettings/BackupListSection 分节形态）+ [theme-provider](../oss/cc-switch/src/components/theme-provider.tsx)
+- **取什么 / 别抄什么**：取"多分节设置页 + 分节即改即存 + 主题全端一致"行为；AuthCenter 分节映射我方凭据页（U2）；代理/备份分节不取（无对应面——YAGNI 记档）
+- **要产出**：`ui/` 设置页（多分节：供应商管理/凭据/权限与沙箱档/外观主题/语言/关于——即改即存 settings 面）+ 主题切换（CSS 变量方案——`ui/style.css` 主题变量化）+ 导航入口（状态栏齿轮）；分节与 settings 模块一一对应断言
+- **验收**：ui 资产断言（分节齐全/主题变量在位）+ settings 往返（UI 改 → 文件变 → 重启生效）+ 人工走查列确认清单
+- **依赖**：T-P3-101/102（settings + 凭据模块）
+- **风险 / 未知**：即改即存的保存时序（防抖——卡内定形）
 
 #### T-P3-104 · U5 · 模型/端点管理 UI（多供应商切换 + 健康徽标） `[ ]`
 - **依据需求**：U5（"多供应商列表、会话期切换、健康徽标"）
 - **上游首选参考**：[cc-switch 核心形态](../oss/cc-switch)（多供应商配置一键切换——本仓的产品主题即此）
-- **取什么 / 别抄什么**：取"供应商卡片列表 + 一键切换 + 状态显示"的界面行为；不抄其 Claude/Codex/Gemini 特定配置语义（我方 provider 泛型配置）
-- **要产出**：①settings 的 provider 列表 UI（ui/ 设置页：列表/新增/编辑/默认标记——U1 配置的渲染端）；②会话期切换：UI 下拉 → `model/switch` 请求（J6 wire 面已有——即时生效下一轮）；③健康徽标：J16 probeProvider 的 UI 消费（列表项状态点——探测节流面）
+- **取什么 / 别抄什么**：取"供应商卡片列表 + 一键切换 + 状态显示"的界面行为；不抄其 Claude/Codex/Gemini 特定配置语义
+- **要产出**：设置页供应商分节（列表/新增/编辑/默认标记——U1 渲染端）+ 会话期切换（UI 下拉 → `model/switch` 请求——J6 wire 面已有，即时生效下一轮）+ 健康徽标（J16 probeProvider 的 UI 消费——列表项状态点，探测节流）
 - **验收**：`npx vitest run src/host/server.test.ts`（扩）+ ui 资产断言——切换请求往返 + 下一轮 request/header modelId 变化 + 健康探测触发
-- **依赖**：T-P3-101/102（settings + 凭据）
-- **风险 / 未知**：切换时在途轮的语义（J6 既有语义——新 turn 生效）
+- **依赖**：T-P3-101/102/103
+- **风险 / 未知**：切换时在途轮语义（J6 既有——新 turn 生效）
 
-#### T-P3-105 · U4 · UI 精美化（渲染分层 + 交互升级，一份资产） `[ ]`
-- **依据需求**：U4（"markdown/代码高亮/流式打字/工具卡展开/diff 视图/审批卡优化；仍一份 ui/ 资产两端共用"）
-- **上游首选参考**：[pi·client](../oss/pi/packages/client)（🔴 只学行为：渲染分层与增量更新纪律）
-- **取什么 / 别抄什么**：取"渲染分层（纯文本层/markdown 层/代码层）+ 增量追加不重排"行为；不抄其 React 框架与组件树（全局约束 3——原生 ES module + 两 vendor 库）
-- **要产出**：①`ui/vendor/`（marked + highlight.js 本地化 + THIRD_PARTY 登记）；②渲染分层：assistant/message 走 markdown+高亮（user/message 保持纯文本——注入面防呆：模型产出渲染、用户输入不渲染）；③流式打字：text-delta 节流追加（requestAnimationFrame 面）；④工具卡展开：tool/call→result 成对折叠卡（args JSON 格式化 + 写操作 diff 对照——args.path/content 前后文）；⑤审批卡优化（C55 拒绝面 alternatives 展示——P2 15b 落地后）+ 错误重试交互（prompt 重提）
-- **验收**：`npx vitest run src/diagnostics/tauri-shell.test.ts`（扩——vendor 在位与资产完整性）+ ui 资产冒烟（静态托管断言扩展）+ **人工确认清单**：浏览器/WebView 实际渲染走查
-- **依赖**：T-P3-104（设置页定形后统一动 ui/）
-- **风险 / 未知**：XSS 面（模型产出的 markdown 渲染——marked 配置禁 HTML + 渲染结果只进 innerHTML 白名单策略——安全评审落完成记录）；人工视觉验收
+#### T-P3-105 · U3 · 会话历史管理（列表/续聊/删除入口） `[ ]`
+- **依据需求**：U3（"历史会话列表/续聊/删除；崩溃恢复一键续跑"）
+- **上游首选参考**：[pi-desktop 会话列表行为](../oss/pi-desktop)（🔴 只学行为：列表信息架构）+ P2 15a 的 Q2 检索面
+- **取什么 / 别抄什么**：取"列表（时间/标题/状态）+ 点开续聊 + 删除确认"的信息架构；机制全部复用（Q2/resume/Q4）——入口面
+- **要产出**：①CLI：`aegent sessions list/resume/delete` 子命令；②UI 侧栏：历史列表 + 续聊按钮（query 信封扩展 `op:"sessions"`——wire 形状扩展先例）+ 删除确认对话框
+- **验收**：`npx vitest run src/session/sessions-cli.test.ts src/host/server.test.ts`（扩）——三面 + resume 一键 + UI 资产断言
+- **依赖**：P2 15a（Q2/Q4）；T-P3-101
+- **风险 / 未知**：wire query 扩展形状（op 枚举追加——批次 12/14 先例）
 
-#### T-P3-106 · U6 · 桌面壳 sidecar 分发（双击即用） `[ ]`
-- **依据需求**：U6（"壳管理 host 进程生命周期；node 运行时随包；双击即用"）
-- **上游首选参考**：[cc-switch·tauri 侧](../oss/cc-switch/src-tauri)（externalBin sidecar 形态）
-- **取什么 / 别抄什么**：取"壳 = 进程管理器（起/健康/收束）"行为；运行时随包方案执行时定形（展卡预判：**倾向 esbuild bundle 成单文件 CJS + node 22 SEA** 真单文件 ~50MB；SEA 实测失败回退便携 node.exe 随包 +~80MB——全局约束 4 体积分列陈述）
-- **要产出**：①host 的单文件 bundle 面（esbuild devDep + `build:single` 脚本——dist 全量打进一个 CJS）；②SEA 产物（`node --experimental-sea-config` 流程脚本）或便携 node 回退；③Tauri 壳 Rust 侧进程管理（起 sidecar/健康探测/退出收束——tauri shell 插件或 std::process 最小面）；④壳启动参数来自 U1 配置（host 端口/session）
-- **验收**：**真实机器双击 exe → 自起 host → UI 可对话（人工验收）** + `npx vitest run src/diagnostics/tauri-shell.test.ts`（扩——sidecar 配置形状）+ 安装器体积分列数字落完成记录
-- **依赖**：T-P3-101（配置）；批次 13 K2 壳面
-- **风险 / 未知**：SEA 对依赖树的兼容（better-sqlite3 原生模块——SEA 内嵌 .node 有限制，**这是 ①案最大风险点**，失败即回退 ②）；Windows Defender 对 SEA exe 的误报（签名面随 U7）
-
-#### T-P3-107 · U7 · 自动更新（updater + 版本清单 + 签名，本地演示面） `[ ]`
-- **依据需求**：U7（"updater 插件 + 版本清单 + 签名校验；本地演示面——分发渠道不建"）
-- **上游首选参考**：[cc-switch·tauri-plugin-updater](../oss/cc-switch/src-tauri/Cargo.toml)（pubkey + endpoints 形态）
-- **取什么 / 别抄什么**：取"签名 + 清单 + 插件校验安装"链路；不建真实分发渠道（endpoints 指向本地文件/localhost——演示面）
-- **要产出**：tauri-plugin-updater 接入（九插件群解禁的例外——updater 单插件入册）+ minisign 密钥对生成流程（私钥 `private/`）+ 版本清单 `latest.json` 生成脚本（tools/）+ 本地演示：旧版装 → 清单指向新版 → 校验安装（人工演示记录）；签名拒绝负例
-- **验收**：本地 updater 演示两路（通过/拒绝）落完成记录 + `npx vitest run src/diagnostics/tauri-shell.test.ts`（扩——updater 配置形状）
-- **依赖**：T-P3-106（sidecar 产物即升级对象）
-- **风险 / 未知**：本地 HTTPS 端点需求（updater 要求 https——本地演示用 localhost 例外或 http 豁免配置——执行时定形）
-
-#### T-P3-108 · U8 · 真实平台联调收尾（人工确认清单闭环） `[ ]`
-- **依据需求**：U8（"Anthropic 真实端点、飞书/Slack 真实机器人、STT 真实端点、OAuth 真实流程、ACP 真实客户端——人工确认清单逐项闭环"）
-- **上游首选参考**：各平台真实环境（P1/P2 联调项的汇总闭环——无单一新锚）
-- **取什么 / 别抄什么**：——（验证卡）
-- **要产出**：逐项联调记录（每项：凭据掩码入 `private/` + 实测结果 + 缺口修复或放弃理由）：①Anthropic 真实端点一轮（cache_control 标记策略——T-P1-108 的终验）；②飞书/Slack 真实机器人一轮（P2 15d K6/K7 面）；③STT 真实端点（P2 15d P4 面）；④OAuth 真实流程（P2 15e J17 面）；⑤ACP 真实客户端（T-P1-117 终验）；⑥Windows 真机桌面壳+S4 屏幕操作（U6/P2 15d S4 的真机面）
-- **验收**：人工确认清单逐项状态更新（转正/放弃两态——不悬挂）+ 联调缺口若涉产品代码 → 当场修复回归
-- **依赖**：P2 15d/15e 全部 + T-P3-106（桌面壳真机）
-- **风险 / 未知**：**各项都需要用户提供真实凭据/环境**——用户不可用时明确记档放弃（不阻塞 P3 收官）
-
-#### T-P3-109 · 收口 · P3 盘点 + 产品化终验收 `[ ]`
-- **依据需求**：批次 16 收口
-- **要产出**：盘点面：①U1 优先级链 × 三入口一致性（CLI/host/桌面同配置源）；②U2 凭据零明文全链扫描；③U4 渲染 XSS 面评审结论；④U6 分发形态定形记录（SEA 或回退）+ 体积分列陈述；⑤U8 闭环状态表；⑥快照即规格：双击 exe 全链一条（人工）；⑦全量回归 + 工具链四件
-- **验收**：`npx vitest run`（全量）+ 工具链四件（count-features = 318）+ license-audit + **P3 对账**：8 条逐条状态表入 progress
-- **依赖**：T-P3-101 ~ 108 全部
+#### T-P3-106 · 收口 · 16a 盘点 `[ ]`
+- **依据需求**：批次 16a 收口
+- **要产出**：盘点面：①U1 优先级链 × 三入口一致性；②U2 凭据零明文全链扫描；③U14 设置分节 × settings 模块一一对应；④U5 切换 × J6 语义（新 turn 生效）；⑤快照即规格：设置改 → 文件变 → 重启生效一条
+- **验收**：`npx vitest run`（全量）+ 工具链四件 + license-audit
+- **依赖**：T-P3-101 ~ 105
 - **风险 / 未知**：无
 
-## §3 批次 16 完成定义
+## §4 批次 16b 卡序（10 张：U4/U9/U10/U11/U12/U13/U6/U7/U8 + 收口——体验与分发；2026-09-28 展卡）
 
-- 9 张卡全部打勾 ✅（每勾附「命令 + 结果摘要」）；`npx tsc --noEmit` 干净 ✅；`count-features.sh` = **318**（U 域 8 条 P3）✅；`check-doc-links.sh` 显式传参 0 失效 ✅；`license-audit.sh` exit 0（vendor 库登记）✅。
-- **产品化验收**：CLI 不带环境变量可启动（读配置）✅；凭据零明文 ✅；UI 精美化人工走查通过 ✅；**双击 exe 可对话（U6 人工验收）** ✅；人工确认清单全部闭环（转正/放弃两态）✅。
-- 报告 + 下一步提示词入 `plan-p3-progress.md` ✅。
+**展卡核对结论（16b）**：
+1. **对话体验组（U4/U9/U10）的行为证据来自本轮深读**：pi-desktop ComposerAutocomplete 的补全面五类（文件/文件夹/斜杠命令/插件/技能——图标集为证）；ConversationMinimap 是长会话结构导航（React memo 化——行为是"轮次结构条 + 点击跳转"）；SearchDialog/SearchSessionResults 是会话内与跨会话两级搜索。
+2. **U11 项目管理是 pi-desktop 最重的产品语义**（Project* 六件：切换/建/改/删/指令/记忆）——我方映射：workspace 目录切换（host 单会话模型的扩展——项目 = workspace+settings 组合档）+ 项目级指令页（goal/set 面入口化）；多项目并存的 host 语义（session 隔离）执行时定形。
+3. **U12 两个消费端**：ContextUsageInspector（上下文余量/压缩状态——F 族与 E17 的可视化）+ cc-switch usage 族（成本页——J21 消费端）。
+4. **U13 五件套全是"不打断"纪律**：NotificationCenter/Toast（N5 分型 UI 消费）、OnboardingChecklist（首次引导不挡路）、StartupRecovery（M3 可视化——诊断信息 + 一键续跑，pi-desktop 的 startup-watchdog 诊断面）、UpdateBanner/ReleaseNotesDialog（U7 消费端）。
+5. **U6 定形点**（展卡预判）：node 运行时随包三案——①node 22 SEA（需 esbuild bundle 成单文件 CJS）②便携 node.exe 随包（+~80MB，最稳）③用户自装 node（不满足双击即用）。**倾向 ①**（真单文件 ~50MB）；better-sqlite3 原生模块是 ①案最大风险点，SEA 实测失败回退 ②。
+6. **U7 依赖 U6 分发形态**（升级包 = sidecar 产物的版本化）；签名走 minisign（cc-switch pubkey 形态）。
+7. **U8 是人工确认清单的闭环卡**——每项都需要用户提供真实凭据/环境；跑不掉的明确"放弃"记档（不悬挂）。
+
+**词汇表预判**：16b 全部零事件预判（渲染/导航/分发面）；U10 粘贴图走 P1 附件链（attachments 载荷已有）；无立案候选。
+
+#### T-P3-107 · U4 · UI 渲染分层基础（markdown/高亮/流式/工具卡/diff） `[ ]`
+- **依据需求**：U4（"markdown 与代码高亮渲染（含代码块复制按钮）、流式打字节流、工具调用卡展开、审批卡优化、错误与重试交互；一份资产两端共用"）
+- **上游首选参考**：[pi·client](../oss/pi/packages/client)（🔴 只学行为：渲染分层与增量更新纪律）
+- **取什么 / 别抄什么**：取"渲染分层（纯文本/markdown/代码）+ 增量追加不重排"行为；不抄其 React 框架（全局约束 3——原生 + marked/highlight.js 两 vendor 库）
+- **要产出**：①`ui/vendor/`（marked + highlight.js 本地化 + THIRD_PARTY 登记）；②渲染分层：assistant 走 markdown+高亮（**用户输入不渲染**——注入面防呆，marked 禁 HTML 透传）；③流式打字：text-delta 节流追加（requestAnimationFrame）；④工具卡展开：tool/call→result 成对折叠卡（args JSON 格式化 + 写操作 diff 对照）；⑤审批卡优化（C55 alternatives 展示）+ 错误重试交互
+- **验收**：`npx vitest run src/diagnostics/tauri-shell.test.ts`（扩）+ ui 资产冒烟 + **人工走查列确认清单**（XSS 评审落完成记录）
+- **依赖**：T-P3-106（16a 收口）
+- **风险 / 未知**：XSS 面（marked 配置白名单策略）
+
+#### T-P3-108 · U9 · 对话导航与检索 UI（搜索两级 + 长会话小地图） `[ ]`
+- **依据需求**：U9（"会话内搜索、跨会话搜索、长会话小地图"）
+- **上游首选参考**：[pi-desktop·SearchDialog/SearchSessionResults/ConversationMinimap](../oss/pi-desktop/apps/desktop/src/components)（🔴 只学行为）
+- **取什么 / 别抄什么**：取"会话内搜索高亮跳转 + 跨会话搜索列表跳转 + 轮次结构导航条"三行为；不抄其 React 实现
+- **要产出**：①会话内搜索（Ctrl+F 面板：命中高亮 + 上下跳转——渲染层文本检索）；②跨会话搜索（Q2 检索的 UI 消费——结果列表 → 点开续聊）；③小地图（消息类型着色条 + 点击跳轮——纯 DOM 实现）
+- **验收**：ui 资产断言 + `npx vitest run src/host/server.test.ts`（扩——跨会话搜索走 query 面）+ 人工走查
+- **依赖**：T-P3-107；P2 15a Q2
+- **风险 / 未知**：小地图在超长会话的渲染性能（虚拟化——按需记档）
+
+#### T-P3-109 · U10 · 输入区升级（Composer：多行 + 五类补全 + 粘贴图） `[ ]`
+- **依据需求**：U10（"多行编辑、@文件/@目录补全、斜杠命令与技能补全、粘贴图片入附件面"）
+- **上游首选参考**：[pi-desktop·ComposerAutocomplete](../oss/pi-desktop/apps/desktop/src/components)（补全面五类：文件/文件夹/斜杠/插件/技能）+ [pi·tui·autocomplete](../oss/pi/packages/tui)（🔴 只学行为）
+- **取什么 / 别抄什么**：取"@ 触发文件补全 + / 触发命令补全 + 键盘导航"行为；插件类补全不取（无插件清单面——I5 落地后随需要）
+- **要产出**：textarea 多行编辑（Shift+Enter 换行/Enter 发送）+ @补全（workspace 文件清单——host 只读列举面）+ /补全（斜杠命令 + 已注册工具/技能清单）+ 粘贴图片（clipboard → P1 附件链 attachments）
+- **验收**：ui 资产断言 + `npx vitest run src/kernel/agent-process.test.ts`（扩——带附件 prompt 链已有）+ 补全清单来源断言
+- **依赖**：T-P3-107
+- **风险 / 未知**：workspace 文件列举的面（host 只读 list——wire 扩展先例）
+
+#### T-P3-110 · U11 · 项目/工作区管理（多项目列表 + 指令记忆页） `[ ]`
+- **依据需求**：U11（"多项目列表与切换、项目级指令与记忆页、新建/编辑/删除项目对话框"）
+- **上游首选参考**：[pi-desktop·HomeProjectSwitcher/ProjectCreateDialog/ProjectEditDialog/ProjectInstructionsDialog/ProjectMemoryDialog](../oss/pi-desktop/apps/desktop/src/components)（🔴 只学行为）
+- **取什么 / 别抄什么**：取"项目 = workspace + 配置组合档 + 项目级指令随会话生效"的行为；多项目 host 语义（session 隔离）执行时定形——倾向每项目一 session（AgentHost registry 已多会话）
+- **要产出**：settings 项目档（列表：name/workspace/path/指令）+ UI 项目页（切换/新建/编辑/删除 + 项目指令与记忆编辑页——goal/set 面）+ 切换联动（host server 的 sessionId 路由——registry 已多会话）
+- **验收**：`npx vitest run src/session/settings.test.ts`（扩——项目档）+ `src/host/server.test.ts`（扩——跨项目切换路由）+ ui 资产断言
+- **依赖**：T-P3-103（会话侧栏——切换的载体）
+- **风险 / 未知**：多项目并发会话的租约面（每会话独立租约——既有语义复用）
+
+#### T-P3-111 · U12 · 用量与上下文可视化（检查器 + 成本页） `[ ]`
+- **依据需求**：U12（"上下文余量检查器（token 用量/窗口占比/压缩状态）、成本统计页（按会话/按轮）"）
+- **上游首选参考**：[pi-desktop·ContextUsageInspector](../oss/pi-desktop/apps/desktop/src/components) + [cc-switch·usage 组件族](../oss/cc-switch/src/components)（UsageFooter/UsageScriptModal）
+- **取什么 / 别抄什么**：取"余量可见可解释（含压缩状态）+ 成本两级聚合"行为；不抄其图表库（纯 DOM/SVG 最小面）
+- **要产出**：①上下文检查器：当前窗口 token 用量/占比/压缩次数与最近压缩状态（E17/F 族事实的 UI 消费——query 面 + usage 载荷）；②成本统计页：按会话/按轮成本（J21 面消费端）
+- **验收**：ui 资产断言 + `npx vitest run src/obs/`（扩——聚合面既有）+ 数据源断言（usage 载荷单源）
+- **依赖**：P2 15e（J21）；T-P3-107
+- **风险 / 未知**：压缩状态的实时性（事件流推送——已有）
+
+#### T-P3-112 · U13 · 通知与引导体验（五件套：通知/引导/恢复/更新横幅/发布说明） `[ ]`
+- **依据需求**：U13（"通知中心与 Toast、首次运行引导清单、启动恢复页（诊断+一键续跑）、更新横幅与发布说明弹窗"）
+- **上游首选参考**：[pi-desktop·NotificationCenter/OnboardingChecklist/StartupRecovery/UpdateBanner/ReleaseNotesDialog](../oss/pi-desktop/apps/desktop/src/components)（🔴 只学行为——StartupRecovery 的 startup-watchdog 诊断面）
+- **取什么 / 别抄什么**：取"通知分型聚合 + 引导不挡路 + 恢复诊断一键续跑 + 更新不打断"四行为；发布说明弹窗内容本地化（CHANGELOG 摘要）
+- **要产出**：①通知中心（N5 四类分型的 UI 消费——聚合面板 + Toast 轻提示）；②首次引导（功能清单式 onboarding——settings 首跑标记）；③启动恢复页（host 重连时的 M3 resume 诊断 + 一键续跑按钮）；④更新横幅（U7 的更新可用提示）+ 发布说明弹窗
+- **验收**：ui 资产断言 + `npx vitest run src/host/notify.test.ts`（扩——分型消费）+ 人工走查
+- **依赖**：P2 15d N5；T-P3-107；T-P3-114（更新器——横幅消费端，卡序内后置接线）
+- **风险 / 未知**：引导清单的内容定形（首跑检测——settings 标记）
+
+#### T-P3-113 · U6 · 桌面壳 sidecar 分发（双击即用） `[ ]`
+- **依据需求**：U6（"壳管理 host 进程生命周期（启动/健康/退出收束）；node 运行时随包；双击即用"）
+- **上游首选参考**：[cc-switch·tauri 侧](../oss/cc-switch/src-tauri)（externalBin sidecar 形态）
+- **取什么 / 别抄什么**：取"壳 = 进程管理器"行为；运行时方案执行时定形（展卡预判：**倾向 esbuild bundle 成单文件 CJS + node 22 SEA** 真单文件 ~50MB；SEA 实测失败回退便携 node.exe 随包 +~80MB——全局约束 5 体积分列陈述）
+- **要产出**：①host 单文件 bundle 面（esbuild devDep + `build:single` 脚本）；②SEA 产物流程脚本或便携 node 回退；③Tauri 壳 Rust 侧进程管理（起 sidecar/健康探测/退出收束）；④壳启动参数来自 U1 配置
+- **验收**：**真实机器双击 exe → 自起 host → UI 可对话（人工验收）** + `npx vitest run src/diagnostics/tauri-shell.test.ts`（扩——sidecar 配置形状）+ 体积分列数字落完成记录
+- **依赖**：T-P3-101（配置）；批次 13 K2 壳面
+- **风险 / 未知**：SEA 对 better-sqlite3 原生模块的兼容（①案最大风险——失败即回退 ②）；Windows Defender 误报（签名面随 U7）
+
+#### T-P3-114 · U7 · 自动更新（updater + 版本清单 + 签名，本地演示面） `[ ]`
+- **依据需求**：U7（"updater 插件 + 版本清单 + 签名校验；本地演示面——分发渠道不建"）
+- **上游首选参考**：[cc-switch·tauri-plugin-updater](../oss/cc-switch/src-tauri/Cargo.toml)（pubkey + endpoints 形态）
+- **取什么 / 别抄什么**：取"签名 + 清单 + 插件校验安装"链路；不建真实分发渠道（endpoints 指向本地/localhost——演示面）
+- **要产出**：tauri-plugin-updater 接入（插件解禁例外——updater 单插件入册）+ minisign 密钥对流程（私钥 `private/`）+ `latest.json` 生成脚本（tools/）+ 本地演示两路（校验通过/拒绝）+ 更新横幅接线（T-P3-112 消费端）
+- **验收**：本地 updater 演示两路落完成记录 + `npx vitest run src/diagnostics/tauri-shell.test.ts`（扩）
+- **依赖**：T-P3-113（sidecar 产物）
+- **风险 / 未知**：updater 的 https 要求（本地演示例外配置——执行时定形）
+
+#### T-P3-115 · U8 · 真实平台联调收尾（人工确认清单闭环） `[ ]`
+- **依据需求**：U8（"Anthropic 真实端点、飞书/Slack 真实机器人、STT 真实端点、OAuth 真实流程、ACP 真实客户端——人工确认清单逐项闭环"）
+- **上游首选参考**：各平台真实环境（P1/P2 联调项汇总闭环——无单一新锚）
+- **取什么 / 别抄什么**：——（验证卡）
+- **要产出**：逐项联调记录（每项：凭据掩码入 `private/` + 实测结果 + 缺口修复或放弃理由）：①Anthropic 真实端点一轮（cache_control 策略）；②飞书/Slack 真实机器人一轮；③STT 真实端点；④OAuth 真实流程；⑤ACP 真实客户端；⑥Windows 真机桌面壳+S4 屏幕操作
+- **验收**：人工确认清单逐项状态更新（转正/放弃两态——不悬挂）+ 联调缺口若涉产品代码 → 当场修复回归
+- **依赖**：P2 15d/15e 全部 + T-P3-113（桌面壳真机）
+- **风险 / 未知**：**各项都需要用户提供真实凭据/环境**——不可用项明确记档放弃（不阻塞 P3 收官）
+
+#### T-P3-116 · 收口 · P3 盘点 + 产品化终验收 `[ ]`
+- **依据需求**：批次 16a/16b 收口
+- **要产出**：盘点面：①U1 优先级链 × 三入口一致性；②U2 凭据零明文全链扫描；③U14 设置分节 × settings 模块一一对应；④U4 渲染 XSS 面评审结论；⑤U6 分发形态定形记录（SEA 或回退）+ 体积分列陈述；⑥U8 闭环状态表；⑦快照即规格：双击 exe 全链一条（人工）+ 设置改→文件变→重启生效一条
+- **验收**：`npx vitest run`（全量）+ 工具链四件（count-features = 324）+ license-audit + **P3 对账**：14 条逐条状态表入 progress
+- **依赖**：T-P3-101 ~ 115 全部
+- **风险 / 未知**：无
+
+## §5 批次完成定义
+
+- **16a**：6 张卡全勾 ✅；CLI 不带环境变量可启动（读配置）✅；凭据零明文 ✅；设置中心人工走查 ✅；报告入 `plan-p3-progress.md` ✅。
+- **16b**：10 张卡全勾 ✅；渲染安全评审 ✅；**双击 exe 可对话（人工验收）** ✅；人工确认清单全部闭环（转正/放弃两态）✅；`count-features.sh` = **324** ✅；`check-doc-links.sh` 显式传参 0 失效 ✅；`license-audit.sh` exit 0（vendor 登记）✅。
+- P3 对账：14 条逐条状态表（落地/放弃理由）入 progress ✅。
