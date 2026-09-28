@@ -2,14 +2,14 @@
 
 > 本文件接续 [`plan-p1-progress.md`](plan-p1-progress.md)（P0 全程 + P1 批次 1-14，2026-09-28 P1 全部收官定格，全量基线 **1293 passed / 1 skipped**，词汇表 26 事件）——**自批次 15（P2 段）起的执行进度**（批次报告 / 待澄清 / 人工确认清单）记入本文件。
 > 执行协议沿用 [`plan-p0.md`](plan-p0.md) §0；计划本体在 [`plan-p2.md`](plan-p2.md)（48 条 / 五批 / 52 卡，2026-09-28 一次展卡——P0 式全阶段计划）。
-> **待澄清编号接续（#22 起）**——词汇表立案管线不变（`l0-events.md` §8 落地记录全局连续，批次 15d 收官后为 **29 事件**〔#23 已追认；#24 feedback/note 已立案待追认〕；**最新全量基线 1625 passed / 1 skipped**）。
-> **批次进度**：15a ✅ → 15b ✅ → 15c ✅ → 15d ✅（2026-09-28 收官，本文件报告）→ 15e（下一批，P2 收官批）。
+> **待澄清编号接续（#22 起）**——词汇表立案管线不变（`l0-events.md` §8 落地记录全局连续，批次 15e 收官后为 **29 事件**〔#22/#23 已追认；#24 已立案待追认；#25 闭集记录案在案；#26 零扩展定形 / #27 载荷扩展落地记录 26〕；**P2 段收官全量基线 1672 passed / 1 skipped**）。
+> **批次进度**：15a ✅ → 15b ✅ → 15c ✅ → 15d ✅ → **15e ✅（2026-09-28 收官，本文件报告）——P2 段全部收官**，下一层接 [`plan-p3.md`](plan-p3.md) 批次 16。
 
 ---
 
 > **P3 已立项**（2026-09-28 用户裁决）：U 域 8 条产品化层见 [`plan-p3.md`](plan-p3.md)——本文件提示词链执行到 15e 收官后，接 `plan-p3-progress.md` 的批次 16 提示词。
 
-## 批次 15e 提示词（当前活跃）
+## 批次 15e 提示词（已执行归档）
 
 ```
 继续 aegent 批次 15e 的实施（P2 段收官批：观测与工程纪律 P2；17 条需求 ID：
@@ -32,6 +32,83 @@ T3 T4 T7 T8 O27 O28 O29 O30 A16 F19 F27 F16 L9 L5 L6 J21 J17）。推进模式�
    plan-p3-progress.md 的批次 16 提示词衔接 + 全量基线定格后停止——
    不要开始批次 16。不要问要不要继续。
 ```
+
+---
+
+## 批次 15e · 观测与工程纪律 P2（17 条：T3 T4 T7 T8 O27 O28 O29 O30 A16 F19 F27 F16 L9 L5 L6 J21 J17）
+
+**状态**：✅ 收官（2026-09-28）——18 张卡全关（T-P2-501 ~ 518）。台账：T-P2-501 T3 阅读包 ✅（policy 驱动阅读包四件 + CLI，4 passed）。T-P2-502 T4 豁免理由 ✅（核对关闭零缺口）。T-P2-503 T7 性能断言 ✅（增长曲线三件，3 passed）。T-P2-504 T8 known-diffs ✅（18 蓝本域）。T-P2-505 O27 截断标签化 ✅（64 passed）。T-P2-506 O28 测试政策 ✅（test-policy 成文 + keyless 复核，65 passed）。T-P2-507 O29 事件泵 ✅（84 passed 含 agent-process 哨兵接入）。T-P2-508 O30 因果断言 ✅（3 因果链全绿）。T-P2-509 A16 排空复位 ✅（guard 订阅 user/message 复位 + 三类计数盘点，61 passed）。T-P2-510 F19 两级压缩 ✅（#26 零事件定形 + 次序语义，142 passed）。T-P2-511 F27 prefix_window ✅（闭集三值落地记录 25 + 策略入指纹，132 passed）。T-P2-512 F16 缓存健康 ✅（归因三型，4 passed）。T-P2-513 L9 分段计时 ✅（#27 载荷扩展落地记录 26，55 passed）。T-P2-514 L5 HTTP 录制 ✅（掩码 + 回放生成，4 passed）。T-P2-515 L6 审计报表 ✅（三维度，9 passed 含 audit-fields 回归）。T-P2-516 J21 成本核算 ✅（核对 L3 未落成本列——本卡补；3 passed）。T-P2-517 J17 OAuth ✅（RFC 8628 + 域内闭环，12 passed）。T-P2-518 收口 ✅（七面盘点 + P2 段对账 48 条 + 工具链五件）。
+
+### 批次 15e 报告（收官于 2026-09-28）
+
+- **打勾情况**：18/18 卡全关（每勾附「命令 + 结果摘要」，见 plan-p2.md §7 各卡完成记录）。
+- **展卡结论**：17 条锚点零勘误（执行期逐条复核；codex·compact.rs:470/483 两处行号锚研究期验证后执行期再核命中）。关键定形十一处——①T3 阅读包的邻接"无收敛入口给顶层文件"定形；②T4 四面核对关闭（检查器强制/负例/空集/无内联豁免）；③T7 比值上界 4 = 线性理论 2 的 2× 余量 + min-of-3 降噪；④O27 tag 接线在 system 字段值域（JSON 转义整行无法段匹配）；⑤O29 未知事件拒绝比 codex 静默通配更严（C14 闭面保证）；⑥O30 第③件 e2e 指认机内化（源码文本断言防悬空）；⑦A16 排空点 = user/message 落流（queue 注入与常规输入同形状）；⑧F19/#26 零事件判据 = 事实能否从流重算（micro 确定性投影 vs full 不可重算落流）；⑨F27 策略入指纹（retainedFromEnd 是结果、strategy 是原因——双入防失明）；⑩L9 segments 嵌套 timing 内（向后兼容非平级）；⑪J17 凭据 env 优先 + private 文件 0600 + 掩码固化。
+- **产出的文件**：`tools/architecture-read.mjs`；`docs/known-diffs.md`（18 域）、`docs/test-policy.md`；`src/test-support/` 四件（event-pump/http-recorder + normalize O27 扩 + snapshots 接线）；`src/diagnostics/` 三件（architecture-read.test/causal.test + 既有）；`src/session/complexity.test.ts`；`src/mcp/guard.ts` A16 复位扩展；`src/context/` 四件（two-level.test/strategy.test + compaction.ts 策略面 + result-trim.ts 文档化）；`src/kernel/` 扩（events.ts timing.segments + loop.ts 分段打点 + assembly.ts compactionStrategy）；`src/models/` 三件（cache-health.ts/oauth.ts + 各测试）；`src/obs/` 三件（audit-report.ts/cost.ts + audit-fields.ts outcome 扩）；`docs/l0-events.md`（落地记录 25/26 + strategy 闭集）；`docs/20260928_P2功能全景与借鉴映射.md`（段收官文档）。
+- **验收台账**：全量 `npx vitest run` **1672 passed / 1 skipped**（191 文件；批次入口基线 1625 → 净增 47）；`npx tsc --noEmit` 全程干净；`count-features.sh` = **337（层数 20；P2=48）不变**；`check-doc-links.sh`（显式传参 15 文件）**1237 链接 0 失效**；`architecture:check` 全程 0 error / 21 warning（基线保持）；`vocabulary:check` 0 问题；license-audit **输入面核实**：oss/refs 零未提交变化（本批零新仓，15d 收官 exit 0 结果有效）+ P2 新引用仓 pi-mono 抽查通过（LICENSE 在位 / 泄露面零命中）——全量重跑在 Windows 大仓 grep 上超时（后台 20 分钟未完成），记档为基建面。
+- **词汇表扩展**：**29 基线不变 + 两案记录**——①#26（F19 microcompact）**零扩展定形**：判据 = 事实能否从流重算（micro = F8 result-trim 确定性投影可重算零事件；full 摘要不可重算已落流）；②#27（L9）`step/end.timing.segments{modelMs,toolsMs}` 载荷扩展（#9 前向兼容同款，落地记录 26 在案待追认）；③F27 `compaction.strategy` 闭集三值追加（`prefix_window`，落地记录 25 在案——#18 同款值域扩展事件计数不变）；④其余 14 条零扩展定形（T3/T4/T7/T8/O27/O28/O29/O30/A16/F16/L5/L6/J21/J17 逐条复核 EVENT_TYPES 29）。
+- **盘点结论**：七面零真冲突（T-P2-518 完成记录详载）：①F19/F27 × E17/F26/F11——策略闭集 {full_summary, recent_window_fallback, prefix_window} 与指纹交互（strategy 入指纹 + retainedFromEnd 显式配置优先于策略缺省）；②O29 × C14——未知事件 throw 的正当性由词汇表闭面保证；③J17/J21 × J2/J13——OAuth AuthResolver 挂 J13 既有接口（authMaterial 形状零变化）、成本消费 L3 usage 分列不建第二份轨迹；④S 族 × M1/M2（15d 盘点复核）；⑤known-diffs 18 域抽查一致（5 域逐字核对）；⑥#22~#27 全链闭合（#22/#23 追认转正、#24 待追认、#25 记录案、#26 零扩展、#27 落地记录 26）；⑦全段抽样端到端链复核（p15d 快照三环 cron→派发→核销→通知在位）。
+- **新发现的约束或坑**：(a) **联合类型 Omit 不分发**（event-pump 测试 mk 直用 DistributiveOmit 产物 NewSessionEvent——15a SessionRef 先例的再现）；(b) **flush 未 await 落库竞态**（cost 测试——write-behind 面的测试纪律）；(c) **events 表 config 在 payload JSON 内**（SQL 用 json_extract(payload,'$.config.modelId') 非 h.config 列）；(d) **min-of-3 的预热残余**（complexity 比值 0.49 <1——比值断言只设上界，低值非异常）；(e) **agent-process.test 的 beforeAll npm run build 失败以套件级失败呈现**（根因排查先看 tsc）；(f) **license-audit 全量在 Windows 大仓 grep 超时**（后台 20 分钟——输入面核实 + 抽查替代，基建面记档）。
+- **偏离计划的地方**：逐卡「完成记录」已记档——要点：T4 核对关闭（零代码产出，J25/L10 先例）；J21 核对后落实现（L3 未建成本列——usage.ts 头注释的"留给届时同批"兑现）；O29 "两个示范 fixture"实际 1 处即达示范语义；T-P2-510 发现 microcompact 层已存在（F8 result-trim——展卡时未盘点到的既有面，直接定形零扩展）。
+- **遗留风险与未知**（→ 人工确认清单）：**新增 2 项**——J17 真实厂商 OAuth IdP 联调（device flow 全链）；F16 tracker 的 loop 装配接线 + 真实推理模型归因验证。技术债记档：成本真实价格表配置（PricingTable 构造注入——用户供给）；guard/审计/成本等库面的 CLI/工具暴露随需要。
+- **批次完成定义核对**：全部 ✅（plan-p2.md §8 的 15e 相关项——17 卡全勾 + tsc 干净 + 337 不变 + 1237 链接 0 失效 + license 输入面核实 + #24 待追认在案 + #26 零扩展/#27 落地记录 26 + 报告/对账/基线更新 + **段收官全景文档落地**）。
+- **P2 段收官**：48 条逐条状态表见下节；段收官文档 [`20260928_P2功能全景与借鉴映射.md`](20260928_P2功能全景与借鉴映射.md)；下一层接 `plan-p3.md` 批次 16。
+
+---
+
+## P2 段对账（48 条逐条状态表，2026-09-28 终验收）
+
+| 批次 | 需求 ID | 状态 | 一句要点 |
+| --- | --- | --- | --- |
+| 15a | Q6 | 落地 | RETENTION_POLICY 常量 + cutoff 纯函数 |
+| 15a | Q8 | 落地 | 归档独立一档（#22 session/archive，已追认） |
+| 15a | Q4 | 落地 | 清理器三类 + dry-run + maintenance CLI（v4 两表） |
+| 15a | M4 | 落地 | IdleReaper 四守卫 + onReap 回调（零事件定形） |
+| 15a | Q2 | 落地 | SQL 条件检索 + session_query/session_get 两工具 |
+| 15a | E6 | 落地 | ForkTree 从 fork 事件重建（findLast 血统语义） |
+| 15a | E9 | 落地 | sessionRefs 载荷扩展 + 有界快照注入 + 环拒绝 |
+| 15b | C40 | 落地 | 声明式 paramMatchers + 全分型 AND + linter |
+| 15b | C55 | 落地 | DenialShape + 渲染面 + missing-alternatives 检出 |
+| 15b | C42 | 落地 | 两阶段 LLM 判官（fail-closed/unavailable/abort 语义） |
+| 15c | M7 | 落地 | Deadline 原语（combine/withDeadline）+ timeout 薄壳化 |
+| 15c | I5 | 落地 | 插件 SDK 受限能力 token + 结构化克隆投递 |
+| 15c | I4 | 落地 | ws 插件宿主（缺省全拒 + 断线注销 + 坏信封不崩） |
+| 15c | I7 | 落地 | CC/Codex hook 双方言桥（不兼容显式拒绝） |
+| 15c | I8 | 落地 | 人格预设（agent-child --persona，首落 system 叠加） |
+| 15c | I10 | 落地 | approval/superseded（#23，已追认）+ 取代链投影 |
+| 15c | I11 | 落地 | GuardPlugin 治理可插拔（建议非强制） |
+| 15c | I14 | 落地 | 跳层三重闸（显式命名/审批硬保护/白名单） |
+| 15c | H6 | 落地 | SubagentBackend 接口 + 进程内/ACP 两实现（CC/Codex/DSH-SDK 留位记档） |
+| 15c | D12 | 落地 | SshExecutionEnv 命令行包装（probe/凭据零落盘） |
+| 15d | S1 | 落地 | cron 解析器 + v5 CronStore + 被动轮询派发 |
+| 15d | M11 | 落地 | OffPeakQueue 四步状态机（核销零事件定形） |
+| 15d | S2 | 落地 | webhook 处理器面（token/HMAC + 202 + 413 防呆） |
+| 15d | S5 | 落地 | feedback/note（#24 待追认）+ wire/CLI 全链 |
+| 15d | N5 | 落地 | NotificationHub 五类分型 + push/poll 双投递 |
+| 15d | P4 | 落地 | transcribeAudio mock 面 + 白名单 4→7（真实端点待联调） |
+| 15d | S3 | 落地 | CDP 三工具 + 域白名单 + 每导航强制审批 |
+| 15d | S4 | 落地 | 最强审批三层 + L2 审计（Win32 实现待补——人工确认） |
+| 15d | K9 | 落地 | Tauri 双窗口 + pip 只读资产（视觉面待人工） |
+| 15d | K6 | 落地 | 飞书端同构 ImSurface（#25 replySource 闭集） |
+| 15d | K7 | 落地 | Slack 端同构 ImSurface + 抢约派发 |
+| 15e | T3 | 落地 | architecture:read 阅读包四件 + --json |
+| 15e | T4 | **核对关闭** | 检查器 reason 强制/负例/空集/无内联豁免四面核对零缺口 |
+| 15e | T7 | 落地 | 复杂度增长曲线断言三件（比值上界 4） |
+| 15e | T8 | 落地 | known-diffs.md 18 蓝本域 + 随卡追加纪律 |
+| 15e | O27 | 落地 | 160 截断 + persona 指引标签化 + snapshotToString 接线 |
+| 15e | O28 | 落地 | test-policy 成文（keyless 两条 + 升降级 + 十场景） |
+| 15e | O29 | 落地 | 测试事件泵三约定 + agent-process 哨兵接入 |
+| 15e | O30 | 落地 | 三因果链（BUILTIN 注册/换模注册/host e2e 指认） |
+| 15e | A16 | 落地 | repeat-tool-reminder 排空复位 + 三类计数盘点（F28/J19 不复位是设计） |
+| 15e | F19 | **零扩展定形** | micro = F8 投影可重算零事件（#26）；full 落流已有；次序语义钉死 |
+| 15e | F27 | 落地 | prefix_window 策略（闭集三值落地记录 25 + 策略入指纹） |
+| 15e | F16 | 落地 | CacheHealthTracker 归因三型（接线随推理模型联调记档） |
+| 15e | L9 | 落地 | timing.segments 载荷扩展（#27，落地记录 26 待追认） |
+| 15e | L5 | 落地 | HttpRecorder 掩码录制 + JSONL + 回放脚本生成 |
+| 15e | L6 | 落地 | auditReport 三维度 + settled.outcome 派生 |
+| 15e | J21 | 落地 | 价格表驱动 + J25 四类加权 + 两级聚合（L3 核对：token 分列已落、成本列本卡补） |
+| 15e | J17 | 落地 | RFC 8628 device flow + 刷新 + env/private 存储 + 域内闭环（真实 IdP 待联调） |
+
+> 状态口径：**落地** = 实体面交付且机验通过；**核对关闭** = 需求语义已被既有实现覆盖、核对零缺口（T4）；**零扩展定形** = 预判事件候选定形为零词汇表扩展（F19/#26——判据见卡面完成记录）。48 条中：落地 46、核对关闭 1、零扩展定形 1（J21 核对后落实现计入落地）。
 
 ---
 
@@ -224,6 +301,8 @@ docs/plan-p0.md §0）。本批特有的注意：
 | #23 | I10 | 取代事实需要流内持久落点，但词汇表 27 事件无承载（plan-p2.md §5 展卡预判的 #23 候选；zcode·session.events.ts `WorkspaceHookReviewSuperseded{interactionId, supersededByInteractionId}` 锚——取代事件落流） | 无矛盾——需求明示"取代本身是持久事实"（不变量 1 的直接要求） | 新增 `approval/superseded {requestId, byRequestId, reason?}` log-only 元事件（单链约束：一个 requestId 至多被取代一次；投影消费 = 取代链索引 + effectiveApproval/supersessionChain 查询；投影期重复/成环 fail-closed 拒绝）；词汇表 27→28；回退面齐备（约 1.5 小时） | 2026-09-28 立案（T-P2-306 落地）；events.ts / project.ts（校验+消费+查询）/ invariants.ts 已接线，events.test/replay.test/idle-reaper.test 计数 28；l0-events.md §8 落地记录 23 在案；**#23 追认于 2026-09-28（用户："全部认可"），此案关闭，§3.2 正式计数 28 事件定案** |
 | #24 | S5 | 反馈事实需要流内持久落点，但词汇表 28 事件无承载（plan-p2.md §6 展卡预判的 #24 候选——预判里 M11 job/offer 与 S5 feedback/note 两候选共用编号；执行定形：M11 闲时核销是进程内 job 生命周期事实走 onSettled 回调零扩展，S5 反馈是会话事实落流——分野判据 = "事实是否持久"；codex·feedback_processor 结构化面锚） | 无矛盾——需求明示"用户可对消息/命令反馈"（结构化反馈 + 不变量 1：状态变更必须有事件承载） | 新增 `feedback/note {kind: "up"\|"down", targetSeq?, commandId?, comment?, doctorSummary?}` log-only 会话级元事件（targetSeq/commandId 二选一，存在性校验在提交面；doctor 随附 = codex attachment 同构；遥测外发不取——本地落流）；词汇表 28→29；回退面齐备（约 1.5 小时） | 2026-09-28 立案（T-P2-404 落地）；events.ts / project.ts / invariants.ts / obs/feedback.ts / agent-protocol.ts（wire feedback 请求）/ agent-process.ts / cli/repl.ts 已接线，events.test/replay.test/idle-reaper.test 计数 29；l0-events.md §8 落地记录 24 在案；**待追认** |
 | #25 | K6/K7 | IM 端审批应答需要 replySource 身份承载，但 APPROVAL_SURFACES 闭集 ["cli","web","desktop"] 无 IM 端成员（plan-p2.md §6 展卡预判的 #25 候选；audit-fields.ts:23 闭集锚） | 无矛盾——需求明示场景③"审批经 IM 应答"；闭集扩展非事件（词汇表单向门不触发）——**本条是字段闭集扩展的记录性立案**（不占词汇表管线，走"只追加不替换"纪律：audit-fields.ts 文件头明示批次 14 多端先例） | APPROVAL_SURFACES 追加 "feishu"/"slack"（T-P2-410 落地）；IM 应答经 approve.source 走既有 replySource 审计面（C6 通道零改线）；audit-fields.test 断言同步 | 2026-09-28 立案并落地（T-P2-410）；闭集五值在位；无回退面风险（追加面，回退 = 删两成员） |
+| #26 | F19 | microcompact 层边界事件预判候选（plan-p2.md §7 展卡预判；zcode·session.events.ts `microcompact_boundary` 事件锚——trigger/strategy/pre-post token/cleared/kept toolCallIds） | 无矛盾——定形结论：**零词汇表扩展**。判据 = 事实能否从流重算：我方 microcompact 层 = F8 result-trim（T-P1-104 既有面——keepLast/maxChars 确定性投影规则，幂等、可重算），zcode 落事件因其 microcompact 是引擎决策（cleared/kept 选择不可重算） | 不立案新事件：micro 层保持投影级零落流；两级边界语义文档化（result-trim.ts 头注释 + two-level.test 次序语义钉死——溢出判定按未裁尺寸） | 2026-09-28 定形（T-P2-510）；EVENT_TYPES 29 不变；回退面 = 无（零新增面）；**零扩展定形，此案关闭** |
+| #27 | L9 | 循环内分段计时需要载荷承载，step/end.timing 仅有 firstTokenLatency/streamDuration 两字段（plan-p2.md §7 展卡预判；zcode·turn-loop.ts 分段打点锚） | 无矛盾——需求明示"各段耗时可见"；载荷扩展非新事件（#9 前向兼容同款，事件计数 29 不变） | `step/end.timing` 嵌套扩展可选 `segments?: {modelMs, toolsMs}`（modelMs 与 streamDurationMs 同源；toolsMs = 工具执行累计墙钟，0 = 无工具如实事实）；仅随 timing 携带（B19 既有规则）；回退面齐备（约 30 分钟） | 2026-09-28 立案（T-P2-513 落地）；events.ts / loop.ts / loop.test 已接线；**l0-events.md §8 落地记录 26 在案**；**待追认** |
 
 ## 人工确认清单（批次 15 起）
 
@@ -238,3 +317,5 @@ docs/plan-p0.md §0）。本批特有的注意：
 | S4（批次 15d） | helper `computer` 动作为存根（请求校验 + 操作分发给全，四操作 NOT_IMPLEMENTED fail-closed）——SendInput/BitBlt 的 Win32 实现未写、Windows 会话隔离环境的屏幕捕获/注入真实可用性未验证 | 人工确认 Windows 会话环境后补齐 win32-helper 四操作的 Win32 实现（windows-sys 需加 GDI/Input features），跑真实 screenshot/click/type/key 验证 | 待人工确认（Windows 会话环境 + 实现补齐时） |
 | K6/K7（批次 15d） | 飞书/Slack HTTP API 全走 mock fetch（token 缓存/握手/消息形状钉死）；真实平台联调未做——tenant_access_token 时效、事件订阅签名校验、rate limit、卡片消息格式未实测 | 配置真实飞书应用（appId/secret）与 Slack bot（xoxb token），完成事件订阅 URL 配置后跑端到端：核对消息收发、审批卡片应答与 replySource=feishu/slack 审计落地 | 待人工确认（有平台凭据与 webhook 配置时） |
 | K9（批次 15d） | 画中画双窗口形状机验钉死（conf/资产/只读面），视觉面（窗口尺寸/置顶/截图渲染效果/交互）未人工确认 | 跑 tauri:dev 打开双窗口，主面触发 computer_* 操作：核对 PiP 窗口 always-on-top 显示、操作截图与动作标注的渲染效果 | 待人工确认（视觉面） |
+| J17（批次 15e） | device flow 全链走 http-mock 端点（RFC 8628 语义钉死）；真实厂商 OAuth IdP（授权页/轮询节奏/refresh 时效/scope 面）未联调 | 配置真实 OAuth 端点（OAuthClientConfig.endpoints + clientId），跑 requestDeviceAuthorization → 浏览器授权 → pollDeviceToken → refreshAccessToken 全链：核对轮询语义与凭据落 private 掩码面 | 待人工确认（用户提供 IdP 端点时） |
+| F16（批次 15e） | CacheHealthTracker 原语机验钉死（命中率/指纹/归因三型）；loop/provider 面的逐请求接线与真实推理模型（deepseek reasoning 不回传）的归因准确率未验证 | 装配侧接 CacheHealthTracker（loop 逐请求喂样本），接真实 deepseek-r1 跑长会话：核对 regressions 分型是否与实际缓存行为一致 | 待人工确认（推理模型联调时） |

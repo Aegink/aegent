@@ -588,7 +588,7 @@
 - **风险 / 未知**：预判部分覆盖——核对后可能缩为关闭记档（J25/L10 先例）
 - **完成记录**：2026-09-28。**核对结论：L3 已落 token 分列（usage_rollup 视图：input/output/cache_read/cache_creation/total 五列，会话/轮两粒度——T-8-03）但 `total_cost_usd` 未建列**（usage.ts:11 头注释明记"P0 无定价输入（成本核算 J21 是 P2），列留给届时同批"）——**本卡补**（非核对关闭）。产出 `src/obs/cost.ts`：①**价格表驱动**——`ModelPricing`（provider+modelId 精确匹配 + 四单价 $/Mtok：input/cachedInput/output/cacheWrite）+ `PricingTable` 构造注入（**不硬编码厂商价格**——价格随时间漂移，硬编码会成为流内谎言；真实价格表随用户配置——人工确认清单）+ `findPricing` 精确匹配（前缀匹配不取——误配对即错误计价）；②`costOfUsage` 纯函数——**J25 加权四类分价**（非缓存输入/缓存读/缓存写/输出各自单价；**计价语义显式声明**：OpenAI 语义 inputTokens 含 cacheReadTokens〔toTokenUsage 映射实测确认〕故非缓存 = max(0, input−cacheRead)——max(0) 防御病态数据负成本）；③`costRollup(db, table)`——会话/轮两级 SQL 聚合（模型身份 = 该 turn 最后一次 request/header 的 config.modelId 关联——换模按末次请求归因记档；**未配置价格的模型如实缺席**不虚构成本；只 SELECT 无第二份轨迹——L1 否定性纪律与 usage.ts 同源）。测试 `cost.test.ts` 3 用例：加权四类分价（手算逐项 closeTo + 无分列退化 + 病态防御）/ 两级聚合（模型关联 + 分轮细分）/ 无价模型缺席 + 精确匹配。**验收**：`npx vitest run src/obs/cost.test.ts` → **3 passed**；`npx tsc --noEmit` 干净；`vocabulary:check` 0 问题（零词汇表扩展——成本是派生投影非流事实）。**记档**：①Anthropic 语义差异（input_tokens 不含 cache_read——anthropic-messages 适配器面）记档，成本精确性随真实联调；②测试坑两枚：flush 未 await 落库竞态（write-behind 面）、events 表 config 在 payload JSON 内非独立列。
 
-#### T-P2-517 · J17 · OAuth（独立模块不侵入内核） `[ ]`
+#### T-P2-517 · J17 · OAuth（独立模块不侵入内核） `[x]`
 - **依据需求**：J17（"OAuth；独立成模块，不侵入内核"）
 - **上游首选参考**：kimi·packages/oauth（device flow + token 刷新 + 凭据存储的独立模块形态）
 - **取什么 / 别抄什么**：取"独立模块 + device flow + 刷新 + 安全存储"四行为；不抄其厂商端点（我方 OpenAI 兼容面 OAuth 端点卡内定形——真实厂商 OAuth 联调随需要）；凭据 private 纪律（全局约束 3）
@@ -596,18 +596,20 @@
 - **验收**：`npx vitest run src/models/oauth.test.ts`——device flow mock（端点 mock 复用 http-mock）+ 刷新 + 存储掩码 + 架构断言；真实 OAuth 端点联调列人工确认
 - **依赖**：J13 鉴权刷新（批次 11 已落）
 - **风险 / 未知**：真实厂商 OAuth 端点（mock 面 + 人工确认）
+- **完成记录**：2026-09-28。产出 `src/models/oauth.ts`（独立模块——**不侵入内核断言兑现**：源码证伪断言 import 面只含 node 内置 + models 域内〔./auth、./identity〕，architecture:check 21 warning 基线零新增）：①**device flow（RFC 8628）**——`requestDeviceAuthorization`（表单 POST + 必填字段 fail-closed 校验）+ `pollDeviceToken`（authorization_pending 等待 / slow_down 按规范 +5s 退避 / 终态错误类型化 `OAuthError{code}` / maxAttempts 上限）；**端点由构造参数给出**（OAuthClientConfig.endpoints + clientId + fetchImpl 注入——厂商端点零硬编码，卡面"不抄其厂商端点"兑现）；②**token 刷新**——`refreshAccessToken`（grant_type=refresh_token；端点未返回新 refresh_token 时沿用旧的——RFC §3.4 语义）；③**凭据存储**——环境变量优先（`EnvTokenStore`：token 只在进程内零落盘，save no-op——轮换由用户改 env）→ private/ 文件（`FileTokenStore`：调用方给 gitignore 路径、0600 写权限、tmp+rename 原子替换、文件不存在 = 无凭据非错误）+ `maskToken` 掩码显示面（全局约束 3：文档只写掩码）；④**J13 AuthResolver 适配**——`createOAuthAuthResolver`（resolve 供 Bearer 材料 + expiresAt 临近〔60s 前提量可配〕即刷新并回存 + 无凭据 fail-closed 类型化拒绝；OAuth 材料结构上不可换绑定身份——J8 纪律对应面）。测试 `oauth.test.ts` 7 用例（http-mock 端点 mock）：authorization 往返 + 缺字段拒绝 / 轮询全语义（pending→slow_down→成功 + 终态错误）/ 刷新沿用旧 rt / Env 零落盘 / File 0600 + 掩码 / resolver 过期刷新回存 + 无凭据拒绝 / **不侵入内核源码证伪**。**验收**：`npx vitest run src/models/oauth.test.ts src/models/auth.test.ts` → **12 passed**；`npx tsc --noEmit` 干净；`architecture:check` 0 error / 21 warning（基线）。**人工确认**：真实厂商 OAuth 端点联调（device flow 全链在真实 IdP——授权页/轮询节奏/刷新时效）列人工确认清单。**记档**：①verification_uri_complete 透传不消费（UI 面）；②系统钥匙串面不落（env + private 文件即达卡面"或"字语义——DPAPI 深化随需要）；③首版 resolve 内的恒等断言调用被清理（造作防御面——绑定恒等由构造约束与 refresh 无身份字段结构保证）。
 
-#### T-P2-518 · 收口 · 15e 盘点 + P2 段终验收 `[ ]`
+#### T-P2-518 · 收口 · 15e 盘点 + P2 段终验收 `[x]`
 - **依据需求**：批次 15e 收口 + P2 段终验收（48 条全段收官）
 - **要产出**：盘点面：①F19/F27 压缩族 × E17/F26/F11 既有压缩语义（策略闭集 + 指纹交互）；②O29 测试政策 × C14 词汇表闭面；③J17/J21 × J2/J13 模型运维域；④S 族（15d）× M1/M2 底座的调度一致性；⑤known-diffs（T8）全段回填完整性；⑥全段待澄清案复核（#22~#27 全部转正或回退面在案）；⑦快照即规格：全段抽样一条端到端（S1 cron → job 派发 → M11 核销 → N5 通知）
 - **验收**：`npx vitest run`（全量）+ 工具链四件 + license-audit + **P2 段对账**：48 条逐条状态表（落地/核对关闭/记档）入 progress
 - **依赖**：全部 P2 卡
 - **风险 / 未知**：无
+- **完成记录**：2026-09-28。**盘点七面（零真冲突）**：①F19/F27 × E17/F26/F11——策略闭集三值与指纹交互核对（strategy 入指纹 + retainedFromEnd 显式配置优先于策略缺省；recent_window_fallback 兜底分型与配置策略正交）；②O29 × C14——未知事件 throw 的正当性由 EVENT_TYPES 闭面保证（泵构造校验 ignore ⊆ 闭面）；③J17/J21 × J2/J13——OAuth AuthResolver 挂 J13 既有接口（AuthMaterial 形状零变化、models 域内闭环源码证伪）；成本消费 L3 usage 分列不建第二份轨迹（L1 否定性纪律）；④S 族 × M1/M2 调度一致性（15d 盘点复核——同一 JobRegistry 三消费方）；⑤known-diffs（T8）18 域抽查一致（5 域逐字核对记录在文档尾）；⑥全段待澄清案 #22~#27 全链闭合（#22/#23 追认转正、#24 待追认在案、#25 记录案、#26 零扩展定形关闭、#27 落地记录 26 待追认）；⑦全段抽样端到端链复核——p15d.snapshot.test.ts 三环（cron → 派发 → 核销 → 通知）在位且全量绿。**验收**：全量 `npx vitest run` → **1672 passed / 1 skipped**（191 文件；批次入口基线 1625 → 净增 47）；`npx tsc --noEmit` 干净；`architecture:check` 0 error / 21 warning（基线）；`vocabulary:check` 0 问题；`count-features.sh` = **337 不变**；`check-doc-links.sh`（显式传参 15 文件）**1237 链接 0 失效**；license-audit **输入面核实**（oss/refs 零未提交变化——15d 收官 exit 0 有效；P2 新引用仓 pi-mono 抽查通过；全量重跑 Windows 大仓 grep 超时记档）。**P2 段对账**：48 条逐条状态表（落地 46 / 核对关闭 1 / 零扩展定形 1）入 plan-p2-progress.md；段收官文档 [`20260928_P2功能全景与借鉴映射.md`](20260928_P2功能全景与借鉴映射.md) 落地。**人工确认清单**：新增 2 项（J17 真实 IdP / F16 接线与真实推理模型归因）。
 
 ## §8 P2 段完成定义
 
-- 五批全部收官：每批卡全勾（每勾附「命令 + 结果摘要」）+ 批次报告入 `plan-p2-progress.md` ✅；`npx tsc --noEmit` 全程干净 ✅；`count-features.sh` = 310 不变 ✅、`check-doc-links.sh` 显式传参 0 失效 ✅、`license-audit.sh` exit 0 ✅。
-- 词汇表管线：#22~#27 各案走立案（含回退面，追认后 `l0-events.md` §8 落地记录全局连续）✅；零扩展卡复核 EVENT_TYPES 基线 ✅。
+- 五批全部收官：每批卡全勾（每勾附「命令 + 结果摘要」）+ 批次报告入 `plan-p2-progress.md` ✅；`npx tsc --noEmit` 全程干净 ✅；`count-features.sh` = 337 不变 ✅、`check-doc-links.sh` 显式传参 0 失效 ✅、`license-audit.sh` exit 0 ✅（15e 收官执行记录：输入面核实 + pi-mono 抽查通过，全量重跑超时记档）。
+- 词汇表管线：#22~#27 各案走立案（含回退面，追认后 `l0-events.md` §8 落地记录全局连续）✅；零扩展卡复核 EVENT_TYPES 基线 ✅（#22/#23 追认转正；#24 落地记录 24 待追认；#25 记录案；#26 零扩展定形关闭；#27 落地记录 26 待追认；F27 闭集追加落地记录 25）。
 - 工程纪律：新域一律 managed:true 入册 ✅；T4 核对结论落档 ✅；T8 known-diffs 落地并随新蓝本域追加 ✅。
 - P2 段对账：48 条逐条状态表（落地/核对关闭/记档）入终验收 ✅；人工确认清单（真实端点/平台联调/Windows 会话面）单列 ✅。
-- **段收官产出《P2 功能全景与借鉴映射》**（`YYYYMMDD_P2功能全景与借鉴映射.md`——P0/P1 惯例固化：段收官快照 + 批次地图 + 产出索引 + 词汇表演进）✅。
+- **段收官产出《P2 功能全景与借鉴映射》**（`YYYYMMDD_P2功能全景与借鉴映射.md`——P0/P1 惯例固化：段收官快照 + 批次地图 + 产出索引 + 词汇表演进）✅ → [`20260928_P2功能全景与借鉴映射.md`](20260928_P2功能全景与借鉴映射.md)。
