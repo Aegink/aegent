@@ -101,6 +101,14 @@ export interface AgentHostOptions {
    * run a turn at auto"）；收窄（true → false）照常受理。
    */
   unattendedCeiling?: boolean;
+  /**
+   * 可被空闲回收（M4/T-P2-104；缺省 false）：**显式 opt-in**——主 host
+   * 会话（单会话模型）不回收，回收面向子会话（E5 fork 树 / 15c H6 后端
+   * 会话）。未 opt-in 的 host 无论多空闲都不被 IdleReaper 摘除。
+   */
+  reapable?: boolean;
+  /** 活跃时钟（缺省 Date.now；测试注入——lastActiveAt 的赋值来源）。 */
+  now?: () => number;
 }
 
 export class AgentHost {
@@ -110,6 +118,9 @@ export class AgentHost {
   private disposed = false;
   private currentUnattended: boolean;
   private readonly sessionLimiter: ToolClassLimiter | undefined;
+  private readonly now: () => number;
+  /** M4/T-P2-104：最后活跃时刻（事件流入与显式 markActive 推进——空闲判定源）。 */
+  private lastActiveAtValue: number;
 
   constructor(
     readonly registry: HostRegistry,
@@ -123,6 +134,8 @@ export class AgentHost {
     // registry 分发，装配方订阅 append 落流——会话流承载 roster 持久面）。
     this.surfaces = new SurfaceHub((change) => this.emit(surfaceEventOf(change)));
     this.currentUnattended = options.unattendedCeiling === true;
+    this.now = options.now ?? (() => Date.now());
+    this.lastActiveAtValue = this.now();
     this.sessionLimiter =
       options.toolClassLimits !== undefined
         ? new ToolClassLimiter(options.toolClassLimits, (name) =>
@@ -138,6 +151,21 @@ export class AgentHost {
   /** 会话内是否处于无人值守档（host 写命令面的活查询源——N7 卡消费）。 */
   get unattended(): boolean {
     return this.currentUnattended;
+  }
+
+  /** M4/T-P2-104：本 host 是否 opt-in 空闲回收（缺省 false = 主会话豁免）。 */
+  get reapable(): boolean {
+    return this.options.reapable === true;
+  }
+
+  /** M4/T-P2-104：最后活跃时刻（空闲判定读面）。 */
+  get lastActiveAt(): number {
+    return this.lastActiveAtValue;
+  }
+
+  /** M4/T-P2-104：显式推进活跃时刻（缺省取本 host 时钟——事件流入亦自动推进）。 */
+  markActive(at?: number): void {
+    this.lastActiveAtValue = at ?? this.now();
   }
 
   /**
@@ -159,6 +187,9 @@ export class AgentHost {
    */
   emit(event: SessionEvent): void {
     if (this.disposed) return; // dispose 后出口静默（不再分发）
+    // M4/T-P2-104：事件流入即活跃（ts 由 store 分配——占位 0 的伪事件
+    // （surfaceEventOf 的 emit 转发）不污染活跃时刻）。
+    if (event.ts > 0) this.markActive(event.ts);
     this.registry.route(this.options.sessionId, event);
   }
 
