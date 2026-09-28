@@ -1,0 +1,55 @@
+/* aegent 画中画面板样式（K9/T-P2-409）——小尺寸 always-on-top 第二窗口
+ * 的渲染面；主样式共用 style.css，本文件只加 PiP 特有布局。 */
+
+.pip-body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: #1e1e1e;
+  color: #ddd;
+  font-family: system-ui, sans-serif;
+  font-size: 12px;
+}
+
+.pip-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: #2a2a2a;
+  border-bottom: 1px solid #444;
+  flex: none;
+}
+
+.pip-stream {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.pip-entry {
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  padding: 4px 6px;
+  margin-bottom: 4px;
+  background: #252525;
+}
+
+.pip-entry-label {
+  font-weight: 600;
+  color: #9cd;
+}
+
+.pip-entry-detail {
+  color: #999;
+  margin: 2px 0;
+}
+
+.pip-entry-shot {
+  max-width: 100%;
+  max-height: 96px;
+  border: 1px solid #555;
+  border-radius: 2px;
+  display: block;
+}

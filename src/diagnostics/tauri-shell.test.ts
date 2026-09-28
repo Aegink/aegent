@@ -56,13 +56,25 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(cargo.split("\n").length).toBeLessThanOrEqual(40);
   });
 
-  it("tauri.conf.json 形状：frontendDist 指向 ui/ 静态资产 + bundle 收窄 nsis + 单窗口", () => {
+  it("tauri.conf.json 形状：frontendDist 指向 ui/ 静态资产 + bundle 收窄 nsis + 主/画中画双窗口（K9/T-P2-409）", () => {
     const conf = JSON.parse(readFileSync(path.join(TAURI_DIR, "tauri.conf.json"), "utf8"));
     expect(conf.build.frontendDist).toBe("../ui");
     expect(conf.build.beforeBuildCommand).toBeUndefined(); // 零前端构建链
     expect(conf.bundle.targets).toEqual(["nsis"]);
     expect(conf.bundle.active).toBe(true);
-    expect(conf.app.windows).toHaveLength(1);
+    // K9：双窗口——main（主操作面）+ pip（画中画：小尺寸 always-on-top
+    // 第二窗口，visible:false 由主面唤起，加载 pip.html 只读渲染面）
+    expect(conf.app.windows).toHaveLength(2);
+    const main = conf.app.windows[0];
+    const pip = conf.app.windows[1];
+    expect(main.label).toBe("main");
+    expect(pip.label).toBe("pip");
+    expect(pip.alwaysOnTop).toBe(true);
+    expect(pip.visible).toBe(false);
+    expect(pip.resizable).toBe(false);
+    expect(pip.width).toBeLessThanOrEqual(400);
+    expect(pip.height).toBeLessThanOrEqual(300);
+    expect(pip.url).toBe("pip.html");
     expect(conf.app.security.csp).toContain("connect-src");
     // 连接面：CSP 放开本机回环 WS（host 进程）
     expect(conf.app.security.csp).toContain("ws://127.0.0.1");
@@ -72,7 +84,8 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     const caps = JSON.parse(
       readFileSync(path.join(TAURI_DIR, "capabilities", "default.json"), "utf8"),
     );
-    expect(caps.windows).toEqual(["main"]);
+    // K9：画中画窗口同受 capabilities 约束（core:default 最小面不变）
+    expect(caps.windows).toEqual(["main", "pip"]);
     for (const permission of caps.permissions as string[]) {
       expect(permission.startsWith("core:")).toBe(true);
     }
@@ -87,5 +100,22 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     // 桌面/网页双端同源判定（surfaceId 前缀 web-/desktop-）
     expect(app).toContain("__TAURI_INTERNALS__");
     expect(app).toContain('"desktop"');
+  });
+
+  it("K9/T-P2-409 · 画中画资产在位：pip.html + pip.js + pip.css（S4 操作审计消费端——只读渲染面）", () => {
+    const uiDir = path.resolve(import.meta.dirname, "..", "..", "ui");
+    for (const name of ["pip.html", "pip.js", "pip.css"]) {
+      expect(statSync(path.join(uiDir, name)).isFile()).toBe(true);
+    }
+    const pipJs = readFileSync(path.join(uiDir, "pip.js"), "utf8");
+    // 只过滤 computer_* 工具事件（S4 操作审计消费端）
+    expect(pipJs).toContain("computer_");
+    expect(pipJs).toContain("tool/call");
+    expect(pipJs).toContain("tool/result");
+    // 只读渲染面：不发写命令（无 prompt/approve UI——零租约竞取）
+    expect(pipJs).not.toContain('"prompt"');
+    expect(pipJs).not.toContain('"approve"');
+    // surfaceId 前缀 pip-（不参与租约竞取的观察端）
+    expect(pipJs).toContain("pip-");
   });
 });

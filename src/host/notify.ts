@@ -3,10 +3,11 @@
  * 既有 broadcast 面）。通知分型是 **wire 载荷非事件**（展卡定形：通知是
  * 端连接的投递事实，不进会话事件流——词汇表零扩展）。
  *
- * 分型闭集四类：approval_pending（审批/提问挂起——HostBridge 既有审批
+ * 分型闭集五类：approval_pending（审批/提问挂起——HostBridge 既有审批
  * 广播的分类归类）、turn_settled（轮结算——事件流观察）、job_settled
  * （后台 job 结算——M1/M2 面的分类源，装配桥接）、surface_changed
- * （端面进退——roster 事实的分类归类）。
+ * （端面进退——roster 事实的分类归类）、computer_operation（K9/T-P2-409
+ * ——S4 屏幕操作的回显推送，装配方经 S4 的 notify 桥接点发布）。
  *
  * 投递两语义（N7 deliveryKind 的消费面）：push = host 主动推（经监听器
  * 即时回调——既有 notification 信封复用）；poll = 端按游标拉取（连接级
@@ -20,6 +21,7 @@ export const NOTIFICATION_KINDS = [
     "turn_settled",
     "job_settled",
     "surface_changed",
+    "computer_operation",
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];

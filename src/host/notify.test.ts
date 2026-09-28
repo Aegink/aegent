@@ -12,13 +12,23 @@ import type { AgentMessage, AgentRequest } from "../kernel/agent-protocol.js";
 import { InMemoryEventStorage, SessionStore } from "../session/store.js";
 
 describe("NOTIFICATION_KINDS", () => {
-    it("四类分型闭集（approval_pending/turn_settled/job_settled/surface_changed）", () => {
+    it("五类分型闭集（…+surface_changed+computer_operation——K9/T-P2-409）", () => {
         expect([...NOTIFICATION_KINDS]).toEqual([
             "approval_pending",
             "turn_settled",
             "job_settled",
             "surface_changed",
+            "computer_operation",
         ]);
+    });
+
+    it("computer_operation 分型发布（S4 notify 桥接点的消费契约）", () => {
+        const hub = new NotificationHub();
+        hub.publish("computer_operation", { operation: "click", requestId: "c1" });
+        const notifications = hub.poll(0);
+        expect(notifications).toHaveLength(1);
+        expect(notifications[0]?.kind).toBe("computer_operation");
+        expect(notifications[0]?.data).toMatchObject({ operation: "click" });
     });
 });
 

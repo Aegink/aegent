@@ -76,6 +76,11 @@ export interface ComputerDeps {
     approve?: (request: ComputerUseRequest) => Promise<string | false>;
     /** 无人值守状态（装配面注入——恒拒判据；缺省 false）。 */
     isUnattended?: () => boolean;
+    /**
+     * K9 通知桥接点（N5 computer_operation 分型的发布面——装配方桥到
+     * NotificationHub.publish；操作回显：截图/动作标注 → 画中画渲染）。
+     */
+    notify?: (payload: JsonValue) => void;
     /** L2 审计面（AuditLogRecord 结构——recordAudit 接线随装配域）。 */
     audit?: (record: {
         kind: string;
@@ -136,6 +141,13 @@ export async function computerExecute(
     // ③helper 执行（T9 子进程边界）
     const response = await deps.run(request);
     audit("executed", approver, { request, ok: response.ok, error: response.error } as unknown as JsonValue);
+    // K9 联动：操作回显推送（画中画消费端——N5 computer_operation 分型）
+    deps.notify?.({
+        operation: request.operation,
+        requestId: toolCallId,
+        at,
+        ...(response.data !== undefined ? { data: response.data } : {}),
+    } as unknown as JsonValue);
     return response;
 }
 

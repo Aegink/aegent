@@ -17,6 +17,16 @@
         "minHeight": 600,
         "center": true,
         "resizable": true
+      },
+      {
+        "label": "pip",
+        "title": "aegent 画中画",
+        "width": 320,
+        "height": 240,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "visible": false,
+        "url": "pip.html"
       }
     ],
     "security": {
@@ -25,7 +35,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

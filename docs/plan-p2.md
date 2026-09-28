@@ -384,7 +384,7 @@
 - **风险 / 未知**：Rust helper 扩展量（屏幕注入 API 面——Windows 会话隔离环境的真实可用性人工确认）；K9 前置
 
 - **完成记录**：2026-09-28。验收 `npx vitest run src/scheduler/computer.test.ts`——13 passed（操作闭集 + 四工具 schema/排他/NOTICE 描述 + 强制审批断言〔无审批不执行——helper 零调用〕+ unattended 恒拒〔审批回调放行也拒〕+ L2 审计三态〔denied/unattended-denied/executed 全落〕+ execute isError 回喂）；`npx vitest run src/scheduler/` 85 passed；`npx tsc --noEmit` 干净；`cargo check`（win32-helper）exit 0。产出：①`src/scheduler/computer.ts`——`computerExecute`（**最强审批三层**：unattended 恒拒先于审批 → 每操作显式 approve〔缺省恒拒，approver 标识进审计〕→ helper 执行）+ 四工具族（schema/排他/描述文件）；②审计全落（L2 面——kind="computer_use" 的 AuditLogRecord 结构，拒绝事实与执行事实同权）；③**Rust 面 helper 存根**（win32-helper 动作闭集 +computer：请求校验 + 操作分发 + 四操作 NOT_IMPLEMENTED 结构化 fail-closed 存根——卡面"helper 存根"兑现，cargo check 通过）。真实屏幕操作（SendInput/BitBlt Win32 实现 + 会话环境）→ 人工确认清单；K9 画中画消费操作审计流。
-#### T-P2-409 · K9 · 画中画（agent 屏幕操作浮动窗口显示） `[ ]`
+#### T-P2-409 · K9 · 画中画（agent 屏幕操作浮动窗口显示） `[x]`
 - **依据需求**：K9（"把 agent 的屏幕操作显示在浮动窗口；用户看得见 agent 在操作什么"）
 - **上游首选参考**：zcode·cuaPipSession.ts（🔴 只学行为：PiP 会话窗口 + 操作回显）
 - **取什么 / 别抄什么**：取"操作可视化 = 屏幕截图流 + 浮动窗"行为；不抄其桌面服务集成（我方 Tauri 壳面）
@@ -393,6 +393,7 @@
 - **依赖**：T-P2-408（S4 操作流）
 - **风险 / 未知**：Tauri 双窗口最小面（conf 声明即可达——交互随人工确认）
 
+- **完成记录**：2026-09-28。验收 `npx vitest run src/diagnostics/tauri-shell.test.ts`——19 passed 全组（双窗口形状断言：main+pip、alwaysOnTop/visible:false/尺寸/url=pip.html；capabilities 双窗口 core:default 不变；pip 三资产在位 + 只读渲染面断言〔含"不发 prompt/approve 写命令"负断言〕）；`npx vitest run src/scheduler/computer.test.ts src/host/ src/diagnostics/` 99 passed；`npx tsc --noEmit` 干净。产出：①tauri.conf.json windows 数组 +pip 第二窗口（320×240、alwaysOnTop、visible:false、url=pip.html——conf 声明即可达）+ capabilities windows=["main","pip"]（core:default 最小面不变）；②ui/ 三新件 pip.html/pip.js/pip.css——**S4 操作审计消费端**：同一 WS 事件流过滤 computer_* 的 tool/call+tool/result，渲染动作标注（参数摘要）+ 操作截图（tool/result meta.data base64）；surfaceId 前缀 pip- 观察端不参与租约竞取，**零写命令**（只读渲染面）；③N5 分型四→五类（+computer_operation——wire 载荷闭集非事件，词汇表零扩展）+ S4 `ComputerDeps.notify` 桥接点（装配方桥到 NotificationHub.publish——K9 联动线）。zcode 锚的桌面服务集成不取（🔴 只学行为）。视觉面 → 人工确认清单。
 #### T-P2-410 · K6+K7 · 飞书与 Slack 端（场景③ IM 端，一卡两适配器） `[ ]`
 - **依据需求**：K6（"飞书；场景③ 的 IM 端"）+ K7（"Slack；有现成参考"）——一卡承载（同构适配器两份，锚点行为一致）
 - **上游首选参考**：pideck·FeishuBridge.ts + opencode·packages/slack（webhook 入站 + 消息格式化 + 审批应答回传的同构行为）
