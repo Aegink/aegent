@@ -1,6 +1,6 @@
 # P3 实施计划（产品化层）
 
-> **性质**：P3 优先级层全阶段计划（U 域 26 条 / 批次 16a+16b+16c+16d / 30 张卡），2026-09-28 展卡（同日三次扩充——①UI 功能组；②产品扩展组（深读 pi-desktop·workpanel/services、cc-switch·mcp/prompts/profiles、pi·tui 后新增 U15~U21）；③管理面组（用户提供 pi-desktop 子智能体管理页截图并裁决"还有技能、子智能体等功能"——深读 AgentSubagentsPage/SkillEditorSheet/SkillMarketPanel/KeyboardShortcutsSection 后新增 U22~U26）——**"让 aegent 从内核变成产品"**。
+> **性质**：P3 优先级层全阶段计划（U 域 27 条 / 批次 16a~16d / 31 张卡），2026-09-28 展卡（同日三次扩充——①UI 功能组；②产品扩展组（深读 pi-desktop·workpanel/services、cc-switch·mcp/prompts/profiles、pi·tui 后新增 U15~U21）；③管理面组（用户提供 pi-desktop 子智能体管理页截图并裁决"还有技能、子智能体等功能"——深读 AgentSubagentsPage/SkillEditorSheet/SkillMarketPanel/KeyboardShortcutsSection 后新增 U22~U26）——**"让 aegent 从内核变成产品"**。
 > **执行协议**：沿用 [`plan-p0.md`](plan-p0.md) §0；推进模式一会话一批次（16a → 16b）。
 > **锚点纪律**：U 域 21 条锚点于 2026-09-28 展卡逐一核对——两轮深读：①产品 UI 清单（cc-switch·src/components 38 件 + pi-desktop·src/components 46 件——ComposerAutocomplete 五类补全图标集 / StartupRecovery 的 startup-watchdog 诊断面 / cc-switch settings 的 AuthCenter·BackupList·Proxy·Language 分节）；②产品扩展面（pi-desktop·workpanel 五 Tab——ReviewTab 的 `reviewChangesFromMessages`+`summarizeReviewChanges` 与 SubagentPanel 的 delegation 状态/耗时/失败收集、cc-switch·mcp 向导四件/prompts 五件/profiles 两件/providers·FailoverPriorityBadge、settings·EnhancementModelCard（ADR 0121 辅助模型）、deeplink 三确认、pi·tui editor/kill-ring/alt-screen-search/fuzzy 编辑器组件——行为证据取自组件名与源码头注释）。
 > **执行前置**：批次 16a/16b/16c 在批次 15a~15e（P2，[`plan-p2.md`](plan-p2.md)）收官之后——U3 依赖 15a 的 Q2、U12 依赖 15e 的 J21、U13 依赖 15d 的 N5 与 M3、U15 依赖 15a 的 Q2 与 P1 的 E5/H2、U18 依赖 15b 的 C42、U19 依赖 P1 的 J15、U8 依赖 15d/15b/15c 面。
@@ -12,7 +12,7 @@
 3. **构建链最小化**：不引入前端框架（React/Vite 不取——ui/ 原生 ES module 已工作，重写无验收收益）；渲染增强用 marked（MIT）+ highlight.js（BSD-3）两个纯库 vendor 本地化（`ui/vendor/`，THIRD_PARTY 登记）。
 4. **渲染安全防呆**：markdown 渲染只作用于**模型产出**（assistant），用户输入不渲染（注入面禁足）；marked 配置禁 HTML 透传。
 5. **体积目标分列陈述**：§6.1 的 60MB 是"壳"目标；U6 引入运行时随包后安装器体积分列（壳 + runtime），不混用旧口径。
-6. **工程纪律不变**：新域 managed:true 入册；工具链四件收官必跑；count-features = **336**（P3 列 26 条）。
+6. **工程纪律不变**：新域 managed:true 入册；工具链四件收官必跑；count-features = **337**（P3 列 27 条）。
 
 ## §3 批次 16a 卡序（6 张：U1/U2/U14/U5/U3 + 收口——产品地基：配置与设置中心；2026-09-28 展卡）
 
@@ -176,7 +176,7 @@
 - **依赖**：T-P3-101 ~ 115 全部
 - **风险 / 未知**：无
 
-## §5 批次 16c 卡序（8 张：U15/U16/U17/U18/U19/U20/U21 + 收口——产品扩展组；2026-09-28 展卡）
+## §5 批次 16c 卡序（9 张：U15/U16/U17/U18/U19/U20/U21 + U27〔T-P3-131，判断修正补录〕 + 收口——产品扩展组；2026-09-28 展卡）
 
 **展卡核对结论（16c）**：
 1. **U15 工作面板是本轮最大发现**：pi-desktop 把"agent 干活的过程可视化"做成三 Tab——ReviewTab 从消息流提取变更（`reviewChangesFromMessages` 纯函数 + `summarizeReviewChanges` 汇总）+ SubagentPanel 收集委派状态/耗时/失败（`collectDelegation*` 三收集器）——我方数据面全在（tool/call·result 流内事实 + E5/H2 子代理事件），缺的是可视化面板。
@@ -185,7 +185,8 @@
 4. **U18 辅助模型卡 = C42 的配置 UI 面**：pi-desktop ADR 0121 原文"哪个模型改写 Composer 草稿、带多少 reasoning"——判官/摘要/标题等辅助任务的模型与主对话模型分离配置；我方 C42（P2 15b）判官的 provider 独立配置正对应此卡。
 5. **U19 Profiles = 配置组合档**（provider+模型+权限一键切场景）+ FailoverPriorityBadge（J15 故障转移顺序的 UI 消费——P1 已落故障转移队列库面）。
 6. **U20 导入导出/深链**：cc-switch 的 BackupListSection/ImportExportSection + deeplink 三确认（MCP/提示词/技能导入必确认——安全面：深链导入是不可信输入，确认面是 C 族防线）。
-7. **U21 CLI 也是产品入口**（K1）：pi·tui 的编辑器组件（kill-ring 剪贴环/alt-screen-search/fuzzy 模糊搜索）是现代 TUI 手感的三件——REPL（readline 行式）升级为自绘编辑面的渐进路线执行时定形（倾向 kill-ring+模糊历史搜索先行，全 TUI 重绘 YAGNI 记档）。
+7. **U27 会话间协作（判断修正补录）**：初判"多端 roster 已覆盖"错误——roster 是"用户多端连同一会话"（surface attach/detach），U27 是"会话间派任务"（agent-to-agent，pi-desktop session-collaboration 的 SessionCollaborationMessage：task/message/completion 三类 + 权限上限快照防提权 + 完成通知）——两者正交。我方落点：协作消息走**流内新事件候选**（#28 立案预判——协作消息是持久事实）或复用 E9 引用面扩展；依赖 E6 树（P2 15a）+ H6 后端（P2 15c）+ E9（P2 15a）；权限上限快照 = H3/H5 降级面的协作侧对偶（提交时快照，排队中不可提权）。
+8. **U21 CLI 也是产品入口**（K1）：pi·tui 的编辑器组件（kill-ring 剪贴环/alt-screen-search/fuzzy 模糊搜索）是现代 TUI 手感的三件——REPL（readline 行式）升级为自绘编辑面的渐进路线执行时定形（倾向 kill-ring+模糊历史搜索先行，全 TUI 重绘 YAGNI 记档）。
 
 **词汇表预判**：16c 全部零事件预判（面板/库/向导/配置面——既有事件与 wire 词汇在位）。
 
@@ -252,11 +253,20 @@
 - **依赖**：无（独立面——16c 可并行）
 - **风险 / 未知**：Windows 终端按键差异（Ctrl+W 等——跨终端兼容负例记档）
 
+#### T-P3-131 · U27 · 会话间协作（派任务/消息往来/权限上限快照） `[ ]`（16c 第九张——判断修正补录，编号追加不重排）
+- **依据需求**：U27（"会话之间的任务派发与消息往来；权限上限快照；会话引用谱系；往来可视化"）
+- **上游首选参考**：[pi-desktop·session-collaboration](../oss/pi-desktop/apps/desktop/electron/main/services/session-collaboration.ts) + [共享类型](../oss/pi-desktop/packages/shared/src/session-collaboration.ts)（🔴 只学行为）
+- **取什么 / 别抄什么**：取"协作消息三型（task/message/completion）+ 状态生命周期 + **权限上限快照（排队任务不可被后续设置提权）** + 完成通知 + 往来列表"五行为；不抄其 Electron 服务结构与其插件面
+- **要产出**：①**#28 立案预判**：协作消息的持久面——倾向流内新事件 `session/task-dispatch` 系（派发/结算）或复用 E9 引用面扩展（执行时定形按"协作消息是持久事实"）；②`src/session/collaboration.ts`——dispatch（源会话 → 目标会话派任务：kind/内容/权限上限快照）+ 排队与执行状态机（queued/running/completed/failed/cancelled）+ completion 回投（结果落源会话流）+ 通知（N5 分型候选）；③权限上限快照——在 H3/H5 降级算法上叠加"协作任务权限 = 提交时快照 ∩ 当前"，队列中设置变更不可提权（**逆方向也不降权**——快照语义定形）；④ui/ 往来面板（子代理监控 Tab 邻居——U15 扩展位）
+- **验收**：`npx vitest run src/session/collaboration.test.ts`——派发/排队/执行/回投全链 + **权限上限不可提升断言**（排队中改设置 → 任务权限不变）+ 会话不存在类型化拒绝 + 词汇表管线（若立案）
+- **依赖**：P2 15a（E6 树/E9 引用）；P2 15c（H6 后端）；T-P3-117（工作面板承载）
+- **风险 / 未知**：协作消息的事件形状是本卡最大定形点（#28 立案）；环检测（A 派 B、B 派 A 的任务环——复用 E9 环检测）
+
 #### T-P3-124 · 收口 · 16c 盘点 `[ ]`
 - **依据需求**：批次 16c 收口 + P3 全段终验收
 - **要产出**：盘点面：①U15 变更提取纯函数 × 流轻量纪律（从流算不建状态）；②U16 用户模板 × I8 系统预设分界；③U18 辅助模型 × 主模型回退链；④U20 导入确认 × 不可信输入面（C 族防线）；⑤U21 CLI 增强 × 既有命令零回归；⑥P3 全段对账（21 条状态表）+ 人工确认清单闭环复核
 - **验收**：`npx vitest run`（全量）+ 工具链四件（count-features = 331）+ license-audit
-- **依赖**：T-P3-101 ~ 123 全部
+- **依赖**：T-P3-101 ~ 123、131 全部
 - **风险 / 未知**：无
 
 ## §6 批次 16d 卡序（6 张：U22/U23/U24/U25/U26 + 收口——管理面组；2026-09-28 展卡）
@@ -326,6 +336,6 @@
 
 - **16a**：6 张卡全勾 ✅；CLI 不带环境变量可启动（读配置）✅；凭据零明文 ✅；设置中心人工走查 ✅；报告入 `plan-p3-progress.md` ✅。
 - **16b**：10 张卡全勾 ✅；渲染安全评审 ✅；**双击 exe 可对话（人工验收）** ✅；人工确认清单全部闭环（转正/放弃两态）✅；`count-features.sh` = **324** ✅；`check-doc-links.sh` 显式传参 0 失效 ✅；`license-audit.sh` exit 0（vendor 登记）✅。
-- **16c**：8 张卡全勾 ✅；工作面板三 Tab 可用（文件树/变更评审/子代理监控）✅；提示词库/MCP 向导/辅助模型卡/Profiles/导入导出/CLI TUI 各面验收 ✅；报告入 `plan-p3-progress.md` ✅。
+- **16c**：9 张卡全勾 ✅；工作面板三 Tab 可用（文件树/变更评审/子代理监控）✅；提示词库/MCP 向导/辅助模型卡/Profiles/导入导出/CLI TUI 各面验收 ✅；报告入 `plan-p3-progress.md` ✅。
 - **16d**：6 张卡全勾 ✅；技能管理（清单/编辑器/来源目录）✅；子智能体管理（内置五预设/自定义/模型 fallback 链/权限 chips）✅；指令中心/快捷键/语音设置各面验收 ✅。
-- P3 对账：26 条逐条状态表（落地/放弃理由）入 progress ✅。
+- P3 对账：27 条逐条状态表（落地/放弃理由）入 progress ✅。

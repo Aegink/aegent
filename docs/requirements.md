@@ -633,7 +633,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 
 ---
 
-### U. Product / 产品化（26 项，P3 层——2026-09-28 用户裁决新增；同日三次扩充：UI 功能组 + 产品扩展组 + 管理面组）
+### U. Product / 产品化（27 项，P3 层——2026-09-28 用户裁决新增；同日四次扩充：UI/产品扩展/管理面/会话协作）
 
 > **P3 层定位**：P0/P1/P2 做完"内核与能力"，本层做"让 aegent 从内核变成产品"——
 > 配置面、界面体验、分发与真实平台闭环。全部条目挂已有产品形态参考仓的锚点
@@ -666,6 +666,7 @@ Tauri 小 11–21 倍，且已在同类场景（桌面 + 读写本地配置）�
 | U24 | **指令中心**：全局与项目级指令文件的集中管理（AGENTS.md 查看/编辑、用户级规则文件编辑——C22 四档作用域的 UI 面）、模板辅助 | P3 | [pi-desktop 指令页行为](../oss/pi-desktop/apps/desktop/src/components/settings)（🔴 只学行为）+ 我方 C22 规则作用域面 | 指令与规则可查可改；层级（全局/项目）清晰 |
 | U25 | **快捷键系统**：全局快捷键清单（面板开合/发送/搜索/会话切换/新建会话）可查、可自定义绑定、冲突提示 | P3 | [pi-desktop·KeyboardShortcutsSection](../oss/pi-desktop/apps/desktop/src/components/settings)（🔴 只学行为） | 快捷键清单全、可改、冲突有提示 |
 | U26 | **语音设置（实验性）**：STT/TTS 配置页（引擎选择——OpenAI 协议端点复用）+ Composer 语音输入按钮（按住说话 → STT → 填入输入框）；P4（STT 功能面）的 UI 消费端 | P3 | pi-desktop 语音设置形态（🔴 只学行为——用户截图"语音【实验性】"位）+ [speech-service](../oss/pi-desktop/apps/desktop/electron/main/services) | 语音输入可用；实验性标记在位 |
+| U27 | **会话间协作**：会话之间的任务派发与消息往来（`task`/`message`/`completion` 三类、排队与生命周期状态、完成通知）；**权限上限快照**（提交时的权限档定死——后续设置变更不能给排队任务提权，防提权设计）；会话引用谱系（createdBy/createdSessions）；往来与当前任务的可视化面 | P3 | [pi-desktop·session-collaboration](../oss/pi-desktop/apps/desktop/electron/main/services/session-collaboration.ts) + [共享类型](../oss/pi-desktop/packages/shared/src/session-collaboration.ts)（🔴 只学行为——SessionCollaborationMessage/Summary 形态） | 会话 A 可派任务给会话 B 并回收结果；排队任务的权限上限不可被后续变更提升 |
 | U8 | **真实平台联调收尾**：Anthropic 真实端点（cache_control 策略）、飞书/Slack 真实机器人、STT 真实端点、OAuth 真实流程、ACP 真实客户端——人工确认清单逐项闭环 | P3 | 各平台真实环境（凭据由用户提供，掩码入 `private/`） | 人工确认清单全部转正或明确放弃 |
 
 ## 5. 合计（由 `bash tools/count-features.sh` 统计，非手工）
