@@ -63,6 +63,22 @@ describe("内置例一：重复工具提醒（阈档升级 + 规范化重置）"
         expect(warn.message.length).toBeLessThan(400);
     });
 
+    it("输入排空复位（A16/T-P2-509）：user/message 后计数清零，新轮重复从 1 起算", () => {
+        const reg = new GuardRegistry();
+        reg.register(createRepeatToolReminder({ thresholds: [3] }));
+        const adv: GuardAdvice[] = [];
+        for (let i = 1; i <= 2; i++) adv.push(...reg.dispatch(call(i, "bash", '{"command":"ls"}')).advices);
+        // 排空注入的新输入落 user/message——计数复位（drainQueue 注入与常规输入同形状）
+        reg.dispatch({ type: "user/message", seq: 100, ts: 100, turn: 2, step: 1, message: { content: "换个任务" }, source: "user" } as SessionEvent);
+        for (let i = 3; i <= 4; i++) adv.push(...reg.dispatch(call(i, "bash", '{"command":"ls"}')).advices);
+        // 复位后两次相同调用只累计到 2，未达阈档 3——上一轮计数不污染
+        expect(adv).toHaveLength(0);
+        // 不复位对照：继续第三次（复位后重新数到 3）触发首档
+        adv.push(...reg.dispatch(call(5, "bash", '{"command":"ls"}')).advices);
+        expect(adv).toHaveLength(1);
+        expect(adv[0]).toMatchObject({ severity: "info" });
+    });
+
     it("配置校验：空/低于 2/非整数 thresholds 构造即拒绝", () => {
         expect(() => createRepeatToolReminder({ thresholds: [] })).toThrow(GuardError);
         expect(() => createRepeatToolReminder({ thresholds: [1] })).toThrow(GuardError);

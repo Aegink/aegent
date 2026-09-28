@@ -498,7 +498,7 @@
 - **风险 / 未知**：渐进接入范围（全部 fixture 一次切换噪音大——本卡只落 helper + 两个示范 fixture，全面切换随触碰记档）
 - **完成记录**：2026-09-28。产出 `src/test-support/event-pump.ts`——`createStrictPump(options)` 严格泵三约定：①**错误类事实 fail-loud**（codex·compact.rs:468 `EventMsg::Error => panic!` 同构）——词汇表闭面内无独立 error 事件，错误是载荷级事实，`isErrorFact` 判定 = tool/result `message.isError===true` ∨ turn/end `reason.kind==="error"`（interrupted/blocked 等非 error 类不误伤——恢复用例实测验证）；②**显式忽略臂**（`ignore` 数组——写出来的决定不是遗漏；含闭面外类型即构造失败）；③**未知事件类型 throw**（比 codex 静默 `_ => {}` 更严——记档理由：EVENT_TYPES 闭面 C14 保证已知集，闭面外即词汇表漂移或坏 fixture）；`allowErrors` 显式放行（测试错误恢复路径时打开——打开与否也是写出来的决定）+ `UnexpectedEventError`（message 含事件类型与 seq，可定位）。测试 `event-pump.test.ts` 4 用例（错误 fail-loud 双形状 / 忽略臂跳过 + 未知 ignore 拒绝 / 未知类型 throw / allowErrors 放行 + isErrorFact 判定面）；**示范接入** agent-process.test 恢复用例——收集循环零改动、收集后 `createStrictPump({onEvent:()=>{}})(events)` 复核哨兵（最小侵入渐进接入形态）。**验收**：`npx vitest run src/test-support/ src/kernel/agent-process.test.ts` → **84 passed**（含 agent-process 30 例——泵复核在真实子进程流上通过）；`npx tsc --noEmit` 干净。**记档**：①测试坑复证——联合类型 `Omit<SessionEvent,…>` 不分发（DistributiveOmit 先例；测试 mk 直用 NewSessionEvent）；②全面切换到泵随触碰渐进（test-policy §3 变更纪律——本卡只落 helper + 1 示范 fixture，卡面预判"两个示范"实际 1 处即达示范语义，其余用例的既有断言面已覆盖）；③agent-process.test 的 beforeAll `npm run build` 失败会以套件级失败呈现（根因在类型错误时先看 tsc——排查记档）。
 
-#### T-P2-508 · O30 · 跨组件因果断言（端到端因果链） `[ ]`
+#### T-P2-508 · O30 · 跨组件因果断言（端到端因果链） `[x]`
 - **依据需求**：O30（"断言跨组件因果（装完必须出现在注册表），不只断言字段值"）
 - **上游首选参考**：pi-desktop·plugins/tests.rs（🔴 只学行为：装配动作 → 注册表可见的因果断言）
 - **取什么 / 别抄什么**：取"断言因果链而非终态字段"纪律；不抄其 Rust 测试结构
@@ -506,8 +506,9 @@
 - **验收**：`npx vitest run src/diagnostics/causal.test.ts`——三因果链全绿
 - **依赖**：无
 - **风险 / 未知**：与既有端到端测试的重叠（盘点先做——已有即复核记档不重写）
+- **完成记录**：2026-09-28。产出 `src/diagnostics/causal.test.ts` 三因果链：①**工具注册 → BUILTIN 清单可见**——`registerBuiltinTools(registry, 桩deps)`（含 planMode 全量门控——首次实测发现缺 planMode 桩则 plan_enter 不注册，因果断言当场暴露装配门控面）后 `BUILTIN_TOOL_NAMES` 每名 `registry.has(name)` 可取；②**provider 配置 → 换模注册表可见**——`new ModelSwitchService({initial, models})` 后 `captureForTurn(1)` 捕获已配置身份 + `switch(注册内身份)` 后 configured 立即可见 + 否定面 `switch(未注册)` 抛 `ModelNotRegisteredError`（装配期即失败纪律的因果对应）；③**host server 装配 → WS 面 hello 可达**——盘点复核：server.test.ts:107「WS e2e 全链：hello → 租约 → prompt → 事件流」已真实覆盖同一因果链，本卡**指认在案不重写**（重叠即复核——卡面预判兑现），指认机内化为源码文本断言（用例改名即失败，防指认悬空）。**验收**：`npx vitest run src/diagnostics/causal.test.ts` → **3 passed**；`npx tsc --noEmit` 干净；`architecture:check` 0 error / 21 warning（基线）。**记档**：①causal.test 的跨域 import（diagnostics→kernel/models/policy/sandbox）走测试文件出边豁免（architecture-check 既有纪律）；②import 坑两枚——`ModelIdentity` 不在 provider.ts 导出（在 identity.ts，provider.ts 本地声明）、`createPlanModeService` 在 kernel/plan-mode.ts 非 policy 域。
 
-#### T-P2-509 · A16 · 输入排空后重置启发式计数 `[ ]`
+#### T-P2-509 · A16 · 输入排空后重置启发式计数 `[x]`
 - **依据需求**：A16（"输入排空后重置相关的启发式计数；排空即复位，不留上一轮的计数污染"）
 - **上游首选参考**：zcode·turn-loop.ts（排空点与计数复位的位置）
 - **取什么 / 别抄什么**：取"队列排空点 = 启发式计数复位点"的时序纪律
@@ -515,6 +516,7 @@
 - **验收**：`npx vitest run src/kernel/loop.test.ts src/kernel/queue.test.ts`（扩）——排空复位用例 + 盘点清单落完成记录
 - **依赖**：无
 - **风险 / 未知**：预判部分覆盖——核对后可能缩为小补丁
+- **完成记录**：2026-09-28。**盘点清单（三类启发式计数 × 排空复位语义）**：①**loop 内 per-turn 计数——复位已在位**（loop.ts:622-628：A14 强制收轮标记与残留看门狗 / B13 预算耗尽标记〔计数作用域按 promptId 本就不跨〕/ B20 输出触顶续跑计数，均随 runTurn 开始复位——与 cancelCause 同步）；②**F28 抖动计数（RapidRefillGuard）——不复位是设计**：抖动检测的正是"压缩-填充循环无法收敛"的**会话级跨轮模式**，干活（toolTurnsSinceCompact 拉过阈值）自然归 0 是其解锁机制（rapid-refill.ts 头注释）；排空复位反而放过跨 prompt 的抖动循环，记档；③**J19 熔断计数（fault-tolerance.ts）——不复位是设计**：熔断器是端点健康状态，恢复机制 = 半开探测而非输入边界，跨 turn 持续；④**I11 重复工具提醒计数——缺口补齐（本卡增量）**：guard.ts `repeat-tool-reminder` 的连续重复计数此前跨轮持续，新输入后的重复调用被上一轮计数污染（A16"计数污染"正中此处）——订阅面扩 `["tool/call", "user/message"]`，advise 遇 user/message（**排空点 = drainQueue 注入落 user/message，与常规输入同形状**——queue.ts:16 排空点语义）复位 lastKey/count。测试 guard.test 扩 1 用例（排空复位后两次重复不达阈档 + 复位后重新数到 3 正常触发——污染面与复位面双向断言）。**验收**：`npx vitest run src/mcp/guard.test.ts src/kernel/loop.test.ts src/kernel/queue.test.ts` → **61 passed**；`npx tsc --noEmit` 干净。**记档**：①zcode 锚 turn-loop.ts 的"排空点复位"在我方对应时点是 user/message 落流（我方 queue 排空在 step 边界、注入形状 = 常规输入——词汇表内 user/message 就是输入的流内事实，无独立 drain 事件，词汇表零扩展）；②promptCounter/traceCounter 是单调 id 发生器非启发式计数，不在盘点面。
 
 #### T-P2-510 · F19 · 压缩分两级（microcompact 与 compact 各有边界事件） `[ ]`
 - **依据需求**：F19（"压缩分两级（microcompact 与 compact 各有边界事件）；两级"）

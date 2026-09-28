@@ -157,8 +157,16 @@ export function createRepeatToolReminder(
     let count = 0;
     return {
         name: "repeat-tool-reminder",
-        events: ["tool/call"],
+        events: ["tool/call", "user/message"],
         advise(event) {
+            // A16（T-P2-509）：输入排空点 = user/message 落流（drainQueue 注入
+            // 与常规输入同形状）——新输入即复位连续计数，上一轮的重复计数
+            // 不污染新任务的判断。
+            if (event.type === "user/message") {
+                lastKey = undefined;
+                count = 0;
+                return undefined;
+            }
             if (event.type !== "tool/call") return undefined;
             const key = `${event.name}\u0000${canonicalize(event.arguments)}`;
             count = key === lastKey ? count + 1 : 1;
