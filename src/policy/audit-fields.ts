@@ -51,6 +51,9 @@ export interface ApprovalAuditRecord {
   /** C6 答复端标识（T-P1-82）：settled 且答复带 source 时存在——"哪个端
    * 答的"（发起端 surface 是本端固定值，答复端可跨端回转）。 */
   readonly replySource?: string;
+  /** L6/T-P2-515 审批结果（settled 且裁决可归因时存在）：verdict.action 派生
+   * （allow → approved，deny → denied；其余裁决不落——只记真实发生的人答复）。 */
+  readonly outcome?: "approved" | "denied";
 }
 
 /** 唯一构造入口：surface/approver 缺一不可（缺字段构造即类型报错——L2）。 */
@@ -63,6 +66,8 @@ export function approvalAuditRecord(fields: {
   readonly at: number;
   readonly feedback?: string;
   readonly replySource?: string;
+  /** L6/T-P2-515：审批结果（settled，verdict.action 派生）。 */
+  readonly outcome?: "approved" | "denied";
 }): ApprovalAuditRecord {
   return { kind: "approval", ...fields };
 }
@@ -120,6 +125,12 @@ export function createApprovalAuditSink(
             ...(announcement.source !== undefined
               ? { replySource: announcement.source }
               : {}),
+            // L6/T-P2-515：审批结果派生（人答复的两值；其余裁决不落）
+            ...(announcement.verdict.action === "allow"
+              ? { outcome: "approved" as const }
+              : announcement.verdict.action === "deny"
+                ? { outcome: "denied" as const }
+                : {}),
           }),
         );
         return;

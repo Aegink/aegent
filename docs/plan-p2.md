@@ -568,7 +568,7 @@
 - **风险 / 未知**：录制文件的入库边界（fixture 化须掩码复核——政策面）
 - **完成记录**：2026-09-28。产出 `src/test-support/http-recorder.ts`：①**录制面**——`HttpRecorder.install()` 替换全局 fetch 成对记录（请求体/响应体过 `redactSecrets` 掩码 sk- 模式 + `authorization/cookie/x-api-key` 整值掩码 `[REDACTED:authorization]`——D14 同源；响应体 clone 读取，调用方流不截断）+ `restore()` 恢复（幂等）+ `serializeRecorded/parseRecorded` JSONL roundtrip（掩码固化在录制物里——入库即掩码，卡面风险点兑现）；②**录制开关**——env `AEGENT_HTTP_RECORD=1`（`HTTP_RECORD_ENV` 常量），生产缺省关：未设置 install 返回 false **零包装零记录**；③**回放面**——`toHttpMockScripts(recorded)`：SSE 体 → `SseScript{includeDone:false}`（原始体 `[DONE]` 剔除防二次追加——首版被测试当场抓出）、其余 → `RawScript{status,body}`——与 http-mock 既有回放基建对接（O2/O15 面）。测试 `http-recorder.test.ts` 4 用例（真实 HttpMock 端到端）：录制往返（SSE 体完整 + restore 恢复）/ 掩码断言（authorization 整值 + sk- 掩码 + roundtrip 保持）/ 回放生成（SSE→SseScript + 429→RawScript）/ 开关关 = 零包装。**验收**：`npx vitest run src/test-support/http-recorder.test.ts` → **4 passed**；`npx tsc --noEmit` 干净。**记档**：①opencode 双向回放（录制样本直接驱动 fetch mock）不取——我方回放落点 = http-mock 脚本（同一回放基建复用，不建第二套 mock 面）；②install 包装全局 fetch 是测试域专用面（test-support managed 域——生产路径不 import）。
 
-#### T-P2-515 · L6 · 审计报表（汇总危险操作与审批） `[ ]`
+#### T-P2-515 · L6 · 审计报表（汇总危险操作与审批） `[x]`
 - **依据需求**：L6（"审计报表；汇总危险操作与审批"）
 - **上游首选参考**：hermes·gateway（审计汇总的维度面）
 - **取什么 / 别抄什么**：取"按会话/时间窗汇总危险操作与审批率"的报表维度；不抄其网关形态（我方本地库面）
@@ -576,6 +576,7 @@
 - **验收**：`npx vitest run src/obs/audit-report.test.ts`——三维度聚合 + 空窗零除防呆
 - **依赖**：T-P2-105（Q2 查询面复用）、T-P2-203（判官面——15b）
 - **风险 / 未知**：无
+- **完成记录**：2026-09-28。产出：①`src/policy/audit-fields.ts` 扩——`ApprovalAuditRecord` settled 加可选 `outcome?: "approved" | "denied"`（verdict.action 派生：allow→approved / deny→denied，其余裁决不落——只记真实发生的人答复；asked/timed-out 不带）；`createApprovalAuditSink` settled 分支填 outcome（"审批率"维度的数据来源——此前 settled 记录无裁决值，审批率不可算，这是本卡必需的形状补齐）。②`src/obs/audit-report.ts`——`auditReport(records, {fromTs?, toTs?})` 纯函数：**输入 = L2 审计记录流**（结构化最小面 `AuditRecordLike` 本地声明——避免 obs→policy 新静态依赖，架构基线 21 warning 不动）；三维度：①危险操作计数（asked 按 tool 分组 escalations 降序——危险操作被拦截升级的事实）②审批率（approved/denied/timedOut 分列 + approvalRate = settled+timedOut / asked，**空窗 null 不除零**）③判官介入率（judge reviewed 数 / asked 数——C42 后的判官面）；时间窗含界过滤。测试 `audit-report.test.ts` 3 用例（三维度聚合 + byTool 分组降序 / 空窗与零审批请求双零除防呆 / 时间窗含界过滤）。**验收**：`npx vitest run src/obs/audit-report.test.ts src/policy/audit-fields.test.ts` → **9 passed**（audit-fields 既有零回归）；`npx tsc --noEmit` 干净；`architecture:check` 0 error / 21 warning（基线）。**记档**：①窗口是记录级过滤不是请求级配对过滤（asked 在窗外、settled 在窗内时 rate 可 >1——如实表达窗口内事实，聚合口径记档）；②audit_report 只读工具化（Q2 工具面复用）是卡面"候选"——报表是库面原语，工具暴露随需要记档。
 
 #### T-P2-516 · J21 · 成本核算（token → 成本，按会话/轮可查） `[ ]`
 - **依据需求**：J21（"成本核算；token → 成本可算；按会话/按轮可查"）
