@@ -38,7 +38,7 @@ aegent/
 ├── docs/
 │   ├── requirements.md        ★★ 需求文档（要做什么）
 │   ├── reference-cases.md     ★★ 参考案例索引（照着谁做）
-│   ├── l0-events.md           L0 事件词汇表设计（正式形状 26 事件——P0 起步 14 经 #16~#27 演进，§8 有落地记录）
+│   ├── l0-events.md           L0 事件词汇表设计（正式形状 27 事件——P0 起步 14 经后续立案演进，§8 有落地记录）
 │   ├── l0-eval.md             L0 内核评估
 │   ├── plan-p0.md             ★ P0 计划（执行协议 §0 全局沿用）+ plan-p0-progress.md 执行记录
 │   ├── plan-p1.md             ★ P1 计划（批次 1-14 收官）+ plan-p1-progress.md 记录/待澄清/确认清单
