@@ -364,7 +364,7 @@
 - **风险 / 未知**：STT 端点无实测（mock 面 + 人工确认）；"非必需"标注——规模最小化
 
 - **完成记录**：2026-09-28。验收 `npx vitest run src/attachments/`——39 passed（含新 stt.test 10：白名单 7 断言 + STT mock 往返 multipart 契约/Bearer 头/language/filename/三类错误 fail-closed + 投影文本两态 + 存储透传；既有 attachments.test 白名单 4→7 同步）；`npx vitest run src/session/messages.test.ts` 8 passed；`npx tsc --noEmit` 干净。产出：①limits.ts——IMAGE/AUDIO_MEDIA_TYPES 分型常量 + ALLOWED_MEDIA_TYPES 4→7（**存储面契约**扩展；请求面分型注释）；②`src/attachments/stt.ts`——`transcribeAudio`（OpenAI 协议 audio/transcriptions multipart + Bearer；mediaType 三类 fail-closed；SttError 三码——HTTP 错误面不含响应体原文防泄露；fetch 注入 mock；凭据零落盘）；③转写文本承载定形——`IncomingAttachment.transcription?`（端侧转写后上送）→ AttachmentRef.transcription（流存音频引用 + 转写文本）→ messages.ts 投影占位行（`[voice note: …] <文本>` / 未转写占位——与 image offload 同构；音频字节不进请求）；④内存/磁盘两 store 透传 transcription。偏离：卡面"落流"接线定形为**端侧转写上送**（dsh"音频瞬态、转写文本进后续提交"同构——agent 子进程零 STT 依赖零阻塞，卡面未明说接线点记档）。真实 STT 端点联调 → 人工确认清单。
-#### T-P2-407 · S3 · 浏览器使用（单独沙箱与网络策略） `[ ]`
+#### T-P2-407 · S3 · 浏览器使用（单独沙箱与网络策略） `[x]`
 - **依据需求**：S3（"浏览器使用；需单独沙箱与网络策略（含 NOTICE）"）
 - **上游首选参考**：qwen·packages/browser-use（浏览器工具面 + 沙箱策略的形态）
 - **取什么 / 别抄什么**：取"浏览器是工具族 + 独立网络策略 + 风险标注（NOTICE）"行为；不抄其 CDP 实现细节（我方最小面：CDP 经 playwright-core? 无——**决策：http 请求级浏览器面（fetch 工具扩展）不做真浏览器**？"浏览器使用"验收要浏览器——最小面：CDP over ws（node 原生 ws 客户端复用——Chrome/Edge 系统自带 --remote-debugging-port））
@@ -373,6 +373,7 @@
 - **依赖**：T-P2-301（deadline——页面超时）
 - **风险 / 未知**：CDP 协议面大（三工具最小面——截图/抽取的真实渲染随人工确认）；系统浏览器依赖
 
+- **完成记录**：2026-09-28。验收 `npx vitest run src/scheduler/browser.test.ts`——13 passed（域白名单通配 + fake ws 往返/error 回包 + cdpWsUrlOf 两态 + navigate 审批两闸四用例 + 截屏/抽取/非字符串 fail-closed + 工具族 schema/排他/NOTICE + execute isError 回喂）；`npx vitest run src/scheduler/` 72 passed；`npx tsc --noEmit` 干净；architecture:check 0 error / 21 warning。产出 `src/scheduler/browser.ts`：①`CdpConnection`（ws 直连 CDP——JSON-RPC id 配平 + deadline（M7 withDeadline，code=BROWSER_DEADLINE）；WebSocketImpl 构造注入可 mock）；②`cdpWsUrlOf`（GET /json/version 解析）；③三操作——`browserNavigate`（**两闸独立**：approve 回调〔C 族纵深——缺省恒拒〕→ D3 域白名单〔精确/`*.suffix` 通配，BrowserDomainError〕→ Page.navigate）、`browserScreenshot`、`browserExtract`；④`createBrowserTools` 三工具族（parallel 不声明=排他 fail-closed；NOTICE 风险标注经 B2 描述文件 `descriptions/browser_*.txt`——descriptions 三新件；错误 isError 回喂不上抛——模型可自纠）。测试坑实录：**CdpConnection 内部自建 ws 实例与测试手动 new 的 fake 分家**（emit 落无人监听的孤儿实例——超时三查，改 instances.at(-1) 取连接真正持有的实例）。真实浏览器联调 → 人工确认清单。
 #### T-P2-408 · S4 · 计算机使用（屏幕/输入控制，最强审批） `[ ]`
 - **依据需求**：S4（"屏幕/输入控制；风险最高，需最强审批"）
 - **上游首选参考**：codex·computer_use_config.rs（配置面 + 审批强度的行为）

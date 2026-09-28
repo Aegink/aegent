@@ -31,7 +31,7 @@ docs/plan-p0.md §0）。本批特有的注意：
 
 ## 批次 15d · 端与自动化（11 条：S1 M11 S2 S5 N5 P4 S3 S4 K9 K6 K7）
 
-**状态**：🚧 进行中（2026-09-28 开工）——台账：T-P2-401 S1 定时任务 ✅（cron 最小解析器 + v5 CronStore + 被动轮询派发，39 passed）。T-P2-402 M11 闲时任务 ✅（OffPeakQueue 四步取号/窗口/核销/幂等，12 passed；#24 候选定形零事件）。T-P2-403 S2 webhook ✅（处理器面 + token/HMAC 鉴权 + 202 fire-and-forget + 上限防呆，8 passed）。T-P2-404 S5 反馈上报 ✅（#24 立案 feedback/note 词汇表 28→29 + 提交面/wire 面/CLI 面全链，6 passed）。T-P2-405 N5 推送 ✅（NotificationHub 四类分型 + poll 游标补投 + bridge 三类归类，12 passed）。T-P2-406 P4 语音转文字 ✅（白名单 4→7 + transcribeAudio mock 面 + 投影转写文本，39 passed）。
+**状态**：🚧 进行中（2026-09-28 开工）——台账：T-P2-401 S1 定时任务 ✅（cron 最小解析器 + v5 CronStore + 被动轮询派发，39 passed）。T-P2-402 M11 闲时任务 ✅（OffPeakQueue 四步取号/窗口/核销/幂等，12 passed；#24 候选定形零事件）。T-P2-403 S2 webhook ✅（处理器面 + token/HMAC 鉴权 + 202 fire-and-forget + 上限防呆，8 passed）。T-P2-404 S5 反馈上报 ✅（#24 立案 feedback/note 词汇表 28→29 + 提交面/wire 面/CLI 面全链，6 passed）。T-P2-405 N5 推送 ✅（NotificationHub 四类分型 + poll 游标补投 + bridge 三类归类，12 passed）。T-P2-406 P4 语音转文字 ✅（白名单 4→7 + transcribeAudio mock 面 + 投影转写文本，39 passed）。T-P2-407 S3 浏览器使用 ✅（CDP 直连三工具 + 域白名单 + 每导航强制审批 + NOTICE 描述，13 passed）。
 
 ---
 
