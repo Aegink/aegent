@@ -31,6 +31,7 @@ export class InMemoryAttachmentStore implements AttachmentStore {
       mediaType: input.mediaType,
       size,
       ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.transcription !== undefined ? { transcription: input.transcription } : {}),
       data: input.data,
     };
     this.items.set(attachmentId, ref);
@@ -62,6 +63,7 @@ export class LocalFileAttachmentStore implements AttachmentStore {
       mediaType: input.mediaType,
       size: buffer.byteLength,
       ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.transcription !== undefined ? { transcription: input.transcription } : {}),
     };
     // tmp + rename 原子写（两文件成对）
     const rawTmp = path.join(this.root, `.${attachmentId}.raw.tmp`);
@@ -76,7 +78,7 @@ export class LocalFileAttachmentStore implements AttachmentStore {
   read(attachmentId: string) {
     // id 校验闭面：只接受 UUID 形状（防路径拼接注入）
     if (!/^[0-9a-f-]{36}$/i.test(attachmentId)) return null;
-    let meta: { mediaType: string; size: number; name?: string };
+    let meta: { mediaType: string; size: number; name?: string; transcription?: string };
     let raw: Buffer;
     try {
       meta = JSON.parse(readFileSync(path.join(this.root, `${attachmentId}.json`), "utf8"));
@@ -88,6 +90,7 @@ export class LocalFileAttachmentStore implements AttachmentStore {
       mediaType: meta.mediaType,
       size: meta.size,
       ...(meta.name !== undefined ? { name: meta.name } : {}),
+      ...(meta.transcription !== undefined ? { transcription: meta.transcription } : {}),
       data: raw.toString("base64"),
     };
   }

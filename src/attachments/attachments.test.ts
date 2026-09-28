@@ -121,7 +121,8 @@ describe("附件限额（P3——超限明确报错）", () => {
         Array.from({ length: MAX_ATTACHMENTS_PER_MESSAGE }, () => ({ mediaType: "image/webp", byteLength: MAX_ATTACHMENT_BYTES })),
       ),
     ).not.toThrow();
-    expect(ALLOWED_MEDIA_TYPES).toHaveLength(4);
+    // P4/T-P2-406：白名单 4→7（音频三类入册——存储面契约扩展）
+    expect(ALLOWED_MEDIA_TYPES).toHaveLength(7);
   });
 });
 

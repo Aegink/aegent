@@ -87,6 +87,17 @@ export function buildChatMessages(
 [image offloaded: ${ref.name ?? "image"} (${ref.mediaType}, ${ref.size}B, id=${ref.attachmentId})]`;
               return;
             }
+            // P4/T-P2-406：音频附件 → 转写文本投影（文本面——音频字节不进
+            // 请求；未转写渲染占位行说明容量事实，与 image offload 同构）
+            if (ref.mediaType.startsWith("audio/")) {
+              const label = ref.name ?? "voice";
+              placeholderLines += ref.transcription !== undefined
+                ? `
+[voice note: ${label} (${ref.mediaType}, id=${ref.attachmentId})] ${ref.transcription}`
+                : `
+[voice note: ${label} (${ref.mediaType}, ${ref.size}B, id=${ref.attachmentId}) — 未转写]`;
+              return;
+            }
             if (resolve) {
               const img = resolve(ref, index);
               if (img !== null) resolved.push(img);

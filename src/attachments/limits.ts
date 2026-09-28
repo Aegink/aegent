@@ -13,15 +13,29 @@ export const MAX_ATTACHMENT_BYTES = 10_000_000;
 /** 每消息附件数量上限（卡内定形——宽松但有限，防无界构造）。 */
 export const MAX_ATTACHMENTS_PER_MESSAGE = 8;
 
-/**
- * 允许的 mediaType 白名单闭集（图片四类——OpenAI/Anthropic 视觉面的公共支持集）。
- * 非图片附件（pdf/文本等）P1 不进模型请求面——白名单即请求面契约。
- */
-export const ALLOWED_MEDIA_TYPES: readonly string[] = Object.freeze([
+/** 图片四类（OpenAI/Anthropic 视觉面的公共支持集——请求面直接投影）。 */
+export const IMAGE_MEDIA_TYPES: readonly string[] = Object.freeze([
   "image/png",
   "image/jpeg",
   "image/gif",
   "image/webp",
+]);
+
+/** 音频三类（P4/T-P2-406——OpenAI audio/transcriptions 协议的公共支持集）。 */
+export const AUDIO_MEDIA_TYPES: readonly string[] = Object.freeze([
+  "audio/mp4",
+  "audio/wav",
+  "audio/webm",
+]);
+
+/**
+ * 允许的 mediaType 白名单闭集（**存储面契约**——附件可入库的完整集）。
+ * 请求面分型：图片经视觉投影直进请求；音频经转写文本投影（transcription
+ * 字段——stt.ts 端侧转写后上送）；其余（pdf/文本等）不进请求面。
+ */
+export const ALLOWED_MEDIA_TYPES: readonly string[] = Object.freeze([
+  ...IMAGE_MEDIA_TYPES,
+  ...AUDIO_MEDIA_TYPES,
 ]);
 
 export class AttachmentLimitError extends Error {

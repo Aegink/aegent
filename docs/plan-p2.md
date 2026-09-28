@@ -354,7 +354,7 @@
 - **风险 / 未知**：poll 补投的游标存续（连接级内存——重连走 query 恢复复用）
 
 - **完成记录**：2026-09-28。验收 `npx vitest run src/host/notify.test.ts`——12 passed（四类分型闭集 + publish 形状/拒绝 + push 订阅/异常隔离 + poll 游标补投/环形缓冲 + HostBridge 三类归类集成 4）；`npx vitest run src/host/` 65 passed 无回归；`npx tsc --noEmit` 干净。产出：①`src/host/notify.ts`——`NotificationHub`（NOTIFICATION_KINDS 四类闭集 fail-closed + NotificationPayload {kind, seq, at, data?} wire 载荷非事件——词汇表零扩展）+ push 即时回调（监听器异常隔离）+ poll 游标补投（连接级环形缓冲缺省 256 条，`poll(cursor)` 取 seq 后缀——游标推进由调用方以最大 seq 表达，重放安全）；②HostBridge 集成——approval_requested/question_asked → approval_pending、turn/end 事件 → turn_settled、roster attach/detach → surface_changed（**既有 notification 广播零变化**——分型是附加发布面，notifyHub 不提供时零行为变化）；③job_settled 分型的 job 源桥接随装配域（K6/K7 卡消费 N5 分型时接线——本卡交付 Hub 面）。
-#### T-P2-406 · P4 · 语音转文字（附件域 STT 扩展） `[ ]`
+#### T-P2-406 · P4 · 语音转文字（附件域 STT 扩展） `[x]`
 - **依据需求**：P4（"语音转文字；非必需"）
 - **上游首选参考**：dsh·api-speech-to-text（STT provider 调用 + 文本落流的行为）
 - **取什么 / 别抄什么**：取"音频 → STT → 文本进上下文"链路；不抄其实验包结构（附件域扩展最小面）
@@ -363,6 +363,7 @@
 - **依赖**：P1 附件域（批次 13 已落）
 - **风险 / 未知**：STT 端点无实测（mock 面 + 人工确认）；"非必需"标注——规模最小化
 
+- **完成记录**：2026-09-28。验收 `npx vitest run src/attachments/`——39 passed（含新 stt.test 10：白名单 7 断言 + STT mock 往返 multipart 契约/Bearer 头/language/filename/三类错误 fail-closed + 投影文本两态 + 存储透传；既有 attachments.test 白名单 4→7 同步）；`npx vitest run src/session/messages.test.ts` 8 passed；`npx tsc --noEmit` 干净。产出：①limits.ts——IMAGE/AUDIO_MEDIA_TYPES 分型常量 + ALLOWED_MEDIA_TYPES 4→7（**存储面契约**扩展；请求面分型注释）；②`src/attachments/stt.ts`——`transcribeAudio`（OpenAI 协议 audio/transcriptions multipart + Bearer；mediaType 三类 fail-closed；SttError 三码——HTTP 错误面不含响应体原文防泄露；fetch 注入 mock；凭据零落盘）；③转写文本承载定形——`IncomingAttachment.transcription?`（端侧转写后上送）→ AttachmentRef.transcription（流存音频引用 + 转写文本）→ messages.ts 投影占位行（`[voice note: …] <文本>` / 未转写占位——与 image offload 同构；音频字节不进请求）；④内存/磁盘两 store 透传 transcription。偏离：卡面"落流"接线定形为**端侧转写上送**（dsh"音频瞬态、转写文本进后续提交"同构——agent 子进程零 STT 依赖零阻塞，卡面未明说接线点记档）。真实 STT 端点联调 → 人工确认清单。
 #### T-P2-407 · S3 · 浏览器使用（单独沙箱与网络策略） `[ ]`
 - **依据需求**：S3（"浏览器使用；需单独沙箱与网络策略（含 NOTICE）"）
 - **上游首选参考**：qwen·packages/browser-use（浏览器工具面 + 沙箱策略的形态）

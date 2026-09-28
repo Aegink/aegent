@@ -15,6 +15,8 @@ export type AttachmentRef = {
   readonly name?: string;
   /** 字节数（save 时由 store 记录——限额与占位文本用）。 */
   readonly size: number;
+  /** P4/T-P2-406：语音转写文本（音频附件可选——投影文本面）。 */
+  readonly transcription?: string;
 };
 
 /** wire/入口面：带字节（base64）的待保存附件。 */
@@ -23,4 +25,7 @@ export type IncomingAttachment = {
   /** base64 编码的原始字节。 */
   readonly data: string;
   readonly name?: string;
+  /** P4/T-P2-406：语音转写文本（音频附件可选——端侧经 stt.ts 转写后
+   * 上送；流存音频引用 + 转写文本，字节仍只在 store）。 */
+  readonly transcription?: string;
 };
