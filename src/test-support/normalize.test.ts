@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeValue, PLACEHOLDERS, stableStringify, StableLabels } from "./normalize.js";
+import { createSnapshotter, snapshotToString } from "./snapshots.js";
+import {
+  MAX_SNAPSHOT_LINE_CHARS,
+  normalizeValue,
+  PLACEHOLDERS,
+  stableStringify,
+  StableLabels,
+  tagKnownDirectives,
+  truncateLines,
+} from "./normalize.js";
 
 describe("归一化自测（O3/O6：归一化自己要有测试，覆盖路径/ID/时间戳三类）", () => {
   it("路径类：cwd 与临时目录前缀替换为具名占位符（POSIX 与 Windows 分隔符）", () => {
@@ -90,5 +99,56 @@ describe("归一化自测（O3/O6：归一化自己要有测试，覆盖路径/I
     const a = stableStringify({ b: 1, a: { y: 2, x: 3 } });
     const b = stableStringify({ a: { x: 3, y: 2 }, b: 1 });
     expect(a).toBe(b);
+  });
+});
+
+describe("快照长行截断 + 长指引标签化（O27/T-P2-505）", () => {
+  it("truncateLines：短行零变化，超长行截断 + 尾标带截去量", () => {
+    expect(truncateLines("short\nline")).toBe("short\nline");
+    const long = "x".repeat(200);
+    const cut = truncateLines(long);
+    expect(cut.startsWith("x".repeat(160))).toBe(true);
+    expect(cut.endsWith("…[truncated 40 chars]")).toBe(true);
+    // 多行混合：只有超长行被截
+    expect(truncateLines(`${"a".repeat(20)}\n${"b".repeat(180)}`).split("\n")).toHaveLength(2);
+  });
+
+  it("truncateLines 自定义上限；缺省常量 = 160（codex 同值）", () => {
+    expect(truncateLines("abcdef", 4)).toBe("abcd…[truncated 2 chars]");
+    expect(MAX_SNAPSHOT_LINE_CHARS).toBe(160);
+  });
+
+  it("tagKnownDirectives：persona 段（机制段之后的拼接块）替换为一行标签，无命中零变化", () => {
+    // 真实形状：assembly 首落 system = 机制段 + 人格段追加（T-P2-105 同款拼接）
+    const system = [
+      "# 会话机制",
+      "工作区：/tmp/proj",
+      "",
+      "# 人格：平衡协作（{{workspace}}）",
+      "",
+      "你以清晰、审慎、可验证为第一优先级：先理解再动手。",
+      "重要决策先向用户确认再执行。",
+    ].join("\n");
+    expect(tagKnownDirectives(system)).toBe(
+      [
+        "# 会话机制",
+        "工作区：/tmp/proj",
+        "",
+        "[directive: persona]",
+      ].join("\n"),
+    );
+    expect(tagKnownDirectives("普通文本不含人格标题")).toBe("普通文本不含人格标题");
+  });
+
+  it("snapshotToString 接线：system 里的指引段标签化，超长行整体截断", () => {
+    const snap = createSnapshotter()({
+      system: "# 人格：编码专注（/proj）\n\n你是深度专注的软件工程师。",
+      tools: [],
+      messages: [{ role: "user", content: "y".repeat(300) }],
+    }, null, { whyEnded: "turn/end", scenario: "O27 接线" });
+    const text = snapshotToString(snap);
+    expect(text).toContain("[directive: persona]");
+    expect(text).not.toContain("深度专注");
+    expect(text).toContain("[truncated");
   });
 });

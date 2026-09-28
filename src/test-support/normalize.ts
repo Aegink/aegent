@@ -96,6 +96,54 @@ export function stableStringify(value: unknown): string {
   );
 }
 
+/**
+ * 快照长行截断（O27/T-P2-505，codex·context_snapshot.rs 同款常量）：超长行
+ * 截到 max 字符 + `[truncated N chars]` 尾标——快照 diff 不被超长行淹没，
+ * 尾标带截去量保留"内容长度"这一稳定信息。codex 的 head/tail + hash 指纹
+ * 形状不取（卡面定形为头部保留——YAGNI，见 known-diffs.md）。
+ */
+export const MAX_SNAPSHOT_LINE_CHARS = 160;
+
+export function truncateLines(text: string, max: number = MAX_SNAPSHOT_LINE_CHARS): string {
+  return text
+    .split("\n")
+    .map((line) => {
+      if (line.length <= max) return line;
+      const cut = line.length - max;
+      return `${line.slice(0, max)}…[truncated ${cut} chars]`;
+    })
+    .join("\n");
+}
+
+/** 已知长指引条目：整段替换成一行标签——同一指引每次快照都长且不变，标签化后 diff 只反映真实差异。 */
+export interface DirectiveRule {
+  name: string;
+  /** 段匹配正则（命中部分即被替换为 `[directive: <name>]`）。 */
+  pattern: RegExp;
+}
+
+/**
+ * 已知长指引替换表（内置最小集）：我方内置人格指引段（persona.ts 渲染产物
+ * 拼进 system 字段——assembly 首落系统提示处追加，是快照 system 的已知超长
+ * 文本）。段边界 = `# 人格：` 行起、至下一 markdown 标题行或串尾（空行连续）。
+ * 测试可传自定义 rules 追加。
+ */
+export const KNOWN_DIRECTIVES: readonly DirectiveRule[] = [
+  { name: "persona", pattern: /# 人格：[^\n]*(?:\n(?!#[ \t])[^\n]*)*/g },
+];
+
+/** 对文本应用指引标签表：命中的段替换为 `[directive: <name>]`。 */
+export function tagKnownDirectives(
+  text: string,
+  rules: readonly DirectiveRule[] = KNOWN_DIRECTIVES,
+): string {
+  let out = text;
+  for (const rule of rules) {
+    out = out.replace(rule.pattern, `[directive: ${rule.name}]`);
+  }
+  return out;
+}
+
 /** 找出两个稳定序列化文本的第一处差异（人话失败信息用，O9 的配套）。 */
 export function firstDifference(a: string, b: string): string | null {
   if (a === b) return null;

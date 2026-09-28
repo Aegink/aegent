@@ -7,7 +7,14 @@
  */
 
 import type { JsonValue } from "../kernel/events.js";
-import { normalizeValue, stableStringify, StableLabels, type NormalizeOptions } from "./normalize.js";
+import {
+  normalizeValue,
+  stableStringify,
+  truncateLines,
+  tagKnownDirectives,
+  StableLabels,
+  type NormalizeOptions,
+} from "./normalize.js";
 
 export interface ToolSnapshot {
   name: string;
@@ -84,5 +91,11 @@ export function snapshotToString(snapshot: GenerateInputSnapshot): string {
   // O21：Scenario 头行先行——读快照第一行即知测试意图（场景在场景字段缺席
   // 时输出缺省提醒，与 whyEnded 同款大声提醒纪律）
   const scenarioLine = `Scenario: ${snapshot.header.scenario ?? "（未写场景——O21 要求一句自然语言）"}`;
-  return `${scenarioLine}\n${stableStringify(snapshot)}`;
+  // O27：system 字段的已知长指引先标签化（值域匹配——JSON 转义后的整行
+  // 无法按原文段匹配），再整体截断超长行——diff 只反映真实差异
+  const tagged: GenerateInputSnapshot = {
+    ...snapshot,
+    input: { ...snapshot.input, system: tagKnownDirectives(snapshot.input.system) },
+  };
+  return truncateLines(`${scenarioLine}\n${stableStringify(tagged)}`);
 }

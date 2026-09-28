@@ -468,7 +468,7 @@
 - **风险 / 未知**：无（文档件）
 - **完成记录**：2026-09-28。产出 `docs/known-diffs.md`——**18 个蓝本域逐条登记**（对齐了什么 / 分歧是什么 + 理由 / 证据 pin 到计划卡号）：词汇表（三家实测不抄任何一家）、会话存储（←DSH）、投影器（←codex，合并器≠投影器）、host 协议（←pi·protocol 五形状）、ACP（←xai-acp-lib）、附件（←kimi/pi-desktop）、权限匹配（←zcode）、沙箱 Win32（←dsh+codex）、提示词缓存（语义自定）、写队列（←pi）、快照归一（←codex/dsh/kimi）、工具并发（←codex/pi）、插件分轨（←pi-desktop 🔴）、fork（←pi）、M7 deadline（←dsh）、I5 SDK（←opencode）、I7 hook 兼容（←dsh）、E9 引用（←dsh）——P0/P1 卡面"不抄什么"行回溯汇拢 + P2 条目随收官回填；**文件头写明随卡追加纪律**（只追加不替换；分歧消失标记不删除；格式对齐 kimi·known-diffs.txt 逐条偏差 + pin）。**验收**：①文档落地 ✅；②抽查 5 域与完成记录一致（词汇表 plan-p0.md:152 / 会话存储 :164 / 投影器 :188 / 权限匹配 :501 / host 协议 plan-p1.md:1741——分歧表述与完成记录"不抄什么"行逐字对上，核对记录落文件尾）；③`bash tools/check-doc-links.sh docs/known-diffs.md` → **5 链接 0 失效**。
 
-#### T-P2-505 · O27 · 快照长行截断 + 长指引标签化 `[ ]`
+#### T-P2-505 · O27 · 快照长行截断 + 长指引标签化 `[x]`
 - **依据需求**：O27（"长行截断（160 字符）+ 已知长指引替换成一行标签；MAX_SNAPSHOT_LINE_CHARS"）
 - **上游首选参考**：codex·context_snapshot.rs（截断常量 + 标签替换的行为）
 - **取什么 / 别抄什么**：取"160 字符截断 + 长文本一行标签（稳定 diff）"两行为；不抄其 snapshot 场景（我方 normalize.ts 已有归一化——O27 是其行纪律补齐）
@@ -476,6 +476,7 @@
 - **验收**：`npx vitest run src/test-support/`（扩）——截断/标签/既有快照零破坏
 - **依赖**：无
 - **风险 / 未知**：既有快照测试的 diff 抖动（标签化后部分既有快照更新——有意行为收紧记档）
+- **完成记录**：2026-09-28。产出：①`src/test-support/normalize.ts` 扩——`MAX_SNAPSHOT_LINE_CHARS = 160`（codex·context_snapshot.rs:24 同值）+ `truncateLines(text, max?)`（逐行超长截到 max + `…[truncated N chars]` 尾标带截去量；短行零变化）+ `DirectiveRule` / `KNOWN_DIRECTIVES` / `tagKnownDirectives(text, rules?)`（已知长指引段整段替换 `[directive: <name>]`；内置最小集 = persona 段——真实依据：assembly 首落 system 是机制段 + 人格段拼接（T-P2-105 记录），段边界定形 = `# 人格：` 行起至下一 markdown 标题行或串尾）；②`snapshots.ts` 的 `snapshotToString` 接线——system 字段**值域**先 tag（JSON 转义后的整行无法按原文段匹配，值域处理是标签化的正确层）再 `truncateLines` 整体输出（超长 JSON 行被截——diff 不被淹没）。测试 `normalize.test.ts` 扩 4 用例（短行零变化 + 尾标量 / 自定义上限 + 常量 160 / persona 段真实拼接形状替换 + 无命中零变化 / snapshotToString 接线端到端：标签在、原文不在、截断在）。**验收**：`npx vitest run src/test-support/` → **64 passed**（60 → 净增 4）；既有快照消费方 `apply-patch.snapshot.test.ts` → 1 passed（**既有快照零破坏**——标签化只命中 persona 形状，既有快照无此形状故零更新，卡面预判的"diff 抖动"未发生）；`npx tsc --noEmit` 干净。**记档**：①codex 的 head/tail + hash 指纹截断形状不取（卡面定形头部保留——同内容行截断后仍逐字节稳定，hash 无消费方，YAGNI；known-diffs.md 已记）；②tag 只接线 system 字段（已知长指引的家——messages 内长文本由 truncateLines 行级兜底，值域全量 tag 会把工具结果等"非指引长文本"误标）。
 
 #### T-P2-506 · O28 · keyless 快照层测试政策（写下来的政策 + 包组升降级规则） `[ ]`
 - **依据需求**：O28（"keyless 快照层作为写下来的测试政策；测试基础设施自成包组且有升降级规则"）
