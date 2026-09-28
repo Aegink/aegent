@@ -25,7 +25,7 @@
 //!   - 令牌完整性降到 Low（S-1-16-4096）与目录标签匹配。
 //!
 //! 动作闭集（T9 fail-closed）：run / provision-network / probe-network /
-//! run-offline——未知动作 BAD_REQUEST 退出。
+//! run-offline / computer——未知动作 BAD_REQUEST 退出。
 #![cfg_attr(not(windows), allow(dead_code))]
 
 use serde::{Deserialize, Serialize};
@@ -98,7 +98,7 @@ fn main() {
     // argv 形状：[exe, --action, <action>]（len == 3）。
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 3 || args[1] != "--action" {
-        fail(BAD_REQUEST, "用法：win32-sandbox-helper --action <run|provision-network|probe-network|run-offline>（请求经 stdin JSON）");
+        fail(BAD_REQUEST, "用法：win32-sandbox-helper --action <run|provision-network|probe-network|run-offline|computer>（请求经 stdin JSON）");
     }
     let mut input = String::new();
     if std::io::stdin().read_to_string(&mut input).is_err() {
@@ -109,7 +109,47 @@ fn main() {
         "provision-network" => action_provision_network(&input),
         "probe-network" => action_probe_network(),
         "run-offline" => action_run_offline(&input),
+        "computer" => action_computer(&input),
         other => fail(BAD_REQUEST, format!("未知动作「{other}」（T9：动作名闭集，fail-closed）")),
+    }
+}
+
+/// computer 动作（S4/T-P2-408）——屏幕捕获/输入注入。
+///
+/// 【存根状态】请求校验与操作分发给全，四操作的真实 Win32 实现
+/// （SendInput / GDI BitBlt 屏幕捕获）未落——Windows 会话隔离环境的真实
+/// 可用性需人工确认（plan-p2-progress.md 人工确认清单），确认后在本模块
+/// 补齐。当前一律 NOT_IMPLEMENTED 结构化报错（fail-closed：明确报错，
+/// 绝不静默假成功）。
+#[derive(Deserialize)]
+struct ComputerUseRequest {
+    operation: String,
+    #[allow(dead_code)]
+    x: Option<f64>,
+    #[allow(dead_code)]
+    y: Option<f64>,
+    #[allow(dead_code)]
+    button: Option<String>,
+    #[allow(dead_code)]
+    text: Option<String>,
+    #[allow(dead_code)]
+    key: Option<String>,
+}
+
+fn action_computer(input: &str) {
+    let request: ComputerUseRequest = match serde_json::from_str(input) {
+        Ok(r) => r,
+        Err(e) => fail(BAD_REQUEST, format!("请求 JSON 解析失败：{e}")),
+    };
+    match request.operation.as_str() {
+        "screenshot" | "click" | "type" | "key" => fail(
+            "NOT_IMPLEMENTED",
+            format!(
+                "屏幕操作「{}」待真实 Windows 会话验证（S4 人工确认项——操作分发面已就绪，Win32 实现待补）",
+                request.operation
+            ),
+        ),
+        other => fail(BAD_REQUEST, format!("未知屏幕操作「{other}」")),
     }
 }
 

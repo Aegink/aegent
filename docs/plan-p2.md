@@ -374,7 +374,7 @@
 - **风险 / 未知**：CDP 协议面大（三工具最小面——截图/抽取的真实渲染随人工确认）；系统浏览器依赖
 
 - **完成记录**：2026-09-28。验收 `npx vitest run src/scheduler/browser.test.ts`——13 passed（域白名单通配 + fake ws 往返/error 回包 + cdpWsUrlOf 两态 + navigate 审批两闸四用例 + 截屏/抽取/非字符串 fail-closed + 工具族 schema/排他/NOTICE + execute isError 回喂）；`npx vitest run src/scheduler/` 72 passed；`npx tsc --noEmit` 干净；architecture:check 0 error / 21 warning。产出 `src/scheduler/browser.ts`：①`CdpConnection`（ws 直连 CDP——JSON-RPC id 配平 + deadline（M7 withDeadline，code=BROWSER_DEADLINE）；WebSocketImpl 构造注入可 mock）；②`cdpWsUrlOf`（GET /json/version 解析）；③三操作——`browserNavigate`（**两闸独立**：approve 回调〔C 族纵深——缺省恒拒〕→ D3 域白名单〔精确/`*.suffix` 通配，BrowserDomainError〕→ Page.navigate）、`browserScreenshot`、`browserExtract`；④`createBrowserTools` 三工具族（parallel 不声明=排他 fail-closed；NOTICE 风险标注经 B2 描述文件 `descriptions/browser_*.txt`——descriptions 三新件；错误 isError 回喂不上抛——模型可自纠）。测试坑实录：**CdpConnection 内部自建 ws 实例与测试手动 new 的 fake 分家**（emit 落无人监听的孤儿实例——超时三查，改 instances.at(-1) 取连接真正持有的实例）。真实浏览器联调 → 人工确认清单。
-#### T-P2-408 · S4 · 计算机使用（屏幕/输入控制，最强审批） `[ ]`
+#### T-P2-408 · S4 · 计算机使用（屏幕/输入控制，最强审批） `[x]`
 - **依据需求**：S4（"屏幕/输入控制；风险最高，需最强审批"）
 - **上游首选参考**：codex·computer_use_config.rs（配置面 + 审批强度的行为）
 - **取什么 / 别抄什么**：取"配置面 + 操作审批最强档"行为；不抄其 Rust 协议 schema；🔴 操作执行面（屏幕捕获/注入）Windows 专属——与批次 3/4 的 Windows 沙箱纪律一致：**Rust 子进程**（T9 语言边界即进程边界——src/sandbox/win32-helper 扩展）
@@ -383,6 +383,7 @@
 - **依赖**：T-P2-407（浏览器面先行——同为操作类）
 - **风险 / 未知**：Rust helper 扩展量（屏幕注入 API 面——Windows 会话隔离环境的真实可用性人工确认）；K9 前置
 
+- **完成记录**：2026-09-28。验收 `npx vitest run src/scheduler/computer.test.ts`——13 passed（操作闭集 + 四工具 schema/排他/NOTICE 描述 + 强制审批断言〔无审批不执行——helper 零调用〕+ unattended 恒拒〔审批回调放行也拒〕+ L2 审计三态〔denied/unattended-denied/executed 全落〕+ execute isError 回喂）；`npx vitest run src/scheduler/` 85 passed；`npx tsc --noEmit` 干净；`cargo check`（win32-helper）exit 0。产出：①`src/scheduler/computer.ts`——`computerExecute`（**最强审批三层**：unattended 恒拒先于审批 → 每操作显式 approve〔缺省恒拒，approver 标识进审计〕→ helper 执行）+ 四工具族（schema/排他/描述文件）；②审计全落（L2 面——kind="computer_use" 的 AuditLogRecord 结构，拒绝事实与执行事实同权）；③**Rust 面 helper 存根**（win32-helper 动作闭集 +computer：请求校验 + 操作分发 + 四操作 NOT_IMPLEMENTED 结构化 fail-closed 存根——卡面"helper 存根"兑现，cargo check 通过）。真实屏幕操作（SendInput/BitBlt Win32 实现 + 会话环境）→ 人工确认清单；K9 画中画消费操作审计流。
 #### T-P2-409 · K9 · 画中画（agent 屏幕操作浮动窗口显示） `[ ]`
 - **依据需求**：K9（"把 agent 的屏幕操作显示在浮动窗口；用户看得见 agent 在操作什么"）
 - **上游首选参考**：zcode·cuaPipSession.ts（🔴 只学行为：PiP 会话窗口 + 操作回显）
