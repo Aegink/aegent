@@ -313,7 +313,7 @@
 
 - **完成记录**：验收 `npx vitest run src/scheduler/cron.test.ts`——39 passed（解析表驱动 16 + 拒绝 11 + matchesCron 15 含 vixie OR + 存储 3 + 调度器 6）；`npx tsc --noEmit` 干净；`architecture:check` 0 error / 21 warning（scheduler 新域入册 managed:true，requires=[kernel]）。定形：①cron 解析器自写最小面（五字段 `*`/列表/步进；区间语法 YAGNI 拒绝记档；dom/dow 双受限 vixie OR 语义——restricted 判定=写明具体值，纯星号不算、`*/step` 算）；②星期闭集 MO..SU 对齐 codex 锚，数字 7 归一 0；③CronStore 走 v5 迁移链（SCHEMA_V5_CRON_DDL，运维账本第三张同 v4 先例），last_fired_at 游标防同分钟重复（kimi cron.cursor 行为）；④tick 被动轮询：匹配分钟 fire + 游标推进先行（重入幂等），错过整分钟不补触发记档；⑤坏表达式 add 时类型化拒绝（进不了库），轮询面 onParseError 可观测不毒化。偏离：jobs.start 的 run 体 async 化（JobSpec 签名要求）；注释里 `*/step` 字面量会提前闭合块注释（TS1443 实测——注释改写不含 `*/` 序列）。
 
-#### T-P2-402 · M11 · 闲时任务（取号 + 闲时窗口核销，不重复执行） `[ ]`
+#### T-P2-402 · M11 · 闲时任务（取号 + 闲时窗口核销，不重复执行） `[x]`
 - **依据需求**：M11（"长任务取号、闲时窗口核销执行（择时省钱）；闲时窗口核销，不重复执行"）
 - **上游首选参考**：zcode·offPeakDispatchSettlement.ts（取号 → 窗口判定 → 核销 → 幂等的行为）
 - **取什么 / 别抄什么**：取"取号（ticket）→ 闲时窗口判定 → 核销（settle）→ 不重复"四步行为；不抄其桌面端集成（我方 host 面消费）
@@ -322,6 +322,7 @@
 - **依赖**：T-P2-401（同批调度面）
 - **风险 / 未知**：闲时窗口的"闲"判定（时段配置式而非负载探测式——卡内定形，负载探测 YAGNI）
 
+- **完成记录**：2026-09-28。验收 `npx vitest run src/scheduler/offpeak.test.ts`——12 passed（窗口 4 含跨午夜左闭右开 + 真实 JobRegistry 装配 3 + 核销状态机 5）；`npx tsc --noEmit` 干净。产出 `src/scheduler/offpeak.ts`：①`OffPeakQueue` 四步行为——取号 offer（ticket 发放不执行）→ 窗口判定 drain（被动轮询，`isOffPeakWindow` 命中才派发）→ 核销（派发即核销在途，job onSettled 回流：completed → settled / killed → cancelled / failed → attempts+1 未超限回 queued〔transient〕超限 failed 终态〔zcode"确定性失败不无限重试"纪律——maxAttempts 缺省 3〕）→ 不重复执行（drain 只取 queued 取出即 dispatched——重放零重复；状态机单向重放幂等）；②窗口按本地时间判（缺省 23:00–07:00 跨午夜左闭右开；Asia/Shanghai 缺省部署时区记档，Intl 换算 YAGNI）；③**#24 候选定形零事件**——闲时核销是进程内 job 生命周期事实（重启即失），走 onSettled 回调承载（jobs.ts / M4 onReap 同款纪律），落流会留孤儿事实与"状态是事件的投影"漂移；EVENT_TYPES 28 基线不变（复核在收口）。
 #### T-P2-403 · S2 · webhook 触发会话（fire-and-forget） `[ ]`
 - **依据需求**：S2（"webhook 触发会话；fire-and-forget 型会话（如 GitHub 事件）"）
 - **上游首选参考**：dsh·packages/webhook（入站接收 → 会话派发的行为）
