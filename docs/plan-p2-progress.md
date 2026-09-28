@@ -2,7 +2,7 @@
 
 > 本文件接续 [`plan-p1-progress.md`](plan-p1-progress.md)（P0 全程 + P1 批次 1-14，2026-09-28 P1 全部收官定格，全量基线 **1293 passed / 1 skipped**，词汇表 26 事件）——**自批次 15（P2 段）起的执行进度**（批次报告 / 待澄清 / 人工确认清单）记入本文件。
 > 执行协议沿用 [`plan-p0.md`](plan-p0.md) §0；计划本体在 [`plan-p2.md`](plan-p2.md)（48 条 / 五批 / 52 卡，2026-09-28 一次展卡——P0 式全阶段计划）。
-> **待澄清编号接续（#22 起）**——词汇表立案管线不变（`l0-events.md` §8 落地记录全局连续，批次 15c 收官后为 **28 事件**〔#23 已立案、待追认〕；**最新全量基线 1493 passed / 1 skipped**）。
+> **待澄清编号接续（#22 起）**——词汇表立案管线不变（`l0-events.md` §8 落地记录全局连续，批次 15c 收官后为 **28 事件**〔#23 已追认〕；**最新全量基线 1493 passed / 1 skipped**）。
 > **批次进度**：15a ✅（2026-09-28）→ 15b ✅（2026-09-28）→ 15c ✅（2026-09-28 收官，本文件报告）→ 15d（下一批）→ 15e。
 
 ---
@@ -22,8 +22,8 @@ docs/plan-p0.md §0）。本批特有的注意：
 2. 词汇表预判（#24 候选）：M11 闲时核销 `job/offer {jobId, window}` log-only；
    S5 反馈 `feedback/note` log-only；K6/K7 的 replySource 闭集扩展（APPROVAL_SURFACES
    追加 feishu/slack——#25 候选）——执行时逐条定形并复核 EVENT_TYPES 28 基线。
-3. 全量基线 1493 passed / 1 skipped；词汇表 28 事件（#23 approval/superseded 已
-   立案待追认）；工程纪律工具链四件收官必跑。15c 遗留人工确认 2 项（真实 sshd
+3. 全量基线 1493 passed / 1 skipped；词汇表 28 事件（#23 approval/superseded
+   已追认定案）；工程纪律工具链四件收官必跑。15c 遗留人工确认 2 项（真实 sshd
    联调 T-P2-310 / 真实 ACP agent 进程联调 T-P2-309）随本批端面联调一并处理。
    收官出组报告（写入本文件），更新本文件的批次 15e 提示词与全量基线后停止——
    不要开始 15e。不要问要不要继续。
@@ -44,12 +44,12 @@ docs/plan-p0.md §0）。本批特有的注意：
 - **展卡结论**：10 条锚点零勘误；关键定形——①M7 deadline 原语（Deadline 绝对截止 token + combine 取最近 + withDeadline），timeout.ts 薄壳化（既有语义零变化）；②I5 SDK 受限能力 token（属性闭集 + 内核句柄零暴露）；③I4 ws 插件（hello 版本握手复用 host/protocol + 审批位缺省全拒 + 执行往返 + 断线能力注销）；④I7 双方言桥只桥工具前后两点位 + 事件闭集 fail-closed；⑤I8 人格段进首落 system/message（非独立落流——事件归属纪律）；⑥I10 取代链（单链约束 + 投影期 fail-closed）；⑦I11 建议非强制（治理 ≠ 策略）；⑧I14 跳层三重闸（显式命名/审批层硬保护/白名单）；⑨H6 两后端同语义（词汇同源收敛）；⑩D12 命令行包装（零新依赖 + 凭据零落盘）。
 - **产出的文件**：`src/kernel/` 三新件（deadline.ts / deadline.test.ts / chain-jump.test.ts + chain.ts 扩展 + hooks.ts 转发面）；`src/mcp/` 八新件（plugin-sdk.ts / ws-plugin.ts / hook-compat.ts / guard.ts / p15c.snapshot.test.ts + 四测试）；`src/session/` 四新件（persona.ts / subagent-backend.ts / supersession.test.ts + 两测试）；`src/sandbox/ssh-backend.ts`（+ 测试）；扩 `src/kernel/events.ts`（词汇表 28 + ApprovalSupersededEvent）/ `project.ts`（校验 + 取代链消费 + effectiveApproval/supersessionChain）/ `invariants.ts`（豁免）/ `assembly.ts`（personaId）/ `agent-child.ts`（--persona）/ `tools/registry.ts`（deadline 消费）/ `tools/builtin/task.ts`（--backend）+ `architecture-policy.json`（mcp.requires += host）+ `docs/l0-events.md`（§3.2 行 28 + §8 落地记录 23）。
 - **验收台账**：全量 `npx vitest run` **1493 passed / 1 skipped**（批次入口基线 1379 → 净增 114，169 文件）；`npx tsc --noEmit` 全程干净；`count-features.sh` = **337（层数 20；P2=48）不变**；`check-doc-links.sh`（显式传参 11 文件）**987 链接 0 失效**；`license-audit.sh` exit 0（LEAK 未命中 / CLEAN-ROOM 无明确声明 / SOURCEMAP 无）；`architecture:check` 全程 0 error / 21 warning（基线保持）；`vocabulary:check` 0 问题。
-- **词汇表扩展**：**27→28 一案 + 九条零扩展**——①`approval/superseded {requestId, byRequestId, reason?}`（I10/T-P2-306——log-only 元事件，**#23 已立案待追认**；l0-events.md §8 落地记录 23 在案、§3.2 行 28）；②其余九条（M7/I5/I4/I7/I8/I11/I14/H6/D12）逐条定形**零事件**（deadline 纯原语 / 插件机制 / 人格走既有 system/message / 取代以外的治理与执行后端全走既有面）——EVENT_TYPES 28 基线复核在位（events.test/replay.test/idle-reaper.test 计数断言同步）。
+- **词汇表扩展**：**27→28 一案 + 九条零扩展**——①`approval/superseded {requestId, byRequestId, reason?}`（I10/T-P2-306——log-only 元事件，**#23 已追认〔2026-09-28 用户："全部认可"〕**；l0-events.md §8 落地记录 23 在案、§3.2 行 28）；②其余九条（M7/I5/I4/I7/I8/I11/I14/H6/D12）逐条定形**零事件**（deadline 纯原语 / 插件机制 / 人格走既有 system/message / 取代以外的治理与执行后端全走既有面）——EVENT_TYPES 28 基线复核在位（events.test/replay.test/idle-reaper.test 计数断言同步）。
 - **盘点结论**：七面零真冲突（T-P2-311 完成记录）：①M7 deadline × M6/J23（薄壳化后既有 46 用例全绿）；②I5 能力受限 × 句柄零暴露（闭集 + 源码证伪 + 无 ctx）；③I4 不可信边界 × C 族审批（trust 恒 untrusted + 缺省全拒）；④I10 取代 ≠ 撤销（历史保留 + 叠加事实）；⑤H6 两后端同语义（字段集合相等）；⑥D12 第二实现零接口变化 + 凭据零落盘；⑦快照即规格 = `p15c.snapshot.test.ts` 两条链（ws 插件全链 + SDK×桥共存）。
 - **新发现的约束或坑**：(a) **架构检查两次实战拦截**——ws-plugin import host/protocol 触发 mcp→host 跨域（按"先声明后收紧"声明 mcp.requires += host）；subagent-backend 初版 import src/acp/jsonrpc 同时触发**深导入 + 新依赖环**（session→acp→…→session）——改为协议形状复用 + 编解码自持（acp 域"仅 8 文件"硬约束下唯一无环解）；(b) **ChainNext.to 必填破坏 16 处 fake next 构造**——to 可选化（"能力如实表达"+composeChain 恒装配）+ hooks 生产转发面 + jumpTo 判空入口；(c) **ws 测试清理纪律**——fake server 须先 terminate 活跃连接再 close（宿主未 dispose 时 server.close 等待连接自然关闭挂死 afterEach）；(d) **project.test/chain.test 行数临界**——新用例拆独立文件（supersession.test / chain-jump.test / p15c.snapshot.test）；(e) Windows 全量并行偶发一例（llm-replay 单跑复证通过——非回归）；(f) **hooks.ts 的 hookNext 需转发 to**——hook 是链上一环不切断跳层能力（配额守卫同款）。
 - **偏离计划的地方**：逐卡「完成记录」已记档——要点：T-P2-301 timeout.ts 薄壳化（原计划仅"工具层接线"，实际做了原语家迁移使 withTimeout 收敛薄壳）；T-P2-305 消费点选卡面"或"字的 agent-child --persona 分支（会话期动态切换需 wire 命令扩展，记档）；T-P2-306 验收文字"26→27"系展卡笔误（按 27→28 执行）；T-P2-309 "src/acp 复用"降级为"协议形状复用"（架构环约束）；T-P2-310 runner 注入 + probe 显式（exec 255 歧义记档）。
 - **遗留风险与未知**（→ 人工确认清单）：**新增 2 项**——真实 sshd 联调（T-P2-310，测试全走命令注入 mock）；真实 ACP agent 进程联调（T-P2-309，transport 缺省 spawn 未实测）。技术债记档：ws 插件与 SDK 插件的工具登记到 ToolRegistry 的装配接线（本批交付登记面与审批位）；治理建议的宿主消费点（注入上下文/展示）随装配域；跳层能力的装配配置（skippableLayers）随 15d/托管层；15d 端面（S2 webhook/M11 闲时）将消费本批 deadline 原语与 job 面。
-- **批次完成定义核对**：全部 ✅（plan-p2.md §8 的 15c 相关项——11 卡全勾 + tsc 干净 + 337 不变 + 987 链接 0 失效 + license exit 0 + #23 立案在案〔待追认〕+ 九条零扩展复核 EVENT_TYPES 28 + 报告/提示词/基线更新）。
+- **批次完成定义核对**：全部 ✅（plan-p2.md §8 的 15c 相关项——11 卡全勾 + tsc 干净 + 337 不变 + 987 链接 0 失效 + license exit 0 + #23 立案在案〔已追认〕+ 九条零扩展复核 EVENT_TYPES 28 + 报告/提示词/基线更新）。
 - **下一批**：**批次 15d 端与自动化（11 条：S1 M11 S2 S5 N5 P4 S3 S4 K9 K6 K7）**——卡序已展（plan-p2.md §6，11 张 T-P2-401~411），下一会话直接执行，做完收官即停。
 - **下一批提示词**：见本文件头部「批次 15d 提示词（当前活跃）」。
 
@@ -172,7 +172,7 @@ docs/plan-p0.md §0）。本批特有的注意：
 | # | 需求ID | 我看到的（含路径:行） | 与需求文档的矛盾 | 建议 | 裁决与落实 |
 | --- | --- | --- | --- | --- | --- |
 | #22 | Q8 | 归档动作需要"何时因何归档"的流内落点，但词汇表 26 事件无承载（plan-p2.md §3 展卡预判的 #22 候选；codex·rollout/src/lib.rs:87 `ARCHIVED_SESSIONS_SUBDIR` 锚） | 无矛盾——需求未明示事件形状，属"状态变更必须有事件承载"（不变量 1）的补齐 | 新增 `session/archive {reason?}` log-only 会话级元事件（归档前落流尾，随数据进归档档；幂等——流尾已有不重复追加）；词汇表 26→27；回退面齐备（约 1.5 小时） | 2026-09-28 立案（T-P2-102 落地）；events.ts / project.ts / invariants.ts / archive.ts 已接线，events.test 计数 27；l0-events.md §8 落地记录 22 在案；**#22 追认于 2026-09-28（用户："认可22"），此案关闭，§3.2 正式计数 27 事件定案** |
-| #23 | I10 | 取代事实需要流内持久落点，但词汇表 27 事件无承载（plan-p2.md §5 展卡预判的 #23 候选；zcode·session.events.ts `WorkspaceHookReviewSuperseded{interactionId, supersededByInteractionId}` 锚——取代事件落流） | 无矛盾——需求明示"取代本身是持久事实"（不变量 1 的直接要求） | 新增 `approval/superseded {requestId, byRequestId, reason?}` log-only 元事件（单链约束：一个 requestId 至多被取代一次；投影消费 = 取代链索引 + effectiveApproval/supersessionChain 查询；投影期重复/成环 fail-closed 拒绝）；词汇表 27→28；回退面齐备（约 1.5 小时） | 2026-09-28 立案（T-P2-306 落地）；events.ts / project.ts（校验+消费+查询）/ invariants.ts 已接线，events.test/replay.test/idle-reaper.test 计数 28；l0-events.md §8 落地记录 23 在案；**待用户追认** |
+| #23 | I10 | 取代事实需要流内持久落点，但词汇表 27 事件无承载（plan-p2.md §5 展卡预判的 #23 候选；zcode·session.events.ts `WorkspaceHookReviewSuperseded{interactionId, supersededByInteractionId}` 锚——取代事件落流） | 无矛盾——需求明示"取代本身是持久事实"（不变量 1 的直接要求） | 新增 `approval/superseded {requestId, byRequestId, reason?}` log-only 元事件（单链约束：一个 requestId 至多被取代一次；投影消费 = 取代链索引 + effectiveApproval/supersessionChain 查询；投影期重复/成环 fail-closed 拒绝）；词汇表 27→28；回退面齐备（约 1.5 小时） | 2026-09-28 立案（T-P2-306 落地）；events.ts / project.ts（校验+消费+查询）/ invariants.ts 已接线，events.test/replay.test/idle-reaper.test 计数 28；l0-events.md §8 落地记录 23 在案；**#23 追认于 2026-09-28（用户："全部认可"），此案关闭，§3.2 正式计数 28 事件定案** |
 
 ## 人工确认清单（批次 15 起）
 

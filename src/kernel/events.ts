@@ -722,7 +722,7 @@ export interface SessionArchiveEvent extends EventBase {
  * （supersededBy/supersedes 两向，C31 三事实的第四面——"最新有效裁决"的
  * 查询底座）。requestId/byRequestId 是审批请求 id（tool callId 面）。
  * reason 可选自由文本（非判据）。
- * 词汇表 27→28 立案 #23（回退面 = 删事件 + project 两处 + 索引消费）。
+ * 词汇表 27→28 立案 #23（✅ 已追认 2026-09-28；回退面 = 删事件 + project 两处 + 索引消费）。
  */
 export interface ApprovalSupersededEvent extends EventBase {
   type: "approval/superseded";
