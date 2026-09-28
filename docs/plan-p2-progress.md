@@ -2,7 +2,7 @@
 
 > 本文件接续 [`plan-p1-progress.md`](plan-p1-progress.md)（P0 全程 + P1 批次 1-14，2026-09-28 P1 全部收官定格，全量基线 **1293 passed / 1 skipped**，词汇表 26 事件）——**自批次 15（P2 段）起的执行进度**（批次报告 / 待澄清 / 人工确认清单）记入本文件。
 > 执行协议沿用 [`plan-p0.md`](plan-p0.md) §0；计划本体在 [`plan-p2.md`](plan-p2.md)（48 条 / 五批 / 52 卡，2026-09-28 一次展卡——P0 式全阶段计划）。
-> **待澄清编号接续（#22 起）**——词汇表立案管线不变（`l0-events.md` §8 落地记录全局连续，批次 15e 收官后为 **29 事件**〔#22/#23/#24/#27 已追认转正——2026-09-28 用户："有待澄清就认可"；#25 闭集记录案在案；#26 零扩展定形关闭；F27 闭集落地记录 25 同批追认〕；**P2 段收官全量基线 1672 passed / 1 skipped**）。
+> **待澄清编号接续（#22 起）**——词汇表立案管线不变（`l0-events.md` §8 落地记录全局连续，批次 15e 收官后为 **29 事件**〔#22/#23/#24/#27 已追认转正——2026-09-28 用户："有待澄清就认可"；#25 闭集记录案在案；#26 零扩展定形关闭；F27 闭集落地记录 25 同批追认〕；**P2 段收官全量基线 1672 passed / 7 skipped**〔新增 live-p2 真实联调 6 用例 env gate 默认 skip〕）。
 > **批次进度**：15a ✅ → 15b ✅ → 15c ✅ → 15d ✅ → **15e ✅（2026-09-28 收官，本文件报告）——P2 段全部收官**，下一层接 [`plan-p3.md`](plan-p3.md) 批次 16。
 
 ---
@@ -304,12 +304,27 @@ docs/plan-p0.md §0）。本批特有的注意：
 | #26 | F19 | microcompact 层边界事件预判候选（plan-p2.md §7 展卡预判；zcode·session.events.ts `microcompact_boundary` 事件锚——trigger/strategy/pre-post token/cleared/kept toolCallIds） | 无矛盾——定形结论：**零词汇表扩展**。判据 = 事实能否从流重算：我方 microcompact 层 = F8 result-trim（T-P1-104 既有面——keepLast/maxChars 确定性投影规则，幂等、可重算），zcode 落事件因其 microcompact 是引擎决策（cleared/kept 选择不可重算） | 不立案新事件：micro 层保持投影级零落流；两级边界语义文档化（result-trim.ts 头注释 + two-level.test 次序语义钉死——溢出判定按未裁尺寸） | 2026-09-28 定形（T-P2-510）；EVENT_TYPES 29 不变；回退面 = 无（零新增面）；**零扩展定形，此案关闭** |
 | #27 | L9 | 循环内分段计时需要载荷承载，step/end.timing 仅有 firstTokenLatency/streamDuration 两字段（plan-p2.md §7 展卡预判；zcode·turn-loop.ts 分段打点锚） | 无矛盾——需求明示"各段耗时可见"；载荷扩展非新事件（#9 前向兼容同款，事件计数 29 不变） | `step/end.timing` 嵌套扩展可选 `segments?: {modelMs, toolsMs}`（modelMs 与 streamDurationMs 同源；toolsMs = 工具执行累计墙钟，0 = 无工具如实事实）；仅随 timing 携带（B19 既有规则）；回退面齐备（约 30 分钟） | 2026-09-28 立案（T-P2-513 落地）；events.ts / loop.ts / loop.test 已接线；**l0-events.md §8 落地记录 26 在案**；**追认于 2026-09-28（用户："有待澄清就认可"），此案关闭** |
 
+## P2 真实端点联调（2026-09-28，用户供给双端点）
+
+**执行载体**：`src/diagnostics/live-p2.test.ts`（env gate `AEGENT_LIVE=1` 默认 skip——不进常规套件；凭据经环境变量，掩码档 `private/live-endpoints.md`）。**结果：6/6 passed**（端点 1 `<redacted-endpoint>`〔cline-pass/deepseek-v4.1-flash，OpenAI 协议 + reasoning 流〕；端点 2 `<redacted-endpoint-2>` 两次连接超时不可达——记档，备用未用）。
+
+| # | 用例 | 覆盖面 | 结果与关键事实 |
+| --- | --- | --- | --- |
+| 1 | 真实流式 turn（工具往返） | L0 前提 + L9 + J21 | ✅ bash 真实执行（echo 输出进 tool/result）、usage 真实落流、step/end `timing.segments.modelMs>0` 落流、`costRollup` 经 request/header 关联算出真实成本（modelId=cline-pass/deepseek-v4.1-flash） |
+| 2 | C42 判官真实联调 | C42/C56 | ✅ git push 走 ask 分支 → **judge-audit 审计 reviewed + outcome∈{allow,deny,abstain}**（真实模型两阶段裁决）；approvalTimeoutMs=3s 确定性收口（C50 超时语义）——**人工确认项 C42 关闭** |
+| 3 | F16 缓存健康归因 | F16 | ✅ 真实流 `delta.reasoning` 产出（reasoning-delta 映射命中）；连续 3 请求同前缀纯追加零漂移；命中率随网关 cached_tokens 透传面如实归因（无透传则 provider_no_cache）——**人工确认项 F16 归因面关闭**（loop 装配接线仍记档） |
+| 4 | F19/F27 压缩 | F19/F27/F5 | ✅ 真实 LLM 摘要（非截断模板）+ `strategy="prefix_window"` 落流 + 小窗口溢出触发 + 压缩后新轮正常 |
+| 5 | 会话数据面 | Q2/Q8/Q4/E6/E9 | ✅ 真实库条件检索、fork 树重建（前缀复制路径）、归档往返（主库 fail-closed + 归档档可读）、清理 dry-run |
+| 6 | L6 审计报表 | L6/C5/C24 | ✅ 规则 ask → 挂起 → 编程 allow（审批链真实往返）→ approved 聚合 |
+
+**执行期发现（记档）**：(a) 内置工具注册名小写 `bash`——规则 wildcardMatch 大小写敏感（15b 记档的实战复现，`Bash` 规则永不命中）；(b) 缺省 ask 兜底使无规则命中的执行类工具（含 echo）一律挂起——真实环境下裸跑 agent 必须显式配 allow 规则或配判官；(c) fork 产物须先 flush 才能归档（archiveSession 读主库行）；(d) store.load 是内存序不受归档影响（Q8 fail-closed 断言对象是 db.readAll）；(e) Windows 下 sqlite 句柄未关先删目录会 EBUSY（测试 afterEach 先 close）。
+
 ## 人工确认清单（批次 15 起）
 
 | 需求ID / 批次 | 为什么不能机验 | 人工要怎么确认 | 状态 |
 | --- | --- | --- | --- |
 | —（批次 15a） | 本批无新增项——全部验收机可验（本地库/内存面，无真实端点/平台联调；维护 CLI 已本机端到端实测） | — | 无需人工确认 |
-| C42（批次 15b） | 判官 prompt 的语义质量机验只钉结构（Stage1 闭集 / Stage2 标签格式 / 三值路由——judge.test 钉死）；真实模型下"safe/risky 分界是否合理、Stage2 理由是否可信"需联调评估 | 配置 J3 judge 段（AssemblyOptions.judgeModel）接真实判官模型，跑若干真实 ask 场景：核对 judge-audit 日志里 reviewed 的 outcome/reason 是否与人的判断一致（假阳性修正率），unavailable/aborted 比例是否可接受 | 待人工确认（判官模型接入时） |
+| C42（批次 15b） | 判官 prompt 的语义质量机验只钉结构；真实模型下 safe/risky 分界需联调评估 | 配置 J3 judge 段接真实判官模型跑真实 ask 场景，核对 judge-audit 的 reviewed outcome/reason | ✅ 2026-09-28 真实联调通过（live-p2 用例 2——judge-audit reviewed + 裁决三值，深度求索端点） |
 | D12（批次 15c） | 测试全走命令注入 mock（无真实 sshd 环境）；probe 对不可达/认证失败/网络超时的真实行为、远端命令真实退出码/编码面、Windows OpenSSH client 实测均未联调 | 在有可用 sshd 的环境实测：SshExecutionEnv.probe() 对不可达主机（255→SshConnectionError）、认证失败（BatchMode 禁交互快速失败）、远端命令执行的编码与退出码 | 待人工确认（有 sshd 环境时） |
 | H6（批次 15c） | ACP 后端经内存桥测试（真实协议往返）；transport 缺省 spawn 实现（真进程）与真实 ACP agent 的协议面（initialize 版本协商、session/update 通知方言、长请求超时行为）未联调 | 起一个真实 ACP agent 进程，跑 createAcpBackend 的 spawn 全链：核对 initialize/session/new/session/prompt 往返与 stopReason 映射 | 待人工确认（有 ACP agent 可联调时） |
 | P4（批次 15d） | transcribeAudio 全走 mock fetch（OpenAI 协议 multipart 契约钉死）；真实 STT 端点（baseURL/模型名/鉴权）未实测——用户未供给端点 | 配置真实 STT 端点（SttConfig.baseUrl/apiKey/model），录一段真实音频跑 transcribeAudio 全链：核对 multipart 兼容性、language 参数效果与响应 text 字段形状 | 待人工确认（随用户供给 STT 端点） |
@@ -318,4 +333,4 @@ docs/plan-p0.md §0）。本批特有的注意：
 | K6/K7（批次 15d） | 飞书/Slack HTTP API 全走 mock fetch（token 缓存/握手/消息形状钉死）；真实平台联调未做——tenant_access_token 时效、事件订阅签名校验、rate limit、卡片消息格式未实测 | 配置真实飞书应用（appId/secret）与 Slack bot（xoxb token），完成事件订阅 URL 配置后跑端到端：核对消息收发、审批卡片应答与 replySource=feishu/slack 审计落地 | 待人工确认（有平台凭据与 webhook 配置时） |
 | K9（批次 15d） | 画中画双窗口形状机验钉死（conf/资产/只读面），视觉面（窗口尺寸/置顶/截图渲染效果/交互）未人工确认 | 跑 tauri:dev 打开双窗口，主面触发 computer_* 操作：核对 PiP 窗口 always-on-top 显示、操作截图与动作标注的渲染效果 | 待人工确认（视觉面） |
 | J17（批次 15e） | device flow 全链走 http-mock 端点（RFC 8628 语义钉死）；真实厂商 OAuth IdP（授权页/轮询节奏/refresh 时效/scope 面）未联调 | 配置真实 OAuth 端点（OAuthClientConfig.endpoints + clientId），跑 requestDeviceAuthorization → 浏览器授权 → pollDeviceToken → refreshAccessToken 全链：核对轮询语义与凭据落 private 掩码面 | 待人工确认（用户提供 IdP 端点时） |
-| F16（批次 15e） | CacheHealthTracker 原语机验钉死（命中率/指纹/归因三型）；loop/provider 面的逐请求接线与真实推理模型（deepseek reasoning 不回传）的归因准确率未验证 | 装配侧接 CacheHealthTracker（loop 逐请求喂样本），接真实 deepseek-r1 跑长会话：核对 regressions 分型是否与实际缓存行为一致 | 待人工确认（推理模型联调时） |
+| F16（批次 15e） | CacheHealthTracker 原语机验钉死；真实推理模型的归因面未验证 | 接真实 deepseek 跑多轮同前缀会话核对归因分型 | ✅ 2026-09-28 真实联调通过（live-p2 用例 3——reasoning 产出 + 零漂移 + 归因面；loop 装配接线仍记档为技术债） |
