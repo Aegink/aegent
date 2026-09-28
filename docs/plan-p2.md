@@ -40,7 +40,7 @@
 
 **词汇表预判（#22 候选）**：E6 树谱系——`session/fork` 载荷扩展 `parentSeq?/treeId?`（载荷扩展计数不变）或独立 log-only 元事件；Q8 归档——`session/archive` log-only 元事件候选。执行时立案。
 
-#### T-P2-101 · Q6 · 保留策略常量（审计 90 天 / 任务运行记录 100 条） `[ ]`
+#### T-P2-101 · Q6 · 保留策略常量（审计 90 天 / 任务运行记录 100 条） `[x]`
 - **依据需求**：Q6（"保留策略常量：审计 90 天 / 任务运行记录 100 条；常量集中可查"）
 - **上游首选参考**：pi-desktop·db/migrations.rs（保留策略与迁移同域管理的行为）
 - **取什么 / 别抄什么**：取"常量集中单一来源 + 清理动作消费常量"行为；不抄其 Rust 迁移框架（我方 migrate.ts 已有）
@@ -48,6 +48,7 @@
 - **验收**：`npx vitest run src/session/retention.test.ts`——常量形状 + cutoff 计算 + 与 Q4 的消费契约（类型面）；tsc 干净
 - **依赖**：无（本批首卡热身）
 - **风险 / 未知**：无
+- **完成记录**：2026-09-28。产出 `src/session/retention.ts`——`MS_PER_DAY` + `RetentionPolicy`（auditDays/taskRunRecords）+ `RETENTION_POLICY`（Object.freeze({auditDays:90, taskRunRecords:100})，数值锚 pi-desktop·migrations.rs:3-4 同值）+ `resolveRetentionPolicy(overrides?)`（缺省为底合并覆盖 + 全字段非负整数校验 fail-closed——坏策略拒绝执行而不是按 0 清理）+ `retentionCutoff(now, policy?)` 纯函数（时钟由调用方给——清理是显式动作不在库内藏隐式 Date.now；产物 `RetentionCutoff {auditBefore, keepLatestTaskRuns}` 即 Q4 消费面）。零依赖零 IO（纯常量 + 纯函数，方向单向：Q4 卡消费、本模块不 import 任何存储/内核面）。测试 `src/session/retention.test.ts` 5 用例：常量形状 + 冻结 / cutoff 计算（90 天毫秒口径）+ 常量与计算一致面 / 显式覆盖部分覆盖 / 坏策略四路拒绝 / 消费契约类型面（RetentionPolicy + RetentionCutoff 形状钉死）。**验收**：`npx vitest run src/session/retention.test.ts` → **5 passed**；`npx tsc --noEmit` 干净。**记档**：①"审计记录/任务运行记录"两种表对象在本仓当下尚无常驻表（审计记录现走 logger 宣告面、job 面在内存）——本卡只交付策略声明，清理动作的数据面（表与写入面）随 T-P2-103 清理器落，消费契约已由 RetentionCutoff 形状预先钉死。
 
 #### T-P2-102 · Q8 · 会话归档独立一档（归档 ≠ 删除） `[ ]`
 - **依据需求**：Q8（"归档是独立一档（ARCHIVED_SESSIONS_SUBDIR），不是删除"）
