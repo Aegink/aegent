@@ -181,6 +181,18 @@
       "owner": "wangh"
     },
     {
+      "id": "scheduler",
+      "roots": [
+        "src/scheduler"
+      ],
+      "managed": true,
+      "requires": [
+        "kernel"
+      ],
+      "publicEntrypoints": [],
+      "owner": "wangh"
+    },
+    {
       "id": "session",
       "roots": [
         "src/session"

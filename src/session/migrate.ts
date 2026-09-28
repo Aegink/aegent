@@ -105,6 +105,22 @@ CREATE TABLE IF NOT EXISTS task_runs (
 CREATE INDEX IF NOT EXISTS idx_task_runs_task ON task_runs (task_id, started_at DESC);
 `;
 
+/**
+ * v4→v5：定时任务表（S1/T-P2-401 地基）——cron 调度定义的持久面（运维
+ * 账本第三张，同 v4 先例：非会话轨迹、无事件词汇承载）。last_fired_at 是
+ * 防重复触发的游标（kimi·cron-store 的 cron.cursor 同款行为：fire 即推进，
+ * 同一分钟重入轮询不重复派发）。
+ */
+export const SCHEMA_V5_CRON_DDL = `
+CREATE TABLE IF NOT EXISTS cron_tasks (
+    id            TEXT    PRIMARY KEY,
+    expr          TEXT    NOT NULL,
+    prompt        TEXT    NOT NULL,
+    created_at    INTEGER NOT NULL,
+    last_fired_at INTEGER
+);
+`;
+
 export const MIGRATIONS: readonly SchemaMigration[] = [
   { from: 0, to: 1, apply: applyBaseSchema },
   {
@@ -139,6 +155,13 @@ export const MIGRATIONS: readonly SchemaMigration[] = [
     to: 4,
     apply: (db) => {
       db.exec(SCHEMA_V4_MAINTENANCE_DDL);
+    },
+  },
+  {
+    from: 4,
+    to: 5,
+    apply: (db) => {
+      db.exec(SCHEMA_V5_CRON_DDL);
     },
   },
 ];

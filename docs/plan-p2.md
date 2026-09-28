@@ -302,7 +302,7 @@
 
 **词汇表预判（#24 候选）**：M11 闲时核销——`job/offer {jobId, window}` log-only 候选；S1 定时触发——调度事实走 command/run 已有面预判零扩展；N5 通知分型——wire 载荷非事件。执行时逐条立案。
 
-#### T-P2-401 · S1 · 定时任务（cron/星期定义，复用 job 调度器） `[ ]`
+#### T-P2-401 · S1 · 定时任务（cron/星期定义，复用 job 调度器） `[x]`
 - **依据需求**：S1（"可按 cron/星期定义；与 M 层 job 复用调度器"）
 - **上游首选参考**：codex·ScheduledTaskWeekday.ts + kimi·cron-store.ts（cron/星期 schema + 持久存储的形态）
 - **取什么 / 别抄什么**：取"调度定义持久化 + 到期派发 job"行为；不抄其前端 schema 生成（我方 TS 直接定义）
@@ -310,6 +310,8 @@
 - **验收**：`npx vitest run src/scheduler/cron.test.ts`——cron 解析（对齐表驱动用例）+ 星期面 + 到期派发 + 持久往返
 - **依赖**：M1/M2（批次 10 已落）
 - **风险 / 未知**：cron 解析器自写的边界（最小面：分/时/日/月/星期 + `*` 与列表与步进——区间语法 YAGNI 记档）
+
+- **完成记录**：验收 `npx vitest run src/scheduler/cron.test.ts`——39 passed（解析表驱动 16 + 拒绝 11 + matchesCron 15 含 vixie OR + 存储 3 + 调度器 6）；`npx tsc --noEmit` 干净；`architecture:check` 0 error / 21 warning（scheduler 新域入册 managed:true，requires=[kernel]）。定形：①cron 解析器自写最小面（五字段 `*`/列表/步进；区间语法 YAGNI 拒绝记档；dom/dow 双受限 vixie OR 语义——restricted 判定=写明具体值，纯星号不算、`*/step` 算）；②星期闭集 MO..SU 对齐 codex 锚，数字 7 归一 0；③CronStore 走 v5 迁移链（SCHEMA_V5_CRON_DDL，运维账本第三张同 v4 先例），last_fired_at 游标防同分钟重复（kimi cron.cursor 行为）；④tick 被动轮询：匹配分钟 fire + 游标推进先行（重入幂等），错过整分钟不补触发记档；⑤坏表达式 add 时类型化拒绝（进不了库），轮询面 onParseError 可观测不毒化。偏离：jobs.start 的 run 体 async 化（JobSpec 签名要求）；注释里 `*/step` 字面量会提前闭合块注释（TS1443 实测——注释改写不含 `*/` 序列）。
 
 #### T-P2-402 · M11 · 闲时任务（取号 + 闲时窗口核销，不重复执行） `[ ]`
 - **依据需求**：M11（"长任务取号、闲时窗口核销执行（择时省钱）；闲时窗口核销，不重复执行"）
