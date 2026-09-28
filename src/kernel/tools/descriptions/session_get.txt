@@ -1,0 +1,2 @@
+Read the event stream of one recorded session by id, in seq order (paginated with fromSeq/limit). Each line is one event as JSON; very large events are truncated in the output. Use this to inspect exactly what happened in a prior session after locating it with session_query. A session whose data was archived is refused here — its events live in the archive file.
+Read-only: reading history never appends events or modifies state.

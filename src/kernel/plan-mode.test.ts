@@ -216,7 +216,7 @@ describe("注册面与提示词独立文件（验收⑤）", () => {
     }
   });
 
-  it("planMode 提供时注册 plan_enter/plan_exit；缺省不注册（全配置 = BUILTIN_TOOL_NAMES 17）", () => {
+  it("planMode 提供时注册 plan_enter/plan_exit；缺省不注册（全配置 = BUILTIN_TOOL_NAMES 19）", () => {
     const withPlan = new ToolRegistry();
     registerBuiltinTools(withPlan, { planMode: createPlanModeService() });
     expect(withPlan.names()).toContain("plan_enter");
@@ -231,8 +231,8 @@ describe("注册面与提示词独立文件（验收⑤）", () => {
     registerBuiltinTools(full, {
       todoEmit: () => undefined,
       planMode: createPlanModeService(),
-      // BUILTIN_TOOL_NAMES 是"可注册清单"（webfetch/question/task 随装配条件
-      // 注册）——全集等价断言需带齐各能力面的装配件
+      // BUILTIN_TOOL_NAMES 是"可注册清单"（webfetch/question/task/session_*
+      // 随装配条件注册）——全集等价断言需带齐各能力面的装配件
       networkGuard: createNetworkGuard({ policy: "deny" }),
       question: {
         pending: new PendingApprovals(),
@@ -240,9 +240,12 @@ describe("注册面与提示词独立文件（验收⑤）", () => {
         timeoutMs: 1_000,
       },
       task: { runSubagent: async () => ({ sessionId: "x", stopReason: "completed", output: "" }) },
+      // Q2/T-P2-105：会话查询工具（dbPath 提供才注册——注册面不打开库，
+      // 任意非空路径即可）
+      sessionQuery: { dbPath: "unused-plan-mode-names.sqlite" },
     });
     expect(full.names()).toEqual([...BUILTIN_TOOL_NAMES]);
-    expect(BUILTIN_TOOL_NAMES).toHaveLength(17);
+    expect(BUILTIN_TOOL_NAMES).toHaveLength(19);
 
     const withoutPlan = new ToolRegistry();
     registerBuiltinTools(withoutPlan);

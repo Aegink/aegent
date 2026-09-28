@@ -22,6 +22,11 @@ import { createPlanEnterTool, createPlanExitTool } from "./plan.js";
 import { createPwshTool } from "./pwsh.js";
 import { createQuestionTool, type QuestionToolDeps } from "./question.js";
 import { createReadTool } from "./read.js";
+import {
+  createSessionGetTool,
+  createSessionQueryTool,
+  type SessionQueryToolDeps,
+} from "./session-query.js";
 import { createSkillLoadTool } from "./skill.js";
 import { createTaskTool, type TaskToolDeps } from "./task.js";
 import { createTodoWriteTool } from "./todo.js";
@@ -52,6 +57,8 @@ export const BUILTIN_TOOL_NAMES = [
   "webfetch",
   "question",
   "task",
+  "session_query",
+  "session_get",
 ] as const;
 
 export function registerBuiltinTools(
@@ -97,6 +104,11 @@ export function registerBuiltinTools(
     };
     /** B8b/T-P1-60 lsp 的 server 解析面（按文件路径返回客户端）；缺省无 server。 */
     lspClientFor?: LspClientFor;
+    /**
+     * Q2/T-P2-105 会话查询（dbPath 提供时才注册 session_query/session_get——
+     * 无持久库的装配无历史可查；只读类，不落流）。
+     */
+    sessionQuery?: SessionQueryToolDeps;
   } = {},
 ): void {
   const guard = options.pathGuard ?? PathGuard.forWorkspace(process.cwd());
@@ -164,6 +176,11 @@ export function registerBuiltinTools(
     // 提供时才注册——工具可见但深度超限时执行期类型化拒绝（opencode 深度
     // 检查同款，模型可自修）；H5 的 deny 规则是第二道（fail-closed 双保险）。
     ...(options.task !== undefined ? [createTaskTool(options.task)] : []),
+    // Q2/T-P2-105 会话查询工具（dbPath 提供时才注册——无库无历史面；
+    // 两工具都是只读类：SQL 检索 + 单会话读取，零落流）
+    ...(options.sessionQuery !== undefined
+      ? [createSessionQueryTool(options.sessionQuery), createSessionGetTool(options.sessionQuery)]
+      : []),
   ]) {
     registry.registerTool(def);
   }

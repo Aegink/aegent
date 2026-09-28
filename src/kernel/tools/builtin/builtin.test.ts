@@ -808,3 +808,125 @@ describe("C12/C13 · 编辑前必须先读（可选装配）", () => {
     expect(result.isError).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Q2/T-P2-105 会话查询工具（session_query / session_get）
+// ---------------------------------------------------------------------------
+
+import { ScriptedProvider } from "../../loop.test-utils.js";
+import { AgentLoop } from "../../loop.js";
+import { SessionStore } from "../../../session/store.js";
+import { SqliteEventStorage } from "../../../session/db.js";
+import type { StreamChunk } from "../../events.js";
+
+async function seedQueryDb(dbPath: string): Promise<void> {
+  const storage = SqliteEventStorage.open({ path: dbPath });
+  try {
+    const store = new SessionStore(storage);
+    store.append("s-old", [
+      { type: "turn/start", turn: 1 },
+      { type: "step/start", turn: 1, step: 1 },
+      { type: "user/message", turn: 1, message: { content: "historical needle" }, source: "user" },
+      { type: "assistant/message", turn: 1, step: 1, message: { content: "ack" }, stream: [] },
+      { type: "step/end", turn: 1, step: 1 },
+      { type: "turn/end", turn: 1, reason: { kind: "completed" } },
+    ]);
+    await store.flush("s-old");
+  } finally {
+    storage.close();
+  }
+}
+
+describe("会话查询工具（Q2/T-P2-105）", () => {
+  it("装配面：sessionQuery 提供时才注册两工具；缺省零新增（描述文件在位）", () => {
+    const without = new ToolRegistry();
+    registerBuiltinTools(without);
+    expect(without.names()).not.toContain("session_query");
+    expect(without.names()).not.toContain("session_get");
+
+    const dir = tempDir();
+    const withDb = toolsWith(dir, undefined, { sessionQuery: { dbPath: path.join(dir, "q.sqlite") } });
+    expect(withDb.names()).toContain("session_query");
+    expect(withDb.names()).toContain("session_get");
+    expect(withDb.description("session_query").length).toBeGreaterThan(0);
+    expect(withDb.description("session_get").length).toBeGreaterThan(0);
+  });
+
+  it("工具直取：session_query 条件命中 + session_get 会话事件（只读、无命中不报错）", async () => {
+    const dir = tempDir();
+    const dbPath = path.join(dir, "q.sqlite");
+    await seedQueryDb(dbPath);
+    const registry = toolsWith(dir, undefined, { sessionQuery: { dbPath } });
+
+    const hit = await dispatch(registry, "session_query", { sessionIdPrefix: "s-old", content: "needle" });
+    expect(hit.isError).toBeUndefined();
+    expect(hit.content).toContain("命中 1 条");
+    expect(hit.content).toContain("[s-old]");
+
+    const miss = await dispatch(registry, "session_query", { content: "不存在的串" });
+    expect(miss.isError).toBeUndefined();
+    expect(miss.content).toContain("命中 0 条");
+
+    const read = await dispatch(registry, "session_get", { sessionId: "s-old" });
+    expect(read.isError).toBeUndefined();
+    expect(read.content).toContain("共 6 条事件");
+    expect(read.content).toContain("turn/start");
+
+    // 不存在的会话 → 类型化错误回喂（模型可自修）
+    const missing = await dispatch(registry, "session_get", { sessionId: "s-none" });
+    expect(missing.isError).toBe(true);
+    expect(missing.error?.code).toBe("SESSION_NOT_FOUND");
+  });
+
+  it("工具化往返：模型调用 session_query → 结果落 tool/result → 模型读到历史后收尾", async () => {
+    const dir = tempDir();
+    const dbPath = path.join(dir, "q.sqlite");
+    await seedQueryDb(dbPath);
+    const registry = toolsWith(dir, undefined, { sessionQuery: { dbPath } });
+
+    const provider = new ScriptedProvider();
+    provider.mount([
+      {
+        type: "tool-call-delta",
+        id: "t1",
+        name: "session_query",
+        argsDelta: JSON.stringify({ content: "historical needle" }),
+      },
+      { type: "done" },
+    ]);
+    const script: StreamChunk[] = [
+      { type: "text-delta", text: "历史里找到了：s-old 的 user/message 提到 needle" },
+      { type: "done" },
+    ];
+    provider.mount(script);
+
+    const store = new SessionStore();
+    const loop = new AgentLoop({
+      sessionId: "s-cur",
+      store,
+      provider,
+      identity: { provider: "mock", modelId: "m-1" },
+      executeTool: (call) => registry.dispatch(call),
+      decideTurn: (record) => (record.toolCalls.length > 0 ? { action: "continue" } : { action: "end" }),
+    });
+
+    await loop.runTurn("查一下历史里有没有 needle");
+
+    const events = store.load("s-cur");
+    const callEvent = events.find((e) => e.type === "tool/call");
+    expect(callEvent?.type === "tool/call" ? callEvent.name : undefined).toBe("session_query");
+    const resultEvent = events.find((e) => e.type === "tool/result");
+    expect(resultEvent?.type === "tool/result" ? resultEvent.message.isError : true).toBeFalsy();
+    expect(resultEvent?.type === "tool/result" ? resultEvent.message.content : "").toContain("s-old");
+    // 第二次模型请求看到 tool 结果（历史检索结果进模型上下文）
+    const secondReq = provider.requestAt(1, "工具结果回喂");
+    expect(secondReq.messages.some((m) => m.role === "tool" && m.content.includes("s-old"))).toBe(true);
+    // 查询是读面：被查会话零变化（s-old 仍是 6 条）
+    const storage = SqliteEventStorage.open({ path: dbPath });
+    try {
+      expect(storage.readAll("s-old")).toHaveLength(6);
+    } finally {
+      storage.close();
+    }
+  });
+});

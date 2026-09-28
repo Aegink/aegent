@@ -258,6 +258,12 @@ export interface ChildAssemblyOptions {
    */
   trustService?: import("../policy/project-trust.js").ProjectTrustService;
   /**
+   * Q2/T-P2-105 会话查询工具（session_query/session_get，dbPath 提供时
+   * 注册到工具面）——agent-process 传 registerBuiltinTools。缺省 undefined
+   * = 无持久库的装配无历史查询面（零行为变化）。
+   */
+  sessionQuery?: import("./tools/builtin/session-query.js").SessionQueryToolDeps;
+  /**
    * C12/C13 编辑前必须先读（T-P1-71）：提供 ReadGateService 时 read 记账、
    * edit/write/apply_patch 校验（未读拒/过期拒）。缺省 undefined = 不启用
    * （C13 整体丢弃，工具照常用）。

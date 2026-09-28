@@ -327,6 +327,10 @@ export async function runAgentChildStdio(
             ...(assembly.networkGuard ? { networkGuard: assembly.networkGuard } : {}),
             // B8b/T-P1-21：question 工具依赖（共用审批挂起注册表）
             question: { ...assembly.question },
+            // Q2/T-P2-105：会话查询工具（库路径提供时才注册——只读类）
+            ...(options.assembly?.sessionQuery
+              ? { sessionQuery: options.assembly.sessionQuery }
+              : {}),
           }
         : {}),
       // H1/H4/T-P1-42：task 工具（subagent 选项提供时注册；runner 自带

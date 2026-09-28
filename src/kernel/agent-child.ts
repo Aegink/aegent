@@ -187,6 +187,9 @@ async function main(): Promise<void> {
             ...(process.env["AEGENT_GOAL"]
               ? { goal: { text: process.env["AEGENT_GOAL"] } }
               : {}),
+            // Q2/T-P2-105：持久库在位时注册会话查询工具（session_query/
+            // session_get——无 --db 的 echo 路径无历史面）
+            ...(cli.db ? { sessionQuery: { dbPath: cli.db } } : {}),
           },
         }
       : {}),
