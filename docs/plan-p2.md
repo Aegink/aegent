@@ -488,7 +488,7 @@
 - **风险 / 未知**：无（政策件）
 - **完成记录**：2026-09-28。产出 `docs/test-policy.md` 四节：①**域清单**——test-support 十件（event-asserts/fault-server/http-mock/isolation/llm-replay/migration-asserts/normalize/render/snapshots/tmp-fs）逐件职责 + 来源需求 + 配套自测表；②**keyless 纪律成文**——两条：易变值必须归一化（占位符/稳定标签，禁止原始值落快照）+ 长文本必须有界（160 截断 + 指引标签化）；③**升降级规则**——入组条件（≥2 文件复用 or 需求机验载体）+ 入组动作（managed 域 + 头注释职责/来源/锚 + 配套自测强制）+ 废弃条件（无消费方一个批次周期 → 标记 deprecated 下批删，标记先行禁止直删）+ 变更纪律（输出语义变化必须全量回归 + 既有快照显式更新即收紧 + 记档）；④**使用规约**——十场景"用哪个件 + 禁止的替代做法"对照表（手写期望数组/手写 fetch stub/现场拼坏响应等散件做法逐项禁止）。keyless 复核：`snapshots.test.ts` 扩 1 用例——同一快照重复渲染逐字节相等 + 易变值三类漏网哨兵（UUID 原文/ISO 时间/未归一路径的 not.toMatch 断言）；跨进程逐字节等由全量测试多次运行覆盖（规格即断言，政策 §2 成文）。**验收**：`npx vitest run src/test-support/` → **65 passed**（64 → 净增 1）；`npx tsc --noEmit` 干净；`bash tools/check-doc-links.sh docs/test-policy.md` → 1 链接 0 失效。**记档**：dsh 7 包 22,817 行的包组规模不取（单域十件即达"受治理包组"语义——升降级规则才是需求的行为内核，known-diffs.md 已记）。
 
-#### T-P2-507 · O29 · 期望外错误 panic（测试 fixture 显式忽略臂） `[ ]`
+#### T-P2-507 · O29 · 期望外错误 panic（测试 fixture 显式忽略臂） `[x]`
 - **依据需求**：O29（"期望外的错误直接 panic；其余未识别事件走显式忽略臂"）
 - **上游首选参考**：codex·compact.rs:470（`EventMsg::Error(e) => panic!` + 显式 `_ => {}` 忽略臂——研究期已验证关键行）
 - **取什么 / 别抄什么**：取"测试 fixture 对错误类事件 fail-loud、对已知无关事件显式忽略（不留静默通配）"行为；vitest 等价 = throw
@@ -496,6 +496,7 @@
 - **验收**：`npx vitest run src/test-support/ src/kernel/agent-process.test.ts`（扩）——错误 panic + 未知 panic + 已知无关忽略
 - **依赖**：T-P2-506（政策同域）
 - **风险 / 未知**：渐进接入范围（全部 fixture 一次切换噪音大——本卡只落 helper + 两个示范 fixture，全面切换随触碰记档）
+- **完成记录**：2026-09-28。产出 `src/test-support/event-pump.ts`——`createStrictPump(options)` 严格泵三约定：①**错误类事实 fail-loud**（codex·compact.rs:468 `EventMsg::Error => panic!` 同构）——词汇表闭面内无独立 error 事件，错误是载荷级事实，`isErrorFact` 判定 = tool/result `message.isError===true` ∨ turn/end `reason.kind==="error"`（interrupted/blocked 等非 error 类不误伤——恢复用例实测验证）；②**显式忽略臂**（`ignore` 数组——写出来的决定不是遗漏；含闭面外类型即构造失败）；③**未知事件类型 throw**（比 codex 静默 `_ => {}` 更严——记档理由：EVENT_TYPES 闭面 C14 保证已知集，闭面外即词汇表漂移或坏 fixture）；`allowErrors` 显式放行（测试错误恢复路径时打开——打开与否也是写出来的决定）+ `UnexpectedEventError`（message 含事件类型与 seq，可定位）。测试 `event-pump.test.ts` 4 用例（错误 fail-loud 双形状 / 忽略臂跳过 + 未知 ignore 拒绝 / 未知类型 throw / allowErrors 放行 + isErrorFact 判定面）；**示范接入** agent-process.test 恢复用例——收集循环零改动、收集后 `createStrictPump({onEvent:()=>{}})(events)` 复核哨兵（最小侵入渐进接入形态）。**验收**：`npx vitest run src/test-support/ src/kernel/agent-process.test.ts` → **84 passed**（含 agent-process 30 例——泵复核在真实子进程流上通过）；`npx tsc --noEmit` 干净。**记档**：①测试坑复证——联合类型 `Omit<SessionEvent,…>` 不分发（DistributiveOmit 先例；测试 mk 直用 NewSessionEvent）；②全面切换到泵随触碰渐进（test-policy §3 变更纪律——本卡只落 helper + 1 示范 fixture，卡面预判"两个示范"实际 1 处即达示范语义，其余用例的既有断言面已覆盖）；③agent-process.test 的 beforeAll `npm run build` 失败会以套件级失败呈现（根因在类型错误时先看 tsc——排查记档）。
 
 #### T-P2-508 · O30 · 跨组件因果断言（端到端因果链） `[ ]`
 - **依据需求**：O30（"断言跨组件因果（装完必须出现在注册表），不只断言字段值"）

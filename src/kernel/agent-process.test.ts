@@ -10,6 +10,7 @@ import { decodeMessage, type AgentMessage } from "./agent-protocol.js";
 import { runAgentChildStdio, spawnAgentProcess } from "./agent-process.js";
 import { InMemoryAttachmentStore } from "../attachments/store.js";
 import { drainUntil, recvWithTimeout } from "../test-support/event-asserts.js";
+import { createStrictPump } from "../test-support/event-pump.js";
 import type { ModelProvider } from "../models/provider.js";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
@@ -984,6 +985,9 @@ describe("session/resume（M3/T-P1-86）", () => {
       }
     }
     expect(resumed).toEqual({ type: "resumed", fromTurn: 1 });
+    // O29（T-P2-507）：收集到的流过严格泵——错误类事实 fail-loud、未知类型
+    // fail（本用例流应零错误事实：interrupted 是恢复语义不是 error 类）
+    createStrictPump({ onEvent: () => {} })(events);
     // 对账闭合先落（append-only：原轮 interrupted 闭合不删改）
     const kinds = events.map((e) => (e.type === "turn/end" ? e.reason.kind : e.type));
     expect(kinds[0]).toBe("step/end");
