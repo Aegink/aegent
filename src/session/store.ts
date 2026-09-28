@@ -118,6 +118,15 @@ export class SessionStore {
     return this.events.get(sessionId) ?? [];
   }
 
+  /**
+   * 已知会话 id 清单（内存序的键集快照——只读消费方用，如 fork-tree 的
+   * 谱系重建 fromStore）。**不是**"全部落库会话"（落库但本进程未安装的
+   * 会话不在列——那要走库面查询 Q2）。
+   */
+  sessionIds(): string[] {
+    return [...this.events.keys()];
+  }
+
   /** 内部 buffer 里尚未落库的事件数（测试与可观测用）。 */
   pendingCount(sessionId: string): number {
     return this.buffer.get(sessionId)?.length ?? 0;

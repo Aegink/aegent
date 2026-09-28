@@ -183,3 +183,24 @@ describe("flush 串行化与失败语义", () => {
     expect(storage.readAll("s1")).toHaveLength(2);
   });
 });
+
+describe("已知会话清单（E6/T-P2-106 只读消费面）", () => {
+  it("sessionIds 返回内存序键集（append/fork/restore 后随事实更新；只读不改流）", async () => {
+    const storage = new InMemoryEventStorage();
+    const store = new SessionStore(storage);
+    expect(store.sessionIds()).toEqual([]);
+
+    store.append("s-a", [turnStart(1), userMsg("q"), { type: "turn/end", turn: 1, reason: { kind: "completed" } }]);
+    store.append("s-b", [turnStart(1), userMsg("q"), { type: "turn/end", turn: 1, reason: { kind: "completed" } }]);
+    expect(store.sessionIds().sort()).toEqual(["s-a", "s-b"]);
+
+    // fork 只从 idle 会话分叉（E5：未闭合 turn 拒绝）——上面各会话轮已闭合
+    store.fork("s-a", { target: "s-a-child" });
+    expect(store.sessionIds().sort()).toEqual(["s-a", "s-a-child", "s-b"]);
+
+    await store.flush("s-a");
+    const fresh = new SessionStore(storage);
+    await fresh.restore("s-a");
+    expect(fresh.sessionIds()).toEqual(["s-a"]); // 键集随 restore 装载
+  });
+});
