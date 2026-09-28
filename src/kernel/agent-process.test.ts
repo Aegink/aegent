@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
@@ -12,7 +12,6 @@ import { InMemoryAttachmentStore } from "../attachments/store.js";
 import { drainUntil, recvWithTimeout } from "../test-support/event-asserts.js";
 import { createStrictPump } from "../test-support/event-pump.js";
 import type { ModelProvider } from "../models/provider.js";
-
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const entryPath = path.join(root, "dist", "src", "kernel", "agent-child.js");
 
@@ -26,7 +25,7 @@ describe("agent-process —— T9 agent 出进程", () => {
     const proc = spawnAgentProcess({ entryPath });
 
     const ready = await recvWithTimeout(proc.messages, (m) => m.type === "ready", "ready", 10_000);
-    expect(ready).toEqual({ type: "ready" });
+    expect(ready).toMatchObject({ type: "ready" });
 
     for (let i = 1; i <= 3; i++) {
       proc.send({ type: "prompt", messageId: `m${i}`, content: `第 ${i} 问` });
@@ -119,7 +118,7 @@ describe("agent-process —— T9 agent 出进程", () => {
     };
     const next = async () => (await iter[Symbol.asyncIterator]().next()).value;
 
-    expect(await next()).toEqual({ type: "ready" });
+    expect(await next()).toMatchObject({ type: "ready" });
     input.write(`${JSON.stringify({ type: "prompt", messageId: "a", content: "甲" })}\n`);
     expect(await next()).toEqual({ type: "accepted", messageId: "a" });
     for (;;) {
@@ -200,7 +199,7 @@ describe("agent-process —— T9 agent 出进程", () => {
     };
     const next = async () => (await iter[Symbol.asyncIterator]().next()).value;
 
-    expect(await next()).toEqual({ type: "ready" });
+    expect(await next()).toMatchObject({ type: "ready" });
     input.write(JSON.stringify({ type: "prompt", messageId: "a", content: "甲" }) + "\n");
     for (;;) {
       const m = await next();
@@ -308,7 +307,7 @@ describe("agent-process —— T9 agent 出进程", () => {
     };
     const next = async () => (await iter[Symbol.asyncIterator]().next()).value;
 
-    expect(await next()).toEqual({ type: "ready" });
+    expect(await next()).toMatchObject({ type: "ready" });
     input.write(JSON.stringify({ type: "prompt", messageId: "a", content: "甲" }) + "\n");
     expect(await next()).toEqual({ type: "accepted", messageId: "a" });
     // 等到 request/header（首次模型请求已发出、流在挂起中）——在途轮窗口
@@ -415,7 +414,7 @@ describe("agent-process —— T9 agent 出进程", () => {
     };
     const next = async () => (await iter[Symbol.asyncIterator]().next()).value;
 
-    expect(await next()).toEqual({ type: "ready" });
+    expect(await next()).toMatchObject({ type: "ready" });
     input.write(JSON.stringify({ type: "prompt", messageId: "a", content: "甲" }) + "\n");
     expect(await next()).toEqual({ type: "accepted", messageId: "a" });
     // 等轮 1 真正开始（request/header 转发 = provider 流已开）再排队
@@ -517,7 +516,7 @@ describe("agent-process —— T9 agent 出进程", () => {
     };
     const next = async () => (await iter[Symbol.asyncIterator]().next()).value;
 
-    expect(await next()).toEqual({ type: "ready" });
+    expect(await next()).toMatchObject({ type: "ready" });
     input.write(JSON.stringify({ type: "prompt", messageId: "a", content: "甲" }) + "\n");
     expect(await next()).toEqual({ type: "accepted", messageId: "a" });
     for (;;) {
@@ -608,7 +607,7 @@ describe("agent-process —— T9 agent 出进程", () => {
     };
     const next = async () => (await iter[Symbol.asyncIterator]().next()).value;
 
-    expect(await next()).toEqual({ type: "ready" });
+    expect(await next()).toMatchObject({ type: "ready" });
     // dispose（空闲时立即收尾）——闭闸后新输入被类型化拒绝
     input.write(JSON.stringify({ type: "dispose" }) + "\n");
     // 闭闸后紧接两条请求：prompt 与 steer 都得 SERVER_DRAINING（在 finish
@@ -941,7 +940,7 @@ describe("session/resume（M3/T-P1-86）", () => {
 
   it("无可续跑轮（干净流）→ NO_INTERRUPTED_TURN 类型化 error 行", async () => {
     const child = childHarness();
-    expect(await child.next()).toEqual({ type: "ready" });
+    expect(await child.next()).toMatchObject({ type: "ready" });
     child.send({ type: "session/resume" });
     const error = await child.next();
     expect(error).toMatchObject({ type: "error", code: "NO_INTERRUPTED_TURN" });
@@ -954,7 +953,7 @@ describe("session/resume（M3/T-P1-86）", () => {
     const storage = crashStorage();
     // 旧进程视角：同一份 storage 上 findInterruptedTurn 定位（对账在 resume 内做）
     const probe = childHarness({ storage });
-    expect(await probe.next()).toEqual({ type: "ready" });
+    expect(await probe.next()).toMatchObject({ type: "ready" });
 
     const requests: ChatRequest[] = [];
     const provider: ModelProvider = {
@@ -965,7 +964,7 @@ describe("session/resume（M3/T-P1-86）", () => {
       },
     };
     const child = childHarness({ storage, provider });
-    expect(await child.next()).toEqual({ type: "ready" });
+    expect(await child.next()).toMatchObject({ type: "ready" });
     await probe.end();
 
     child.send({ type: "session/resume" });
@@ -1164,5 +1163,78 @@ describe("agent-process × 附件编排面（P1+P3/T-P1-124）", () => {
 `);
     input2.end();
     await running2;
+  }, 30_000);
+});
+
+describe("agent-process × ready 清单（U10/T-P3-109 补全来源）", () => {
+  it("ready.tools = 注册表名单（builtin 必在）；装配 workspace 有技能时 ready.skills 携带 name/description", async () => {
+    // 临时 workspace：.zcode/skills/demo/SKILL.md（I2 目录纪律——清单来源）
+    const ws = mkdtempSync(path.join(tmpdir(), "aegent-skills-ws-"));
+    const skillDir = path.join(ws, ".zcode", "skills", "demo");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(
+      path.join(skillDir, "SKILL.md"),
+      [
+        "---",
+        "name: demo-skill",
+        "description: 演示技能——补全面清单来源",
+        "---",
+        "正文。",
+      ].join("\n"),
+    );
+    const input = new PassThrough();
+    const output = new PassThrough();
+    let exitCode: number | null = null;
+    const running = runAgentChildStdio({
+      input,
+      output,
+      exit: (code) => {
+        exitCode = code;
+      },
+      assembly: {
+        workspaceRoot: ws,
+        contextWindow: 100_000,
+        approvalTimeoutMs: 5_000,
+      },
+    });
+
+    const items: AgentMessage[] = [];
+    const waiters: ((r: IteratorResult<AgentMessage>) => void)[] = [];
+    let buf = "";
+    output.setEncoding("utf-8");
+    output.on("data", (chunk: string) => {
+      buf += chunk;
+      for (;;) {
+        const nl = buf.indexOf("\n");
+        if (nl < 0) break;
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        const msg = decodeMessage(line);
+        const w = waiters.shift();
+        if (w) w({ value: msg, done: false });
+        else items.push(msg);
+      }
+    });
+    const next = async () =>
+      new Promise<AgentMessage>((resolve) => {
+        const item = items.shift();
+        if (item) return resolve(item);
+        waiters.push((r) => resolve(r.value as AgentMessage));
+      });
+
+    const ready = (await next()) as Extract<AgentMessage, { type: "ready" }>;
+    expect(ready.type).toBe("ready");
+    // 补全清单来源断言：注册表在子进程——名单随 ready 出进程
+    for (const name of ["read", "write", "bash", "edit", "glob", "grep"]) {
+      expect(ready.tools ?? []).toContain(name);
+    }
+    expect((ready.skills ?? []).some((s) => s.name === "demo-skill" && s.description.includes("演示"))).toBe(true);
+
+    input.write(`${JSON.stringify({ type: "dispose" })}
+`);
+    input.end();
+    await running;
+    rmSync(ws, { recursive: true, force: true });
   }, 30_000);
 });

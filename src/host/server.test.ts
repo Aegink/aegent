@@ -6,7 +6,7 @@
  * helper（agent 注入件 / rig / ws 客户端）在 server.test-utils.ts。
  */
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -40,6 +40,7 @@ async function startServer(options: {
   storage?: EventStorage;
   settingsGateway?: import("./settings-gateway.js").SettingsGateway;
   sessionsLibrary?: SqliteEventStorage;
+  workspaceRoot?: string;
 }): Promise<{ handle: HostServerHandle; port: number }> {
   const uiDir = makeUiFixture();
   uiFixtures.push(uiDir);
@@ -51,6 +52,7 @@ async function startServer(options: {
     ...(options.agent !== undefined ? { agent: options.agent } : {}),
     ...(options.settingsGateway !== undefined ? { settingsGateway: options.settingsGateway } : {}),
     ...(options.sessionsLibrary !== undefined ? { sessionsLibrary: options.sessionsLibrary } : {}),
+    ...(options.workspaceRoot !== undefined ? { workspaceRoot: options.workspaceRoot } : {}),
   });
   const handle = await server.start();
   handles.push(handle);
@@ -697,6 +699,45 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
     client.close();
     sessionDb.close();
     await new Promise((r) => setTimeout(r, 50)); // Windows 句柄释放缓冲
+  });
+
+  it("query op=files/meta（U10/T-P3-109）：workspace 只读列举 + ready 注册表清单曝光", async () => {
+    const ws = mkdtempSync(path.join(tmpdir(), "aegent-host-ws-"));
+    settingsTmpDirs.push(ws);
+    mkdirSync(path.join(ws, "sub"), { recursive: true });
+    writeFileSync(path.join(ws, "a.txt"), "x");
+    writeFileSync(path.join(ws, "sub", "b.md"), "y");
+    const agent = fakeAgent();
+    // ready 清单先入泵（bridge 捕获 → op:"meta" 曝光——/ 补全的清单来源）
+    agent.emit({
+      type: "ready",
+      tools: ["read", "bash"],
+      skills: [{ name: "demo", description: "演示技能" }],
+    });
+    const { port } = await startServer({ agent, workspaceRoot: ws });
+    const client = await wsConnect(port);
+    await client.hello("web-f1");
+
+    const queryCall = (call: Record<string, unknown>) => {
+      const requestId = `f-${settingsCallSeq++}`;
+      client.raw({ type: "query", requestId, ...call });
+      return client.waitFor((e) => e.type === "response" && e.requestId === requestId, `query(${requestId})`) as Promise<Record<string, unknown>>;
+    };
+
+    const files = await queryCall({ sessionId: "-", op: "files" });
+    expect(files.ok).toBe(true);
+    const fileList = files.result as { root: string; entries: { path: string; dir: boolean }[]; truncated: boolean };
+    expect(fileList.root).toBe(path.resolve(ws));
+    expect(fileList.entries.some((e) => e.path === "a.txt" && !e.dir)).toBe(true);
+    expect(fileList.entries.some((e) => e.path === "sub/" && e.dir)).toBe(true);
+    expect(fileList.entries.some((e) => e.path === "sub/b.md")).toBe(true);
+
+    const meta = await queryCall({ sessionId: "-", op: "meta" });
+    expect(meta.ok).toBe(true);
+    const caps = meta.result as { tools: string[]; skills: { name: string; description: string }[] };
+    expect(caps.tools).toContain("read");
+    expect(caps.skills).toEqual([{ name: "demo", description: "演示技能" }]);
+    client.close();
   });
 });
 

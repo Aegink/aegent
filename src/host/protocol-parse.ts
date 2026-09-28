@@ -55,7 +55,7 @@ export type ClientEnvelope =
       type: "query";
       requestId: string;
       sessionId: string;
-      op: "events" | "sessions" | "search";
+      op: "events" | "sessions" | "search" | "files" | "meta";
       afterSeq?: number;
       /** op=search：检索条件（contentLike 必填非空——空串检索无意义面禁足）。 */
       criteria?: { contentLike: string; limit?: number; offset?: number };
@@ -157,10 +157,10 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
     if (typeof record["sessionId"] !== "string" || record["sessionId"] === "") {
       throw new Error("query 需要 sessionId 非空字符串");
     }
-    if (record["op"] !== "events" && record["op"] !== "sessions" && record["op"] !== "search") {
-      throw new Error(`query 的 op 非法：${String(record["op"])}（合法：events|sessions|search）`);
+    if (record["op"] !== "events" && record["op"] !== "sessions" && record["op"] !== "search" && record["op"] !== "files" && record["op"] !== "meta") {
+      throw new Error(`query 的 op 非法：${String(record["op"])}（合法：events|sessions|search|files|meta）`);
     }
-    const op = record["op"] as "events" | "sessions" | "search";
+    const op = record["op"] as "events" | "sessions" | "search" | "files" | "meta";
     if (
       record["afterSeq"] !== undefined &&
       (typeof record["afterSeq"] !== "number" || !Number.isInteger(record["afterSeq"]) || record["afterSeq"] < 0)

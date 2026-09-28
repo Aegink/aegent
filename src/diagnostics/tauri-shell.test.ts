@@ -198,7 +198,16 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(app).toContain('op: "search"'); // Q2 检索的 UI 消费
     expect(app).toContain("findInStream"); // 渲染层文本检索
     expect(app).toContain("minimapRegister"); // 消息结构导航条
-    for (const marker of [".search-hit", ".mm-row", "#find-bar", "#minimap"]) {
+    // U10/T-P3-109：Composer 升级（多行/两类补全/粘贴图入附件链）
+    expect(html).toContain('id="autocomplete"');
+    expect(html).toContain('id="attachments-preview"');
+    expect(html).toContain("<textarea");
+    expect(app).toContain('op: "files"'); // @ 补全的 workspace 列举面
+    expect(app).toContain('op: "meta"'); // / 补全的清单来源（ready 捕获）
+    expect(app).toContain("UI_COMMANDS"); // 斜杠命令本地集
+    expect(app).toContain("addAttachment"); // 粘贴图 → 附件链
+    expect(app).toContain("MAX_ATTACHMENT_BYTES"); // 限额防呆与 limits.ts 同源
+    for (const marker of [".search-hit", ".mm-row", "#find-bar", "#minimap", ".ac-row", ".attachment-chip"]) {
       expect(css).toContain(marker);
     }
   });

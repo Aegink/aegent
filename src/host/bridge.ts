@@ -26,6 +26,8 @@ import type { SessionStore } from "../session/store.js";
 import { SqliteEventStorage } from "../session/db.js";
 // U9/T-P3-108：op:"search" 的 Q2 消费面（已打开库上的条件检索）
 import { querySessionsDb } from "../session/query.js";
+// U10/T-P3-109：op:"files" 的 workspace 只读列举
+import { listWorkspaceFiles } from "./files-list.js";
 import { AgentHost } from "./registry.js";
 import {
   HostProtocolServer,
@@ -62,6 +64,12 @@ export interface HostBridgeOptions {
    * 网关的 sessionDb 同一实例——生产 main 组装）。
    */
   sessionsLibrary?: SqliteEventStorage;
+  /**
+   * U10/T-P3-109：workspace 根（op:"files" 的扫描面）——生产 main 从
+   * 最终 childArgs 的 --workspace 解析（与子进程同源）；缺省 = host 进程
+   * cwd（子进程缺省语义同款）。
+   */
+  workspaceRoot?: string;
 }
 
 interface SurfaceRegistration {
@@ -77,6 +85,8 @@ export class HostBridge implements SessionRouter {
   private readonly pendingPrompts = new Map<string, (value: unknown) => void>();
   /** 最近的在途 prompt（error 行的归属——单会话串行假设，卡内定形）。 */
   private lastPendingPromptId: string | undefined;
+  /** U10/T-P3-109：ready 消息捕获的注册表清单（工具/技能——/ 补全来源）。 */
+  private agentCapabilities: { tools: string[]; skills: { name: string; description: string }[] } | undefined;
   private readonly unconsumed: Promise<void>;
 
   constructor(private readonly options: HostBridgeOptions) {
@@ -91,6 +101,15 @@ export class HostBridge implements SessionRouter {
 
   private handleAgentMessage(message: AgentMessage): void {
     const sessionId = this.options.host.sessionId;
+    // U10/T-P3-109：ready 携带的注册表清单（工具名 + 技能名单）——
+    // / 补全的清单来源，经 query op:"meta" 曝光给端。
+    if (message.type === "ready") {
+      this.agentCapabilities = {
+        tools: message.tools ?? [],
+        skills: message.skills ?? [],
+      };
+      return;
+    }
     if (message.type === "event") {
       for (const listener of this.listeners) listener(sessionId, message.event);
       // N5 分型：轮结算事实的分类发布（turn/end 是结算时点）
@@ -263,6 +282,18 @@ export class HostBridge implements SessionRouter {
             })),
             total: result.total,
             hasMore: result.hasMore,
+          };
+        }
+        // U10/T-P3-109：workspace 只读文件列举（@ 补全数据面）+ 注册表
+        // 清单（ready 捕获——/ 补全来源）。都是只读直答，不经 agent 不落流。
+        if (query.op === "files") {
+          const root = this.options.workspaceRoot ?? process.cwd();
+          return listWorkspaceFiles(root);
+        }
+        if (query.op === "meta") {
+          return {
+            tools: this.agentCapabilities?.tools ?? [],
+            skills: this.agentCapabilities?.skills ?? [],
           };
         }
         // 本会话：内存序读取（同步）：镜像 append 的直接产物——最新、无

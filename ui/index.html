@@ -29,7 +29,10 @@
     <div id="minimap" aria-label="会话结构导航"></div>
     <section id="pending" aria-label="待决审批"></section>
     <footer id="composer">
-      <input id="prompt-input" type="text" placeholder="输入指令回车执行…" autocomplete="off" />
+      <!-- U10/T-P3-109：补全下拉（@ 文件/目录、/ 命令+工具+技能）+ 附件预览 -->
+      <div id="autocomplete" hidden></div>
+      <div id="attachments-preview"></div>
+      <textarea id="prompt-input" rows="1" placeholder="输入指令回车执行…（Shift+Enter 换行；@ 补全文件、/ 补全命令）" autocomplete="off"></textarea>
       <button id="send-btn" type="button">发送</button>
     </footer>
 

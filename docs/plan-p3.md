@@ -136,7 +136,7 @@
 - **风险 / 未知**：小地图在超长会话的渲染性能（虚拟化——按需记档）
 - **完成记录（2026-09-29）**：验收 `npx vitest run src/session/query.test.ts src/host/server.test.ts src/diagnostics/tauri-shell.test.ts` → **24 passed**（query 6 + server 10 + tauri-shell 8；node --check 过、tsc 干净）。落地：①**会话内搜索**（Ctrl+F 条，index.html find-bar）：渲染层文本检索——TreeWalker 文本节点摘帽/戴帽（`mark.search-hit`，active 着色 + scrollIntoView 居中），Enter/Shift+Enter 上下循环跳转、计数 n/N、Esc 关闭还原（normalize 还原原文本节点——不改事件内容）；②**跨会话搜索**（🔍 按钮 + Ctrl+Shift+F）：**wire 扩展 query op:"search"**（criteria.contentLike 必填非空 ≤256〔MAX_CONTENT_LIKE_CHARS 同源〕+ limit 1..500/offset≥0，parse 层形状坏整信封拒 → "(unparsed)" PROTOCOL_MALFORMED）→ bridge op:"search" 分支 → **querySessionsDb**（query.ts 新导出：已打开库上的检索，语义与 querySessions 全同——query.test 等价断言；复用 sessionsLibrary 连接不逐查开关库）→ 只回摘要行（sessionId/seq/type/ts/excerpt——**事件整值不出检索面**，e2e 断言）→ UI 命中列表（会话/类型/时间/摘录）+ "查看" = 只读恢复视图（与历史侧栏同链）+ 续聊入口提示；③**小地图**（#minimap 固定右缘）：user=accent/agent=ok/tool=warn 三色 3px 行 + title 标轮次，点击 scrollIntoView + 1.2s flash；登记面 renderEventEnvelope/renderHistory 共用（只读查看入口 resetStreamView 统一摘帽 + 重建）；④tauri-shell 资产断言扩（find-bar/minimap/search-panel/search-results + op:"search"/findInStream/minimapRegister + css 标记）。人工走查列入确认清单（视觉/键位手感）。
 
-#### T-P3-109 · U10 · 输入区升级（Composer：多行 + 五类补全 + 粘贴图） `[ ]`
+#### T-P3-109 · U10 · 输入区升级（Composer：多行 + 五类补全 + 粘贴图） `[x]`
 - **依据需求**：U10（"多行编辑、@文件/@目录补全、斜杠命令与技能补全、粘贴图片入附件面"）
 - **上游首选参考**：[pi-desktop·ComposerAutocomplete](../oss/pi-desktop/apps/desktop/src/components)（补全面五类：文件/文件夹/斜杠/插件/技能）+ [pi·tui·autocomplete](../oss/pi/packages/tui)（🔴 只学行为）
 - **取什么 / 别抄什么**：取"@ 触发文件补全 + / 触发命令补全 + 键盘导航"行为；插件类补全不取（无插件清单面——I5 落地后随需要）
@@ -144,6 +144,7 @@
 - **验收**：ui 资产断言 + `npx vitest run src/kernel/agent-process.test.ts`（扩——带附件 prompt 链已有）+ 补全清单来源断言
 - **依赖**：T-P3-107
 - **风险 / 未知**：workspace 文件列举的面（host 只读 list——wire 扩展先例）
+- **完成记录（2026-09-29）**：验收 `npx vitest run src/kernel/agent-process.test.ts src/host/server.test.ts src/diagnostics/tauri-shell.test.ts` → **35 passed**（agent-process 16 + server 11 + tauri-shell 8；node --check 过、tsc 干净、`npm run build` 过）。落地：①**多行编辑**：composer input → textarea（Shift+Enter 原生换行 / Enter 发送，自动增高上限 8 行）；②**@补全**：**query op:"files"**——host 只读列举面 `src/host/files-list.ts`（相对 posix 路径、目录带尾 /、跳过 .git/node_modules/dist、条目上限 1000 + 深度 8 防呆；生产 main 从最终 launchArgs 解析 --workspace 与子进程同源、缺省 cwd），UI 会话期缓存 + 子串过滤 + 图标（📄/📁）；③**/补全**：**ready 协议扩展**（`{type:"ready", tools?, skills?}`——decodeMessage 形状校验可选载荷，旧子进程/测试注入零变化；子进程 = 注册表所有者在 ready 报 `toolRegistry.names()` + `loadSkills(workspaceRoot)` 名单，目录级重复扫描成本记档）→ bridge 捕获 → **query op:"meta"** 曝光；UI 候选 = UI 本地命令集（/cancel /find /search /history /settings /help——Enter 完整命令本地执行不发 prompt）+ 🛠 工具 + ✨ 技能（选中 = 名称提及入输入框，模型侧消费——卡内定形记档）；键盘 ↑↓/Enter/Tab/Esc + 点击选择；④**粘贴图**：clipboard image → FileReader → base64 → prompt 请求 attachments（P1 附件链既有面零改动）；限额防呆与 limits.ts 同源（10MB/件、8 件/消息、png/jpeg/gif/webp 白名单）+ 预览 chips 可删；⑤既有 ready toEqual 断言全量改 toMatchObject（载荷扩展的机械后果）。人工走查列入确认清单（补全手感/粘贴图）。
 
 #### T-P3-110 · U11 · 项目/工作区管理（多项目列表 + 指令记忆页） `[ ]`
 - **依据需求**：U11（"多项目列表与切换、项目级指令与记忆页、新建/编辑/删除项目对话框"）

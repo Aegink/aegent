@@ -169,7 +169,13 @@ export type AgentRequest =
 
 /** 子 → 父。 */
 export type AgentMessage =
-  | { type: "ready" }
+  | {
+      type: "ready";
+      /** U10/T-P3-109：注册表工具名清单（/ 补全的清单来源——registry 所有者是子进程）。 */
+      tools?: string[];
+      /** U10/T-P3-109：I2 技能清单（name/description——补全面提示用）。 */
+      skills?: { name: string; description: string }[];
+    }
   | { type: "accepted"; messageId: string }
   | { type: "event"; event: SessionEvent }
   | {
@@ -640,10 +646,40 @@ export function decodeMessage(line: string): AgentMessage {
     action?: unknown;
     reason?: unknown;
     rule?: unknown;
+    tools?: unknown;
+    skills?: unknown;
   };
   switch (msg.type) {
-    case "ready":
-      return { type: "ready" };
+    case "ready": {
+      // U10/T-P3-109：清单载荷可选（旧子进程/测试注入零变化）；形状坏拒绝。
+      const out: {
+        type: "ready";
+        tools?: string[];
+        skills?: { name: string; description: string }[];
+      } = { type: "ready" };
+      if (msg.tools !== undefined) {
+        if (!Array.isArray(msg.tools) || msg.tools.some((t) => typeof t !== "string")) {
+          throw new ProtocolError("PROTOCOL_MALFORMED", "ready.tools 须为字符串数组");
+        }
+        out.tools = msg.tools as string[];
+      }
+      if (msg.skills !== undefined) {
+        if (
+          !Array.isArray(msg.skills) ||
+          msg.skills.some(
+            (s) =>
+              s === null ||
+              typeof s !== "object" ||
+              typeof (s as { name?: unknown }).name !== "string" ||
+              typeof (s as { description?: unknown }).description !== "string",
+          )
+        ) {
+          throw new ProtocolError("PROTOCOL_MALFORMED", "ready.skills 须为 {name,description} 数组");
+        }
+        out.skills = msg.skills as { name: string; description: string }[];
+      }
+      return out;
+    }
     case "idle":
       return { type: "idle" };
     case "accepted":

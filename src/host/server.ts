@@ -68,6 +68,8 @@ export interface HostServerOptions {
   settingsGateway?: import("./settings-gateway.js").SettingsGateway;
   /** U3/T-P3-105 会话清单库（SQLite 事件库本体——op:"sessions" 数据面）。 */
   sessionsLibrary?: SqliteEventStorage;
+  /** U10/T-P3-109 workspace 根（op:"files" 扫描面——缺省进程 cwd）。 */
+  workspaceRoot?: string;
 }
 
 /** host 进程运行句柄（start 的产物——stop 收束全部资源）。 */
@@ -99,6 +101,7 @@ export class HostServer {
       store,
       ...(this.options.settingsGateway !== undefined ? { settingsGateway: this.options.settingsGateway } : {}),
       ...(this.options.sessionsLibrary !== undefined ? { sessionsLibrary: this.options.sessionsLibrary } : {}),
+      ...(this.options.workspaceRoot !== undefined ? { workspaceRoot: this.options.workspaceRoot } : {}),
     });
     // 会话流镜像（host 视角的读面）：非 roster 事件同步 append——
     // SessionStore.append 同步纪律（write-behind 持久化在 storage 端）。
@@ -367,6 +370,12 @@ async function main(argv: readonly string[]): Promise<void> {
     storage,
     settingsGateway,
     sessionsLibrary: sqliteStorage,
+    // U10/T-P3-109：workspace 根与子进程同源——最终 launchArgs 的
+    // --workspace（含 settings 档注入）> 进程 cwd（子进程缺省语义同款）。
+    workspaceRoot: (() => {
+      const i = launchArgs.indexOf("--workspace");
+      return i >= 0 && i + 1 < launchArgs.length ? launchArgs[i + 1] : process.cwd();
+    })(),
   });
   const handle = await server.start();
   process.stdout.write(

@@ -51,6 +51,7 @@ import { InvalidSessionIdError, isValidSessionId } from "../session/session-id.j
 import { Projector, ProjectError } from "../session/project.js";
 import { findInterruptedTurn, reconcileBootState } from "../session/boot-maintenance.js";
 import { RawChunkLog } from "./raw-chunk-log.js";
+import { loadSkills } from "./skills.js";
 import { createChildAssembly, createTodoUpdateEmitter, type ChildAssembly, type ChildAssemblyOptions } from "./assembly.js";
 import { evaluateToolPolicy } from "../policy/gate.js";
 import { ModelNotRegisteredError } from "./model-switch.js";
@@ -980,7 +981,21 @@ export async function runAgentChildStdio(
     }
   };
 
-  send({ type: "ready" });
+  send({
+    type: "ready",
+    // U10/T-P3-109：注册表工具名 + I2 技能清单（/ 补全的清单来源——
+    // registry 所有者是子进程；此扫描与首落系统提示的 loadSkills 重复一次，
+    // 目录级成本记档）。assembly 缺席（最小装配）= 只报工具名单。
+    tools: toolRegistry.names(),
+    ...(options.assembly
+      ? {
+          skills: loadSkills(options.assembly.workspaceRoot ?? process.cwd()).skills.map((s) => ({
+            name: s.name,
+            description: s.description,
+          })),
+        }
+      : {}),
+  });
   const rl = createInterface({ input, crlfDelay: Infinity });
   const closed = new Promise<void>((resolve) => rl.on("close", resolve));
   rl.on("line", (line: string) => {

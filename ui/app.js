@@ -453,21 +453,287 @@ leaseBtn.addEventListener("click", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// U10/T-P3-109 Composer 升级：多行编辑（Shift+Enter 换行）+ 两类补全
+// （@ workspace 清单 / 命令+工具+技能）+ 粘贴图片入 P1 附件链。
+// ---------------------------------------------------------------------------
+
+// 多行输入的自动增高（上限 8 行——再长出滚动）
+function autoGrow() {
+  input.style.height = "auto";
+  input.style.height = `${Math.min(input.scrollHeight, 8 * 22)}px`;
+}
+input.addEventListener("input", autoGrow);
+
+// —— 粘贴图片（clipboard → P1 附件链 attachments；限额与
+// attachments/limits.ts 同源：10MB/件、8 件/消息、四类 image 白名单）
+const MAX_ATTACHMENT_BYTES = 10_000_000;
+const MAX_ATTACHMENTS_PER_MESSAGE = 8;
+const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+const pendingAttachments = [];
+const attachmentsPreview = document.getElementById("attachments-preview");
+
+function renderAttachmentsPreview() {
+  attachmentsPreview.replaceChildren();
+  for (const [i, a] of pendingAttachments.entries()) {
+    const chip = document.createElement("span");
+    chip.className = "attachment-chip";
+    const label = document.createElement("span");
+    label.textContent = `🖼 ${a.name ?? "image"}（${Math.ceil((a.data.length * 3) / 4 / 1024)}KB）`;
+    const del = document.createElement("button");
+    del.type = "button";
+    del.textContent = "×";
+    del.addEventListener("click", () => {
+      pendingAttachments.splice(i, 1);
+      renderAttachmentsPreview();
+    });
+    chip.append(label, del);
+    attachmentsPreview.appendChild(chip);
+  }
+}
+
+function addAttachment(file) {
+  if (!IMAGE_TYPES.has(file.type)) {
+    appendLine(`不支持的附件类型：${file.type}（白名单：png/jpeg/gif/webp）`, "warn");
+    return;
+  }
+  if (pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE) {
+    appendLine(`附件数量已达上限（${MAX_ATTACHMENTS_PER_MESSAGE}/消息）`, "warn");
+    return;
+  }
+  if (file.size > MAX_ATTACHMENT_BYTES) {
+    appendLine(`附件超过单件上限（${Math.ceil(MAX_ATTACHMENT_BYTES / 1e6)}MB）`, "warn");
+    return;
+  }
+  const reader = new FileReader();
+  reader.addEventListener("load", () => {
+    const result = String(reader.result ?? "");
+    const base64 = result.includes(",") ? result.slice(result.indexOf(",") + 1) : result;
+    pendingAttachments.push({ mediaType: file.type, data: base64, name: file.name || "pasted-image" });
+    renderAttachmentsPreview();
+  });
+  reader.readAsDataURL(file);
+}
+
+input.addEventListener("paste", (ev) => {
+  for (const item of ev.clipboardData?.items ?? []) {
+    if (item.kind === "file") {
+      const file = item.getAsFile();
+      if (file !== null && IMAGE_TYPES.has(file.type)) {
+        ev.preventDefault(); // 图片不进文本——入附件链
+        addAttachment(file);
+      }
+    }
+  }
+});
+
+// —— 两类补全（@ 文件/目录——query op:"files"；/ 命令+工具+技能——
+// query op:"meta" 的 ready 清单 + UI 本地命令集）
+const autocomplete = document.getElementById("autocomplete");
+const UI_COMMANDS = [
+  { label: "/cancel", hint: "取消当前轮" },
+  { label: "/find", hint: "会话内搜索（Ctrl+F）" },
+  { label: "/search", hint: "跨会话搜索" },
+  { label: "/history", hint: "会话历史" },
+  { label: "/settings", hint: "设置中心" },
+  { label: "/help", hint: "列出可用命令" },
+];
+let fileCache = null; // { entries, truncated }（@ 补全——会话期缓存）
+let metaCache = null; // { tools, skills }（/ 补全——会话期缓存）
+let acItems = [];
+let acIndex = -1;
+let acContext = null; // { trigger, startPos, token }
+
+async function ensureFileCache() {
+  if (fileCache !== null) return fileCache;
+  const envelope = await sendQuery({ sessionId: sessionId() || "-", op: "files" });
+  if (envelope.ok) fileCache = envelope.result;
+  return fileCache;
+}
+
+async function ensureMetaCache() {
+  if (metaCache !== null) return metaCache;
+  const envelope = await sendQuery({ sessionId: sessionId() || "-", op: "meta" });
+  if (envelope.ok) metaCache = envelope.result;
+  return metaCache;
+}
+
+function detectTrigger() {
+  const cursor = input.selectionStart ?? 0;
+  const text = input.value.slice(0, cursor);
+  // / 触发：行首或空格后的斜杠（不误触 URL 路径——token 内无空格）
+  const slash = text.match(/(^|\s)(\/[^\s]*)$/);
+  if (slash !== null) {
+    return { trigger: "/", startPos: cursor - slash[2].length, token: slash[2] };
+  }
+  const at = text.match(/(^|\s)(@[^\s]*)$/);
+  if (at !== null) {
+    return { trigger: "@", startPos: cursor - at[2].length, token: at[2] };
+  }
+  return null;
+}
+
+function renderAutocomplete() {
+  autocomplete.replaceChildren();
+  for (const [i, item] of acItems.entries()) {
+    const row = document.createElement("div");
+    row.className = `ac-row ${i === acIndex ? "active" : ""}`.trim();
+    const label = document.createElement("span");
+    label.textContent = `${item.icon} ${item.label}`;
+    const hint = document.createElement("span");
+    hint.className = "ac-hint";
+    hint.textContent = item.hint ?? "";
+    row.append(label, hint);
+    row.addEventListener("mousedown", (ev) => {
+      ev.preventDefault(); // 防 textarea 失焦
+      applyCompletion(item);
+    });
+    autocomplete.appendChild(row);
+  }
+  autocomplete.hidden = acItems.length === 0;
+}
+
+function applyCompletion(item) {
+  if (acContext === null) return;
+  const before = input.value.slice(0, acContext.startPos);
+  const after = input.value.slice(input.selectionStart ?? 0);
+  const insert = item.kind === "dir" ? item.label : `${item.label} `;
+  input.value = `${before}${insert}${after}`;
+  const pos = (before + insert).length;
+  input.setSelectionRange(pos, pos);
+  input.focus();
+  acItems = [];
+  acContext = null;
+  renderAutocomplete();
+  autoGrow();
+}
+
+async function updateAutocomplete() {
+  const ctx = detectTrigger();
+  acContext = ctx;
+  if (ctx === null) {
+    acItems = [];
+    renderAutocomplete();
+    return;
+  }
+  const tokenBody = ctx.token.slice(1).toLowerCase();
+  if (ctx.trigger === "@") {
+    const files = (await ensureFileCache()) ?? { entries: [], truncated: false };
+    const hits = files.entries
+      .filter((e) => e.path.toLowerCase().includes(tokenBody))
+      .slice(0, 8)
+      .map((e) => ({ icon: e.dir ? "📁" : "📄", label: e.path, hint: "workspace", kind: e.dir ? "dir" : "file" }));
+    acItems = hits;
+    if (files.truncated === true) {
+      acItems = [
+        ...hits,
+        { icon: "…", label: "", hint: "清单已截断（可继续输入缩小）", kind: "info" },
+      ];
+    }
+  } else {
+    const meta = (await ensureMetaCache()) ?? { tools: [], skills: [] };
+    const candidates = [
+      ...UI_COMMANDS.map((c) => ({ icon: "⌘", label: c.label, hint: c.hint, kind: "command" })),
+      ...meta.tools.map((t) => ({ icon: "🛠", label: t, hint: "工具", kind: "tool" })),
+      ...meta.skills.map((s) => ({ icon: "✨", label: s.name, hint: s.description, kind: "skill" })),
+    ].filter((c) => c.label.toLowerCase().startsWith(tokenBody));
+    acItems = candidates.slice(0, 8);
+  }
+  acIndex = acItems.length > 0 ? 0 : -1;
+  renderAutocomplete();
+}
+
+function executeCommand(label) {
+  switch (label) {
+    case "/cancel":
+      void sendRequest(sessionId(), { type: "cancel" });
+      appendLine("已请求取消当前轮", "meta");
+      break;
+    case "/find":
+      openFind();
+      break;
+    case "/search":
+      searchPanel.hidden = false;
+      searchInput.focus();
+      break;
+    case "/history":
+      void openHistory();
+      break;
+    case "/settings":
+      void openSettings();
+      break;
+    case "/help":
+      appendLine(`可用命令：${UI_COMMANDS.map((c) => c.label).join("、")}（另有 🛠 工具 / ✨ 技能名称提及——选中即入输入框）`, "meta");
+      break;
+    default:
+      break;
+  }
+}
+
+// —— 提交：多行（Shift+Enter 换行）/ 斜杠命令拦截 / 附件随 prompt 上送
 function submitPrompt() {
   const content = input.value.trim();
   if (content === "") return;
+  lastUserPrompt = content;
   input.value = "";
+  autoGrow();
+  const attachments = pendingAttachments.splice(0, pendingAttachments.length);
+  renderAttachmentsPreview();
   void sendRequest(sessionId(), {
     type: "prompt",
     messageId: `m-${nextRequestId++}`,
     content,
+    ...(attachments.length > 0 ? { attachments } : {}),
   });
 }
 
 sendBtn.addEventListener("click", submitPrompt);
 input.addEventListener("keydown", (ev) => {
-  if (ev.key === "Enter") submitPrompt();
+  if (autocomplete.hidden === false && acItems.length > 0) {
+    if (ev.key === "ArrowDown") {
+      ev.preventDefault();
+      acIndex = (acIndex + 1) % acItems.length;
+      renderAutocomplete();
+      return;
+    }
+    if (ev.key === "ArrowUp") {
+      ev.preventDefault();
+      acIndex = (acIndex - 1 + acItems.length) % acItems.length;
+      renderAutocomplete();
+      return;
+    }
+    if (ev.key === "Enter" || ev.key === "Tab") {
+      const item = acItems[acIndex];
+      if (item !== undefined && item.kind !== "info") {
+        ev.preventDefault();
+        // 命令选中 = 直接收尾；Enter 二次提交执行（AC 面关闭）
+        applyCompletion(item);
+        return;
+      }
+    }
+    if (ev.key === "Escape") {
+      ev.preventDefault();
+      acItems = [];
+      acContext = null;
+      renderAutocomplete();
+      return;
+    }
+  }
+  // 命令提交：Enter 时若输入是完整 UI 命令则本地执行（不发 prompt）
+  if (ev.key === "Enter" && !ev.shiftKey) {
+    ev.preventDefault();
+    const trimmed = input.value.trim();
+    if (UI_COMMANDS.some((c) => c.label === trimmed)) {
+      input.value = "";
+      autoGrow();
+      executeCommand(trimmed);
+      return;
+    }
+    submitPrompt();
+  }
+  // Shift+Enter = textarea 原生换行；输入变化经 input 监听刷新补全
 });
+input.addEventListener("input", () => void updateAutocomplete());
 
 // ---------------------------------------------------------------------------
 // U14/T-P3-103 设置中心：settings 信封直答（get/update + credentials-*），
