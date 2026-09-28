@@ -93,6 +93,15 @@
 - **风险 / 未知**：无
 - **完成记录（2026-09-29）**：全量 `npx vitest run` → **1710 passed / 7 skipped**（196 文件；7 skipped 中 6 例 = live-p2 真实端点联调条件跳过——本会话无凭据环境，P2 15e 已 6/6 跑过）；`tsc --noEmit` 干净；工具链五件全绿：architecture:check **0 error / 21 warning**（基线保持；治理：session+sandbox / host+models / cli+models requires 增补 + 2 条长 e2e 测试文件 exceptions 豁免）、vocabulary:check 0 问题（零事件兑现）、count-features **337** 不变、check-doc-links 显式传参 **1206 链接 0 失效**、license-audit exit 0。五项盘点与快照即规格机验全部落 `plan-p3-progress.md` 收官报告；人工确认清单新增 U14/U5/U3 三条走查项（U6/U8/U4 随 16b）。批次 16b 提示词已更新。
 
+#### T-P3-132 · U14 补全 · 日志分节（#28 裁决落实） `[ ]`（16a 补全批——2026-09-29 用户裁决补落，编号追加不重排；执行序 = 16b 会话首卡 T-P3-107 之前）
+- **依据需求**：U14 原文（requirements.md:653）"…沙箱档/代理/语言/**日志**/关于的多分节设置页"——"日志"分节 16a 未落且无卡内豁免（#28 立案）；用户 2026-09-29 裁决**认可补落**（"代理"分节维持展卡 YAGNI 裁决不取）
+- **上游首选参考**：[cc-switch·LogConfigPanel.tsx](../oss/cc-switch/src/components/settings/LogConfigPanel.tsx)（🔴 只学行为：日志配置可查可改即生效）+ 我方 E14/T-P1-90 的 `--raw-log-dir` 既有装配面
+- **取什么 / 别抄什么**：取"日志配置进设置页、即改即存"行为；不抄其 React 结构与 Tauri 特定实现
+- **要产出**：①settings v1 增 `logging` 段（`rawLogDir?: string`——E14 原始分片日志目录的持久化位；空 = 缺省不写，B8a 同款 fail-closed 语义不动）+ `applySettingsPatch` 白名单加 logging + parseSettingsShape 校验；②ui/"日志"分节（第七分节：目录输入即改即存——LogConfigPanel 行为映射）；③装配消费：resolveChildLaunchArgv 增 rawLogDir 槽（file 档 → `--raw-log-dir` 注入，agent-child 既有 argv 面零改动）；④ui 资产断言更新（六→七分节）
+- **验收**：`npx vitest run src/session/settings.test.ts src/diagnostics/tauri-shell.test.ts src/host/server.test.ts`（扩）——logging 往返 + 白名单 + 分节断言 + 装配注入
+- **依赖**：T-P3-101/103（已收官——本卡是补全面）
+- **风险 / 未知**：无（E14 面既有；纯增量）
+
 ## §4 批次 16b 卡序（10 张：U4/U9/U10/U11/U12/U13/U6/U7/U8 + 收口——体验与分发；2026-09-28 展卡）
 
 **展卡核对结论（16b）**：
@@ -352,7 +361,7 @@
 
 ## §7 批次完成定义
 
-- **16a**：6 张卡全勾 ✅；CLI 不带环境变量可启动（读配置）✅；凭据零明文 ✅；设置中心人工走查 ✅；报告入 `plan-p3-progress.md` ✅。
+- **16a**：6 张卡全勾 ✅；CLI 不带环境变量可启动（读配置）✅；凭据零明文 ✅；设置中心人工走查 ✅；报告入 `plan-p3-progress.md` ✅。**补全卡 T-P3-132**（#28 裁决落实——U14 日志分节）随 16b 会话首卡之前执行，勾后 16a 全闭。
 - **16b**：10 张卡全勾 ✅；渲染安全评审 ✅；**双击 exe 可对话（人工验收）** ✅；人工确认清单全部闭环（转正/放弃两态）✅；`count-features.sh` = **324** ✅；`check-doc-links.sh` 显式传参 0 失效 ✅；`license-audit.sh` exit 0（vendor 登记）✅。
 - **16c**：9 张卡全勾 ✅；工作面板三 Tab 可用（文件树/变更评审/子代理监控）✅；提示词库/MCP 向导/辅助模型卡/Profiles/导入导出/CLI TUI 各面验收 ✅；报告入 `plan-p3-progress.md` ✅。
 - **16d**：6 张卡全勾 ✅；技能管理（清单/编辑器/来源目录）✅；子智能体管理（内置五预设/自定义/模型 fallback 链/权限 chips）✅；指令中心/快捷键/语音设置各面验收 ✅。
