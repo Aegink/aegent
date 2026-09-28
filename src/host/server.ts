@@ -34,6 +34,7 @@ import { spawnAgentProcess } from "../kernel/agent-process.js";
 import { createSessionId, isValidSessionId } from "../session/session-id.js";
 import { SqliteEventStorage } from "../session/db.js";
 import { InMemoryEventStorage, SessionStore, type EventStorage } from "../session/store.js";
+import { loadSettings, resolveChildLaunchArgv } from "../session/settings.js";
 import { HostBridge, type AgentChannel } from "./bridge.js";
 import { HostRegistry } from "./registry.js";
 
@@ -255,6 +256,8 @@ export interface HostServerArgv {
   port: number;
   uiDir: string;
   hostDbPath?: string;
+  /** U1/T-P3-101：settings.json 显式路径（缺省 <home>/.aegent/settings.json）。 */
+  settingsPath?: string;
   childArgs: string[];
 }
 
@@ -266,6 +269,7 @@ export function parseHostServerArgv(
   let port = 8787;
   let uiDir = defaults.uiDir;
   let hostDbPath: string | undefined;
+  let settingsPath: string | undefined;
   const childArgs: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -278,6 +282,8 @@ export function parseHostServerArgv(
       uiDir = argv[++i] ?? uiDir;
     } else if (a === "--host-db" && i + 1 < argv.length) {
       hostDbPath = argv[++i];
+    } else if (a === "--settings" && i + 1 < argv.length) {
+      settingsPath = argv[++i];
     } else {
       childArgs.push(a);
     }
@@ -285,7 +291,14 @@ export function parseHostServerArgv(
   if (!isValidSessionId(sessionId)) {
     throw new Error(`--session 不合法：${sessionId}`);
   }
-  return { sessionId, port, uiDir, ...(hostDbPath !== undefined ? { hostDbPath } : {}), childArgs };
+  return {
+    sessionId,
+    port,
+    uiDir,
+    ...(hostDbPath !== undefined ? { hostDbPath } : {}),
+    ...(settingsPath !== undefined ? { settingsPath } : {}),
+    childArgs,
+  };
 }
 
 /** 仓库根的 ui/ 缺省位（dist/src/host/server.js 上溯三级）。 */
@@ -311,6 +324,10 @@ export function defaultAgentChildEntry(): string {
 
 async function main(argv: readonly string[]): Promise<void> {
   const parsed = parseHostServerArgv(argv, { uiDir: defaultUiDir() });
+  // U1/T-P3-101：settings 装配（CLI 同款三入口共用面——损坏 fail-closed
+  // 直达启动失败出口）。host 的 childArgs 与 CLI 同走 resolveChildLaunchArgv。
+  const { settings } = await loadSettings(parsed.settingsPath);
+  const { args: launchArgs } = resolveChildLaunchArgv(parsed.childArgs, process.env, settings);
   const storage = parsed.hostDbPath !== undefined
     ? SqliteEventStorage.open({ path: parsed.hostDbPath })
     : new InMemoryEventStorage();
@@ -319,7 +336,7 @@ async function main(argv: readonly string[]): Promise<void> {
     port: parsed.port,
     uiDir: parsed.uiDir,
     agentEntryPath: defaultAgentChildEntry(),
-    childArgs: parsed.childArgs,
+    childArgs: launchArgs,
     storage,
   });
   const handle = await server.start();

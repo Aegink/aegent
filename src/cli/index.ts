@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 
 import { spawnAgentProcess } from "../kernel/agent-process.js";
 import { InvalidSessionIdError, createSessionId, isValidSessionId } from "../session/session-id.js";
+import { loadSettings, resolveChildLaunchArgv } from "../session/settings.js";
 import { runCli } from "./repl.js";
 
 /** 编译产物旁的子进程入口（dist/src/cli/index.js → dist/src/kernel/agent-child.js）。 */
@@ -31,6 +32,8 @@ export function defaultChildEntryPath(): string {
 export interface CliArgv {
   smoke: boolean;
   entryPath?: string;
+  /** U1/T-P3-101：settings.json 显式路径（缺省 <home>/.aegent/settings.json）。 */
+  settingsPath?: string;
   childArgs: string[];
 }
 
@@ -38,14 +41,21 @@ export function parseCliArgv(argv: readonly string[]): CliArgv {
   const childArgs: string[] = [];
   let smoke = false;
   let entryPath: string | undefined;
+  let settingsPath: string | undefined;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === undefined) continue;
     if (a === "--smoke") smoke = true;
     else if (a === "--entry" && i + 1 < argv.length) entryPath = argv[++i];
+    else if (a === "--settings" && i + 1 < argv.length) settingsPath = argv[++i];
     else childArgs.push(a);
   }
-  return { smoke, ...(entryPath !== undefined ? { entryPath } : {}), childArgs };
+  return {
+    smoke,
+    ...(entryPath !== undefined ? { entryPath } : {}),
+    ...(settingsPath !== undefined ? { settingsPath } : {}),
+    childArgs,
+  };
 }
 
 /**
@@ -70,8 +80,12 @@ export function resolveChildSessionArgv(
 }
 
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
-  const { smoke, entryPath, childArgs } = parseCliArgv(argv);
-  const { args } = resolveChildSessionArgv(childArgs);
+  const { smoke, entryPath, settingsPath, childArgs } = parseCliArgv(argv);
+  // U1/T-P3-101：settings 装配（损坏 fail-closed——SettingsError 直达启动
+  // 失败出口，错误消息自带行列号与修复指引）。三入口共用同一翻译面。
+  const { settings } = await loadSettings(settingsPath);
+  const { args: launchArgs } = resolveChildLaunchArgv(childArgs, process.env, settings);
+  const { args } = resolveChildSessionArgv(launchArgs);
   const connection = spawnAgentProcess({
     entryPath: entryPath ?? defaultChildEntryPath(),
     args,

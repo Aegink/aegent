@@ -34,7 +34,7 @@
 
 **词汇表预判**：16a 全部零事件（入口/渲染/分发面——既有词汇在位）。
 
-#### T-P3-101 · U1 · 配置文件面（settings 持久化 + 优先级链） `[ ]`
+#### T-P3-101 · U1 · 配置文件面（settings 持久化 + 优先级链） `[x]`
 - **依据需求**：U1（"settings 持久化（provider 列表、默认端点/模型、权限档、沙箱档、外观）；环境变量 > 配置文件 > 默认值；损坏配置 fail-closed 且给出修复指引"）
 - **上游首选参考**：[cc-switch·src/config.rs](../oss/cc-switch/src-tauri/src/config.rs) + [app_store.rs](../oss/cc-switch/src-tauri/src/app_store.rs)（配置读写/迁移/默认值的产品形态）
 - **取什么 / 别抄什么**：取"配置分层（默认值 → 文件 → 环境变量覆盖）+ 损坏 fail-closed + 迁移版本号"行为；不抄其 Rust 结构与其多应用切换语义（我方单应用）
@@ -42,6 +42,7 @@
 - **验收**：`npx vitest run src/session/settings.test.ts src/cli/index.test.ts`（扩）——三档优先级合并 + 损坏 fail-closed（错误带指引）+ 默认值启动 + 三入口接线断言
 - **依赖**：无（16a 首卡）
 - **风险 / 未知**：配置 schema 版本迁移（v1 起步——迁移链 sqlite 同款纪律）
+- **完成记录（2026-09-29）**：验收 `npx vitest run src/session/settings.test.ts src/cli/index.test.ts` → **16 passed**（+回归 agent-process/agent-protocol/model-switch/cli/server 82 passed）。落地：`settings.ts`（SettingsShape v1 + SettingsError 行列号+修复指引 + parse/load/save〔tmp 原子替换〕+ `resolveChildLaunchArgv` 三档优先级纯函数）；`--settings <path>` 入 CLI/host 两入口 argv；agent-child parseArgs 补 `--base-url/--api-key/--model` argv 面；桌面壳经 host（壳只加载 ui 静态资产）。**卡内定形两点**：①provider 槽是适配器名空间、条目名是供应商别名——文件档**整体生效或不生效**（defaultProvider 选中条目整体注入 adapter/baseUrl/model，cc-switch 配置切换同款语义；env 占用时条目不参与）；②settings.json 永不承载 apiKey（零明文，U2 凭据面接管）。`locateJsonError` 从 models/config.ts 导出复用（单一扫描器）。测试窗口：index.test.ts 用假子进程入口写 argv 观察窗（写完即退防 messages 悬挂）。
 
 #### T-P3-102 · U2 · 凭据管理入口（录入/更换/删除 + DPAPI 落盘） `[ ]`
 - **依据需求**：U2（"key 的录入/更换/删除走 CLI/UI；落盘经 DPAPI 加密；配置文件与日志零明文"）

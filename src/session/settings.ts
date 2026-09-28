@@ -1,0 +1,318 @@
+/**
+ * settings 持久化（U1/T-P3-101，cc-switch·config.rs 的单应用同构）——
+ * 产品化配置面：provider 列表、默认 provider/model、权限档、沙箱档、外观。
+ *
+ * 行为取 cc-switch（配置分层 + 损坏 fail-closed + 迁移版本号）；不取其 Rust
+ * 结构与多应用切换语义（我方单应用）。三入口（CLI/host/桌面壳——壳经 host）
+ * 共用本模块与 resolveChildLaunchArgv，配置面不落两次。
+ *
+ * 优先级链（U1 验收①）：CLI 显式参数 > 环境变量（AEGENT_*，agent-child
+ * parseArgs 的既有 env 回退）> 配置文件（本模块）> 缺省值。落法：父进程只把
+ * **配置文件档**翻译成 childArgs 注入（且仅在显式参数与环境变量都缺位的槽
+ * ——显式参数已在 childArgs 不重复；env 在子进程内 argv 覆盖 env 的顺序下
+ * 自然胜出，故父进程遇 env 提供的槽跳过注入），子进程内最终顺序 =
+ * argv（显式+file 注入）> env > 缺省。
+ *
+ * 损坏 fail-closed（U1 验收②）：JSON 语法错 → SettingsError 带 1-based
+ * 行列号 + 修复指引；已知字段类型错同理。未知顶层键宽容忽略（前向兼容——
+ * 迁移链 v1 起步，新增字段向后兼容；cc-switch serde 缺省同语义）。
+ *
+ * 零明文纪律：settings.json 永不承载 apiKey——凭据走 U2 凭据模块独立存储。
+ */
+
+import { readFile, rename, writeFile, mkdir } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import { locateJsonError } from "../models/config.js";
+
+// ---------------------------------------------------------------------------
+// 形状（v1）
+// ---------------------------------------------------------------------------
+
+export interface ProviderEntry {
+  /** 供应商名（人读标识；defaultProvider 与 U2 凭据键都指它）。 */
+  name: string;
+  /** 适配层（J3 不透明配置的解释方——缺省 openai 兼容）。 */
+  adapter?: "openai" | "anthropic";
+  baseUrl?: string;
+  model?: string;
+}
+
+export interface SettingsShape {
+  version: 1;
+  providers: ProviderEntry[];
+  defaultProvider?: string;
+  defaultModel?: string;
+  /** 权限档（现有装配面词汇——approvalTimeoutMs 是 C 族审批上界）。 */
+  permission?: { approvalTimeoutMs?: number };
+  /** 沙箱档（B8a 网络档 + workspace/事件库落位）。 */
+  sandbox?: { network?: "allow" | "deny"; workspace?: string; db?: string };
+  /** 外观（U14 主题全端一致暗/亮；语言 zh-CN 缺省）。 */
+  appearance?: { theme?: "dark" | "light"; language?: "zh-CN" | "en" };
+}
+
+/** 缺省配置（无文件无环境也能启动——echo provider 最小装配）。 */
+export function defaultSettings(): SettingsShape {
+  return {
+    version: 1,
+    providers: [],
+    permission: {},
+    sandbox: {},
+    appearance: { theme: "dark", language: "zh-CN" },
+  };
+}
+
+export const SETTINGS_HINT =
+  "修复指引：检查 settings.json 的 JSON 语法与字段类型；" +
+  "若无法修复可删除该文件恢复缺省配置（凭据独立存储不受影响）";
+
+/** 损坏配置的类型化拒绝（fail-closed——带行列号与修复指引）。 */
+export class SettingsError extends Error {
+  override readonly name = "SettingsError";
+  readonly code = "SETTINGS_INVALID";
+  readonly line?: number;
+  readonly column?: number;
+  constructor(message: string, pos?: { line: number; column: number }) {
+    super(`${message}。${SETTINGS_HINT}`);
+    this.name = "SettingsError";
+    if (pos) {
+      this.line = pos.line;
+      this.column = pos.column;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 解析与读写
+// ---------------------------------------------------------------------------
+
+function asPos(offset: number, text: string): { line: number; column: number } {
+  const before = text.slice(0, offset);
+  const line = (before.match(/\n/g) ?? []).length + 1;
+  const lastNl = before.lastIndexOf("\n");
+  return { line, column: offset - lastNl };
+}
+
+function assertString(value: unknown, where: string): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new SettingsError(`${where} 须为非空字符串`);
+  }
+  return value;
+}
+
+/** 严格校验已知字段（未知键宽容忽略——前向兼容）；合法即规范化返回。 */
+export function parseSettingsShape(raw: unknown): SettingsShape {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new SettingsError("settings.json 顶层必须是 JSON 对象");
+  }
+  const rec = raw as Record<string, unknown>;
+  const version = rec["version"] ?? 1;
+  if (version !== 1) {
+    throw new SettingsError(`不支持的配置版本：${String(version)}（当前 1）`);
+  }
+  const out = defaultSettings();
+  const providers = rec["providers"];
+  if (providers !== undefined) {
+    if (!Array.isArray(providers)) throw new SettingsError("providers 须为数组");
+    for (const entry of providers) {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+        throw new SettingsError("providers 条目必须是对象");
+      }
+      const e = entry as Record<string, unknown>;
+      const name = assertString(e["name"], "providers[].name");
+      if (name === undefined) throw new SettingsError("providers[].name 缺失");
+      const adapter = e["adapter"];
+      if (adapter !== undefined && adapter !== "openai" && adapter !== "anthropic") {
+        throw new SettingsError(`providers[].adapter 非法：${String(adapter)}（合法：openai|anthropic）`);
+      }
+      out.providers.push({
+        name,
+        ...(adapter !== undefined ? { adapter } : {}),
+        ...(assertString(e["baseUrl"], "providers[].baseUrl") !== undefined
+          ? { baseUrl: e["baseUrl"] as string }
+          : {}),
+        ...(assertString(e["model"], "providers[].model") !== undefined
+          ? { model: e["model"] as string }
+          : {}),
+      });
+    }
+  }
+  out.defaultProvider = assertString(rec["defaultProvider"], "defaultProvider");
+  out.defaultModel = assertString(rec["defaultModel"], "defaultModel");
+  const permission = rec["permission"];
+  if (permission !== undefined) {
+    if (permission === null || typeof permission !== "object") {
+      throw new SettingsError("permission 须为对象");
+    }
+    const timeout = (permission as Record<string, unknown>)["approvalTimeoutMs"];
+    if (timeout !== undefined) {
+      if (typeof timeout !== "number" || !Number.isInteger(timeout) || timeout <= 0) {
+        throw new SettingsError("permission.approvalTimeoutMs 须为正整数");
+      }
+      out.permission = { approvalTimeoutMs: timeout };
+    }
+  }
+  const sandbox = rec["sandbox"];
+  if (sandbox !== undefined) {
+    if (sandbox === null || typeof sandbox !== "object") throw new SettingsError("sandbox 须为对象");
+    const s = sandbox as Record<string, unknown>;
+    const network = s["network"];
+    if (network !== undefined && network !== "allow" && network !== "deny") {
+      throw new SettingsError(`sandbox.network 非法：${String(network)}（合法：allow|deny）`);
+    }
+    out.sandbox = {
+      ...(network !== undefined ? { network: network as "allow" | "deny" } : {}),
+      ...(assertString(s["workspace"], "sandbox.workspace") !== undefined
+        ? { workspace: s["workspace"] as string }
+        : {}),
+      ...(assertString(s["db"], "sandbox.db") !== undefined ? { db: s["db"] as string } : {}),
+    };
+  }
+  const appearance = rec["appearance"];
+  if (appearance !== undefined) {
+    if (appearance === null || typeof appearance !== "object") {
+      throw new SettingsError("appearance 须为对象");
+    }
+    const a = appearance as Record<string, unknown>;
+    const theme = a["theme"];
+    if (theme !== undefined && theme !== "dark" && theme !== "light") {
+      throw new SettingsError(`appearance.theme 非法：${String(theme)}（合法：dark|light）`);
+    }
+    const language = a["language"];
+    if (language !== undefined && language !== "zh-CN" && language !== "en") {
+      throw new SettingsError(`appearance.language 非法：${String(language)}（合法：zh-CN|en）`);
+    }
+    out.appearance = {
+      ...(theme !== undefined ? { theme: theme as "dark" | "light" } : {}),
+      ...(language !== undefined ? { language: language as "zh-CN" | "en" } : {}),
+    };
+  }
+  return out;
+}
+
+/** 解析 settings.json 文本（损坏 → SettingsError 带 1-based 行列号）。 */
+export function parseSettingsFile(text: string): SettingsShape {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    const found = locateJsonError(text) ?? { offset: 0, line: 1, column: 1, reason: "未知语法错误" };
+    throw new SettingsError(
+      `settings.json JSON 语法错误：${found.reason}（第 ${found.line} 行，第 ${found.column} 列）`,
+      { line: found.line, column: found.column },
+    );
+  }
+  return parseSettingsShape(parsed);
+}
+
+/** 缺省配置文件路径：<home>/.aegent/settings.json。 */
+export function defaultSettingsPath(): string {
+  return path.join(os.homedir(), ".aegent", "settings.json");
+}
+
+/**
+ * 读配置（U1 验收③默认值启动）：文件缺失 → 缺省配置；损坏 → SettingsError
+ * （fail-closed 不吞错——调用方决定启动失败还是提示）。
+ * settingsPath 缺省 <home>/.aegent/settings.json；--settings <path> 显式指定。
+ */
+export async function loadSettings(settingsPath?: string): Promise<{ settings: SettingsShape; path: string }> {
+  const file = settingsPath ?? defaultSettingsPath();
+  let text: string;
+  try {
+    text = await readFile(file, "utf8");
+  } catch {
+    return { settings: defaultSettings(), path: file };
+  }
+  return { settings: parseSettingsFile(text), path: file };
+}
+
+/** 写配置（U14 即改即存的底层——tmp 原子替换，oauth FileTokenStore 同纪律）。 */
+export async function saveSettings(settingsPath: string, settings: SettingsShape): Promise<void> {
+  await mkdir(path.dirname(settingsPath), { recursive: true });
+  const tmp = `${settingsPath}.tmp`;
+  await writeFile(tmp, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+  await rename(tmp, settingsPath);
+}
+
+// ---------------------------------------------------------------------------
+// 启动装配（三入口共用——CLI/host main 与桌面壳〔经 host〕同一翻译面）
+// ---------------------------------------------------------------------------
+
+/** agent-child 显式槽位的解析（翻译目标——agent-child parseArgs 消费）。 */
+function parseChildArgs(childArgs: readonly string[]): {
+  provider?: string;
+  model?: string;
+  apiKey?: string;
+  db?: string;
+  workspace?: string;
+  network?: string;
+  approvalTimeoutMs?: number;
+  contextWindow?: number;
+} {
+  const out: LaunchSlots = {};
+  const pick = (flag: string): string | undefined => {
+    const i = childArgs.indexOf(flag);
+    return i >= 0 && i + 1 < childArgs.length ? childArgs[i + 1] : undefined;
+  };
+  out.provider = pick("--provider");
+  out.model = pick("--model");
+  out.apiKey = pick("--api-key");
+  out.db = pick("--db");
+  out.workspace = pick("--workspace");
+  out.network = pick("--network");
+  const timeout = pick("--approval-timeout");
+  if (timeout !== undefined) out.approvalTimeoutMs = Number(timeout);
+  const window = pick("--context-window");
+  if (window !== undefined) out.contextWindow = Number(window);
+  return out;
+}
+
+/**
+ * 启动装配纯函数（U1 验收①优先级链）：childArgs 显式槽位 > env（AEGENT_*）
+ * > settings 文件档 > 缺省（agent-child 自身）。返回**补齐后**的 childArgs。
+ *
+ * provider 槽是**适配器名空间**（openai/anthropic/echo——agent-child 的分支
+ * 面），settings 条目名（defaultProvider）是供应商别名——两个面不同，无法
+ * 按槽组合。定形：文件档**整体生效或整体不生效**（cc-switch 配置切换的同
+ * 款语义）——显式/env 都未占用 provider 槽时，defaultProvider 选中条目并整
+ * 体注入（adapter/baseUrl/model）；provider 槽被占用时条目不参与（env 三件
+ * 套 AEGENT_PROVIDER+BASE_URL+MODEL 由 agent-child 既有 env 回退消化）。
+ * 其余槽位（db/network/workspace/approvalTimeout）与 provider 无耦合，照常
+ * 按显式 > env > file 回退（env 同值注入 argv 无害——agent-child 内 argv
+ * 覆盖 env 的顺序不变）。
+ */
+export function resolveChildLaunchArgv(
+  childArgs: readonly string[],
+  env: NodeJS.ProcessEnv,
+  settings: SettingsShape,
+): { args: string[] } {
+  const explicit = parseChildArgs(childArgs);
+  const envProvider = env["AEGENT_PROVIDER"];
+  const providerOccupied =
+    explicit.provider !== undefined || (envProvider !== undefined && envProvider !== "");
+  const args = [...childArgs];
+  const inject = (flag: string, value: string | undefined): void => {
+    if (value === undefined || value === "") return;
+    if (!childArgs.includes(flag)) args.push(flag, value);
+  };
+  if (!providerOccupied && settings.defaultProvider !== undefined) {
+    const entry = settings.providers.find((p) => p.name === settings.defaultProvider);
+    if (entry !== undefined) {
+      inject("--provider", entry.adapter ?? "openai");
+      inject("--model", entry.model ?? settings.defaultModel);
+      inject("--base-url", entry.baseUrl);
+    }
+  }
+  // 非模型槽位（与 provider 无耦合）：显式 > env > file。env 有值时注入 env
+  // 同值（agent-child 内 argv 覆盖 env 的结果不变）；无值时文件档补位。
+  inject("--api-key", explicit.apiKey ?? env["AEGENT_API_KEY"]);
+  inject("--db", explicit.db ?? env["AEGENT_DB"] ?? settings.sandbox?.db);
+  inject("--workspace", explicit.workspace ?? settings.sandbox?.workspace);
+  inject("--network", explicit.network ?? settings.sandbox?.network);
+  if (explicit.approvalTimeoutMs === undefined && settings.permission?.approvalTimeoutMs !== undefined) {
+    inject("--approval-timeout", String(settings.permission.approvalTimeoutMs));
+  }
+  return { args };
+}

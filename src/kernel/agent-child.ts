@@ -3,8 +3,9 @@
  * 本文件只做装配：协议循环与调度在 agent-process.ts。
  *
  * 装配来源（T-8-01，按优先级）：
- * - 命令行参数（CLI 透传）：--provider echo|openai、--db <path>（SQLite 事件
- *   库）、--workspace <dir>、--context-window <n>、--approval-timeout <ms>；
+ * - 命令行参数（CLI 透传）：--provider echo|openai|anthropic、--db <path>（SQLite 事件
+ *   库）、--workspace <dir>、--context-window <n>、--approval-timeout <ms>、
+ *   --base-url/--api-key/--model（U1/T-P3-101 settings 档注入面）；
  * - 环境变量回退：AEGENT_PROVIDER / AEGENT_DB / AEGENT_API_KEY /
  *   AEGENT_BASE_URL / AEGENT_MODEL。
  *
@@ -71,6 +72,12 @@ function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv): ChildCliArg
       args.approvalTimeoutMs = Number(argv[++i]);
     else if (a === "--network" && i + 1 < argv.length) args.network = argv[++i];
     else if (a === "--persona" && i + 1 < argv.length) args.persona = argv[++i];
+    // U1/T-P3-101：settings 档经父进程翻译注入的模型面槽位（此前只有 env
+    // 回退——settings.json 的 providers 条目需要 argv 面才能在 env 缺位时
+    // 生效；优先级链仍为 argv > env > file > 缺省）。
+    else if (a === "--base-url" && i + 1 < argv.length) args.baseUrl = argv[++i];
+    else if (a === "--api-key" && i + 1 < argv.length) args.apiKey = argv[++i];
+    else if (a === "--model" && i + 1 < argv.length) args.model = argv[++i];
   }
   return args;
 }

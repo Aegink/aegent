@@ -68,18 +68,23 @@ export function parseProviderConfig(raw: unknown): ProviderConfig {
 }
 
 // ---------------------------------------------------------------------------
-// JSON 语法错误定位（严格按 RFC 8259；返回第一处错误的 0-based 偏移与人话
-// 原因，null 表示语法合法。charAt 越界返回空串，天然躲开索引越界分支）
+// JSON 语法错误定位（严格按 RFC 8259；导出面供 settings 损坏定位复用）
 // ---------------------------------------------------------------------------
 
-interface JsonErrorPos {
+export interface JsonErrorPos {
   offset: number;
   line: number;
   column: number;
   reason: string;
 }
 
-function locateJsonError(text: string): JsonErrorPos | null {
+/**
+ * JSON 语法错误定位（严格按 RFC 8259；返回第一处错误的 0-based 偏移与人话
+ * 原因，null 表示语法合法。charAt 越界返回空串，天然躲开索引越界分支）。
+ * 导出面：settings（U1）的损坏配置行列号定位复用本函数——同一扫描器单一
+ * 事实源（DRY），语义差异只在错误类型。
+ */
+export function locateJsonError(text: string): JsonErrorPos | null {
   const scanner = new JsonScanner(text);
   const reason = scanner.scan();
   if (reason === null) return null;
