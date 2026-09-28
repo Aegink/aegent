@@ -243,8 +243,15 @@ export interface StepEndEvent extends EventBase {
    * ModelRequestTiming 最小面）：有模型请求的 step 才携带（纯工具收尾 step
    * 不带）；firstTokenLatencyMs = 流开始到首个 chunk、streamDurationMs = 流
    * 开始到结束。走待澄清 #9 载荷扩展立案（旧流缺省，前向兼容）。
+   * L9/T-P2-513 分段计时扩展（#27 立案，#9 前向兼容同款）：segments.modelMs =
+   * 模型流时长（与 streamDurationMs 同源同值）；segments.toolsMs = 本 step
+   * 工具执行累计墙钟（串行逐调用 + 并行整批；0 = 无工具执行，如实事实）。
    */
-  timing?: { firstTokenLatencyMs: number; streamDurationMs: number };
+  timing?: {
+    firstTokenLatencyMs: number;
+    streamDurationMs: number;
+    segments?: { modelMs: number; toolsMs: number };
+  };
   /**
    * B19/T-P1-61 模型请求关联 id（`r<序数>` 会话内单调，promptId 同族分配
    * 纪律——每次模型请求一枚，request/header 的同一 step 面可关联）。与

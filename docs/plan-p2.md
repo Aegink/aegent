@@ -548,7 +548,7 @@
 - **风险 / 未知**：归因是启发式（分型准确率人工面——机验钉统计与比对结构）
 - **完成记录**：2026-09-28。产出 `src/models/cache-health.ts`——`CacheHealthTracker`（逐请求 record + report）：①**逐请求统计**——CacheHealthSample{index, modelId, usage 分列透传（L3 cacheReadTokens/cacheWriteTokens 已有面），prefixFingerprint（逐消息 `role:len:hash8`——FNV-1a 与 compaction 指纹同款，有界不落全文）}；②**命中率**——hit = cacheRead>0，无分列样本不进分母（不编造）；③**归因三型**（启发式——机验钉统计与比对结构，卡面预判兑现）：`prefix_drift`（前缀公共长度回退 = 上下文重建/前缀断点——`detectPrefixDrift` 纯追加健康、回退漂移）/ `thinking_stripped`（流内产 reasoning 但请求面 assistant 不携带——deepseek reasoning_content 不回传前缀的真实面；结构性事实每追踪器报一次）/ `provider_no_cache`（usage 无分列——端点不报告如实标注）。**零落流零词汇表扩展**（诊断是读面——in-memory 报告，事件流零触碰）。pi-mono 锚只取"可观测可归因"行为（retention 配置解析不取——我方无 per-request retention 配置面，known-diffs.md 记档）。测试 `cache-health.test.ts` 4 用例：命中率统计（无分列不进分母）/ 前缀漂移（纯追加健康 + 压缩重建回退检出带证据）/ **thinking 剥离 deepseek 风格 fixture**（streamHadReasoning + 续话不携带 → 检出 atIndex）/ 指纹原语（同序列同指纹 + 不落原文 + 首轮零漂移）。**验收**：`npx vitest run src/models/cache-health.test.ts` → **4 passed**；`npx tsc --noEmit` 干净。**记档**：①tracker 的装配接线（loop/provider 面逐请求喂样本）不在本卡面——诊断原语已齐，接线随真实推理模型联调需要（人工确认清单）；②`carriesReasoning` 按请求面 assistant 消息的 reasoning 字段核对（我方 ChatMessage 当前无 reasoning 字段——结构性恒剥离，deepseek 联调时若增加回传面则检测自动通过）。
 
-#### T-P2-513 · L9 · 循环内分段计时（mcp / tools 各自打点） `[ ]`
+#### T-P2-513 · L9 · 循环内分段计时（mcp / tools 各自打点） `[x]`
 - **依据需求**：L9（"循环内分段计时（mcp / tools 各自打点）；各段耗时可见"）
 - **上游首选参考**：zcode·turn-loop.ts（分段打点的位置）
 - **取什么 / 别抄什么**：取"轮内分段（模型请求/工具执行/压缩）各自计时可见"行为
@@ -556,6 +556,7 @@
 - **验收**：`npx vitest run src/kernel/loop.test.ts src/kernel/events.test.ts`（扩）——分段计时落流 + 载荷扩展管线
 - **依赖**：无
 - **风险 / 未知**：载荷扩展管线（#27）
+- **完成记录**：2026-09-28。**#27 立案落地（事件计数 29 不变——#9 前向兼容同款载荷扩展，落地记录 26 在案待追认）**：`step/end.timing` 嵌套扩展可选 `segments?: {modelMs, toolsMs}`——modelMs = 模型流时长（与 streamDurationMs 同源同值，零新打点复用 B19 埋点）；toolsMs = 本 step 工具执行**累计墙钟**（serial 逐调用 dispatchTool 计时累加 + parallel 整批 runParallelTools 计时——perf_hooks 单调时钟；0 = 无工具执行，"无工具"是有价值事实）。仅随 timing 携带（有模型请求的 step——B19 既有规则，interrupted/裸落路径零变化）。loop.ts 三处：serial 分支计时插入（:929 附近）/ parallel 分支计时（:967 附近）/ 主路径 step/end 填充 segments。测试 loop.test.ts 扩 1 用例（独立 describe）：带工具 step 的 segments 落流（modelMs === streamDurationMs + toolsMs ≥ 0）+ 纯文本 step toolsMs = 0。**验收**：`npx vitest run src/kernel/loop.test.ts src/kernel/events.test.ts` → **55 passed**；`npx tsc --noEmit` 干净；`vocabulary:check` 0 问题。**记档**：①"mcp / tools 各自打点"的定形——MCP 工具与 builtin 工具同走 dispatchTool（工具族分型不改变计时路径——mcp 单独分列随需要）；②segments 是 timing 的嵌套可选字段非平级字段（载荷形状向后兼容——旧流 timing 无 segments 合法，restore/投影零改动）。
 
 #### T-P2-514 · L5 · HTTP 级录制（调试模型交互） `[ ]`
 - **依据需求**：L5（"HTTP 级录制；调试模型交互"）

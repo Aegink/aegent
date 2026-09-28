@@ -28,6 +28,7 @@
 import type { ModelIdentity } from "../models/identity.js";
 import { parseRetryAfterMs } from "../models/retry.js";
 import * as path from "node:path";
+import { performance } from "node:perf_hooks";
 import {
   type ChatMessage,
   type ChatTool,
@@ -902,6 +903,8 @@ export class AgentLoop {
     // parallel 收集派发批、循环结束后并发执行（pi "preflight … then execute
     // allowed tools concurrently"）。
     const dispatched: { id: string; name: string; arguments: string }[] = [];
+    // L9/T-P2-513：本 step 的工具执行累计墙钟（segments.toolsMs 的来源）
+    let toolExecMs = 0;
     for (const call of output.toolCalls) {
       // A7 边界检查：已派发/已执行工具的结果照落盘（事实），未派发的缺席
       if (this.cancelCause) break;
@@ -925,7 +928,10 @@ export class AgentLoop {
       ]);
       dispatched.push(call);
       if (parallel) continue;
+      // L9/T-P2-513：工具段计时——执行墙钟逐调用累计（perf_hooks 单调时钟）
+      const toolT0 = performance.now();
       const result = await this.dispatchTool(turn, step, call);
+      toolExecMs += performance.now() - toolT0;
       // A14/T-P1-50 迟到结果闸门：看门狗已强制收轮——结算回来的结果不再
       // 落盘（事件流终态已闭合，append 会破坏 single-terminal/配平不变量）
       if (this.forcedClosed) {
@@ -964,14 +970,26 @@ export class AgentLoop {
       }
     }
     if (parallel && dispatched.length > 0) {
+      const parallelT0 = performance.now();
       await this.runParallelTools(turn, step, dispatched, toolResults);
+      toolExecMs += performance.now() - parallelT0;
     }
     store.append(sessionId, [
       {
         type: "step/end",
         turn,
         step,
-        ...(output.timing ? { timing: output.timing } : {}),
+        // L9/T-P2-513：分段计时——modelMs = 模型流时长（B19 streamDurationMs
+        // 同源），toolsMs = 本 step 工具执行累计墙钟（0 也如实落——"无工具"是
+        // 有价值事实）。载荷扩展走 #27 立案（#9 前向兼容同款）。
+        ...(output.timing
+          ? {
+              timing: {
+                ...output.timing,
+                segments: { modelMs: output.timing.streamDurationMs, toolsMs: Math.round(toolExecMs) },
+              },
+            }
+          : {}),
         ...(output.traceId ? { traceId: output.traceId } : {}),
       },
     ]);

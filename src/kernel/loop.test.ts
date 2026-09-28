@@ -1270,6 +1270,42 @@ describe("step 可观测事件（B19/T-P1-61：timing/traceId）", () => {
   });
 });
 
+describe("分段计时（L9/T-P2-513：timing.segments 载荷扩展 #27）", () => {
+  it("带工具的 step：step/end.timing.segments 落流（modelMs=streamDurationMs、toolsMs 累计≥0）", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([
+      { type: "tool-call-delta", id: "c1", name: "bash", argsDelta: "{}" },
+      { type: "done" },
+    ]);
+    provider.mount([{ type: "text-delta", text: "ok" }, { type: "done" }]);
+    const { loop, store } = makeLoop(provider);
+
+    expect(await loop.runTurn("分段观测")).toEqual({ kind: "completed" });
+    const ends = store
+      .load("s1")
+      .filter((e) => e.type === "step/end")
+      .map(
+        (e) =>
+          e as {
+            timing?: {
+              streamDurationMs: number;
+              segments?: { modelMs: number; toolsMs: number };
+            };
+          },
+      );
+    expect(ends).toHaveLength(2);
+    const withTool = ends[0]!;
+    const textOnly = ends[1]!;
+    // step 1（带工具）：segments 随 timing 落流——modelMs 与流时长同源同值
+    expect(withTool.timing?.segments).toBeDefined();
+    expect(withTool.timing!.segments!.modelMs).toBe(withTool.timing!.streamDurationMs);
+    expect(withTool.timing!.segments!.toolsMs).toBeGreaterThanOrEqual(0);
+    // step 2（纯文本，无工具执行）：toolsMs = 0（"无工具"是有价值事实）
+    expect(textOnly.timing?.segments).toBeDefined();
+    expect(textOnly.timing!.segments!.toolsMs).toBe(0);
+  });
+});
+
 describe("输出 token 触顶可续跑（B20/T-P1-62）", () => {
   it("纯文本触顶 → 注入续跑指令（injected user/message）+ 新 step 继续，不终结轮", async () => {
     const provider = new ScriptedProvider();
