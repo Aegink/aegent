@@ -323,7 +323,7 @@
 - **风险 / 未知**：闲时窗口的"闲"判定（时段配置式而非负载探测式——卡内定形，负载探测 YAGNI）
 
 - **完成记录**：2026-09-28。验收 `npx vitest run src/scheduler/offpeak.test.ts`——12 passed（窗口 4 含跨午夜左闭右开 + 真实 JobRegistry 装配 3 + 核销状态机 5）；`npx tsc --noEmit` 干净。产出 `src/scheduler/offpeak.ts`：①`OffPeakQueue` 四步行为——取号 offer（ticket 发放不执行）→ 窗口判定 drain（被动轮询，`isOffPeakWindow` 命中才派发）→ 核销（派发即核销在途，job onSettled 回流：completed → settled / killed → cancelled / failed → attempts+1 未超限回 queued〔transient〕超限 failed 终态〔zcode"确定性失败不无限重试"纪律——maxAttempts 缺省 3〕）→ 不重复执行（drain 只取 queued 取出即 dispatched——重放零重复；状态机单向重放幂等）；②窗口按本地时间判（缺省 23:00–07:00 跨午夜左闭右开；Asia/Shanghai 缺省部署时区记档，Intl 换算 YAGNI）；③**#24 候选定形零事件**——闲时核销是进程内 job 生命周期事实（重启即失），走 onSettled 回调承载（jobs.ts / M4 onReap 同款纪律），落流会留孤儿事实与"状态是事件的投影"漂移；EVENT_TYPES 28 基线不变（复核在收口）。
-#### T-P2-403 · S2 · webhook 触发会话（fire-and-forget） `[ ]`
+#### T-P2-403 · S2 · webhook 触发会话（fire-and-forget） `[x]`
 - **依据需求**：S2（"webhook 触发会话；fire-and-forget 型会话（如 GitHub 事件）"）
 - **上游首选参考**：dsh·packages/webhook（入站接收 → 会话派发的行为）
 - **取什么 / 别抄什么**：取"HTTP 入站端点 → 校验（签名/密钥）→ fire-and-forget 会话派发"行为；不抄其具体 webhook 生态适配（GitHub 等——payload 透传最小面）
@@ -332,6 +332,7 @@
 - **依赖**：T-P2-401（job 底座消费同款）
 - **风险 / 未知**：入站面与 K5 静态托管的端口共存（路径分型——/webhook/* 归 webhook）
 
+- **完成记录**：2026-09-28。验收 `npx vitest run src/scheduler/webhook.test.ts`——8 passed（真实 HTTP 往返 port 0 随机：派发 1 + token 401 + 405 + 路径透传 404 + 非 JSON 400 + HMAC 通/缺/错 3 + 413 上限 1）；`npx tsc --noEmit` 干净；`architecture:check` 0 error / 21 warning。产出 `src/scheduler/webhook.ts`：①`WebhookEndpoint.handle` 处理器面（不自建监听——host server 按路径分型挂载，`false` = 路径不归我静态面接手——卡面端口共存风险当面兑现）；②鉴权两层：路径 token timingSafeEqual 恒定时间比对（凭据调用方环境变量注入零落盘）+ HMAC-SHA256 可配（`x-signature: sha256=<hex>` 对 raw body）；③fire-and-forget：校验过即派发 job（kind="webhook"，payload 原文进 log ring）回 202 `{"accepted,jobId"}` 不阻塞响应 + onDispatch 装配钩子；④payload 上限防呆（缺省 1MB）：超限后**丢弃内容继续收完再 413**（初版 `req.destroy()` 中途断流——客户端只见 socket error 收不到 413，实测改排空策略）。dsh 锚的 workspace 归属 invariant / Cordis 集成不抄（单会话 host payload 透传最小面）。
 #### T-P2-404 · S5 · 反馈上报（消息/命令反馈 + doctor 随报） `[ ]`
 - **依据需求**：S5（"用户可对消息/命令反馈；doctor 报告随反馈一起报"）
 - **上游首选参考**：codex·feedback_processor.rs（反馈的结构化面 + 诊断随报）
