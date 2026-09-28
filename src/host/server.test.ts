@@ -622,6 +622,40 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
     const events = (view.result as { events: { type: string }[] }).events;
     expect(events.some((e) => e.type === "user/message")).toBe(true);
 
+    // U9/T-P3-108：跨会话检索（Q2 消费面）——contentLike 命中 + 摘要行无整值
+    const search = await queryCall({
+      sessionId: "-",
+      op: "search",
+      criteria: { contentLike: "历史会话" },
+    });
+    expect(search.ok).toBe(true);
+    const searchResult = search.result as {
+      rows: { sessionId: string; type: string; excerpt: string; event?: unknown }[];
+      total: number;
+    };
+    expect(searchResult.total).toBeGreaterThanOrEqual(2);
+    expect(searchResult.rows.some((r) => r.sessionId === "s-old1")).toBe(true);
+    expect(searchResult.rows.every((r) => r.excerpt.includes("历史会话"))).toBe(true);
+    expect(searchResult.rows.every((r) => r.event === undefined)).toBe(true); // 事件整值不出检索面
+    // 坏条件协议层拒绝（parse 层——坏信封回执 requestId 恒 "(unparsed)"）
+    const sendBad = (requestId: string, call: Record<string, unknown>) => {
+      client.raw({ type: "query", requestId, ...call });
+      return client.waitFor(
+        (e) => e.type === "response" && e.requestId === "(unparsed)",
+        `坏信封回执(${requestId})`,
+      ) as Promise<Record<string, unknown>>;
+    };
+    const badEmpty = await sendBad("h-bad1", { sessionId: "-", op: "search", criteria: { contentLike: "" } });
+    expect((badEmpty.error as { code: string }).code).toBe("PROTOCOL_MALFORMED");
+    const badMissing = await sendBad("h-bad2", { sessionId: "-", op: "search" });
+    expect((badMissing.error as { code: string }).code).toBe("PROTOCOL_MALFORMED");
+    const badCriteriaOnEvents = await sendBad("h-bad3", {
+      sessionId: "s-old1",
+      op: "events",
+      criteria: { contentLike: "x" },
+    });
+    expect((badCriteriaOnEvents.error as { code: string }).code).toBe("PROTOCOL_MALFORMED");
+
     // 删除：session-delete → 清单只剩一个
     const del = await settingsCall({ op: "session-delete", sessionId: "s-old2" });
     expect(del.ok).toBe(true);
@@ -644,6 +678,18 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
     client2.raw({ type: "query", requestId: "h-no-db", sessionId: "-", op: "sessions" });
     const noDb = await client2.waitFor((e) => e.type === "response" && e.requestId === "h-no-db", "无库清单回执");
     expect((noDb.error as { code: string }).code).toBe("SESSIONS_UNAVAILABLE");
+    client2.raw({
+      type: "query",
+      requestId: "h-no-search",
+      sessionId: "-",
+      op: "search",
+      criteria: { contentLike: "x" },
+    });
+    const noSearch = await client2.waitFor(
+      (e) => e.type === "response" && e.requestId === "h-no-search",
+      "无库检索回执",
+    );
+    expect((noSearch.error as { code: string }).code).toBe("SESSIONS_UNAVAILABLE");
     client2.raw({ type: "settings", requestId: "s-no-db", op: "session-delete", sessionId: "s-old1" });
     const noDel = await client2.waitFor((e) => e.type === "response" && e.requestId === "s-no-db", "无库删除回执");
     expect((noDel.error as { code: string }).code).toBe("SESSION_DB_UNAVAILABLE");

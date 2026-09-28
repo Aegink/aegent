@@ -270,34 +270,44 @@ function archivedMatches(db: Database.Database, sessionIdPrefix: string | undefi
  */
 export function querySessions(dbPath: string, criteria: SessionQueryCriteria = {}): SessionQueryResult {
   assertDbPath(dbPath);
-  const limit = assertInt(criteria.limit ?? DEFAULT_QUERY_LIMIT, "limit", 1, MAX_QUERY_LIMIT);
-  const offset = assertInt(criteria.offset ?? 0, "offset", 0, Number.MAX_SAFE_INTEGER);
-  const built = buildSessionQuery(criteria);
-
   const storage = SqliteEventStorage.open({ path: dbPath });
   try {
-    const db = storage.db;
-    const total = (db.prepare(built.countSql).get(...built.params) as { n: number }).n;
-    const rows = db
-      .prepare(built.rowsSql)
-      .all(...built.params, limit, offset) as Array<{
-      session_id: string;
-      seq: number;
-      type: string;
-      ts: number;
-      payload: string;
-    }>;
-    return {
-      rows: rows.map((r) => rowOf(r, criteria.contentLike)),
-      total,
-      limit,
-      offset,
-      hasMore: offset + rows.length < total,
-      archivedSessions: archivedMatches(db, criteria.sessionIdPrefix),
-    };
+    return querySessionsDb(storage.db, criteria);
   } finally {
     storage.close();
   }
+}
+
+/**
+ * 已打开库上的条件检索（U9/T-P3-108：host bridge 的 op:"search" 消费面——
+ * 复用 sessionsLibrary 的既有连接，不再逐查开关库）。语义与 querySessions
+ * 全同（单测共用同一用例面）；db 参数不作校验（调用方持有连接的所有权）。
+ */
+export function querySessionsDb(
+  db: Database.Database,
+  criteria: SessionQueryCriteria = {},
+): SessionQueryResult {
+  const limit = assertInt(criteria.limit ?? DEFAULT_QUERY_LIMIT, "limit", 1, MAX_QUERY_LIMIT);
+  const offset = assertInt(criteria.offset ?? 0, "offset", 0, Number.MAX_SAFE_INTEGER);
+  const built = buildSessionQuery(criteria);
+  const total = (db.prepare(built.countSql).get(...built.params) as { n: number }).n;
+  const rows = db
+    .prepare(built.rowsSql)
+    .all(...built.params, limit, offset) as Array<{
+    session_id: string;
+    seq: number;
+    type: string;
+    ts: number;
+    payload: string;
+  }>;
+  return {
+    rows: rows.map((r) => rowOf(r, criteria.contentLike)),
+    total,
+    limit,
+    offset,
+    hasMore: offset + rows.length < total,
+    archivedSessions: archivedMatches(db, criteria.sessionIdPrefix),
+  };
 }
 
 /**

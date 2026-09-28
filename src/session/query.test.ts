@@ -14,6 +14,7 @@ import {
   buildSessionQuery,
   getSessionEvents,
   querySessions,
+  querySessionsDb,
 } from "./query.js";
 import { SessionStore } from "./store.js";
 
@@ -115,6 +116,27 @@ describe("会话查询（Q2/T-P2-105）", () => {
 
     // 无命中
     expect(querySessions(dbPath, { contentLike: "不存在的串" }).total).toBe(0);
+  });
+
+  it("querySessionsDb（U9/T-P3-108 已打开库消费面）：与 querySessions 语义全同", async () => {
+    const dbPath = tempDbPath();
+    await seedDb(dbPath);
+    const storage = SqliteEventStorage.open({ path: dbPath });
+    try {
+      const onDb = querySessionsDb(storage.db, {
+        sessionIdPrefix: "s-alpha",
+        contentLike: "hello",
+      });
+      const byPath = querySessions(dbPath, {
+        sessionIdPrefix: "s-alpha",
+        contentLike: "hello",
+      });
+      expect(onDb).toEqual(byPath);
+      // contentLike 摘录面同源
+      expect(onDb.rows[0]!.excerpt).toContain("hello");
+    } finally {
+      storage.close();
+    }
   });
 
   it("分页：LIMIT/OFFSET 在 SQL 层（行数受 limit 约束而 total 统计全量）+ hasMore", async () => {

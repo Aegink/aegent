@@ -109,12 +109,14 @@ export interface HostProtocolServerOptions {
   /**
    * query 信封回调（K5/T-P1-128 恢复视图——bridge 直答只读，不经 agent）。
    * U3 起 op:"sessions" = 会话历史清单；op:"events" 放宽为任意会话只读。
+   * U9/T-P3-108 起 op:"search" = 跨会话检索（Q2 消费面，criteria.contentLike）。
    * reject（Error 带 code）→ ok:false response。
    */
   onQuery?: (query: {
     sessionId: string;
-    op: "events" | "sessions";
+    op: "events" | "sessions" | "search";
     afterSeq?: number;
+    criteria?: { contentLike: string; limit?: number; offset?: number };
   }) => Promise<unknown>;
   /**
    * settings 信封回调（U14/T-P3-103 host 面配置——bridge 直答，不经 agent、

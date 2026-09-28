@@ -9,6 +9,8 @@ import {
   MAX_LINE_BYTES,
   type AgentRequest,
 } from "../kernel/agent-protocol.js";
+// U9/T-P3-108：search criteria 的 contentLike 上限与 Q2 同源（单一事实源）
+import { MAX_CONTENT_LIKE_CHARS } from "../session/query.js";
 
 /** 错误消息有界（pi boundedErrorMessage 同款 500 字符截断）。 */
 export function bounded(message: string): string {
@@ -46,14 +48,17 @@ export type ClientEnvelope =
    * pi·client "快照先行 + 流续播"的重连行为；U3 起放宽为任意会话只读——
    * 历史查看的入口面，写命令仍限本 host 会话）；afterSeq 可选游标（只回
    * seq 大于它的部分）。op:"sessions" = 会话历史清单（U3/T-P3-105——
-   * session_index 摘要，SQLite 库在位才有数据）。只读不落流。
+   * session_index 摘要，SQLite 库在位才有数据）。op:"search" = 跨会话检索
+   * （U9/T-P3-108——Q2 的 wire 消费面：contentLike 子串 + 分页）。只读不落流。
    */
   | {
       type: "query";
       requestId: string;
       sessionId: string;
-      op: "events" | "sessions";
+      op: "events" | "sessions" | "search";
       afterSeq?: number;
+      /** op=search：检索条件（contentLike 必填非空——空串检索无意义面禁足）。 */
+      criteria?: { contentLike: string; limit?: number; offset?: number };
     }
   /**
    * U14/T-P3-103 settings 直答信封（host 面配置——不经 agent、不落流）：
@@ -137,7 +142,14 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
     return { type: "lease", op: record["op"] as "acquire" | "release", surfaceId: record["surfaceId"] };
   }
   if (type === "query") {
-    const unknownKey = rejectUnknownKeys(record, ["type", "requestId", "sessionId", "op", "afterSeq"]);
+    const unknownKey = rejectUnknownKeys(record, [
+      "type",
+      "requestId",
+      "sessionId",
+      "op",
+      "afterSeq",
+      "criteria",
+    ]);
     if (unknownKey) throw new Error(`query 信封${unknownKey}`);
     if (typeof record["requestId"] !== "string" || record["requestId"] === "") {
       throw new Error("query 需要 requestId 非空字符串");
@@ -145,15 +157,55 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
     if (typeof record["sessionId"] !== "string" || record["sessionId"] === "") {
       throw new Error("query 需要 sessionId 非空字符串");
     }
-    if (record["op"] !== "events" && record["op"] !== "sessions") {
-      throw new Error(`query 的 op 非法：${String(record["op"])}（合法：events|sessions）`);
+    if (record["op"] !== "events" && record["op"] !== "sessions" && record["op"] !== "search") {
+      throw new Error(`query 的 op 非法：${String(record["op"])}（合法：events|sessions|search）`);
     }
-    const op = record["op"] as "events" | "sessions";
+    const op = record["op"] as "events" | "sessions" | "search";
     if (
       record["afterSeq"] !== undefined &&
       (typeof record["afterSeq"] !== "number" || !Number.isInteger(record["afterSeq"]) || record["afterSeq"] < 0)
     ) {
       throw new Error("query 的 afterSeq 须为非负整数");
+    }
+    // op=search 的条件面（U9/T-P3-108）：contentLike 必填非空（上限同 Q2
+    // MAX_CONTENT_LIKE_CHARS），limit/offset 整数界内——形状坏即整信封拒绝。
+    let criteria: { contentLike: string; limit?: number; offset?: number } | undefined;
+    if (record["criteria"] !== undefined) {
+      if (op !== "search") throw new Error("query 的 criteria 仅 op=search 可带");
+      const c = record["criteria"];
+      if (c === null || typeof c !== "object" || Array.isArray(c)) {
+        throw new Error("query 的 criteria 须为对象");
+      }
+      const rec = c as Record<string, unknown>;
+      const unknownC = rejectUnknownKeys(rec, ["contentLike", "limit", "offset"]);
+      if (unknownC) throw new Error(`query 的 criteria${unknownC}`);
+      if (typeof rec["contentLike"] !== "string" || rec["contentLike"] === "") {
+        throw new Error("query 的 criteria.contentLike 须为非空字符串");
+      }
+      if (rec["contentLike"].length > MAX_CONTENT_LIKE_CHARS) {
+        throw new Error(`query 的 criteria.contentLike 超长（上限 ${MAX_CONTENT_LIKE_CHARS} 字符）`);
+      }
+      for (const key of ["limit", "offset"] as const) {
+        if (rec[key] !== undefined) {
+          const v = rec[key];
+          if (typeof v !== "number" || !Number.isInteger(v)) {
+            throw new Error(`query 的 criteria.${key} 须为整数`);
+          }
+          if (key === "limit" && (v < 1 || v > 500)) {
+            throw new Error("query 的 criteria.limit 须为 1..500");
+          }
+          if (key === "offset" && v < 0) {
+            throw new Error("query 的 criteria.offset 须为非负整数");
+          }
+        }
+      }
+      criteria = {
+        contentLike: rec["contentLike"],
+        ...(rec["limit"] !== undefined ? { limit: rec["limit"] as number } : {}),
+        ...(rec["offset"] !== undefined ? { offset: rec["offset"] as number } : {}),
+      };
+    } else if (op === "search") {
+      throw new Error("query op=search 需要 criteria.contentLike");
     }
     return {
       type: "query",
@@ -161,6 +213,7 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
       sessionId: record["sessionId"],
       op,
       ...(record["afterSeq"] !== undefined ? { afterSeq: record["afterSeq"] as number } : {}),
+      ...(criteria !== undefined ? { criteria } : {}),
     };
   }
   if (type === "settings") {

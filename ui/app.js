@@ -315,6 +315,7 @@ function renderEventEnvelope(envelope) {
     stream.appendChild(node);
     scrollBottom();
   }
+  minimapRegister(node, envelope.event); // 小地图登记（含 null 守卫）
 }
 
 /** 恢复视图：历史事件一次性渲染（query 快照；此后走 event 流续播）。 */
@@ -322,6 +323,7 @@ function renderHistory(events) {
   for (const e of events) {
     const node = renderEvent(e);
     if (node !== null) stream.appendChild(node);
+    minimapRegister(node, e);
   }
   if (events.length > 0) appendLine(`── 已恢复 ${events.length} 条历史事件 ──`, "meta");
   scrollBottom();
@@ -788,7 +790,7 @@ async function openHistory() {
         historyPanel.hidden = true;
         const view = await sendQuery({ sessionId: s.sessionId, op: "events" });
         if (view.ok) {
-          stream.replaceChildren();
+          resetStreamView();
           renderHistory(view.result.events ?? []);
           appendLine("── 只读视图：续聊请执行 aegent sessions resume " + s.sessionId + " ──", "warn");
         } else {
@@ -817,6 +819,225 @@ async function openHistory() {
 historyBtn.addEventListener("click", () => void openHistory());
 historyClose.addEventListener("click", () => {
   historyPanel.hidden = true;
+});
+
+// ---------------------------------------------------------------------------
+// U9/T-P3-108 对话导航与检索：会话内搜索（Ctrl+F 渲染层高亮跳转）+
+// 跨会话搜索（query op:"search"——Q2 检索面的 UI 消费）+ 小地图（消息
+// 类型着色条 + 点击跳轮，纯 DOM）。
+// ---------------------------------------------------------------------------
+
+// —— 会话内搜索：命中高亮 + 上下跳转（不落库、不经 host——渲染层文本检索）
+const findBar = document.getElementById("find-bar");
+const findInput = document.getElementById("find-input");
+const findCount = document.getElementById("find-count");
+const findHits = [];
+let findCursor = -1;
+
+function clearHits() {
+  for (const mark of findHits) {
+    const parent = mark.parentNode;
+    if (parent !== null) {
+      mark.replaceWith(...mark.childNodes); // 摘帽还原原文本节点
+      parent.normalize();
+    }
+  }
+  findHits.length = 0;
+  findCursor = -1;
+  findCount.textContent = "";
+}
+
+function updateFindUi() {
+  findCount.textContent = findHits.length === 0 ? "无命中" : `${findCursor + 1}/${findHits.length}`;
+  for (const [i, mark] of findHits.entries()) mark.classList.toggle("active", i === findCursor);
+  if (findCursor >= 0) findHits[findCursor].scrollIntoView({ block: "center" });
+}
+
+function wrapMatches(node, needle) {
+  const value = node.nodeValue ?? "";
+  const lower = value.toLowerCase();
+  const q = needle.toLowerCase();
+  const frag = document.createDocumentFragment();
+  let pos = 0;
+  let idx = lower.indexOf(q);
+  while (idx >= 0) {
+    frag.appendChild(document.createTextNode(value.slice(pos, idx)));
+    const mark = document.createElement("mark");
+    mark.className = "search-hit";
+    mark.textContent = value.slice(idx, idx + needle.length);
+    frag.appendChild(mark);
+    findHits.push(mark);
+    pos = idx + needle.length;
+    idx = lower.indexOf(q, pos);
+  }
+  frag.appendChild(document.createTextNode(value.slice(pos)));
+  node.parentNode.replaceChild(frag, node);
+}
+
+function findInStream(needle) {
+  clearHits();
+  if (needle !== "") {
+    const walker = document.createTreeWalker(stream, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) =>
+        n.parentElement?.closest(".code-copy") === null &&
+        (n.nodeValue ?? "").toLowerCase().includes(needle.toLowerCase())
+          ? NodeFilter.FILTER_ACCEPT
+          : NodeFilter.FILTER_REJECT,
+    });
+    const targets = [];
+    while (walker.nextNode()) targets.push(walker.currentNode);
+    for (const node of targets) wrapMatches(node, needle);
+    findCursor = findHits.length > 0 ? 0 : -1;
+  }
+  updateFindUi();
+}
+
+document.getElementById("find-next").addEventListener("click", () => {
+  if (findHits.length === 0) return;
+  findCursor = (findCursor + 1) % findHits.length;
+  updateFindUi();
+});
+document.getElementById("find-prev").addEventListener("click", () => {
+  if (findHits.length === 0) return;
+  findCursor = (findCursor - 1 + findHits.length) % findHits.length;
+  updateFindUi();
+});
+document.getElementById("find-close").addEventListener("click", () => {
+  findBar.hidden = true;
+  clearHits();
+});
+findInput.addEventListener("input", () => findInStream(findInput.value.trim()));
+findInput.addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter") {
+    ev.preventDefault();
+    document.getElementById(ev.shiftKey === true ? "find-prev" : "find-next").click();
+  }
+});
+
+function openFind() {
+  findBar.hidden = false;
+  findInput.focus();
+  findInput.select();
+  if (findInput.value.trim() !== "") findInStream(findInput.value.trim());
+}
+
+// —— 跨会话搜索（Q2 消费）：命中列表 → 查看 = 只读恢复视图（续聊入口提示）
+const searchPanel = document.getElementById("search-panel");
+const searchInput = document.getElementById("search-input");
+
+document.getElementById("search-btn").addEventListener("click", () => {
+  searchPanel.hidden = false;
+  searchInput.focus();
+});
+document.getElementById("search-close").addEventListener("click", () => {
+  searchPanel.hidden = true;
+});
+
+document.getElementById("search-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const q = searchInput.value.trim();
+  if (q === "") return;
+  const envelope = await sendQuery({
+    sessionId: sessionId() || "-",
+    op: "search",
+    criteria: { contentLike: q, limit: 50 },
+  });
+  const list = document.getElementById("search-results");
+  const meta = document.getElementById("search-meta");
+  list.replaceChildren();
+  if (!envelope.ok) {
+    meta.textContent = `检索不可用：${envelope.error?.message ?? ""}`;
+    return;
+  }
+  const rows = envelope.result.rows ?? [];
+  meta.textContent = `命中 ${envelope.result.total} 条（显示 ${rows.length}）`;
+  for (const r of rows) {
+    const li = document.createElement("li");
+    const label = document.createElement("span");
+    label.textContent = `${r.sessionId} · ${r.type} · ${fmtTime(r.ts)}\n${(r.excerpt ?? "").replace(/\s+/g, " ")}`;
+    const viewBtn = document.createElement("button");
+    viewBtn.type = "button";
+    viewBtn.textContent = "查看";
+    viewBtn.addEventListener("click", async () => {
+      searchPanel.hidden = true;
+      const view = await sendQuery({ sessionId: r.sessionId, op: "events" });
+      if (view.ok) {
+        resetStreamView();
+        renderHistory(view.result.events ?? []);
+        appendLine("── 只读视图：续聊请执行 aegent sessions resume " + r.sessionId + " ──", "warn");
+      } else {
+        appendLine(`查看失败：${view.error?.message ?? ""}`, "warn");
+      }
+    });
+    li.append(label, viewBtn);
+    list.appendChild(li);
+  }
+});
+
+// —— 小地图：消息类型着色条 + 点击跳轮（纯 DOM——展示什么导航什么）
+const minimap = document.getElementById("minimap");
+const MINIMAP_KINDS = {
+  "user/message": "mm-user",
+  "assistant/message": "mm-agent",
+  "tool/call": "mm-tool",
+  "tool/result": "mm-tool",
+};
+const minimapEntries = [];
+let minimapTurn = 0;
+
+function minimapRegister(node, e) {
+  const kind = MINIMAP_KINDS[e.type];
+  if (kind === undefined) {
+    if (e.type === "turn/start") minimapTurn = e.turn;
+    return;
+  }
+  if (node === null) return;
+  minimapEntries.push({ el: node, turn: minimapTurn });
+  const row = document.createElement("div");
+  row.className = `mm-row ${kind}`;
+  row.dataset.idx = String(minimapEntries.length - 1);
+  row.title = `turn ${minimapTurn} · ${e.type}`;
+  minimap.appendChild(row);
+}
+
+function minimapReset() {
+  minimapEntries.length = 0;
+  minimapTurn = 0;
+  minimap.replaceChildren();
+}
+
+minimap.addEventListener("click", (ev) => {
+  const row = ev.target instanceof Element ? ev.target.closest(".mm-row") : null;
+  if (row === null) return;
+  const entry = minimapEntries[Number(row.dataset.idx)];
+  if (entry === undefined) return;
+  entry.el.scrollIntoView({ block: "start" });
+  entry.el.classList.add("mm-flash");
+  setTimeout(() => entry.el.classList.remove("mm-flash"), 1200);
+});
+
+/** 流视图整体重置（只读查看入口共用——搜索命中摘帽 + 小地图重建）。 */
+function resetStreamView() {
+  clearHits();
+  minimapReset();
+  stream.replaceChildren();
+}
+
+// Ctrl+F 会话内搜索 / Ctrl+Shift+F 跨会话搜索 / Esc 关闭
+window.addEventListener("keydown", (ev) => {
+  if (ev.ctrlKey && !ev.shiftKey && ev.key.toLowerCase() === "f") {
+    ev.preventDefault();
+    openFind();
+  } else if (ev.ctrlKey && ev.shiftKey && ev.key.toLowerCase() === "f") {
+    ev.preventDefault();
+    searchPanel.hidden = false;
+    searchInput.focus();
+  } else if (ev.key === "Escape") {
+    if (!findBar.hidden) {
+      findBar.hidden = true;
+      clearHits();
+    }
+  }
 });
 
 // ---------------------------------------------------------------------------

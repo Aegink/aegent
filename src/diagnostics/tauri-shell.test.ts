@@ -146,6 +146,7 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
 
   it("U4/T-P3-107 · 渲染分层资产：vendor 本地化 + THIRD_PARTY 登记 + 分层标记（XSS 防呆面在位）", () => {
     const uiDir = path.resolve(import.meta.dirname, "..", "..", "ui");
+    const html = readFileSync(path.join(uiDir, "index.html"), "utf8");
     // vendor 本地化（P3 §1 全局约束 3——两纯库 + 两 LICENSE + 出处 README）
     for (const name of [
       "vendor/marked.esm.js",
@@ -186,6 +187,18 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     const css = readFileSync(path.join(uiDir, "style.css"), "utf8");
     // 气泡/工具卡/代码块/diff/拒绝面样式在位 + hljs token 色
     for (const marker of [".bubble", ".tool-card", ".code-block", ".diff-row", ".denial", ".hljs-keyword"]) {
+      expect(css).toContain(marker);
+    }
+    // U9/T-P3-108：会话内搜索条 + 跨会话搜索面板 + 小地图（导航/检索资产）
+    expect(html).toContain('id="find-bar"');
+    expect(html).toContain('id="find-input"');
+    expect(html).toContain('id="minimap"');
+    expect(html).toContain('id="search-panel"');
+    expect(html).toContain('id="search-results"');
+    expect(app).toContain('op: "search"'); // Q2 检索的 UI 消费
+    expect(app).toContain("findInStream"); // 渲染层文本检索
+    expect(app).toContain("minimapRegister"); // 消息结构导航条
+    for (const marker of [".search-hit", ".mm-row", "#find-bar", "#minimap"]) {
       expect(css).toContain(marker);
     }
   });

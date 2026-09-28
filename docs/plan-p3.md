@@ -126,7 +126,7 @@
 - **风险 / 未知**：XSS 面（marked 配置白名单策略）
 - **完成记录（2026-09-29）**：验收 `npx vitest run src/diagnostics/tauri-shell.test.ts src/diagnostics/ui-render.test.ts` → **18 passed**（tauri-shell 8 扩 + ui-render 10 新；`node --check` 两 JS 语法过；tsc 干净）。落地：①**vendor 本地化**：`ui/vendor/`（marked 16.4.2 原样 `lib/marked.esm.js` + highlight.js 11.12.0 `lib/common.js` 经 esbuild bundle 成浏览器 ESM〔36 common 语言，npm 包内 `es/` 是 Node 双包互操作面浏览器不可 import——bundle 产物入库、UI 消费端仍零构建链〕+ 两 LICENSE + 出处 README + esbuild devDep〔同时服务 T-P3-113〕+ THIRD_PARTY.md 两条登记）；②**渲染管线** `ui/render.js`（纯函数模块）：marked 禁 HTML 透传（renderer.html 恒转义 `md-html-raw` 可见不执行）+ href 协议白名单（javascript:/data: 恒 "#"，链接 `rel="noopener noreferrer"`）+ 代码块 hljs 高亮 + 复制按钮；③**app.js 分层**：assistant 走 markdown 气泡（流式打字 `typeStream`——rAF 消费事件自带 `TimedStreamChunk` 时间轴〔零新增 wire 面〕，超长流压缩 ≤2s，终态换完整渲染；恢复视图直接终态），**用户输入 textContent 原样不渲染**（注入面禁足）；工具卡 `tool/call`→`tool/result` 以 `callId` 成对折叠（args JSON 格式化 + write/edit 写操作 diff 对照〔del/add 着色〕+ result 原样不渲染）；④审批卡优化：C54 分类 chip + 超时倒计时 + C55 拒绝面结构化展示（`parseDenial` 解析 renderDenial 同源文本 → 编号替代做法清单）；⑤错误重试交互：`turn/end` reason.kind=error 卡挂"重试上一条"按钮（重发最近 user prompt）。**XSS 评审（落完成记录）**：机验面 = `ui-render.test.ts` 十例（script/img 标签恒转义不落地、javascript:/data: href 恒 "#"、hljs 输出转义、safeHref 白名单直测）；设计面 = 渲染只作用于 assistant 事件（app.js 的 `renderMarkdown` 调用点全部在 assistant 分支——typeStream 终态与 assistant 气泡；user 气泡恒 textContent）、工具结果/args 恒 textContent、marked 无其他 innerHTML 注入点、vendor 纯库无网络面；**残余面**：marked/hljs 零-day 为上游风险（vendor 固定版本可控），人工走查列入确认清单。
 
-#### T-P3-108 · U9 · 对话导航与检索 UI（搜索两级 + 长会话小地图） `[ ]`
+#### T-P3-108 · U9 · 对话导航与检索 UI（搜索两级 + 长会话小地图） `[x]`
 - **依据需求**：U9（"会话内搜索、跨会话搜索、长会话小地图"）
 - **上游首选参考**：[pi-desktop·SearchDialog/SearchSessionResults/ConversationMinimap](../oss/pi-desktop/apps/desktop/src/components)（🔴 只学行为）
 - **取什么 / 别抄什么**：取"会话内搜索高亮跳转 + 跨会话搜索列表跳转 + 轮次结构导航条"三行为；不抄其 React 实现
@@ -134,6 +134,7 @@
 - **验收**：ui 资产断言 + `npx vitest run src/host/server.test.ts`（扩——跨会话搜索走 query 面）+ 人工走查
 - **依赖**：T-P3-107；P2 15a Q2
 - **风险 / 未知**：小地图在超长会话的渲染性能（虚拟化——按需记档）
+- **完成记录（2026-09-29）**：验收 `npx vitest run src/session/query.test.ts src/host/server.test.ts src/diagnostics/tauri-shell.test.ts` → **24 passed**（query 6 + server 10 + tauri-shell 8；node --check 过、tsc 干净）。落地：①**会话内搜索**（Ctrl+F 条，index.html find-bar）：渲染层文本检索——TreeWalker 文本节点摘帽/戴帽（`mark.search-hit`，active 着色 + scrollIntoView 居中），Enter/Shift+Enter 上下循环跳转、计数 n/N、Esc 关闭还原（normalize 还原原文本节点——不改事件内容）；②**跨会话搜索**（🔍 按钮 + Ctrl+Shift+F）：**wire 扩展 query op:"search"**（criteria.contentLike 必填非空 ≤256〔MAX_CONTENT_LIKE_CHARS 同源〕+ limit 1..500/offset≥0，parse 层形状坏整信封拒 → "(unparsed)" PROTOCOL_MALFORMED）→ bridge op:"search" 分支 → **querySessionsDb**（query.ts 新导出：已打开库上的检索，语义与 querySessions 全同——query.test 等价断言；复用 sessionsLibrary 连接不逐查开关库）→ 只回摘要行（sessionId/seq/type/ts/excerpt——**事件整值不出检索面**，e2e 断言）→ UI 命中列表（会话/类型/时间/摘录）+ "查看" = 只读恢复视图（与历史侧栏同链）+ 续聊入口提示；③**小地图**（#minimap 固定右缘）：user=accent/agent=ok/tool=warn 三色 3px 行 + title 标轮次，点击 scrollIntoView + 1.2s flash；登记面 renderEventEnvelope/renderHistory 共用（只读查看入口 resetStreamView 统一摘帽 + 重建）；④tauri-shell 资产断言扩（find-bar/minimap/search-panel/search-results + op:"search"/findInStream/minimapRegister + css 标记）。人工走查列入确认清单（视觉/键位手感）。
 
 #### T-P3-109 · U10 · 输入区升级（Composer：多行 + 五类补全 + 粘贴图） `[ ]`
 - **依据需求**：U10（"多行编辑、@文件/@目录补全、斜杠命令与技能补全、粘贴图片入附件面"）

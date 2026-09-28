@@ -13,9 +13,20 @@
       <span id="lease-status"></span>
       <button id="lease-btn" type="button" hidden>取得写租约</button>
       <button id="history-btn" type="button" title="会话历史">☰ 历史</button>
+      <button id="search-btn" type="button" title="跨会话搜索（Ctrl+Shift+F）">🔍 搜索</button>
       <button id="settings-btn" type="button" title="设置">⚙ 设置</button>
     </header>
     <main id="stream" aria-live="polite"></main>
+    <!-- U9/T-P3-108 会话内搜索条：渲染层文本检索——命中高亮 + 上下跳转 -->
+    <div id="find-bar" hidden>
+      <input id="find-input" type="text" placeholder="会话内搜索…" autocomplete="off" />
+      <span id="find-count"></span>
+      <button id="find-prev" type="button" title="上一处（Shift+Enter）">↑</button>
+      <button id="find-next" type="button" title="下一处（Enter）">↓</button>
+      <button id="find-close" type="button" title="关闭（Esc）">✕</button>
+    </div>
+    <!-- U9/T-P3-108 小地图：消息类型着色条 + 点击跳轮（纯 DOM） -->
+    <div id="minimap" aria-label="会话结构导航"></div>
     <section id="pending" aria-label="待决审批"></section>
     <footer id="composer">
       <input id="prompt-input" type="text" placeholder="输入指令回车执行…" autocomplete="off" />
@@ -96,6 +107,23 @@
           <h2>关于</h2>
           <p>aegent 0.1.0 —— 本地优先的 agent 工作台（事件即真相；配置即本页）。</p>
         </section>
+      </div>
+    </aside>
+    <!-- U9/T-P3-108 跨会话搜索面板：query op:"search"（Q2 检索的 UI 消费）——
+         命中列表（会话/时间/摘录）+ 点开只读续聊入口 -->
+    <aside id="search-panel" hidden aria-label="跨会话搜索">
+      <header class="settings-head">
+        <span>跨会话搜索</span>
+        <button id="search-close" type="button">关闭</button>
+      </header>
+      <div class="settings-body">
+        <form id="search-form">
+          <input id="search-input" type="text" placeholder="内容子串（跨全部会话）" autocomplete="off" />
+          <button type="submit">搜索</button>
+        </form>
+        <p id="search-meta" class="hint"></p>
+        <ul id="search-results"></ul>
+        <p class="hint">查看 = 只读恢复视图；续聊请在终端执行 aegent sessions resume &lt;id&gt;。</p>
       </div>
     </aside>
     <!-- U3/T-P3-105 会话历史侧栏：列表（id/标题/时间/规模）+ 只读查看 +

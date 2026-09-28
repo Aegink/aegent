@@ -670,3 +670,111 @@ body {
   font-size: 12px;
   color: var(--warn);
 }
+
+/* U9/T-P3-108 对话导航与检索：会话内搜索条/命中高亮/小地图/跨会话搜索列表 */
+#find-bar {
+  position: fixed;
+  top: 36px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  z-index: 30;
+}
+
+#find-bar[hidden] {
+  display: none;
+}
+
+#find-input {
+  width: 180px;
+}
+
+#find-count {
+  font-size: 12px;
+  color: var(--dim);
+  min-width: 44px;
+  text-align: center;
+}
+
+mark.search-hit {
+  background: color-mix(in srgb, var(--warn) 45%, transparent);
+  color: inherit;
+  border-radius: 2px;
+}
+
+mark.search-hit.active {
+  background: var(--warn);
+  color: var(--bg);
+}
+
+#minimap {
+  position: fixed;
+  right: 3px;
+  top: 64px;
+  bottom: 96px;
+  width: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  z-index: 20;
+}
+
+.mm-row {
+  flex: 0 0 3px;
+  min-height: 2px;
+  border-radius: 1px;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.mm-row:hover {
+  opacity: 1;
+  outline: 1px solid var(--accent);
+}
+
+.mm-user {
+  background: var(--accent);
+}
+
+.mm-agent {
+  background: var(--ok);
+}
+
+.mm-tool {
+  background: var(--warn);
+}
+
+.mm-flash {
+  outline: 2px solid var(--accent) !important;
+  border-radius: 4px;
+}
+
+#search-results {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+#search-results li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+#search-results li span {
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text);
+  font-size: 13px;
+}

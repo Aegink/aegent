@@ -24,6 +24,8 @@ import type { SessionEvent } from "../kernel/events.js";
 import { NotLeaseHolderError } from "../session/owner-port.js";
 import type { SessionStore } from "../session/store.js";
 import { SqliteEventStorage } from "../session/db.js";
+// U9/T-P3-108：op:"search" 的 Q2 消费面（已打开库上的条件检索）
+import { querySessionsDb } from "../session/query.js";
 import { AgentHost } from "./registry.js";
 import {
   HostProtocolServer,
@@ -235,6 +237,33 @@ export class HostBridge implements SessionRouter {
             throw error;
           }
           return { sessions: library.listSessionSummaries() };
+        }
+        // U9/T-P3-108：跨会话检索（Q2 消费面）——只回命中摘要行（sessionId/
+        // seq/type/ts/excerpt），不回事件整值（payload 全量不出检索面）。
+        if (query.op === "search") {
+          const library = this.options.sessionsLibrary;
+          if (library === undefined) {
+            const error = new Error("host 未配置 SQLite 事件库，跨会话检索不可用");
+            (error as unknown as { code: string }).code = "SESSIONS_UNAVAILABLE";
+            throw error;
+          }
+          const criteria = query.criteria!;
+          const result = querySessionsDb(library.db, {
+            contentLike: criteria.contentLike,
+            ...(criteria.limit !== undefined ? { limit: criteria.limit } : {}),
+            ...(criteria.offset !== undefined ? { offset: criteria.offset } : {}),
+          });
+          return {
+            rows: result.rows.map((r) => ({
+              sessionId: r.sessionId,
+              seq: r.seq,
+              type: r.type,
+              ts: r.ts,
+              excerpt: r.excerpt ?? "",
+            })),
+            total: result.total,
+            hasMore: result.hasMore,
+          };
         }
         // 本会话：内存序读取（同步）：镜像 append 的直接产物——最新、无
         // write-behind 缓冲滞后（restore/readAll 只见已 flush 部分——E1
