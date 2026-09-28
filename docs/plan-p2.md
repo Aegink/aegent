@@ -438,7 +438,7 @@
 - **风险 / 未知**：无
 - **完成记录**：2026-09-28。产出 `tools/architecture-read.mjs`——`collectReadingPack(policy, moduleId, repoRoot)` 纯函数（policy 对象注入——fixture 测试与真实 CLI 同一组装面；未知 id throw"未知模块 id：…可用模块：…"类型化错误）+ CLI（`node tools/architecture-read.mjs <id> [--json]`；人读分节文本 / --json 机器消费；坏 id stderr + exit 1、缺参数 exit 2）；阅读包四件：①本模块 publicEntrypoints（存在性过滤）；②域内文件（roots 递归 .ts，实现/测试分列——test-utils 计入测试面）；③requires 邻接模块逐个给 entrypoints（优先）+ 顶层 .ts（未收敛域的常用入口——不递归）+ 域内计数；④missing 模块如实标注（requires 引用悬空）。policy 元数据单一事实源（复用 architecture-check.mjs 的 loadPolicy 带形状自检）。package.json `architecture:read` script 在位。测试 `src/diagnostics/architecture-read.test.ts` 4 用例（fixture 隔离 tmp 目录）：四件齐（入口 + 域内/测试分列 + 邻接顶层不递归 + fileCount 含嵌套）/ 邻接 entrypoints 优先且存在性过滤 / 未知 id 类型化拒绝（列可用 id）/ roots 不存在空清单（形状自检是 loadPolicy 职责，fail-soft 如实表达）。**验收**：`node tools/architecture-read.mjs host` → 阅读包含 src/host/server.ts、protocol.ts 全 12 实现件 + 11 测试件 + requires 邻接 kernel/policy/session 三模块（kernel 顶层文件 + 域内 100 个 .ts）；`node tools/architecture-read.mjs nosuch` → exit 1 类型化错误；`npx vitest run src/diagnostics/architecture-read.test.ts` → **4 passed**；`npx tsc --noEmit` 干净；`--json` 机器面 + `npm run architecture:read -- policy` 复验通过。**记档**：①反向面（consumers——谁 requires 本模块）不取（卡面四件清单之外，YAGNI——改动影响面走 architecture:check 的既有检查）；②邻接模块"无收敛入口"给顶层 .ts 是阅读可用性定形（严格只给 entrypoints 会让 16/21 个模块的邻接条目为空）。
 
-#### T-P2-502 · T4 · 架构豁免带理由（现状核对 + 强制面收口） `[ ]`
+#### T-P2-502 · T4 · 架构豁免带理由（现状核对 + 强制面收口） `[x]`
 - **依据需求**：T4（"架构豁免必须带理由，写在同一条抑制语句上"）
 - **上游首选参考**：zcode·architecture-policy.yaml（exceptions + reason 必填）
 - **取什么 / 别抄什么**：核对在先——T-P1-121 已实现"exception 缺 reason 全拒绝"（形状自检）；本卡核对增量面
@@ -446,6 +446,7 @@
 - **验收**：核对结论落完成记录 + （若落）检查器负例
 - **依赖**：无
 - **风险 / 未知**：预判部分覆盖——展卡核对后可能直接关闭（J25/L10 先例）
+- **完成记录**：2026-09-28。**核对关闭（零缺口——需求语义已被 T-P1-121 完整覆盖，检查器不重复实现）**。核对四面：①**检查器强制在位**——`tools/architecture-check.mjs:68` 形状自检 `exception 必须带 path 与 reason`，缺 reason 即 problems（error 级、退出码非零）——T-P1-121（批次 13）已落且负例在位；②**负例在位**——`src/diagnostics/architecture-check.test.ts:51-63`「缺 reason 的 exception 都拒绝」+ `:139-144`「带 reason 的豁免生效」两用例即本需求的机验面；③**exceptions 现状为空集**——architecture-policy.json `exceptions: []`，当前全仓零豁免在用（21 warning 全为 managed=false 域渐进警告与存量 cycle 警告，未动用豁免），"每条豁免已带 reason"在空集上平凡成立；④**无内联豁免机制**——全仓 grep `architecture:disable / architecture:ignore / eslint-disable` 零命中，我方唯一豁免面 = 策略文件 exceptions 条目（path 与 reason 同对象承载，即需求"写在同一条抑制语句上"的语义对应——卡面预判"核对关闭"兑现）。若未来引入内联抑制机制，须同语句带理由（本核对结论为后续卡的纪律依据）。
 
 #### T-P2-503 · T7 · 性能断言进测试套件（防复杂度退化） `[ ]`
 - **依据需求**：T7（"性能断言进测试套件防复杂度退化（不是防慢）；断言的是复杂度不是耗时"）
