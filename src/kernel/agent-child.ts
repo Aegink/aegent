@@ -38,6 +38,8 @@ interface ChildCliArgs {
   rawLogDir?: string;
   workspace?: string;
   contextWindow?: number;
+  /** I8 人格预设（T-P2-305）：--persona <id>——装配期解析（未知 id 启动即败）。 */
+  persona?: string;
   approvalTimeoutMs?: number;
   network?: string;
   apiKey?: string;
@@ -68,6 +70,7 @@ function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv): ChildCliArg
     else if (a === "--approval-timeout" && i + 1 < argv.length)
       args.approvalTimeoutMs = Number(argv[++i]);
     else if (a === "--network" && i + 1 < argv.length) args.network = argv[++i];
+    else if (a === "--persona" && i + 1 < argv.length) args.persona = argv[++i];
   }
   return args;
 }
@@ -161,6 +164,9 @@ async function main(): Promise<void> {
       ? {
           assembly: {
             workspaceRoot: cli.workspace ?? process.cwd(),
+            // I8 人格预设（T-P2-305）：--persona 选预设，系统提示首落时
+            // 追加人格段；未知 id 在装配期类型化拒绝（启动即败）。
+            ...(cli.persona !== undefined ? { personaId: cli.persona } : {}),
             // E11：工作区即 git 仓时启用代码检查点（非 git 目录由
             // GitCheckpointService 首次打点时拒绝并提示，不中断轮）
             checkpointRepoRoot: cli.workspace ?? process.cwd(),

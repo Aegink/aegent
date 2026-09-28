@@ -78,6 +78,7 @@ import {
 } from "../context/time-reminder.js";
 import { type BudgetConfig, RolloutBudget } from "../context/budget.js";
 import { assembleSystemPrompt } from "../context/system-prompt.js";
+import { renderPersona, resolvePersona } from "../session/persona.js";
 import { loadSkills } from "./skills.js";
 import {
   type ApprovalAnnouncement,
@@ -377,6 +378,12 @@ export interface ChildAssemblyOptions {
    * 父会话提示零变化。
    */
   delegation?: boolean;
+  /**
+   * I8 人格预设（T-P2-305）：--persona 选的内置预设 id——系统提示首落时
+   * 渲染人格段追加进同一条 system/message（随会话流持久）；缺省 undefined
+   * = 无人格段，装配零变化。未知 id 装配期即拒绝（PersonaError）。
+   */
+  personaId?: string;
 }
 
 export interface ChildAssembly {
@@ -456,6 +463,9 @@ export interface ChildAssembly {
 
 export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembly {
   const { sessionId, store, logger } = options;
+  // I8：personaId 装配期即校验（fail-closed——initialIdentity 同款纪律：
+  // 坏配置在启动时大声失败，不等到首个 modelRequest 才炸）。
+  if (options.personaId !== undefined) resolvePersona(options.personaId);
   const contextWindow = options.contextWindow;
   // F7：时间注入间隔（未启用 = undefined，注入位跳过）。
   const timeReminderIntervalSeconds =
@@ -613,12 +623,21 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
         ...(planModeService ? { planMode: true } : {}),
         ...(options.delegation ? { delegation: true } : {}),
       });
+      // I8 人格段（T-P2-305）：--persona 选了预设则渲染后追加进同一条系统
+      // 提示（人格随会话流持久——恢复自动生效）；未选择 = 零追加。
+      const persona = resolvePersona(options.personaId);
+      const withPersona =
+        persona === undefined
+          ? prompt
+          : `${prompt}
+
+${renderPersona(persona, { workspace: options.workspaceRoot })}`;
       store.append(sessionId, [
         {
           type: "system/message",
           turn: e.turn,
           step: e.step,
-          message: { content: prompt },
+          message: { content: withPersona },
         },
       ]);
     }
