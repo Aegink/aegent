@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   loadSkills,
+  loadSkillsFromRoots,
   parseSkillFrontmatter,
   skillBody,
 } from "./skills.js";
@@ -177,6 +178,89 @@ describe("系统提示尾段（验收④装配面）", () => {
       basePrompt: "BASE",
     });
     expect(withoutSkills).not.toContain("可用技能");
+  });
+});
+
+describe("U22/T-P3-125 技能管理面：disabled 停用 / tools 解析 / 多根合并", () => {
+  it("disabled 名单过滤清单（装配面——停用技能不进清单不产诊断）", () => {
+    const root = makeWorkspace({
+      ".zcode/skills/alpha/SKILL.md": "---\nname: alpha\ndescription: A\n---\nA\n",
+      ".zcode/skills/beta/SKILL.md": "---\nname: beta\ndescription: B\n---\nB\n",
+    });
+    const off = loadSkills(root, { disabled: ["beta"] });
+    expect(off.skills.map((s) => s.name)).toEqual(["alpha"]);
+    expect(off.diagnostics).toEqual([]);
+    // 空名单 = 全量（零行为变化面）
+    expect(loadSkills(root, { disabled: [] }).skills).toHaveLength(2);
+  });
+
+  it("frontmatter tools: 行解析（逗号/空白分隔去重）+ 缺省无字段", () => {
+    const root = makeWorkspace({
+      ".zcode/skills/withtools/SKILL.md":
+        "---\nname: withtools\ndescription: 带工具集\ntools: read, edit  grep bash read\n---\nT\n",
+      ".zcode/skills/plain/SKILL.md": "---\nname: plain\ndescription: 无工具集\n---\nP\n",
+    });
+    const { skills } = loadSkills(root);
+    const withTools = skills.find((s) => s.name === "withtools")!;
+    expect(withTools.tools).toEqual(["read", "edit", "grep", "bash"]);
+    expect(skills.find((s) => s.name === "plain")!.tools).toBeUndefined();
+  });
+
+  it("loadSkillsFromRoots：多根合并 + origin 标注 + 跨根重名首到先得 + roots 报告", () => {
+    const ws = makeWorkspace({
+      ".zcode/skills/alpha/SKILL.md": "---\nname: alpha\ndescription: 工作区技能\n---\nA\n",
+    });
+    const external = makeWorkspace({
+      ".zcode/skills/alpha/SKILL.md": "---\nname: alpha\ndescription: 外部同名（弃用）\n---\nA2\n",
+      ".zcode/skills/gamma/SKILL.md": "---\nname: gamma\ndescription: 外部独有\n---\nG\n",
+    });
+    const merged = loadSkillsFromRoots(ws, [external]);
+    expect(merged.roots).toHaveLength(2);
+    const alpha = merged.skills.find((s) => s.name === "alpha")!;
+    expect(alpha.description).toBe("工作区技能");
+    expect(alpha.origin).toBe(path.join(ws, ".zcode", "skills"));
+    expect(merged.skills.find((s) => s.name === "gamma")!.origin).toBe(
+      path.join(external, ".zcode", "skills"),
+    );
+    expect(merged.diagnostics.some((d) => d.code === "duplicate_name")).toBe(true);
+    // disabled 与多根正交（合并后过滤）
+    const off = loadSkillsFromRoots(ws, [external], { disabled: ["gamma"] });
+    expect(off.skills.map((s) => s.name)).toEqual(["alpha"]);
+  });
+
+  it("skill_load 工具透传 roots/disabled（装配消费一致面）", async () => {
+    const ws = makeWorkspace({
+      ".zcode/skills/alpha/SKILL.md": "---\nname: alpha\ndescription: 工作区\n---\nA\n",
+    });
+    const external = makeWorkspace({
+      ".zcode/skills/gamma/SKILL.md": "---\nname: gamma\ndescription: 外部\n---\nG\n",
+    });
+    const registry = new ToolRegistry({
+      descriptionsDir: path.join(path.dirname(new URL(import.meta.url).pathname), "tools", "descriptions"),
+    });
+    registry.registerTool(
+      createSkillLoadTool({
+        pathGuard: PathGuard.forWorkspace(ws),
+        skillsRoot: ws,
+        skillsRoots: [external],
+        skillsDisabled: ["alpha"],
+      }),
+    );
+    const dis = await registry.dispatch({
+      callId: "c1",
+      name: "skill_load",
+      arguments: JSON.stringify({ name: "alpha" }),
+    });
+    expect(dis.isError).toBe(true);
+    expect(dis.error).toMatchObject({ code: "SKILL_NOT_FOUND" });
+    const ext = await registry.dispatch({
+      callId: "c2",
+      name: "skill_load",
+      arguments: JSON.stringify({ name: "gamma" }),
+    });
+    expect(ext.isError).toBeUndefined();
+    expect(ext.content).toContain('<skill name="gamma"');
+    expect(ext.content).toContain("G\n");
   });
 });
 

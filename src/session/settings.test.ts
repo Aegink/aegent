@@ -243,6 +243,24 @@ describe("parseSettingsShape / parseSettingsFile", () => {
     expect(defaultSettings().activeProject).toBeUndefined();
   });
 
+  it("skills 段（U22/T-P3-125）：disabled/roots 往返 + 形状 fail-closed", () => {
+    const s = parseSettingsShape({
+      skills: { disabled: ["beta"], roots: ["D:/skills-extra", "E:/shared-skills"] },
+    });
+    expect(s.skills).toEqual({ disabled: ["beta"], roots: ["D:/skills-extra", "E:/shared-skills"] });
+    // 往返一致
+    expect(parseSettingsShape(JSON.parse(JSON.stringify(s))).skills).toEqual(s.skills);
+    // 空数组归一为缺省（不落空段）
+    expect(parseSettingsShape({ skills: { disabled: [], roots: [] } }).skills).toBeUndefined();
+    // 形状坏 fail-closed：非对象 / 非字符串数组 / 空串成员
+    expect(() => parseSettingsShape({ skills: "x" })).toThrow(/skills 须为对象/);
+    expect(() => parseSettingsShape({ skills: { disabled: [1] } })).toThrow(/skills\.disabled/);
+    expect(() => parseSettingsShape({ skills: { disabled: [""] } })).toThrow(/skills\.disabled/);
+    expect(() => parseSettingsShape({ skills: { roots: ["a", ""] } })).toThrow(/skills\.roots/);
+    // 缺省形状无 skills 段
+    expect(defaultSettings().skills).toBeUndefined();
+  });
+
   it("pricing 段（U12/T-P3-111）：计价条目往返 + 负数/缺字段 fail-closed", () => {
     const s = parseSettingsShape({
       pricing: [

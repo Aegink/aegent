@@ -11,6 +11,12 @@ import {
 } from "../kernel/agent-protocol.js";
 // U9/T-P3-108：search criteria 的 contentLike 上限与 Q2 同源（单一事实源）
 import { MAX_CONTENT_LIKE_CHARS } from "../session/query.js";
+// settings 信封域（U22/T-P3-125 拆分）：形状与校验收拢在 protocol-settings
+// ——本文件的 ClientEnvelope settings 分支引用其类型，分派委托其 parse。
+import {
+  parseSettingsEnvelope,
+  type SettingsCall,
+} from "./protocol-settings.js";
 
 /** 错误消息有界（pi boundedErrorMessage 同款 500 字符截断）。 */
 export function bounded(message: string): string {
@@ -64,37 +70,13 @@ export type ClientEnvelope =
     }
   /**
    * U14/T-P3-103 settings 直答信封（host 面配置——不经 agent、不落流）：
-   * op:"get" 读整份配置；op:"update" 段级补丁（providers/permission/sandbox/
-   * appearance/defaultProvider/defaultModel——提段整体替换，白名单外拒绝）；
-   * op:"credentials-set|delete|list" 凭据管理（U2——key 材料只在 set 载荷，
-   * list/get 只回掩码面）。补丁与凭据操作是 host 配置面写操作，不属于会话
-   * 写命令（不参与 run 租约——host 单实例本机面，记档）。
+   * op 闭集与载荷形状收拢在 protocol-settings.ts（U22/T-P3-125 拆分——
+   * 本文件只留联合分支；parse 委托 parseSettingsEnvelope）。
    */
-  | {
-      type: "settings";
-      requestId: string;
-      op:
-        | "get"
-        | "update"
-        | "credentials-set"
-        | "credentials-delete"
-        | "credentials-list"
-        | "probe"
-        | "session-delete"
-        | "mcp-check"
-        | "import";
-      patch?: Record<string, unknown>;
-      provider?: string;
-      key?: string;
-      /** op=session-delete：目标会话 id（U3 删除入口的 wire 面）。 */
-      sessionId?: string;
-      /** op=mcp-check：连接校验目标（U17——McpServerEntry 形状）。 */
-      name?: string;
-      command?: string;
-      args?: string[];
-    };
+  | ({ type: "settings"; requestId: string } & SettingsCall);
 
-function rejectUnknownKeys(value: Record<string, unknown>, allowed: readonly string[]): string | null {
+/** 未知属性拒绝（严格校验共用半边——settings 域文件引用同一实现）。 */
+export function rejectUnknownKeys(value: Record<string, unknown>, allowed: readonly string[]): string | null {
   for (const key of Object.keys(value)) {
     if (!allowed.includes(key)) return `未知属性 "${key}"`;
   }
@@ -261,103 +243,10 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
     };
   }
   if (type === "settings") {
-    const unknownKey = rejectUnknownKeys(record, [
-      "type",
-      "requestId",
-      "op",
-      "patch",
-      "provider",
-      "key",
-      "sessionId",
-      "name",
-      "command",
-      "args",
-      "settings",
-    ]);
-    if (unknownKey) throw new Error(`settings 信封${unknownKey}`);
-    if (typeof record["requestId"] !== "string" || record["requestId"] === "") {
-      throw new Error("settings 需要 requestId 非空字符串");
-    }
-    const op = record["op"];
-    if (
-      op !== "get" &&
-      op !== "update" &&
-      op !== "credentials-set" &&
-      op !== "credentials-delete" &&
-      op !== "credentials-list" &&
-      op !== "probe" &&
-      op !== "session-delete" &&
-      op !== "mcp-check" &&
-      op !== "import"
-    ) {
-      throw new Error(
-        `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|mcp-check|import）`,
-      );
-    }
-    if (op === "session-delete") {
-      if (typeof record["sessionId"] !== "string" || record["sessionId"] === "") {
-        throw new Error("settings op=session-delete 需要 sessionId 非空字符串");
-      }
-    }
-    if (op === "update") {
-      if (record["patch"] === null || typeof record["patch"] !== "object" || Array.isArray(record["patch"])) {
-        throw new Error("settings op=update 需要 patch 对象");
-      }
-      // 段白名单在 gateway 层（applySettingsPatch——业务规则回类型化
-      // SETTINGS_PATCH_SECTION_UNKNOWN；parse 层只管信封形状）
-    }
-    if (op === "credentials-set") {
-      if (typeof record["provider"] !== "string" || record["provider"] === "") {
-        throw new Error("settings op=credentials-set 需要 provider 非空字符串");
-      }
-      if (typeof record["key"] !== "string" || record["key"] === "") {
-        throw new Error("settings op=credentials-set 需要 key 非空字符串");
-      }
-    }
-    if (op === "credentials-delete" || op === "probe") {
-      if (typeof record["provider"] !== "string" || record["provider"] === "") {
-        throw new Error(`settings op=${op} 需要 provider 非空字符串`);
-      }
-    }
-    // U17/T-P3-119：mcp-check 的载荷 = name/command/args（McpServerEntry 形状
-    // ——名字规则与 args 类型在 parse 层即校验，连接失败在 gateway 层转回执）
-    if (op === "mcp-check") {
-      if (typeof record["name"] !== "string" || record["name"] === "" || record["name"].includes("__")) {
-        throw new Error("settings op=mcp-check 需要 name（非空且不含 \"__\"）");
-      }
-      if (typeof record["command"] !== "string" || record["command"] === "") {
-        throw new Error("settings op=mcp-check 需要 command 非空字符串");
-      }
-      if (
-        record["args"] !== undefined &&
-        (!Array.isArray(record["args"]) || record["args"].some((a) => typeof a !== "string"))
-      ) {
-        throw new Error("settings op=mcp-check 的 args 须为字符串数组");
-      }
-    }
-    // U20/T-P3-122：import 的载荷 = 配置包内 settings 对象（形状校验在
-    // gateway 落盘前——parse 层只管"必须是对象"）
-    if (op === "import") {
-      const st = record["settings"];
-      if (st === null || typeof st !== "object" || Array.isArray(st)) {
-        throw new Error("settings op=import 需要 settings 对象（配置包内的 settings 段）");
-      }
-    }
-    return {
-      type: "settings",
-      requestId: record["requestId"],
-      op,
-      ...(record["patch"] !== undefined ? { patch: record["patch"] as Record<string, unknown> } : {}),
-      ...(record["settings"] !== undefined && typeof record["settings"] === "object" && !Array.isArray(record["settings"])
-        ? { settings: record["settings"] as Record<string, unknown> }
-        : {}),
-      ...(typeof record["provider"] === "string" ? { provider: record["provider"] } : {}),
-      ...(typeof record["key"] === "string" ? { key: record["key"] } : {}),
-      ...(typeof record["sessionId"] === "string" ? { sessionId: record["sessionId"] } : {}),
-      ...(typeof record["name"] === "string" ? { name: record["name"] } : {}),
-      ...(typeof record["command"] === "string" ? { command: record["command"] } : {}),
-      ...(Array.isArray(record["args"]) ? { args: record["args"] as string[] } : {}),
-    };
+    // U22/T-P3-125 拆分：形状与校验在 protocol-settings.ts（op 闭集扩张
+    // 的集中收拢位）；此处归位信封级字段（type/requestId + call 载荷）。
+    const call = parseSettingsEnvelope(record);
+    return { type: "settings", requestId: record["requestId"] as string, ...call } as ClientEnvelope;
   }
   if (type === "request") {
     const unknownKey = rejectUnknownKeys(record, ["type", "requestId", "sessionId", "call"]);

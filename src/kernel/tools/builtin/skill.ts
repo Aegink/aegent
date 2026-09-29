@@ -14,13 +14,17 @@ import type { ToolDef } from "../registry.js";
 import { toolError } from "./util.js";
 import {
   formatSkillInvocation,
-  loadSkills,
+  loadSkillsFromRoots,
   skillBody,
 } from "../../skills.js";
 
 export function createSkillLoadTool(options: {
   pathGuard: PathGuard;
   skillsRoot: string;
+  /** U22/T-P3-125：附加来源目录（settings skills.roots——多根合并扫描）。 */
+  skillsRoots?: readonly string[];
+  /** U22/T-P3-125：停用名单（settings skills.disabled——可用清单剔除）。 */
+  skillsDisabled?: readonly string[];
 }): ToolDef {
   return {
     name: "skill_load",
@@ -44,7 +48,11 @@ export function createSkillLoadTool(options: {
           "skill_load 需要 name（非空字符串）",
         );
       }
-      const { skills } = loadSkills(options.skillsRoot);
+      const { skills } = loadSkillsFromRoots(
+        options.skillsRoot,
+        options.skillsRoots,
+        options.skillsDisabled !== undefined ? { disabled: options.skillsDisabled } : undefined,
+      );
       const skill = skills.find((s) => s.name === name);
       if (!skill) {
         const available = skills.map((s) => s.name).join(", ");

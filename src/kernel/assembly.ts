@@ -79,7 +79,7 @@ import {
 import { type BudgetConfig, RolloutBudget } from "../context/budget.js";
 import { assembleSystemPrompt } from "../context/system-prompt.js";
 import { renderPersona, resolvePersona } from "../session/persona.js";
-import { loadSkills } from "./skills.js";
+import { loadSkillsFromRoots } from "./skills.js";
 import {
   type ApprovalAnnouncement,
   PendingApprovals,
@@ -279,6 +279,14 @@ export interface ChildAssemblyOptions {
    * = 无持久库的装配无历史查询面（零行为变化）。
    */
   sessionQuery?: import("./tools/builtin/session-query.js").SessionQueryToolDeps;
+  /**
+   * U22/T-P3-125 技能面（settings skills 段装配消费）：disabled = 停用名单
+   * （loadSkills 过滤——系统提示清单/skill_load/ready 补全三处统一收口）；
+   * roots = 附加技能来源目录（loadSkillsFromRoots 多根扫描——workspace 主
+   * 目录恒在）。缺省 undefined = 全启用 + 单根扫描（既有行为零变化）。
+   */
+  skillsDisabled?: readonly string[];
+  skillsRoots?: readonly string[];
   /**
    * C12/C13 编辑前必须先读（T-P1-71）：提供 ReadGateService 时 read 记账、
    * edit/write/apply_patch 校验（未读拒/过期拒）。缺省 undefined = 不启用
@@ -624,8 +632,13 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
     if (!effective.some((ev) => ev.type === "system/message")) {
       // I2 技能清单（T-P1-08）：扫描 .zcode/skills，坏技能诊断落日志不炸；
       // 清单定格在首落时点（改 SKILL.md 对新会话生效；正文经 skill_load
-      // 每次直读、当前会话即时）。
-      const skillLoad = loadSkills(options.workspaceRoot);
+      // 每次直读、当前会话即时）。U22/T-P3-125：disabled 停用过滤 +
+      // roots 多根扫描（settings skills 段装配消费）。
+      const skillLoad = loadSkillsFromRoots(
+        options.workspaceRoot,
+        options.skillsRoots,
+        options.skillsDisabled !== undefined ? { disabled: options.skillsDisabled } : undefined,
+      );
       for (const d of skillLoad.diagnostics) {
         logger?.warn(`skill-lint: [${d.code}] ${d.path} —— ${d.message}`);
       }

@@ -93,6 +93,18 @@ export interface EnhancementModelEntry {
   reasoning?: "minimal" | "low" | "medium" | "high";
 }
 
+/**
+ * 技能管理配置（U22/T-P3-125——I2 技能目录的管理面）：disabled = 停用名单
+ * （装配消费——"启用开关"）；roots = 附加来源目录（多根扫描——RepoManager
+ * 形态的本地化：管理本地目录清单而非 git 仓库，技能市场真实渠道不建）。
+ */
+export interface SkillsConfig {
+  /** 停用技能名集合（loadSkills 的 disabled 过滤——新会话生效）。 */
+  disabled?: string[];
+  /** 附加技能来源目录（绝对路径；workspace 主目录恒在——数组序即扫描序）。 */
+  roots?: string[];
+}
+
 export interface SettingsShape {
   version: 1;
   providers: ProviderEntry[];
@@ -113,6 +125,8 @@ export interface SettingsShape {
   pricing?: PricingEntry[];
   /** 提示词模板库（U16——用户自建/编辑/删除；Composer / 补全调用）。 */
   prompts?: PromptEntry[];
+  /** 技能管理（U22——停用名单 + 附加来源目录；装配消费见 kernel/skills.ts）。 */
+  skills?: SkillsConfig;
   /** MCP server 清单（U17——向导式添加落档；装配期连接注册，单 server 失败不炸启动）。 */
   mcp?: McpServerEntry[];
   /** 辅助任务模型（U18——judge/summarizer 独立配置；缺省回退主模型链）。 */
@@ -380,6 +394,27 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
     throw new SettingsError("onboardingDone 须为布尔值");
   }
   if (rec["onboardingDone"] === true) out.onboardingDone = true;
+  const skills = rec["skills"];
+  if (skills !== undefined) {
+    if (skills === null || typeof skills !== "object" || Array.isArray(skills)) {
+      throw new SettingsError("skills 须为对象");
+    }
+    const s = skills as Record<string, unknown>;
+    const disabled = s["disabled"];
+    if (disabled !== undefined && (!Array.isArray(disabled) || disabled.some((x) => typeof x !== "string" || x === ""))) {
+      throw new SettingsError("skills.disabled 须为非空字符串数组");
+    }
+    const roots = s["roots"];
+    if (roots !== undefined && (!Array.isArray(roots) || roots.some((x) => typeof x !== "string" || x === ""))) {
+      throw new SettingsError("skills.roots 须为非空字符串数组");
+    }
+    // 空段归一（disabled/roots 全空 = 无配置——与缺省形状一致）
+    const nextSkills: SkillsConfig = {
+      ...(Array.isArray(disabled) && disabled.length > 0 ? { disabled: disabled as string[] } : {}),
+      ...(Array.isArray(roots) && roots.length > 0 ? { roots: roots as string[] } : {}),
+    };
+    if (nextSkills.disabled !== undefined || nextSkills.roots !== undefined) out.skills = nextSkills;
+  }
   const mcp = rec["mcp"];
   if (mcp !== undefined) {
     if (!Array.isArray(mcp)) throw new SettingsError("mcp 须为数组");

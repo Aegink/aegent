@@ -1026,6 +1026,96 @@ process.stdin.on("data", (c) => {
     client.close();
   });
 
+  it("settings op=skills-list/skill-save（U22/T-P3-125）：技能管理（写回/清单/停用过滤）", async () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), "aegent-host-skills-"));
+    settingsTmpDirs.push(tmp);
+    const ws = mkdtempSync(path.join(tmpdir(), "aegent-host-skills-ws-"));
+    settingsTmpDirs.push(ws);
+    const { port } = await startServer({
+      agent: fakeAgent(),
+      settingsGateway: new FileSettingsGateway(
+        path.join(tmp, "settings.json"),
+        new PlainFileCredentialStore(path.join(tmp, "credentials.bin")),
+        undefined,
+        undefined,
+        ws, // U22：workspace 根（技能目录扫描/写入面）
+      ),
+    });
+    const client = await wsConnect(port);
+    await client.hello("web-k1");
+    const settingsCall = (call: Record<string, unknown>, requestId: string) => {
+      client.raw({ type: "settings", requestId, ...call });
+      return client.waitFor((e) => e.type === "response" && e.requestId === requestId, `settings(${requestId})`) as Promise<Record<string, unknown>>;
+    };
+
+    // 空清单（roots 报告含 workspace 主技能目录）
+    const empty = await settingsCall({ op: "skills-list" }, "k0");
+    expect(empty.ok).toBe(true);
+    const emptyView = empty.result as { skills: unknown[]; roots: string[]; disabled: string[] };
+    expect(emptyView.skills).toEqual([]);
+    expect(emptyView.roots[0]).toBe(path.join(ws, ".zcode", "skills"));
+
+    // skill-save 写回 → SKILL.md 在位（frontmatter + tools 行 + 正文）
+    const save = await settingsCall(
+      {
+        op: "skill-save",
+        skill: { name: "review-pr", description: "评审 PR", body: "逐文件检查", tools: ["read", "grep"] },
+      },
+      "k1",
+    );
+    expect(save.ok).toBe(true);
+    const savedPath = (save.result as { path: string }).path;
+    expect(savedPath).toBe(path.join(ws, ".zcode", "skills", "review-pr", "SKILL.md"));
+    const written = readFileSync(savedPath, "utf8");
+    expect(written).toContain("name: review-pr");
+    expect(written).toContain("description: 评审 PR");
+    expect(written).toContain("tools: read, grep");
+    expect(written).toContain("逐文件检查");
+
+    // skills-list 再查：技能在清单（origin = 主目录）+ body 回填
+    const listed = await settingsCall({ op: "skills-list" }, "k2");
+    const view = listed.result as {
+      skills: { name: string; description: string; tools?: string[]; origin: string; body: string }[];
+      roots: string[];
+    };
+    expect(view.skills).toHaveLength(1);
+    expect(view.skills[0]).toMatchObject({ name: "review-pr", description: "评审 PR", body: "逐文件检查" });
+    expect(view.skills[0]!.tools).toEqual(["read", "grep"]);
+    expect(view.skills[0]!.origin).toBe(path.join(ws, ".zcode", "skills"));
+
+    // 停用开关（settings skills.disabled patch）→ 清单过滤
+    const disable = await settingsCall({ op: "update", patch: { skills: { disabled: ["review-pr"] } } }, "k3");
+    expect(disable.ok).toBe(true);
+    const off = await settingsCall({ op: "skills-list" }, "k4");
+    expect((off.result as { skills: unknown[]; disabled: string[] }).skills).toEqual([]);
+    expect((off.result as { disabled: string[] }).disabled).toEqual(["review-pr"]);
+
+    // 坏名 fail-closed：slug 外形状 parse 层拒绝——坏信封整拒，回执恒
+    // "(unparsed)" PROTOCOL_MALFORMED（T-P3-108 同款纪律）
+    client.raw({
+      type: "settings",
+      requestId: "k5",
+      op: "skill-save",
+      skill: { name: "../escape", description: "x", body: "y" },
+    });
+    const unparsed1 = await client.waitFor((e) => e.type === "response" && e.requestId === "(unparsed)", "坏名回执1");
+    expect((unparsed1.error as { code: string }).code).toBe("PROTOCOL_MALFORMED");
+    client.raw({
+      type: "settings",
+      requestId: "k6",
+      op: "skill-save",
+      skill: { name: "Bad Name", description: "x", body: "y" },
+    });
+    await client.waitFor((e) => e.type === "response" && e.requestId === "(unparsed)", "坏名回执2");
+    // 坏信封拒后技能面仍可用（k2 的清单已被停用 patch 清空——保存一个好名验证链活）
+    const alive = await settingsCall(
+      { op: "skill-save", skill: { name: "still-alive", description: "坏信封后", body: "ok" } },
+      "k7",
+    );
+    expect(alive.ok).toBe(true);
+    client.close();
+  });
+
   it("settings op=import（U20/T-P3-122）：配置包导入 + 备份滚动 + 坏包拒绝", async () => {
     const tmp = mkdtempSync(path.join(tmpdir(), "aegent-host-import-"));
     settingsTmpDirs.push(tmp);

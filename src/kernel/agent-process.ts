@@ -51,7 +51,7 @@ import { InvalidSessionIdError, isValidSessionId } from "../session/session-id.j
 import { Projector, ProjectError } from "../session/project.js";
 import { findInterruptedTurn, reconcileBootState } from "../session/boot-maintenance.js";
 import { RawChunkLog } from "./raw-chunk-log.js";
-import { loadSkills } from "./skills.js";
+import { loadSkillsFromRoots } from "./skills.js";
 import { createChildAssembly, createTodoUpdateEmitter, type ChildAssembly, type ChildAssemblyOptions } from "./assembly.js";
 import { evaluateToolPolicy } from "../policy/gate.js";
 import { ModelNotRegisteredError } from "./model-switch.js";
@@ -299,6 +299,13 @@ export async function runAgentChildStdio(
           : {}),
         ...(options.spillDir !== undefined ? { spillDir: options.spillDir } : {}),
         approvalTimeoutMs: options.assembly?.approvalTimeoutMs ?? 5_000,
+        // U22/T-P3-125：技能面透传（子代理 skill_load 与父同纪律）
+        ...(options.assembly?.skillsRoots !== undefined
+          ? { skillsRoots: options.assembly.skillsRoots }
+          : {}),
+        ...(options.assembly?.skillsDisabled !== undefined
+          ? { skillsDisabled: options.assembly.skillsDisabled }
+          : {}),
         ...(assembly?.modelForTurn ? { modelForTurn: assembly.modelForTurn } : {}),
       })
     : undefined;
@@ -327,8 +334,15 @@ export async function runAgentChildStdio(
       ...(assembly
         ? {
             pathGuard: assembly.pathGuard,
-            // I2 技能根 = 工作区根（skill_load 的扫描面）
+            // I2 技能根 = 工作区根（skill_load 的扫描面）；U22/T-P3-125：
+            // roots 多根 + disabled 停用（settings skills 段装配消费）
             skillsRoot: options.assembly?.workspaceRoot ?? process.cwd(),
+            ...(options.assembly?.skillsRoots !== undefined
+              ? { skillsRoots: options.assembly.skillsRoots }
+              : {}),
+            ...(options.assembly?.skillsDisabled !== undefined
+              ? { skillsDisabled: options.assembly.skillsDisabled }
+              : {}),
             // G1 plan 模式工具面（planMode 启用时装配提供同一服务实例）
             // + G4 计划落盘出口（planArtifactDir 提供时存在）
             ...(assembly.planMode ? { planMode: assembly.planMode } : {}),
@@ -1016,7 +1030,13 @@ export async function runAgentChildStdio(
     tools: toolRegistry.names(),
     ...(options.assembly
       ? {
-          skills: loadSkills(options.assembly.workspaceRoot ?? process.cwd()).skills.map((s) => ({
+          skills: loadSkillsFromRoots(
+            options.assembly.workspaceRoot ?? process.cwd(),
+            options.assembly.skillsRoots,
+            options.assembly.skillsDisabled !== undefined
+              ? { disabled: options.assembly.skillsDisabled }
+              : undefined,
+          ).skills.map((s) => ({
             name: s.name,
             description: s.description,
           })),

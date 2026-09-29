@@ -327,7 +327,7 @@
 
 **词汇表预判**：16d 全部零事件预判（管理面/配置面——既有词汇在位）。
 
-#### T-P3-125 · U22 · 技能管理（清单/编辑器/来源目录） `[ ]`
+#### T-P3-125 · U22 · 技能管理（清单/编辑器/来源目录） `[x]`
 - **依据需求**：U22（"技能清单页、技能编辑器、来源目录管理；I2 已落——本卡是管理 UI 与编辑器面"）
 - **上游首选参考**：[cc-switch·skills 四件](../oss/cc-switch/src/components/skills)（SkillsPage/SkillCard/RepoManagerPanel/UnifiedSkillsPanel）+ [pi-desktop·SkillEditorSheet/SkillMarketPanel](../oss/pi-desktop/apps/desktop/src/components/settings)（🔴 只学行为）
 - **取什么 / 别抄什么**：取"清单+卡片+开关+编辑器+来源目录管理"形态；技能市场真实渠道不建（目录安装最小化）
@@ -335,6 +335,7 @@
 - **验收**：`npx vitest run src/kernel/skills.test.ts`（扩——disabled 集消费）+ ui 资产断言 + 编辑器往返
 - **依赖**：I2（P1 已落）；T-P3-103（设置页）
 - **风险 / 未知**：技能格式扩展（编辑器写回须保持 I2 目录纪律——坏文件 fail-closed）
+- **完成记录（2026-09-29）**：验收 `npx vitest run src/kernel/skills.test.ts src/session/settings.test.ts src/host/server.test.ts src/diagnostics/tauri-shell.test.ts src/kernel/agent-process.test.ts src/host/protocol.test.ts` → **85 passed**（skills 12〔+4〕+ settings 22〔+1〕+ server 17〔+1 e2e〕+ tauri-shell 9 + agent-process/protocol 回归；tsc 干净、architecture 0 error / 22 warning 基线保持）。落地：①**settings skills 段**（SkillsConfig：`disabled` 停用名单 + `roots` 附加来源目录——空段归一缺省、形状 fail-closed）+ patch 白名单加 skills；②**kernel/skills.ts 扩展**：`loadSkills(root, {disabled})` 停用过滤（清单剔除不产诊断）+ frontmatter `tools:` 行解析（逗号/空白分隔去重——编辑器写回格式，I2 未知 key 忽略纪律向前兼容）+ `loadSkillsFromRoots` 多根合并扫描（跨根同名首到先得落诊断 + origin 来源标注 + roots 报告）；③**装配消费三面统一收口**（settings→agent-child→assembly.options.skillsDisabled/skillsRoots）：系统提示清单（assembly contextLayer）/ skill_load 工具（含子代理 subagent.ts 透传）/ ready 补全面（agent-process）——同一 disabled+roots，"启用开关"真装配生效（新会话生效）；④**wire 面**：settings op 闭集增 `skills-list`（多根扫描+停用过滤+正文回填——清单/编辑器数据面）与 `skill-save`（编辑器写回：frontmatter 组装 + slug 双重校验〔parse 层+gateway 层〕+ 128KB 正文上限〔pi-desktop MAX_SKILL_BYTES 同值〕+ tmp 原子替换）；⑤**行数纪律拆分**：protocol.ts（398 行触顶）settings 信封域拆出 `protocol-settings.ts`（196 行——op 闭集/SettingsCall/parseSettingsEnvelope 集中收拢），protocol-parse 387→275、protocol 398→381，host 域全部回安全区；⑥**ui 第十四分节** data-section="skills"：清单（名称/来源标记〔工作区/外部〕/工具集 chips/停用开关/编辑按钮/诊断行）+ 编辑器（name/desc/body/tools 多选 chips——候选来自 metaCache.tools）+ 来源目录 CRUD（roots 清单/增删——RepoManager 形态本地化）；**16b 遗留补齐**：usage/notify/search 三面板抽屉定位样式（此前文档流块）+ .chip 基础形状。**记档**：①技能删除面不落（U22 原文无"删除技能"要求——停用开关已覆盖"可停"，直接删文件系统目录即可，YAGNI）；②"内置与用户标记"映射为来源标记（我方无内置技能——工作区主目录 vs roots 外部来源）；③"技能市场"真实渠道不落（卡面授权——目录安装最小化）；④编辑器 tools 字段为声明面（提示词标注消费，运行时强制随 H 族扩展）。人工走查列入确认清单。
 
 #### T-P3-126 · U23 · 子智能体管理（内置五预设 + 自定义 + 模型 fallback 链） `[ ]`
 - **依据需求**：U23（"内置预设五例、用户自定义、启用开关、per-subagent 模型与 fallback 链、工具权限 chips"）

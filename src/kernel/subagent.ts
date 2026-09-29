@@ -80,6 +80,10 @@ export interface SubagentRunnerDeps {
   readonly spillDir?: string;
   /** 审批上界透传（Deny broker 不消费——DenyPermissionBroker 不问超时）。 */
   readonly approvalTimeoutMs: number;
+  /** U22/T-P3-125：附加技能来源目录（父装配 skillsRoots 透传——skill_load 面一致）。 */
+  readonly skillsRoots?: readonly string[];
+  /** U22/T-P3-125：停用技能名单（父装配 skillsDisabled 透传——子代理同纪律）。 */
+  readonly skillsDisabled?: readonly string[];
   /**
    * J6/J7 捕获闭包透传（父装配的 modelForTurn）：子 turn 启动时捕获
    * configured 当前值——换模后派发的子代理用新模型（继承父当前选择）。
@@ -165,6 +169,8 @@ export function createSubagentRunner(
     registerBuiltinTools(subRegistry, {
       pathGuard: subAssembly.pathGuard,
       skillsRoot: deps.workspaceRoot,
+      ...(deps.skillsRoots !== undefined ? { skillsRoots: deps.skillsRoots } : {}),
+      ...(deps.skillsDisabled !== undefined ? { skillsDisabled: deps.skillsDisabled } : {}),
       task: {
         runSubagent: createSubagentRunner({
           ...deps,

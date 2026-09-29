@@ -47,6 +47,12 @@ export interface SkillSummary {
   readonly description: string;
   /** SKILL.md 绝对路径（skill_load 的正文读取面）。 */
   readonly filePath: string;
+  /** 技能声明的工作工具集（frontmatter `tools:` 逗号分隔；U22/T-P3-125
+   * 编辑器写回面——缺省 undefined = 不限；消费面为提示词标注，见下）。 */
+  readonly tools?: readonly string[];
+  /** 来源根的技能目录（多根扫描标注——单根 loadSkills 无此字段；U22 清单
+   * 卡片的来源标记面：主目录 = 工作区技能、附加根 = 外部来源技能）。 */
+  readonly origin?: string;
 }
 
 export interface SkillLoadResult {
@@ -107,15 +113,22 @@ function collectSkillFiles(dir: string, depth: number, out: string[]): void {
   }
 }
 
-/**
- * 发现入口：扫描 `<skillsRoot>/.zcode/skills/`，产出清单 + 诊断。
- * 顺序 = 目录扫描序（稳定）；同名冲突后者弃用（先到先得）。
- */
-export function loadSkills(skillsRoot: string): SkillLoadResult {
+/** frontmatter `tools:` 行解析（U22 编辑器写回格式——逗号/空白分隔去空去重）。 */
+function parseSkillTools(raw: string | undefined): string[] | undefined {
+  if (raw === undefined) return undefined;
+  const tools = [...new Set(raw.split(/[,\s]+/).filter((t) => t !== ""))];
+  return tools.length > 0 ? tools : undefined;
+}
+
+/** 单根扫描（loadSkills 的内部分体——多根合并的复用面）。 */
+function loadSkillsFromDir(dir: string): {
+  skills: SkillSummary[];
+  diagnostics: SkillDiagnostic[];
+  root: string;
+} {
   const skills: SkillSummary[] = [];
   const diagnostics: SkillDiagnostic[] = [];
-  const dir = path.join(path.resolve(skillsRoot), SKILLS_DIR);
-  if (!existsSync(dir)) return { skills, diagnostics };
+  if (!existsSync(dir)) return { skills, diagnostics, root: dir };
   const files: string[] = [];
   collectSkillFiles(dir, 0, files);
   for (const filePath of files) {
@@ -157,7 +170,74 @@ export function loadSkills(skillsRoot: string): SkillLoadResult {
       });
       continue;
     }
-    skills.push({ name, description: description.trim(), filePath });
+    const tools = parseSkillTools(parsed.fields.get("tools"));
+    skills.push({
+      name,
+      description: description.trim(),
+      filePath,
+      ...(tools !== undefined ? { tools } : {}),
+    });
   }
-  return { skills, diagnostics };
+  return { skills, diagnostics, root: dir };
+}
+
+/** 加载选项（U22/T-P3-125）：disabled = 停用名单（清单装配消费——可停）。 */
+export interface LoadSkillsOptions {
+  /** 停用技能名集合（匹配 name——停用技能不进清单、不产诊断）。 */
+  disabled?: readonly string[];
+}
+
+/**
+ * 发现入口：扫描 `<skillsRoot>/.zcode/skills/`，产出清单 + 诊断。
+ * 顺序 = 目录扫描序（稳定）；同名冲突后者弃用（先到先得）。
+ * disabled（U22）：停用技能在清单装配前剔除——"启用开关"的装配消费面。
+ */
+export function loadSkills(skillsRoot: string, options?: LoadSkillsOptions): SkillLoadResult {
+  const dir = path.join(path.resolve(skillsRoot), SKILLS_DIR);
+  const result = loadSkillsFromDir(dir);
+  if (options?.disabled === undefined || options.disabled.length === 0) return result;
+  const off = new Set(options.disabled);
+  return {
+    skills: result.skills.filter((s) => !off.has(s.name)),
+    diagnostics: result.diagnostics,
+  };
+}
+
+/**
+ * 多根合并扫描（U22/T-P3-125 来源目录管理——workspace 主目录 + settings
+ * skills.roots 附加目录）：逐根扫描后拼接，跨根同名首到先得（后者弃用并落
+ * 诊断——单根先到先得语义的跨根推广）。roots 顺序 = settings 数组序（用户
+ * 可排序）。每个技能带 origin（来源根的技能目录绝对路径——UI 卡片的来源
+ * 标记面：主目录 = 工作区技能、附加根 = 外部来源技能）。
+ */
+export function loadSkillsFromRoots(
+  skillsRoot: string,
+  extraRoots?: readonly string[],
+  options?: LoadSkillsOptions,
+): SkillLoadResult & { roots: string[] } {
+  const skills: SkillSummary[] = [];
+  const diagnostics: SkillDiagnostic[] = [];
+  const scannedRoots: string[] = [];
+  for (const root of [skillsRoot, ...(extraRoots ?? [])]) {
+    const dir = path.join(path.resolve(root), SKILLS_DIR);
+    scannedRoots.push(dir);
+    const r = loadSkillsFromDir(dir);
+    for (const s of r.skills) {
+      if (skills.some((x) => x.name === s.name)) {
+        diagnostics.push({
+          code: "duplicate_name",
+          message: `技能名跨来源重复：${s.name}（来源 ${s.filePath} 弃用）`,
+          path: s.filePath,
+        });
+        continue;
+      }
+      skills.push({ ...s, origin: dir });
+    }
+    diagnostics.push(...r.diagnostics);
+  }
+  if (options?.disabled === undefined || options.disabled.length === 0) {
+    return { skills, diagnostics, roots: scannedRoots };
+  }
+  const off = new Set(options.disabled);
+  return { skills: skills.filter((s) => !off.has(s.name)), diagnostics, roots: scannedRoots };
 }

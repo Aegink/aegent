@@ -333,6 +333,15 @@ async function main(): Promise<void> {
             ...(cli.network === "allow" || cli.network === "deny"
               ? { networkPolicy: cli.network }
               : {}),
+            // U22/T-P3-125：技能管理装配消费（settings skills 段——disabled
+            // 停用名单 + roots 附加来源目录；缺省 undefined = 全启用单根，
+            // 既有行为零变化）
+            ...(settingsFile.skills?.disabled?.length
+              ? { skillsDisabled: settingsFile.skills.disabled }
+              : {}),
+            ...(settingsFile.skills?.roots?.length
+              ? { skillsRoots: settingsFile.skills.roots }
+              : {}),
             // G1/G7 plan 模式（测试/实测开关：AEGENT_PLAN=1）——G4 计划
             // artifact 父目录 .aegent/sessions（savePlanArtifact 内部按
             // <dir>/<sessionId>/plan.md 落盘；untracked 不入 git stash，

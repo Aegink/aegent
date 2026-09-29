@@ -285,11 +285,18 @@ export async function main(argv: readonly string[]): Promise<void> {
   // U14/T-P3-103：settings 直答网关（生产 = 真文件——UI 改 → 文件变 → 重启
   // 生效）。U3：SQLite 库在位时一并交给网关（会话删除的 target 库）。
   const sqliteStorage = storage instanceof SqliteEventStorage ? storage : undefined;
+  // U22/T-P3-125：workspace 根交给网关（技能管理面的扫描/写入根——与
+  // op:"files" 同源：最终 launchArgs 的 --workspace > 进程 cwd）
+  const workspaceRoot = (() => {
+    const i = launchArgs.indexOf("--workspace");
+    return i >= 0 && i + 1 < launchArgs.length ? launchArgs[i + 1] : process.cwd();
+  })();
   const settingsGateway = new FileSettingsGateway(
     parsed.settingsPath ?? defaultSettingsPath(),
     createCredentialStore(),
     undefined,
     sqliteStorage,
+    workspaceRoot,
   );
   const server = new HostServer({
     sessionId: parsed.sessionId,
@@ -302,10 +309,7 @@ export async function main(argv: readonly string[]): Promise<void> {
     sessionsLibrary: sqliteStorage,
     // U10/T-P3-109：workspace 根与子进程同源——最终 launchArgs 的
     // --workspace（含 settings 档注入）> 进程 cwd（子进程缺省语义同款）。
-    workspaceRoot: (() => {
-      const i = launchArgs.indexOf("--workspace");
-      return i >= 0 && i + 1 < launchArgs.length ? launchArgs[i + 1] : process.cwd();
-    })(),
+    workspaceRoot,
     // U12/T-P3-111：上下文窗口与子进程同源（--context-window > 200_000 缺省）。
     contextWindow: (() => {
       const i = launchArgs.indexOf("--context-window");

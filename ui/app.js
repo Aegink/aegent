@@ -1261,6 +1261,8 @@ async function openSettings() {
   const creds = await sendSettings({ op: "credentials-list" });
   if (creds.ok) renderCredentialList(creds.result.credentials ?? []);
   settingsPanel.hidden = false;
+  renderSkillRoots();
+  void refreshSkillsList(); // U22：技能清单（文件系统面——每次打开刷新）
 }
 
 settingsBtn.addEventListener("click", () => void openSettings());
@@ -1625,6 +1627,209 @@ document.getElementById("project-form").addEventListener("submit", (ev) => {
   document.querySelector('#project-form button[type="submit"]').textContent = "新增";
   renderProjectList();
   markDirty("projects");
+});
+
+// ---------------------------------------------------------------------------
+// U22/T-P3-125 技能管理：清单（多根扫描 + 停用开关）+ 编辑器写回
+// （op:"skill-save"）+ 来源目录 CRUD（settings skills.roots 段）。
+// ---------------------------------------------------------------------------
+
+/** 技能清单缓存（openSettings 时刷新——文件系统面，不与会话期缓存混用）。 */
+let skillsView = null;
+let editingSkillName = null; // 非 null = 编辑器在改既有技能（同名覆盖）
+const skillToolsSelected = new Set();
+
+async function refreshSkillsList() {
+  const envelope = await sendSettings({ op: "skills-list" });
+  const list = document.getElementById("skill-list");
+  list.replaceChildren();
+  if (!envelope.ok) {
+    const li = document.createElement("li");
+    li.className = "hint";
+    li.textContent = `技能清单不可用：${envelope.error?.message ?? ""}`;
+    list.appendChild(li);
+    return;
+  }
+  skillsView = envelope.result;
+  for (const s of skillsView.skills) {
+    const li = document.createElement("li");
+    li.className = "skill-item";
+    const label = document.createElement("span");
+    const isWorkspace = s.origin === skillsView.roots[0];
+    const disabled = skillsView.disabled.includes(s.name);
+    label.textContent = `✨ ${s.name}${isWorkspace ? "" : "（外部来源）"}${disabled ? "（已停用）" : ""}——${s.description}`;
+    // 启用开关（停用名单进 settings.skills.disabled——新会话装配生效）
+    const toggleBtn = document.createElement("button");
+    toggleBtn.type = "button";
+    toggleBtn.textContent = disabled ? "启用" : "停用";
+    toggleBtn.addEventListener("click", () => {
+      const cur = new Set(settingsCache.skills?.disabled ?? []);
+      if (cur.has(s.name)) cur.delete(s.name);
+      else cur.add(s.name);
+      settingsCache.skills = { ...(settingsCache.skills ?? {}), ...(cur.size > 0 ? { disabled: [...cur] } : {}) };
+      dirtySections.add("skills");
+      markDirty("skills");
+      void refreshSkillsList();
+    });
+    // 工具集 chips（技能声明的工具集——清单元数据展示）
+    const toolsRow = document.createElement("span");
+    toolsRow.className = "skill-tools";
+    for (const t of s.tools ?? []) {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.textContent = t;
+      toolsRow.appendChild(chip);
+    }
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.textContent = "编辑";
+    editBtn.addEventListener("click", () => {
+      void openSkillEditor(s);
+    });
+    li.append(label, toolsRow, toggleBtn, editBtn);
+    list.appendChild(li);
+  }
+  if (skillsView.skills.length === 0) {
+    const li = document.createElement("li");
+    li.className = "hint";
+    li.textContent = "（无技能——新建或添加来源目录；workspace/.zcode/skills 下的 SKILL.md 自动发现）";
+    list.appendChild(li);
+  }
+  for (const d of skillsView.diagnostics) {
+    const li = document.createElement("li");
+    li.className = "hint";
+    li.textContent = `诊断 [${d.code}] ${d.path}——${d.message}`;
+    list.appendChild(li);
+  }
+}
+
+function renderSkillRoots() {
+  const list = document.getElementById("skill-roots");
+  list.replaceChildren();
+  const roots = settingsCache?.skills?.roots ?? [];
+  for (const r of roots) {
+    const li = document.createElement("li");
+    li.textContent = r;
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.textContent = "删除";
+    delBtn.className = "danger";
+    delBtn.addEventListener("click", () => {
+      settingsCache.skills = {
+        ...(settingsCache.skills ?? {}),
+        roots: roots.filter((x) => x !== r),
+      };
+      if ((settingsCache.skills.roots ?? []).length === 0) delete settingsCache.skills.roots;
+      dirtySections.add("skills");
+      renderSkillRoots();
+      markDirty("skills");
+      void refreshSkillsList();
+    });
+    li.appendChild(delBtn);
+    list.appendChild(li);
+  }
+  if (roots.length === 0) {
+    const li = document.createElement("li");
+    li.className = "hint";
+    li.textContent = "（无附加来源——workspace 主目录恒在）";
+    list.appendChild(li);
+  }
+}
+
+async function openSkillEditor(skill) {
+  editingSkillName = skill?.name ?? null;
+  skillToolsSelected.clear();
+  // 工具集候选 = ready 协议的注册表工具名（meta 会话期缓存——无会话时为空）
+  const meta = (await ensureMetaCache()) ?? { tools: [], skills: [] };
+  const box = document.getElementById("skill-tools");
+  box.replaceChildren();
+  for (const t of meta.tools) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    const selected = skill?.tools?.includes(t) ?? false;
+    if (selected) skillToolsSelected.add(t);
+    chip.className = selected ? "chip active" : "chip";
+    chip.textContent = t;
+    chip.addEventListener("click", () => {
+      if (skillToolsSelected.has(t)) {
+        skillToolsSelected.delete(t);
+        chip.classList.remove("active");
+      } else {
+        skillToolsSelected.add(t);
+        chip.classList.add("active");
+      }
+    });
+    box.appendChild(chip);
+  }
+  document.getElementById("skill-name").value = skill?.name ?? "";
+  document.getElementById("skill-desc").value = skill?.description ?? "";
+  document.getElementById("skill-body").value = skill?.body ?? "";
+  document.getElementById("skill-editor").hidden = false;
+  document.getElementById("skill-new").hidden = true;
+}
+
+document.getElementById("skill-new").addEventListener("click", () => {
+  void openSkillEditor(null);
+});
+
+document.getElementById("skill-cancel").addEventListener("click", () => {
+  document.getElementById("skill-editor").hidden = true;
+  document.getElementById("skill-new").hidden = false;
+  editingSkillName = null;
+});
+
+document.getElementById("skill-save").addEventListener("click", async () => {
+  const name = document.getElementById("skill-name").value.trim();
+  const description = document.getElementById("skill-desc").value.trim();
+  const body = document.getElementById("skill-body").value;
+  if (name === "" || description === "" || body.trim() === "") {
+    toast("技能名、描述与正文必填", "warn");
+    return;
+  }
+  const envelope = await sendSettings({
+    op: "skill-save",
+    skill: {
+      name,
+      description,
+      body,
+      ...(skillToolsSelected.size > 0 ? { tools: [...skillToolsSelected] } : {}),
+    },
+  });
+  if (!envelope.ok) {
+    appendLine(`技能保存失败：${envelope.error?.code ?? ""} ${envelope.error?.message ?? ""}`, "warn");
+    return;
+  }
+  // 改名保存 = 旧名技能不再被停用名单管着（名单按名匹配——同步清理）
+  if (editingSkillName !== null && editingSkillName !== name) {
+    const cur = (settingsCache.skills?.disabled ?? []).filter((x) => x !== editingSkillName);
+    settingsCache.skills = { ...(settingsCache.skills ?? {}), ...(cur.length > 0 ? { disabled: cur } : {}) };
+    if (cur.length === 0) delete settingsCache.skills.disabled;
+    dirtySections.add("skills");
+    markDirty("skills");
+  }
+  document.getElementById("skill-editor").hidden = true;
+  document.getElementById("skill-new").hidden = false;
+  editingSkillName = null;
+  appendLine(`技能已保存：${name}（新会话装配生效）`, "meta");
+  toast("技能已保存", "info");
+  void refreshSkillsList();
+});
+
+document.getElementById("skill-root-form").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const p = document.getElementById("skill-root-path").value.trim();
+  if (p === "") return;
+  const roots = settingsCache.skills?.roots ?? [];
+  if (roots.includes(p)) {
+    toast("该来源目录已在清单", "warn");
+    return;
+  }
+  settingsCache.skills = { ...(settingsCache.skills ?? {}), roots: [...roots, p] };
+  document.getElementById("skill-root-path").value = "";
+  dirtySections.add("skills");
+  renderSkillRoots();
+  markDirty("skills");
+  void refreshSkillsList();
 });
 
 // ---------------------------------------------------------------------------

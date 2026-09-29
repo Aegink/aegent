@@ -135,6 +135,31 @@
           </form>
           <p class="hint">模板在输入区 / 补全中列出（📝），选中即填入输入框；变量占位符保留手改。系统级人格预设（persona）不在此管理。</p>
         </section>
+        <!-- U22/T-P3-125 技能管理：清单（卡片：名称/描述/来源标记/工具集
+             chips/启用开关）+ 编辑器（写回 workspace 技能目录 SKILL.md）+
+             来源目录管理（RepoManager 形态本地化——附加根清单/增删） -->
+        <section data-section="skills">
+          <h2>技能</h2>
+          <ul id="skill-list"></ul>
+          <div id="skill-editor" hidden>
+            <input id="skill-name" type="text" placeholder="技能名（slug：小写字母数字开头，可含 . - _）" autocomplete="off" />
+            <input id="skill-desc" type="text" placeholder="描述（清单与系统提示显示用）" autocomplete="off" />
+            <div class="hint">工具集（可选——勾选该技能声明的工作工具）</div>
+            <div id="skill-tools"></div>
+            <textarea id="skill-body" rows="6" placeholder="技能正文（写入 SKILL.md 的 frontmatter 之后——给模型看的操作指引）"></textarea>
+            <button id="skill-save" type="button">保存技能</button>
+            <button id="skill-cancel" type="button">取消</button>
+          </div>
+          <button id="skill-new" type="button">新建技能</button>
+          <hr />
+          <h3>来源目录</h3>
+          <ul id="skill-roots"></ul>
+          <form id="skill-root-form">
+            <input id="skill-root-path" type="text" placeholder="附加技能来源目录（绝对路径）" autocomplete="off" />
+            <button type="submit">添加来源</button>
+          </form>
+          <p class="hint">workspace 主目录（.zcode/skills）恒为首个来源；附加目录的技能同样出现在清单。停用 = 从新会话装配剔除（清单/系统提示/skill_load 三面一致）；技能正文上限 128KB。</p>
+        </section>
         <!-- U17/T-P3-119 MCP 管理向导：分步添加（类型→参数→校验→保存）+
              统一面板（清单/启停/编辑/删除）；连接校验走 settings op:mcp-check -->
         <section data-section="mcp">

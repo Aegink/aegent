@@ -36,6 +36,7 @@ import {
   type ClientEnvelope,
   type ProtocolErrorShape,
 } from "./protocol-parse.js";
+import type { SettingsCall } from "./protocol-settings.js";
 
 export const PROTOCOL_VERSION = 1;
 
@@ -120,27 +121,9 @@ export interface HostProtocolServerOptions {
   }) => Promise<unknown>;
   /**
    * settings 信封回调（U14/T-P3-103 host 面配置——bridge 直答，不经 agent、
-   * 不落流；op 闭集 get / update / credentials 系列 / probe / session-delete
-   * / mcp-check〔U17〕/ import〔U20〕——形状校验在 protocol-parse）。
+   * 不落流；op 闭集与载荷形状在 protocol-settings.ts——U22/T-P3-125 拆分）。
    */
-  onSettings?: (call: {
-    op:
-      | "get" | "update" | "credentials-set" | "credentials-delete" | "credentials-list"
-      | "probe" | "session-delete"
-      // U17 mcp-check：连接校验；U20 import：配置包导入
-      | "mcp-check"
-      | "import";
-    patch?: Record<string, unknown>;
-    /** op=import：配置包内的 settings 段（U20——形状校验在 gateway）。 */
-    settings?: Record<string, unknown>;
-    provider?: string;
-    key?: string;
-    sessionId?: string;
-    /** op=mcp-check（U17）：McpServerEntry 形状。 */
-    name?: string;
-    command?: string;
-    args?: string[];
-  }) => Promise<unknown>;
+  onSettings?: (call: SettingsCall) => Promise<unknown>;
 }
 
 export class HostProtocolServer {

@@ -69,6 +69,10 @@ export function registerBuiltinTools(
   options: {
     pathGuard?: PathGuard;
     skillsRoot?: string;
+    /** U22/T-P3-125：附加技能来源目录（settings skills.roots 装配消费）。 */
+    skillsRoots?: readonly string[];
+    /** U22/T-P3-125：停用技能名单（settings skills.disabled 装配消费）。 */
+    skillsDisabled?: readonly string[];
     /** G2 todo 落流出口（装配注入）；缺省不注册 todo_write——没有落流
      * 出口的工具执行会违反不变量 1（状态变更无事件承载）。 */
     todoEmit?: (
@@ -138,10 +142,13 @@ export function registerBuiltinTools(
     createGlobTool(),
     createGrepTool(),
     // I2 技能面：skillsRoot = 工作区根（agent-process 传 assembly 的
-    // workspaceRoot）；缺省进程 cwd（与 pathGuard 缺省同款纪律）
+    // workspaceRoot）；缺省进程 cwd（与 pathGuard 缺省同款纪律）。
+    // U22/T-P3-125：roots 多根 + disabled 停用（settings skills 段装配消费）
     createSkillLoadTool({
       pathGuard: guard,
       skillsRoot: options.skillsRoot ?? process.cwd(),
+      ...(options.skillsRoots !== undefined ? { skillsRoots: options.skillsRoots } : {}),
+      ...(options.skillsDisabled !== undefined ? { skillsDisabled: options.skillsDisabled } : {}),
     }),
     // G2 todo 面：emit 缺省时不注册（不变量 1——无落流出口的清单写入
     // 就是"直接改状态不写事件"）
