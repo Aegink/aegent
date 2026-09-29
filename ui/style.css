@@ -662,8 +662,9 @@ code,
 }
 
 .provider-tile .row-control {
-  gap: 14px; /* 开关与 … 菜单的呼吸间距（用户反馈） */
+  gap: 22px; /* 开关与 … 菜单的呼吸间距（用户反馈二轮加大） */
   margin-left: 8px;
+  padding-right: 4px;
 }
 
 .mono {
@@ -861,6 +862,22 @@ code,
 
 .provider-tile:hover {
   border-color: var(--border-hover);
+}
+
+/* 上移/下移的动态反馈（用户反馈：看不出动了没有）——被移动行高亮闪烁，
+   位置滑动由 providers.js 的 FLIP 过渡承担 */
+.provider-tile.tile-flash {
+  animation: tile-flash 1s ease;
+}
+
+@keyframes tile-flash {
+  0% {
+    background: color-mix(in srgb, var(--brand) 20%, var(--bg-card));
+    border-color: var(--brand);
+  }
+  100% {
+    background: var(--bg-card);
+  }
 }
 
 .provider-tile .row-copy {

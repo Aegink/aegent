@@ -380,6 +380,55 @@
 
 **收官后走查反馈修正（2026-09-30 用户裁决）**：用户走查判定设置页"每个 tab 要单独一个页面，不是全堆一长页"——原批 B 保留批 A 的 19 分节纵向堆叠 + 导航滚动定位形态不符合用户预期。修正：**单分节页面形态**（DOM 19 分节全挂载〔异步清单不重复拉取〕，显示层 `.section-active` 单显；导航点击 = 视图内切换 + `history.replaceState` 同步 `#settings/<section>` 不触发路由重挂载，浏览器前进后退跨分节仍可用；深链缺省首分节 providers）。机验：ui-settings.test 补三断言（section-active/replaceState/css 单显规则）+ diagnostics 48 passed + 全量 1821/7 exit 0（207 文件=基线 206+ui-settings.test）+ 浏览器实走（#settings/mcp 深链直达单分节/导航点击切换 hash 同步/其余分节确认隐藏）+ 产物重打双同步 + 冒烟（HTTP 200 + MainWindowTitle=aegent）。
 
-## 批次提示词（UI 批次 B——T-P3-135 已执行收官；2026-09-30 退役）
+## 批次提示词（UI 批次 C 开工——T-P3-136；2026-09-30 更新）
 
-> 批 B 开工提示词（2026-09-29 版，正文见 git 历史）已完整执行：实施顺序①~⑩全落、验收全项通过（见上方收官报告与卡面完成记录）。**批 C（T-P3-136：主对话流排版 + 会话侧栏分组/未读点 + 首屏空状态 + 轨迹六色扩展）待展卡**——展卡后本段更新为批 C 开工版提示词。
+```
+继续 aegent 的 UI 全面升级，做 T-P3-136（UI 批次 C：主对话流排版 + 会话侧栏
++ 首屏空状态）。先读 docs/plan-p3-progress.md 的「批次提示词」段、卡面
+（docs/plan-p3.md §8 T-P3-136，若实施顺序未展全先补展）与
+docs/20260930_UI页面重构对照清单.md 的"聊天页/会话历史页/侧栏"三行，按其
+指引执行（方案与规格唯一事实源 = docs/20260929_UI全面升级方案.md §2.4）。
+做完收官即停，不要问要不要继续。
+
+0. **已定基线（批 A/B/T-P3-137 已落，不翻案）**：方案 A 零构建链；
+   theme.css token（全站唯一取色处）+ components.css 组件类库（模态四档
+   sm/md/lg/max、自定义下拉 upgradeSelects、…菜单 openMenu、confirmDialog、
+   空态虚线框）+ hash 路由 + 设置页单分节页面模式（.section-active——
+   对话页保持原骨架不动）+ views/*.js 模块化 + views/settings/core.js
+   （markDirty 保存时序/openDialog/openMenu/flushSettings 成功后
+   fireSectionRefresh 列表刷新机制）。**走查纪律**：起走查 host 必须带
+   --settings 临时档（防污染真实配置）；页面异常看 router 的 .render-error
+   可见化 + dist/portable/logs/host.log（壳已落日志）。
+1. **开工三件套**：①读 plan-p3.md §8 T-P3-136 卡面（实施顺序/验收/铁律
+   ——未展全则按方案 §三批 C + §2.4 补展）；②本批无 requirements 域条目
+   （337 外用户裁决增量）——核对对象 = 方案 §2.4 消息流/Composer 规格 +
+   对照清单"聊天页/会话历史页/侧栏"三行；③git status 干净。
+2. **实施顺序（每页一回归，勿跳步）**：
+   ① 消息流排版：气泡密度、代码块标题栏+等宽 CJK 字体栈、表格/引用块、
+     日期分隔、工具调用任务卡片化、**轨迹六色侧条**（--traj-user/assistant/
+     reasoning/tool-call/tool-result/reasoning-alt 六色接小地图——现三色
+     扩六类）；ui-render XSS 十例回归是硬门（render.js 管线零改动只改样式）；
+   ② Composer 重做：rounded-2xl 容器 + brand 焦点环（ChatPromptEditor
+     形态）+ 🎤 入容器 + @//补全面板套新类——发送/Shift+Enter/斜杠命令/
+     附件/审批链零回归（app.js 逻辑不动只改形态）；
+   ③ 首屏空状态：居中欢迎卡 + 能力快捷入口（empty-state 形态扩展）；
+   ④ 会话历史页：views/history.js 重做——分组（今天/昨天/更早）+ 未读点
+     + 时间显示 + 只读查看/删除确认/resume（op:sessions/session-delete
+     原样）；
+   ⑤ 工作台/通知/搜索三页套组件类（tile 行/空态/搜索框——对照清单各页
+     "计划改什么"栏）。
+3. **验收**：对照清单逐页"怎么验收"走查 + ui-render XSS 十例 + 全量
+   npx vitest run 回归全绿 + tsc 干净 + node --check + token 证伪 grep
+   （新改样式段）+ 产物重打双同步（build:single + TAURI_SIGNING_PRIVATE_KEY=
+   F:/aegent/private/tauri-updater.key npx tauri build + portable/dist 同步）
+   + 冒烟（HTTP 200 + MainWindowTitle=aegent）+ 浏览器真实渲染走查。
+   **对照清单不打勾**——全部留给用户逐页验收（用户裁决流程）。
+4. **铁律（同批 A/B）**：id/data-* 钩子保留、协议面（sendRequest/
+   sendSettings/sendQuery）签名不变、数据面逻辑原样、每页一回归；
+   功能覆盖矩阵任何一行失能 = 卡不过。遇到阻塞按 §0.2 偏离记档。
+5. **收尾**：打勾 T-P3-136 + 完成记录 + progress 台账（走查清单更新）+
+   commit（feat(ui): UI 批次 C ...）+ 记忆更新。不要问要不要继续。
+```
+
+> 批 C 完成后：进入"全面逐页重构"阶段——按 `docs/20260930_UI页面重构对照清单.md`
+> 一页一页推进（每页用户验收打勾后才下一页），提示词届时按剩余页面现写。

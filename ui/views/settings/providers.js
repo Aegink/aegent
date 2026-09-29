@@ -88,6 +88,44 @@ function hasSecret(name) {
   return credentials.some((c) => c.name === name);
 }
 
+// —— 上移/下移的动态反馈（FLIP：First-Last-Invert-Play——渲染前后同行
+//    位置差反演成 transform，过渡归零即滑动动画） ——
+function captureTileTops() {
+  const tops = new Map();
+  for (const tile of document.querySelectorAll("#provider-list .provider-tile")) {
+    const name = tile.querySelector(".row-title")?.firstChild?.textContent;
+    if (name !== undefined && name !== null) tops.set(name, tile.getBoundingClientRect().top);
+  }
+  return tops;
+}
+
+function playTileFlip(before, movedName) {
+  for (const tile of document.querySelectorAll("#provider-list .provider-tile")) {
+    const name = tile.querySelector(".row-title")?.firstChild?.textContent;
+    if (name === null || name === undefined || !before.has(name)) continue;
+    const delta = before.get(name) - tile.getBoundingClientRect().top;
+    if (Math.abs(delta) < 2) continue; // 未移动的行不动
+    tile.style.transition = "none";
+    tile.style.transform = `translateY(${delta}px)`;
+    requestAnimationFrame(() => {
+      tile.style.transition = "transform 0.3s ease";
+      tile.style.transform = "";
+    });
+  }
+  // 被移动行高亮闪烁（确定性反馈——动了哪一行一目了然）
+  for (const tile of document.querySelectorAll("#provider-list .provider-tile")) {
+    const name = tile.querySelector(".row-title")?.firstChild?.textContent;
+    if (name === movedName) {
+      tile.classList.remove("tile-flash");
+      void tile.offsetWidth; // 重启动画
+      tile.classList.add("tile-flash");
+      setTimeout(() => tile.classList.remove("tile-flash"), 1100);
+      tile.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      break;
+    }
+  }
+}
+
 function entryModels(entry) {
   return entry.models ?? (entry.model !== undefined ? [{ id: entry.model }] : []);
 }
@@ -260,11 +298,13 @@ function renderProviderList() {
         if (i < 0) return;
         const j = i + delta;
         if (j < 0 || j >= arr.length) return;
+        const before = captureTileTops(); // FLIP 前照（用户反馈：要有动态反馈）
         [arr[i], arr[j]] = [arr[j], arr[i]];
         settingsCache.providers = arr;
         dirtySections.add("providers");
         renderProviderList();
         renderDefaultCard();
+        playTileFlip(before, entry.name); // 位置滑动 + 被移动行高亮
         markDirty("providers");
       };
     // 本会话切换（U5/T-P3-104——model/switch 请求，立即受理新 turn 生效）
