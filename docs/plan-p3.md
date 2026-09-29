@@ -258,7 +258,7 @@
 - **风险 / 未知**：MCP server 真实进程的校验演示（echo 型 mock server——真实生态联调随 U8）
 - **完成记录（2026-09-29）**：验收 `npx vitest run src/mcp/ src/session/settings.test.ts src/kernel/agent-process.test.ts src/host/server.test.ts src/diagnostics/tauri-shell.test.ts` → **127 passed**（11 文件全绿；tsc 干净、architecture 0 error）。落地：①**settings mcp 段**：McpServerEntry（name 唯一 + 不含 `__`〔registry-bridge.validateServerName 同规则〕+ command 必填 + args 字符串数组 + enabled 开关——parse fail-closed）+ patch 白名单加 mcp；②**装配消费（真新装配——mcp 域此前只有库面零生产装配点）**：agent-process 增 `mcpServers` 选项——**ready 前连接注册**（tools 清单一次性报全），单 server 失败 warn 跳过不炸启动（never-fail 装配，与 H2 never-reject 同纪律），收尾 dispose 连接；agent-child 从 settings.mcp 过滤 enabled 条目传入；③**连接校验**：mcp 域增 `probeServer`（launch 一次 initialize+tools/list 后立即关闭——registry-bridge 握手语义复用）+ settings 信封 op:`mcp-check`（parse 层校验 name/command/args 形状 + gateway 层失败转类型化回执不上抛）；④**ui 第十分节** data-section="mcp"：统一面板（清单/启停 toggle/编辑回填/删除 confirm）+ 两步向导（步骤1 类型+参数〔**http 型灰置——mcp 域 stdio-only 的 I3 LIMITATIONS 既有记档，卡面"stdio/http 两型"按域面现实收敛为 stdio，记档**〕→ 步骤2 测连接〔须通过才可保存〕）；⑤架构治理：architecture-policy 增 kernel requires mcp（agent-process 装配消费）与 host requires mcp（mcp-check）——装配中心双向边渐进采用先例（kernel↔mcp 环警告，双域 managed=false 非硬失败）。**测试转义坑记档**：stub MCP server 脚本内嵌模板字符串的 `\n` 双层转义易碎——改用 String.fromCharCode(10) 绕开。真实生态联调随 U8（echo 型 stub 已两路演示：通过/失败）。
 
-#### T-P3-120 · U18 · 辅助模型配置卡（判官/摘要等增强任务分档） `[ ]`
+#### T-P3-120 · U18 · 辅助模型配置卡（判官/摘要等增强任务分档） `[x]`
 - **依据需求**：U18（"判官/摘要/标题等增强任务的模型独立配置（选哪个模型 + reasoning 档位），与主对话模型分离"）
 - **上游首选参考**：[pi-desktop·EnhancementModelCard](../oss/pi-desktop/apps/desktop/src/components/settings)（ADR 0121："Which model rewrites the Composer draft, and with how much reasoning"）
 - **取什么 / 别抄什么**：取"辅助任务模型独立配置 + reasoning 档位 + 缺省回退主模型"三行为；我方增强任务面 = C42 判官（P2 15b）+ F5 摘要（P1 已落 summarizer）
@@ -266,6 +266,7 @@
 - **验收**：`npx vitest run src/session/settings.test.ts`（扩）+ `src/policy/judge.test.ts`（扩——配置读取）+ ui 资产断言
 - **依赖**：P2 15b（C42 判官）；T-P3-101
 - **风险 / 未知**：增强任务清单（判官/摘要两个起步——标题生成无独立面记档）
+- **完成记录（2026-09-29）**：验收 `npx vitest run src/session/settings.test.ts src/policy/judge.test.ts src/diagnostics/tauri-shell.test.ts src/host/server.test.ts` → **58 passed**（settings 19〔含 enhancement 六例〕+ judge 15〔含 U18 身份审计例〕+ tauri-shell 资产 + server 回归；tsc 干净）。落地：①**settings enhancement 段**：EnhancementModelEntry（provider 引用条目名——不裸写 baseUrl，凭据按条目走 credentials 面；model 可选；reasoning 枚举校验 minimal|low|medium|high）+ parse fail-closed + 白名单加 enhancement；②**回退链纯函数** `resolveEnhancementTarget`（session/settings.ts）：任务 model → 被引用条目 model → defaultModel（"缺省回退主模型"卡面语义——条目不存在/无 modelId 可用 = undefined 不虚构）；③**消费端接线**（agent-child）：buildModelsRegistry 增 `resolveTarget`（同 identity 复用注册表实例、否则按条目新建但不进换模注册表——J6 换模面不变）→ enhancement.judge 在位时传 assembly 的 judgeModel 槽（C42 既有——未配 = 无判官零行为变化）；enhancement.summarizer 在位时替换 summarizerModel（未配 = 主模型——F5 既有回退）。**记档**：①显式单模型分支（--provider）不消费 enhancement（零变化）；②reasoning 档位为配置面记录——适配层无 reasoning 请求参数，消费随 J3 扩展；③标题生成无独立任务面（卡面预判兑现）；④agent-child main 无进程内测试注入面——接线由回退链纯函数机验 + tsc + 回归保证（如实记档）；⑤judge.test 的配置读取可见面 = 配置身份进审计 model 字段（audit.model = provider:modelId）。
 
 #### T-P3-121 · U19 · Profiles 配置档与故障转移徽标 `[ ]`
 - **依据需求**：U19（"配置组合档一键切场景；多供应商故障转移优先级徽标"）

@@ -79,6 +79,20 @@ export interface McpServerEntry {
   enabled?: boolean;
 }
 
+/**
+ * 辅助任务模型条目（U18/T-P3-120——判官/摘要等增强任务与主对话模型分离，
+ * pi-desktop·EnhancementModelCard / ADR 0121 行为锚）。provider 引用
+ * providers 条目名（不裸写 baseUrl——凭据按条目名走 credentials 面）。
+ */
+export interface EnhancementModelEntry {
+  /** providers 条目名（该条目的 adapter/baseUrl/凭据构造辅助模型面）。 */
+  provider: string;
+  /** 辅助任务模型 id（缺省回退 = 条目 model → defaultModel——主模型链）。 */
+  model?: string;
+  /** reasoning 档位（配置面记录——适配层 reasoning 请求面扩展后消费，记档）。 */
+  reasoning?: "minimal" | "low" | "medium" | "high";
+}
+
 export interface SettingsShape {
   version: 1;
   providers: ProviderEntry[];
@@ -101,6 +115,11 @@ export interface SettingsShape {
   prompts?: PromptEntry[];
   /** MCP server 清单（U17——向导式添加落档；装配期连接注册，单 server 失败不炸启动）。 */
   mcp?: McpServerEntry[];
+  /** 辅助任务模型（U18——judge/summarizer 独立配置；缺省回退主模型链）。 */
+  enhancement?: {
+    judge?: EnhancementModelEntry;
+    summarizer?: EnhancementModelEntry;
+  };
   /** 首跑引导（U13——引导清单完成标记；缺省 undefined = 未完成）。 */
   onboardingDone?: boolean;
 }
@@ -338,6 +357,47 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
       });
     }
   }
+  const enhancement = rec["enhancement"];
+  if (enhancement !== undefined) {
+    if (enhancement === null || typeof enhancement !== "object" || Array.isArray(enhancement)) {
+      throw new SettingsError("enhancement 须为对象");
+    }
+    const parseTask = (v: unknown, where: string): EnhancementModelEntry | undefined => {
+      if (v === undefined) return undefined;
+      if (v === null || typeof v !== "object" || Array.isArray(v)) {
+        throw new SettingsError(`${where} 须为对象`);
+      }
+      const t = v as Record<string, unknown>;
+      const provider = assertString(t["provider"], `${where}.provider`);
+      if (provider === undefined) throw new SettingsError(`${where}.provider 缺失`);
+      const reasoning = t["reasoning"];
+      if (
+        reasoning !== undefined &&
+        reasoning !== "minimal" &&
+        reasoning !== "low" &&
+        reasoning !== "medium" &&
+        reasoning !== "high"
+      ) {
+        throw new SettingsError(`${where}.reasoning 非法（合法：minimal|low|medium|high）`);
+      }
+      return {
+        provider,
+        ...(assertString(t["model"], `${where}.model`) !== undefined
+          ? { model: t["model"] as string }
+          : {}),
+        ...(reasoning !== undefined ? { reasoning: reasoning as EnhancementModelEntry["reasoning"] } : {}),
+      };
+    };
+    const rec2 = enhancement as Record<string, unknown>;
+    const judge = parseTask(rec2["judge"], "enhancement.judge");
+    const summarizer = parseTask(rec2["summarizer"], "enhancement.summarizer");
+    if (judge !== undefined || summarizer !== undefined) {
+      out.enhancement = {
+        ...(judge !== undefined ? { judge } : {}),
+        ...(summarizer !== undefined ? { summarizer } : {}),
+      };
+    }
+  }
   const pricing = rec["pricing"];
   if (pricing !== undefined) {
     if (!Array.isArray(pricing)) throw new SettingsError("pricing 须为数组");
@@ -523,4 +583,23 @@ export function resolveChildLaunchArgv(
     inject("--approval-timeout", String(settings.permission.approvalTimeoutMs));
   }
   return { args };
+}
+
+/**
+ * 辅助任务模型的回退链解析（U18/T-P3-120 纯函数面——"缺省回退主模型"）：
+ * enhancement.model（任务级显式）→ 被引用条目的 model → defaultModel
+ * （主模型链）。返回被引用条目与最终 modelId；条目不存在 = undefined
+ * （装配面零行为——无辅助模型可建，不虚构）。
+ */
+export function resolveEnhancementTarget(
+  task: EnhancementModelEntry | undefined,
+  providers: readonly ProviderEntry[],
+  defaultModel: string | undefined,
+): { entry: ProviderEntry; modelId: string } | undefined {
+  if (task === undefined) return undefined;
+  const entry = providers.find((p) => p.name === task.provider);
+  if (entry === undefined) return undefined;
+  const modelId = task.model ?? entry.model ?? defaultModel;
+  if (modelId === undefined) return undefined;
+  return { entry, modelId };
 }

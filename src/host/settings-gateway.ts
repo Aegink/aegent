@@ -34,6 +34,7 @@ export const SETTINGS_PATCH_SECTIONS = [
   "pricing",
   "prompts",
   "mcp",
+  "enhancement",
   "onboardingDone",
   "defaultProvider",
   "defaultModel",

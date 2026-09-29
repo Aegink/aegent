@@ -162,6 +162,36 @@
           <button id="mcp-add" type="button">添加 server</button>
           <p class="hint">启停即时落档，新会话生效（子进程装配期连接注册；单 server 失败不影响启动）。</p>
         </section>
+        <!-- U18/T-P3-120 辅助模型配置卡：判官/摘要任务与主对话模型分离
+             （EnhancementModelCard / ADR 0121 行为锚）——缺省回退主模型 -->
+        <section data-section="enhancement">
+          <h2>辅助模型</h2>
+          <p class="hint">判官/摘要等增强任务的模型独立配置（ADR 0121——"哪个模型做辅助工作、带多少推理"）；缺省回退主模型链（任务 model → 条目 model → 默认模型）。</p>
+          <h3>判官（C42 两阶段复核）</h3>
+          <label>供应商条目<input id="enh-judge-provider" type="text" placeholder="（未配置——判官落回人）" autocomplete="off" /></label>
+          <label>模型<input id="enh-judge-model" type="text" placeholder="（回退条目/默认模型）" autocomplete="off" /></label>
+          <label>推理档位
+            <select id="enh-judge-reasoning">
+              <option value="">（未设置）</option>
+              <option value="minimal">minimal</option>
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+            </select>
+          </label>
+          <h3>摘要（F5 上下文压缩摘要）</h3>
+          <label>供应商条目<input id="enh-summarizer-provider" type="text" placeholder="（未配置——用主模型）" autocomplete="off" /></label>
+          <label>模型<input id="enh-summarizer-model" type="text" placeholder="（回退条目/默认模型）" autocomplete="off" /></label>
+          <label>推理档位
+            <select id="enh-summarizer-reasoning">
+              <option value="">（未设置）</option>
+              <option value="minimal">minimal</option>
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+            </select>
+          </label>
+        </section>
         <section data-section="about">
           <h2>关于</h2>
           <p>aegent 0.1.0 —— 本地优先的 agent 工作台（事件即真相；配置即本页）。</p>

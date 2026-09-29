@@ -935,7 +935,47 @@ function fillSettingsForm() {
   renderProjectList();
   renderPromptList();
   renderMcpList();
+  // U18/T-P3-120：辅助模型分节回填（缺省回退主模型链——空输入 = 未配置）
+  const task = (name) => settingsCache?.enhancement?.[name] ?? {};
+  document.getElementById("enh-judge-provider").value = task("judge").provider ?? "";
+  document.getElementById("enh-judge-model").value = task("judge").model ?? "";
+  document.getElementById("enh-judge-reasoning").value = task("judge").reasoning ?? "";
+  document.getElementById("enh-summarizer-provider").value = task("summarizer").provider ?? "";
+  document.getElementById("enh-summarizer-model").value = task("summarizer").model ?? "";
+  document.getElementById("enh-summarizer-reasoning").value = task("summarizer").reasoning ?? "";
 }
+
+// U18：辅助模型三字段即改即存（enhancement 段整段合并——两任务互不覆盖）
+function enhancementInputHandler(prefix, taskName, field) {
+  document.getElementById(`${prefix}-${field}`).addEventListener("change", () => {
+    const cur = settingsCache.enhancement?.[taskName] ?? {};
+    const provider = document.getElementById(`${prefix}-provider`).value.trim();
+    const model = document.getElementById(`${prefix}-model`).value.trim();
+    const reasoning = document.getElementById(`${prefix}-reasoning`).value;
+    const next = {};
+    if (provider !== "") next.provider = provider;
+    if (model !== "") next.model = model;
+    if (reasoning !== "") next.reasoning = reasoning;
+    settingsCache.enhancement = {
+      ...(settingsCache.enhancement ?? {}),
+      ...(Object.keys(next).length > 0 ? { [taskName]: next } : {}),
+    };
+    // 空配置 = 删除该任务条目（回退主模型链）
+    if (Object.keys(next).length === 0) {
+      const rest = { ...(settingsCache.enhancement ?? {}) };
+      delete rest[taskName];
+      settingsCache.enhancement = Object.keys(rest).length > 0 ? rest : undefined;
+    }
+    dirtySections.add("enhancement");
+    markDirty("enhancement");
+  });
+}
+enhancementInputHandler("enh-judge", "judge", "provider");
+enhancementInputHandler("enh-judge", "judge", "model");
+enhancementInputHandler("enh-judge", "judge", "reasoning");
+enhancementInputHandler("enh-summarizer", "summarizer", "provider");
+enhancementInputHandler("enh-summarizer", "summarizer", "model");
+enhancementInputHandler("enh-summarizer", "summarizer", "reasoning");
 
 async function openSettings() {
   const envelope = await sendSettings({ op: "get" });

@@ -68,13 +68,13 @@ function scriptedProvider(responses: string[], usage?: TokenUsage): {
 
 function makeJudge(
   responses: string[],
-  opts?: { signal?: AbortSignal; usage?: TokenUsage },
+  opts?: { signal?: AbortSignal; usage?: TokenUsage; identityModelId?: string },
 ) {
   const scripted = scriptedProvider(responses, opts?.usage);
   const audit: JudgeAuditRecord[] = [];
   const judge = createLlmJudge({
     provider: scripted.provider,
-    identity: modelIdentity("mock", "judge-fast"),
+    identity: modelIdentity("mock", opts?.identityModelId ?? "judge-fast"),
     audit: (r) => audit.push(r),
   });
   const request = {
@@ -297,5 +297,23 @@ describe("C42 · Stage2 reason 消毒（qwen sanitizeClassifierReason 同旨）"
     expect(sanitizeJudgeReason("<<script>script>alert(1)</script>/script>")).toBe(
       "script>alert(1)/script>",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// U18/T-P3-120 辅助模型配置的可见面（enhancement.judge 解析产物的身份可追溯）
+// ---------------------------------------------------------------------------
+
+describe("U18/T-P3-120 · 辅助模型配置的可见面", () => {
+  it("enhancement 配置的独立模型身份进审计（model 字段可追溯——辅助任务用哪个模型一目了然）", async () => {
+    // settings.enhancement.judge 经 agent-child resolveTarget 解析出的
+    // ModelIdentity（provider=openai 条目、modelId=gpt-judge-mini）→ 判官
+    // 构造后写进审计——配置读取的端到端可见面。
+    const { review, audit } = makeJudge(["safe" + String.fromCharCode(10)], {
+      identityModelId: "gpt-judge-mini",
+    });
+    const verdict = await review();
+    expect(verdict).toMatchObject({ outcome: "allow", stage: "fast" });
+    expect(audit[0]).toMatchObject({ model: "mock:gpt-judge-mini" });
   });
 });

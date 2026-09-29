@@ -110,7 +110,7 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     // 八分节（providers/credentials/permission/sandbox/appearance/logging/projects/about——
     // settings.json 各段一一对应；U5 卡在 providers 分节扩展切换与健康徽标；
     // logging 为 T-P3-132 #28 补落；projects 为 U11/T-P3-110 项目档）
-    for (const section of ["providers", "credentials", "permission", "sandbox", "appearance", "logging", "projects", "prompts", "mcp", "about"]) {
+    for (const section of ["providers", "credentials", "permission", "sandbox", "appearance", "logging", "projects", "prompts", "mcp", "enhancement", "about"]) {
       expect(html).toContain(`data-section="${section}"`);
     }
     // 导航入口（状态栏齿轮）与凭据不回显（U2 面注入防呆）
@@ -227,6 +227,11 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(app).toContain('op: "mcp-check"'); // 连接校验数据面
     expect(app).toContain("renderMcpList"); // 统一面板（启停/编辑/删除）
     expect(app).toContain("editingMcpName"); // 编辑回填状态
+    // U18/T-P3-120：辅助模型分节（judge/summarizer 独立配置 + 回退链 hint）
+    expect(html).toContain('id="enh-judge-provider"');
+    expect(html).toContain('id="enh-summarizer-model"');
+    expect(app).toContain('markDirty("enhancement")'); // 即改即存
+    expect(html).toContain("回退主模型链"); // 缺省回退语义提示
     // U12/T-P3-111：用量面板（上下文检查器 + 成本统计页——J21 消费端）
     expect(html).toContain('id="usage-panel"');
     expect(html).toContain('id="ctx-meter-fill"');

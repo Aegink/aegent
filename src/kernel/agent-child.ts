@@ -103,7 +103,11 @@ function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv): ChildCliArg
 async function buildModelsRegistry(
   settings: SettingsShape,
   settingsPath: string | undefined,
-): Promise<{ models: RegisteredModel[]; initial: RegisteredModel } | undefined> {
+): Promise<{
+  models: RegisteredModel[];
+  initial: RegisteredModel;
+  resolveTarget: (entryName: string, modelOverride: string | undefined) => Promise<RegisteredModel | undefined>;
+} | undefined> {
   if (settings.defaultProvider === undefined || settings.providers.length === 0) return undefined;
   const credStore = createCredentialStore();
   const models: RegisteredModel[] = [];
@@ -143,7 +147,45 @@ async function buildModelsRegistry(
   }
   if (models.length === 0 || initial === undefined) return undefined;
   void settingsPath; // --settings 显式路径已在 loadSettings 调用点消费（签名对称保留）
-  return { models, initial };
+  // U18/T-P3-120：辅助任务模型解析（judge/summarizer 独立配置——不进
+  // 会话期换模注册表）。同 identity 复用已实例化 provider；无则按条目
+  // 新建（凭据走 credentials 面同款）但不注册进 models（换模面不变）。
+  const resolveTarget = async (
+    entryName: string,
+    modelOverride: string | undefined,
+  ): Promise<RegisteredModel | undefined> => {
+    const entry = settings.providers.find((p) => p.name === entryName);
+    if (entry === undefined) return undefined;
+    const modelId = modelOverride ?? entry.model ?? settings.defaultModel;
+    if (modelId === undefined) return undefined;
+    const identity = { provider: entry.adapter ?? "openai", modelId };
+    const existing = models.find(
+      (m) => m.identity.provider === identity.provider && m.identity.modelId === identity.modelId,
+    );
+    if (existing !== undefined) return existing;
+    const config = parseProviderConfig({
+      name: `${entry.name}#enhancement`,
+      settingsConfig: JSON.stringify({
+        baseUrl: entry.baseUrl,
+        apiKey: await credStore.getKey(entry.name),
+        model: modelId,
+      }),
+    });
+    const provider =
+      identity.provider === "anthropic"
+        ? createAnthropicMessagesProvider(config)
+        : createOpenAiCompatProvider(config);
+    return {
+      identity,
+      provider: withRetry(provider, {
+        onRetry: (o) => {
+          retryWarnLogger.warn("模型请求重试", { attempt: o.attempt, delayMs: o.delayMs, ...o.error });
+          retryObserver?.(o);
+        },
+      }),
+    };
+  };
+  return { models, initial, resolveTarget };
 }
 
 async function main(): Promise<void> {
@@ -229,6 +271,26 @@ async function main(): Promise<void> {
     identity = registry.initial.identity;
   }
 
+  // U18/T-P3-120：辅助任务模型消费（judge/summarizer 与主对话分离——
+  // 缺省回退主模型：judge 未配 = 无判官零行为变化（C42 既有），summarizer
+  // 未配 = 主模型（F5 既有回退）；仅多注册表装配分支消费——显式单模型
+  // 分支零变化，记档）。回退链（任务 model → 条目 model → defaultModel）
+  // 在 resolveTarget 内实现，与 session/settings.resolveEnhancementTarget 同链。
+  let judgeTarget: RegisteredModel | undefined;
+  let summarizerTarget: RegisteredModel | undefined;
+  if (registry !== undefined && settingsFile.enhancement !== undefined) {
+    judgeTarget =
+      (await registry.resolveTarget(
+        settingsFile.enhancement.judge?.provider ?? "",
+        settingsFile.enhancement.judge?.model,
+      )) ?? undefined;
+    summarizerTarget =
+      (await registry.resolveTarget(
+        settingsFile.enhancement.summarizer?.provider ?? "",
+        settingsFile.enhancement.summarizer?.model,
+      )) ?? undefined;
+  }
+
   // J27/T-P1-61：retrying 事件落流观察者的 late-binding 槽（模块级声明）。
   const options: AgentChildOptions = {
     ...(cli.rawLogDir ? { rawLogDir: cli.rawLogDir } : {}),
@@ -241,11 +303,17 @@ async function main(): Promise<void> {
     ...(storage ? { storage } : {}),
     ...(provider ? { provider, identity } : {}),
     // F5/T-P1-18：真实 provider 时启用真摘要（LLM 生成 + 截断回退）——
-    // echo 模式不给（P0 截断摘要，冷启动路径零变化）
+    // echo 模式不给（P0 截断摘要，冷启动路径零变化）。U18：enhancement
+    // summarizer 条目在位时用辅助模型（否则主模型——既有回退）。
     ...((cli.provider === "openai" || cli.provider === "anthropic" || registry !== undefined) &&
     provider &&
     identity
-      ? { summarizerModel: { provider, identity } }
+      ? {
+          summarizerModel: summarizerTarget ?? {
+            provider: provider!,
+            identity: identity!,
+          },
+        }
       : {}),
     ...(cli.provider === "openai" || cli.db || cli.workspace || cli.contextWindow !== undefined
       ? {
@@ -287,6 +355,11 @@ async function main(): Promise<void> {
             // 切换，新 turn 生效；initialIdentity = defaultProvider 条目）
             ...(registry !== undefined
               ? { models: registry.models, initialIdentity: registry.initial.identity }
+              : {}),
+            // U18/T-P3-120：判官独立模型（C42 judgeModel 槽——enhancement
+            // judge 条目在位时构造；未配 = 无判官，ask 全部落人零行为变化）
+            ...(judgeTarget !== undefined
+              ? { judgeModel: { provider: judgeTarget.provider, identity: judgeTarget.identity } }
               : {}),
           },
         }

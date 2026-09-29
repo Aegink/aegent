@@ -19,6 +19,7 @@ import {
   parseSettingsFile,
   parseSettingsShape,
   resolveChildLaunchArgv,
+  resolveEnhancementTarget,
   saveSettings,
 } from "./settings.js";
 
@@ -80,6 +81,51 @@ describe("parseSettingsShape / parseSettingsFile", () => {
     expect(() =>
       parseSettingsShape({ mcp: [{ name: "a", command: "node", enabled: "yes" }] }),
     ).toThrow(/enabled 须为布尔值/);
+  });
+
+  it("enhancement 段解析（U18/T-P3-120）：任务条目校验 fail-closed", () => {
+    const s = parseSettingsShape({
+      enhancement: {
+        judge: { provider: "main", model: "gpt-mini", reasoning: "low" },
+        summarizer: { provider: "main" },
+      },
+    });
+    expect(s.enhancement?.judge).toEqual({ provider: "main", model: "gpt-mini", reasoning: "low" });
+    expect(s.enhancement?.summarizer).toEqual({ provider: "main" });
+    expect(() => parseSettingsShape({ enhancement: { judge: { model: "x" } } })).toThrow(
+      /enhancement.judge.provider 缺失/,
+    );
+    expect(() =>
+      parseSettingsShape({ enhancement: { judge: { provider: "main", reasoning: "max" } } }),
+    ).toThrow(/reasoning 非法/);
+    // 未提供任务 = 段缺省（不虚构空对象）
+    expect(parseSettingsShape({}).enhancement).toBeUndefined();
+  });
+
+  it("resolveEnhancementTarget 回退链（U18）：任务 model → 条目 model → defaultModel", () => {
+    const providers = [
+      { name: "main", adapter: "openai" as const, baseUrl: "https://x", model: "gpt-main" },
+      { name: "mini", adapter: "openai" as const, baseUrl: "https://y", model: "gpt-mini" },
+    ];
+    // 任务级 model 显式 → 覆盖条目 model
+    expect(
+      resolveEnhancementTarget({ provider: "main", model: "gpt-judge" }, providers, "gpt-d"),
+    ).toEqual({ entry: providers[0], modelId: "gpt-judge" });
+    // 任务未配 model → 回退条目 model
+    expect(resolveEnhancementTarget({ provider: "mini" }, providers, "gpt-d")).toEqual({
+      entry: providers[1],
+      modelId: "gpt-mini",
+    });
+    // 条目也无 model → 回退 defaultModel（主模型链）
+    const bare = [{ name: "main", adapter: "openai" as const, baseUrl: "https://x" }];
+    expect(resolveEnhancementTarget({ provider: "main" }, bare, "gpt-d")).toEqual({
+      entry: bare[0],
+      modelId: "gpt-d",
+    });
+    // 条目不存在 = undefined（不虚构辅助模型面）
+    expect(resolveEnhancementTarget({ provider: "ghost" }, providers, "gpt-d")).toBeUndefined();
+    // 任务未配置 = undefined（零行为）
+    expect(resolveEnhancementTarget(undefined, providers, "gpt-d")).toBeUndefined();
   });
 
   it("JSON 语法错 → SettingsError 带 1-based 行列号与修复指引", () => {
