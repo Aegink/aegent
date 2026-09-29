@@ -107,9 +107,10 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
   it("U14/T-P3-103 · 设置中心资产：分节齐全 + 主题变量在位 + 导航入口（分节与 settings 模块一一对应）", () => {
     const uiDir = path.resolve(import.meta.dirname, "..", "..", "ui");
     const html = readFileSync(path.join(uiDir, "index.html"), "utf8");
-    // 十八分节（……about——settings.json 各段与文件位一一对应；末段
-    // speech 为 U26/T-P3-129 语音【实验性】STT 配置）
-    for (const section of ["providers", "credentials", "permission", "sandbox", "appearance", "logging", "projects", "prompts", "skills", "subagents", "instructions", "shortcuts", "mcp", "enhancement", "profiles", "transfer", "speech", "about"]) {
+    // 十九分节（……speech、plugins、about——settings.json 各段与文件位
+    // 一一对应；speech 为 U26/T-P3-129 语音【实验性】；plugins 为 T-P3-133
+    // 插件管理——I4/I5/I9 管理面延伸）
+    for (const section of ["providers", "credentials", "permission", "sandbox", "appearance", "logging", "projects", "prompts", "skills", "subagents", "instructions", "shortcuts", "mcp", "enhancement", "profiles", "transfer", "speech", "plugins", "about"]) {
       expect(html).toContain(`data-section="${section}"`);
     }
     // 导航入口（状态栏齿轮）与凭据不回显（U2 面注入防呆）
@@ -271,6 +272,13 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(app).toContain("MediaRecorder"); // 浏览器录音 API
     expect(app).toContain("NotAllowedError"); // 权限拒绝降级
     expect(app).toContain('markDirty("stt")'); // STT 配置即改即存
+    // T-P3-133：插件管理（清单/安装表单/启停删除——I4/I5/I9 管理面延伸）
+    expect(html).toContain('id="plugin-list"');
+    expect(html).toContain('id="plugin-transport"');
+    expect(html).toContain('id="plugin-add"');
+    expect(app).toContain('op: "plugins-list"'); // 清单数据面
+    expect(app).toContain("refreshPluginsList"); // 清单刷新
+    expect(app).toContain('markDirty("plugins")'); // 启停/安装即改即存
     // U18/T-P3-120：辅助模型分节（judge/summarizer 独立配置 + 回退链 hint）
     expect(html).toContain('id="enh-judge-provider"');
     expect(html).toContain('id="enh-summarizer-model"');

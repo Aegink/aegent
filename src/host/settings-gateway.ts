@@ -30,6 +30,7 @@ import {
   type InstructionTarget,
 } from "./instructions-gateway.js";
 import { runSttTranscribe } from "./speech-gateway.js";
+import { listPlugins } from "./plugins-gateway.js";
 import { listSkills, saveSkill } from "./skills-gateway.js";
 import {
   applyImportedSettings,
@@ -64,6 +65,7 @@ export const SETTINGS_PATCH_SECTIONS = [
   "subagents",
   "shortcuts",
   "stt",
+  "plugins",
 ] as const;
 
 /** U17/T-P3-119 连接校验回执（向导"测连接"——launch 一次握手+列工具后关闭）。 */
@@ -167,6 +169,11 @@ export interface SettingsGateway {
    * 配置读 settings.stt、key 按 "stt" 键名走 credentials——零明文）。
    */
   sttTranscribe(payload: { base64: string; mediaType: string }): Promise<{ text: string; model: string }>;
+  /**
+   * T-P3-133：插件装载清单（settings.plugins → 逐条安装期校验诊断——
+   * inprocess 只读 plugin.json 零代码执行；ws 校验 URL 形状）。
+   */
+  pluginsList(): Promise<ReturnType<typeof listPlugins>>;
 }
 
 /** 生产缺省探测依赖（真网络——tests 注入 fake）。 */
@@ -335,5 +342,9 @@ export class FileSettingsGateway implements SettingsGateway {
     mediaType: string;
   }): Promise<{ text: string; model: string }> {
     return runSttTranscribe(await this.get(), this.credentials, payload, this.sttFetch);
+  }
+
+  async pluginsList(): Promise<ReturnType<typeof listPlugins>> {
+    return listPlugins(await this.get());
   }
 }

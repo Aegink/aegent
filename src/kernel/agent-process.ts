@@ -62,6 +62,7 @@ import { ToolRegistry } from "./tools/registry.js";
 import { DEFAULT_SPILL_DIR } from "./tools/truncate.js";
 import { sweepSessionSpill } from "./tools/spill-gc.js";
 import { connectAndRegister } from "../mcp/registry-bridge.js";
+import { loadConfiguredPlugins } from "./plugin-loader.js";
 
 // ---------------------------------------------------------------------------
 // echo provider（P0 子进程内置：回声最后一条 user 消息；协议与进程全真）
@@ -95,6 +96,12 @@ export interface AgentChildOptions {
    * 同轨）；单 server 失败 warn 跳过不炸启动。缺省无 = 零 MCP 面（行为不变）。
    */
   mcpServers?: import("../session/settings.js").McpServerEntry[];
+  /**
+   * T-P3-133：插件装载清单（settings plugins 段 enabled 条目——agent-child
+   * 传入）。装配期装载（inprocess import / ws 连接），工具以
+   * `<插件名>__<工具名>` 命名空间进注册表；单插件失败 never-fail 跳过。
+   */
+  plugins?: import("../session/settings.js").PluginEntry[];
   /**
    * U23/T-P3-126：子代理预设配置（settings subagents 段——用户覆盖与
    * 自定义清单；内置五预设由 resolveSubagent 常量兜底）+ 独立模型解析
@@ -394,6 +401,13 @@ export async function runAgentChildStdio(
       console.error(`[mcp] server "${cfg.name}" 连接失败（跳过）:`, e instanceof Error ? e.message : e);
     }
   }
+  // T-P3-133：插件装载（I4/I5 的生产装配点——settings plugins 段 enabled
+  // 条目）。工具以 `<插件名>__<工具名>` 命名空间进注册表（工具清单在 ready
+  // 一次性报全）；单插件失败 never-fail 跳过（mcpServers 同款）；收尾
+  // dispose 挂 finish（连接/句柄随进程退出显式收束）。
+  const pluginDispose = await loadConfiguredPlugins(toolRegistry, options.plugins, {
+    ...(options.logger ? { logger: options.logger } : {}),
+  });
   const decideTurnBase: AgentLoopDeps["decideTurn"] = (record) =>
     record.toolCalls.length > 0 ? { action: "continue" } : { action: "end" };
   const loopDeps: AgentLoopDeps = {
@@ -523,6 +537,7 @@ export async function runAgentChildStdio(
           // 收尾关连接不炸退出面
         }
       }
+      await pluginDispose.disposeAll(); // T-P3-133：插件句柄收束
       await sweepSessionSpill(options.spillDir ?? DEFAULT_SPILL_DIR, sessionId);
     } finally {
       exit(0);

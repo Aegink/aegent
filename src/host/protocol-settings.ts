@@ -33,7 +33,9 @@ export type SettingsOp =
   /** U24/T-P3-127：指令文件写回（target 白名单三位）。 */
   | "instruction-save"
   /** U26/T-P3-129：语音转写代理（UI 录音上送——P4 消费端）。 */
-  | "stt-transcribe";
+  | "stt-transcribe"
+  /** T-P3-133：插件装载清单（安装期校验诊断——管理页数据面）。 */
+  | "plugins-list";
 
 /** 技能编辑器写回载荷（op=skill-save；frontmatter + 正文的一次性形状）。 */
 export interface SkillSavePayload {
@@ -116,10 +118,11 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     op !== "subagents-list" &&
     op !== "instructions-list" &&
     op !== "instruction-save" &&
-    op !== "stt-transcribe"
+    op !== "stt-transcribe" &&
+    op !== "plugins-list"
   ) {
     throw new Error(
-      `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|mcp-check|import|skills-list|skill-save|subagents-list|instructions-list|instruction-save|stt-transcribe）`,
+      `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|mcp-check|import|skills-list|skill-save|subagents-list|instructions-list|instruction-save|stt-transcribe|plugins-list）`,
     );
   }
   if (op === "update") {

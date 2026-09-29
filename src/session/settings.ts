@@ -50,6 +50,28 @@ export interface ProjectEntry {
   instructions?: string;
 }
 
+/**
+ * 插件装载条目（T-P3-133——pi-desktop InstalledPluginsPanel 行为锚的
+ * 配置面投影）：transport 二选一——inprocess（子进程内 import 入口模块，
+ * manifest 走 I9 安装期校验）或 ws（进程外插件 URL，I4 trust 恒 untrusted）。
+ * 启停语义：停用条目保留在清单（enabledHandles——开关是开回的路径）。
+ */
+export interface PluginEntry {
+  /** 插件名（清单内唯一；inprocess 须与 plugin.json 的 name 一致）。 */
+  name: string;
+  /** 传输面（缺省 inprocess——I5 SDK 直载；ws = I4 进程外隔离）。 */
+  transport?: "inprocess" | "ws";
+  /** 装载源：inprocess = 插件目录绝对路径（含 plugin.json）；ws = ws:// URL。 */
+  source: string;
+  /**
+   * ws 插件工具登记开关（onToolRegistration 的装配消费——"不受信来源默认
+   * deny，显式例外是策略面"；缺省 false = 工具不登记仅连接）。
+   */
+  allowTools?: boolean;
+  /** 启停开关（缺省 true；停用保留清单）。 */
+  enabled?: boolean;
+}
+
 /** 价格表条目（U12/T-P3-111——obs/cost.ts ModelPricing 的配置面形状；表驱动计价无内置价格）。 */
 export interface PricingEntry {
   provider: string;
@@ -132,6 +154,12 @@ export interface SettingsShape {
   subagents?: SubagentDefinition[];
   /** 快捷键覆盖（U25——action → 组合键规范串；部分覆盖语义，解析面见 ui/keymap.js）。 */
   shortcuts?: Record<string, string>;
+  /**
+   * 插件管理（T-P3-133——I4/I5/I9 的管理面延伸）：装载清单 + 启停。
+   * inprocess 条目 = 插件目录（plugin.json 清单 + index.js 入口）；
+   * ws 条目 = 进程外插件 URL（I4——trust 恒 untrusted）。
+   */
+  plugins?: PluginEntry[];
   /**
    * 语音转文字（U26/T-P3-129 实验性——OpenAI 协议端点复用，P4 消费端）。
    * key 零明文：凭据在 credentials 库以 provider 名 "stt" 录入（U2 面复用）。
@@ -501,6 +529,46 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
       if (typeof combo === "string" && combo.trim() !== "") outShortcuts[action] = combo;
     }
     if (Object.keys(outShortcuts).length > 0) out.shortcuts = outShortcuts;
+  }
+  const plugins = rec["plugins"];
+  if (plugins !== undefined) {
+    if (!Array.isArray(plugins)) throw new SettingsError("plugins 须为数组");
+    const seen = new Set<string>();
+    for (const entry of plugins) {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+        throw new SettingsError("plugins 条目必须是对象");
+      }
+      const e = entry as Record<string, unknown>;
+      const name = assertString(e["name"], "plugins[].name");
+      if (name === undefined) throw new SettingsError("plugins[].name 缺失");
+      // 命名空间分隔符规则（工具登记名 `<插件名>__<工具名>`——与 MCP
+      // server 名同规则：名字本身不含分隔符，防歧义）
+      if (name.includes("__")) throw new SettingsError(`plugins[].name 含命名空间分隔符 "__"：${name}`);
+      if (seen.has(name)) throw new SettingsError(`plugins 插件名重复：${name}`);
+      seen.add(name);
+      const source = assertString(e["source"], "plugins[].source");
+      if (source === undefined) throw new SettingsError("plugins[].source 缺失（目录路径或 ws URL）");
+      const transport = e["transport"];
+      if (transport !== undefined && transport !== "inprocess" && transport !== "ws") {
+        throw new SettingsError(`plugins[].transport 非法：${String(transport)}（合法：inprocess|ws）`);
+      }
+      if (e["allowTools"] !== undefined && typeof e["allowTools"] !== "boolean") {
+        throw new SettingsError("plugins[].allowTools 须为布尔值");
+      }
+      if (e["enabled"] !== undefined && typeof e["enabled"] !== "boolean") {
+        throw new SettingsError("plugins[].enabled 须为布尔值");
+      }
+      out.plugins = [
+        ...(out.plugins ?? []),
+        {
+          name,
+          ...(transport !== undefined ? { transport } : {}),
+          source,
+          ...(e["allowTools"] === true ? { allowTools: true } : {}),
+          ...(e["enabled"] === false ? { enabled: false } : {}),
+        },
+      ];
+    }
   }
   const stt = rec["stt"];
   if (stt !== undefined) {

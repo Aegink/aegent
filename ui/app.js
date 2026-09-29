@@ -1281,6 +1281,7 @@ async function openSettings() {
   renderSkillRoots();
   void refreshSkillsList(); // U22：技能清单（文件系统面——每次打开刷新）
   void refreshSubagentsList(); // U23：子代理清单（内置+自定义——每次打开刷新）
+  void refreshPluginsList(); // T-P3-133：插件清单（安装期校验诊断——每次打开刷新）
   void openInstructionsOnce(); // U24：指令中心（打开时拉一次，保存后局部刷新）
 }
 
@@ -2328,6 +2329,118 @@ micBtn.addEventListener("click", () => {
   } else {
     void startRecording();
   }
+});
+
+// —— T-P3-133 插件管理：清单（安装期校验诊断 + 启停/删除）+ 安装表单
+// （inprocess 目录 / ws URL——settings plugins 段，新会话装载生效）
+
+async function refreshPluginsList() {
+  const envelope = await sendSettings({ op: "plugins-list" });
+  const list = document.getElementById("plugin-list");
+  list.replaceChildren();
+  if (!envelope.ok) {
+    const li = document.createElement("li");
+    li.className = "hint";
+    li.textContent = `插件清单不可用：${envelope.error?.message ?? ""}`;
+    list.appendChild(li);
+    return;
+  }
+  const plugins = envelope.result;
+  for (const p of plugins) {
+    const li = document.createElement("li");
+    li.className = "skill-item";
+    const label = document.createElement("span");
+    const trustTag = p.manifest ? `［trust: ${p.manifest.trust}］` : "";
+    label.textContent = `🔌 ${p.name}（${p.transport === "ws" ? "进程外 ws" : "进程内"}）${trustTag}${p.enabled ? "" : "（已停用）"} → ${p.source}`;
+    li.appendChild(label);
+    if (p.error) {
+      const err = document.createElement("span");
+      err.className = "hint";
+      err.textContent = `⚠ ${p.error}`;
+      li.appendChild(err);
+    } else if (p.manifest) {
+      const caps = document.createElement("span");
+      caps.className = "skill-tools";
+      for (const c of p.manifest.capabilities ?? []) {
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        chip.textContent = c;
+        caps.appendChild(chip);
+      }
+      li.appendChild(caps);
+    }
+    const toggleBtn = document.createElement("button");
+    toggleBtn.type = "button";
+    toggleBtn.textContent = p.enabled ? "停用" : "启用";
+    toggleBtn.addEventListener("click", () => {
+      // 停用写 enabled:false、启用删键回缺省（mcp 启停同模式）
+      const defs = (settingsCache.plugins ?? []).map((d) => {
+        if (d.name !== p.name) return d;
+        if (d.enabled === false) {
+          const { enabled: _omit, ...rest } = d;
+          return rest;
+        }
+        return { ...d, enabled: false };
+      });
+      settingsCache.plugins = defs;
+      dirtySections.add("plugins");
+      markDirty("plugins");
+      void refreshPluginsList();
+    });
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.textContent = "删除";
+    delBtn.className = "danger";
+    delBtn.addEventListener("click", () => {
+      if (!window.confirm(`从装载清单移除插件「${p.name}」？（不删除插件目录文件）`)) return;
+      settingsCache.plugins = (settingsCache.plugins ?? []).filter((d) => d.name !== p.name);
+      dirtySections.add("plugins");
+      markDirty("plugins");
+      void refreshPluginsList();
+    });
+    li.append(toggleBtn, delBtn);
+    list.appendChild(li);
+  }
+  if (plugins.length === 0) {
+    const li = document.createElement("li");
+    li.className = "hint";
+    li.textContent = "（未安装插件——填表单安装：进程内目录或进程外 ws URL）";
+    list.appendChild(li);
+  }
+}
+
+document.getElementById("plugin-add").addEventListener("click", async () => {
+  const name = document.getElementById("plugin-name").value.trim();
+  const source = document.getElementById("plugin-source").value.trim();
+  const transport = document.getElementById("plugin-transport").value;
+  const allowTools = document.getElementById("plugin-allowtools").checked;
+  if (name === "" || source === "" || name.includes("__")) {
+    toast("插件名（不含 __）与装载源必填", "warn");
+    return;
+  }
+  // 安装先校验（I9 安装期全量——plugins-list 拉取后核对重名与形状）
+  const preview = await sendSettings({ op: "plugins-list" });
+  const existing = (settingsCache.plugins ?? []).find((d) => d.name === name);
+  if (existing !== undefined && existing.enabled !== false) {
+    toast(`插件名已存在：${name}`, "warn");
+    return;
+  }
+  // 先落档（settings patch）——装载期再校验（never-fail），诊断随清单可见
+  const defs = (settingsCache.plugins ?? []).filter((d) => d.name !== name);
+  defs.push({
+    name,
+    source,
+    ...(transport !== "inprocess" ? { transport } : {}),
+    ...(allowTools ? { allowTools: true } : {}),
+  });
+  settingsCache.plugins = defs;
+  document.getElementById("plugin-name").value = "";
+  document.getElementById("plugin-source").value = "";
+  dirtySections.add("plugins");
+  markDirty("plugins");
+  toast(`插件已加入装载清单：${name}（新会话生效）`, "info");
+  void refreshPluginsList();
+  void preview;
 });
 
 // ---------------------------------------------------------------------------

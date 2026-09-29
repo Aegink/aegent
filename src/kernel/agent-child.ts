@@ -274,8 +274,7 @@ async function main(): Promise<void> {
     identity = registry.initial.identity;
   }
 
-  // U18/T-P3-120：辅助模型消费（缺省回退主模型；回退链同 resolveEnhancementTarget）。
-  let judgeTarget: RegisteredModel | undefined;
+  let judgeTarget: RegisteredModel | undefined; // U18：辅助模型（缺省回退主模型链）
   let summarizerTarget: RegisteredModel | undefined;
   if (registry !== undefined && settingsFile.enhancement !== undefined) {
     judgeTarget =
@@ -284,31 +283,30 @@ async function main(): Promise<void> {
         settingsFile.enhancement.judge?.model,
       )) ?? undefined;
     summarizerTarget =
-      (await registry.resolveTarget(
-        settingsFile.enhancement.summarizer?.provider ?? "",
-        settingsFile.enhancement.summarizer?.model,
-      )) ?? undefined;
+      (await registry.resolveTarget(settingsFile.enhancement.summarizer?.provider ?? "", settingsFile.enhancement.summarizer?.model)) ?? undefined;
   }
 
   // U23+U24：子代理装配 / 用户规则 / 全局指令（拆分在 agent-child-config.ts）。
   const subagentsOptions = registry ? await resolveSubagentAssembly(settingsFile, registry.resolveTarget) : undefined;
   const userRules = loadUserRuleSources();
   const globalAgentsPath = globalAgentsFile();
-
   // J27/T-P1-61：retrying 事件落流观察者的 late-binding 槽（模块级声明）。
   const options: AgentChildOptions = {
     ...(cli.rawLogDir ? { rawLogDir: cli.rawLogDir } : {}),
     sessionId,
-    // U17/T-P3-119：settings mcp 段 enabled 条目 → ready 前连接注册（never-fail）
+    // U17：mcp enabled 条目 → ready 前连接注册（never-fail 装配）
     ...(settingsFile.mcp?.some((s) => s.enabled !== false)
       ? { mcpServers: settingsFile.mcp.filter((s) => s.enabled !== false) }
+      : {}),
+    // T-P3-133：插件装载（settings plugins 段 → 装配消费）
+    ...(settingsFile.plugins?.some((p) => p.enabled !== false)
+      ? { plugins: settingsFile.plugins.filter((p) => p.enabled !== false) }
       : {}),
     // U23/T-P3-126：预设清单 + 独立模型解析闭包（runner 内按次解析）
     ...(subagentsOptions ? { subagents: subagentsOptions } : {}),
     ...(storage ? { storage } : {}),
     ...(provider ? { provider, identity } : {}),
-    // F5/T-P1-18：真摘要（LLM 生成 + 截断回退）——echo 模式不给。U18：
-    // enhancement summarizer 在位时用辅助模型（否则主模型——既有回退）。
+    // F5：真摘要（echo 不给）；U18：enhancement summarizer 在位时用辅助模型。
     ...((cli.provider === "openai" || cli.provider === "anthropic" || registry !== undefined) &&
     provider &&
     identity
@@ -337,7 +335,7 @@ async function main(): Promise<void> {
             ...(cli.network === "allow" || cli.network === "deny"
               ? { networkPolicy: cli.network }
               : {}),
-            // U22/T-P3-125：技能管理装配消费（settings skills 段——缺省全启用单根）
+            // U22：技能装配（缺省全启用单根）
             ...(settingsFile.skills?.disabled?.length
               ? { skillsDisabled: settingsFile.skills.disabled }
               : {}),

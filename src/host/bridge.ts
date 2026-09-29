@@ -323,6 +323,8 @@ export class HostBridge implements SessionRouter {
         if (call.op === "stt-transcribe") {
           return gateway.sttTranscribe({ base64: call.content!, mediaType: call.mediaType! });
         }
+        // T-P3-133：插件装载清单（安装期校验诊断）
+        if (call.op === "plugins-list") return gateway.pluginsList();
         return { credentials: await gateway.credentialsList() };
       },
     };

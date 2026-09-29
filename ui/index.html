@@ -225,6 +225,27 @@
           <label>语言提示（BCP-47 可选）<input id="stt-language" type="text" placeholder="如 zh（缺省自动检测）" autocomplete="off" /></label>
           <p class="hint">端点 API key 请在「凭据」分节以 provider 名 <code>stt</code> 录入（零明文，同 U2 通道）。</p>
         </section>
+        <!-- T-P3-133 插件管理：清单（transport/trust 徽标/错误行/启停/删除）
+             + 安装表单（inprocess 目录 / ws URL）——I4/I5/I9 管理面延伸；
+             市场远程渠道不建（YAGNI 裁决——本地/ws 安装最小化） -->
+        <section data-section="plugins">
+          <h2>插件</h2>
+          <ul id="plugin-list"></ul>
+          <form id="plugin-form">
+            <label>装载方式
+              <select id="plugin-transport">
+                <option value="inprocess">进程内（目录：plugin.json + index.js）</option>
+                <option value="ws">进程外（ws:// URL——I4 不可信隔离）</option>
+              </select>
+            </label>
+            <input id="plugin-name" type="text" placeholder="插件名（唯一，不含 __）" autocomplete="off" />
+            <input id="plugin-source" type="text" placeholder="装载源（目录绝对路径 或 ws://…）" autocomplete="off" />
+            <label class="hint">ws 插件工具登记开关（不受信来源默认 deny——显式放行才登记工具）
+              <input id="plugin-allowtools" type="checkbox" /></label>
+            <button id="plugin-add" type="button">安装（先校验）</button>
+          </form>
+          <p class="hint">进程内插件目录约定：plugin.json（清单：name/trust/capabilities）+ index.js（入口，default 导出 AegentPlugin）。停用保留在清单；装载失败不影响启动（never-fail）。新会话生效。</p>
+        </section>
         <!-- U17/T-P3-119 MCP 管理向导：分步添加（类型→参数→校验→保存）+
              统一面板（清单/启停/编辑/删除）；连接校验走 settings op:mcp-check -->
         <section data-section="mcp">
