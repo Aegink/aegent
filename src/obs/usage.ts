@@ -102,3 +102,96 @@ export function usageByTurn(db: Database, sessionId: string): UsageRow[] {
     .all(sessionId) as Record<string, unknown>[];
   return rows.map(toRow);
 }
+
+// ---------------------------------------------------------------------------
+// 统计页聚合（T-P3-135 批 B⑩——byDay 单点定形取 host 路线：方案 §1.2 唯一
+// 数据缺口，前端现算不可行〔sessions 汇总无日期、turns 仅本会话——跨会话
+// 每日趋势/热力图必须按天聚合全库〕；须过 settings/server e2e）。同 L1
+// 否定性纪律：只对 events 表 SELECT，无第二份轨迹存储。
+// ---------------------------------------------------------------------------
+
+/** 一日聚合（day 为本地日 YYYY-MM-DD——date(ts,'unixepoch','localtime')，
+ * 热力图/趋势线按用户本地日对齐更有意义，记档）。 */
+export interface DayUsageRow {
+  day: string;
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  totalTokens: number;
+}
+
+/** 按本地日聚合全库 usage（ts 缺失/0 的事件不进聚合——无时间即无日可归）。 */
+export function usageByDay(db: Database): DayUsageRow[] {
+  const rows = db
+    .prepare(
+      `
+      SELECT date(ts / 1000, 'unixepoch', 'localtime') AS day,
+        COUNT(*) AS requests,
+        SUM(COALESCE(json_extract(payload, '$.usage.inputTokens'), 0)) AS input_tokens,
+        SUM(COALESCE(json_extract(payload, '$.usage.outputTokens'), 0)) AS output_tokens,
+        SUM(COALESCE(json_extract(payload, '$.usage.cacheReadTokens'), 0)) AS cache_read_tokens,
+        SUM(COALESCE(json_extract(payload, '$.usage.cacheWriteTokens'), 0)) AS cache_creation_tokens,
+        SUM(COALESCE(
+          json_extract(payload, '$.usage.totalTokens'),
+          COALESCE(json_extract(payload, '$.usage.inputTokens'), 0)
+            + COALESCE(json_extract(payload, '$.usage.outputTokens'), 0)
+        )) AS total_tokens
+      FROM events
+      WHERE type = 'assistant/message'
+        AND json_extract(payload, '$.usage') IS NOT NULL
+        AND ts IS NOT NULL AND ts > 0
+      GROUP BY day ORDER BY day
+      `,
+    )
+    .all() as Record<string, unknown>[];
+  return rows.map((raw) => ({
+    day: raw["day"] as string,
+    requests: raw["requests"] as number,
+    inputTokens: raw["input_tokens"] as number,
+    outputTokens: raw["output_tokens"] as number,
+    cacheReadTokens: raw["cache_read_tokens"] as number,
+    cacheCreationTokens: raw["cache_creation_tokens"] as number,
+    totalTokens: raw["total_tokens"] as number,
+  }));
+}
+
+/** 一模型的 token 占比行（甜甜圈数据——token 计量不需要价格，未配价模型同样入列）。 */
+export interface ModelUsageRow {
+  modelId: string;
+  requests: number;
+  totalTokens: number;
+}
+
+/** 按模型聚合全库 usage（turn → modelId 归因同 costRollup：末次 request/header）。 */
+export function usageByModel(db: Database): ModelUsageRow[] {
+  const rows = db
+    .prepare(
+      `
+      SELECT COALESCE((
+        SELECT json_extract(h.payload, '$.config.modelId')
+        FROM events h
+        WHERE h.session_id = e.session_id
+          AND h.type = 'request/header'
+          AND json_extract(h.payload, '$.turn') = json_extract(e.payload, '$.turn')
+        ORDER BY h.seq DESC
+        LIMIT 1
+      ), '（未知）') AS model_id,
+        COUNT(*) AS requests,
+        SUM(COALESCE(json_extract(e.payload, '$.usage.totalTokens'),
+          COALESCE(json_extract(e.payload, '$.usage.inputTokens'), 0)
+            + COALESCE(json_extract(e.payload, '$.usage.outputTokens'), 0))) AS total_tokens
+      FROM events e
+      WHERE e.type = 'assistant/message'
+        AND json_extract(e.payload, '$.usage') IS NOT NULL
+      GROUP BY model_id ORDER BY total_tokens DESC
+      `,
+    )
+    .all() as Array<{ model_id: string; requests: number; total_tokens: number }>;
+  return rows.map((raw) => ({
+    modelId: raw.model_id,
+    requests: raw.requests,
+    totalTokens: raw.total_tokens,
+  }));
+}

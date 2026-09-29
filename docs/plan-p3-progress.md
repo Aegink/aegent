@@ -338,68 +338,46 @@
 
 **记档**：①批 A 前清掉上会话冒烟残留进程（aegent-desktop ×4 + portable node host——占用 exe 与 8787）；②方案 §七遗留 `dist/portable/host.mjs` 已清除；③`views/settings.js` 1983 行已知债——批 B 逐分节重做时按方案拆 `views/settings/` 子模块；④feedback.js 为方案文件树外新增（appendLine/toast 等跨视图原语——避免 state.js 混入 DOM 职责）；⑤aegentApplyDeepLink 因设置域迁出改为动态 import 委派（同步返回→Promise——宿主 eval 不消费返回值，行为面不变）。
 
-## 批次提示词（UI 批次 B 开工——T-P3-135；2026-09-29 更新）
+### 补全卡 T-P3-135 · UI 批次 B：设置页面化逐页重做 + 统计页 SVG 可视化（2026-09-30）
 
-```
-继续 aegent 的 UI 全面升级，做 T-P3-135（UI 批次 B：设置页面化逐页重做 +
-统计页 SVG 可视化）。先读 docs/plan-p3-progress.md 的「批次提示词」段，按
-其指引执行（方案与规格唯一事实源 = docs/20260929_UI全面升级方案.md）。
-做完收官即停，不要问要不要继续。
+**状态**：✅ 落地（2026-09-30）——实施顺序①~⑩全落，完成记录详单载 plan-p3.md §8 卡面（拆分结构/逐页形态/统计页全件/byDay 定形/验收实测/六条记档）。本台账记对账与走查面。
 
-0. **已定基线（批 A 已落，不翻案）**：方案 A 零构建链（不引 React/Vite/
-   Tailwind/recharts——图表 SVG 手绘、交互简化）；批 A（T-P3-134）已落地：
-   theme.css token 全套（全站唯一取色处）+ components.css 组件类库（row-list/
-   row 行式母版、.switch 44×24、tabs-pill、kbd、dialog、empty-state 等——
-   本批直接消费）+ hash 路由（#settings/<section> 深链）+ 侧栏骨架 +
-   views/*.js 模块化（views/settings.js 1983 行 = 本批拆子模块的兑现点）。
-   矩阵实列 28 行（"29 行"口径笔误已修正）。
-1. **开工三件套**：①读 plan-p3.md §8 「T-P3-135」卡面（实施顺序①~⑩）与
-   方案文档 §2.3/§三批 B；②本批无 requirements 域条目（337 条外用户裁决
-   增量）——核对对象改为方案文档与功能覆盖矩阵（28 行，本批义务行 =
-   升级落位为 B 的全部行）；③git status 干净即可。
-2. **实施顺序（卡面①~⑩，每页一回归，勿跳步）**：
-   ① views/settings.js 拆 views/settings/ 子模块（按二级导航三组分域——
-     基础设置/Agent 能力/数据与系统；markDirty/dirtySections 等域状态归
-     各子模块或留 settings.js 壳，render+unmount 契约不变，每拆一块全量
-     回归）；
-   ② 设置页头 sticky tab-header 形态（40px 40px 32px padding + 标题
-     15px/640 + 24px 渐隐——方案 §2.3 逐值）；
-   ③ 简单分节先行落行式卡：permission/sandbox/appearance/logging/about
-     （row-list/row 母版 + .switch 开关）；
-   ④ providers/credentials 页（行式卡 + 连接测试模态——opencode
-     dialog-connect-provider 形态：服务名/地址/key/格式下拉/模型列表双栏；
-     probe 逻辑原样）；
-   ⑤ mcp 页（36px 图标座 + 包边状态点〔绿=连接/红=失败/灰=停用〕+ 开关 +
-     命令行等宽 + capability chips——McpServerList.tsx :114-135 形态）；
-   ⑥ subagents/skills/prompts 页（分组卡片/空状态虚线框引导/工具数徽标/
-     顶部搜索框）；
-   ⑦ shortcuts 页（kbd 键位胶囊 + 绑定行 + 搜索过滤——ShortcutBindingRow
-     形态；捕获态交互原样）；
-   ⑧ plugins 页（市场式卡片行：图标座 + 来源 tag + 描述 line-clamp + 右侧
-     操作组 + 错误行红文本——pi-desktop InstalledPluginsPanel 形态）；
-   ⑨ instructions/speech/profiles/transfer 页（行式卡；导入导出确认面
-     模态化——.dialog 组件类替代原生 confirm，其余 confirm 保持）；
-   ⑩ **用量升级统计页**（views/usage.js 重做：摘要卡行 grid-cols-5 +
-     Intl compact + tabular-nums + 近 7/30 日胶囊切换 + SVG 趋势线
-     〔--chart-1~6 六色板/网格虚线/图例色点/单档 hover 竖线〕+ 热力图
-     〔aspect-square rounded-[4px] 五档 --heat-0~4 + 月份标签行〕+ 模型
-     甜甜圈——数据源 op:"usage" 单源；**byDay 每日聚合单点定形**：host 侧
-     usage 补 byDay 或前端对 turns 现算，实施时定形记档——方案 §1.2 唯一
-     数据缺口；取 host 路线须过 settings/server e2e）。
-3. **验收（卡面全项）**：逐页形态走查清单（对照 §2.3 规格逐值，入 progress
-   人工确认清单）+ settings/server e2e 回归全绿（硬门）+ 全量 npx vitest
-   run 回归全绿 + tauri-shell 断言保持（既有断言不删，拆分重定目标）+
-   token 证伪 grep（本批新改样式段无散写色值——重写页面段的存量色值顺手
-   消化，未重写段归批 C/收尾）+ 路由深链回归 + node --check + tsc 干净 +
-   产物重打同步（npm run build:single + TAURI_SIGNING_PRIVATE_KEY=
-   F:/aegent/private/tauri-updater.key npx tauri build + 复制
-   aegent-desktop.exe 进 dist/portable、安装器进 dist/）+ 机器等效冒烟
-   （启动壳 → HTTP 200 → 窗口可见性 MainWindowTitle=aegent）。
-4. **铁律（同批 A）**：id/data-* 钩子保留、协议面（sendRequest/
-   sendSettings/sendQuery）签名不变、数据面逻辑（settings patch/防抖/
-   校验）原样保留、每页一回归不一次性大爆炸；功能覆盖矩阵任何一行失能 =
-   卡不过，不许带病收官。遇到阻塞按 §0.2 偏离记档，不擅自扩范围。
-5. **收尾**：打勾 T-P3-135 + 完成记录 + progress 台账（含走查清单更新）+
-   commit（feat(ui): UI 批次 B ...）+ 记忆更新（批 B 落地状态、批 C
-   T-P3-136 待展卡）。不要问要不要继续。
-```
+**验收台账**：全量 `npx vitest run` **1821 passed / 7 skipped，exit 0**（206 文件=基线；settings/server e2e 硬门在列——server.test usage 用例扩 byDay/byModel 断言）+ `npx tsc --noEmit` 干净 + node --check 全 ui 模块 + tauri-shell **9/9**（既有断言一条不删，settingsView 重定目标为壳+`views/settings/` 子模块拼接读取）+ 新测试文件 `src/diagnostics/ui-settings.test.ts`（设置域资产用例自 tauri-shell 拆出——**架构触顶治理**：tauri-shell.test.ts 497 行触 diagnostics 域 400 硬上限，16d 三拆模式延续，归 **0 error / 22 warning** 基线）+ count-features **337** 不变 + 产物重打双同步（build:single + 签名 tauri build——安装器 **31.20 MiB** + .sig；portable exe 同步）+ 机器等效冒烟（壳自起 host HTTP 200 + **MainWindowTitle=aegent**）+ 浏览器真实渲染走查（见走查清单）。
+
+**功能覆盖矩阵义务行核对（28 行中"升级落位=B"的 11~25 行逐行——全通过）**：
+
+| # | 功能面 | 批 B 落位与核对依据 |
+| --- | --- | --- |
+| 11 | 设置 19 分节全部读写 | 页面化+行式卡全分节迁移（settings-page 容器 + row-list/row 19 分节）——浏览器深链实走 19 分节渲染 + settings e2e 全绿 |
+| 12 | 供应商/凭据/健康探测 | 连接测试模态（服务名/地址/格式下拉/模型 + probe 状态行）+ 行式卡操作组（默认/切换/测健康/↑↓/编辑/删除）——probe 逻辑原样（op:probe + 10s 节流） |
+| 13 | MCP 向导/启停/校验 | 图标座+包边状态点+44×24 开关+命令行等宽+transport chip——两步向导保留（mcp-check 原样），启停/删除原语义 |
+| 14 | 子智能体五预设/自定义/模型链 | 内置/自定义分组卡（badge 计数）+ 工具数徽标 + .switch + 搜索——subagents-list/skill 链路断言不变 |
+| 15 | 技能清单/编辑器/来源目录 | 搜索框 + 空态引导 + 来源目录行式卡 + 编辑器卡（skill-save 写回原样） |
+| 16 | 提示词库 | 搜索框 + 空态引导 + 新增/编辑模态（prompts 段整段替换原样） |
+| 17 | 指令中心 | 三文件位编辑器卡（保存确认保持原生 confirm）+ lint/模板原样 |
+| 18 | 快捷键清单/捕获/冲突 | kbd 键位胶囊（每键一枚）+ 绑定行 + 搜索过滤——捕获态/冲突阻断/保留键提示原样（走查修复 keymap import 缺失后实走验证） |
+| 19 | 插件安装/启停/诊断 | 市场式卡片行（图标座/transport+trust tag/capabilities chips/错误行红文本）+ 安装模态（先校验原样） |
+| 20 | 语音【实验性】 | 分节迁行式卡（STT 三行 + 凭据 stt 指引）——🎤 入 Composer 容器归批 C（矩阵口径） |
+| 21 | 用量/成本/统计 | **升级统计页**（摘要卡+SVG 趋势+热力图+甜甜圈+7/30 胶囊）——byDay/byModel host 定形过 server e2e；上下文检查器/成本表/按轮表保留 |
+| 22 | 工作面板四 Tab | 面板迁页面化容器（批 A 已落路由页面——B 落位即此，形态升级归批 C） |
+| 23 | 通知中心/Toast | toast 重做批 A 落 + 面板页化批 A 已落（B 落位即此） |
+| 24 | Profiles 快速切换 | 侧栏底部快速器保留（applyQuickProfile 经壳转发 basic.applyQuickProfile）+ 分节行式卡（applyProfile 批量写生效段原样） |
+| 25 | 导入导出/深链 | **确认面模态化**（import-apply + applyDeepLink 双入口 openDialog——三层防线不变）+ 导出零凭据提示 + 备份说明 |
+
+（行 8 会话历史的剩余 B 面〔侧栏会话树分组/未读点〕按 T-P3-136 卡面归批 C——口径澄清记档在卡面完成记录③。）
+
+**浏览器真实渲染走查（机器等效面——暗/亮双主题 + 有/无数据双态）**：①`#settings/providers` 暗色：三组二级导航激活态/tab-header 渐隐/行式卡/凭据录入行/空态虚线框；②`#settings/shortcuts` 深链：kbd 胶囊八动作行（修复验证）；③`#settings/mcp` 亮色（DOM 属性预览零落盘）：token 全局换值 + 子代理分组卡（图标座/工具数徽标/.switch）；④`#usage` 无库：统计四区空态降级；⑤`#usage` 有数据（seed 20 天演示库）：摘要卡 11.9万 compact/双序列趋势线+网格虚线+图例/热力五档+月份标签/甜甜圈 66%:34%+成本表如实缺席。
+
+**人工确认清单新增（批 B）**：
+
+| 需求ID / 批次 | 为什么不能机验 | 人工要怎么确认 | 状态 |
+| --- | --- | --- | --- |
+| T-P3-135 设置页逐页手感走查 | 行卡折行/模态手感/搜索过滤流畅度无自动化判据 | 桌面壳打开 → ⚙ 设置逐分节走查：①供应商「添加供应商」模态（表单/取消/保存）；②MCP「添加 server」两步向导；③技能/子代理/提示词搜索过滤；④快捷键点「修改」捕获新组合；⑤导入导出确认模态；⑥窄窗折行形态 | 机器等效走查已过（暗亮双主题+双态截图五张）；**手感面待用户** |
+| T-P3-135 统计页 hover 竖线 | 鼠标跟随交互是人工面 | 用量页趋势图上移动鼠标 → 竖线 + 当日输入/输出/合计提示；近 7/30 日切换重绘 | 待人工走查（截图确认静态形态 ✅） |
+| T-P3-135 双击安装器走查（随 U6） | 安装器人工面 | 双击 dist/aegent_0.1.0_x64-setup.exe → 新 UI（设置页/统计页）全链走查 | 等效冒烟 ✅（HTTP 200 + MainWindowTitle=aegent）；人工双击待用户 |
+
+**卡内定形记档（批 B 特有）**：六条详单载 plan-p3.md §8 完成记录（拆分粒度/模态 form 字面量/矩阵行 8 口径澄清/--host-db 辨析/rail scope 修正/token 消化口径）。
+
+## 批次提示词（UI 批次 B——T-P3-135 已执行收官；2026-09-30 退役）
+
+> 批 B 开工提示词（2026-09-29 版，正文见 git 历史）已完整执行：实施顺序①~⑩全落、验收全项通过（见上方收官报告与卡面完成记录）。**批 C（T-P3-136：主对话流排版 + 会话侧栏分组/未读点 + 首屏空状态 + 轨迹六色扩展）待展卡**——展卡后本段更新为批 C 开工版提示词。

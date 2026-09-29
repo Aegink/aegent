@@ -866,6 +866,8 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
       currentSession: { contextTokens?: number; turns: unknown[]; compaction: { total: number } };
       sessions: { sessionId: string; totalTokens: number }[];
       costs: { sessionId: string; costUsd: number; byTurn: { turn: number; costUsd: number }[] }[];
+      byDay: { day: string; requests: number; totalTokens: number }[];
+      byModel: { modelId: string; requests: number; totalTokens: number }[];
     };
     expect(u.contextWindow).toBe(200_000);
     // 本会话末轮 totalTokens = 上下文占用投影；压缩统计来自流内 compaction 事件
@@ -879,6 +881,14 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
     expect(s1).toBeDefined();
     expect(s1!.costUsd).toBeCloseTo((50 * 1 + 50 * 0.1 + 10 * 2) / 1e6 + (200 * 1 + 20 * 2) / 1e6, 10);
     expect(s1!.byTurn).toHaveLength(2);
+    // T-P3-135 批 B⑩：byDay 每日聚合（host 路线定形——预置事件 ts 同日，
+    // 本地日分组恰一组；总量 = 110+220+55）+ byModel 归因（request/header
+    // 末次——全部轮 gpt-x）
+    expect(u.byDay).toHaveLength(1);
+    expect(u.byDay[0]!.day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(u.byDay[0]!.totalTokens).toBe(385);
+    expect(u.byDay[0]!.requests).toBe(3);
+    expect(u.byModel).toEqual([{ modelId: "gpt-x", requests: 3, totalTokens: 385 }]);
     client.close();
     await new Promise((r) => setTimeout(r, 50)); // 镜像 write-behind flush 先于 close
     sessionDb.close();

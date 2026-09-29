@@ -18,7 +18,7 @@ import type { PricingEntry } from "../session/settings.js";
 import { querySessionsDb } from "../session/query.js";
 import { reviewChangesFromEvents } from "../session/review-changes.js";
 import { listWorkspaceFiles, readWorkspaceFile } from "./files-list.js";
-import { ensureUsageView, usageBySession, usageByTurn } from "../obs/usage.js";
+import { ensureUsageView, usageBySession, usageByTurn, usageByDay, usageByModel } from "../obs/usage.js";
 import { costRollup } from "../obs/cost.js";
 import { compactionStats } from "../obs/compaction-stats.js";
 
@@ -143,6 +143,10 @@ export async function handleHostQuery(
       },
       sessions: usageBySession(library.db),
       costs: costRollup(library.db, pricing),
+      // T-P3-135 批 B⑩：统计页可视化数据面——每日聚合（趋势线/热力图）与
+      // 模型占比（甜甜圈）。byDay 单点定形取 host 路线（方案 §1.2 记档）。
+      byDay: usageByDay(library.db),
+      byModel: usageByModel(library.db),
     };
   }
   // 本会话：内存序读取（同步）：镜像 append 的直接产物——最新、无
