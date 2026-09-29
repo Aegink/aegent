@@ -541,6 +541,23 @@ const UI_COMMANDS = [
 ];
 let fileCache = null; // { entries, truncated }（@ 补全——会话期缓存）
 let metaCache = null; // { tools, skills }（/ 补全——会话期缓存）
+
+// —— U16/T-P3-118：提示词模板的 / 补全数据面（settings get 一次缓存；
+// 设置面板保存 prompts 段后 settingsCache 同步，下次补全即用新库）
+let promptsCacheLoaded = false;
+async function ensurePromptsCache() {
+  if (promptsCacheLoaded) return settingsCache?.prompts ?? [];
+  const envelope = await sendSettings({ op: "get" });
+  if (envelope.ok) {
+    settingsCache = envelope.result.settings;
+    promptsCacheLoaded = true;
+  }
+  return settingsCache?.prompts ?? [];
+}
+
+function templateVarNames(content) {
+  return [...new Set([...content.matchAll(/\{\{\s*([^{}\s]+)\s*\}\}/g)].map((m) => m[1]))];
+}
 let acItems = [];
 let acIndex = -1;
 let acContext = null; // { trigger, startPos, token }
@@ -598,11 +615,16 @@ function applyCompletion(item) {
   if (acContext === null) return;
   const before = input.value.slice(0, acContext.startPos);
   const after = input.value.slice(input.selectionStart ?? 0);
-  const insert = item.kind === "dir" ? item.label : `${item.label} `;
+  // U16：模板选中 = 整段正文替换 /token（非命令非路径）；{{var}} 占位保留手改
+  const insert =
+    item.kind === "dir" ? item.label : item.kind === "prompt" ? item.content ?? "" : `${item.label} `;
   input.value = `${before}${insert}${after}`;
   const pos = (before + insert).length;
   input.setSelectionRange(pos, pos);
   input.focus();
+  if (item.kind === "prompt" && (item.vars?.length ?? 0) > 0) {
+    toast(`模板含变量 ${item.vars.join("、")}——占位符已保留，请手改`, "info");
+  }
   acItems = [];
   acContext = null;
   renderAutocomplete();
@@ -633,10 +655,19 @@ async function updateAutocomplete() {
     }
   } else {
     const meta = (await ensureMetaCache()) ?? { tools: [], skills: [] };
+    const prompts = await ensurePromptsCache();
     const candidates = [
       ...UI_COMMANDS.map((c) => ({ icon: "⌘", label: c.label, hint: c.hint, kind: "command" })),
       ...meta.tools.map((t) => ({ icon: "🛠", label: t, hint: "工具", kind: "tool" })),
       ...meta.skills.map((s) => ({ icon: "✨", label: s.name, hint: s.description, kind: "skill" })),
+      ...prompts.map((p) => ({
+        icon: "📝",
+        label: p.name,
+        hint: p.description ?? "提示词模板",
+        kind: "prompt",
+        content: p.content,
+        vars: templateVarNames(p.content),
+      })),
     ].filter((c) => c.label.toLowerCase().startsWith(tokenBody));
     acItems = candidates.slice(0, 8);
   }
@@ -770,6 +801,8 @@ async function flushSettings() {
   for (const section of dirtySections) {
     if (section === "defaultProvider") {
       patch.defaultProvider = settingsCache.defaultProvider;
+    } else if (section === "projects" || section === "prompts") {
+      patch[section] = settingsCache[section] ?? []; // 数组段缺省发空数组（对象段才发 {}）
     } else {
       patch[section] = settingsCache[section] ?? {};
     }
@@ -900,6 +933,7 @@ function fillSettingsForm() {
   document.getElementById("logging-rawdir").value = settingsCache?.logging?.rawLogDir ?? "";
   renderProviderList();
   renderProjectList();
+  renderPromptList();
 }
 
 async function openSettings() {
@@ -909,6 +943,7 @@ async function openSettings() {
     return;
   }
   settingsCache = envelope.result.settings;
+  promptsCacheLoaded = true;
   applyTheme(settingsCache.appearance?.theme);
   fillSettingsForm();
   const creds = await sendSettings({ op: "credentials-list" });
@@ -1063,6 +1098,68 @@ function renderProjectList() {
 }
 
 let editingProjectName = null;
+
+// —— U16/T-P3-118 提示词模板库（settings prompts 段整段替换——upsert 同名原位替换）
+let editingPromptName = null;
+
+function renderPromptList() {
+  const list = document.getElementById("prompt-list");
+  list.replaceChildren();
+  for (const p of settingsCache?.prompts ?? []) {
+    const li = document.createElement("li");
+    li.className = "prompt-item";
+    const label = document.createElement("span");
+    label.textContent = `📝 ${p.name}${p.description ? `——${p.description}` : ""}`;
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.textContent = "删除";
+    delBtn.className = "danger";
+    delBtn.addEventListener("click", () => {
+      if (!window.confirm(`删除提示词模板「${p.name}」？`)) return;
+      settingsCache.prompts = (settingsCache.prompts ?? []).filter((x) => x.name !== p.name);
+      if (editingPromptName === p.name) editingPromptName = null;
+      dirtySections.add("prompts");
+      renderPromptList();
+      markDirty("prompts");
+    });
+    li.append(label, delBtn);
+    list.appendChild(li);
+    label.style.cursor = "pointer";
+    label.title = "点击编辑该模板";
+    label.addEventListener("click", () => {
+      editingPromptName = p.name;
+      document.getElementById("prompt-name").value = p.name;
+      document.getElementById("prompt-desc").value = p.description ?? "";
+      document.getElementById("prompt-content").value = p.content;
+      document.querySelector('#prompt-form button[type="submit"]').textContent = "保存修改";
+    });
+  }
+  if ((settingsCache?.prompts ?? []).length === 0) {
+    const li = document.createElement("li");
+    li.className = "hint";
+    li.textContent = "（库为空——新增模板后在输入区 / 补全中调用）";
+    list.appendChild(li);
+  }
+}
+
+document.getElementById("prompt-form").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const name = document.getElementById("prompt-name").value.trim();
+  const desc = document.getElementById("prompt-desc").value.trim();
+  const content = document.getElementById("prompt-content").value;
+  if (name === "" || content.trim() === "") return;
+  const prompts = (settingsCache.prompts ?? []).filter((x) => x.name !== name);
+  prompts.push({ name, content, ...(desc !== "" ? { description: desc } : {}) });
+  settingsCache.prompts = prompts;
+  editingPromptName = null;
+  document.getElementById("prompt-name").value = "";
+  document.getElementById("prompt-desc").value = "";
+  document.getElementById("prompt-content").value = "";
+  document.querySelector('#prompt-form button[type="submit"]').textContent = "新增";
+  dirtySections.add("prompts");
+  renderPromptList();
+  markDirty("prompts");
+});
 
 document.getElementById("project-form").addEventListener("submit", (ev) => {
   ev.preventDefault();

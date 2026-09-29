@@ -121,6 +121,19 @@
           </form>
           <p class="hint">设为活动 = 新会话以该项目 workspace 启动（当前会话不受影响）。</p>
         </section>
+        <!-- U16/T-P3-118 提示词模板库：用户自建/编辑/删除（settings prompts 段）+
+             Composer / 补全调用（选中填入输入框，{{var}} 占位符保留手改） -->
+        <section data-section="prompts">
+          <h2>提示词模板</h2>
+          <ul id="prompt-list"></ul>
+          <form id="prompt-form">
+            <input id="prompt-name" type="text" placeholder="模板名（斜杠调用标识）" autocomplete="off" />
+            <input id="prompt-desc" type="text" placeholder="描述（可选）" autocomplete="off" />
+            <textarea id="prompt-content" rows="3" placeholder="模板正文（{{var}} 为变量占位符）"></textarea>
+            <button type="submit">新增</button>
+          </form>
+          <p class="hint">模板在输入区 / 补全中列出（📝），选中即填入输入框；变量占位符保留手改。系统级人格预设（persona）不在此管理。</p>
+        </section>
         <section data-section="about">
           <h2>关于</h2>
           <p>aegent 0.1.0 —— 本地优先的 agent 工作台（事件即真相；配置即本页）。</p>

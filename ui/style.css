@@ -1224,3 +1224,14 @@ mark.search-hit.active {
   border-bottom: 1px solid var(--border);
   word-break: break-all;
 }
+
+/* U16/T-P3-118 提示词模板库分节（settings 面板第九分节） */
+.prompt-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: 13px;
+  word-break: break-all;
+}

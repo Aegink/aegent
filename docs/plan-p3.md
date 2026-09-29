@@ -238,7 +238,7 @@
 - **风险 / 未知**：文件树在大 workspace 的性能（懒加载子目录——按需记档）
 - **完成记录（2026-09-29）**：验收 `npx vitest run src/session/review-changes.test.ts src/host/server.test.ts src/diagnostics/tauri-shell.test.ts` → **29 passed**（review-changes 6 新 + server 14〔含 review/file e2e〕+ tauri-shell 9；tsc 干净）。落地：①**提取纯函数** `src/session/review-changes.ts`（reviewChangesFromEvents + summarizeReviewChanges——纯函数从流算不建状态，卡面纪律；callId 成对 tool/call→tool/result，失败调用不计入，在途 task 标 running）；②**wire**：query op 闭集追加 `review`（工作面板聚合面——本会话内存序、跨会话回源库，恢复视图同享；events op 同款读面）+ `file`（workspace 单文件只读预览——parse 层 path 必填非空 ≤512）；③**预览面**：files-list.ts 增 readWorkspaceFile（workspace 内 resolve 断言〔`..`/绝对路径逃逸拒绝 WORKSPACE_FILE_ESCAPES〕+ 512KB 前缀读 truncated 标记 + 前 4KB NUL 二进制防呆）；④**ui**：工作面板右侧抽屉三 Tab（📁 文件树〔op:files 会话期缓存复用 + 点击 op:file 预览〕/ 🔍 变更评审〔写入/修改/删除徽标 + 汇总统计行〕/ 🤖 子代理〔委派表格：描述/子会话/状态/耗时〕）+ 🛠 状态栏入口 + n5 turn_settled 面板可见自动刷新；⑤**测试窗口**：镜像流 e2e 须按 E16 嵌套序列 emit（turn/start→step/start→tool 事件→step/end→turn/end）。**卡内定形（记档）**：变更提取面 = write/edit 显式 path + apply-patch 头自包含提取（不 import kernel 解析器）+ bash/pwsh 启发式（rm 目标=删除、重定向目标=写入、`>>` 合并匹配、/dev/null 排除；mv/cp/tee/sed -i 不提取——YAGNI）；write 的"新增或覆盖"从流不可分统称写入；路径反斜杠归一 posix、按路径聚合末次操作定态。人工走查列入确认清单（三 Tab 视觉/预览手感）。
 
-#### T-P3-118 · U16 · 提示词库（用户模板 CRUD + 斜杠调用） `[ ]`
+#### T-P3-118 · U16 · 提示词库（用户模板 CRUD + 斜杠调用） `[x]`
 - **依据需求**：U16（"用户自建/编辑/删除 prompt 模板；Composer 斜杠调用时列出"）
 - **上游首选参考**：[cc-switch·prompts 五件](../oss/cc-switch/src/components/prompts)（PromptLibrary/PromptFormPanel/PromptListItem——🔴 只学行为）
 - **取什么 / 别抄什么**：取"库列表 + 表单编辑 + 条目管理"形态；与 I8 persona 的分界记档（系统预设 vs 用户模板）
@@ -246,6 +246,7 @@
 - **验收**：`npx vitest run src/session/prompt-library.test.ts`——CRUD + 变量占位 + settings 隔离断言 + ui 资产断言
 - **依赖**：T-P3-103（U14/U10 面）
 - **风险 / 未知**：模板变量语法（`{{var}}` 单一约定——YAGNI 记档）
+- **完成记录（2026-09-29）**：验收 `npx vitest run src/session/prompt-library.test.ts src/session/settings.test.ts src/host/server.test.ts src/diagnostics/tauri-shell.test.ts` → **46 passed**（prompt-library 8 新 + settings 回归 + server 扩 prompts 白名单 e2e + tauri-shell 资产断言；tsc 干净）。落地：①**存储定形**（卡面二选一）：settings 同域——SettingsShape 增 `prompts?: PromptEntry[]`（name 唯一/content 非空 parse 校验 fail-closed〔重名类型化拒绝〕）+ patch 白名单加 prompts 段——T-P3-103 settings 直答通道零新增 wire；②**纯函数** `src/session/prompt-library.ts`：upsertPrompt（同名原位替换保序/新名追加）+ deletePrompt（幂等）+ extractTemplateVars（`{{var}}` 去重保序、空白占位不算）+ renderTemplate（命中替换、缺变量保留原文不虚构）；③**ui 第九分节** data-section="prompts"（列表〔点击回填编辑〕/ 表单 name+desc+content / 删除 confirm）+ flushSettings 数组段缺省发 `[]` 修正（对象段 `?? {}` 会把 prompts/projects 空段发成 `{}` 被 parse 拒——顺手修的正确性缺陷）；④**Composer / 补全混入**：候选加 📝 模板类（ensurePromptsCache——settings get 一次会话期缓存），选中 = 整段正文替换 /token 填入输入框（非命令执行），含变量时 Toast 提示占位符手改。**分界记档（卡面要求）**：与 I8 persona 的分界 = I8 是系统级 agent 人格预设（装配面）、本库是用户自建模板（用户内容面）——不共用存储不共用调用链。人工走查列入确认清单。
 
 #### T-P3-119 · U17 · MCP 管理向导（分步添加 + 校验 + 统一面板） `[ ]`
 - **依据需求**：U17（"MCP server 的向导式添加、统一管理面板（启停/编辑/删除）、连接校验"）

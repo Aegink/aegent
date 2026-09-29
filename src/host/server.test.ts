@@ -461,6 +461,27 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
     expect((badSection.error as { code: string }).code).toBe("SETTINGS_PATCH_SECTION_UNKNOWN");
     expect(existsSync(settingsPath)).toBe(false); // 拒绝即不落盘
 
+    // U16/T-P3-118：prompts 段已入册白名单（整段替换 + 其他段隔离）
+    const promptsPatch = await settingsCall({
+      op: "update",
+      patch: { prompts: [{ name: "review", content: "评审 {{file}}" }] },
+    });
+    expect(promptsPatch.ok).toBe(true);
+    expect((promptsPatch.result as { settings: { prompts?: unknown[] } }).settings.prompts).toEqual([
+      { name: "review", content: "评审 {{file}}" },
+    ]);
+    // 重名模板在 parse 层 fail-closed
+    const dupPrompt = await settingsCall({
+      op: "update",
+      patch: {
+        prompts: [
+          { name: "a", content: "x" },
+          { name: "a", content: "y" },
+        ],
+      },
+    });
+    expect(dupPrompt.ok).toBe(false);
+
     client.raw({ type: "settings", requestId: "s-bad-op", op: "frobnicate" });
     // op 闭集校验在 parse 层——坏行回 PROTOCOL_MALFORMED（requestId "(unparsed)"）
     const badOp = await client.waitFor(

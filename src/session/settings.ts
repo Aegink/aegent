@@ -59,6 +59,15 @@ export interface PricingEntry {
   cacheWritePerMTok?: number;
 }
 
+/** 提示词模板条目（U16/T-P3-118——用户自建模板库；与 I8 persona 系统预设分界：这是用户内容面）。 */
+export interface PromptEntry {
+  /** 模板名（斜杠调用与库列表的标识——库内唯一）。 */
+  name: string;
+  /** 模板正文（`{{var}}` 占位符单一约定——变量面见 session/prompt-library.ts）。 */
+  content: string;
+  description?: string;
+}
+
 export interface SettingsShape {
   version: 1;
   providers: ProviderEntry[];
@@ -77,6 +86,8 @@ export interface SettingsShape {
   activeProject?: string;
   /** 价格表（U12——成本统计的计价来源；缺省无 = 成本如实缺席不虚构）。 */
   pricing?: PricingEntry[];
+  /** 提示词模板库（U16——用户自建/编辑/删除；Composer / 补全调用）。 */
+  prompts?: PromptEntry[];
   /** 首跑引导（U13——引导清单完成标记；缺省 undefined = 未完成）。 */
   onboardingDone?: boolean;
 }
@@ -91,6 +102,7 @@ export function defaultSettings(): SettingsShape {
     appearance: { theme: "dark", language: "zh-CN" },
     logging: {},
     projects: [],
+    prompts: [],
   };
 }
 export const SETTINGS_HINT =
@@ -252,6 +264,31 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
     }
   }
   out.activeProject = assertString(rec["activeProject"], "activeProject");
+  const prompts = rec["prompts"];
+  if (prompts !== undefined) {
+    if (!Array.isArray(prompts)) throw new SettingsError("prompts 须为数组");
+    const seen = new Set<string>();
+    for (const entry of prompts) {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+        throw new SettingsError("prompts 条目必须是对象");
+      }
+      const e = entry as Record<string, unknown>;
+      const name = assertString(e["name"], "prompts[].name");
+      if (name === undefined) throw new SettingsError("prompts[].name 缺失");
+      // 库内唯一——斜杠调用的标识面重名即坏档（fail-closed）
+      if (seen.has(name)) throw new SettingsError(`prompts 模板名重复：${name}`);
+      seen.add(name);
+      const content = assertString(e["content"], "prompts[].content");
+      if (content === undefined) throw new SettingsError("prompts[].content 缺失");
+      out.prompts!.push({
+        name,
+        content,
+        ...(assertString(e["description"], "prompts[].description") !== undefined
+          ? { description: e["description"] as string }
+          : {}),
+      });
+    }
+  }
   if (rec["onboardingDone"] !== undefined && typeof rec["onboardingDone"] !== "boolean") {
     throw new SettingsError("onboardingDone 须为布尔值");
   }
