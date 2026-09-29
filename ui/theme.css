@@ -1,0 +1,123 @@
+/*
+ * aegent ui 主题 token（T-P3-134 · UI 批次 A——方案 §2.1/§2.2 逐值落地）。
+ * 全站唯一取色处：色值只在本文件出现（新增样式一律 var(--token) 消费；
+ * 既有 style.css 散写色值的全量迁移归批 B 逐段消化）。
+ * 色板/字号刻度/等宽栈取自 ZCode packages/ui styles.css 暗色块（:308）与
+ * 亮色块（:137）的源码级提取——🔴 只学值，一行代码不摘。
+ */
+:root {
+  color-scheme: dark;
+
+  /* —— 色板（暗色默认；bg 侧栏 950 / 面板 900 / 卡片 800 三级递进） —— */
+  --bg: #171717; /* neutral-900 应用背景 */
+  --bg-sidebar: #0a0a0a; /* neutral-950 侧边栏（比主背景深一级） */
+  --bg-card: #262626; /* neutral-800 卡片/列表容器 */
+  --surface: rgba(255, 255, 255, 0.05); /* 卡片内嵌静态面（rounded-xl 容器） */
+  --surface-hover: rgba(255, 255, 255, 0.1); /* hover 面 */
+  --border: rgba(255, 255, 255, 0.1); /* 半透明描边（暗色下比实色柔和） */
+  --border-hover: rgba(255, 255, 255, 0.3);
+  --text: #e5e5e5; /* neutral-200 主文本 */
+  --text-subtle: rgba(229, 229, 229, 0.6); /* 三级文本阶 */
+  --text-subtlest: rgba(229, 229, 229, 0.3);
+  --brand: #0ea5e9; /* sky-500 强调/焦点/链接 */
+  --primary: #fafafa; /* 主按钮 = 反色白底 */
+  --primary-foreground: #171717;
+  --success: #22c55e; /* green-500 */
+  --warning: #eab308; /* yellow-500 */
+  --destructive: #ef4444; /* red-500 */
+  --inverse: #ffffff; /* 白圆钮/反色文字面 */
+
+  /* —— 统计页六色板（不复用终端 ANSI 色——避免高饱和堆叠） —— */
+  --chart-1: #0ea5e9; /* sky-500 */
+  --chart-2: #2dd4bf; /* teal-400 */
+  --chart-3: #a78bfa; /* violet-400 */
+  --chart-4: #fb7185; /* rose-400 */
+  --chart-5: #818cf8; /* indigo-400 */
+  --chart-6: #22d3ee; /* cyan-400 */
+
+  /* —— 热力图五档（sky 混 surface：空档 → 高密度） —— */
+  --heat-0: var(--surface);
+  --heat-1: color-mix(in srgb, #0ea5e9 24%, var(--surface));
+  --heat-2: color-mix(in srgb, #0ea5e9 42%, var(--surface));
+  --heat-3: color-mix(in srgb, #0ea5e9 62%, var(--surface));
+  --heat-4: color-mix(in srgb, #7dd3fc 78%, var(--surface)); /* sky-300 78% */
+
+  /* —— 会话轨迹六色（消息流侧边着色/小地图——trajectory 面板同构） —— */
+  --traj-user: #60a5fa;
+  --traj-assistant: #2dd4bf;
+  --traj-reasoning: #a78bfa;
+  --traj-tool-call: #f59e0b;
+  --traj-tool-result: #38bdf8;
+  --traj-reasoning-alt: #7c3aed;
+
+  /* —— 字号：基准 14px + 相对刻度（calc 系，不是一组写死的 px） —— */
+  --ui-font-size: 14px;
+  --text-ui-xl: calc(var(--ui-font-size) + 4px);
+  --text-ui-lg: calc(var(--ui-font-size) + 2px);
+  --text-ui-base: var(--ui-font-size);
+  --text-ui-caption: calc(var(--ui-font-size) - 1px);
+  --text-ui-sm: calc(var(--ui-font-size) - 2px);
+  --text-ui-xs: calc(var(--ui-font-size) - 4px);
+
+  /* —— 字体栈：界面无衬线 + 等宽显式含 CJK（Consolas 无中文字形——
+        缺省会落宋体，代码块/终端必须带中文栈） —— */
+  --font-ui: "Segoe UI", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", monospace;
+
+  /* —— 间距栅格（4px）与圆角三档（卡片 12px）+ 阴影两级 —— */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-card: 12px;
+  --radius-full: 999px;
+  --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.25);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --scrim: rgba(0, 0, 0, 0.45); /* 对话框/引导遮罩 */
+
+  /* —— 布局骨架尺寸（方案 §2.4） —— */
+  --sidebar-width: 260px;
+  --sidebar-rail: 56px;
+
+  /* —— 旧名兼容别名（style.css 既有消费面——批 B 逐段换新名后移除） —— */
+  --panel: var(--bg-card);
+  --dim: var(--text-subtle);
+  --accent: var(--brand);
+  --ok: var(--success);
+  --warn: var(--warning);
+  --danger: var(--destructive);
+}
+
+/* 亮色主题：同一批 token 换值（对齐 ZCode 亮色块） */
+body[data-theme="light"] {
+  color-scheme: light;
+  --bg: #fafafa; /* neutral-50 */
+  --bg-sidebar: #f5f5f5; /* neutral-100 */
+  --bg-card: #ffffff;
+  --surface: rgba(0, 0, 0, 0.04);
+  --surface-hover: rgba(0, 0, 0, 0.08);
+  --border: rgba(0, 0, 0, 0.1);
+  --border-hover: rgba(0, 0, 0, 0.3);
+  --text: #404040; /* neutral-700 */
+  --text-subtle: rgba(64, 64, 64, 0.65);
+  --text-subtlest: rgba(64, 64, 64, 0.4);
+  --brand: #38bdf8; /* sky-400 */
+  --primary: #171717;
+  --primary-foreground: #fafafa;
+  --inverse: #ffffff;
+  --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+/* 中文断行优化：标题/描述防"单字断行" */
+.text-wrap-phrase {
+  text-wrap: pretty;
+  line-break: strict;
+  word-break: normal;
+}

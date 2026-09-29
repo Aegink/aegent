@@ -4,435 +4,89 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>aegent</title>
+    <!-- T-P3-134 批 A：theme.css 由 style.css 头部 @import 引入（全站唯一取色处）；
+         components.css = 组件类库（方案 §2.5 形态目录） -->
     <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/components.css" />
   </head>
   <body>
-    <header id="status-bar">
-      <span id="conn-status">连接中…</span>
-      <span id="surface-id"></span>
-      <span id="lease-status"></span>
-      <select id="profile-quick" title="场景快速切换（Profiles）" hidden></select>
-      <button id="lease-btn" type="button" hidden>取得写租约</button>
-      <button id="history-btn" type="button" title="会话历史">☰ 历史</button>
-      <button id="search-btn" type="button" title="跨会话搜索（Ctrl+Shift+F）">🔍 搜索</button>
-      <button id="usage-btn" type="button" title="用量与上下文">📊 用量</button>
-      <button id="work-btn" type="button" title="工作面板（文件/变更/子代理）">🛠 工作</button>
-      <button id="notify-btn" type="button" title="通知中心">🔔<span id="notify-badge" hidden></span></button>
-      <button id="settings-btn" type="button" title="设置">⚙ 设置</button>
-    </header>
-    <main id="stream" aria-live="polite"></main>
-    <!-- U9/T-P3-108 会话内搜索条：渲染层文本检索——命中高亮 + 上下跳转 -->
-    <div id="find-bar" hidden>
-      <input id="find-input" type="text" placeholder="会话内搜索…" autocomplete="off" />
-      <span id="find-count"></span>
-      <button id="find-prev" type="button" title="上一处（Shift+Enter）">↑</button>
-      <button id="find-next" type="button" title="下一处（Enter）">↓</button>
-      <button id="find-close" type="button" title="关闭（Esc）">✕</button>
+    <!-- 批 A 布局骨架（方案 §2.4）：左侧栏（导航组 + 底部状态区）+ 主内容
+         路由容器。设置/用量/工作台/通知/历史/搜索迁出为 ui/views/*.js 页面
+         模块（hash 路由——router.js），对话页为本骨架的默认视图。 -->
+    <div id="app-shell">
+      <aside id="sidebar" aria-label="主导航">
+        <header class="sidebar-head">
+          <span class="sidebar-brand">aegent</span>
+          <button id="sidebar-toggle" type="button" title="折叠/展开侧栏">«</button>
+        </header>
+        <nav class="sidebar-nav">
+          <button id="chat-btn" class="nav-item active" type="button" data-route="chat" title="对话">
+            <span data-icon="chat"></span><span class="nav-label">对话</span>
+          </button>
+          <button id="history-btn" class="nav-item" type="button" data-route="history" title="会话历史">
+            <span data-icon="history"></span><span class="nav-label">历史</span>
+          </button>
+          <button id="search-btn" class="nav-item" type="button" data-route="search" title="跨会话搜索（Ctrl+Shift+F）">
+            <span data-icon="search"></span><span class="nav-label">搜索</span>
+          </button>
+          <button id="work-btn" class="nav-item" type="button" data-route="work" title="工作面板（文件/变更/子代理/协作）">
+            <span data-icon="work"></span><span class="nav-label">工作台</span>
+          </button>
+          <button id="usage-btn" class="nav-item" type="button" data-route="usage" title="用量与上下文">
+            <span data-icon="usage"></span><span class="nav-label">用量</span>
+          </button>
+          <button id="notify-btn" class="nav-item" type="button" data-route="notify" title="通知中心">
+            <span data-icon="bell"></span><span class="nav-label">通知</span><span id="notify-badge" class="nav-badge" hidden></span>
+          </button>
+        </nav>
+        <div class="sidebar-foot">
+          <select id="profile-quick" title="场景快速切换（Profiles）" hidden></select>
+          <div class="foot-status">
+            <span id="conn-status">连接中…</span>
+            <span id="surface-id"></span>
+            <span id="lease-status"></span>
+          </div>
+          <div class="foot-actions">
+            <button id="lease-btn" type="button" hidden>取得写租约</button>
+            <button id="settings-btn" class="nav-item" type="button" data-route="settings" title="设置中心">
+              <span data-icon="settings"></span><span class="nav-label">设置</span>
+            </button>
+          </div>
+          <span class="foot-version">aegent v0.1.0</span>
+        </div>
+      </aside>
+      <div id="main">
+        <!-- 对话页（默认路由）：聊天流 + 待决审批 + 输入区 + 检索浮层 -->
+        <div id="chat-view">
+          <main id="stream" aria-live="polite"></main>
+          <!-- U9/T-P3-108 会话内搜索条：渲染层文本检索——命中高亮 + 上下跳转 -->
+          <div id="find-bar" hidden>
+            <input id="find-input" type="text" placeholder="会话内搜索…" autocomplete="off" />
+            <span id="find-count"></span>
+            <button id="find-prev" type="button" title="上一处（Shift+Enter）">↑</button>
+            <button id="find-next" type="button" title="下一处（Enter）">↓</button>
+            <button id="find-close" type="button" title="关闭（Esc）">✕</button>
+          </div>
+          <!-- U9/T-P3-108 小地图：消息类型着色条 + 点击跳轮（纯 DOM） -->
+          <div id="minimap" aria-label="会话结构导航"></div>
+          <section id="pending" aria-label="待决审批"></section>
+          <footer id="composer">
+            <!-- U10/T-P3-109：补全下拉（@ 文件/目录、/ 命令+工具+技能）+ 附件预览 -->
+            <div id="autocomplete" hidden></div>
+            <div id="attachments-preview"></div>
+            <!-- U26/T-P3-129 语音输入（实验性）：点击开始/再点结束 → STT 填入输入框 -->
+            <button id="mic-btn" type="button" title="语音输入【实验性】（点击开始/再点结束）">🎤</button>
+            <textarea id="prompt-input" rows="1" placeholder="输入指令回车执行…（Shift+Enter 换行；@ 补全文件、/ 补全命令）" autocomplete="off"></textarea>
+            <button id="send-btn" type="button">发送</button>
+          </footer>
+        </div>
+        <!-- 路由容器：views/*.js 页面模块挂载点（settings/usage/work/notify/history/search） -->
+        <div id="view-root" hidden></div>
+      </div>
     </div>
-    <!-- U9/T-P3-108 小地图：消息类型着色条 + 点击跳轮（纯 DOM） -->
-    <div id="minimap" aria-label="会话结构导航"></div>
-    <section id="pending" aria-label="待决审批"></section>
-    <footer id="composer">
-      <!-- U10/T-P3-109：补全下拉（@ 文件/目录、/ 命令+工具+技能）+ 附件预览 -->
-      <div id="autocomplete" hidden></div>
-      <div id="attachments-preview"></div>
-      <!-- U26/T-P3-129 语音输入（实验性）：点击开始/再点结束 → STT 填入输入框 -->
-      <button id="mic-btn" type="button" title="语音输入【实验性】（点击开始/再点结束）">🎤</button>
-      <textarea id="prompt-input" rows="1" placeholder="输入指令回车执行…（Shift+Enter 换行；@ 补全文件、/ 补全命令）" autocomplete="off"></textarea>
-      <button id="send-btn" type="button">发送</button>
-    </footer>
 
-    <!-- U14/T-P3-103 设置中心：多分节（供应商/凭据/权限/沙箱/外观/日志/项目/关于）
-         ——即改即存 settings 面；分节与 settings 模块一一对应（T-P3-132 补日志分节、
-         T-P3-110 补项目分节） -->
-    <aside id="settings-panel" hidden aria-label="设置中心">
-      <header class="settings-head">
-        <span>设置</span>
-        <button id="settings-close" type="button">关闭</button>
-      </header>
-      <div class="settings-body">
-        <section data-section="providers">
-          <h2>供应商</h2>
-          <ul id="provider-list"></ul>
-          <form id="provider-form">
-            <input id="provider-name" type="text" placeholder="名称（如 main）" autocomplete="off" />
-            <select id="provider-adapter">
-              <option value="openai">openai 兼容</option>
-              <option value="anthropic">anthropic</option>
-            </select>
-            <input id="provider-baseurl" type="text" placeholder="Base URL" autocomplete="off" />
-            <input id="provider-model" type="text" placeholder="模型" autocomplete="off" />
-            <button type="submit">新增</button>
-          </form>
-          <p class="hint">默认标记 = 启动装配选中的供应商（新会话生效）。↑↓ 顺序 = 故障转移优先级（J15 队列序）。</p>
-        </section>
-        <section data-section="credentials">
-          <h2>凭据</h2>
-          <form id="credential-form">
-            <input id="credential-provider" type="text" placeholder="provider 名" autocomplete="off" />
-            <input id="credential-key" type="password" placeholder="API key（不回显）" autocomplete="off" />
-            <button type="submit">保存</button>
-            <button id="credential-delete" type="button">删除</button>
-          </form>
-          <ul id="credential-list"></ul>
-          <p class="hint">凭据独立存储（Windows 经 DPAPI 加密），永不写入配置文件与日志。</p>
-        </section>
-        <section data-section="permission">
-          <h2>权限档</h2>
-          <label>审批超时（毫秒）<input id="perm-timeout" type="number" min="1000" step="1000" /></label>
-        </section>
-        <section data-section="sandbox">
-          <h2>沙箱档</h2>
-          <label>网络档
-            <select id="sandbox-network">
-              <option value="">（未设置）</option>
-              <option value="allow">allow</option>
-              <option value="deny">deny</option>
-            </select>
-          </label>
-          <label>工作区<input id="sandbox-workspace" type="text" placeholder="（未设置）" /></label>
-          <label>事件库<input id="sandbox-db" type="text" placeholder="（未设置）" /></label>
-        </section>
-        <section data-section="appearance">
-          <h2>外观与语言</h2>
-          <label>主题
-            <select id="appearance-theme">
-              <option value="dark">暗色</option>
-              <option value="light">亮色</option>
-            </select>
-          </label>
-          <label>语言
-            <select id="appearance-language">
-              <option value="zh-CN">中文</option>
-              <option value="en">English</option>
-            </select>
-          </label>
-        </section>
-        <section data-section="logging">
-          <h2>日志</h2>
-          <label>原始分片日志目录<input id="logging-rawdir" type="text" placeholder="（未设置——不写原始分片）" /></label>
-          <p class="hint">对应 --raw-log-dir：设置后新会话起记录原始响应分片（排障用）。</p>
-        </section>
-        <section data-section="projects">
-          <h2>项目</h2>
-          <ul id="project-list"></ul>
-          <form id="project-form">
-            <input id="project-name" type="text" placeholder="项目名" autocomplete="off" />
-            <input id="project-workspace" type="text" placeholder="workspace 目录" autocomplete="off" />
-            <textarea id="project-instructions" rows="2" placeholder="项目级指令（可选）"></textarea>
-            <button type="submit">新增</button>
-          </form>
-          <p class="hint">设为活动 = 新会话以该项目 workspace 启动（当前会话不受影响）。</p>
-        </section>
-        <!-- U16/T-P3-118 提示词模板库：用户自建/编辑/删除（settings prompts 段）+
-             Composer / 补全调用（选中填入输入框，{{var}} 占位符保留手改） -->
-        <section data-section="prompts">
-          <h2>提示词模板</h2>
-          <ul id="prompt-list"></ul>
-          <form id="prompt-form">
-            <input id="prompt-name" type="text" placeholder="模板名（斜杠调用标识）" autocomplete="off" />
-            <input id="prompt-desc" type="text" placeholder="描述（可选）" autocomplete="off" />
-            <textarea id="prompt-content" rows="3" placeholder="模板正文（{{var}} 为变量占位符）"></textarea>
-            <button type="submit">新增</button>
-          </form>
-          <p class="hint">模板在输入区 / 补全中列出（📝），选中即填入输入框；变量占位符保留手改。系统级人格预设（persona）不在此管理。</p>
-        </section>
-        <!-- U22/T-P3-125 技能管理：清单（卡片：名称/描述/来源标记/工具集
-             chips/启用开关）+ 编辑器（写回 workspace 技能目录 SKILL.md）+
-             来源目录管理（RepoManager 形态本地化——附加根清单/增删） -->
-        <section data-section="skills">
-          <h2>技能</h2>
-          <ul id="skill-list"></ul>
-          <div id="skill-editor" hidden>
-            <input id="skill-name" type="text" placeholder="技能名（slug：小写字母数字开头，可含 . - _）" autocomplete="off" />
-            <input id="skill-desc" type="text" placeholder="描述（清单与系统提示显示用）" autocomplete="off" />
-            <div class="hint">工具集（可选——勾选该技能声明的工作工具）</div>
-            <div id="skill-tools"></div>
-            <textarea id="skill-body" rows="6" placeholder="技能正文（写入 SKILL.md 的 frontmatter 之后——给模型看的操作指引）"></textarea>
-            <button id="skill-save" type="button">保存技能</button>
-            <button id="skill-cancel" type="button">取消</button>
-          </div>
-          <button id="skill-new" type="button">新建技能</button>
-          <hr />
-          <h3>来源目录</h3>
-          <ul id="skill-roots"></ul>
-          <form id="skill-root-form">
-            <input id="skill-root-path" type="text" placeholder="附加技能来源目录（绝对路径）" autocomplete="off" />
-            <button type="submit">添加来源</button>
-          </form>
-          <p class="hint">workspace 主目录（.zcode/skills）恒为首个来源；附加目录的技能同样出现在清单。停用 = 从新会话装配剔除（清单/系统提示/skill_load 三面一致）；技能正文上限 128KB。</p>
-        </section>
-        <!-- U23/T-P3-126 子智能体管理：内置五预设卡（开关/工具 chips/覆盖
-             编辑）+ 用户自定义 CRUD + per-subagent 模型与 fallback 链
-             （SubagentModelPicker/SubagentFallbackModels 行为锚） -->
-        <section data-section="subagents">
-          <h2>子智能体</h2>
-          <ul id="subagent-list"></ul>
-          <p class="hint">内置预设可在 task 工具中以 subagent_type 调用（如 explorer / code-reviewer）；停用的内置保留在清单里（开关是开回的路径）。工具集 chips = 该预设可用的工具声明面（H3/H5 降级面之上再收窄）。</p>
-          <div id="subagent-editor" hidden>
-            <input id="subagent-name" type="text" placeholder="预设名（slug：小写字母数字- _，task 调用标识）" autocomplete="off" />
-            <input id="subagent-desc" type="text" placeholder="描述" autocomplete="off" />
-            <textarea id="subagent-prompt" rows="4" placeholder="身份提示（这个子代理是谁、怎么干活——追加进子会话系统提示）"></textarea>
-            <div class="hint">工具集（可选——勾选后该预设只能用这些工具）</div>
-            <div id="subagent-tools"></div>
-            <label>模型条目（providers 条目名——独立模型面，缺省回退父会话模型）
-              <input id="subagent-provider" type="text" placeholder="（缺省继承父会话）" autocomplete="off" /></label>
-            <label>模型 id（可选——覆盖条目缺省模型）
-              <input id="subagent-model" type="text" placeholder="（条目/主模型回退）" autocomplete="off" /></label>
-            <label>故障转移候选（providers 条目名，逗号分隔——J15 消费面）
-              <input id="subagent-fallbacks" type="text" placeholder="（可选）" autocomplete="off" /></label>
-            <button id="subagent-save" type="button">保存预设</button>
-            <button id="subagent-cancel" type="button">取消</button>
-          </div>
-          <button id="subagent-new" type="button">新建自定义子代理</button>
-        </section>
-        <!-- U24/T-P3-127 指令中心：全局/项目级指令文件与用户规则文件的
-             集中管理（C22 project/user 两档的文件位 UI 面）——查看/编辑/
-             保存确认 + 规则 lint + 模板插入辅助 -->
-        <section data-section="instructions">
-          <h2>指令中心</h2>
-          <p class="hint">层级（全局 → 项目就近覆盖）与规则文件（C22 user 档）集中编辑；保存前有确认面，新会话生效。</p>
-          <h3>项目 AGENTS.md（<span id="instr-project-path">workspace</span>）</h3>
-          <textarea id="instr-project" rows="5" placeholder="（项目级指令——F2 收集链最近层）"></textarea>
-          <button class="instr-save" data-target="project-agents" type="button">保存项目指令</button>
-          <button class="instr-tpl" data-target="project-agents" type="button">插入模板</button>
-          <h3>全局 AGENTS.md（~/.aegent/AGENTS.md——最远层）</h3>
-          <textarea id="instr-global" rows="5" placeholder="（全局指令——所有 workspace 生效）"></textarea>
-          <button class="instr-save" data-target="global-agents" type="button">保存全局指令</button>
-          <button class="instr-tpl" data-target="global-agents" type="button">插入模板</button>
-          <h3>用户级规则（~/.aegent/rules.txt——每行 `<code>规则 -&gt; allow|ask|deny</code>`）</h3>
-          <textarea id="instr-rules" rows="5" placeholder="# 注释行；如：Bash(git status) -> allow"></textarea>
-          <p id="instr-rules-lint" class="hint"></p>
-          <button class="instr-save" data-target="user-rules" type="button">保存用户规则</button>
-          <button class="instr-tpl" data-target="user-rules" type="button">插入模板</button>
-        </section>
-        <!-- U25/T-P3-128 快捷键系统：清单可查 + 自定义绑定（点击捕获按键）
-             + 冲突提示（注册表冲突阻断 / 浏览器保留键提示不拦截） -->
-        <section data-section="shortcuts">
-          <h2>快捷键</h2>
-          <ul id="shortcut-list"></ul>
-          <p id="shortcut-status" class="hint">点击绑定进入捕获态——按新组合即改即存；Esc 取消捕获。</p>
-          <button id="shortcut-reset" type="button">恢复默认键位</button>
-          <p class="hint">发送键（Enter）为核心交互固定不可改；会话切换/新建会话无对应面（单会话 host 模型——历史侧栏即切换入口，记档）。</p>
-        </section>
-        <!-- U26/T-P3-129 语音设置（实验性）：STT 引擎配置（OpenAI 协议
-             端点复用——P4 消费端）；TTS 播报最小面不落（卡内定形记档） -->
-        <section data-section="speech">
-          <h2>语音【实验性】</h2>
-          <p class="hint">语音转文字（STT）——输入区 🎤 按钮录音后转写填入输入框；真实端点联调随 U8（配置在位即可用）。</p>
-          <label>STT 端点根<input id="stt-baseurl" type="text" placeholder="（未配置——语音输入不可用）如 https://api.openai.com/v1" autocomplete="off" /></label>
-          <label>转写模型<input id="stt-model" type="text" placeholder="如 whisper-1" autocomplete="off" /></label>
-          <label>语言提示（BCP-47 可选）<input id="stt-language" type="text" placeholder="如 zh（缺省自动检测）" autocomplete="off" /></label>
-          <p class="hint">端点 API key 请在「凭据」分节以 provider 名 <code>stt</code> 录入（零明文，同 U2 通道）。</p>
-        </section>
-        <!-- T-P3-133 插件管理：清单（transport/trust 徽标/错误行/启停/删除）
-             + 安装表单（inprocess 目录 / ws URL）——I4/I5/I9 管理面延伸；
-             市场远程渠道不建（YAGNI 裁决——本地/ws 安装最小化） -->
-        <section data-section="plugins">
-          <h2>插件</h2>
-          <ul id="plugin-list"></ul>
-          <form id="plugin-form">
-            <label>装载方式
-              <select id="plugin-transport">
-                <option value="inprocess">进程内（目录：plugin.json + index.js）</option>
-                <option value="ws">进程外（ws:// URL——I4 不可信隔离）</option>
-              </select>
-            </label>
-            <input id="plugin-name" type="text" placeholder="插件名（唯一，不含 __）" autocomplete="off" />
-            <input id="plugin-source" type="text" placeholder="装载源（目录绝对路径 或 ws://…）" autocomplete="off" />
-            <label class="hint">ws 插件工具登记开关（不受信来源默认 deny——显式放行才登记工具）
-              <input id="plugin-allowtools" type="checkbox" /></label>
-            <button id="plugin-add" type="button">安装（先校验）</button>
-          </form>
-          <p class="hint">进程内插件目录约定：plugin.json（清单：name/trust/capabilities）+ index.js（入口，default 导出 AegentPlugin）。停用保留在清单；装载失败不影响启动（never-fail）。新会话生效。</p>
-        </section>
-        <!-- U17/T-P3-119 MCP 管理向导：分步添加（类型→参数→校验→保存）+
-             统一面板（清单/启停/编辑/删除）；连接校验走 settings op:mcp-check -->
-        <section data-section="mcp">
-          <h2>MCP 服务器</h2>
-          <ul id="mcp-list"></ul>
-          <div id="mcp-wizard" hidden>
-            <div id="mcp-step1">
-              <label>类型
-                <select id="mcp-type">
-                  <option value="stdio">stdio（本地命令）</option>
-                  <option value="http" disabled>http（mcp 域暂未支持——随 HTTP transport 扩展）</option>
-                </select>
-              </label>
-              <input id="mcp-name" type="text" placeholder="名称（工具前缀，不含 __）" autocomplete="off" />
-              <input id="mcp-command" type="text" placeholder="启动命令（如 node）" autocomplete="off" />
-              <input id="mcp-args" type="text" placeholder="参数（空格分隔，如 /path/server.js）" autocomplete="off" />
-              <button id="mcp-next" type="button">下一步：测连接</button>
-            </div>
-            <div id="mcp-step2" hidden>
-              <p id="mcp-check-result" class="hint">未测试</p>
-              <button id="mcp-test" type="button">测连接</button>
-              <button id="mcp-save" type="button" disabled>保存</button>
-              <button id="mcp-back" type="button">上一步</button>
-            </div>
-          </div>
-          <button id="mcp-add" type="button">添加 server</button>
-          <p class="hint">启停即时落档，新会话生效（子进程装配期连接注册；单 server 失败不影响启动）。</p>
-        </section>
-        <!-- U18/T-P3-120 辅助模型配置卡：判官/摘要任务与主对话模型分离
-             （EnhancementModelCard / ADR 0121 行为锚）——缺省回退主模型 -->
-        <section data-section="enhancement">
-          <h2>辅助模型</h2>
-          <p class="hint">判官/摘要等增强任务的模型独立配置（ADR 0121——"哪个模型做辅助工作、带多少推理"）；缺省回退主模型链（任务 model → 条目 model → 默认模型）。</p>
-          <h3>判官（C42 两阶段复核）</h3>
-          <label>供应商条目<input id="enh-judge-provider" type="text" placeholder="（未配置——判官落回人）" autocomplete="off" /></label>
-          <label>模型<input id="enh-judge-model" type="text" placeholder="（回退条目/默认模型）" autocomplete="off" /></label>
-          <label>推理档位
-            <select id="enh-judge-reasoning">
-              <option value="">（未设置）</option>
-              <option value="minimal">minimal</option>
-              <option value="low">low</option>
-              <option value="medium">medium</option>
-              <option value="high">high</option>
-            </select>
-          </label>
-          <h3>摘要（F5 上下文压缩摘要）</h3>
-          <label>供应商条目<input id="enh-summarizer-provider" type="text" placeholder="（未配置——用主模型）" autocomplete="off" /></label>
-          <label>模型<input id="enh-summarizer-model" type="text" placeholder="（回退条目/默认模型）" autocomplete="off" /></label>
-          <label>推理档位
-            <select id="enh-summarizer-reasoning">
-              <option value="">（未设置）</option>
-              <option value="minimal">minimal</option>
-              <option value="low">low</option>
-              <option value="medium">medium</option>
-              <option value="high">high</option>
-            </select>
-          </label>
-        </section>
-        <!-- U19/T-P3-121 Profiles 配置档：命名场景组合（provider+模型+权限+沙箱）
-             切换 = 批量写生效段（applyProfile patch——providers 清单不动）；
-             供应商列表 ↑↓ 排序 = 故障转移优先级（J15 队列序消费面） -->
-        <section data-section="profiles">
-          <h2>场景配置档</h2>
-          <ul id="profile-list"></ul>
-          <form id="profile-form">
-            <input id="profile-name" type="text" placeholder="档名（如 coding / cheap）" autocomplete="off" />
-            <input id="profile-provider" type="text" placeholder="默认供应商条目名" autocomplete="off" />
-            <input id="profile-model" type="text" placeholder="默认模型（可选）" autocomplete="off" />
-            <input id="profile-timeout" type="number" min="1000" step="1000" placeholder="审批超时 ms（可选）" />
-            <select id="profile-network">
-              <option value="">网络档：跟随全局（可选）</option>
-              <option value="allow">allow</option>
-              <option value="deny">deny</option>
-            </select>
-            <button id="profile-snapshot" type="button">填入当前生效值</button>
-            <button type="submit">建档</button>
-          </form>
-          <p class="hint">建档 = 保存命名组合；切换 = 批量写回默认供应商/模型/权限/沙箱生效段（providers 清单不动；在途轮不受影响——新 turn 生效，J6 同款）。供应商列表的 ↑↓ 顺序 = 故障转移优先级（J15）。</p>
-        </section>
-        <!-- U20/T-P3-122 导入导出与深链分享：导出包零凭据 + 导入必确认
-             （不可信输入面——摘要逐项列出后 confirm）+ 深链钩子 -->
-        <section data-section="transfer">
-          <h2>导入与导出</h2>
-          <button id="export-btn" type="button">导出配置包</button>
-          <span id="export-status" class="hint"></span>
-          <hr />
-          <label>选择配置包<input id="import-file" type="file" accept=".json,application/json" /></label>
-          <pre id="import-preview" class="card-args" hidden></pre>
-          <p id="import-summary" class="hint"></p>
-          <button id="import-apply" type="button" hidden>确认导入（覆盖当前配置）</button>
-          <p class="hint">导入前自动备份（settings.json.bak.0~4 滚动 5 份）；配置包不含凭据——换机请在各供应商条目重新录入 key。</p>
-        </section>
-        <section data-section="about">
-          <h2>关于</h2>
-          <p>aegent 0.1.0 —— 本地优先的 agent 工作台（事件即真相；配置即本页）。</p>
-        </section>
-      </div>
-    </aside>
-    <!-- U12/T-P3-111 用量面板：上下文检查器（占用/占比/压缩状态）+
-         成本统计页（按会话/按轮——J21 消费端，纯 DOM 表） -->
-    <aside id="usage-panel" hidden aria-label="用量与上下文">
-      <header class="settings-head">
-        <span>用量与上下文</span>
-        <button id="usage-close" type="button">关闭</button>
-      </header>
-      <div class="settings-body">
-        <section class="usage-section">
-          <h2>上下文检查器</h2>
-          <div class="ctx-meter"><div id="ctx-meter-fill"></div></div>
-          <p id="ctx-text" class="hint"></p>
-          <p id="compaction-text" class="hint"></p>
-        </section>
-        <section class="usage-section">
-          <h2>成本统计（按会话）</h2>
-          <table id="cost-table">
-            <thead>
-              <tr><th>会话</th><th>轮数</th><th>总 token</th><th>成本</th></tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-          <p id="cost-hint" class="hint"></p>
-        </section>
-        <section class="usage-section">
-          <h2>按轮用量（本会话）</h2>
-          <table id="turn-table">
-            <thead>
-              <tr><th>轮</th><th>请求</th><th>输入</th><th>输出</th><th>缓存命中</th><th>成本</th></tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </section>
-      </div>
-    </aside>
-    <!-- U15/T-P3-117 工作面板：三 Tab（文件树/变更评审/子代理监控）——
-         变更与委派从事件流提取（op:"review" 纯函数直答，不建状态）；
-         文件树 = op:"files" 列举 + op:"file" 点击预览（workspace 内只读） -->
-    <aside id="workpanel" hidden aria-label="工作面板">
-      <header class="settings-head">
-        <span>工作面板</span>
-        <button id="work-close" type="button">关闭</button>
-      </header>
-      <nav id="work-tabs">
-        <button type="button" data-worktab="files" class="work-tab active">📁 文件</button>
-        <button type="button" data-worktab="review" class="work-tab">🔍 变更评审</button>
-        <button type="button" data-worktab="subagent" class="work-tab">🤖 子代理</button>
-        <!-- U27/T-P3-131 协作 Tab：会话间往来事实（流投影——session/collab） -->
-        <button type="button" data-worktab="collab" class="work-tab">🔗 协作</button>
-      </nav>
-      <div class="settings-body">
-        <section data-worktab-body="files">
-          <div id="work-filetree" class="work-tree"></div>
-          <p id="work-tree-hint" class="hint"></p>
-          <div id="work-preview-box" hidden>
-            <header class="preview-head">
-              <span id="work-preview-path"></span>
-              <button id="work-preview-close" type="button">收起</button>
-            </header>
-            <pre id="work-preview" class="card-args"></pre>
-          </div>
-        </section>
-        <section data-worktab-body="review" hidden>
-          <p id="work-review-summary" class="hint"></p>
-          <ul id="work-review-list"></ul>
-          <p class="hint">从事件流提取（write/edit/apply-patch 显式路径 + bash 的 rm/重定向推断——via 列标注来源）；失败调用不计入。</p>
-        </section>
-        <section data-worktab-body="subagent" hidden>
-          <table id="work-delegation-table">
-            <thead>
-              <tr><th>任务</th><th>子会话</th><th>状态</th><th>耗时</th></tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-          <p id="work-delegation-hint" class="hint"></p>
-        </section>
-        <section data-worktab-body="collab" hidden>
-          <table id="work-collab-table">
-            <thead>
-              <tr><th>方向</th><th>对端会话</th><th>类型</th><th>状态</th><th>结果/错误</th></tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-          <p class="hint">会话间派任务/消息往来的流内事实（session/collab 事件投影）；权限快照随派发固化——后续设置变更不影响排队/在途任务。</p>
-        </section>
-      </div>
-    </aside>
-    <!-- U13/T-P3-112 五件套：Toast 轻提示容器 / 恢复横幅 / 更新横幅 +
-         发布说明弹窗 / 首次引导清单 / 通知中心面板 -->
+    <!-- 浮层（全路由共用）：Toast / 恢复横幅 / 更新横幅 + 发布说明 / 首次引导
+         ——U13/T-P3-112 五件套的横幅与弹窗面（通知中心已迁 views/notify.js） -->
     <div id="toast-area" aria-live="polite"></div>
     <div id="recovery-banner" hidden>
       <span id="recovery-text"></span>
@@ -449,10 +103,10 @@
         <h2>欢迎使用 aegent</h2>
         <p class="hint">四步上手（不挡路——可随时在设置里回看）：</p>
         <ul id="ob-list">
-          <li>⚙ <b>设置中心</b>——供应商/凭据/沙箱档即改即存（右上角 ⚙）</li>
+          <li>⚙ <b>设置中心</b>——供应商/凭据/沙箱档即改即存（左侧栏 ⚙ 设置）</li>
           <li>⌨ <b>输入区</b>——@ 补全文件、/ 补全命令，Shift+Enter 换行，可粘贴图片</li>
-          <li>🔍 <b>检索</b>——Ctrl+F 会话内搜索，🔍 按钮跨会话搜索</li>
-          <li>📊 <b>用量</b>——上下文余量与成本随时可查</li>
+          <li>🔍 <b>检索</b>——Ctrl+F 会话内搜索，侧栏 🔍 跨会话搜索</li>
+          <li>📊 <b>用量</b>——上下文余量与成本随时可查（左侧栏 用量）</li>
         </ul>
         <button id="ob-done" type="button">开始使用</button>
       </div>
@@ -464,46 +118,6 @@
         <button id="rn-close" type="button">关闭</button>
       </div>
     </div>
-    <aside id="notify-panel" hidden aria-label="通知中心">
-      <header class="settings-head">
-        <span>通知中心</span>
-        <button id="notify-clear" type="button">清空</button>
-        <button id="notify-close" type="button">关闭</button>
-      </header>
-      <div class="settings-body">
-        <ul id="notify-list"></ul>
-        <p class="hint">审批/提问以卡片弹出（不进清单）；此处为轮结算/后台任务/端面变化的分型通知。</p>
-      </div>
-    </aside>
-    <!-- U9/T-P3-108 跨会话搜索面板：query op:"search"（Q2 检索的 UI 消费）——
-         命中列表（会话/时间/摘录）+ 点开只读续聊入口 -->
-    <aside id="search-panel" hidden aria-label="跨会话搜索">
-      <header class="settings-head">
-        <span>跨会话搜索</span>
-        <button id="search-close" type="button">关闭</button>
-      </header>
-      <div class="settings-body">
-        <form id="search-form">
-          <input id="search-input" type="text" placeholder="内容子串（跨全部会话）" autocomplete="off" />
-          <button type="submit">搜索</button>
-        </form>
-        <p id="search-meta" class="hint"></p>
-        <ul id="search-results"></ul>
-        <p class="hint">查看 = 只读恢复视图；续聊请在终端执行 aegent sessions resume &lt;id&gt;。</p>
-      </div>
-    </aside>
-    <!-- U3/T-P3-105 会话历史侧栏：列表（id/标题/时间/规模）+ 只读查看 +
-         删除确认；续聊 = aegent sessions resume <id>（入口提示） -->
-    <aside id="history-panel" hidden aria-label="会话历史">
-      <header class="settings-head">
-        <span>会话历史</span>
-        <button id="history-close" type="button">关闭</button>
-      </header>
-      <div class="settings-body">
-        <ul id="history-list"></ul>
-        <p class="hint">查看 = 只读恢复视图；续聊请在终端执行 aegent sessions resume &lt;id&gt;。</p>
-      </div>
-    </aside>
     <script type="module" src="/app.js"></script>
   </body>
 </html>

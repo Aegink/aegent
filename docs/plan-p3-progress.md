@@ -292,7 +292,55 @@
 
 **参考仓借鉴映射（T-P3-133）**：pi-desktop·InstalledPluginsPanel（清单/启停/卸载确认/来源 tag/错误行——🔴 只学行为）+ codex·plugin/manifest.rs（插件贡献资源清单形状——清单独立文件约定）+ pi-desktop·activation.ts（作用域三态——**不取**，收敛记档）。
 
+### 补全卡 T-P3-134 · UI 批次 A：设计系统 + 布局架构 + 模块化拆分（2026-09-29）
+
+**状态**：✅ 落地（2026-09-29）——方案 A 零构建链 + 用户追加硬要求"模块化"双兑现。巨石拆解：**app.js 3316→1261 行、index.html 509→123 行**，新增共享层五件（api/state/feedback/router/icons——feedback 为方案树外按职责小件，记档）+ views 六件（settings/usage/work/notify/history/search——视图契约 render(container,params)+unmount）+ theme.css（token 全套，全站唯一取色处）+ components.css（组件类库 435 行）。hash 路由页面化：`#chat/#settings[/section]/#usage/#work[/tab]/#notify/#history/#search`，抽屉退役（fixed→页面容器）。实施顺序①~⑥（共享层先行→逐视图搬运）+ 每步回归。**验收实测**：tauri-shell **9/9 passed**（既有断言全保留、按模块重定目标；新增侧栏/路由容器/icons/深链/token 证伪断言——parseHash 11 例直测）+ 全量 vitest **1821 passed / 7 skipped，exit 0**（205 文件=基线）+ tsc 干净 + node --check 全模块 + check-doc-links 显式传参 48 链接 0 失效 + 产物重打双同步 + **机器等效冒烟**（HTTP 200 + MainWindowTitle=aegent）+ **浏览器真实渲染走查**（骨架/图标注入/深链 19 分节+三组导航+分节激活/路由往返/toggle——走查发现并修复 view-root 残留 DOM〔router.replaceChildren〕）。卡面完成记录（plan-p3.md §8）载全部细节。
+
+**功能覆盖矩阵逐行核对（实列 28 行——方案文"29 行"为展卡口径笔误，同 #29 精神按实列修正；已同步卡面/提示词数字；任何一行失能 = 卡不过——全通过）**：
+
+| # | 功能面 | 批 A 落位与核对依据 |
+| --- | --- | --- |
+| 1 | 发送/多行/斜杠命令/取消 | Composer 域留在 app.js 原样（提交/Shift+Enter/UI_COMMANDS/cancel）——冒烟输入区在位 |
+| 2 | @文件/补全 | app.js 原样 + ensureFileCache/ensureMetaCache 下沉 api.js（参数化 sessionId）——断言 op:files/meta |
+| 3 | 粘贴图/附件预览 | app.js 原样（限额同源）——断言 addAttachment/MAX_ATTACHMENT_BYTES |
+| 4 | 审批卡/提问卡/倒计时/替代做法 | app.js 原样（#pending 骨架常驻）——断言 chip/countdown |
+| 5 | 工具卡/diff/复制 | app.js 原样——ui-render XSS 十例回归全绿 |
+| 6 | 流式打字/恢复视图 | app.js 原样（typeStream/renderHistory）——断言 requestAnimationFrame |
+| 7 | 错误重试/恢复横幅 | app.js 原样（recovery-banner 骨架 + retry-btn）——断言 showRecoveryIfInterrupted |
+| 8 | 会话历史/只读查看/删除 | 迁 views/history.js + 侧栏导航入口——断言 op:sessions/session-delete + 浏览器走查路由可达；侧栏会话树分组/未读点归批 B（矩阵"升级落位"列本就 A+B） |
+| 9 | 跨会话搜索/会话内搜索 | search 迁 views/search.js（#search 深链可达）；find-bar 骨架保留（Ctrl+F/Ctrl+Shift+F 键位语义不变）——keymap 回归全绿 |
+| 10 | 小地图 | app.js 原样（#minimap 骨架）——断言 minimapRegister |
+| 11 | 设置 19 分节全部读写 | 迁 views/settings.js + 三组二级导航——浏览器实数 19 分节/表单回填/分节激活；settings e2e 全绿 |
+| 12 | 供应商/凭据/健康探测 | 照搬（默认标记/会话切换/probe 节流/↑↓ 排序）——断言 model/switch、op:probe |
+| 13 | MCP 向导/启停/校验 | 照搬（向导两步/mcp-check/启停删）——断言 op:mcp-check |
+| 14 | 子智能体五预设/自定义/模型链 | 照搬——断言 subagents-list/fallbacks |
+| 15 | 技能清单/编辑器/来源目录 | 照搬——断言 skills-list/skill-save/roots |
+| 16 | 提示词库 | 照搬——断言 prompt-form/renderPromptList + 补全混入 kind:prompt |
+| 17 | 指令中心 | 照搬（三文件位/保存确认/lint/模板）——断言 instruction-save |
+| 18 | 快捷键清单/捕获/冲突 | 照搬（捕获监听改挂载期/卸载移除）——keymap.test 全绿 + 断言 capturingAction |
+| 19 | 插件安装/启停/诊断 | 照搬——断言 plugins-list/plugin-add |
+| 20 | 语音【实验性】 | 照搬（STT 配置分节 + Composer 🎤 链）——断言 stt-transcribe/MediaRecorder |
+| 21 | 用量/成本/统计 | 迁 views/usage.js——浏览器走查（未配 SQLite 库时优雅降级提示在位）；统计页 SVG 升级归批 B（矩阵口径） |
+| 22 | 工作面板四 Tab | 迁 views/work.js（含协作 Tab）+ turn_settled 订阅制自动刷新（原"面板可见则刷新"等价面）——断言 op:review/file |
+| 23 | 通知中心/Toast | **批 A 义务兑现：toast 组件类重做**（components.css）+ notify 迁 views/notify.js（订阅渲染/徽标常显）——断言 consumeN5/notify-panel |
+| 24 | Profiles 快速切换 | 侧栏底部 #profile-quick 保留 + 动态 import 委派设置域（启动即可用）——断言 applyProfileValues |
+| 25 | 导入导出/深链 | 照搬（确认面/备份/aegentApplyDeepLink 委派——Promise 返回值记档：宿主 eval 不消费）——断言 op:import |
+| 26 | 主题亮暗 | **批 A 义务兑现：token 双主题换值**（theme.css 两块）+ 启动即应用已存主题（修复需开一次设置的既有缺口）——断言 body[data-theme="light"] |
+| 27 | 首跑引导/更新横幅/发布说明 | 骨架浮层保留 + app.js 逻辑照搬——断言 onboarding/aegentShowUpdate |
+| 28 | 租约/surface/版本显示 | **批 A 义务兑现：侧栏底部状态区收纳**——浏览器实见（已连接/web-jyseb7/取得写租约/v0.1.0） |
+
+**人工确认清单新增（批 A）**：
+
+| 需求ID / 批次 | 为什么不能机验 | 人工要怎么确认 | 状态 |
+| --- | --- | --- | --- |
+| T-P3-134 UI 批 A 视觉走查 | 布局手感/亮暗对比/折叠动画无自动化判据 | 桌面壳或浏览器打开 → ①侧栏导航六入口+图标观感；②设置页二级导航点击滚动定位；③外观分节切亮色看 token 换值；④侧栏 « 折叠 rail；⑤浏览器前进后退深链 | 机器等效走查已过（骨架/路由/图标/截图两张）；**手感面待用户**（新壳实例已在跑：dist/portable/aegent-desktop.exe） |
+| T-P3-134 双击安装器走查（随 U6） | 安装器人工面 | 双击 dist/aegent_0.1.0_x64-setup.exe → 新 UI 全链对话一轮 | 等效冒烟 ✅；人工双击待用户 |
+
+**记档**：①批 A 前清掉上会话冒烟残留进程（aegent-desktop ×4 + portable node host——占用 exe 与 8787）；②方案 §七遗留 `dist/portable/host.mjs` 已清除；③`views/settings.js` 1983 行已知债——批 B 逐分节重做时按方案拆 `views/settings/` 子模块；④feedback.js 为方案文件树外新增（appendLine/toast 等跨视图原语——避免 state.js 混入 DOM 职责）；⑤aegentApplyDeepLink 因设置域迁出改为动态 import 委派（同步返回→Promise——宿主 eval 不消费返回值，行为面不变）。
+
 ## 批次提示词（UI 批次 A 开工——T-P3-134；2026-09-29 更新）
+
+> **✅ 批 A 已收官（2026-09-29，本提示词已执行完毕）**——下会话开工步骤：先按方案 §三批 B **展卡 T-P3-135**（设置页面化逐页重做 + 统计 SVG——消费批 A 的 token/组件类/路由）并更新本节为批 B 开工提示词，再独立执行。
 
 ```
 继续 aegent 的 UI 全面升级。用户已裁决技术路线 = 方案 A（零构建链：CSS 变量
@@ -304,7 +352,7 @@ token + 组件类 + 内联 SVG + hash 路由，不引 React/Vite/Tailwind/rechar
 0. **方案与规格的唯一事实源**：docs/20260929_UI全面升级方案.md（v2 细节
    规格版）——开工先通读：§二设计规格表（token 逐值/行式卡配方/组件形态
    ——色值字号圆角都是参考仓源码提取的，照抄即可）、§2.4 应用骨架与消息
-   流、§2.5 组件库地图（46 件目录）、**§3.5 功能覆盖矩阵（29 行——升级
+   流、§2.5 组件库地图（46 件目录）、**§3.5 功能覆盖矩阵（28 行〔实列口径〕——升级
    零功能丢失的验收基线，每收一段核对一行）**。参考仓源码锚点都在方案里
    （oss/zcode/packages/ui/src 的 styles.css :137 亮色/:308 暗色 token、
    SettingsPage.tsx :1375 骨架、ChatPromptEditor.tsx :347 输入容器；
