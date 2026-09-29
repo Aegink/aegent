@@ -292,19 +292,70 @@
 
 **参考仓借鉴映射（T-P3-133）**：pi-desktop·InstalledPluginsPanel（清单/启停/卸载确认/来源 tag/错误行——🔴 只学行为）+ codex·plugin/manifest.rs（插件贡献资源清单形状——清单独立文件约定）+ pi-desktop·activation.ts（作用域三态——**不取**，收敛记档）。
 
-## 批次提示词（P3 全段收官——无后续批次；2026-09-29 更新）
+## 批次提示词（UI 批次 A 开工——T-P3-134；2026-09-29 更新）
 
 ```
-P3 全段（批次 16a~16d，31 卡）已于 2026-09-29 全部收官：
-- 全量基线 1821 passed / 7 skipped，exit 0（206 文件）；词汇表 30；
-  count-features 337；architecture 0 error / 22 warning；tsc 干净；
-  工具链五件全绿（check-doc-links 显式传参 1217 链接 0 失效）。
-- 两例既有基建 flake 已于 16d 收口顺手修复（llm-replay 计时抹平 /
-  complexity.test flush await 化）——全量运行现为稳定 exit 0。
-- 段报告：docs/20260929_P3功能全景与借鉴映射.md；
-  对账表：docs/plan-p3-progress.md（27/27 闭环零悬挂）。
-- 待用户：人工确认清单走查（U14/U5/U3/U6/U7/U4/U15~U21/U22~U26）；
-  U8 放弃项可随时凭据重开。
-- 若需启动下一段计划（P4 或收尾面），请先展卡再执行——无现存 [ ] 卡。
+继续 aegent 的 UI 全面升级。用户已裁决技术路线 = 方案 A（零构建链：CSS 变量
+token + 组件类 + 内联 SVG + hash 路由，不引 React/Vite/Tailwind/recharts）。
+本会话做 **T-P3-134 · UI 批次 A：设计系统与布局架构**（一张卡，做完收官即
+停，批 B/C 后续会话另展）。任务卡：docs/plan-p3.md §8 末尾的
+「T-P3-134」（已展卡，含实施顺序①~⑥与验收）。
+
+0. **方案与规格的唯一事实源**：docs/20260929_UI全面升级方案.md（v2 细节
+   规格版）——开工先通读：§二设计规格表（token 逐值/行式卡配方/组件形态
+   ——色值字号圆角都是参考仓源码提取的，照抄即可）、§2.4 应用骨架与消息
+   流、§2.5 组件库地图（46 件目录）、**§3.5 功能覆盖矩阵（29 行——升级
+   零功能丢失的验收基线，每收一段核对一行）**。参考仓源码锚点都在方案里
+   （oss/zcode/packages/ui/src 的 styles.css :137 亮色/:308 暗色 token、
+   SettingsPage.tsx :1375 骨架、ChatPromptEditor.tsx :347 输入容器；
+   oss/opencode/.../settings-v2.css 行式卡配方），拿不准形态就开参考文件
+   看原文，不要凭记忆造。
+1. **开工三件套**：①读 plan-p3.md §8 T-P3-134 卡面（实施顺序①~⑥）与
+   方案文档；②本批无 requirements 域条目（337 条外用户裁决增量）——
+   核对对象改为方案文档与功能覆盖矩阵；③git status 干净即可（无上游
+   新克隆，SOURCES.lock 不动）。
+2. **实施顺序（卡面①~⑥，每步可独立验证，勿跳步）**：
+   ① ui/theme.css——token 全套（方案 §2.1 色板暗亮双主题 + §2.2 字号
+     相对刻度 14px 基准 calc 系 + CJK 等宽栈 + 4px 栅格 + 圆角 6/10/14
+     + 阴影两级）；style.css 头部 @import 引入；
+   ② ui/icons.js——内联 SVG ~24 枚线性图标（单色 currentColor，导出
+     icon(name) 函数；清单：设置/搜索/图表/插头/机器人/键盘/麦克风/
+     文件夹/历史/关闭/刷新/发送/外部链接/通知/工作台/对话/头像占位等）；
+   ③ ui/router.js——hash 路由（#chat/#settings/<section>/#usage/
+     #work/<tab>/#notify/#history/#search；视图切换 + hashchange 监听
+     + 首路由解析 + go(view) API）；
+   ④ ui/index.html 骨架重排——**铁律：所有既有 id/data-* 钩子一个不动**
+     （app.js 3316 行按 id 取元素），只动容器层级：外壳 = 左侧边栏
+     （260px；导航组：对话/历史/搜索/工作台/用量/通知+未读徽标；底部：
+     租约状态/profile-quick/设置入口/surface+版本）+ 主内容路由容器
+     （data-view 七个视图互斥；settings 视图 = 左侧二级分类导航三组
+     〔基础设置/Agent 能力/数据与系统〕+ 十九个 data-section 整体迁入；
+     chat 视图 = 既有状态栏+stream+composer）；find-bar/toast/横幅保持
+     fixed 浮层；
+   ⑤ ui/app.js 接线——顶部新增 router 接线段（hashchange→视图切换→
+     侧栏 active 态；首载默认 #chat）；既有 openSettings/openUsage/
+     openHistory 等面板函数**内部实现改为 router.go(...)，函数名保留**
+     （兼容全部既有调用点）；sendRequest/sendSettings/sendQuery 等
+     协议面零触碰；
+   ⑥ ui/components.css——组件类逐个落（方案 §2.3/§2.5：按钮四态/输入
+     /开关 44×24/胶囊分段 tabs/卡片/行式设置项〔opencode 配方：8px 容器
+     0.5px inset 描边 20px 行距 13px 文案〕/chip/表格/空状态虚线框/骨架
+     行/对话框/kbd/toast）；index.html 新增样式 link。
+3. **验收（卡面全项）**：token 证伪 grep（新增样式无散写色值）+ 路由深
+   链用例 + tauri-shell 断言更新（侧栏 id/路由容器/19 分节仍在——既有
+   断言全保留）+ **功能覆盖矩阵逐行核对** + 全量 npx vitest run 回归
+   全绿（settings/server/ui-render/keymap 硬门）+ node --check ui/app.js
+   + tsc 干净 + 产物重打同步（npm run build:single + TAURI_SIGNING_
+   PRIVATE_KEY=F:/aegent/private/tauri-updater.key npx tauri build +
+   复制 aegent-desktop.exe 进 dist/portable、安装器进 dist/）+ 机器
+   等效冒烟（启动壳 → HTTP 200 → 窗口可见性 MainWindowTitle=aegent）。
+4. **已定案不翻案**：方案 A 零构建链（用户拍板——不引 React/Vite/
+   Tailwind/recharts，图表 SVG 手绘归批 B）；U6 壳窗口 show 修复已落；
+   散写色值的全量迁移归批 B 逐段消化（批 A 只锁 token 立住+骨架可用+
+   功能全在）；功能覆盖矩阵任何一行失能 = 卡不过，不许带病收官。
+5. **收尾**：打勾 T-P3-134 + 完成记录 + progress 台账（含走查清单更新）
+   + commit（feat(ui): UI 批次 A ...）+ 记忆更新（批 A 落地状态、批 B
+   T-P3-135 待展卡）。遇到阻塞按 §0.2 偏离记档，不擅自扩范围。不要问
+   要不要继续。
 ```
 
