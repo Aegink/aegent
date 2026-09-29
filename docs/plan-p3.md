@@ -308,12 +308,13 @@
 - **风险 / 未知**：协作消息的事件形状是本卡最大定形点（#28 立案）；环检测（A 派 B、B 派 A 的任务环——复用 E9 环检测）
 - **完成记录（2026-09-29）**：验收 `npx vitest run src/session/collaboration.test.ts src/session/review-changes.test.ts src/host/server.test.ts src/diagnostics/tauri-shell.test.ts src/kernel/events.test.ts src/session/store.test.ts` → **65 passed**（collaboration 9 新 + review/server/shell/events/store 回归；tsc 干净）。**事件形状定形（卡面最大定形点，#30 立案——旧编号 #28 已被 U14 日志分节占用）**：按"协作消息是持久事实"判据走**流内新事件**——单类型 `session/collab` + direction 区分视角与环节（dispatch 源流派发 / receive 目标流入队 / update 目标流状态机转移 / report 源流 completion 回投），双方流各自落事件 = 两个视角都可独立重建（不变量 1）；不走 plugin 泛型逃生舱（C17 唯一槽位留给扩展面）。**词汇表管线兑现**：词汇表 29→30（l0-events.md §3.2 行 30 + 落地记录 27 + kernel.md "Collaboration Message" 词条含 _Avoid_ 行 + 五处计数断言 30 + events.test 样例——#30 待用户追认）。落地：①**CollabEvent**（log-only 会话级元事件，session/fork 同款纪律——turn 挂 0、跨 compaction 保留；project.ts 加校验分支：collabId/peerSessionId 非空 + direction/kind/status/permissionCeiling 闭集 fail-closed）；②**CollaborationService**（src/session/collaboration.ts）：dispatch（快照固化进双流载荷 + 排队）→ runNext（目标会话串行消费：running → executor → completed/failed 落 update + **completion 回投**源流 report + notify 回调〔N5 候选〕）→ cancel（排队取消 + 回投 + 通知）；③**权限快照定死（卡面"∩ 当前"表述的澄清执行）**：executor 只见 CollabTask（快照权限），无活设置通道——测试断言排队中设置先升（ask→auto）后降双向变更，执行权限恒为提交时快照（accept-edits）——防提权硬断言兑现、"逆方向也不降权"即"定死"语义；快照进事件载荷 = 重启后仍可审计；④**环检测**（E9 同款 DAG 纪律）：活动派发边集回溯——A 派 B 排队中 B 再派 A → COLLAB_CYCLE；完成后可再派（活动图才检查）；自派 COLLAB_SELF、目标不存在 COLLAB_TARGET_MISSING、坏 kind COLLAB_BAD_KIND 全类型化；⑤**流投影** collaborationsFromEvents（collabId 聚合 + 方向视角 + 末次状态——重启后状态可完全重建）挂进 op:"review" 报告；⑥**UI**：工作面板第四 Tab"🔗 协作"（方向/对端/类型/状态/结果表——U15 扩展位）。**记档**：①executor 为注入面（真实执行 = 目标会话 agent 循环/H6 链，跨会话路由随 U11 偏离记档的运行时面）；②跨 host 会话派发的 wire/路由面不在本卡（单会话 spawn 模型边界，同 U11 记档）。
 
-#### T-P3-124 · 收口 · 16c 盘点 `[ ]`
+#### T-P3-124 · 收口 · 16c 盘点 `[x]`
 - **依据需求**：批次 16c 收口 + P3 全段终验收
 - **要产出**：盘点面：①U15 变更提取纯函数 × 流轻量纪律（从流算不建状态）；②U16 用户模板 × I8 系统预设分界；③U18 辅助模型 × 主模型回退链；④U20 导入确认 × 不可信输入面（C 族防线）；⑤U21 CLI 增强 × 既有命令零回归；⑥P3 全段对账（21 条状态表）+ 人工确认清单闭环复核
 - **验收**：`npx vitest run`（全量）+ 工具链四件（count-features = 331）+ license-audit
 - **依赖**：T-P3-101 ~ 123、131 全部
 - **风险 / 未知**：无
+- **完成记录（2026-09-29）**：验收全量 `npx vitest run` → **1777 passed / 7 skipped**（202 文件；基线 1732/7 → 净增 45 passed、5 新测试文件；7 skipped 构成不变）+ 工具链五件全绿（count-features **337**〔卡面"331"与 #29 同款口径笔误——脚本实况为准，不擅改〕/ check-doc-links 显式传参 **988 链接 0 失效** / architecture **0 error / 22 warning**〔protocol.ts 两度触顶已压缩治理；policy 增 kernel/host requires mcp〕/ vocabulary **0 问题**〔词汇 29→30：Collaboration Message——#30 立案待追认〕/ license-audit **exit 0**）+ `tsc --noEmit` 干净。六项盘点面（U15 流轻量/U16 I8 分界/U18 回退链/U20 不可信输入/U21 零回归/**P3 全段 27 条对账表**）全部落 `plan-p3-progress.md` 收官报告；人工确认清单新增 16c 七条走查项（U15~U21）。批次 16c 完成：9 张卡全勾 ✅ + 出组报告 ✅ + 16d 提示词已更新 ✅。
 
 ## §6 批次 16d 卡序（6 张：U22/U23/U24/U25/U26 + 收口——管理面组；2026-09-28 展卡）
 

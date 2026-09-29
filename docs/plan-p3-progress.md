@@ -91,6 +91,74 @@
 - K2 红线断言随 U7 解禁例外更新（零插件 → 恰一插件 updater）。
 - **已知 flake 记档（非本批引入）**：①`llm-replay.test` 计时字段抖动（modelMs/streamDurationMs 0/1 边界——normalize 未平滑计时）；②`http-mock.test` Windows 端口分配竞态（"bad port"）。两次全绿运行在案；建议后续批次顺手修（normalize 加计时平滑 / 端口重试）。
 
+### 批次 16c · 收官报告（2026-09-29）
+
+**状态**：✅ 收官（2026-09-29）——8 条需求 / 9 张卡全关（T-P3-117 ~ 123 + T-P3-131 + 收口 T-P3-124）。台账：
+
+- **T-P3-117 U15 工作面板** ✅（review-changes 提取纯函数〔从流算变更/委派不建状态——write/edit 显式 path + apply-patch 头 + bash rm/重定向启发式；失败调用不计入〕+ query op:"review"/"file"〔预览 workspace 内 resolve 断言 + 512KB 前缀 + NUL 二进制防呆〕+ ui 右侧抽屉三 Tab〔文件树/变更评审/子代理监控〕+ n5 turn_settled 自动刷新；29 passed）。
+- **T-P3-118 U16 提示词库** ✅（settings prompts 段〔name 唯一 parse fail-closed〕+ prompt-library 纯函数〔upsert/delete + {{var}} 提取渲染——缺变量保留原文〕+ ui 第九分节 CRUD + / 补全混入模板（选中 = 正文填入 + 变量 Toast 提示）+ flushSettings 数组段缺省发空数组修正；46 passed）。分界记档：I8 persona = 系统装配面，本库 = 用户内容面，不共用存储不共用调用链。
+- **T-P3-119 U17 MCP 向导** ✅（settings mcp 段 + **真新装配**：agent-process 增 mcpServers 选项——ready 前连接注册 + never-fail 装配单 server 失败跳过 + 收尾 dispose + agent-child 消费 settings.enabled 条目 + mcp 域 probeServer + settings op:"mcp-check" + ui 第十分节两步向导/统一面板 + echo stub 两路演示〔通过/失败〕+ architecture-policy 增 kernel/host requires mcp〔装配中心双向边先例〕；127 passed）。**执行时定形**：卡面"stdio/http 两型"收敛为 stdio（mcp 域 I3 LIMITATIONS 既有——HTTP transport 随域扩展，http 选项灰置）。
+- **T-P3-120 U18 辅助模型卡** ✅（settings enhancement 段〔judge/summarizer + reasoning 枚举〕+ resolveEnhancementTarget 回退链纯函数〔任务 model → 条目 model → defaultModel〕+ agent-child resolveTarget 消费接线〔judgeModel 槽 C42 既有 + summarizerModel 替换；未配 = 既有回退零行为〕+ ui 分节；58 passed）。记档：reasoning 档位为配置面记录（适配层无 reasoning 请求参数，消费随 J3）；显式 --provider 分支不消费。
+- **T-P3-121 U19 Profiles** ✅（settings profiles/activeProfile 段 + applyProfile 切换 patch 纯函数〔providers 清单不进 patch〕+ failoverOrderFromProviders J15 队列序 + ui 档分节/状态栏快速切换器/providers ↑↓ 排序；45 passed）。记档：failover provider 真实装配随真实多供应商需求（库面+顺序面在位）；↑↓ 按钮等效"拖拽"。
+- **T-P3-122 U20 导入导出** ✅（settings-transfer〔导出 apiKey 键断言零凭据 + buildImportPreview 三层校验坏包类型化 + summarizePackage 确认摘要 + applyImportedSettings 本地态保留〔onboardingDone 不覆盖/activeProfile 同名才留〕+ backupSettingsFile 滚动 5 份〕+ settings op:"import" + ui 第十一分节〔导出下载/导入确认面〕+ 深链钩子 window.aegentApplyDeepLink；50 passed）。执行时定形：深链 scheme 注册（Tauri 插件）不落——真实分发面，钩子形状在位。
+- **T-P3-123 U21 CLI 编辑器** ✅（editor.ts：createKillRing + fuzzyMatch/fuzzySearchHistory〔子序列语义 + history[0]=最新约定〕+ createHistorySearcher 状态机 + withContinuation 反斜杠续行〔EOF flush〕+ attachReverseSearch 薄壳接线〔非 TTY 零变化〕+ repl/index 接线；38 passed）。跨终端负例记档：Ctrl+W/R/Escape 部分终端被自身消费——键位增强 best-effort，核心交互不依赖。
+- **T-P3-131 U27 会话间协作** ✅（**事件形状定形：流内新事件** `session/collab` 单类型 + direction 四值〔dispatch/receive/update/report〕，双方流各自落事件可独立重建 + **词汇表管线兑现 #30**：词汇表 29→30〔l0-events.md 落地记录 27 + kernel.md 词条 + 五处计数断言〕+ CollaborationService〔dispatch 快照固化双流 + runNext 串行执行 + completion 回投源流 + notify〕+ **权限快照定死双向断言**〔排队中设置先升后降，执行恒为提交快照〕+ 环检测 DAG〔COLLAB_CYCLE/SELF/TARGET_MISSING/BAD_KIND〕+ collaborationsFromEvents 投影挂 op:"review" + 协作 Tab；65 passed）。记档：executor 为注入面——跨会话路由随 U11 偏离记档的运行时面。
+
+- **验收台账**：全量 `npx vitest run` **1777 passed / 7 skipped**（202 文件；基线 1732/7〔197 文件〕→ 净增 45 passed、5 文件〔review-changes/prompt-library/settings-transfer/collaboration/editor 五个新测试文件〕。7 skipped 构成不变 = 6 例 live-p2 env gate + 1 例既有）。`npx tsc --noEmit` 全程干净；工具链五件全绿：count-features **337**（口径 #29 既有立案——卡面"331"同款笔误，脚本实况为准）/ check-doc-links 显式传参 **988 链接 0 失效** / architecture **0 error / 22 warning**（治理：protocol.ts 两度触及 400 行上限〔host 域硬 error〕——注释压缩归还；policy 增 kernel/host requires mcp——装配中心双向边渐进先例，环警告非 error）/ vocabulary **0 问题**（词汇 29→30：Collaboration Message）/ license-audit **exit 0**。
+
+**盘点面（T-P3-124 六项）**：
+1. **U15 变更提取纯函数 × 流轻量纪律** ✅——reviewChangesFromEvents(events) 纯函数：流进报告出零状态（每次打开/每轮结算重算——不建任何索引或缓存结构）；op:"review" 直答不改流；bash 启发式面（rm/重定向）via 字段标注可区分事实等级。机验：review-changes.test 6 例。
+2. **U16 用户模板 × I8 系统预设分界** ✅——I8 persona 在 kernel 装配面（agent-child --persona 系统提示注入），U16 prompts 在 settings 用户内容面（prompts 段 + / 补全）——存储、调用链、语义三重分界；ui 分节 hint 明示"系统级人格预设不在此管理"。机验：prompt-library.test + tauri-shell 断言。
+3. **U18 辅助模型 × 主模型回退链** ✅——resolveEnhancementTarget 回退链（任务 model → 被引条目 model → defaultModel）纯函数机验四例（显式覆盖/条目回退/defaultModel 兜底/条目不存在 undefined 不虚构）；执行体缺口 = 未配置时 judge 无判官、summarizer 主模型——两者都是**既有回退**（C42/F5 既有语义），enhancement 只是叠加覆盖。机验：settings.test + judge.test 身份审计例。
+4. **U20 导入确认 × 不可信输入面** ✅——导入链三层防线：①UI 本地预览（kind 校验 + 摘要逐项列出）→ ②window.confirm 显式确认（不确认不上送）→ ③gateway 落盘前 parseSettingsShape 再校验 + 深链钩子同款三态（accepted/dismissed/rejected）——与 C 族"外部输入当数据不当指令"同方向的用户侧延伸；坏包/形状非法类型化拒绝（SETTINGS_IMPORT_BAD_JSON|KIND|SHAPE）且不落盘（server.test e2e：坏包拒绝后原配置仍可读）。机验：settings-transfer.test + server.test。
+5. **U21 CLI 增强 × 既有命令零回归** ✅——editor.ts 为**新增面**（repl.ts 只改一行：输入流经 withContinuation；index.ts 加 attachReverseSearch 一行）；cli.test 30 passed 含存量全部脚本化会话用例（两轮 echo/question/fork 等零变化）；withContinuation 无续行时原样透传（机验"零行为变化"例）；非 TTY 管道模式不接管键位（smoke 零变化）。
+6. **P3 全段对账（27 条状态表）**：
+
+| 条目 | 状态 | 批次/卡 | 记录 |
+| --- | --- | --- | --- |
+| U1 配置文件面 | ✅ 落地 | 16a/T-P3-101 | settings v1 + 优先级链 + fail-closed |
+| U2 凭据管理 | ✅ 落地 | 16a/T-P3-102 | DPAPI + CLI key 面 + 零明文 |
+| U14 设置中心 | ✅ 落地 | 16a/T-P3-103 + 132 补全 | 八分节（16c 扩展至十三分节）+ 主题 |
+| U5 模型/端点管理 | ✅ 落地 | 16a/T-P3-104 | 多注册表 + 会话期切换 + 健康徽标 |
+| U3 会话历史 | ✅ 落地 | 16a/T-P3-105 | 列表/续聊/删除 + resume（列表走 session_index 聚合——用户定案） |
+| U4 渲染分层 | ✅ 落地 | 16b/T-P3-107 | vendor 两库 + XSS 十例机验 |
+| U9 导航检索 | ✅ 落地 | 16b/T-P3-108 | Ctrl+F + 跨会话搜索 + 小地图 |
+| U10 Composer | ✅ 落地 | 16b/T-P3-109 | 多行 + @//补全 + 粘贴图 |
+| U11 项目管理 | ✅ 落地 | 16b/T-P3-110 | projects 段 + 切换 = 新会话生效（偏离记档） |
+| U12 用量可视化 | ✅ 落地 | 16b/T-P3-111 | op:usage 单源 + 成本页 |
+| U13 通知引导 | ✅ 落地 | 16b/T-P3-112 | N5 hub + 引导 + 恢复 + 更新横幅 |
+| U6 桌面壳分发 | ✅ 落地 | 16b/T-P3-113 | SEA 失败实证回退便携 node + 31.08MiB 安装器 |
+| U7 自动更新 | ✅ 落地 | 16b/T-P3-114 | updater 单插件 + minisign 两路演示 |
+| U8 真实联调 | ✅ 闭环 | 16b/T-P3-115 | 4 放弃 + 2 部分转正零悬挂 |
+| U15 工作面板 | ✅ 落地 | 16c/T-P3-117 | 三 Tab + 纯函数提取 |
+| U16 提示词库 | ✅ 落地 | 16c/T-P3-118 | settings 段 + / 补全 + {{var}} |
+| U17 MCP 向导 | ✅ 落地 | 16c/T-P3-119 | 装配消费 + mcp-check + 两步向导（stdio——域面收敛记档） |
+| U18 辅助模型 | ✅ 落地 | 16c/T-P3-120 | enhancement 段 + 回退链 + 判官/摘要接线 |
+| U19 Profiles | ✅ 落地 | 16c/T-P3-121 | 组合档 + applyProfile + failover 顺序面 |
+| U20 导入导出 | ✅ 落地 | 16c/T-P3-122 | 导出零凭据 + 三层确认 + 备份滚动（深链注册记档） |
+| U21 CLI 编辑器 | ✅ 落地 | 16c/T-P3-123 | kill-ring/Ctrl+R/续行 + 零回归 |
+| U27 会话间协作 | ✅ 落地 | 16c/T-P3-131 | session/collab 新事件（#30）+ 快照定死 + 环检测 |
+| U22 技能管理 | ⏳ 16d | T-P3-125 | I2 已落，本卡 = 管理 UI + 编辑器 |
+| U23 子智能体管理 | ⏳ 16d | T-P3-126 | 五预设 + fallback 链 |
+| U24 指令中心 | ⏳ 16d | T-P3-127 | C22 UI 化 |
+| U25 快捷键系统 | ⏳ 16d | T-P3-128 | keymap 注册表 |
+| U26 语音设置 | ⏳ 16d | T-P3-129 | P4 UI 消费端 |
+
+**U 域原文与锚点核对（开工三件套②，2026-09-29）**：requirements.md:657-663/668/669 八条逐字对照卡面摘录——全部一致无漏项失真（U20 括号内"MCP/提示词/技能三类导入确认"在展卡结论与"取什么"栏完整覆盖，仅摘录行缩写——不立案）；snapshot.sh 零漂移（仅日期戳）。
+
+**卡内定形记档（16c 特有）**：
+- session/collab 事件形状：单类型 + direction 四值（不拆四事件）——双方流各自落事件可独立重建；#30 立案待用户追认（回退面见 l0-events.md 落地记录 27）。
+- 权限快照语义：卡面"快照 ∩ 当前"表述按 U27 原文"提交时定死"执行——双向不变（防提权是硬断言，逆方向不降权）；executor 只见 CollabTask 快照无活设置通道。
+- U17 stdio 收敛：域面 HTTP transport 不存在（I3 LIMITATIONS），向导 http 选项灰置；真实生态联调随 U8 重开。
+- MCP 装配：ready 前连接注册（tools 清单一次性报全）；单 server 失败 never-fail 跳过；architecture-policy 增 kernel/host requires mcp（装配中心双向边先例——环警告非 error）。
+- 深链 scheme 注册不落（Tauri 插件解禁需计划授权）——window.aegentApplyDeepLink 钩子形状在位。
+- flushSettings 修正：数组段（projects/prompts）缺省发空数组而非对象（后者被 parse 拒——16c 编辑中暴露的既有缺陷顺手修正）。
+- **16b 遗留发现（本会话发现，未顺手修）**：usage/notify/search 三面板在 style.css 无定位规则（settings/history 有）——展开时呈文档流块非抽屉；建议 16d 视觉走查批次统一补齐。
+
+**人工确认清单新增（16c）**：U15 工作面板三 Tab 视觉走查、U16 提示词库全链走查、U17 MCP 真实生态（echo stub 两路机验已过）、U18 辅助模型切换走查、U19 Profiles 切换走查、U20 导入导出全链走查、U21 CLI 终端真实按键手感（Windows 负例记档在案）。
+
+**批次 16c 完成定义复核（plan-p3.md §7）**：9 张卡全勾 ✅；工作面板三 Tab 可用 ✅（+协作 Tab）；提示词库/MCP 向导/辅助模型卡/Profiles/导入导出/CLI TUI 各面验收 ✅；报告入 plan-p3-progress.md ✅（本节）。
+
 
 ## 待澄清（执行会话新发现；编号接续 #28 起）
 
@@ -110,6 +178,13 @@
 | U7 更新两路真机演示（T-P3-114） | updater 运行时接受/拒绝需要已安装应用 + 本地端点服务 | `node tools/update-demo.mjs --serve 8789` 起端点 → 安装壳启动 → 端点指 valid/latest.json 横幅出现（通过路）；指 rejected/latest.json 更新被拒（拒绝路）。**签名产物已构建**（NSIS + .sig 落盘）；启动检查链已真机实证（对 localhost 端点发出检查请求日志） | 产物/链路 ✅；两路真机演示待用户 |
 | U4 渲染视觉走查（T-P3-107） | 视觉可读性/排版无自动化判据 | 浏览器/WebView 走查：①assistant 气泡 markdown 排版（标题/列表/表格/引用）；②代码块高亮 + 复制按钮回显"已复制"；③流式打字（echo 轮可见逐字追加）；④工具卡点开 args/diff（write/edit 增删着色）；⑤审批卡 chip/倒计时；⑥错误轮"重试上一条"；⑦XSS：模型输出含 script 标签与 javascript 伪协议链接时原样可见不执行 | 待人工走查（机验 XSS 十例已过——ui-render.test.ts） |
 | U8 各平台真实联调（T-P3-115） | 需要用户供给真实凭据与环境 | 见下方 U8 逐项闭环表——转正/放弃两态记档（放弃项用户可随时重开） | 已闭环（4 放弃 + 2 部分转正） |
+| U15 工作面板三 Tab 走查（T-P3-117） | 视觉/交互手感无自动化判据 | 🛠 工作 → 三 Tab：文件树点击预览 / 变更评审（write 轮后出清单）/ 子代理（task 委派后状态耗时可见）| 待人工走查 |
+| U16 提示词库走查（T-P3-118） | 表单/补全手感无自动化判据 | ⚙ 设置 → 提示词模板建档 → 输入区 / 补全选 📝 模板 → 正文含变量占位符 Toast 提示 | 待人工走查 |
+| U17 MCP 真实生态（T-P3-119） | echo stub 已机验两路；真实 server 需真实环境 | 向导接入任一真实 stdio MCP server → 测连接 → 保存 → 新会话工具注册可见 | echo stub ✅；真实生态待用户（随 U8 重开） |
+| U18 辅助模型走查（T-P3-120） | 真实双模型运行需真实端点 | ⚙ 设置 → 辅助模型配 judge/summarizer 条目 → 跑真实轮观察判官/摘要走辅助模型 | 待用户供真实端点 |
+| U19 Profiles 走查（T-P3-121） | 切换联动视觉无自动化判据 | ⚙ 设置 → 场景配置档建档/切换 → 状态栏 select 快速切换 → providers ↑↓ 排序 | 待人工走查 |
+| U20 导入导出走查（T-P3-122） | 浏览器下载/文件选择是人工面 | ⚙ 设置 → 导出下载 json → 改配置 → 导入同包 → 摘要确认 → 生效 + bak.0 出现 | 待人工走查 |
+| U21 CLI 终端手感（T-P3-123） | 真实终端按键是人工面 | 终端跑 aegent → 行尾 \ 续行多行 prompt → Ctrl+R 模糊搜历史 → 回车提交 | 待人工走查（Windows 负例记档在案） |
 
 ### U8 真实平台联调逐项闭环表（T-P3-115，2026-09-29）
 
@@ -127,38 +202,40 @@
 
 ---
 
-## 批次 16c 提示词（当前活跃——批次 16b 收官后接力；2026-09-29 收官时更新）
+## 批次 16d 提示词（当前活跃——批次 16c 收官后接力；2026-09-29 收官时更新）
 
 ```
-继续 aegent 的 P3 实施。推进模式不变：一会话一批次——本会话做批次 16c 全批
-（P3 产品扩展组；8 条需求 ID：U15 U16 U17 U18 U19 U20 U21 U27；9 张卡
-T-P3-117~123 + T-P3-131〔U27 判断修正补录〕+ T-P3-124 收口），做完收官即
-停，16d 由下一会话接力。卡序：docs/plan-p3.md §5，读 §1 全局约束后从第一
-张 [ ] 任务卡开始执行（执行协议沿用 docs/plan-p0.md §0）。本批特有的注意：
+继续 aegent 的 P3 实施。推进模式不变：一会话一批次——本会话做批次 16d 全批
+（P3 管理面组；5 条需求 ID：U22 U23 U24 U25 U26；6 张卡 T-P3-125~129 +
+T-P3-130 收口），做完收官即停，P3 全段收官（段报告《P3 功能全景与借鉴映
+射》归本会话）。卡序：docs/plan-p3.md §6，读 §1 全局约束后从第一张 [ ]
+任务卡开始执行（执行协议沿用 docs/plan-p0.md §0）。本批特有的注意：
 1. **开工三件套（每次会话必做，缺一不可）**：①读 plan 卡序与全局约束；
-   ②打开 docs/requirements.md 对应域原文（本会话 = U15~U21/U27，在
-   requirements.md:657-663/668/669），与卡面"依据需求"摘录**逐字对照**——
-   发现摘录漏项/失真立即写 progress 待澄清立案，不擅自扩范围；③
+   ②打开 docs/requirements.md 对应域原文（本会话 = U22~U26，在
+   requirements.md:664-668），与卡面"依据需求"摘录**逐字对照**——发现
+   摘录漏项/失真立即写 progress 待澄清立案，不擅自扩范围；③
    `bash tools/snapshot.sh` + `git diff oss/SOURCES.lock` 核对上游锚点漂
    移，漂移则先重验锚点再动手。
 2. 已裁决/已定案事项（不再翻案）：U3 列表走 session_index 聚合（Q2 消费
    面归 U9）——定案；#28（U14 日志分节）已落实关闭；#29（count-features
-   口径 324 vs 337）待裁决——脚本实况 337 为准，若 16c 卡面再遇同类数字
-   矛盾同样立案不擅改。**编号撞号警示**：plan-p3.md §5 U27 卡与展卡结论
-   里写的"#28 立案预判（协作消息事件形状）"是展卡时的旧编号——#28 已被
-   U14 日志分节占用并关闭；U27 若需词汇表/wire 立案，从当前编号接续
-   （本收官时待澄清已到 #29，U27 立案 = #30 起）。全量基线 **1732 passed
-   / 7 skipped**（197 文件；6 skipped = live-p2 env gate，P2 15e 已真实跑
-   过；两例既有基建 flake 已记档——llm-replay 计时抖动/http-mock 端口竞
-   态，遇到失败先重跑确认是否命中 flake 再排查）、词汇表 29、count-
-   features 337、architecture 0 error / 22 warning（+1 = settings.ts 445
-   行存量 warn——host 域行数曾超限已拆分治理，新增长文件注意 400 行上限：
-   managed 域是硬 error）。工具链五件收官必跑（check-doc-links 显式传参）。
-3. 本批最大风险点：U27 会话间协作的事件形状定形（流内新事件 vs E9 扩展
-   ——按"协作消息是持久事实"判据，词汇表扩展走立案管线）；U15 变更评审
-   的提取纯函数性能（从流算不建状态）；U21 CLI 编辑器在 Windows 终端的
-   按键兼容（Ctrl+W/Ctrl+R 差异——跨终端负例记档）；U17 MCP 向导的连接
-   校验（echo 型 mock server 演示——真实生态随 U8 重开）。
-4. 收官出组报告（写入本文件），更新本文件的批次 16d 提示词与全量基线后
-   停止。不要问要不要继续。
+   口径）待裁决——脚本实况 337 为准（16c 卡面"331"同款笔误已按实况记
+   录）；**#30（session/collab 新事件，词汇 29→30）待用户追认**——U27 已
+   按"协作消息是持久事实"判据落地（l0-events.md 落地记录 27），若追认被
+   拒按其回退面执行。全量基线 **1777 passed / 7 skipped**（202 文件；6
+   skipped = live-p2 env gate；两例既有基建 flake 已记档——llm-replay 计
+   时抖动/http-mock 端口竞态，遇失败先重跑确认是否命中 flake）、词汇表
+   30、count-features 337、architecture 0 error / 22 warning（protocol.ts
+   400 行上限两度触顶已压缩治理；新增长文件注意 400 行上限——managed 域
+   硬 error，host 域 protocol/bridge/settings-gateway 已近满，优先考虑拆
+   分而非续写）。工具链五件收官必跑（check-doc-links 显式传参）。
+3. 本批特有的注意：①16b 遗留发现——usage/notify/search 三面板在
+   style.css 无定位规则（展开呈文档流块非抽屉），建议本批视觉走查时统一
+   补齐（T-P3-128 快捷键/走查顺手项）；②U23 子智能体管理依赖 U18 模型档
+   面（T-P3-120 已落 enhancement/resolveTarget——复用该链）；③U26 语音
+   的 STT 真实端点仍缺（P4/U8 既有），UI 消费端照卡落，真实联调归 U8 重
+   开；④设置面板已十三分节（settings-gateway 白名单加段需同步 parse 校
+   验——T-P3-119/120/121/122 的增段模式可循）。
+4. 收官出组报告（写入本文件）+ P3 全段《P3 功能全景与借鉴映射》
+   （YYYYMMDD_P3功能全景与借鉴映射.md，P0/P1/P2 惯例固化）+ 更新本文件
+   的批次提示词与全量基线后停止。不要问要不要继续。
 ```
