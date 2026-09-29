@@ -89,14 +89,24 @@ const TEMPLATE = `
 </aside>
 `;
 
-/** 二级分类导航：滚动定位 + 激活态（深链 #settings/<section> 同入口）。 */
+/**
+ * 二级分类导航：单分节页面切换（T-P3-135 走查反馈修正——用户裁决"每个 tab
+ * 单独一个页面，不是全堆一长页"：DOM 保留 19 分节〔异步清单不重复拉取〕，
+ * 显示层只呈现激活分节，其余 display:none）+ 激活态（深链 #settings/<section>
+ * 同入口）。history.replaceState 同步 hash 不触发路由重挂载——分节切换是
+ * 视图内导航，浏览器前进后退仍可跨分节。
+ */
 function navigateToSection(sectionId) {
   const section = document.querySelector(`#settings-panel [data-section="${sectionId}"]`);
   if (section === null) return;
   for (const btn of document.querySelectorAll("#settings-panel .settings-nav .nav-item")) {
     btn.classList.toggle("active", btn.dataset.nav === sectionId);
   }
-  section.scrollIntoView({ block: "start" });
+  for (const el of document.querySelectorAll("#settings-panel .tab-body > section")) {
+    el.classList.toggle("section-active", el === section);
+  }
+  section.scrollIntoView({ block: "start", behavior: "instant" }); // 分节内长清单回到顶部
+  history.replaceState(null, "", `#settings/${sectionId}`);
 }
 
 /** 全分节表单回填（open 拉取后 / 导入成功后共用——原 fillSettingsForm 语义）。 */
@@ -126,7 +136,7 @@ function bindShell() {
   document.getElementById("settings-close").addEventListener("click", () => {
     go("chat"); // unmount 收尾保存（原"关面板前 flushSettings"语义）
   });
-  // 二级分类导航
+  // 二级分类导航（单分节页面切换 + hash 同步——视图内导航不触发路由重挂载）
   for (const btn of document.querySelectorAll("#settings-panel .settings-nav .nav-item")) {
     btn.addEventListener("click", () => navigateToSection(btn.dataset.nav));
   }
@@ -135,14 +145,15 @@ function bindShell() {
 export async function render(container, route) {
   container.innerHTML = TEMPLATE;
   injectIcons(container);
-  setRefillForms(refillAllForms); // 导入成功后的全量回填回调（core.js 机制）
+  setRefillForms(refillAllForms);
   bindShell();
   basic.bind();
   agents.bind();
   system.bind();
   await open();
-  // 深链 #settings/<section>：就位后滚动定位
-  if (route?.section) navigateToSection(route.section);
+  // 单分节页面：深链 #settings/<section> 直达，缺省首分节（DOM 全挂载、
+  // 显示层单分节——必须显式激活一个，否则 CSS 默认全隐藏）
+  navigateToSection(route?.section ?? "providers");
 }
 
 export function unmount() {

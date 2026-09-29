@@ -70,6 +70,12 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     expect(settingsView).toContain("editingProviderName");
     // 主题全端一致：改动即应用 body[data-theme]（dataset.theme——批 A 下沉 state.js）
     expect(state).toContain("dataset.theme");
+    // T-P3-135 走查反馈修正（2026-09-30 用户裁决）：单分节页面形态——每个
+    // tab 单独一页（DOM 19 分节全挂载，显示层 .section-active 单显；导航
+    // 切换 history.replaceState 同步 hash 不触发路由重挂载）
+    expect(settingsView).toContain("section-active");
+    expect(settingsView).toContain("history.replaceState");
+    expect(css).toContain(".tab-body section.section-active");
 
     // U3/T-P3-105：会话历史页（清单/只读查看/删除确认/resume 提示——批 A 迁 views/history.js）
     expect(historyView).toContain('id="history-panel"');
