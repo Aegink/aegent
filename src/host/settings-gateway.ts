@@ -20,13 +20,6 @@ import { probeProvider, type HealthCheckResult } from "../models/health.js";
 import type { CredentialStore } from "../session/credentials.js";
 import type { SqliteEventStorage } from "../session/db.js";
 import { probeServer } from "../mcp/registry-bridge.js";
-import {
-  loadSkillsFromRoots,
-  skillBody,
-  SKILL_FILENAME,
-  SKILLS_DIR,
-} from "../kernel/skills.js";
-import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -36,6 +29,8 @@ import {
   saveInstruction,
   type InstructionTarget,
 } from "./instructions-gateway.js";
+import { runSttTranscribe } from "./speech-gateway.js";
+import { listSkills, saveSkill } from "./skills-gateway.js";
 import {
   applyImportedSettings,
   backupSettingsFile,
@@ -46,18 +41,6 @@ import {
   type SubagentDefinition,
 } from "../session/subagents-config.js";
 import type { McpToolInfo } from "../mcp/client.js";
-
-/** U22/T-P3-125 技能正文字节上限（pi-desktop·SkillEditorSheet MAX_SKILL_BYTES 同值）。 */
-export const MAX_SKILL_BODY_BYTES = 128 * 1024;
-
-/** 读 SKILL.md 并剥 frontmatter（skills-list 的编辑器回填面——读失败回空串）。 */
-function readSkillBody(filePath: string): string {
-  try {
-    return skillBody(readFileSync(filePath, "utf8"));
-  } catch {
-    return "";
-  }
-}
 
 /** settings patch 白名单段（提段整体替换；version 不许 patch——迁移链单向门）。 */
 export const SETTINGS_PATCH_SECTIONS = [
@@ -80,6 +63,7 @@ export const SETTINGS_PATCH_SECTIONS = [
   "skills",
   "subagents",
   "shortcuts",
+  "stt",
 ] as const;
 
 /** U17/T-P3-119 连接校验回执（向导"测连接"——launch 一次握手+列工具后关闭）。 */
@@ -178,6 +162,11 @@ export interface SettingsGateway {
    * 防任意文件写；保存确认面在 UI 层）。
    */
   instructionSave(target: "project-agents" | "global-agents" | "user-rules", content: string): Promise<{ saved: true; path: string }>;
+  /**
+   * U26/T-P3-129：语音转写代理（UI 录音上送 → P4 transcribeAudio → 文本；
+   * 配置读 settings.stt、key 按 "stt" 键名走 credentials——零明文）。
+   */
+  sttTranscribe(payload: { base64: string; mediaType: string }): Promise<{ text: string; model: string }>;
 }
 
 /** 生产缺省探测依赖（真网络——tests 注入 fake）。 */
@@ -203,6 +192,11 @@ export class FileSettingsGateway implements SettingsGateway {
      * 缺省 os.homedir()；测试注入临时目录）。
      */
     private readonly homeDir: string = homedir(),
+    /**
+     * U26/T-P3-129：STT fetch 注入面（测试 fake；缺省全局 fetch——
+     * 真实端点联调随 U8）。
+     */
+    private readonly sttFetch: typeof fetch = fetch,
   ) {}
 
   async get(): Promise<SettingsShape> {
@@ -295,40 +289,9 @@ export class FileSettingsGateway implements SettingsGateway {
     throw error;
   }
 
-  async skillsList(): Promise<{
-    skills: {
-      name: string;
-      description: string;
-      tools?: readonly string[];
-      filePath: string;
-      origin: string;
-      body: string;
-    }[];
-    diagnostics: { code: string; message: string; path: string }[];
-    roots: string[];
-    disabled: string[];
-  }> {
+  async skillsList(): Promise<ReturnType<typeof listSkills>> {
     if (this.workspaceRoot === undefined) this.skillsUnavailable();
-    const settings = await this.get();
-    const disabled = settings.skills?.disabled ?? [];
-    const result = loadSkillsFromRoots(this.workspaceRoot!, settings.skills?.roots, {
-      disabled,
-    });
-    return {
-      skills: result.skills.map((s) => ({
-        name: s.name,
-        description: s.description,
-        ...(s.tools !== undefined ? { tools: s.tools } : {}),
-        filePath: s.filePath,
-        origin: s.origin ?? "",
-        // 正文随清单回（编辑器回填——技能清单量小，逐文件读成本可忽略；
-        // 读失败如实回空串不虚构——编辑保存会整体覆盖，无注入面）
-        body: readSkillBody(s.filePath),
-      })),
-      diagnostics: result.diagnostics,
-      roots: result.roots,
-      disabled: [...disabled],
-    };
+    return listSkills(await this.get(), this.workspaceRoot!);
   }
 
   async skillSave(payload: {
@@ -338,37 +301,7 @@ export class FileSettingsGateway implements SettingsGateway {
     tools?: readonly string[];
   }): Promise<{ saved: true; path: string }> {
     if (this.workspaceRoot === undefined) this.skillsUnavailable();
-    // 双重防线（parse 层已校验 slug——此处防内部绕行调用）：目录名安全 +
-    // 正文字节上限（128KB——超大正文不是技能是数据，fail-closed）。
-    if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(payload.name) || payload.name.includes("..")) {
-      const error = new Error(`技能名须为 slug 形状：${payload.name}`);
-      (error as unknown as { code: string }).code = "SKILL_BAD_NAME";
-      throw error;
-    }
-    const bodyBytes = Buffer.byteLength(payload.body, "utf8");
-    if (bodyBytes > MAX_SKILL_BODY_BYTES) {
-      const error = new Error(`技能正文超限：${bodyBytes} 字节（上限 ${MAX_SKILL_BODY_BYTES}）`);
-      (error as unknown as { code: string }).code = "SKILL_BODY_TOO_LARGE";
-      throw error;
-    }
-    // frontmatter 组装（name/description/tools 与正文——I2 目录纪律：有
-    // SKILL.md 的目录即技能；编辑 = 同名覆盖，新建 = 建目录）。
-    const frontmatter = [
-      "---",
-      `name: ${payload.name}`,
-      `description: ${payload.description.replace(/\r?\n/g, " ")}`,
-      ...(payload.tools !== undefined && payload.tools.length > 0 ? [`tools: ${payload.tools.join(", ")}`] : []),
-      "---",
-      "",
-      "",
-    ].join("\n");
-    const dir = path.join(this.workspaceRoot!, SKILLS_DIR, payload.name);
-    const target = path.join(dir, SKILL_FILENAME);
-    await mkdir(dir, { recursive: true });
-    const tmp = `${target}.tmp`;
-    await writeFile(tmp, `${frontmatter}${payload.body}\n`, "utf8");
-    await rename(tmp, target);
-    return { saved: true, path: target };
+    return saveSkill(this.workspaceRoot!, payload);
   }
 
   async subagentsList(): Promise<{
@@ -389,5 +322,18 @@ export class FileSettingsGateway implements SettingsGateway {
   ): Promise<{ saved: true; path: string }> {
     if (target === "project-agents" && this.workspaceRoot === undefined) this.skillsUnavailable();
     return saveInstruction(instructionPaths(this.workspaceRoot, this.homeDir), target, content);
+  }
+
+  /**
+   * U26/T-P3-129：语音转写代理（UI MediaRecorder 录音 → base64 上送 →
+   * host 调 P4 transcribeAudio → 文本回端）。STT 配置读 settings.stt，
+   * key 按 "stt" 键名从 credentials 解密（零明文——settings 段不存 key）。
+   * 未配置 → 类型化 STT_NOT_CONFIGURED。
+   */
+  async sttTranscribe(payload: {
+    base64: string;
+    mediaType: string;
+  }): Promise<{ text: string; model: string }> {
+    return runSttTranscribe(await this.get(), this.credentials, payload, this.sttFetch);
   }
 }

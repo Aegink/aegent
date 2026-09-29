@@ -36,6 +36,8 @@
       <!-- U10/T-P3-109：补全下拉（@ 文件/目录、/ 命令+工具+技能）+ 附件预览 -->
       <div id="autocomplete" hidden></div>
       <div id="attachments-preview"></div>
+      <!-- U26/T-P3-129 语音输入（实验性）：点击开始/再点结束 → STT 填入输入框 -->
+      <button id="mic-btn" type="button" title="语音输入【实验性】（点击开始/再点结束）">🎤</button>
       <textarea id="prompt-input" rows="1" placeholder="输入指令回车执行…（Shift+Enter 换行；@ 补全文件、/ 补全命令）" autocomplete="off"></textarea>
       <button id="send-btn" type="button">发送</button>
     </footer>
@@ -212,6 +214,16 @@
           <p id="shortcut-status" class="hint">点击绑定进入捕获态——按新组合即改即存；Esc 取消捕获。</p>
           <button id="shortcut-reset" type="button">恢复默认键位</button>
           <p class="hint">发送键（Enter）为核心交互固定不可改；会话切换/新建会话无对应面（单会话 host 模型——历史侧栏即切换入口，记档）。</p>
+        </section>
+        <!-- U26/T-P3-129 语音设置（实验性）：STT 引擎配置（OpenAI 协议
+             端点复用——P4 消费端）；TTS 播报最小面不落（卡内定形记档） -->
+        <section data-section="speech">
+          <h2>语音【实验性】</h2>
+          <p class="hint">语音转文字（STT）——输入区 🎤 按钮录音后转写填入输入框；真实端点联调随 U8（配置在位即可用）。</p>
+          <label>STT 端点根<input id="stt-baseurl" type="text" placeholder="（未配置——语音输入不可用）如 https://api.openai.com/v1" autocomplete="off" /></label>
+          <label>转写模型<input id="stt-model" type="text" placeholder="如 whisper-1" autocomplete="off" /></label>
+          <label>语言提示（BCP-47 可选）<input id="stt-language" type="text" placeholder="如 zh（缺省自动检测）" autocomplete="off" /></label>
+          <p class="hint">端点 API key 请在「凭据」分节以 provider 名 <code>stt</code> 录入（零明文，同 U2 通道）。</p>
         </section>
         <!-- U17/T-P3-119 MCP 管理向导：分步添加（类型→参数→校验→保存）+
              统一面板（清单/启停/编辑/删除）；连接校验走 settings op:mcp-check -->

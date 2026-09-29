@@ -1181,6 +1181,62 @@ process.stdin.on("data", (c) => {
     client.close();
   });
 
+  it("settings op=stt-transcribe（U26/T-P3-129）：语音转写代理（配置/未配置/白名单外）", async () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), "aegent-host-stt-"));
+    settingsTmpDirs.push(tmp);
+    // fake STT fetch（OpenAI 协议响应形状——真实端点联调随 U8）
+    const fakeSttFetch = (async () =>
+      new Response(JSON.stringify({ text: "转写出的文本" }), { status: 200 })) as typeof fetch;
+    const { port } = await startServer({
+      agent: fakeAgent(),
+      settingsGateway: new FileSettingsGateway(
+        path.join(tmp, "settings.json"),
+        new PlainFileCredentialStore(path.join(tmp, "credentials.bin")),
+        undefined,
+        undefined,
+        undefined,
+        tmp,
+        fakeSttFetch,
+      ),
+    });
+    const client = await wsConnect(port);
+    await client.hello("web-t1");
+    const settingsCall = (call: Record<string, unknown>, requestId: string) => {
+      client.raw({ type: "settings", requestId, ...call });
+      return client.waitFor((e) => e.type === "response" && e.requestId === requestId, `settings(${requestId})`) as Promise<Record<string, unknown>>;
+    };
+
+    // 未配置 → 类型化 STT_NOT_CONFIGURED
+    const unconfigured = await settingsCall(
+      { op: "stt-transcribe", mediaType: "audio/webm", content: Buffer.from("hi").toString("base64") },
+      "t1",
+    );
+    expect(unconfigured.ok).toBe(false);
+    expect((unconfigured.error as { code: string }).code).toBe("STT_NOT_CONFIGURED");
+
+    // 配置 stt 段（即改即存通道）→ 转写回执
+    const configure = await settingsCall(
+      { op: "update", patch: { stt: { baseUrl: "https://stt.example/v1", model: "whisper-1" } } },
+      "t2",
+    );
+    expect(configure.ok).toBe(true);
+    const transcribed = await settingsCall(
+      { op: "stt-transcribe", mediaType: "audio/webm", content: Buffer.from("hi").toString("base64") },
+      "t3",
+    );
+    expect(transcribed.ok).toBe(true);
+    expect(transcribed.result).toEqual({ text: "转写出的文本", model: "whisper-1" });
+
+    // 白名单外 mediaType → P4 类型化拒绝（STT_UNSUPPORTED_MEDIA_TYPE）
+    const badType = await settingsCall(
+      { op: "stt-transcribe", mediaType: "audio/ogg", content: Buffer.from("hi").toString("base64") },
+      "t4",
+    );
+    expect(badType.ok).toBe(false);
+    expect((badType.error as { code: string }).code).toBe("STT_UNSUPPORTED_MEDIA_TYPE");
+    client.close();
+  });
+
   it("settings op=import（U20/T-P3-122）：配置包导入 + 备份滚动 + 坏包拒绝", async () => {
     const tmp = mkdtempSync(path.join(tmpdir(), "aegent-host-import-"));
     settingsTmpDirs.push(tmp);

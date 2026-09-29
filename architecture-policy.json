@@ -80,6 +80,7 @@
       ],
       "managed": true,
       "requires": [
+        "attachments",
         "kernel",
         "mcp",
         "models",

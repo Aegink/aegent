@@ -31,7 +31,9 @@ export type SettingsOp =
   /** U24/T-P3-127：指令中心数据面（三文件位 + 规则 lint issues）。 */
   | "instructions-list"
   /** U24/T-P3-127：指令文件写回（target 白名单三位）。 */
-  | "instruction-save";
+  | "instruction-save"
+  /** U26/T-P3-129：语音转写代理（UI 录音上送——P4 消费端）。 */
+  | "stt-transcribe";
 
 /** 技能编辑器写回载荷（op=skill-save；frontmatter + 正文的一次性形状）。 */
 export interface SkillSavePayload {
@@ -62,8 +64,10 @@ export type SettingsCall = {
   skill?: SkillSavePayload;
   /** op=instruction-save：指令写回目标（U24——白名单三值之一）。 */
   target?: string;
-  /** op=instruction-save：指令文件内容（U24）。 */
+  /** op=instruction-save / stt-transcribe：内容或音频 base64（U24/U26）。 */
   content?: string;
+  /** op=stt-transcribe：音频 mediaType（U26——AUDIO_MEDIA_TYPES 白名单在 gateway）。 */
+  mediaType?: string;
 };
 
 /** 技能名 slug 规则（U22——目录名安全面：小写字母数字开头，禁 `..`）。 */
@@ -90,6 +94,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     "skill",
     "target",
     "content",
+    "mediaType",
   ]);
   if (unknownKey) throw new Error(`settings 信封${unknownKey}`);
   if (typeof record["requestId"] !== "string" || record["requestId"] === "") {
@@ -110,10 +115,11 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     op !== "skill-save" &&
     op !== "subagents-list" &&
     op !== "instructions-list" &&
-    op !== "instruction-save"
+    op !== "instruction-save" &&
+    op !== "stt-transcribe"
   ) {
     throw new Error(
-      `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|mcp-check|import|skills-list|skill-save|subagents-list|instructions-list|instruction-save）`,
+      `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|mcp-check|import|skills-list|skill-save|subagents-list|instructions-list|instruction-save|stt-transcribe）`,
     );
   }
   if (op === "update") {
@@ -197,8 +203,18 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
         `settings op=instruction-save 需要 target（合法：${INSTRUCTION_TARGETS.join("|")}）`,
       );
     }
-    if (typeof record["content"] !== "string") {
-      throw new Error("settings op=instruction-save 需要 content 字符串");
+    if (typeof record["content"] !== "string" || record["content"] === "") {
+      throw new Error("settings op=instruction-save 需要 content 非空字符串");
+    }
+  }
+  // U26/T-P3-129：stt-transcribe 的载荷 = mediaType（白名单校验在 gateway
+  // 的 AUDIO_MEDIA_TYPES 闭集）+ base64 音频体（content 字段承载）
+  if (op === "stt-transcribe") {
+    if (typeof record["mediaType"] !== "string" || record["mediaType"] === "") {
+      throw new Error("settings op=stt-transcribe 需要 mediaType 非空字符串");
+    }
+    if (typeof record["content"] !== "string" || record["content"] === "") {
+      throw new Error("settings op=stt-transcribe 需要 content（音频 base64）非空字符串");
     }
   }
   return {
@@ -218,6 +234,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
       : {}),
     ...(typeof record["target"] === "string" ? { target: record["target"] } : {}),
     ...(typeof record["content"] === "string" ? { content: record["content"] } : {}),
+    ...(typeof record["mediaType"] === "string" ? { mediaType: record["mediaType"] } : {}),
   };
 }
 

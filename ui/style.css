@@ -1371,3 +1371,22 @@ mark.search-hit.active {
   font-size: 11px;
   color: var(--dim);
 }
+
+/* U26/T-P3-129 语音输入按钮（实验性）——录音态着色 */
+#mic-btn {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+#mic-btn:hover {
+  border-color: var(--accent);
+}
+
+#mic-btn.recording {
+  border-color: var(--danger);
+  color: var(--danger);
+}

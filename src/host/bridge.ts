@@ -319,6 +319,10 @@ export class HostBridge implements SessionRouter {
         if (call.op === "instruction-save") {
           return gateway.instructionSave(call.target as InstructionTarget, call.content!);
         }
+        // U26/T-P3-129：语音转写代理（UI 录音 → P4 STT → 文本回端）
+        if (call.op === "stt-transcribe") {
+          return gateway.sttTranscribe({ base64: call.content!, mediaType: call.mediaType! });
+        }
         return { credentials: await gateway.credentialsList() };
       },
     };

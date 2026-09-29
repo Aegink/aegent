@@ -107,13 +107,9 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
   it("U14/T-P3-103 · 设置中心资产：分节齐全 + 主题变量在位 + 导航入口（分节与 settings 模块一一对应）", () => {
     const uiDir = path.resolve(import.meta.dirname, "..", "..", "ui");
     const html = readFileSync(path.join(uiDir, "index.html"), "utf8");
-    // 十七分节（providers/credentials/permission/sandbox/appearance/logging/projects/
-    // prompts/skills/subagents/instructions/shortcuts/mcp/enhancement/profiles/
-    // transfer/about——settings.json 各段与文件位一一对应；U5 卡在 providers
-    // 分节扩展切换与健康徽标；logging 为 T-P3-132 #28 补落；projects 为
-    // U11/T-P3-110；skills 为 U22/T-P3-125；subagents 为 U23/T-P3-126；
-    // instructions 为 U24/T-P3-127；shortcuts 为 U25/T-P3-128）
-    for (const section of ["providers", "credentials", "permission", "sandbox", "appearance", "logging", "projects", "prompts", "skills", "subagents", "instructions", "shortcuts", "mcp", "enhancement", "profiles", "transfer", "about"]) {
+    // 十八分节（……about——settings.json 各段与文件位一一对应；末段
+    // speech 为 U26/T-P3-129 语音【实验性】STT 配置）
+    for (const section of ["providers", "credentials", "permission", "sandbox", "appearance", "logging", "projects", "prompts", "skills", "subagents", "instructions", "shortcuts", "mcp", "enhancement", "profiles", "transfer", "speech", "about"]) {
       expect(html).toContain(`data-section="${section}"`);
     }
     // 导航入口（状态栏齿轮）与凭据不回显（U2 面注入防呆）
@@ -265,6 +261,16 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(app).toContain("capturingAction"); // 捕获态
     expect(app).toContain("rebuildKeymap"); // 键位表随 settings 同步
     expect(app).toContain('markDirty("shortcuts")'); // 改绑即改即存
+    // U26/T-P3-129：语音【实验性】（STT 配置分节 + Composer 麦克风 +
+    // 录音转写链 + 权限拒绝降级）
+    expect(html).toContain('id="stt-baseurl"');
+    expect(html).toContain('id="stt-model"');
+    expect(html).toContain("语音【实验性】");
+    expect(html).toContain('id="mic-btn"'); // Composer 麦克风按钮
+    expect(app).toContain('op: "stt-transcribe"'); // 转写代理数据面
+    expect(app).toContain("MediaRecorder"); // 浏览器录音 API
+    expect(app).toContain("NotAllowedError"); // 权限拒绝降级
+    expect(app).toContain('markDirty("stt")'); // STT 配置即改即存
     // U18/T-P3-120：辅助模型分节（judge/summarizer 独立配置 + 回退链 hint）
     expect(html).toContain('id="enh-judge-provider"');
     expect(html).toContain('id="enh-summarizer-model"');

@@ -982,6 +982,10 @@ function fillSettingsForm() {
   document.getElementById("enh-summarizer-provider").value = task("summarizer").provider ?? "";
   document.getElementById("enh-summarizer-model").value = task("summarizer").model ?? "";
   document.getElementById("enh-summarizer-reasoning").value = task("summarizer").reasoning ?? "";
+  // U26/T-P3-129：STT 分节回填（空输入 = 未配置——语音输入不可用）
+  document.getElementById("stt-baseurl").value = settingsCache?.stt?.baseUrl ?? "";
+  document.getElementById("stt-model").value = settingsCache?.stt?.model ?? "";
+  document.getElementById("stt-language").value = settingsCache?.stt?.language ?? "";
 }
 
 // U18：辅助模型三字段即改即存（enhancement 段整段合并——两任务互不覆盖）
@@ -2199,6 +2203,131 @@ document.getElementById("shortcut-reset").addEventListener("click", () => {
   markDirty("shortcuts");
   document.getElementById("shortcut-status").textContent = "已恢复默认键位。";
   renderShortcutList();
+});
+
+// —— U26/T-P3-129 语音设置（实验性）：STT 配置即改即存 + Composer 录音
+// 转写（MediaRecorder → settings op:"stt-transcribe" → 文本填入输入框）
+
+function sttInputHandler(field) {
+  document.getElementById(`stt-${field}`).addEventListener("change", () => {
+    const baseUrl = document.getElementById("stt-baseurl").value.trim();
+    const model = document.getElementById("stt-model").value.trim();
+    const language = document.getElementById("stt-language").value.trim();
+    const next = {};
+    if (baseUrl !== "") next.baseUrl = baseUrl;
+    if (model !== "") next.model = model;
+    if (language !== "") next.language = language;
+    // 空配置 = 删除 stt 段（语音输入不可用——回退缺省）
+    if (Object.keys(next).length < 2) {
+      settingsCache.stt = undefined;
+      delete settingsCache.stt;
+    } else {
+      settingsCache.stt = next;
+    }
+    dirtySections.add("stt");
+    markDirty("stt");
+  });
+}
+sttInputHandler("baseurl");
+sttInputHandler("model");
+sttInputHandler("language");
+
+// —— 麦克风录音 → STT（实验性）：权限拒绝降级 + 未配置引导
+const micBtn = document.getElementById("mic-btn");
+let mediaRecorder = null;
+let audioChunks = [];
+let recording = false;
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      const result = String(reader.result ?? "");
+      resolve(result.includes(",") ? result.slice(result.indexOf(",") + 1) : result);
+    });
+    reader.addEventListener("error", () => reject(new Error("读取录音失败")));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function startRecording() {
+  if (settingsCache?.stt?.baseUrl === undefined || settingsCache?.stt?.model === undefined) {
+    toast("语音输入未配置——请先在设置「语音」分节填 STT 端点与模型", "warn");
+    return;
+  }
+  if (navigator.mediaDevices === undefined) {
+    toast("当前环境不支持录音（需 HTTPS 或桌面壳）", "warn");
+    return;
+  }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    // 权限拒绝降级（NotAllowedError 为主——不区分细分原因，提示一致）
+    toast(`麦克风不可用：${e.name === "NotAllowedError" ? "权限被拒绝——请在浏览器设置允许后重试" : e.message}`, "warn");
+    return;
+  }
+  audioChunks = [];
+  // 卡内定形：浏览器 MediaRecorder 缺省产出 audio/webm（Chrome 系）——
+  // P4 AUDIO_MEDIA_TYPES 白名单含 audio/webm，格式解码交给 provider。
+  mediaRecorder = new MediaRecorder(stream);
+  mediaRecorder.addEventListener("dataavailable", (ev) => {
+    if (ev.data.size > 0) audioChunks.push(ev.data);
+  });
+  mediaRecorder.addEventListener("stop", () => {
+    for (const track of stream.getTracks()) track.stop(); // 释放麦克风
+    void finishRecording();
+  });
+  mediaRecorder.start();
+  recording = true;
+  micBtn.classList.add("recording");
+  micBtn.textContent = "⏹";
+  toast("录音中…再次点击结束", "info");
+}
+
+async function finishRecording() {
+  recording = false;
+  micBtn.classList.remove("recording");
+  micBtn.textContent = "🎤";
+  if (audioChunks.length === 0) {
+    toast("没有录到音频", "warn");
+    return;
+  }
+  const blob = new Blob(audioChunks, { type: mediaRecorder?.mimeType ?? "audio/webm" });
+  const mediaType = blob.type.split(";")[0] ?? "audio/webm";
+  micBtn.disabled = true;
+  micBtn.textContent = "⏳";
+  try {
+    const base64 = await blobToBase64(blob);
+    const envelope = await sendSettings({
+      op: "stt-transcribe",
+      mediaType,
+      content: base64,
+    });
+    if (!envelope.ok) {
+      appendLine(`语音转写失败：${envelope.error?.code ?? ""} ${envelope.error?.message ?? ""}`, "warn");
+      return;
+    }
+    const text = envelope.result.text ?? "";
+    // 转写文本填入输入框（不自动发送——用户确认后回车）
+    input.value = input.value === "" ? text : `${input.value} ${text}`;
+    autoGrow();
+    input.focus();
+    toast("已转写填入输入框", "info");
+  } catch (e) {
+    appendLine(`语音转写失败：${e instanceof Error ? e.message : String(e)}`, "warn");
+  } finally {
+    micBtn.disabled = false;
+    micBtn.textContent = "🎤";
+  }
+}
+
+micBtn.addEventListener("click", () => {
+  if (recording) {
+    mediaRecorder?.stop();
+  } else {
+    void startRecording();
+  }
 });
 
 // ---------------------------------------------------------------------------

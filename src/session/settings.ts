@@ -132,6 +132,18 @@ export interface SettingsShape {
   subagents?: SubagentDefinition[];
   /** 快捷键覆盖（U25——action → 组合键规范串；部分覆盖语义，解析面见 ui/keymap.js）。 */
   shortcuts?: Record<string, string>;
+  /**
+   * 语音转文字（U26/T-P3-129 实验性——OpenAI 协议端点复用，P4 消费端）。
+   * key 零明文：凭据在 credentials 库以 provider 名 "stt" 录入（U2 面复用）。
+   */
+  stt?: {
+    /** OpenAI 协议兼容端点根（如 https://api.openai.com/v1）。 */
+    baseUrl: string;
+    /** 转写模型名（如 whisper-1——provider 侧语义）。 */
+    model: string;
+    /** 语言提示（BCP-47 可选，如 zh）。 */
+    language?: string;
+  };
   /** MCP server 清单（U17——向导式添加落档；装配期连接注册，单 server 失败不炸启动）。 */
   mcp?: McpServerEntry[];
   /** 辅助任务模型（U18——judge/summarizer 独立配置；缺省回退主模型链）。 */
@@ -489,6 +501,24 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
       if (typeof combo === "string" && combo.trim() !== "") outShortcuts[action] = combo;
     }
     if (Object.keys(outShortcuts).length > 0) out.shortcuts = outShortcuts;
+  }
+  const stt = rec["stt"];
+  if (stt !== undefined) {
+    if (stt === null || typeof stt !== "object" || Array.isArray(stt)) {
+      throw new SettingsError("stt 须为对象");
+    }
+    const s = stt as Record<string, unknown>;
+    const baseUrl = assertString(s["baseUrl"], "stt.baseUrl");
+    if (baseUrl === undefined) throw new SettingsError("stt.baseUrl 缺失（OpenAI 协议端点根）");
+    const model = assertString(s["model"], "stt.model");
+    if (model === undefined) throw new SettingsError("stt.model 缺失（转写模型名）");
+    out.stt = {
+      baseUrl,
+      model,
+      ...(assertString(s["language"], "stt.language") !== undefined
+        ? { language: s["language"] as string }
+        : {}),
+    };
   }
   const mcp = rec["mcp"];
   if (mcp !== undefined) {
