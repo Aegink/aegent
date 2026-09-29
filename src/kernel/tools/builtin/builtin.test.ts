@@ -988,3 +988,28 @@ describe("task 的 --backend 参数面（H6 · T-P2-309）", () => {
     expect(seen).toEqual([undefined, "acp"]);
   });
 });
+
+describe("task 的 subagent_type 参数面（U23 · T-P3-126）", () => {
+  it("subagent_type 透传 runSubagent（缺省不发键；坏形状类型化拒绝）", async () => {
+    const { createTaskTool } = await import("./task.js");
+    const seen: (string | undefined)[] = [];
+    const tool = createTaskTool({
+      runSubagent: async (_prompt, _desc, opts) => {
+        seen.push(opts?.subagentType);
+        return { sessionId: "s-x", stopReason: "completed", output: "ok" };
+      },
+    });
+    // 缺省：opts 不带 subagentType 键（通用子代理——既有行为零变化）
+    await tool.execute({ description: "d", prompt: "p" }, { toolCallId: "u1" });
+    expect(seen).toEqual([undefined]);
+    // 显式：透传预设名
+    await tool.execute({ description: "d", prompt: "p", subagent_type: "code-reviewer" }, { toolCallId: "u2" });
+    expect(seen).toEqual([undefined, "code-reviewer"]);
+    // 坏形状：非字符串 / 空串 → 类型化 isError（不下发）
+    const bad = await tool.execute({ description: "d", prompt: "p", subagent_type: 7 }, { toolCallId: "u3" });
+    expect(bad.isError).toBe(true);
+    const empty = await tool.execute({ description: "d", prompt: "p", subagent_type: "" }, { toolCallId: "u4" });
+    expect(empty.isError).toBe(true);
+    expect(seen).toEqual([undefined, "code-reviewer"]);
+  });
+});

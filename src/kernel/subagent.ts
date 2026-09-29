@@ -20,6 +20,7 @@
 
 import type { ModelIdentity } from "../models/identity.js";
 import type { ModelProvider } from "../models/provider.js";
+import { resolveSubagent } from "../session/subagents-config.js";
 import { DenyPermissionBroker } from "../policy/broker.js";
 import { deriveSubagentRules } from "../policy/subagent-rules.js";
 import type { RuleSource } from "../policy/rule-loader.js";
@@ -85,6 +86,19 @@ export interface SubagentRunnerDeps {
   /** U22/T-P3-125：停用技能名单（父装配 skillsDisabled 透传——子代理同纪律）。 */
   readonly skillsDisabled?: readonly string[];
   /**
+   * U23/T-P3-126：可用子代理预设（settings subagents 段——内置预设常量
+   * 由 resolveSubagent 兜底；此处传用户覆盖/自定义清单）。缺省 undefined
+   * = 仅内置预设（无自定义面）。
+   */
+  readonly subagentDefs?: import("../session/subagents-config.js").SubagentDefinition[];
+  /**
+   * U23/T-P3-126：预设独立模型解析闭包（装配面注入——agent-child 按
+   * resolveSubagentModel 链解析为 RegisteredModel；未解析出 = 回退父模型）。
+   */
+  readonly resolveSubagentModel?: (
+    subagent: import("../session/subagents-config.js").ResolvedSubagent,
+  ) => { provider: ModelProvider; identity: ModelIdentity } | undefined;
+  /**
    * J6/J7 捕获闭包透传（父装配的 modelForTurn）：子 turn 启动时捕获
    * configured 当前值——换模后派发的子代理用新模型（继承父当前选择）。
    */
@@ -110,7 +124,7 @@ export function createSubagentRunner(
 ): (
   prompt: string,
   description: string,
-  opts?: { signal?: AbortSignal },
+  opts?: { signal?: AbortSignal; backend?: string; subagentType?: string },
 ) => Promise<SubagentRunResult> {
   let counter = 0;
   const maxDepth = deps.maxDepth ?? 1;
@@ -118,11 +132,27 @@ export function createSubagentRunner(
   const run = async (
     prompt: string,
     description: string,
-    opts?: { signal?: AbortSignal },
+    opts?: { signal?: AbortSignal; backend?: string; subagentType?: string },
   ): Promise<SubagentRunResult> => {
     const childDepth = deps.depth + 1;
     if (!Number.isSafeInteger(childDepth) || childDepth > maxDepth) {
       throw new SubagentDepthError(childDepth, maxDepth);
+    }
+    // U23/T-P3-126：预设解析（未知/停用同为类型化拒绝——停用名单不进
+    // 可用清单，模型可见可自修）。缺省 undefined = 通用子代理（既有行为）。
+    const preset =
+      opts?.subagentType !== undefined
+        ? resolveSubagent(opts.subagentType, deps.subagentDefs)
+        : undefined;
+    if (opts?.subagentType !== undefined && preset === undefined) {
+      return {
+        sessionId: "",
+        stopReason: "failed",
+        output: "",
+        error:
+          `未知或已停用的子代理预设：${opts.subagentType}` +
+          `（可用见设置页子智能体分节）`,
+      };
     }
     // 取消先于派发：不起子轮（无半态——深度检查与取消检查同位）
     if (opts?.signal?.aborted) {
@@ -142,6 +172,8 @@ export function createSubagentRunner(
     // 时 deny task 规则留在子规则集（gate 拒绝 = H5 最强面）；childDepth <
     // maxDepth（maxDepth>1 允许递归委派）时放开 task 的默认 deny——深度
     // 检查仍是最终权威（孙代入口拒绝，maxDepth=1 下被 deny 抢先只是快路径）。
+    // U23：预设工具集 = C25 activation 的 session 层白名单（声明面收窄——
+    // H3/H5 降级面之上的预设声明）；预设身份段 = extraPrompt（系统提示追加）。
     const canDelegateFurther = childDepth < maxDepth;
     const subAssembly: ChildAssembly = createChildAssembly({
       sessionId: childSessionId,
@@ -154,6 +186,10 @@ export function createSubagentRunner(
       }),
       broker: new DenyPermissionBroker(),
       delegation: true,
+      ...(preset?.tools !== undefined && preset.tools.length > 0
+        ? { activation: { session: { enabled: preset.tools } } }
+        : {}),
+      ...(preset?.prompt !== undefined ? { extraPrompt: preset.prompt } : {}),
       ...(deps.logger ? { logger: deps.logger } : {}),
     });
 
@@ -182,18 +218,27 @@ export function createSubagentRunner(
 
     const decideTurnBase: AgentLoopDeps["decideTurn"] = (record) =>
       record.toolCalls.length > 0 ? { action: "continue" } : { action: "end" };
+    // U23：预设独立模型（resolveSubagentModel 解析产物——装配闭包按名取
+    // RegisteredModel）。在位时恒捕获该模型（J7 捕获语义）——父会话换模
+    // 不影响本子代理（"独立配置"语义）；不在位 = 继承父当前选择（既有）。
+    const presetModel =
+      preset !== undefined ? deps.resolveSubagentModel?.(preset) : undefined;
     const subLoop = new AgentLoop({
       sessionId: childSessionId,
       store: deps.store,
-      provider: deps.provider,
-      identity: deps.identity,
+      provider: presetModel?.provider ?? deps.provider,
+      identity: presetModel?.identity ?? deps.identity,
       toolsProvider: () => subRegistry.toChatTools(),
       executeTool: (call) => subRegistry.dispatch(call),
       decideTurn: subAssembly.wrapDecideTurn(decideTurnBase),
       layers: subAssembly.layers,
       beforeFirstModelRequest: (turn) => subAssembly.beforeFirstModelRequest(turn),
       onToolStepCompleted: (turn, step) => subAssembly.onToolStepCompleted(turn, step),
-      ...(deps.modelForTurn ? { modelForTurn: deps.modelForTurn } : {}),
+      ...(presetModel !== undefined
+        ? { modelForTurn: () => ({ provider: presetModel.provider, identity: presetModel.identity }) }
+        : deps.modelForTurn
+          ? { modelForTurn: deps.modelForTurn }
+          : {}),
     });
 
     // T-P1-43 取消联动：父 turn 取消 → 子 loop 取消（CancelCause "parent"）。

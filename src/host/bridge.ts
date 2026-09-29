@@ -311,6 +311,8 @@ export class HostBridge implements SessionRouter {
         // U22/T-P3-125：技能管理（清单多根扫描 + 编辑器写回）
         if (call.op === "skills-list") return gateway.skillsList();
         if (call.op === "skill-save") return gateway.skillSave(call.skill!);
+        // U23/T-P3-126：子代理管理页清单
+        if (call.op === "subagents-list") return gateway.subagentsList();
         return { credentials: await gateway.credentialsList() };
       },
     };

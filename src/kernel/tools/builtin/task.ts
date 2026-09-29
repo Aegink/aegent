@@ -37,12 +37,13 @@ export interface TaskToolDeps {
   /**
    * 子代理运行面（kernel/subagent.ts 的 createSubagentRunner 产物，装配
    * 注入）。深度检查/子会话创建/降级装配/结算全在这里；第三参 signal
-   * （T-P1-43）= 本 turn 取消信号，父轮取消联动子轮取消。
+   * （T-P1-43）= 本 turn 取消信号，父轮取消联动子轮取消。U23：opts 加
+   * subagentType（预设名——runner 解析身份/工具集/模型）。
    */
   readonly runSubagent: (
     prompt: string,
     description: string,
-    opts?: { signal?: AbortSignal; backend?: string },
+    opts?: { signal?: AbortSignal; backend?: string; subagentType?: string },
   ) => Promise<SubagentRunResult>;
 }
 
@@ -66,6 +67,11 @@ export function createTaskTool(deps: TaskToolDeps): ToolDef {
           type: "string",
           description:
             "子代理执行后端名（H6/T-P2-309；缺省进程内 fork——装配方按注册表选后端，未知后端会被类型化拒绝）",
+        },
+        subagent_type: {
+          type: "string",
+          description:
+            "子代理预设名（U23——内置探索者 explorer / 代码审查员 code-reviewer / 测试执行者 test-runner / 修复者 fixer / UI 设计师 ui-designer，或设置页自定义的预设名；缺省 = 通用子代理）",
         },
       },
       required: ["description", "prompt"],
@@ -91,6 +97,11 @@ export function createTaskTool(deps: TaskToolDeps): ToolDef {
       if (backend !== undefined && (typeof backend !== "string" || backend === "")) {
         return toolError("TaskError", "INVALID_ARGUMENTS", "task 的 backend 须为非空字符串");
       }
+      // U23/T-P3-126：预设名（非空字符串校验——未知/停用的解析在 runner）
+      const subagentType = args["subagent_type"];
+      if (subagentType !== undefined && (typeof subagentType !== "string" || subagentType === "")) {
+        return toolError("TaskError", "INVALID_ARGUMENTS", "task 的 subagent_type 须为非空字符串");
+      }
       let result: SubagentRunResult;
       try {
         // T-P1-43 取消联动：ctx.signal（本 turn 取消信号）传给 runner——
@@ -101,6 +112,7 @@ export function createTaskTool(deps: TaskToolDeps): ToolDef {
         result = await deps.runSubagent(prompt, description, {
           ...(ctx.signal ? { signal: ctx.signal } : {}),
           ...(backend !== undefined ? { backend } : {}),
+          ...(subagentType !== undefined ? { subagentType } : {}),
         });
       } catch (err) {
         if (err instanceof SubagentDepthError) {

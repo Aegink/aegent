@@ -95,6 +95,17 @@ export interface AgentChildOptions {
    * 同轨）；单 server 失败 warn 跳过不炸启动。缺省无 = 零 MCP 面（行为不变）。
    */
   mcpServers?: import("../session/settings.js").McpServerEntry[];
+  /**
+   * U23/T-P3-126：子代理预设配置（settings subagents 段——用户覆盖与
+   * 自定义清单；内置五预设由 resolveSubagent 常量兜底）+ 独立模型解析
+   * （agent-child 按 resolveSubagentModel 链从 models 注册表取）。
+   */
+  subagents?: {
+    defs?: import("../session/subagents-config.js").SubagentDefinition[];
+    resolveModel?: (
+      subagent: import("../session/subagents-config.js").ResolvedSubagent,
+    ) => { provider: ModelProvider; identity: ModelIdentity } | undefined;
+  };
   provider?: ModelProvider;
   identity?: ModelIdentity;
   /** 缺省用 process.stdin/stdout（测试可注入内存流做进程外单测）。 */
@@ -305,6 +316,11 @@ export async function runAgentChildStdio(
           : {}),
         ...(options.assembly?.skillsDisabled !== undefined
           ? { skillsDisabled: options.assembly.skillsDisabled }
+          : {}),
+        // U23/T-P3-126：预设清单 + 独立模型解析闭包（runner 内按次解析）
+        ...(options.subagents?.defs !== undefined ? { subagentDefs: options.subagents.defs } : {}),
+        ...(options.subagents?.resolveModel !== undefined
+          ? { resolveSubagentModel: options.subagents.resolveModel }
           : {}),
         ...(assembly?.modelForTurn ? { modelForTurn: assembly.modelForTurn } : {}),
       })

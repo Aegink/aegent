@@ -160,6 +160,30 @@
           </form>
           <p class="hint">workspace 主目录（.zcode/skills）恒为首个来源；附加目录的技能同样出现在清单。停用 = 从新会话装配剔除（清单/系统提示/skill_load 三面一致）；技能正文上限 128KB。</p>
         </section>
+        <!-- U23/T-P3-126 子智能体管理：内置五预设卡（开关/工具 chips/覆盖
+             编辑）+ 用户自定义 CRUD + per-subagent 模型与 fallback 链
+             （SubagentModelPicker/SubagentFallbackModels 行为锚） -->
+        <section data-section="subagents">
+          <h2>子智能体</h2>
+          <ul id="subagent-list"></ul>
+          <p class="hint">内置预设可在 task 工具中以 subagent_type 调用（如 explorer / code-reviewer）；停用的内置保留在清单里（开关是开回的路径）。工具集 chips = 该预设可用的工具声明面（H3/H5 降级面之上再收窄）。</p>
+          <div id="subagent-editor" hidden>
+            <input id="subagent-name" type="text" placeholder="预设名（slug：小写字母数字- _，task 调用标识）" autocomplete="off" />
+            <input id="subagent-desc" type="text" placeholder="描述" autocomplete="off" />
+            <textarea id="subagent-prompt" rows="4" placeholder="身份提示（这个子代理是谁、怎么干活——追加进子会话系统提示）"></textarea>
+            <div class="hint">工具集（可选——勾选后该预设只能用这些工具）</div>
+            <div id="subagent-tools"></div>
+            <label>模型条目（providers 条目名——独立模型面，缺省回退父会话模型）
+              <input id="subagent-provider" type="text" placeholder="（缺省继承父会话）" autocomplete="off" /></label>
+            <label>模型 id（可选——覆盖条目缺省模型）
+              <input id="subagent-model" type="text" placeholder="（条目/主模型回退）" autocomplete="off" /></label>
+            <label>故障转移候选（providers 条目名，逗号分隔——J15 消费面）
+              <input id="subagent-fallbacks" type="text" placeholder="（可选）" autocomplete="off" /></label>
+            <button id="subagent-save" type="button">保存预设</button>
+            <button id="subagent-cancel" type="button">取消</button>
+          </div>
+          <button id="subagent-new" type="button">新建自定义子代理</button>
+        </section>
         <!-- U17/T-P3-119 MCP 管理向导：分步添加（类型→参数→校验→保存）+
              统一面板（清单/启停/编辑/删除）；连接校验走 settings op:mcp-check -->
         <section data-section="mcp">

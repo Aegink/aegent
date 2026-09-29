@@ -28,6 +28,7 @@ import { createOpenAiCompatProvider } from "../models/openai-compat.js";
 import { createAnthropicMessagesProvider } from "../models/anthropic-messages.js";
 import { withRetry, type RetryObservation } from "../models/retry.js";
 import type { RegisteredModel } from "./model-switch.js";
+import { resolveSubagentAssembly } from "./agent-child-subagents.js";
 import { createLogger } from "./logger.js";
 
 /** A5/T-P1-51 重试留痕 logger（openai 装配专用，模块级单例避免句柄膨胀）。 */
@@ -271,11 +272,9 @@ async function main(): Promise<void> {
     identity = registry.initial.identity;
   }
 
-  // U18/T-P3-120：辅助任务模型消费（judge/summarizer 与主对话分离——
-  // 缺省回退主模型：judge 未配 = 无判官零行为变化（C42 既有），summarizer
-  // 未配 = 主模型（F5 既有回退）；仅多注册表装配分支消费——显式单模型
-  // 分支零变化，记档）。回退链（任务 model → 条目 model → defaultModel）
-  // 在 resolveTarget 内实现，与 session/settings.resolveEnhancementTarget 同链。
+  // U18/T-P3-120：辅助任务模型消费（judge/summarizer 与主对话分离——缺省
+  // 回退主模型，仅多注册表分支消费；回退链在 resolveTarget 内实现，与
+  // session/settings.resolveEnhancementTarget 同链）。
   let judgeTarget: RegisteredModel | undefined;
   let summarizerTarget: RegisteredModel | undefined;
   if (registry !== undefined && settingsFile.enhancement !== undefined) {
@@ -291,6 +290,9 @@ async function main(): Promise<void> {
       )) ?? undefined;
   }
 
+  // U23/T-P3-126：子代理装配解析（settings subagents 段——拆分在 agent-child-subagents.ts）。
+  const subagentsOptions = registry ? await resolveSubagentAssembly(settingsFile, registry.resolveTarget) : undefined;
+
   // J27/T-P1-61：retrying 事件落流观察者的 late-binding 槽（模块级声明）。
   const options: AgentChildOptions = {
     ...(cli.rawLogDir ? { rawLogDir: cli.rawLogDir } : {}),
@@ -300,6 +302,8 @@ async function main(): Promise<void> {
     ...(settingsFile.mcp?.some((s) => s.enabled !== false)
       ? { mcpServers: settingsFile.mcp.filter((s) => s.enabled !== false) }
       : {}),
+    // U23/T-P3-126：预设清单 + 独立模型解析闭包（runner 内按次解析）
+    ...(subagentsOptions ? { subagents: subagentsOptions } : {}),
     ...(storage ? { storage } : {}),
     ...(provider ? { provider, identity } : {}),
     // F5/T-P1-18：真实 provider 时启用真摘要（LLM 生成 + 截断回退）——

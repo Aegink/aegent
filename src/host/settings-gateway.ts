@@ -34,6 +34,10 @@ import {
   backupSettingsFile,
   summarizePackage,
 } from "../session/settings-transfer.js";
+import {
+  subagentCatalog,
+  type SubagentDefinition,
+} from "../session/subagents-config.js";
 import type { McpToolInfo } from "../mcp/client.js";
 
 /** U22/T-P3-125 技能正文字节上限（pi-desktop·SkillEditorSheet MAX_SKILL_BYTES 同值）。 */
@@ -67,6 +71,7 @@ export const SETTINGS_PATCH_SECTIONS = [
   "defaultProvider",
   "defaultModel",
   "skills",
+  "subagents",
 ] as const;
 
 /** U17/T-P3-119 连接校验回执（向导"测连接"——launch 一次握手+列工具后关闭）。 */
@@ -142,6 +147,14 @@ export interface SettingsGateway {
     body: string;
     tools?: readonly string[];
   }): Promise<{ saved: true; path: string }>;
+  /**
+   * U23/T-P3-126：子代理管理页清单（内置五预设 + 用户自定义分区——
+   * 覆盖记录折叠进内置行；每项带工具集/模型/fallbacks 的 chips 数据面）。
+   */
+  subagentsList(): Promise<{
+    builtins: (SubagentDefinition & { enabled: boolean; overridden: boolean })[];
+    custom: SubagentDefinition[];
+  }>;
 }
 
 /** 生产缺省探测依赖（真网络——tests 注入 fake）。 */
@@ -328,5 +341,13 @@ export class FileSettingsGateway implements SettingsGateway {
     await writeFile(tmp, `${frontmatter}${payload.body}\n`, "utf8");
     await rename(tmp, target);
     return { saved: true, path: target };
+  }
+
+  async subagentsList(): Promise<{
+    builtins: (SubagentDefinition & { enabled: boolean; overridden: boolean })[];
+    custom: SubagentDefinition[];
+  }> {
+    const settings = await this.get();
+    return subagentCatalog(settings.subagents);
   }
 }

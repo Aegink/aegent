@@ -107,11 +107,12 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
   it("U14/T-P3-103 · 设置中心资产：分节齐全 + 主题变量在位 + 导航入口（分节与 settings 模块一一对应）", () => {
     const uiDir = path.resolve(import.meta.dirname, "..", "..", "ui");
     const html = readFileSync(path.join(uiDir, "index.html"), "utf8");
-    // 十四分节（providers/credentials/permission/sandbox/appearance/logging/projects/
-    // prompts/skills/mcp/enhancement/profiles/transfer/about——settings.json 各段
-    // 一一对应；U5 卡在 providers 分节扩展切换与健康徽标；logging 为 T-P3-132
-    // #28 补落；projects 为 U11/T-P3-110；skills 为 U22/T-P3-125 技能管理）
-    for (const section of ["providers", "credentials", "permission", "sandbox", "appearance", "logging", "projects", "prompts", "skills", "mcp", "enhancement", "profiles", "transfer", "about"]) {
+    // 十五分节（providers/credentials/permission/sandbox/appearance/logging/projects/
+    // prompts/skills/subagents/mcp/enhancement/profiles/transfer/about——settings.json
+    // 各段一一对应；U5 卡在 providers 分节扩展切换与健康徽标；logging 为 T-P3-132
+    // #28 补落；projects 为 U11/T-P3-110；skills 为 U22/T-P3-125；subagents 为
+    // U23/T-P3-126 子智能体管理）
+    for (const section of ["providers", "credentials", "permission", "sandbox", "appearance", "logging", "projects", "prompts", "skills", "subagents", "mcp", "enhancement", "profiles", "transfer", "about"]) {
       expect(html).toContain(`data-section="${section}"`);
     }
     // 导航入口（状态栏齿轮）与凭据不回显（U2 面注入防呆）
@@ -238,6 +239,14 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(app).toContain("refreshSkillsList"); // 清单刷新
     expect(app).toContain('markDirty("skills")'); // 停用/来源即改即存
     expect(app).toContain("skillToolsSelected"); // 工具集多选
+    // U23/T-P3-126：子智能体管理（内置预设卡/自定义 CRUD/模型与 fallback）
+    expect(html).toContain('id="subagent-list"');
+    expect(html).toContain('id="subagent-editor"');
+    expect(html).toContain('id="subagent-fallbacks"');
+    expect(app).toContain('op: "subagents-list"'); // 清单数据面
+    expect(app).toContain("refreshSubagentsList"); // 清单刷新
+    expect(app).toContain('markDirty("subagents")'); // CRUD 即改即存
+    expect(app).toContain("subagentToolsSelected"); // 工具集多选
     // U18/T-P3-120：辅助模型分节（judge/summarizer 独立配置 + 回退链 hint）
     expect(html).toContain('id="enh-judge-provider"');
     expect(html).toContain('id="enh-summarizer-model"');

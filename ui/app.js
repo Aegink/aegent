@@ -1263,6 +1263,7 @@ async function openSettings() {
   settingsPanel.hidden = false;
   renderSkillRoots();
   void refreshSkillsList(); // U22：技能清单（文件系统面——每次打开刷新）
+  void refreshSubagentsList(); // U23：子代理清单（内置+自定义——每次打开刷新）
 }
 
 settingsBtn.addEventListener("click", () => void openSettings());
@@ -1830,6 +1831,173 @@ document.getElementById("skill-root-form").addEventListener("submit", (ev) => {
   renderSkillRoots();
   markDirty("skills");
   void refreshSkillsList();
+});
+
+// ---------------------------------------------------------------------------
+// U23/T-P3-126 子智能体管理：内置五预设卡（开关/工具 chips/覆盖编辑）+
+// 用户自定义 CRUD + per-subagent 模型与 fallback 链（settings subagents 段）。
+// ---------------------------------------------------------------------------
+
+let subagentsView = null; // subagents-list 缓存（openSettings 刷新）
+let editingSubagentName = null; // 非 null = 编辑既有条目（同名覆盖）
+const subagentToolsSelected = new Set();
+
+async function refreshSubagentsList() {
+  const envelope = await sendSettings({ op: "subagents-list" });
+  const list = document.getElementById("subagent-list");
+  list.replaceChildren();
+  if (!envelope.ok) {
+    const li = document.createElement("li");
+    li.className = "hint";
+    li.textContent = `子代理清单不可用：${envelope.error?.message ?? ""}`;
+    list.appendChild(li);
+    return;
+  }
+  subagentsView = envelope.result;
+  for (const b of subagentsView.builtins) {
+    const li = document.createElement("li");
+    li.className = "skill-item";
+    const label = document.createElement("span");
+    label.textContent = `🤖 ${b.name}（内置）——${b.description}${b.enabled ? "" : "（已停用）"}${b.overridden ? "（已自定义覆盖）" : ""}`;
+    const toolsRow = document.createElement("span");
+    toolsRow.className = "skill-tools";
+    for (const t of b.tools ?? []) {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.textContent = t;
+      toolsRow.appendChild(chip);
+    }
+    const toggleBtn = document.createElement("button");
+    toggleBtn.type = "button";
+    toggleBtn.textContent = b.enabled ? "停用" : "启用";
+    toggleBtn.addEventListener("click", () => {
+      // 停用 = 写同名覆盖记录（enabled:false——最简形状）；启用 = 移除记录
+      const defs = (settingsCache.subagents ?? []).filter((d) => d.name !== b.name);
+      if (b.enabled) defs.push({ name: b.name, enabled: false });
+      settingsCache.subagents = defs;
+      dirtySections.add("subagents");
+      markDirty("subagents");
+      void refreshSubagentsList();
+    });
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.textContent = "编辑";
+    editBtn.addEventListener("click", () => openSubagentEditor(b, true));
+    li.append(label, toolsRow, toggleBtn, editBtn);
+    list.appendChild(li);
+  }
+  for (const c of subagentsView.custom) {
+    const li = document.createElement("li");
+    li.className = "skill-item";
+    const label = document.createElement("span");
+    label.textContent = `🤖 ${c.name}（自定义）——${c.description ?? ""}${c.modelProvider ? `［模型 ${c.modelProvider}${c.model ? `/${c.model}` : ""}］` : ""}`;
+    const toolsRow = document.createElement("span");
+    toolsRow.className = "skill-tools";
+    for (const t of c.tools ?? []) {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.textContent = t;
+      toolsRow.appendChild(chip);
+    }
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.textContent = "编辑";
+    editBtn.addEventListener("click", () => openSubagentEditor(c, false));
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.textContent = "删除";
+    delBtn.className = "danger";
+    delBtn.addEventListener("click", () => {
+      if (!window.confirm(`删除自定义子代理「${c.name}」？`)) return;
+      settingsCache.subagents = (settingsCache.subagents ?? []).filter((d) => d.name !== c.name);
+      dirtySections.add("subagents");
+      markDirty("subagents");
+      void refreshSubagentsList();
+    });
+    li.append(label, toolsRow, editBtn, delBtn);
+    list.appendChild(li);
+  }
+}
+
+async function openSubagentEditor(def, isBuiltin) {
+  editingSubagentName = isBuiltin ? def.name : def.name;
+  subagentToolsSelected.clear();
+  const meta = (await ensureMetaCache()) ?? { tools: [], skills: [] };
+  const box = document.getElementById("subagent-tools");
+  box.replaceChildren();
+  for (const t of meta.tools) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    const selected = def.tools?.includes(t) ?? false;
+    if (selected) subagentToolsSelected.add(t);
+    chip.className = selected ? "chip active" : "chip";
+    chip.textContent = t;
+    chip.addEventListener("click", () => {
+      if (subagentToolsSelected.has(t)) {
+        subagentToolsSelected.delete(t);
+        chip.classList.remove("active");
+      } else {
+        subagentToolsSelected.add(t);
+        chip.classList.add("active");
+      }
+    });
+    box.appendChild(chip);
+  }
+  document.getElementById("subagent-name").value = def.name ?? "";
+  document.getElementById("subagent-desc").value = def.description ?? "";
+  document.getElementById("subagent-prompt").value = def.prompt ?? "";
+  document.getElementById("subagent-provider").value = def.modelProvider ?? "";
+  document.getElementById("subagent-model").value = def.model ?? "";
+  document.getElementById("subagent-fallbacks").value = (def.fallbacks ?? []).join(", ");
+  document.getElementById("subagent-editor").hidden = false;
+  document.getElementById("subagent-new").hidden = true;
+}
+
+document.getElementById("subagent-new").addEventListener("click", () => {
+  openSubagentEditor({ name: "", description: "", prompt: "" }, false);
+});
+
+document.getElementById("subagent-cancel").addEventListener("click", () => {
+  document.getElementById("subagent-editor").hidden = true;
+  document.getElementById("subagent-new").hidden = false;
+  editingSubagentName = null;
+});
+
+document.getElementById("subagent-save").addEventListener("click", () => {
+  const name = document.getElementById("subagent-name").value.trim();
+  const description = document.getElementById("subagent-desc").value.trim();
+  const prompt = document.getElementById("subagent-prompt").value;
+  const provider = document.getElementById("subagent-provider").value.trim();
+  const model = document.getElementById("subagent-model").value.trim();
+  const fallbacks = document.getElementById("subagent-fallbacks").value
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s !== "");
+  if (name === "" || description === "" || prompt.trim() === "") {
+    toast("预设名、描述与身份提示必填", "warn");
+    return;
+  }
+  const entry = {
+    name,
+    description,
+    prompt,
+    ...(subagentToolsSelected.size > 0 ? { tools: [...subagentToolsSelected] } : {}),
+    ...(provider !== "" ? { modelProvider: provider } : {}),
+    ...(model !== "" ? { model } : {}),
+    ...(fallbacks.length > 0 ? { fallbacks } : {}),
+  };
+  const defs = (settingsCache.subagents ?? []).filter(
+    (d) => d.name !== name && d.name !== editingSubagentName,
+  );
+  defs.push(entry);
+  settingsCache.subagents = defs;
+  document.getElementById("subagent-editor").hidden = true;
+  document.getElementById("subagent-new").hidden = false;
+  editingSubagentName = null;
+  dirtySections.add("subagents");
+  markDirty("subagents");
+  toast("子代理预设已保存（新会话生效）", "info");
+  void refreshSubagentsList();
 });
 
 // ---------------------------------------------------------------------------

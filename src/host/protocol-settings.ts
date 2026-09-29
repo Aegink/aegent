@@ -25,7 +25,9 @@ export type SettingsOp =
   /** U22/T-P3-125：技能清单（多根扫描 + 停用过滤——管理页数据面）。 */
   | "skills-list"
   /** U22/T-P3-125：技能编辑器写回（新建/编辑——写 workspace 技能目录）。 */
-  | "skill-save";
+  | "skill-save"
+  /** U23/T-P3-126：子代理管理页清单（内置五预设 + 用户自定义分区）。 */
+  | "subagents-list";
 
 /** 技能编辑器写回载荷（op=skill-save；frontmatter + 正文的一次性形状）。 */
 export interface SkillSavePayload {
@@ -91,10 +93,11 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     op !== "mcp-check" &&
     op !== "import" &&
     op !== "skills-list" &&
-    op !== "skill-save"
+    op !== "skill-save" &&
+    op !== "subagents-list"
   ) {
     throw new Error(
-      `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|mcp-check|import|skills-list|skill-save）`,
+      `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|mcp-check|import|skills-list|skill-save|subagents-list）`,
     );
   }
   if (op === "update") {

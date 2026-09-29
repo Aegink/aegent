@@ -25,6 +25,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { locateJsonError } from "../models/config.js";
+import { isValidSubagentSlug, type SubagentDefinition } from "./subagents-config.js";
 
 // ---------------------------------------------------------------------------
 // 形状（v1）
@@ -127,6 +128,8 @@ export interface SettingsShape {
   prompts?: PromptEntry[];
   /** 技能管理（U22——停用名单 + 附加来源目录；装配消费见 kernel/skills.ts）。 */
   skills?: SkillsConfig;
+  /** 子代理自定义（U23——同名覆盖内置预设；解析面见 session/subagents-config.ts）。 */
+  subagents?: SubagentDefinition[];
   /** MCP server 清单（U17——向导式添加落档；装配期连接注册，单 server 失败不炸启动）。 */
   mcp?: McpServerEntry[];
   /** 辅助任务模型（U18——judge/summarizer 独立配置；缺省回退主模型链）。 */
@@ -414,6 +417,63 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
       ...(Array.isArray(roots) && roots.length > 0 ? { roots: roots as string[] } : {}),
     };
     if (nextSkills.disabled !== undefined || nextSkills.roots !== undefined) out.skills = nextSkills;
+  }
+  const subagents = rec["subagents"];
+  if (subagents !== undefined) {
+    if (!Array.isArray(subagents)) throw new SettingsError("subagents 须为数组");
+    const seen = new Set<string>();
+    for (const entry of subagents) {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+        throw new SettingsError("subagents 条目必须是对象");
+      }
+      const e = entry as Record<string, unknown>;
+      const name = assertString(e["name"], "subagents[].name");
+      if (name === undefined) throw new SettingsError("subagents[].name 缺失");
+      // slug 规则（task subagent_type 取值面）+ 段内唯一
+      if (!isValidSubagentSlug(name)) {
+        throw new SettingsError(`subagents[].name 须为 slug 形状（小写字母数字开头，- _ 可内用）：${name}`);
+      }
+      if (seen.has(name)) throw new SettingsError(`subagents 名重复：${name}`);
+      seen.add(name);
+      if (e["tools"] !== undefined && (!Array.isArray(e["tools"]) || e["tools"].some((t) => typeof t !== "string" || t === ""))) {
+        throw new SettingsError("subagents[].tools 须为非空字符串数组");
+      }
+      for (const key of ["modelProvider", "model"] as const) {
+        if (e[key] !== undefined && (typeof e[key] !== "string" || (e[key] as string).trim() === "")) {
+          throw new SettingsError(`subagents[].${key} 须为非空字符串`);
+        }
+      }
+      if (e["fallbacks"] !== undefined && (!Array.isArray(e["fallbacks"]) || e["fallbacks"].some((t) => typeof t !== "string" || t === ""))) {
+        throw new SettingsError("subagents[].fallbacks 须为非空字符串数组");
+      }
+      if (e["enabled"] !== undefined && typeof e["enabled"] !== "boolean") {
+        throw new SettingsError("subagents[].enabled 须为布尔值");
+      }
+      // 字段必填分态：启用的条目（或覆盖内置的自定义面）必须自描述完整；
+      // 纯停用覆盖记录（enabled === false）允许最简 {name, enabled}——
+      // 缺失字段在 resolveSubagent 合并时引用内置值（pi-desktop enabledHandles
+      // 语义：停用的内置无文档可删，最简记录是唯一开关位）。
+      const enabled = e["enabled"] !== false;
+      const prompt = assertString(e["prompt"], "subagents[].prompt");
+      const description = assertString(e["description"], "subagents[].description");
+      if (enabled) {
+        if (prompt === undefined) throw new SettingsError("subagents[].prompt 缺失（子代理身份提示）");
+        if (description === undefined) throw new SettingsError("subagents[].description 缺失");
+      }
+      out.subagents = [
+        ...(out.subagents ?? []),
+        {
+          name,
+          ...(description !== undefined ? { description } : {}),
+          ...(prompt !== undefined ? { prompt } : {}),
+          ...(Array.isArray(e["tools"]) && e["tools"].length > 0 ? { tools: e["tools"] as string[] } : {}),
+          ...(e["modelProvider"] !== undefined ? { modelProvider: e["modelProvider"] as string } : {}),
+          ...(e["model"] !== undefined ? { model: e["model"] as string } : {}),
+          ...(Array.isArray(e["fallbacks"]) && e["fallbacks"].length > 0 ? { fallbacks: e["fallbacks"] as string[] } : {}),
+          ...(e["enabled"] === false ? { enabled: false } : {}),
+        } as SubagentDefinition,
+      ];
+    }
   }
   const mcp = rec["mcp"];
   if (mcp !== undefined) {

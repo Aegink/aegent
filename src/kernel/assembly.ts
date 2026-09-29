@@ -288,6 +288,12 @@ export interface ChildAssemblyOptions {
   skillsDisabled?: readonly string[];
   skillsRoots?: readonly string[];
   /**
+   * U23/T-P3-126 子代理身份段（task subagent_type 的预设 prompt——追加进
+   * 系统提示，persona 同款位置）。仅子装配使用（runner 传入）；父会话
+   * 缺省 undefined = 零追加零变化。
+   */
+  extraPrompt?: string;
+  /**
    * C12/C13 编辑前必须先读（T-P1-71）：提供 ReadGateService 时 read 记账、
    * edit/write/apply_patch 校验（未读拒/过期拒）。缺省 undefined = 不启用
    * （C13 整体丢弃，工具照常用）。
@@ -653,12 +659,11 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
       // I8 人格段（T-P2-305）：--persona 选了预设则渲染后追加进同一条系统
       // 提示（人格随会话流持久——恢复自动生效）；未选择 = 零追加。
       const persona = resolvePersona(options.personaId);
+      // U23/T-P3-126：子代理身份段（extraPrompt——task subagent_type 的
+      // 预设身份提示，persona 同款追加位；父会话缺省无此段零变化）。
       const withPersona =
-        persona === undefined
-          ? prompt
-          : `${prompt}
-
-${renderPersona(persona, { workspace: options.workspaceRoot })}`;
+        `${prompt}${persona === undefined ? "" : `\n\n${renderPersona(persona, { workspace: options.workspaceRoot })}`}` +
+        `${options.extraPrompt === undefined ? "" : `\n\n${options.extraPrompt}`}`;
       store.append(sessionId, [
         {
           type: "system/message",
