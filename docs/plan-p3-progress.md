@@ -281,11 +281,17 @@
 
 ---
 
+### 补全卡 T-P3-133 · 插件管理（2026-09-29 用户裁决追加——"参考几个仓库补齐插件管理"；337 条外新增）
+
+**状态**：✅ 落地（2026-09-29）——I4/I5/I9 的管理面延伸（内核机制 P1/P2 全在位，补生产装配点与管理 UI）。台账：settings plugins 段（name 唯一禁 `__` + transport inprocess|ws + source + allowTools + enabled；parse fail-closed）+ **装配消费真新装配点**（plugin-loader.ts：inprocess = plugin.json 再校验 + 清单名一致性核对 + 动态 import default 导出 → loadPlugin → 工具以 `<插件名>__<工具名>` 命名空间进 ToolRegistry〔execute 无 ctx——D4 红线〕；ws = connectWsPlugin + onToolRegistration 消费 allowTools〔不受信默认 deny——显式例外是策略面〕；never-fail 跳过 + finish 收尾 disposeAll）+ host 安装校验（plugins-gateway.ts：listPlugins/checkPluginDir——只读 plugin.json 走 I9 validateManifest，host 零代码执行；停用条目跳过校验；ws URL 形状）+ settings op:"plugins-list" + ui 第十九分节（清单卡片 transport/trust 徽标/capabilities chips/错误行 + 启停/删除 + 安装表单）。验收 86 passed + 全量 **1821 passed / 7 skipped，exit 0**（206 文件）；tsc 干净、architecture 0 error / 22 warning（agent-child 曾超行压缩归还）。记档：事件投递接线（handle.deliver 挂 store.append 后置观察）随需要接线；插件市场远程渠道维持 YAGNI；作用域 projects 三态不取（U11 同款边界）；inprocess 隔离边界 = 子进程（untrusted 建议 ws）。
+
+**参考仓借鉴映射（T-P3-133）**：pi-desktop·InstalledPluginsPanel（清单/启停/卸载确认/来源 tag/错误行——🔴 只学行为）+ codex·plugin/manifest.rs（插件贡献资源清单形状——清单独立文件约定）+ pi-desktop·activation.ts（作用域三态——**不取**，收敛记档）。
+
 ## 批次提示词（P3 全段收官——无后续批次；2026-09-29 更新）
 
 ```
 P3 全段（批次 16a~16d，31 卡）已于 2026-09-29 全部收官：
-- 全量基线 1813 passed / 7 skipped，exit 0（205 文件）；词汇表 30；
+- 全量基线 1821 passed / 7 skipped，exit 0（206 文件）；词汇表 30；
   count-features 337；architecture 0 error / 22 warning；tsc 干净；
   工具链五件全绿（check-doc-links 显式传参 1217 链接 0 失效）。
 - 两例既有基建 flake 已于 16d 收口顺手修复（llm-replay 计时抹平 /
