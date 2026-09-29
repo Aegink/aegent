@@ -8,6 +8,15 @@
 // U4/T-P3-107 渲染分层：assistant 走 markdown+高亮管线（render.js——
 // 用户输入不走此管线，注入面防呆）；vendor 本地化见 ui/vendor/README.md
 import { buildDiffLines, parseDenial, renderMarkdown } from "./render.js";
+// U25/T-P3-128 快捷键注册表（纯逻辑模块——清单/覆盖合并/冲突检测）
+import {
+  ACTION_LABELS,
+  DEFAULT_KEYMAP,
+  createKeymap,
+  detectConflict,
+  eventToCombo,
+  resolveAction,
+} from "./keymap.js";
 
 // 桌面壳检测：Tauri 2 WebView 注入 __TAURI_INTERNALS__ 全局（无需 @tauri-apps/api）。
 // surfaceId 前缀 web-/desktop- 是审计答复端（replySource）的来源约定。
@@ -812,6 +821,7 @@ async function flushSettings() {
   if (envelope.ok) {
     settingsCache = envelope.result.settings;
     applyTheme(settingsCache.appearance?.theme);
+    rebuildKeymap(); // U25：shortcuts 段保存后键位同步
   } else {
     appendLine(`设置保存失败：${envelope.error?.message ?? ""}`, "warn");
   }
@@ -1163,6 +1173,7 @@ async function applyImportedSettingsObject(importedSettings) {
   settingsCache = envelope.result.settings;
   promptsCacheLoaded = true;
   applyTheme(settingsCache.appearance?.theme);
+  rebuildKeymap(); // U25：导入后键位同步
   fillSettingsForm();
   return true;
 }
@@ -1257,7 +1268,9 @@ async function openSettings() {
   settingsCache = envelope.result.settings;
   promptsCacheLoaded = true;
   applyTheme(settingsCache.appearance?.theme);
+  rebuildKeymap(); // U25：键位表随 settings 就绪
   fillSettingsForm();
+  renderShortcutList();
   const creds = await sendSettings({ op: "credentials-list" });
   if (creds.ok) renderCredentialList(creds.result.credentials ?? []);
   settingsPanel.hidden = false;
@@ -2084,6 +2097,110 @@ for (const btn of document.querySelectorAll(".instr-tpl")) {
   });
 }
 
+// —— U25/T-P3-128 快捷键分节：清单（可查）+ 捕获态改绑（自定义）+
+// 冲突提示（注册表冲突阻断 / 保留键提示不拦截）
+let capturingAction = null; // 非 null = 捕获态（下一次按键即新绑定）
+let capturedCombo = null; // 捕获到的规范 combo（未保存）
+
+function renderShortcutList() {
+  const list = document.getElementById("shortcut-list");
+  const status = document.getElementById("shortcut-status");
+  list.replaceChildren();
+  const bindings = createKeymap(settingsCache?.shortcuts);
+  for (const [action, label] of Object.entries(ACTION_LABELS)) {
+    const li = document.createElement("li");
+    li.className = "skill-item";
+    const name = document.createElement("span");
+    const fixed = action === "send";
+    const combo = fixed ? "Enter" : bindings[action] ?? "";
+    name.textContent = `⌨ ${label}：${combo}${fixed ? "（固定）" : ""}`;
+    li.appendChild(name);
+    const conflictInfo = !fixed ? detectConflict(combo, bindings, action) : {};
+    if (conflictInfo.conflict !== undefined) {
+      const warn = document.createElement("span");
+      warn.className = "hint";
+      warn.textContent = `⚠ 与「${ACTION_LABELS[conflictInfo.conflict]}」冲突`;
+      li.appendChild(warn);
+    }
+    if (conflictInfo.reserved === true) {
+      const warn = document.createElement("span");
+      warn.className = "hint";
+      warn.textContent = "（浏览器保留键——提示不拦截，请自测）";
+      li.appendChild(warn);
+    }
+    if (!fixed) {
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      if (capturingAction === action) {
+        editBtn.textContent = capturedCombo ?? "按键…";
+        editBtn.className = "default-mark";
+      } else {
+        editBtn.textContent = "修改";
+        editBtn.addEventListener("click", () => {
+          capturingAction = action;
+          capturedCombo = null;
+          status.textContent = `捕获中：为「${label}」按新组合（Esc 取消）`;
+          renderShortcutList();
+        });
+      }
+      li.appendChild(editBtn);
+    }
+    list.appendChild(li);
+  }
+}
+
+window.addEventListener(
+  "keydown",
+  (ev) => {
+    if (capturingAction === null) return;
+    // 捕获态：Esc 空手取消；纯修饰键等待；组合转规范 combo 后即存
+    if (ev.key === "Escape") {
+      capturingAction = null;
+      capturedCombo = null;
+      document.getElementById("shortcut-status").textContent =
+        "点击绑定进入捕获态——按新组合即改即存；Esc 取消捕获。";
+      renderShortcutList();
+      ev.preventDefault();
+      ev.stopPropagation();
+      return;
+    }
+    const combo = eventToCombo(ev);
+    if (combo === null) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const bindings = createKeymap(settingsCache?.shortcuts);
+    const conflict = detectConflict(combo, bindings, capturingAction);
+    const statusEl = document.getElementById("shortcut-status");
+    if (conflict.conflict !== undefined) {
+      statusEl.textContent = `✘ ${combo} 已被「${ACTION_LABELS[conflict.conflict]}」占用——换一个组合（Esc 取消）`;
+      renderShortcutList();
+      return; // 冲突阻断保存
+    }
+    const reservedNote = conflict.reserved === true ? "（浏览器保留键——提示不拦截）" : "";
+    // 保存覆盖（部分覆盖语义——settings.shortcuts 段）
+    const overrides = { ...(settingsCache.shortcuts ?? {}) };
+    overrides[capturingAction] = combo;
+    settingsCache.shortcuts = overrides;
+    dirtySections.add("shortcuts");
+    markDirty("shortcuts");
+    statusEl.textContent = `✔ ${ACTION_LABELS[capturingAction]} → ${combo}${reservedNote}`;
+    capturingAction = null;
+    capturedCombo = null;
+    renderShortcutList();
+  },
+  true, // 捕获态用捕获阶段监听——抢先于分发监听
+);
+
+document.getElementById("shortcut-reset").addEventListener("click", () => {
+  if (!window.confirm("恢复全部默认键位？（清除所有自定义绑定）")) return;
+  settingsCache.shortcuts = {};
+  delete settingsCache.shortcuts;
+  dirtySections.add("shortcuts");
+  markDirty("shortcuts");
+  document.getElementById("shortcut-status").textContent = "已恢复默认键位。";
+  renderShortcutList();
+});
+
 // ---------------------------------------------------------------------------
 // U3/T-P3-105 会话历史侧栏：query op:"sessions" 清单 + 只读查看 +
 // 删除确认（settings op:"session-delete"——host 面写操作）
@@ -2787,20 +2904,64 @@ function resetStreamView() {
   stream.replaceChildren();
 }
 
-// Ctrl+F 会话内搜索 / Ctrl+Shift+F 跨会话搜索 / Esc 关闭
-window.addEventListener("keydown", (ev) => {
-  if (ev.ctrlKey && !ev.shiftKey && ev.key.toLowerCase() === "f") {
-    ev.preventDefault();
-    openFind();
-  } else if (ev.ctrlKey && ev.shiftKey && ev.key.toLowerCase() === "f") {
-    ev.preventDefault();
+// —— 快捷键统一分发（U25/T-P3-128）：注册表驱动（settings.shortcuts
+// 覆盖默认键位——openSettings/flushSettings 后 rebuildKeymap 同步）；
+// 替换既有 Ctrl+F/Ctrl+Shift+F/Esc 硬编码（行为等价 + 可自定义）。
+let keymapBindings = createKeymap(null);
+
+function rebuildKeymap() {
+  keymapBindings = createKeymap(settingsCache?.shortcuts);
+}
+
+const KEYMAP_HANDLERS = {
+  settings: () => {
+    if (settingsPanel.hidden) void openSettings();
+    else {
+      settingsPanel.hidden = true;
+      void flushSettings();
+    }
+  },
+  find: () => openFind(),
+  search: () => {
     searchPanel.hidden = false;
     searchInput.focus();
-  } else if (ev.key === "Escape") {
+  },
+  "close-find": () => {
     if (!findBar.hidden) {
       findBar.hidden = true;
       clearHits();
     }
+  },
+  history: () => {
+    if (historyPanel.hidden) void openHistory();
+    else historyPanel.hidden = true;
+  },
+  work: () => {
+    if (workPanel.hidden) void openWorkpanel();
+    else workPanel.hidden = true;
+  },
+  usage: () => {
+    if (usagePanel.hidden) void openUsage();
+    else usagePanel.hidden = true;
+  },
+  notify: () => {
+    renderNotifyList();
+    notifyPanel.hidden = !notifyPanel.hidden;
+  },
+};
+
+window.addEventListener("keydown", (ev) => {
+  // Esc 优先走搜索条关闭（输入态无关既有行为）；其余经注册表分发
+  const inInput =
+    document.activeElement instanceof HTMLTextAreaElement ||
+    (document.activeElement instanceof HTMLInputElement &&
+      document.activeElement.type !== "button");
+  const action = resolveAction(keymapBindings, ev, { inInput });
+  if (action === null) return;
+  const handler = KEYMAP_HANDLERS[action];
+  if (handler !== undefined) {
+    ev.preventDefault();
+    handler();
   }
 });
 

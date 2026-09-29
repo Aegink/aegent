@@ -130,6 +130,8 @@ export interface SettingsShape {
   skills?: SkillsConfig;
   /** 子代理自定义（U23——同名覆盖内置预设；解析面见 session/subagents-config.ts）。 */
   subagents?: SubagentDefinition[];
+  /** 快捷键覆盖（U25——action → 组合键规范串；部分覆盖语义，解析面见 ui/keymap.js）。 */
+  shortcuts?: Record<string, string>;
   /** MCP server 清单（U17——向导式添加落档；装配期连接注册，单 server 失败不炸启动）。 */
   mcp?: McpServerEntry[];
   /** 辅助任务模型（U18——judge/summarizer 独立配置；缺省回退主模型链）。 */
@@ -474,6 +476,19 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
         } as SubagentDefinition,
       ];
     }
+  }
+  const shortcuts = rec["shortcuts"];
+  if (shortcuts !== undefined) {
+    if (shortcuts === null || typeof shortcuts !== "object" || Array.isArray(shortcuts)) {
+      throw new SettingsError("shortcuts 须为对象（action → 组合键串）");
+    }
+    const outShortcuts: Record<string, string> = {};
+    for (const [action, combo] of Object.entries(shortcuts as Record<string, unknown>)) {
+      // 非法覆盖值（非字符串/空串）宽容忽略——坏档不炸键位面（ui/keymap
+      // createKeymap 同语义）；键名（action）前向兼容不设白名单。
+      if (typeof combo === "string" && combo.trim() !== "") outShortcuts[action] = combo;
+    }
+    if (Object.keys(outShortcuts).length > 0) out.shortcuts = outShortcuts;
   }
   const mcp = rec["mcp"];
   if (mcp !== undefined) {

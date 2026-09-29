@@ -79,6 +79,7 @@ export const SETTINGS_PATCH_SECTIONS = [
   "defaultModel",
   "skills",
   "subagents",
+  "shortcuts",
 ] as const;
 
 /** U17/T-P3-119 连接校验回执（向导"测连接"——launch 一次握手+列工具后关闭）。 */

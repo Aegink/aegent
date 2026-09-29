@@ -107,12 +107,13 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
   it("U14/T-P3-103 · 设置中心资产：分节齐全 + 主题变量在位 + 导航入口（分节与 settings 模块一一对应）", () => {
     const uiDir = path.resolve(import.meta.dirname, "..", "..", "ui");
     const html = readFileSync(path.join(uiDir, "index.html"), "utf8");
-    // 十六分节（providers/credentials/permission/sandbox/appearance/logging/projects/
-    // prompts/skills/subagents/instructions/mcp/enhancement/profiles/transfer/about
-    // ——settings.json 各段与文件位一一对应；U5 卡在 providers 分节扩展切换与
-    // 健康徽标；logging 为 T-P3-132 #28 补落；projects 为 U11/T-P3-110；skills
-    // 为 U22/T-P3-125；subagents 为 U23/T-P3-126；instructions 为 U24/T-P3-127）
-    for (const section of ["providers", "credentials", "permission", "sandbox", "appearance", "logging", "projects", "prompts", "skills", "subagents", "instructions", "mcp", "enhancement", "profiles", "transfer", "about"]) {
+    // 十七分节（providers/credentials/permission/sandbox/appearance/logging/projects/
+    // prompts/skills/subagents/instructions/shortcuts/mcp/enhancement/profiles/
+    // transfer/about——settings.json 各段与文件位一一对应；U5 卡在 providers
+    // 分节扩展切换与健康徽标；logging 为 T-P3-132 #28 补落；projects 为
+    // U11/T-P3-110；skills 为 U22/T-P3-125；subagents 为 U23/T-P3-126；
+    // instructions 为 U24/T-P3-127；shortcuts 为 U25/T-P3-128）
+    for (const section of ["providers", "credentials", "permission", "sandbox", "appearance", "logging", "projects", "prompts", "skills", "subagents", "instructions", "shortcuts", "mcp", "enhancement", "profiles", "transfer", "about"]) {
       expect(html).toContain(`data-section="${section}"`);
     }
     // 导航入口（状态栏齿轮）与凭据不回显（U2 面注入防呆）
@@ -257,6 +258,13 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(app).toContain('op: "instruction-save"'); // 写回
     expect(app).toContain("INSTR_TEMPLATES"); // 模板插入辅助
     expect(app).toContain("renderRulesLint"); // 规则 lint 提示面
+    // U25/T-P3-128：快捷键注册表（清单/捕获改绑/冲突提示）+ 设置分节
+    expect(html).toContain('id="shortcut-list"');
+    expect(html).toContain('id="shortcut-reset"');
+    expect(app).toContain("renderShortcutList"); // 清单渲染
+    expect(app).toContain("capturingAction"); // 捕获态
+    expect(app).toContain("rebuildKeymap"); // 键位表随 settings 同步
+    expect(app).toContain('markDirty("shortcuts")'); // 改绑即改即存
     // U18/T-P3-120：辅助模型分节（judge/summarizer 独立配置 + 回退链 hint）
     expect(html).toContain('id="enh-judge-provider"');
     expect(html).toContain('id="enh-summarizer-model"');

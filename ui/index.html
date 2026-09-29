@@ -204,6 +204,15 @@
           <button class="instr-save" data-target="user-rules" type="button">保存用户规则</button>
           <button class="instr-tpl" data-target="user-rules" type="button">插入模板</button>
         </section>
+        <!-- U25/T-P3-128 快捷键系统：清单可查 + 自定义绑定（点击捕获按键）
+             + 冲突提示（注册表冲突阻断 / 浏览器保留键提示不拦截） -->
+        <section data-section="shortcuts">
+          <h2>快捷键</h2>
+          <ul id="shortcut-list"></ul>
+          <p id="shortcut-status" class="hint">点击绑定进入捕获态——按新组合即改即存；Esc 取消捕获。</p>
+          <button id="shortcut-reset" type="button">恢复默认键位</button>
+          <p class="hint">发送键（Enter）为核心交互固定不可改；会话切换/新建会话无对应面（单会话 host 模型——历史侧栏即切换入口，记档）。</p>
+        </section>
         <!-- U17/T-P3-119 MCP 管理向导：分步添加（类型→参数→校验→保存）+
              统一面板（清单/启停/编辑/删除）；连接校验走 settings op:mcp-check -->
         <section data-section="mcp">
