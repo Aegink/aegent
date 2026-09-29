@@ -278,6 +278,8 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(app).toContain('op: "file"'); // 文件树点击预览
     expect(app).toContain("refreshWorkReview"); // turn_settled 自动刷新接线
     expect(app).toContain("previewWorkspaceFile");
+    expect(html).toContain('data-worktab="collab"'); // U27 协作 Tab
+    expect(html).toContain('id="work-collab-table"');
     for (const marker of [".work-tab", ".tree-row", ".review-badge", "#work-preview"]) {
       expect(css).toContain(marker);
     }

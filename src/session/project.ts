@@ -416,6 +416,48 @@ export class Projector {
           );
         }
         break;
+      case "session/collab":
+        // U27/T-P3-131 会话间协作（log-only 会话级元事件，#30 立案）：
+        // collabId/peerSessionId 非空（跨流关联键）、direction/kind/status/
+        // permissionCeiling 闭集——形状坏 = 带病协作事实，fail-closed。
+        if (typeof event.collabId !== "string" || event.collabId === "") {
+          throw new ProjectError("session/collab 需要 collabId 非空字符串");
+        }
+        if (typeof event.peerSessionId !== "string" || event.peerSessionId === "") {
+          throw new ProjectError("session/collab 需要 peerSessionId 非空字符串");
+        }
+        if (
+          event.direction !== "dispatch" &&
+          event.direction !== "receive" &&
+          event.direction !== "update" &&
+          event.direction !== "report"
+        ) {
+          throw new ProjectError(`session/collab 的 direction 非法：${String(event.direction)}`);
+        }
+        if (event.kind !== "task" && event.kind !== "message" && event.kind !== "completion") {
+          throw new ProjectError(`session/collab 的 kind 非法：${String(event.kind)}`);
+        }
+        if (
+          event.status !== undefined &&
+          event.status !== "queued" &&
+          event.status !== "running" &&
+          event.status !== "completed" &&
+          event.status !== "failed" &&
+          event.status !== "cancelled"
+        ) {
+          throw new ProjectError(`session/collab 的 status 非法：${String(event.status)}`);
+        }
+        if (
+          event.permissionCeiling !== undefined &&
+          event.permissionCeiling !== "ask" &&
+          event.permissionCeiling !== "accept-edits" &&
+          event.permissionCeiling !== "auto"
+        ) {
+          throw new ProjectError(
+            `session/collab 的 permissionCeiling 非法：${String(event.permissionCeiling)}`,
+          );
+        }
+        break;
       case "surface/detach":
         // detach 结算：surfaceId 非空 + reason 可选字符串（断线/主动/顶替）。
         if (typeof event.surfaceId !== "string" || event.surfaceId === "") {

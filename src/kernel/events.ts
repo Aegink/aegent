@@ -597,6 +597,45 @@ export interface SessionForkEvent extends EventBase {
 }
 
 /**
+ * 会话间协作消息（U27/T-P3-131，词汇表立案 #30）——会话 A 派任务/发消息
+ * 给会话 B 的**持久事实**（"协作消息是持久事实"判据 → 流内新事件，不走
+ * plugin 泛型逃生舱：这是核心产品语义不是扩展）。pi-desktop·session-
+ * collaboration 的 SessionCollaborationMessage 行为同构：三型（task/
+ * message/completion）+ 状态生命周期（queued/running/completed/failed/
+ * cancelled）+ **权限上限快照**（permissionCeiling 在派发时固化为载荷——
+ * 后续设置变更**双向**不影响排队/在途任务：防提权是安全硬断言，逆方向
+ * 也不降权——"提交时定死"语义）。
+ *
+ * 事件形状（卡内定形）：单类型 `session/collab` + direction 区分视角与
+ * 环节——dispatch（源流：派发事实）/ receive（目标流：入队事实）/ update
+ * （目标流：状态机转移 running→completed|failed|cancelled）/ report
+ * （源流：completion 回投）。双方流各自落事件 = 协作事实在两个视角下
+ * 都可重建（collaborationsFromEvents 投影）。log-only 会话级元事件：
+ * session/fork 同款纪律，不要求 turn/step 开合上下文，跨 compaction 保留。
+ */
+export type CollabKind = "task" | "message" | "completion";
+export type CollabDirection = "dispatch" | "receive" | "update" | "report";
+export type CollabStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
+export type CollabPermissionCeiling = "ask" | "accept-edits" | "auto";
+
+export interface CollabEvent extends EventBase {
+  type: "session/collab";
+  /** 协作消息 id（双方流共用——跨流关联键）。 */
+  collabId: string;
+  direction: CollabDirection;
+  kind: CollabKind;
+  /** 对端会话（dispatch = 目标；receive = 源；report = 执行方）。 */
+  peerSessionId: string;
+  status?: CollabStatus;
+  content?: string;
+  result?: string;
+  error?: string;
+  /** 派发时固化的权限上限快照（dispatch/receive 载荷——定死语义）。 */
+  permissionCeiling?: CollabPermissionCeiling;
+  notifyOnCompletion?: boolean;
+}
+
+/**
  * 插件事件泛型逃生舱（C17，T-P1-72）：**唯一**一个允许插件/宿主扩展
  * 落流的泛型槽位（pi CustomEntry 的 `type: "custom"` 同构——"若需插件
  * 事件，只开一个泛型逃生舱类型，不改词汇表机制"）。namespace 非空
@@ -791,6 +830,7 @@ export type SessionEvent =
   | TodoUpdateEvent
   | GoalSetEvent
   | SessionForkEvent
+  | CollabEvent
   | PluginEvent
   | CommandRunEvent
   | CommandDoneEvent
@@ -823,6 +863,7 @@ export const EVENT_TYPES = [
   "todo/update",
   "goal/set",
   "session/fork",
+  "session/collab",
   "plugin",
   "command/run",
   "command/done",

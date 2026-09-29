@@ -28,6 +28,7 @@
  */
 
 import type { SessionEvent } from "../kernel/events.js";
+import { collaborationsFromEvents, type CollaborationRecord } from "./collaboration.js";
 
 /** 文件级变更条目（按路径聚合后的末态）。 */
 export interface ReviewFileChange {
@@ -79,6 +80,8 @@ export interface ReviewReport {
   readonly operations: ReviewOperation[];
   /** 子代理委派一览——子代理监控 Tab 主表。 */
   readonly delegations: ReviewDelegation[];
+  /** 会话间协作往来——协作 Tab 主表（U27 流投影）。 */
+  readonly collaborations: CollaborationRecord[];
 }
 
 const PATCH_FILE_HEADERS =
@@ -183,8 +186,13 @@ export function reviewChangesFromEvents(events: readonly SessionEvent[]): Review
     args: Record<string, unknown>;
   }
   const open = new Map<string, OpenCall>();
+  const collabEvents: SessionEvent[] = [];
 
   for (const e of events) {
+    if (e.type === "session/collab") {
+      collabEvents.push(e);
+      continue;
+    }
     if (e.type === "tool/call") {
       open.set(e.callId, { seq: e.seq, ts: e.ts, turn: e.turn, name: e.name, args: parseCallArgs(e.arguments) });
     } else if (e.type === "tool/result") {
@@ -232,7 +240,12 @@ export function reviewChangesFromEvents(events: readonly SessionEvent[]): Review
     });
   }
   delegations.sort((a, b) => a.callSeq - b.callSeq);
-  return { changes: aggregateByPath(operations), operations, delegations };
+  return {
+    changes: aggregateByPath(operations),
+    operations,
+    delegations,
+    collaborations: collaborationsFromEvents(collabEvents),
+  };
 }
 
 /** 按归一路径聚合，末次操作决定文件态（流内 seq 序）。 */

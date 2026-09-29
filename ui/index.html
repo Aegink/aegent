@@ -280,6 +280,8 @@
         <button type="button" data-worktab="files" class="work-tab active">📁 文件</button>
         <button type="button" data-worktab="review" class="work-tab">🔍 变更评审</button>
         <button type="button" data-worktab="subagent" class="work-tab">🤖 子代理</button>
+        <!-- U27/T-P3-131 协作 Tab：会话间往来事实（流投影——session/collab） -->
+        <button type="button" data-worktab="collab" class="work-tab">🔗 协作</button>
       </nav>
       <div class="settings-body">
         <section data-worktab-body="files">
@@ -306,6 +308,15 @@
             <tbody></tbody>
           </table>
           <p id="work-delegation-hint" class="hint"></p>
+        </section>
+        <section data-worktab-body="collab" hidden>
+          <table id="work-collab-table">
+            <thead>
+              <tr><th>方向</th><th>对端会话</th><th>类型</th><th>状态</th><th>结果/错误</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <p class="hint">会话间派任务/消息往来的流内事实（session/collab 事件投影）；权限快照随派发固化——后续设置变更不影响排队/在途任务。</p>
         </section>
       </div>
     </aside>

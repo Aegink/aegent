@@ -1997,6 +1997,31 @@ function renderReviewReport(report) {
   }
   document.getElementById("work-delegation-hint").textContent =
     "委派状态/耗时取 task 调用与结算的流内事实（H1/H2 面）；点击子代理 Tab 查看一览。";
+
+  // U27/T-P3-131：协作往来（流投影——session/collab 事件）
+  const collabBody = document.querySelector("#work-collab-table tbody");
+  collabBody.replaceChildren();
+  for (const c of report.collaborations ?? []) {
+    const tr = document.createElement("tr");
+    const dir = c.direction === "outgoing" ? "→ 派出" : "← 收到";
+    const statusText =
+      c.status === "completed" ? "✔ 完成" : c.status === "failed" ? "✘ 失败" : c.status === "cancelled" ? "⊘ 取消" : c.status === "running" ? "⏳ 进行中" : "… 排队";
+    const outcome = c.result ?? c.error ?? "—";
+    for (const text of [dir, c.peerSessionId, c.kind, statusText, outcome]) {
+      const td = document.createElement("td");
+      td.textContent = text;
+      tr.appendChild(td);
+    }
+    collabBody.appendChild(tr);
+  }
+  if ((report.collaborations ?? []).length === 0) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 5;
+    td.textContent = "（本会话暂无协作往来——跨会话派任务后可见）";
+    tr.appendChild(td);
+    collabBody.appendChild(tr);
+  }
 }
 
 async function refreshWorkReview() {

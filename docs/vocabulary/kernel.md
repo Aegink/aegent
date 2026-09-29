@@ -67,3 +67,9 @@ _Avoid_: 快照（snapshot 泛指——checkpoint 专指落流引用事件）
 **TurnEndReason（轮终态）**:
 轮结束原因的闭集枚举（completed / aborted / blocked / max-tokens 等）——落 turn/end。
 _Avoid_: 错误码（终态不是错误）、status（泛化词）
+
+### 会话间协作
+
+**Collaboration Message（协作消息）**:
+会话 A 派任务/发消息给会话 B 的持久事实（三型 task/message/completion + 生命周期 queued/running/completed/failed/cancelled）——落流内 `session/collab` 事件（单类型 + direction 区分视角：dispatch/receive/update/report，双方流各自落事件）；completion 回投源会话流。**权限上限快照**在派发时固化（后续设置变更双向不影响——防提权）。
+_Avoid_: 子代理（subagent 是同进程内的派生执行——H 族；协作是会话对会话）、消息（message 泛指——协作消息专指跨会话往来事实）、引用（session reference 是只读快照注入——E9）
