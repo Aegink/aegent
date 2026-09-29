@@ -80,6 +80,14 @@ pub fn run() {
         // 校验链；endpoints 指向 localhost 演示面，pubkey 在 tauri.conf.json）
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            // U6 修复（2026-09-29 用户走查发现）：主窗 visible:false（避免
+            // WebView 加载前白屏闪烁）——host 就绪探测完成后必须显式 show
+            // 并聚焦（"探测失败照常显示"——诊断面在 UI 连接状态）。此前
+            // show 调用缺失 = 窗口创建后永远隐藏（用户双击无 UI）。
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
             spawn_update_check(app.handle().clone());
             Ok(())
         })
