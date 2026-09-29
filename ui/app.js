@@ -191,7 +191,17 @@ function buildToolCard(e) {
   card.dataset.callId = e.callId;
   const summary = document.createElement("summary");
   const args = safeParseArgs(e.arguments);
-  summary.textContent = `→ ${e.name} ${oneLine(args !== null ? JSON.stringify(args) : e.arguments, 160)}`;
+  // 批 C 任务卡片化：icon + 工具名 + 参数一行 + 状态徽标（结果结算后翻转）
+  const name = document.createElement("span");
+  name.className = "tool-name";
+  name.textContent = `⚙ ${e.name}`;
+  const argsSpan = document.createElement("span");
+  argsSpan.className = "tool-args";
+  argsSpan.textContent = oneLine(args !== null ? JSON.stringify(args) : e.arguments, 160);
+  const status = document.createElement("span");
+  status.className = "tool-status running";
+  status.textContent = "运行中";
+  summary.append(name, argsSpan, status);
   const body = document.createElement("div");
   body.className = "tool-body";
   const argsPre = document.createElement("pre");
@@ -204,12 +214,21 @@ function buildToolCard(e) {
   return card;
 }
 
+/** 任务卡状态徽标翻转（结果结算——完成/失败两态，运行中只存在于调用未闭合时）。 */
+function setToolStatus(card, isError) {
+  const status = card.querySelector(".tool-status");
+  if (status === null) return;
+  status.className = `tool-status ${isError ? "fail" : "done"}`;
+  status.textContent = isError ? "✗ 失败" : "✓ 完成";
+}
+
 function settleToolCard(e) {
   const content = e.message?.content ?? "";
   const isError = e.message?.isError === true;
   const existing = stream.querySelector(`details[data-call-id="${CSS.escape(e.callId)}"]`);
   if (existing !== null) {
     existing.classList.toggle("error", isError);
+    setToolStatus(existing, isError);
     const body = existing.querySelector(".tool-body");
     const denial = isError ? parseDenial(content) : null;
     if (denial !== null) {
@@ -283,7 +302,7 @@ function renderEvent(e, options = {}) {
       const bubble = document.createElement("div");
       bubble.className = `bubble agent ${e.interrupted ? "warn" : ""}`.trim();
       const content = e.message?.content ?? "";
-      if (content === "") return lineEl("⬢ （模型转入工具调用）", "agent");
+      if (content === "") return lineEl("⬢ （模型转入工具调用）", "agent reasoning");
       if (options.live) {
         typeStream(bubble, e.message?.stream ?? [], content); // 流式打字节流
       } else {
@@ -308,11 +327,49 @@ function renderEvent(e, options = {}) {
   }
 }
 
+// —— 日期分隔（批 C 消息流）：事件 ts 的本地日分组——跨日插入分隔条；
+// lastStreamDay 随流重建归零（resetStreamView 只读查看共用面）。
+function dayKey(ts) {
+  if (typeof ts !== "number" || !Number.isFinite(ts)) return null;
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+function fmtDateLabel(ts) {
+  const d = new Date(ts);
+  const now = Date.now();
+  const key = dayKey(ts);
+  if (key === dayKey(now)) return "今天";
+  if (key === dayKey(now - 86_400_000)) return "昨天";
+  const year = d.getFullYear() === new Date().getFullYear() ? "" : `${d.getFullYear()}年`;
+  return `${year}${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
+function dateSepEl(ts) {
+  const div = document.createElement("div");
+  div.className = "date-sep";
+  div.textContent = fmtDateLabel(ts);
+  return div;
+}
+
+let lastStreamDay = null;
+
+/** 流追加统一入口：先按事件 ts 补日期分隔条，再挂节点（null 守卫在调用侧）。 */
+function appendStreamNode(node, e) {
+  const key = dayKey(e?.ts);
+  if (key !== null && key !== lastStreamDay) {
+    lastStreamDay = key;
+    stream.appendChild(dateSepEl(e.ts));
+  }
+  stream.appendChild(node);
+}
+
 function renderEventEnvelope(envelope) {
   const node = renderEvent(envelope.event, { live: true });
   if (node !== null) {
-    stream.appendChild(node);
+    appendStreamNode(node, envelope.event);
     scrollBottom();
+    syncChatEmpty(); // 首个可见事件到达 = 欢迎卡让位
   }
   minimapRegister(node, envelope.event); // 小地图登记（含 null 守卫）
 }
@@ -321,12 +378,13 @@ function renderEventEnvelope(envelope) {
 function renderHistory(events) {
   for (const e of events) {
     const node = renderEvent(e);
-    if (node !== null) stream.appendChild(node);
+    if (node !== null) appendStreamNode(node, e);
     minimapRegister(node, e);
   }
   if (events.length > 0) appendLine(`── 已恢复 ${events.length} 条历史事件 ──`, "meta");
   scrollBottom();
   showRecoveryIfInterrupted(events); // U13：M3 启动恢复可视化（流尾未闭合轮）
+  syncChatEmpty(); // 批 C：首屏空状态（历史为空 = 欢迎卡）
 }
 
 // 代码块复制按钮（U4：事件委托——动态内容免逐个绑）
@@ -951,22 +1009,27 @@ function openFind() {
   if (findInput.value.trim() !== "") findInStream(findInput.value.trim());
 }
 
-// —— 小地图：消息类型着色条 + 点击跳轮（纯 DOM——展示什么导航什么）
+// —— 小地图：消息类型着色条 + 点击跳轮（纯 DOM——展示什么导航什么）。
+// 批 C 轨迹六色：现三色扩六类（--traj-* 六色槽——方案 §2.4 trajectory 同构；
+// reasoning = 空文本 assistant 段〔模型转入工具调用〕；reasoning-alt 为备用槽）。
 const minimap = document.getElementById("minimap");
 const MINIMAP_KINDS = {
   "user/message": "mm-user",
   "assistant/message": "mm-agent",
-  "tool/call": "mm-tool",
-  "tool/result": "mm-tool",
+  "tool/call": "mm-toolcall",
+  "tool/result": "mm-toolresult",
 };
 const minimapEntries = [];
 let minimapTurn = 0;
 
 function minimapRegister(node, e) {
-  const kind = MINIMAP_KINDS[e.type];
+  let kind = MINIMAP_KINDS[e.type];
   if (kind === undefined) {
     if (e.type === "turn/start") minimapTurn = e.turn;
     return;
+  }
+  if (e.type === "assistant/message" && (e.message?.content ?? "") === "") {
+    kind = "mm-reasoning"; // 推理段（空文本 assistant——转工具调用前）
   }
   if (node === null) return;
   minimapEntries.push({ el: node, turn: minimapTurn });
@@ -997,7 +1060,34 @@ minimap.addEventListener("click", (ev) => {
 function resetStreamView() {
   clearHits();
   minimapReset();
+  lastStreamDay = null; // 日期分隔随流重建归零
   stream.replaceChildren();
+  syncChatEmpty();
+}
+
+// ---------------------------------------------------------------------------
+// 批 C 首屏空状态：流为空时展示居中欢迎卡 + 能力快捷入口（empty-state 形态
+// 扩展——三点同步：renderHistory / renderEventEnvelope / resetStreamView）。
+// ---------------------------------------------------------------------------
+
+const chatEmpty = document.getElementById("chat-empty");
+
+function syncChatEmpty() {
+  if (chatEmpty === null) return;
+  // 判据 = 存在实质消息节点（气泡/工具卡）——surface 接入等元行不挤走欢迎卡
+  chatEmpty.hidden = stream.querySelector(".bubble, .tool-card") !== null;
+}
+
+// 能力快捷入口（欢迎卡按钮——路由/聚焦输入，零新协议面）
+for (const btn of document.querySelectorAll("#chat-empty [data-empty-action]")) {
+  btn.addEventListener("click", () => {
+    const action = btn.dataset.emptyAction;
+    if (action === "input") {
+      input.focus();
+      return;
+    }
+    go(action); // settings/history/search 等路由名
+  });
 }
 
 // ---------------------------------------------------------------------------

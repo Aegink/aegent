@@ -50,6 +50,13 @@
   --traj-tool-result: #38bdf8;
   --traj-reasoning-alt: #7c3aed;
 
+  /* —— 代码高亮四档（hljs token 调色板——暗/亮共用中间对比档，批 C 自
+        style.css 迁入收口取色唯一处纪律） —— */
+  --code-keyword: #b18ce8;
+  --code-string: #57c785;
+  --code-comment: #7c828e;
+  --code-number: #e8a15c;
+
   /* —— 字号：基准 14px + 相对刻度（calc 系，不是一组写死的 px） —— */
   --ui-font-size: 14px;
   --text-ui-xl: calc(var(--ui-font-size) + 4px);

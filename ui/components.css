@@ -20,6 +20,7 @@
   color: var(--text);
   font-family: inherit;
   font-size: var(--text-ui-sm);
+  white-space: nowrap; /* 窄行卡内按钮文字不折行（批 C 走查补） */
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }

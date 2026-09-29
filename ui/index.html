@@ -56,9 +56,27 @@
         </div>
       </aside>
       <div id="main">
-        <!-- 对话页（默认路由）：聊天流 + 待决审批 + 输入区 + 检索浮层 -->
+        <!-- 对话页（默认路由）：聊天流 + 首屏空状态 + 待决审批 + 输入区 + 检索浮层。
+             批 C：聊天流与空状态共居滚动区（chat-empty 为流空时的居中欢迎卡）； -->
         <div id="chat-view">
-          <main id="stream" aria-live="polite"></main>
+          <div id="chat-scroll-area">
+            <main id="stream" aria-live="polite"></main>
+            <!-- 批 C 首屏空状态：流空时展示——欢迎卡 + 能力快捷入口
+                （data-empty-action = 路由名 / input 聚焦输入框） -->
+            <div id="chat-empty" aria-label="欢迎">
+              <div class="welcome-card">
+                <div class="welcome-mark">⬢</div>
+                <h2 class="welcome-title">开始与 aegent 对话</h2>
+                <p class="welcome-desc">让模型读写文件、跑命令、派子代理——写租约在手，改动随时在「工作台」评审。</p>
+                <div class="welcome-actions">
+                  <button type="button" class="btn btn-primary" data-empty-action="input">✦ 开始输入</button>
+                  <button type="button" class="btn" data-empty-action="settings">⚙ 配置供应商</button>
+                  <button type="button" class="btn" data-empty-action="history">🕘 会话历史</button>
+                  <button type="button" class="btn" data-empty-action="search">🔍 跨会话搜索</button>
+                </div>
+              </div>
+            </div>
+          </div>
           <!-- U9/T-P3-108 会话内搜索条：渲染层文本检索——命中高亮 + 上下跳转 -->
           <div id="find-bar" hidden>
             <input id="find-input" type="text" placeholder="会话内搜索…" autocomplete="off" />
@@ -71,13 +89,19 @@
           <div id="minimap" aria-label="会话结构导航"></div>
           <section id="pending" aria-label="待决审批"></section>
           <footer id="composer">
-            <!-- U10/T-P3-109：补全下拉（@ 文件/目录、/ 命令+工具+技能）+ 附件预览 -->
+            <!-- U10/T-P3-109：补全下拉（@ 文件/目录、/ 命令+工具+技能）；批 C
+                 起输入面收进 rounded-2xl 容器（ChatPromptEditor 形态——容器
+                 focus 焦点环，🎤 与发送钮入容器底行） -->
             <div id="autocomplete" hidden></div>
-            <div id="attachments-preview"></div>
-            <!-- U26/T-P3-129 语音输入（实验性）：点击开始/再点结束 → STT 填入输入框 -->
-            <button id="mic-btn" type="button" title="语音输入【实验性】（点击开始/再点结束）">🎤</button>
-            <textarea id="prompt-input" rows="1" placeholder="输入指令回车执行…（Shift+Enter 换行；@ 补全文件、/ 补全命令）" autocomplete="off"></textarea>
-            <button id="send-btn" type="button">发送</button>
+            <div class="composer-box">
+              <div id="attachments-preview"></div>
+              <textarea id="prompt-input" rows="1" placeholder="输入指令回车执行…（Shift+Enter 换行；@ 补全文件、/ 补全命令）" autocomplete="off"></textarea>
+              <div class="composer-actions">
+                <button id="mic-btn" type="button" title="语音输入【实验性】（点击开始/再点结束）">🎤</button>
+                <span class="composer-hint">Shift+Enter 换行</span>
+                <button id="send-btn" type="button">发送</button>
+              </div>
+            </div>
           </footer>
         </div>
         <!-- 路由容器：views/*.js 页面模块挂载点（settings/usage/work/notify/history/search） -->

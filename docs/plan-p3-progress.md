@@ -380,7 +380,52 @@
 
 **收官后走查反馈修正（2026-09-30 用户裁决）**：用户走查判定设置页"每个 tab 要单独一个页面，不是全堆一长页"——原批 B 保留批 A 的 19 分节纵向堆叠 + 导航滚动定位形态不符合用户预期。修正：**单分节页面形态**（DOM 19 分节全挂载〔异步清单不重复拉取〕，显示层 `.section-active` 单显；导航点击 = 视图内切换 + `history.replaceState` 同步 `#settings/<section>` 不触发路由重挂载，浏览器前进后退跨分节仍可用；深链缺省首分节 providers）。机验：ui-settings.test 补三断言（section-active/replaceState/css 单显规则）+ diagnostics 48 passed + 全量 1821/7 exit 0（207 文件=基线 206+ui-settings.test）+ 浏览器实走（#settings/mcp 深链直达单分节/导航点击切换 hash 同步/其余分节确认隐藏）+ 产物重打双同步 + 冒烟（HTTP 200 + MainWindowTitle=aegent）。
 
-## 批次提示词（UI 批次 C 开工——T-P3-136；2026-09-30 更新）
+### 补全卡 T-P3-136 · UI 批次 C：主对话流排版 + 会话侧栏（历史页）+ 首屏空状态（2026-09-30）
+
+**状态**：✅ 落地（2026-09-30）——展卡（实施顺序①~⑤）与完成记录详单载 plan-p3.md §8 卡面；本台账记对账与走查面。
+
+**验收台账**：全量 `npx vitest run` **1824 passed / 7 skipped，exit 0**（208 文件=基线；ui-render XSS 十例/tauri-shell 8/ui-settings 1 在列）+ `npx tsc --noEmit` 干净 + node --check 全 ui 模块 + 工具链全绿：count-features **337** / check-doc-links 显式传参 **58 链接 0 失效** / architecture **0 error / 23 warning** / vocabulary **0 问题**（零事件） / license-audit exit 0 + 产物重打双同步（build:single + 签名 tauri build——安装器 **31.23 MiB** + .sig；portable exe 同步）+ 冒烟（HTTP 200 + MainWindowTitle=aegent）+ 浏览器真实渲染走查（暗/亮双主题 + 空/有数据双态 + echo 真轮，详见卡面完成记录）。
+
+**功能覆盖矩阵义务行核对（批 C 落位行——全通过）**：
+
+| # | 功能面 | 批 C 落位与核对依据 |
+| --- | --- | --- |
+| 1 | 发送/多行/斜杠命令/取消 | Composer rounded-2xl 容器 + brand 焦点环——提交逻辑零改动，echo 真轮 + 发送钮/Enter 双路径实测（走查 flake 记档④） |
+| 2 | @文件/补全 | 补全面板套卡片类——ensureFileCache/ensureMetaCache 零改动，detectTrigger 链原样 |
+| 3 | 粘贴图/附件预览 | attachments-preview 入容器——限额同源校验不动 |
+| 4 | 审批卡/提问卡/倒计时/替代做法 | 审批链零回归（#pending 骨架原样；`.card` 样式保留）——`className = "chip"`/countdown 断言在位 |
+| 5 | 工具卡/diff/复制 | 任务卡片化（icon+名称+参数+状态徽标）+ callId 成对——ui-render 十例 + data-call-id 断言 |
+| 6 | 流式打字/恢复视图 | typeStream 不动 + conversation 顶部渐隐（CSS 单向记档） |
+| 7 | 错误重试/恢复横幅 | retry-btn 原样——走查实测租约拒绝行/warn 链在位 |
+| 8 | 会话历史/只读查看/删除 | **批 C 义务兑现**：history.js 重做（今天/昨天/更早分组 + localStorage 未读点 + 时间显示）——op:sessions/session-delete/confirm/resume 全保留 |
+| 9 | 跨会话搜索/会话内搜索 | 搜索页行卡化 + 实测命中 16 条；Ctrl+F/Ctrl+Shift+F 键位语义不变 |
+| 10 | 小地图 | **轨迹六色扩展兑现**：三色→六类（mm-user/agent/reasoning/toolcall/toolresult + alt 备用槽） |
+| 27 | 首跑引导/更新横幅/发布说明 | **批 C 空状态引导卡形态兑现**（欢迎卡 + 快捷入口；onboarding 浮层骨架保留） |
+| 22 | 工作面板四 Tab | 批 C 套组件类（tabs-pill 胶囊 + 行卡/文件树卡）——**走查抓出并修复 op:review 形状错位**（16c 既有缺陷顺手修正） |
+| 23 | 通知中心/Toast | 通知页分型行卡 + 空态（toast 批 A 重做不变） |
+
+（矩阵其余行归批 A/B/137 落位，既有记录不变。）
+
+**浏览器真实渲染走查（机器等效面——暗/亮双主题 + 空/有数据双态）**：①`#chat` 首屏欢迎卡（居中/四快捷入口/日期分隔与 surface 元行共存）；②echo 真轮：用户气泡蓝侧条右对齐 + 助手青条 + 小地图色行 + Composer brand 焦点环；③`#history` 种子三会话：今天/昨天/更早分组 + 未读蓝点 + 时间标签（02:55/昨天 01:54/2026-09-24 23:54）+ 行卡；④只读查看 walkc-today：任务卡（⚙ read + "✓ 完成"徽标 + 橙侧条）+ 推理段紫标记 + 代码块三圆点标题栏 + 复制钮 + 小地图八行 + resume 提示；⑤`#work`：胶囊四 Tab + 文件树卡片容器 + 评审空态（**修复 op:review 形状错位后实走**）；⑥`#notify` 空态；⑦`#search` 实测命中 16 条（.input 焦点环 + 行卡）；⑧亮色主题（settings/appearance 切换）token 全局换值 + 顶部滚动渐隐在位。截图七张存会话 artifacts。
+
+**人工确认清单新增（批 C）**：
+
+| 需求ID / 批次 | 为什么不能机验 | 人工要怎么确认 | 状态 |
+| --- | --- | --- | --- |
+| T-P3-136 聊天页走查（对照清单行） | 排版手感/流式观感无自动化判据 | 桌面壳或浏览器 → 正常聊天一轮（发消息/收流式回复/工具卡展开/审批）——气泡密度/六色侧条/代码块标题栏/日期分隔/Composer 焦点环/欢迎卡 | 机器等效走查已过（截图七张）；**手感面待用户**（对照清单不打勾） |
+| T-P3-136 会话历史页走查 | 分组/未读点视觉是人工面 | ☰ 历史 → 分组与未读点 → 点「查看」只读视图 → 「删除」确认弹窗 | 机器等效走查已过（种子三会话）；**待用户** |
+| T-P3-136 双击安装器走查（随 U6） | 安装器人工面 | 双击 dist/aegent_0.1.0_x64-setup.exe → 新对话 UI 全链走查 | 等效冒烟 ✅（HTTP 200 + MainWindowTitle=aegent）；人工双击待用户 |
+
+**卡内定形记档（批 C 特有）**：
+- op:"review" 回执形状：`{ review: report }` 包裹形（16c 定形、server.test 钉死）——批 A 迁 UI 时直取 envelope.result 系**既有形状错位**（工作台页 mount 即 throw），本批走查暴露后修正（fetchReviewReport 取 result.review；host wire 面零改动）。
+- architecture 1 error 治理：settings-gateway.ts 415 行>400（上会话末次提交遗留，非本批引入）→ 供应商操作面拆 settings-provider-ops.ts（377 行归基线）——0 error / 23 warning（23 系遗留基线，本批零新增）。
+- style.css 取色收口：hljs 四色迁 theme.css `--code-*` + 旧段 rgba/裸色值 shadow/scrim 全消化——style.css 现为零裸色值文件（批 A 口径"其余段归批 C/收尾"兑现完毕）。
+- 空状态判据：存在实质消息节点（.bubble/.tool-card）才让位欢迎卡——surface 接入等元行不挤走（走查实测定形，首屏即欢迎卡不被 attach 行闪退）。
+- 未读点 = localStorage 本端方案（`aegent.readSessions`）；reasoning-alt 六色槽备用；代码块语言标签不取（render.js 零改动纪律）。
+- 走查 flake 记档：Enter 提交两次未触发（fill+press 组合竞态嫌疑——点发送与再次 Enter 均正常；keydown 逻辑本批零改动）。
+- 批 C 后进入"全面逐页重构"阶段（对照清单逐页推进——每页用户验收打勾后下一页；剩余页面提示词届时现写）。
+
+## 批次提示词（UI 批次 C 开工——T-P3-136；2026-09-30 更新；本批已收官，存档供追溯）
 
 ```
 继续 aegent 的 UI 全面升级，做 T-P3-136（UI 批次 C：主对话流排版 + 会话侧栏

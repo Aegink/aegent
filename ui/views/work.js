@@ -11,9 +11,9 @@ import { getSessionId, subscribeTurnSettled } from "../state.js";
 
 const TEMPLATE = `
 <aside id="workpanel" aria-label="工作面板">
-  <header class="settings-head">
-    <span>工作面板</span>
-    <button id="work-close" type="button">关闭</button>
+  <header class="page-head">
+    <h2 class="tab-title">工作面板</h2>
+    <button id="work-close" type="button" class="btn btn-ghost">返回对话</button>
   </header>
   <nav id="work-tabs">
     <button type="button" data-worktab="files" class="work-tab active">📁 文件</button>
@@ -22,14 +22,14 @@ const TEMPLATE = `
     <!-- U27/T-P3-131 协作 Tab：会话间往来事实（流投影——session/collab） -->
     <button type="button" data-worktab="collab" class="work-tab">🔗 协作</button>
   </nav>
-  <div class="settings-body">
+  <div class="page-body">
     <section data-worktab-body="files">
       <div id="work-filetree" class="work-tree"></div>
       <p id="work-tree-hint" class="hint"></p>
       <div id="work-preview-box" hidden>
         <header class="preview-head">
           <span id="work-preview-path"></span>
-          <button id="work-preview-close" type="button">收起</button>
+          <button id="work-preview-close" type="button" class="btn btn-ghost">收起</button>
         </header>
         <pre id="work-preview" class="card-args"></pre>
       </div>
@@ -40,7 +40,7 @@ const TEMPLATE = `
       <p class="hint">从事件流提取（write/edit/apply-patch 显式路径 + bash 的 rm/重定向推断——via 列标注来源）；失败调用不计入。</p>
     </section>
     <section data-worktab-body="subagent" hidden>
-      <table id="work-delegation-table">
+      <table id="work-delegation-table" class="table">
         <thead>
           <tr><th>任务</th><th>子会话</th><th>状态</th><th>耗时</th></tr>
         </thead>
@@ -49,7 +49,7 @@ const TEMPLATE = `
       <p id="work-delegation-hint" class="hint"></p>
     </section>
     <section data-worktab-body="collab" hidden>
-      <table id="work-collab-table">
+      <table id="work-collab-table" class="table">
         <thead>
           <tr><th>方向</th><th>对端会话</th><th>类型</th><th>状态</th><th>结果/错误</th></tr>
         </thead>
@@ -77,7 +77,9 @@ function setWorkTab(tab) {
 
 async function fetchReviewReport() {
   const envelope = await sendQuery({ sessionId: getSessionId() || "-", op: "review" });
-  return envelope.ok ? envelope.result : null;
+  // op:"review" 回执为 { review: report } 包裹形（server.test 钉死）——批 A
+  // 迁 UI 时直取 result 系既有形状错位（走查暴露的顺手修正，host wire 不动）
+  return envelope.ok ? (envelope.result?.review ?? null) : null;
 }
 
 function renderReviewReport(report) {

@@ -17,7 +17,13 @@ import {
 } from "../session/settings.js";
 import { maskToken } from "../models/oauth.js";
 import { probeProvider, type HealthCheckResult } from "../models/health.js";
-import { fetchProviderModels, testProviderChat, type ProviderTestResult } from "./provider-gateway.js";
+import type { ProviderTestResult } from "./provider-gateway.js";
+import {
+  providerModelsOp,
+  providerTestOp,
+  type ProviderModelsPayload,
+  type ProviderTestPayload,
+} from "./settings-provider-ops.js";
 import type { CredentialStore } from "../session/credentials.js";
 import type { SqliteEventStorage } from "../session/db.js";
 import { probeServer } from "../mcp/registry-bridge.js";
@@ -179,25 +185,12 @@ export interface SettingsGateway {
    * T-P3-137：供应商模型清单拉取（host 代理 GET /models——WebView CSP
    * 不放外网；自足载荷 baseUrl/adapter/headers 直传，apiKey 缺省走凭据）。
    */
-  providerModels(payload: {
-    provider: string;
-    baseUrl: string;
-    adapter: "openai" | "openai-responses" | "anthropic" | "google";
-    headers?: Record<string, string>;
-    apiKey?: string;
-  }): Promise<{ models: { id: string }[] }>;
+  providerModels(payload: ProviderModelsPayload): Promise<{ models: { id: string }[] }>;
   /**
    * T-P3-137：供应商真实对话测试（host 代理发"你好"单轮——成功才算
    * 可以使用；回执带回复摘要与延迟，错误转文案不上抛）。
    */
-  providerTest(payload: {
-    provider: string;
-    baseUrl: string;
-    adapter: "openai" | "openai-responses" | "anthropic" | "google";
-    modelId: string;
-    headers?: Record<string, string>;
-    apiKey?: string;
-  }): Promise<ProviderTestResult>;
+  providerTest(payload: ProviderTestPayload): Promise<ProviderTestResult>;
 }
 
 /** 生产缺省探测依赖（真网络——tests 注入 fake）。 */
@@ -372,43 +365,13 @@ export class FileSettingsGateway implements SettingsGateway {
     return listPlugins(await this.get());
   }
 
-  /** T-P3-137：模型清单拉取（自足载荷——apiKey 缺省按条目名走凭据）。 */
-  async providerModels(payload: {
-    provider: string;
-    baseUrl: string;
-    adapter: "openai" | "openai-responses" | "anthropic" | "google";
-    headers?: Record<string, string>;
-    apiKey?: string;
-  }): Promise<{ models: { id: string }[] }> {
-    const apiKey = payload.apiKey ?? (await this.credentials.getKey(payload.provider));
-    if (apiKey === undefined) {
-      throw Object.assign(new Error("未设置 API key——请先在表单填入密钥（保存后可走凭据面）"), {
-        code: "PROVIDER_KEY_MISSING",
-      });
-    }
-    return fetchProviderModels(
-      { baseUrl: payload.baseUrl, adapter: payload.adapter, headers: payload.headers },
-      apiKey,
-    );
+  /** T-P3-137：模型清单拉取（实现自 settings-provider-ops——拆分记档）。 */
+  async providerModels(payload: ProviderModelsPayload): Promise<{ models: { id: string }[] }> {
+    return providerModelsOp(this.credentials, payload);
   }
 
   /** T-P3-137：真实对话测试（发"你好"——成功才算可以使用）。 */
-  async providerTest(payload: {
-    provider: string;
-    baseUrl: string;
-    adapter: "openai" | "openai-responses" | "anthropic" | "google";
-    modelId: string;
-    headers?: Record<string, string>;
-    apiKey?: string;
-  }): Promise<ProviderTestResult> {
-    const apiKey = payload.apiKey ?? (await this.credentials.getKey(payload.provider));
-    if (apiKey === undefined) {
-      return { ok: false, error: "未设置 API key——请先在表单填入密钥" };
-    }
-    return testProviderChat(
-      { baseUrl: payload.baseUrl, adapter: payload.adapter, headers: payload.headers },
-      payload.modelId,
-      apiKey,
-    );
+  async providerTest(payload: ProviderTestPayload): Promise<ProviderTestResult> {
+    return providerTestOp(this.credentials, payload);
   }
 }
