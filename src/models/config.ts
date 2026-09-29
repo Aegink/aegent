@@ -67,6 +67,21 @@ export function parseProviderConfig(raw: unknown): ProviderConfig {
   return { name, settingsConfig };
 }
 
+/**
+ * settingsConfig 里的自定义请求头（T-P3-137——扁平 string→string 对象的
+ * 形状收窄；缺席/形状非法 = 无额外头。保留键（authorization 等）的剔除在
+ * settings parse 层单点完成，这里只做宽容读取）。
+ */
+export function parseExtraHeaders(rec: Record<string, unknown>): { headers?: Record<string, string> } {
+  const raw = rec["headers"];
+  if (raw === undefined || raw === null || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const headers: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === "string" && v !== "") headers[k] = v;
+  }
+  return Object.keys(headers).length > 0 ? { headers } : {};
+}
+
 // ---------------------------------------------------------------------------
 // JSON 语法错误定位（严格按 RFC 8259；导出面供 settings 损坏定位复用）
 // ---------------------------------------------------------------------------

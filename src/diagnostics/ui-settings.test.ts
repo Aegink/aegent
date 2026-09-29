@@ -63,10 +63,13 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     expect(settingsView).toContain("credentials-set");
     expect(settingsView).toContain("credentials-delete");
     expect(settingsView).toContain("markDirty");
-    // U5/T-P3-104：会话期切换（model/switch）+ 健康徽标（probe 消费 + 节流）+ 编辑
+    // U5/T-P3-104：会话期切换（model/switch）+ T-P3-137：真实测试连接
+    // （op:provider-test 发"你好"——用户裁决"成功才算可以使用"，替代旧
+    // probe 连通探测；op:provider-models = host 代理拉取模型清单）+
+    // 编辑态标记
     expect(settingsView).toContain('"model/switch"');
-    expect(settingsView).toContain('op: "probe"');
-    expect(settingsView).toContain("HEALTH_THROTTLE_MS");
+    expect(settingsView).toContain('op: "provider-test"');
+    expect(settingsView).toContain('op: "provider-models"');
     expect(settingsView).toContain("editingProviderName");
     // 主题全端一致：改动即应用 body[data-theme]（dataset.theme——批 A 下沉 state.js）
     expect(state).toContain("dataset.theme");

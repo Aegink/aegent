@@ -35,7 +35,17 @@ export type SettingsOp =
   /** U26/T-P3-129：语音转写代理（UI 录音上送——P4 消费端）。 */
   | "stt-transcribe"
   /** T-P3-133：插件装载清单（安装期校验诊断——管理页数据面）。 */
-  | "plugins-list";
+  | "plugins-list"
+  /**
+   * T-P3-137：供应商模型清单拉取（host 代理 GET /models——WebView CSP
+   * 不放外网，拉取面在 host；自足载荷 = UI 草稿直传，key 缺省走凭据）。
+   */
+  | "provider-models"
+  /**
+   * T-P3-137：供应商真实对话测试（host 代理发"你好"单轮——用户裁决
+   * "成功才算可以使用"；成功回执含模型回复摘要与延迟）。
+   */
+  | "provider-test";
 
 /** 技能编辑器写回载荷（op=skill-save；frontmatter + 正文的一次性形状）。 */
 export interface SkillSavePayload {
@@ -70,6 +80,14 @@ export type SettingsCall = {
   content?: string;
   /** op=stt-transcribe：音频 mediaType（U26——AUDIO_MEDIA_TYPES 白名单在 gateway）。 */
   mediaType?: string;
+  /** op=provider-models / provider-test：端点自足载荷（T-P3-137——UI 草稿
+   * 直传 baseUrl/adapter/headers；apiKey 缺省走 credentials 凭据面）。 */
+  baseUrl?: string;
+  adapter?: string;
+  modelId?: string;
+  apiKey?: string;
+  /** op=provider-models / provider-test：自定义请求头（保留键在 gateway 剔除）。 */
+  headers?: Record<string, string>;
 };
 
 /** 技能名 slug 规则（U22——目录名安全面：小写字母数字开头，禁 `..`）。 */
@@ -97,6 +115,11 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     "target",
     "content",
     "mediaType",
+    "baseUrl",
+    "adapter",
+    "modelId",
+    "apiKey",
+    "headers",
   ]);
   if (unknownKey) throw new Error(`settings 信封${unknownKey}`);
   if (typeof record["requestId"] !== "string" || record["requestId"] === "") {
@@ -119,10 +142,12 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     op !== "instructions-list" &&
     op !== "instruction-save" &&
     op !== "stt-transcribe" &&
-    op !== "plugins-list"
+    op !== "plugins-list" &&
+    op !== "provider-models" &&
+    op !== "provider-test"
   ) {
     throw new Error(
-      `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|mcp-check|import|skills-list|skill-save|subagents-list|instructions-list|instruction-save|stt-transcribe|plugins-list）`,
+      `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|mcp-check|import|skills-list|skill-save|subagents-list|instructions-list|instruction-save|stt-transcribe|plugins-list|provider-models|provider-test）`,
     );
   }
   if (op === "update") {
@@ -220,6 +245,28 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
       throw new Error("settings op=stt-transcribe 需要 content（音频 base64）非空字符串");
     }
   }
+  // T-P3-137：provider-models / provider-test 的自足端点载荷（baseUrl 合法
+  // http(s) 地址；adapter 二枚举；test 须有 modelId——真实发"你好"的目标）。
+  if (op === "provider-models" || op === "provider-test") {
+    if (typeof record["provider"] !== "string" || record["provider"] === "") {
+      throw new Error(`settings op=${op} 需要 provider 非空字符串（凭据键）`);
+    }
+    if (typeof record["baseUrl"] !== "string" || !/^https?:\/\//.test(record["baseUrl"])) {
+      throw new Error(`settings op=${op} 需要 baseUrl（http/https 地址）`);
+    }
+    if (record["adapter"] !== "openai" && record["adapter"] !== "openai-responses" && record["adapter"] !== "anthropic" && record["adapter"] !== "google") {
+      throw new Error(`settings op=${op} 的 adapter 非法（合法：openai|openai-responses|anthropic|google）`);
+    }
+    if (op === "provider-test" && (typeof record["modelId"] !== "string" || record["modelId"] === "")) {
+      throw new Error("settings op=provider-test 需要 modelId（真实对话的目标模型）");
+    }
+    if (
+      record["headers"] !== undefined &&
+      (record["headers"] === null || typeof record["headers"] !== "object" || Array.isArray(record["headers"]))
+    ) {
+      throw new Error(`settings op=${op} 的 headers 须为对象`);
+    }
+  }
   return {
     op,
     ...(record["patch"] !== undefined ? { patch: record["patch"] as Record<string, unknown> } : {}),
@@ -238,6 +285,13 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     ...(typeof record["target"] === "string" ? { target: record["target"] } : {}),
     ...(typeof record["content"] === "string" ? { content: record["content"] } : {}),
     ...(typeof record["mediaType"] === "string" ? { mediaType: record["mediaType"] } : {}),
+    ...(record["headers"] !== undefined && typeof record["headers"] === "object" && !Array.isArray(record["headers"])
+      ? { headers: record["headers"] as Record<string, string> }
+      : {}),
+    ...(typeof record["baseUrl"] === "string" ? { baseUrl: record["baseUrl"] } : {}),
+    ...(typeof record["adapter"] === "string" ? { adapter: record["adapter"] } : {}),
+    ...(typeof record["modelId"] === "string" ? { modelId: record["modelId"] } : {}),
+    ...(typeof record["apiKey"] === "string" ? { apiKey: record["apiKey"] } : {}),
   };
 }
 

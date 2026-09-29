@@ -18,7 +18,7 @@
 
 import type { StreamChunk } from "../kernel/events.js";
 import type { ModelIdentity } from "./identity.js";
-import { ProviderConfigError, type ProviderConfig } from "./config.js";
+import { ProviderConfigError, parseExtraHeaders, type ProviderConfig } from "./config.js";
 import type { AuthMaterial, AuthResolver } from "./auth.js";
 import {
   ProviderHttpError,
@@ -33,6 +33,8 @@ import {
 export interface OpenAiCompatSettings {
   baseUrl: string;
   apiKey: string;
+  /** 服务级自定义请求头（T-P3-137——保留键已在 settings parse 剔除）。 */
+  headers?: Record<string, string>;
 }
 
 export function parseOpenAiCompatSettings(config: ProviderConfig): OpenAiCompatSettings {
@@ -55,7 +57,7 @@ export function parseOpenAiCompatSettings(config: ProviderConfig): OpenAiCompatS
   if (typeof apiKey !== "string" || apiKey.trim() === "") {
     throw new ProviderConfigError("openai-compat 配置缺少非空字符串字段 apiKey");
   }
-  return { baseUrl: baseUrl.replace(/\/+$/, ""), apiKey };
+  return { baseUrl: baseUrl.replace(/\/+$/, ""), apiKey, ...parseExtraHeaders(rec) };
 }
 
 /**
@@ -89,6 +91,7 @@ async function* streamChatOpenAi(
   const res = await fetch(`${settings.baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
+      ...(settings.headers ?? {}),
       "content-type": "application/json",
       authorization: `Bearer ${apiKey}`,
       ...(auth?.headers ?? {}),

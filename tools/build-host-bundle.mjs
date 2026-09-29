@@ -103,6 +103,11 @@ for (const [src, dst] of assets) {
   cpSync(path.join(repoRoot, src), path.join(outDir, dst), { recursive: true });
 }
 cpSync(path.join(repoRoot, "src/session/schema.sql"), path.join(outDir, "schema.sql"));
+// T-P3-137 修正：dpapi/index.ts 的 helper 路径 = dirname(import.meta.url)/dpapi.ps1
+// ——bundle 后 import.meta.url 指向 host.cjs（outDir 根），故 dpapi.ps1 必须在
+// portable 根（原仅目录镜像 dpapi/ 存在子目录，凭据面在 portable 布局报"脚本
+// 缺失"——走查实测发现）。
+cpSync(path.join(repoRoot, "src/sandbox/dpapi/dpapi.ps1"), path.join(outDir, "dpapi.ps1"));
 
 // 3) 体积分列输出
 console.log("—— 体积分列（U6 验收）——");

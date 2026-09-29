@@ -325,6 +325,18 @@ export class HostBridge implements SessionRouter {
         }
         // T-P3-133：插件装载清单（安装期校验诊断）
         if (call.op === "plugins-list") return gateway.pluginsList();
+        // T-P3-137：供应商模型清单拉取 / 真实对话测试（host 代理——CSP 面）
+        if (call.op === "provider-models" || call.op === "provider-test") {
+          const payload = {
+            provider: call.provider!,
+            baseUrl: call.baseUrl!,
+            adapter: call.adapter as "openai" | "openai-responses" | "anthropic" | "google",
+            ...(call.headers !== undefined ? { headers: call.headers } : {}),
+            ...(call.apiKey !== undefined ? { apiKey: call.apiKey } : {}),
+          };
+          if (call.op === "provider-models") return gateway.providerModels(payload);
+          return gateway.providerTest({ ...payload, modelId: call.modelId! });
+        }
         return { credentials: await gateway.credentialsList() };
       },
     };

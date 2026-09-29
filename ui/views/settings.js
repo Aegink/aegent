@@ -20,6 +20,7 @@ import { appendLine } from "../feedback.js";
 import { go } from "../router.js";
 import { injectIcons } from "../icons.js";
 import { flushSettings, setRefillForms, upgradeSelects } from "./settings/core.js";
+import * as providers from "./settings/providers.js";
 import * as basic from "./settings/basic.js";
 import * as agents from "./settings/agents.js";
 import * as system from "./settings/system.js";
@@ -80,6 +81,7 @@ const TEMPLATE = `
         <button id="settings-close" type="button" class="btn btn-ghost">关闭</button>
       </header>
       <div class="tab-body">
+        ${providers.SECTIONS_HTML}
         ${basic.SECTIONS_HTML}
         ${agents.SECTIONS_HTML}
         ${system.SECTIONS_HTML}
@@ -111,6 +113,7 @@ function navigateToSection(sectionId) {
 
 /** 全分节表单回填（open 拉取后 / 导入成功后共用——原 fillSettingsForm 语义）。 */
 function refillAllForms() {
+  providers.fill();
   basic.fill();
   agents.fill();
   system.fill();
@@ -127,7 +130,8 @@ async function open() {
   applyTheme(settingsCache.appearance?.theme);
   rebuildKeymap(); // U25：键位表随 settings 就绪
   refillAllForms();
-  basic.refreshCredentials(); // U2：凭据清单（掩码回显）
+  providers.refreshCredentials(); // U2：凭据清单（hasSecret 徽标 + 掩码回显）
+  basic.refreshCredentials(); // 凭据分节清单
   agents.refreshLists(); // U22/U23/T-P3-133：技能/子代理/插件清单（文件系统面每次打开刷新）
   system.refreshInstructionsOnce(); // U24：指令中心（打开时拉一次，保存后局部刷新）
 }
@@ -148,6 +152,7 @@ export async function render(container, route) {
   upgradeSelects(container); // 原生 select → 自定义下拉（桥接：id/值/change 语义不变）
   setRefillForms(refillAllForms);
   bindShell();
+  providers.bind();
   basic.bind();
   agents.bind();
   system.bind();

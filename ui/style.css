@@ -561,9 +561,9 @@ code,
   position: absolute;
   left: 0;
   right: 0;
-  bottom: -24px;
+  bottom: 0;
   height: 24px;
-  background: linear-gradient(to bottom, var(--bg), transparent);
+  background: linear-gradient(to bottom, transparent, var(--bg));
   pointer-events: none;
 }
 
@@ -827,6 +827,251 @@ code,
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+/* ===== T-P3-137 供应商页（pi-desktop「模型配置」形态）：字母头像座 +
+   tile 行 + … 菜单 + 大模态双栏 + 模型卡 + 快捷档胶囊 + 请求头键值行 ===== */
+.tile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.provider-tile {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.provider-tile:hover {
+  border-color: var(--border-hover);
+}
+
+.provider-tile .row-copy {
+  flex: 1;
+  min-width: 200px;
+}
+
+.avatar-badge {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* 大模态双栏（左 = 服务模型清单，右 = 模型设置） */
+.setup-panes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+}
+
+@media (max-width: 900px) {
+  .setup-panes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.setup-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: 10px;
+  min-height: 260px;
+}
+
+.pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pane-title {
+  font-size: 13px;
+  font-weight: 530;
+  color: var(--text);
+}
+
+.model-scroll {
+  flex: 1;
+  min-height: 140px;
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.model-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.model-row:hover {
+  background: var(--surface-hover);
+}
+
+.model-id {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  padding: 8px;
+}
+
+.model-card-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.model-card-head .model-id {
+  flex: 1;
+  min-width: 0;
+  font-weight: 530;
+}
+
+.model-meta {
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtlest);
+}
+
+.model-card-body {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.proto-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-ui-sm);
+  color: var(--text-subtle);
+  white-space: nowrap;
+}
+
+.proto-line .select-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.proto-line .select-trigger {
+  min-width: 0;
+  width: 100%;
+}
+
+.advanced-panel {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.adv-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--text-ui-sm);
+  color: var(--text-subtle);
+}
+
+.adv-field .input {
+  width: 100%;
+}
+
+.adv-label {
+  font-size: var(--text-ui-sm);
+  color: var(--text-subtle);
+}
+
+/* 快捷档胶囊（上下文/最大输出/思考等级——pi-desktop presets 形态） */
+.preset-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.preset-chip {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-subtle);
+  font-family: inherit;
+  font-size: var(--text-ui-xs);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.preset-chip:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.preset-chip.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.preset-chips .input-num {
+  width: 90px;
+}
+
+.custom-model-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.custom-model-row .input {
+  flex: 1;
+}
+
+/* 请求头键值行 */
+.kv-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.kv-row .input {
+  flex: 1;
 }
 
 .instr-card {

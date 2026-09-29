@@ -31,13 +31,59 @@ import { isValidSubagentSlug, type SubagentDefinition } from "./subagents-config
 // 形状（v1）
 // ---------------------------------------------------------------------------
 
+/** 适配协议闭集（T-P3-137——pi-desktop apiStyle 对齐：chat_completions /
+ *  responses = OpenAI 双端点；anthropic_messages / google_generative_ai。
+ *  会话装配面：openai* → openai-compat〔responses 回退 chat 端点——官方与
+ *  主流网关双端点并存，记档〕；anthropic → anthropic-messages；google →
+ *  拉取/测试可用、会话装配暂缓〔记档：wire 面随 adapter 扩展批次〕）。 */
+export const PROVIDER_ADAPTERS = ["openai", "openai-responses", "anthropic", "google"] as const;
+export type ProviderAdapter = (typeof PROVIDER_ADAPTERS)[number];
+
+/** 会话装配映射（google 无 adapter 实现——装配跳过；返回 null = 不可装配）。 */
+export function adapterForAssembly(adapter: ProviderAdapter): "openai" | "anthropic" | null {
+  if (adapter === "google") return null;
+  return adapter === "anthropic" ? "anthropic" : "openai";
+}
+
+/**
+ * 单模型规格（T-P3-137 · pi-desktop ModelBinding 行为锚的最小集）：
+ * 模型级协议覆盖（同站混合协议——有的模型 openai、有的 anthropic）+
+ * 别名/上下文窗口/最大输出/思考等级/实测标记（provider-test 真实发"你好"
+ * 成功后写 true——"成功才算可以使用"）。
+ */
+export interface ProviderModelSpec {
+  /** 模型 ID（请求 wire 的 model 字段；条目内唯一）。 */
+  id: string;
+  /** 模型级协议覆盖（缺省 = 条目 adapter）。 */
+  adapter?: ProviderAdapter;
+  alias?: string;
+  contextWindow?: number;
+  maxOutputTokens?: number;
+  /** 思考等级（off|minimal|low|medium|high|xhigh|max——记录面）。 */
+  reasoning?: string;
+  verified?: boolean;
+}
+
 export interface ProviderEntry {
   /** 供应商名（人读标识；defaultProvider 与 U2 凭据键都指它）。 */
   name: string;
-  /** 适配层（J3 不透明配置的解释方——缺省 openai 兼容）。 */
-  adapter?: "openai" | "anthropic";
+  /** 适配层（J3 不透明配置的解释方——缺省 openai 兼容；模型级可覆盖）。 */
+  adapter?: ProviderAdapter;
   baseUrl?: string;
   model?: string;
+  /** 启停（缺省 true——装配跳过停用条目；停用保留在清单，开关是开回的路径）。 */
+  enabled?: boolean;
+  /**
+   * 服务级自定义请求头（T-P3-137——开源网关 Referer/Title 类）。保留键
+   * （authorization/x-api-key/content-type/host/cookie/anthropic-version/
+   * content-length）在 parse 时剔除——鉴权面不旁路（pi-desktop 同款语义）。
+   */
+  headers?: Record<string, string>;
+  /**
+   * 多模型清单（T-P3-137 新形态——pi-desktop「AI 服务」语义：一个服务多
+   * 个模型，协议按模型覆盖）。缺省 = 旧单模型条目（entry.model）零兼容成本。
+   */
+  models?: ProviderModelSpec[];
 }
 
 /** 项目档（U11/T-P3-110——workspace + 项目级指令的组合档）。 */
@@ -247,6 +293,19 @@ function asPos(offset: number, text: string): { line: number; column: number } {
   return { line, column: offset - lastNl };
 }
 
+/** providers[].headers 的保留键（小写比对——鉴权与传输控制面不旁路；
+ *  pi-desktop 剔除语义同源，anthropic-version 属协议控制同样剔除）。 */
+const RESERVED_HEADER_KEYS = new Set([
+  "authorization",
+  "x-api-key",
+  "host",
+  "cookie",
+  "content-type",
+  "content-length",
+  "accept-encoding",
+  "anthropic-version",
+]);
+
 function assertString(value: unknown, where: string): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string" || value.trim() === "") {
@@ -277,18 +336,85 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
       const name = assertString(e["name"], "providers[].name");
       if (name === undefined) throw new SettingsError("providers[].name 缺失");
       const adapter = e["adapter"];
-      if (adapter !== undefined && adapter !== "openai" && adapter !== "anthropic") {
-        throw new SettingsError(`providers[].adapter 非法：${String(adapter)}（合法：openai|anthropic）`);
+      if (adapter !== undefined && (typeof adapter !== "string" || !(PROVIDER_ADAPTERS as readonly string[]).includes(adapter))) {
+        throw new SettingsError(`providers[].adapter 非法：${String(adapter)}（合法：${PROVIDER_ADAPTERS.join("|")}）`);
+      }
+      const enabled = e["enabled"];
+      if (enabled !== undefined && typeof enabled !== "boolean") {
+        throw new SettingsError(`providers[].enabled 须为布尔：${name}`);
+      }
+      // T-P3-137：自定义请求头（扁平 string→string 对象；保留键剔除——鉴权面不旁路）
+      let headers: Record<string, string> | undefined;
+      const rawHeaders = e["headers"];
+      if (rawHeaders !== undefined) {
+        if (rawHeaders === null || typeof rawHeaders !== "object" || Array.isArray(rawHeaders)) {
+          throw new SettingsError(`providers[].headers 须为对象：${name}`);
+        }
+        headers = {};
+        for (const [k, v] of Object.entries(rawHeaders as Record<string, unknown>)) {
+          if (typeof v !== "string") throw new SettingsError(`providers[].headers.${k} 须为字符串`);
+          if (RESERVED_HEADER_KEYS.has(k.toLowerCase())) continue;
+          headers[k] = v;
+        }
+      }
+      // T-P3-137：多模型清单（id 必填非空；数值字段正整数；adapter 模型级枚举）
+      let models: ProviderModelSpec[] | undefined;
+      const rawModels = e["models"];
+      if (rawModels !== undefined) {
+        if (!Array.isArray(rawModels)) throw new SettingsError(`providers[].models 须为数组：${name}`);
+        models = [];
+        for (const m of rawModels) {
+          if (m === null || typeof m !== "object" || Array.isArray(m)) {
+            throw new SettingsError(`providers[].models[] 须为对象：${name}`);
+          }
+          const spec = m as Record<string, unknown>;
+          const id = spec["id"];
+          if (typeof id !== "string" || id.trim() === "") {
+            throw new SettingsError(`providers[].models[].id 缺失：${name}`);
+          }
+          const specAdapter = spec["adapter"];
+          if (specAdapter !== undefined && (typeof specAdapter !== "string" || !(PROVIDER_ADAPTERS as readonly string[]).includes(specAdapter))) {
+            throw new SettingsError(`providers[].models[].adapter 非法：${name}/${id}`);
+          }
+          const contextWindow = spec["contextWindow"];
+          const maxOutputTokens = spec["maxOutputTokens"];
+          for (const [field, value] of [["contextWindow", contextWindow], ["maxOutputTokens", maxOutputTokens]] as const) {
+            if (value !== undefined && (typeof value !== "number" || !Number.isInteger(value) || value <= 0)) {
+              throw new SettingsError(`providers[].models[].${field} 须为正整数：${name}/${id}`);
+            }
+          }
+          const ctx = typeof contextWindow === "number" ? contextWindow : undefined;
+          const maxOut = typeof maxOutputTokens === "number" ? maxOutputTokens : undefined;
+          if (spec["verified"] !== undefined && typeof spec["verified"] !== "boolean") {
+            throw new SettingsError(`providers[].models[].verified 须为布尔：${name}/${id}`);
+          }
+          models.push({
+            id,
+            ...(specAdapter !== undefined ? { adapter: specAdapter as ProviderAdapter } : {}),
+            ...(assertString(spec["alias"], `providers[].models[].alias(${name}/${id})`) !== undefined
+              ? { alias: spec["alias"] as string }
+              : {}),
+            ...(ctx !== undefined ? { contextWindow: ctx } : {}),
+            ...(maxOut !== undefined ? { maxOutputTokens: maxOut } : {}),
+            ...(assertString(spec["reasoning"], `providers[].models[].reasoning(${name}/${id})`) !== undefined
+              ? { reasoning: spec["reasoning"] as string }
+              : {}),
+            ...(spec["verified"] !== undefined ? { verified: spec["verified"] as boolean } : {}),
+          });
+        }
       }
       out.providers.push({
         name,
-        ...(adapter !== undefined ? { adapter } : {}),
+        ...(adapter !== undefined ? { adapter: adapter as ProviderAdapter } : {}),
         ...(assertString(e["baseUrl"], "providers[].baseUrl") !== undefined
           ? { baseUrl: e["baseUrl"] as string }
           : {}),
         ...(assertString(e["model"], "providers[].model") !== undefined
           ? { model: e["model"] as string }
           : {}),
+        ...(enabled !== undefined ? { enabled } : {}),
+        ...(headers !== undefined ? { headers } : {}),
+        ...(models !== undefined ? { models } : {}),
       });
     }
   }
@@ -891,9 +1017,12 @@ export function failoverOrderFromProviders(
 ): { name: string; provider: string; modelId: string }[] {
   const order: { name: string; provider: string; modelId: string }[] = [];
   for (const entry of providers) {
+    if (entry.enabled === false) continue; // T-P3-137：停用条目不进队列
     const modelId = entry.model ?? defaultModel;
     if (modelId === undefined) continue;
-    order.push({ name: entry.name, provider: entry.adapter ?? "openai", modelId });
+    const adapter = adapterForAssembly(entry.adapter ?? "openai");
+    if (adapter === null) continue; // google——会话装配暂缓（记档），不进队列
+    order.push({ name: entry.name, provider: adapter, modelId });
   }
   return order;
 }

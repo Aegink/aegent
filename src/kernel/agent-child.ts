@@ -21,7 +21,12 @@ import path from "node:path";
 
 import { runAgentChildStdio, type AgentChildOptions } from "./agent-process.js";
 import { InvalidSessionIdError, isValidSessionId } from "../session/session-id.js";
-import { loadSettings, type SettingsShape } from "../session/settings.js";
+import {
+  adapterForAssembly,
+  loadSettings,
+  type ProviderModelSpec,
+  type SettingsShape,
+} from "../session/settings.js";
 import { createCredentialStore } from "../session/credentials.js";
 import { parseProviderConfig } from "../models/config.js";
 import { createOpenAiCompatProvider } from "../models/openai-compat.js";
@@ -116,13 +121,26 @@ async function buildModelsRegistry(
   if (settings.defaultProvider === undefined || settings.providers.length === 0) return undefined;
   const credStore = createCredentialStore();
   const models: RegisteredModel[] = [];
-  let initial: RegisteredModel | undefined;
+  const defaultEntryModels: RegisteredModel[] = [];
   for (const entry of settings.providers) {
-    const adapter = entry.adapter ?? "openai";
-    const modelId = entry.model ?? settings.defaultModel;
-    if (modelId === undefined) continue;
-    const identity = { provider: adapter, modelId };
-    const existing = models.find(
+    // T-P3-137：停用条目跳过装配（清单保留——开关是开回的路径）
+    if (entry.enabled === false) continue;
+    // T-P3-137：多模型展开（models 数组 = 新形态；无 models = 旧单模型条目
+    // 兼容——entry.model ?? defaultModel 兜底同既有语义）
+    const specs: readonly ProviderModelSpec[] =
+      entry.models ?? (entry.model !== undefined ? [{ id: entry.model }] : []);
+    for (const spec of specs) {
+      // 协议 → 会话装配映射（google 暂无 adapter 实现——拉取/测试可用，
+      // 会话装配跳过并警告；openai-responses 回退 chat 端点——官方与主流
+      // 网关双端点并存，记档）
+      const adapter = adapterForAssembly(spec.adapter ?? entry.adapter ?? "openai");
+      if (adapter === null) {
+        retryWarnLogger.warn("模型协议暂无会话装配，跳过", { provider: entry.name, model: spec.id, adapter: spec.adapter ?? entry.adapter });
+        continue;
+      }
+      const modelId = spec.id;
+      const identity = { provider: adapter, modelId };
+      const existing = models.find(
       (m) => m.identity.provider === identity.provider && m.identity.modelId === identity.modelId,
     );
     if (existing !== undefined) continue;
@@ -132,6 +150,7 @@ async function buildModelsRegistry(
         baseUrl: entry.baseUrl,
         apiKey: await credStore.getKey(entry.name),
         model: modelId,
+        ...(entry.headers !== undefined ? { headers: entry.headers } : {}),
       }),
     });
     const provider =
@@ -148,8 +167,14 @@ async function buildModelsRegistry(
       }),
     };
     models.push(registered);
-    if (entry.name === settings.defaultProvider) initial = registered;
+    if (entry.name === settings.defaultProvider) defaultEntryModels.push(registered);
+    }
   }
+  // T-P3-137：initial = defaultProvider 条目里 defaultModel 命中的模型；
+  // 不命中（或未设 defaultModel）= 该条目第一个模型（pi-desktop models[0] 语义）
+  const initial =
+    defaultEntryModels.find((m) => m.identity.modelId === settings.defaultModel) ??
+    defaultEntryModels[0];
   if (models.length === 0 || initial === undefined) return undefined;
   void settingsPath; // --settings 显式路径已在 loadSettings 调用点消费（签名对称保留）
   // U18/T-P3-120：辅助任务模型解析（judge/summarizer 独立配置——不进
@@ -160,10 +185,16 @@ async function buildModelsRegistry(
     modelOverride: string | undefined,
   ): Promise<RegisteredModel | undefined> => {
     const entry = settings.providers.find((p) => p.name === entryName);
-    if (entry === undefined) return undefined;
-    const modelId = modelOverride ?? entry.model ?? settings.defaultModel;
+    if (entry === undefined || entry.enabled === false) return undefined;
+    // T-P3-137：模型级协议覆盖——override/id 命中 models 里的 spec 时用其
+    // 协议映射；无 models = 旧单模型链（entry.model ?? defaultModel）
+    const spec = entry.models?.find((m) => m.id === modelOverride);
+    const fallbackSpec = entry.models?.[0];
+    const modelId = modelOverride ?? fallbackSpec?.id ?? entry.model ?? settings.defaultModel;
     if (modelId === undefined) return undefined;
-    const identity = { provider: entry.adapter ?? "openai", modelId };
+    const adapter = adapterForAssembly(spec?.adapter ?? fallbackSpec?.adapter ?? entry.adapter ?? "openai");
+    if (adapter === null) return undefined; // google——会话装配暂缓（记档）
+    const identity = { provider: adapter, modelId };
     const existing = models.find(
       (m) => m.identity.provider === identity.provider && m.identity.modelId === identity.modelId,
     );
@@ -174,6 +205,7 @@ async function buildModelsRegistry(
         baseUrl: entry.baseUrl,
         apiKey: await credStore.getKey(entry.name),
         model: modelId,
+        ...(entry.headers !== undefined ? { headers: entry.headers } : {}),
       }),
     });
     const provider =

@@ -25,7 +25,7 @@
 
 import type { StreamChunk, TokenUsage } from "../kernel/events.js";
 import type { ModelIdentity } from "./identity.js";
-import { ProviderConfigError, type ProviderConfig } from "./config.js";
+import { ProviderConfigError, parseExtraHeaders, type ProviderConfig } from "./config.js";
 import type { AuthMaterial, AuthResolver } from "./auth.js";
 import {
   ProviderHttpError,
@@ -43,6 +43,8 @@ export interface AnthropicSettings {
   maxTokens?: number;
   /** anthropic-version 头（缺省 2023-06-01——当前稳定版）。 */
   version?: string;
+  /** 服务级自定义请求头（T-P3-137——保留键已在 settings parse 剔除）。 */
+  headers?: Record<string, string>;
 }
 
 const DEFAULT_MAX_TOKENS = 8192;
@@ -76,6 +78,7 @@ export function parseAnthropicSettings(config: ProviderConfig): AnthropicSetting
       ? { maxTokens }
       : {}),
     ...(typeof version === "string" && version !== "" ? { version } : {}),
+    ...parseExtraHeaders(rec),
   };
 }
 
@@ -201,6 +204,7 @@ async function* streamChatAnthropic(
   const apiKey = auth?.apiKey ?? settings.apiKey;
   const { system, messages } = toAnthropicMessages(req.messages);
   const headers: Record<string, string> = {
+    ...(settings.headers ?? {}),
     "content-type": "application/json",
     "anthropic-version": settings.version ?? DEFAULT_VERSION,
     ...(auth?.headers ?? {}),

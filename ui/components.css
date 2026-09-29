@@ -366,6 +366,10 @@
   width: min(620px, 94vw);
 }
 
+.dialog.dialog-xl {
+  width: min(780px, 95vw);
+}
+
 @keyframes dialog-zoom-in {
   from {
     opacity: 0;
@@ -575,6 +579,47 @@ input[type="checkbox"] {
 
 .input-file::file-selector-button:hover {
   border-color: var(--border-hover);
+}
+
+/* ===== menu（锚定操作菜单——pi-desktop … 形态：fixed 面板 + 选项行 +
+   danger 红变体；点击项/外部/Esc 关闭） ===== */
+.menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 160px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-2);
+  animation: dialog-zoom-in 0.12s ease-out;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--text-ui-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item:hover {
+  background: var(--surface-hover);
+}
+
+.menu-item-danger {
+  color: var(--destructive);
+}
+
+.menu-item-danger:hover {
+  background: color-mix(in srgb, var(--destructive) 12%, transparent);
 }
 
 /* ===== kbd（键位胶囊——快捷键清单形态） ===== */

@@ -24,6 +24,7 @@ import { handles, makeUiFixture, startMemoryChild, fakeAgent, uiFixtures, type F
 import { HostServer, type HostServerHandle } from "./server.js";
 import type { EventStorage } from "../session/store.js";
 import type { AgentChannel } from "./bridge.js";
+import { createServer as createHttpServer, type Server as HttpServer } from "node:http";
 
 const settingsTmpDirs: string[] = [];
 let settingsCallSeq = 1;
@@ -909,6 +910,147 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
     client2.close();
     await new Promise((r) => setTimeout(r, 50)); // Windows 句柄释放缓冲
   });
+
+  it("settings op=provider-models/provider-test（T-P3-137）：host 代理拉模型清单 + 真实发你好实测（openai/anthropic 双协议）", async () => {
+    // mock 上游端点：记录收到的请求头与路径——协议形状的实测断言面
+    const seen: { method: string; url: string; auth: string | undefined; xKey: string | undefined; version: string | undefined; extra: string | undefined }[] = [];
+    const httpMocks: HttpServer[] = [];
+    const mock = createHttpServer((req, res) => {
+      let raw = "";
+      req.on("data", (c: Buffer) => (raw += c.toString()));
+      req.on("end", () => {
+        seen.push({
+          method: req.method ?? "",
+          url: req.url ?? "",
+          auth: req.headers["authorization"] as string | undefined,
+          xKey: req.headers["x-api-key"] as string | undefined,
+          version: req.headers["anthropic-version"] as string | undefined,
+          extra: req.headers["x-custom-tag"] as string | undefined,
+        });
+        const json = (obj: unknown) => {
+          res.setHeader("content-type", "application/json");
+          res.end(JSON.stringify(obj));
+        };
+        if (req.url === "/v1/models" || req.url === "/models") {
+          json({ data: [{ id: "mock-b" }, { id: "mock-a" }, { id: "mock-a" }, { display_name: "无 id 忽略" }] });
+        } else if (req.url === "/v1/chat/completions") {
+          json({ choices: [{ message: { content: "你好！我可以帮你。" } }] });
+        } else if (req.url === "/v1/messages") {
+          json({ content: [{ type: "text", text: "你好，anthropic 测试成功" }] });
+        } else {
+          res.statusCode = 404;
+          json({ error: "not found" });
+        }
+      });
+    });
+    await new Promise<void>((resolve) => mock.listen(0, "127.0.0.1", resolve));
+    httpMocks.push(mock);
+    const mockPort = (mock.address() as { port: number }).port;
+    const mockBase = `http://127.0.0.1:${mockPort}/v1`;
+
+    const tmp = mkdtempSync(path.join(tmpdir(), "aegent-provider-test-"));
+    settingsTmpDirs.push(tmp);
+    const gateway = new FileSettingsGateway(
+      path.join(tmp, "settings.json"),
+      new PlainFileCredentialStore(path.join(tmp, "credentials.bin")),
+    );
+    const { port } = await startServer({ settingsGateway: gateway });
+    const client = await wsConnect(port);
+    await client.hello("web-p1");
+    const call = (payload: Record<string, unknown>) => {
+      const requestId = `p-${settingsCallSeq++}`;
+      client.raw({ type: "settings", requestId, ...payload });
+      return client.waitFor((e) => e.type === "response" && e.requestId === requestId, `settings(${requestId})`) as Promise<Record<string, unknown>>;
+    };
+    // key 经凭据面（credentials-set——wire 面 key 一次、后续测试走凭据）
+    const saved = await call({ op: "credentials-set", provider: "mock-svc", key: "sk-test-123" });
+    const masked = ((saved.result as { masked?: string }) ?? {}).masked ?? "";
+    expect(masked).not.toContain("sk-test-123"); // 回执掩码——零明文
+
+    // provider-models：openai 协议拉取（Bearer 鉴权 + 自定义头穿透 + 去重排序）
+    const models = await call({
+      op: "provider-models",
+      provider: "mock-svc",
+      baseUrl: mockBase,
+      adapter: "openai",
+      headers: { "X-Custom-Tag": "aegent", authorization: "hijack" }, // 保留键剔除
+    });
+    expect(models.ok).toBe(true);
+    expect((models.result as { models: { id: string }[] }).models).toEqual([{ id: "mock-a" }, { id: "mock-b" }]);
+    expect(seen.at(-1)!.auth).toBe("Bearer sk-test-123"); // 鉴权不旁路
+    expect(seen.at(-1)!.extra).toBe("aegent"); // 自定义头穿透
+
+    // provider-test：真实发"你好"——200 + content 非空才算成功
+    const test = await call({
+      op: "provider-test",
+      provider: "mock-svc",
+      baseUrl: mockBase,
+      adapter: "openai",
+      modelId: "mock-a",
+    });
+    expect(test.ok).toBe(true);
+    const t = test.result as { ok: boolean; reply?: string; latencyMs?: number };
+    expect(t.ok).toBe(true);
+    expect(t.reply).toContain("你好");
+    expect(typeof t.latencyMs).toBe("number");
+    expect(seen.at(-1)!.url).toBe("/v1/chat/completions");
+
+    // anthropic 协议：x-api-key + anthropic-version 头 + /v1/messages 形状
+    const testA = await call({
+      op: "provider-test",
+      provider: "mock-svc",
+      baseUrl: `http://127.0.0.1:${mockPort}`, // 不带 /v1——自动补
+      adapter: "anthropic",
+      modelId: "mock-a",
+    });
+    expect(testA.ok).toBe(true);
+    expect((testA.result as { reply?: string }).reply).toContain("anthropic");
+    expect(seen.at(-1)!.xKey).toBe("sk-test-123");
+    expect(seen.at(-1)!.version).toBe("2023-06-01");
+    expect(seen.at(-1)!.url).toBe("/v1/messages");
+
+    // 未设 key 的条目：业务层类型化失败（envelope ok 但 result.ok=false——不抛内部错误）
+    const noKey = await call({
+      op: "provider-test",
+      provider: "no-such-key",
+      baseUrl: mockBase,
+      adapter: "openai",
+      modelId: "mock-a",
+    });
+    expect(noKey.ok).toBe(true); // 信封层成功——业务失败在 result 内
+    const noKeyResult = noKey.result as { ok: boolean; error?: string };
+    expect(noKeyResult.ok).toBe(false);
+    expect(noKeyResult.error).toContain("key");
+    client.close();
+
+    // provider-test 鉴权失败路：401 → 鉴权失败文案
+    const badMock = createHttpServer((req, res) => {
+      res.statusCode = 401;
+      res.end("{}");
+    });
+    await new Promise<void>((resolve) => badMock.listen(0, "127.0.0.1", resolve));
+    httpMocks.push(badMock);
+    const badPort = (badMock.address() as { port: number }).port;
+    const bad = await (async () => {
+      const c2 = await wsConnect(port);
+      await c2.hello("web-p2");
+      const requestId = `p-${settingsCallSeq++}`;
+      c2.raw({
+        type: "settings",
+        requestId,
+        op: "provider-test",
+        provider: "mock-svc",
+        baseUrl: `http://127.0.0.1:${badPort}/v1`,
+        adapter: "openai",
+        modelId: "mock-a",
+      });
+      const r = (await c2.waitFor((e) => e.type === "response" && e.requestId === requestId, "401 路回执")) as Record<string, unknown>;
+      c2.close();
+      return r;
+    })();
+    expect(((bad.result as { error?: string }) ?? {}).error).toContain("鉴权失败");
+    for (const m of httpMocks) m.close();
+  }, 30_000);
 
   it("query op=review/file（U15/T-P3-117）：工作面板聚合面 + 预览边界", async () => {
     const ws = mkdtempSync(path.join(tmpdir(), "aegent-host-work-"));

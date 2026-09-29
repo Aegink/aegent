@@ -63,6 +63,18 @@ export function refillFormsAfterImport() {
   if (refillForms !== null) refillForms();
 }
 
+// 跨分节刷新钩子（同层子模块互不 import 的联动面——如 Profiles 切换写
+// defaultProvider 后，providers 分节的默认项卡需要重渲染）
+const sectionRefreshHooks = new Set();
+
+export function onSectionRefresh(fn) {
+  sectionRefreshHooks.add(fn);
+}
+
+export function fireSectionRefresh() {
+  for (const fn of sectionRefreshHooks) fn();
+}
+
 // ---------------------------------------------------------------------------
 // 模态基座（ZCode dialog 形态：遮罩 blur + Header(title+desc)+右上 X 关闭 +
 // Footer 右对齐 + 宽度三档 + 入动画；Esc/遮罩/X 均可关闭并回调 onClose）。
@@ -72,16 +84,19 @@ export function refillFormsAfterImport() {
 
 /**
  * 打开模态。body：文本字符串或 DOM 节点（表单模态传构造好的 form）；
- * description：标题下的说明行（muted）；width："sm"(420)/"md"(520)/"lg"(620)；
- * actions：{ label, className?, close?（默认 true——点击后关模态）, onClick? }；
- * onClose：非 action 关闭路径（X/Esc/遮罩）的回调（confirmDialog 的取消面）。
- * 返回 { close }（程序化关闭——保存成功后的收尾）。
+ * description：标题下的说明行（muted）；width："sm"(420)/"md"(520)/
+ * "lg"(620)/"xl"(760)；dismissible：false = 只能经 actions 按钮关闭
+ * （遮罩点击/Esc/X 全禁——大表单模态防误触丢稿，用户裁决）；onClose：
+ * 非 action 关闭路径（X/Esc/遮罩）的回调（confirmDialog 的取消面）。
+ * body 内的原生 select 经 upgradeSelects 自动升级为自定义下拉。
+ * 返回 { close }（程序化关闭）。
  */
-export function openDialog({ title, description, body, actions = [], width, onClose }) {
+export function openDialog({ title, description, body, actions = [], width, onClose, dismissible = true }) {
   const overlay = document.createElement("div");
   overlay.className = "dialog-overlay";
+  const widthClass = width === "xl" ? " dialog-xl" : width === "lg" ? " dialog-lg" : width === "md" ? " dialog-md" : "";
   const dialog = document.createElement("div");
-  dialog.className = width === "md" ? "dialog dialog-md" : width === "lg" ? "dialog dialog-lg" : "dialog";
+  dialog.className = `dialog${widthClass}`;
   dialog.setAttribute("role", "dialog");
   dialog.setAttribute("aria-modal", "true");
   const header = document.createElement("div");
@@ -96,11 +111,6 @@ export function openDialog({ title, description, body, actions = [], width, onCl
     descEl.textContent = description;
     header.appendChild(descEl);
   }
-  const closeBtn = document.createElement("button");
-  closeBtn.type = "button";
-  closeBtn.className = "dialog-close";
-  closeBtn.setAttribute("aria-label", "关闭");
-  closeBtn.appendChild(icon("close"));
   const bodyEl = document.createElement("div");
   bodyEl.className = "dialog-body";
   if (typeof body === "string") {
@@ -112,7 +122,7 @@ export function openDialog({ title, description, body, actions = [], width, onCl
   const footer = document.createElement("div");
   footer.className = "dialog-footer";
   const escHandler = (ev) => {
-    if (ev.key === "Escape") {
+    if (ev.key === "Escape" && dismissible) {
       ev.preventDefault();
       ev.stopPropagation();
       close();
@@ -125,12 +135,20 @@ export function openDialog({ title, description, body, actions = [], width, onCl
     if (!fromAction && onClose !== undefined) onClose();
   };
   overlay.addEventListener("click", (ev) => {
-    if (ev.target === overlay) close();
+    if (ev.target === overlay && dismissible) close();
   });
   window.addEventListener("keydown", escHandler, true);
-  closeBtn.addEventListener("click", () => close());
   // 打开期间锁定背景滚动（ZCode/shadcn 同款语义）
   document.body.style.overflow = "hidden";
+  if (dismissible) {
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "dialog-close";
+    closeBtn.setAttribute("aria-label", "关闭");
+    closeBtn.appendChild(icon("close"));
+    closeBtn.addEventListener("click", () => close());
+    dialog.appendChild(closeBtn);
+  }
   for (const a of actions) {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -142,10 +160,48 @@ export function openDialog({ title, description, body, actions = [], width, onCl
     });
     footer.appendChild(btn);
   }
-  dialog.append(header, closeBtn, bodyEl, footer);
+  dialog.append(header, bodyEl, footer);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
   return { close };
+}
+
+/** 锚定菜单（… 操作组——pi-desktop 行内菜单形态）：点击项/外部/Esc 关闭。
+ *  items：{ label, danger?, onClick? }。返回 close。 */
+export function openMenu(anchor, items) {
+  const menu = document.createElement("div");
+  menu.className = "menu";
+  menu.setAttribute("role", "menu");
+  const close = () => {
+    document.removeEventListener("click", onDocClick, true);
+    window.removeEventListener("keydown", onEsc, true);
+    menu.remove();
+  };
+  const onDocClick = (ev) => {
+    if (!menu.contains(ev.target)) close();
+  };
+  const onEsc = (ev) => {
+    if (ev.key === "Escape") close();
+  };
+  for (const item of items) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = item.danger === true ? "menu-item menu-item-danger" : "menu-item";
+    btn.textContent = item.label;
+    btn.addEventListener("click", () => {
+      close();
+      void item.onClick?.();
+    });
+    menu.appendChild(btn);
+  }
+  document.body.appendChild(menu);
+  const rect = anchor.getBoundingClientRect();
+  const menuHeight = menu.offsetHeight;
+  menu.style.top = `${Math.min(rect.bottom + 4, window.innerHeight - menuHeight - 8)}px`;
+  menu.style.left = `${Math.max(8, rect.right - menu.offsetWidth)}px`;
+  setTimeout(() => document.addEventListener("click", onDocClick, true), 0);
+  window.addEventListener("keydown", onEsc, true);
+  return close;
 }
 
 /** 确认对话框（Promise 化——替代原生 window.confirm 的统一形态；danger =
