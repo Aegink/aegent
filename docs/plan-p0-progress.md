@@ -351,7 +351,7 @@ API（D4）随 T-4-05 定形；3) B10/B11 落盘打标记与 toolCallId 贯穿�
 - **开工前置项兑现**：assertJsonSafe 菱形误报本修随 T-4-01 commit（walk 子树 seen.delete 回溯 + 合法用例 + loop 克隆 workaround 移除，用户开工指示的完成）
 - **偏离计划的地方**：
   1. **grep 的 ripgrep 主路径未回填**（T-4-03 偏离②改口）：rg 是 spawn，受 D4 约束必须走 ExecutionEnv；JS 版已验收且语义等价，按 YAGNI 留待有性能需求时经 env 接入（rg 14.1.1 本机在位）
-  2. **ToolContext P0 面 = {env?, toolCallId, signal?}**：卡面清单的 policy/emit 随阶段 5 与 B7 接入，不预埋空字段（T-4-05 偏离②，待用户追认）
+  2. **ToolContext P0 面 = {env?, toolCallId, signal?}**：卡面清单的 policy/emit 随阶段 5 与 B7 接入，不预埋空字段（T-4-05 偏离②，✅ 已追认——2026-09-29 用户："全部认可所有需要追认的"）
   3. **agent-process 提前接线**（T-4-05 偏离⑥，兑现 T-4-02 偏离⑥承诺）：executeTool 槽位 = registry.dispatch，tools = registry.toChatTools()
   4. **build 脚本补资产拷贝**：descriptions/*.txt 不进 dist 曾致子进程装配即抛（T-4-01 预记的 dist 风险实爆，agent-process.test 抓到）——`tsc && node scripts/copy-assets.mjs`；schema.sql 同题仍留待需要时同批
   5. bash 输出原样转述不 trim；预算缺省启用（256 次/120s）而非默认关闭（T-4-08 偏离④）
