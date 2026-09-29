@@ -370,6 +370,11 @@
   width: min(780px, 95vw);
 }
 
+.dialog.dialog-max {
+  width: min(80vw, 1400px);
+  max-height: 88vh;
+}
+
 @keyframes dialog-zoom-in {
   from {
     opacity: 0;

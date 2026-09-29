@@ -70,7 +70,18 @@ async function applyRoute() {
   viewRoot.replaceChildren();
   viewRoot.hidden = false;
   chatView.hidden = true;
-  await mod.render(viewRoot, route);
+  try {
+    await mod.render(viewRoot, route);
+  } catch (e) {
+    // 视图渲染失败可见化（T-P3-137 教训：异常静默吞 = 用户面对无提示的
+    // 空页面无法报障——直接在路由容器呈现错误摘要，详情进 console）
+    console.error("视图渲染失败", route.view, e);
+    viewRoot.replaceChildren();
+    const box = document.createElement("div");
+    box.className = "render-error";
+    box.textContent = `页面加载出错：${e?.message ?? String(e)}`;
+    viewRoot.appendChild(box);
+  }
 }
 
 /** 路由启动：绑定 hashchange + 首路由解析（含深链直达）。 */

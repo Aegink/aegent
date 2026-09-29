@@ -656,6 +656,16 @@ code,
   color: var(--brand);
 }
 
+/* 行内徽标与名称的呼吸间距（用户反馈：默认徽标贴名太近） */
+.row-title .chip-ui {
+  margin-left: 8px;
+}
+
+.provider-tile .row-control {
+  gap: 14px; /* 开关与 … 菜单的呼吸间距（用户反馈） */
+  margin-left: 8px;
+}
+
 .mono {
   font-family: var(--font-mono);
   font-size: var(--text-ui-sm);
@@ -2099,4 +2109,16 @@ mark.search-hit.active {
 #mic-btn.recording {
   border-color: var(--danger);
   color: var(--danger);
+}
+
+/* 视图渲染失败可见化（router.js catch——错误摘要直呈，不再静默白页） */
+.render-error {
+  margin: 24px;
+  padding: 16px;
+  border: 1px solid var(--destructive);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--destructive) 8%, var(--bg));
+  color: var(--text);
+  font-size: var(--text-ui-sm);
+  word-break: break-word;
 }

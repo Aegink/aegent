@@ -22,7 +22,13 @@ describe("agent-process —— T9 agent 出进程", () => {
   }, 180_000);
 
   it("验收①：真实 stdio spawn——发 3 条 prompt 收全事件（管道不 mock）", async () => {
-    const proc = spawnAgentProcess({ entryPath });
+    // 宿主解耦（T-P3-137 教训）：显式空 settings 档隔离宿主 settings.json
+    // ——用户正常使用写入的 providers 条目会让子进程装配真实端点，测试
+    // 必须确定性（不依赖宿主机配置状态）。
+    const isolated = mkdtempSync(path.join(tmpdir(), "aegent-spawn-"));
+    const isolatedSettings = path.join(isolated, "settings.json");
+    writeFileSync(isolatedSettings, JSON.stringify({ version: 1, providers: [] }));
+    const proc = spawnAgentProcess({ entryPath, args: ["--settings", isolatedSettings] });
 
     const ready = await recvWithTimeout(proc.messages, (m) => m.type === "ready", "ready", 10_000);
     expect(ready).toMatchObject({ type: "ready" });

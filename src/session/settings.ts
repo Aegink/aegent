@@ -35,14 +35,15 @@ import { isValidSubagentSlug, type SubagentDefinition } from "./subagents-config
  *  responses = OpenAI 双端点；anthropic_messages / google_generative_ai。
  *  会话装配面：openai* → openai-compat〔responses 回退 chat 端点——官方与
  *  主流网关双端点并存，记档〕；anthropic → anthropic-messages；google →
- *  拉取/测试可用、会话装配暂缓〔记档：wire 面随 adapter 扩展批次〕）。 */
+ *  google-generate（streamGenerateContent SSE 全实现）。 */
 export const PROVIDER_ADAPTERS = ["openai", "openai-responses", "anthropic", "google"] as const;
 export type ProviderAdapter = (typeof PROVIDER_ADAPTERS)[number];
 
-/** 会话装配映射（google 无 adapter 实现——装配跳过；返回 null = 不可装配）。 */
-export function adapterForAssembly(adapter: ProviderAdapter): "openai" | "anthropic" | null {
-  if (adapter === "google") return null;
-  return adapter === "anthropic" ? "anthropic" : "openai";
+/** 会话装配映射（适配实现选择——wire 身份收敛：responses 回退 openai）。 */
+export function adapterForAssembly(
+  adapter: ProviderAdapter,
+): "openai" | "anthropic" | "google" {
+  return adapter === "anthropic" ? "anthropic" : adapter === "google" ? "google" : "openai";
 }
 
 /**

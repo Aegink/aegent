@@ -24,9 +24,18 @@ const HEALTH_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// 起 portable host：node.exe host.cjs --port 8787 --ui ./ui
 /// --agent-entry ./agent-child.cjs（cwd = 壳 exe 目录——资源与 bundle
-/// 的 import.meta shim 布局都在旁）。
+/// 的 import.meta shim 布局都在旁）。stdout/stderr 落 logs/host.log
+/// （T-P3-137 走查反馈：打包态输出被丢弃 = 用户无日志可看——追查列表
+/// 消失类问题时需要 host 侧现场）。
 fn spawn_host(dir: &std::path::Path) -> std::io::Result<Child> {
     let node = dir.join(if cfg!(windows) { "node.exe" } else { "node" });
+    let log_dir = dir.join("logs");
+    let _ = std::fs::create_dir_all(&log_dir);
+    let log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_dir.join("host.log"))?;
+    let log_err = log.try_clone()?;
     Command::new(&node)
         .args([
             "host.cjs",
@@ -38,8 +47,8 @@ fn spawn_host(dir: &std::path::Path) -> std::io::Result<Child> {
             dir.join("agent-child.cjs").to_str().expect("entry 路径非 UTF-8"),
         ])
         .current_dir(dir)
-        .stdout(Stdio::null()) // 打包态 host 输出不进壳控制台（诊断走 --host-db/--raw-log-dir）
-        .stderr(Stdio::null())
+        .stdout(Stdio::from(log))
+        .stderr(Stdio::from(log_err))
         .spawn()
 }
 

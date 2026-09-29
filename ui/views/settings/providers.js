@@ -109,17 +109,6 @@ function fmtTokens(n) {
 // 列表页：默认项卡 + AI 服务行
 // ---------------------------------------------------------------------------
 
-function allModelOptions() {
-  const out = [];
-  for (const entry of settingsCache?.providers ?? []) {
-    if (entry.enabled === false) continue;
-    for (const m of entryModels(entry)) {
-      out.push({ entry, model: m, label: `${entry.name} · ${m.id}` });
-    }
-  }
-  return out;
-}
-
 function renderDefaultCard() {
   const box = document.getElementById("provider-default-card");
   if (box === null) return;
@@ -128,49 +117,84 @@ function renderDefaultCard() {
   const titleEl = document.createElement("div");
   titleEl.className = "row-title";
   titleEl.textContent = "默认模型";
-  const current = settingsCache?.defaultProvider;
-  const entry = (settingsCache?.providers ?? []).find((p) => p.name === current);
-  const modelId = settingsCache?.defaultModel ?? entryModels(entry ?? {})[0]?.id;
+  const currentProvider = settingsCache?.defaultProvider;
+  const currentEntry = (settingsCache?.providers ?? []).find((p) => p.name === currentProvider);
+  const currentModel = settingsCache?.defaultModel ?? entryModels(currentEntry ?? {})[0]?.id;
   const descEl = document.createElement("div");
   descEl.className = "row-desc";
   descEl.textContent =
-    entry !== undefined
-      ? `${entry.name} · ${modelId ?? "（条目未设模型）"}`
-      : "（未设置——点右侧「更改」选择）";
-  const sel = document.createElement("select");
-  sel.className = "select";
-  sel.setAttribute("aria-label", "更改默认模型");
-  sel.style.display = "none"; // 仅作桥接宿主——触发器由 upgradeSelects 生成
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = "更改 ▾";
-  sel.appendChild(placeholder);
-  for (const opt of allModelOptions()) {
+    currentEntry !== undefined
+      ? `${currentEntry.name} · ${currentModel ?? "（条目未设模型）"}`
+      : "（未设置——右侧两级选择：先服务后模型）";
+  // 两级选择（用户反馈：只看模型不知道供应商）——先服务后模型联动
+  const providers = (settingsCache?.providers ?? []).filter(
+    (p) => p.enabled !== false && entryModels(p).length > 0,
+  );
+  const providerSel = document.createElement("select");
+  providerSel.className = "select";
+  providerSel.setAttribute("aria-label", "默认服务");
+  providerSel.style.display = "none"; // 桥接宿主——触发器由 upgradeSelects 生成
+  const providerPlaceholder = document.createElement("option");
+  providerPlaceholder.value = "";
+  providerPlaceholder.textContent = "选择服务";
+  providerSel.appendChild(providerPlaceholder);
+  for (const p of providers) {
     const o = document.createElement("option");
-    o.value = `${opt.entry.name}\u0000${opt.model.id}`;
-    o.textContent = opt.label;
-    sel.appendChild(o);
+    o.value = p.name;
+    o.textContent = p.name;
+    providerSel.appendChild(o);
   }
-  sel.addEventListener("change", (ev) => {
-    const v = ev.target.value;
-    if (v === "") return;
-    const [name, modelId2] = v.split("\u0000");
+  const modelSel = document.createElement("select");
+  modelSel.className = "select";
+  modelSel.setAttribute("aria-label", "默认模型");
+  modelSel.style.display = "none";
+  const modelPlaceholder = document.createElement("option");
+  modelPlaceholder.value = "";
+  modelPlaceholder.textContent = "选择模型";
+  modelSel.appendChild(modelPlaceholder);
+  const fillModels = (providerName) => {
+    const entry = providers.find((p) => p.name === providerName);
+    modelSel.replaceChildren(modelPlaceholder);
+    for (const m of entryModels(entry ?? {})) {
+      const o = document.createElement("option");
+      o.value = m.id;
+      o.textContent = m.alias ? `${m.id}（${m.alias}）` : m.id;
+      modelSel.appendChild(o);
+    }
+  };
+  if (currentProvider !== undefined && providers.some((p) => p.name === currentProvider)) {
+    providerSel.value = currentProvider;
+    fillModels(currentProvider);
+    if (currentModel !== undefined) modelSel.value = currentModel;
+  }
+  providerSel.addEventListener("change", (ev) => {
+    const name = ev.target.value;
+    if (name === "") return;
+    fillModels(name);
+    const firstModel = entryModels(providers.find((p) => p.name === name) ?? {})[0]?.id;
     settingsCache.defaultProvider = name;
-    settingsCache.defaultModel = modelId2;
+    if (firstModel !== undefined) settingsCache.defaultModel = firstModel;
+    modelSel.value = firstModel ?? "";
     dirtySections.add("defaultProvider");
     dirtySections.add("defaultModel");
     renderProviderList();
-    renderDefaultCard();
     markDirty("defaultProvider");
     markDirty("defaultModel");
-    toast(`默认模型已切换：${name} · ${modelId2}（新会话生效）`, "info");
+    toast(`默认服务已切换：${name}${firstModel !== undefined ? ` · ${firstModel}` : ""}（新会话生效）`, "info");
   });
-  const changeBtn = btnEl("更改 ▾", "btn", "选择默认服务与模型（新会话生效）");
-  changeBtn.addEventListener("click", () => {
-    // 打开自定义下拉（触发器由 upgradeSelects 生成在 sel 之后——直接触发）
-    sel.closest(".select-wrap")?.querySelector(".select-trigger")?.click();
+  modelSel.addEventListener("change", (ev) => {
+    const modelId2 = ev.target.value;
+    if (modelId2 === "" || providerSel.value === "") return;
+    settingsCache.defaultModel = modelId2;
+    dirtySections.add("defaultModel");
+    renderProviderList();
+    markDirty("defaultModel");
+    descEl.textContent = `${providerSel.value} · ${modelId2}`;
+    toast(`默认模型已切换：${providerSel.value} · ${modelId2}（新会话生效）`, "info");
   });
-  row.append(rowCopyEl(titleEl, descEl), rowControl(sel, changeBtn));
+  const control = rowControl(providerSel, modelSel);
+  control.classList.add("default-pickers");
+  row.append(rowCopyEl(titleEl, descEl), control);
   box.appendChild(row);
   upgradeSelects(box);
 }
@@ -187,8 +211,12 @@ function renderProviderList() {
     return;
   }
   for (const entry of providers) {
-    const enabled = entry.enabled !== false;
-    const isDefault = settingsCache?.defaultProvider === entry.name;
+    // 单行渲染防御（走查反馈：上移/下移后列表偶发消失——单行异常不再
+    // 静默拖垮整个列表，即时可见）
+    try {
+      if (entry === null || typeof entry !== "object") continue; // 坏元素防御（不进渲染）
+      const enabled = entry.enabled !== false;
+      const isDefault = settingsCache?.defaultProvider === entry.name;
     // tile 行（pi-desktop ModelConfigPage 形态——独立圆角卡 + hover 面；
     // 操作收纳 … 菜单，行面只留启停开关）
     const tile = document.createElement("div");
@@ -222,19 +250,23 @@ function renderProviderList() {
       renderDefaultCard();
       markDirty("providers");
     }, `启停服务 ${entry.name}`);
-    // ↑↓ 故障转移优先级（J15 队列序——… 菜单项消费）
-    const move = (delta) => {
-      const arr = [...settingsCache.providers];
-      const i = settingsCache.providers.indexOf(entry);
-      const j = i + delta;
-      if (j < 0 || j >= arr.length) return;
-      [arr[i], arr[j]] = [arr[j], arr[i]];
-      settingsCache.providers = arr;
-      dirtySections.add("providers");
-      renderProviderList();
-      renderDefaultCard();
-      markDirty("providers");
-    };
+      // ↑↓ 故障转移优先级（J15 队列序——… 菜单项消费）。按 name 定位——
+      // 防抖保存成功会整体替换 settingsCache（服务端 parse 的全新元素对象），
+      // 闭包里的旧行引用 indexOf 会失配（-1 → 交换塞 undefined → 列表崩，
+      // 走查复现实锤——T-P3-137 反馈③根因）
+      const move = (delta) => {
+        const arr = [...settingsCache.providers];
+        const i = arr.findIndex((p) => p !== null && p !== undefined && p.name === entry.name);
+        if (i < 0) return;
+        const j = i + delta;
+        if (j < 0 || j >= arr.length) return;
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+        settingsCache.providers = arr;
+        dirtySections.add("providers");
+        renderProviderList();
+        renderDefaultCard();
+        markDirty("providers");
+      };
     // 本会话切换（U5/T-P3-104——model/switch 请求，立即受理新 turn 生效）
     const switchSession = async () => {
       const sid = getSessionId();
@@ -278,11 +310,16 @@ function renderProviderList() {
         { label: "删除", danger: true, onClick: () => void del() },
       ]);
     });
-    tile.append(avatar, copy, rowControl(toggle, moreBtn));
-    list.appendChild(tile);
-    titleEl.style.cursor = "pointer";
-    titleEl.title = "点击编辑该服务";
-    titleEl.addEventListener("click", () => openProviderDialog(entry));
+      tile.append(avatar, copy, rowControl(toggle, moreBtn));
+      list.appendChild(tile);
+      titleEl.style.cursor = "pointer";
+      titleEl.title = "点击编辑该服务";
+      titleEl.addEventListener("click", () => openProviderDialog(entry));
+    } catch (e) {
+      // 行渲染失败不影响其余行（列表不再消失）——异常即时可见
+      console.error("服务行渲染失败", entry?.name, e);
+      toast(`服务「${entry?.name ?? "?"}」行渲染失败：${e.message}`, "warn");
+    }
   }
 }
 
@@ -411,7 +448,7 @@ function openProviderDialog(entry) {
     title: entry !== undefined ? `编辑服务：${entry.name}` : "添加服务",
     description:
       "接口地址填到根（如 https://api.example.com/v1）；拉取模型与测试连接均经 host 代理。同一服务内可按模型覆盖接口协议（OpenAI 双端点 / Anthropic / Google）。此窗口仅经「取消」或「保存服务」关闭。",
-    width: "xl",
+    width: "max",
     dismissible: false,
     body: form,
     actions: [
@@ -897,11 +934,14 @@ async function saveProviderFromDialog(form) {
 
 export function bind() {
   document.getElementById("provider-add").addEventListener("click", () => openProviderDialog(undefined));
-  // Profiles 切换写 defaultProvider 后联动刷新默认项卡（core 钩子——同层互不 import）
-  onSectionRefresh(() => {
-    renderProviderList();
-    renderDefaultCard();
-  });
+  // Profiles 切换/保存成功后的联动刷新（core 钩子——同引用注册，Set 去重）
+  onSectionRefresh(refreshProvidersSection);
+}
+
+/** 列表刷新（钩子目标——命名函数保证 Set 去重，多次挂载不累积）。 */
+function refreshProvidersSection() {
+  renderProviderList();
+  renderDefaultCard();
 }
 
 export function fill() {

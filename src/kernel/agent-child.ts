@@ -30,6 +30,7 @@ import {
 import { createCredentialStore } from "../session/credentials.js";
 import { parseProviderConfig } from "../models/config.js";
 import { createOpenAiCompatProvider } from "../models/openai-compat.js";
+import { createGoogleGenerateProvider } from "../models/google-generate.js";
 import { createAnthropicMessagesProvider } from "../models/anthropic-messages.js";
 import { withRetry, type RetryObservation } from "../models/retry.js";
 import type { RegisteredModel } from "./model-switch.js";
@@ -130,14 +131,9 @@ async function buildModelsRegistry(
     const specs: readonly ProviderModelSpec[] =
       entry.models ?? (entry.model !== undefined ? [{ id: entry.model }] : []);
     for (const spec of specs) {
-      // 协议 → 会话装配映射（google 暂无 adapter 实现——拉取/测试可用，
-      // 会话装配跳过并警告；openai-responses 回退 chat 端点——官方与主流
-      // 网关双端点并存，记档）
+      // 协议 → 会话装配映射（openai* → openai-compat〔responses 回退 chat
+      // 端点，记档〕；anthropic → anthropic-messages；google → google-generate）
       const adapter = adapterForAssembly(spec.adapter ?? entry.adapter ?? "openai");
-      if (adapter === null) {
-        retryWarnLogger.warn("模型协议暂无会话装配，跳过", { provider: entry.name, model: spec.id, adapter: spec.adapter ?? entry.adapter });
-        continue;
-      }
       const modelId = spec.id;
       const identity = { provider: adapter, modelId };
       const existing = models.find(
@@ -156,7 +152,9 @@ async function buildModelsRegistry(
     const provider =
       adapter === "anthropic"
         ? createAnthropicMessagesProvider(config)
-        : createOpenAiCompatProvider(config);
+        : adapter === "google"
+          ? createGoogleGenerateProvider(config)
+          : createOpenAiCompatProvider(config);
     const registered: RegisteredModel = {
       identity,
       provider: withRetry(provider, {
@@ -211,7 +209,9 @@ async function buildModelsRegistry(
     const provider =
       identity.provider === "anthropic"
         ? createAnthropicMessagesProvider(config)
-        : createOpenAiCompatProvider(config);
+        : identity.provider === "google"
+          ? createGoogleGenerateProvider(config)
+          : createOpenAiCompatProvider(config);
     return {
       identity,
       provider: withRetry(provider, {

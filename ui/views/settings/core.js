@@ -43,6 +43,11 @@ export async function flushSettings() {
     setSettingsCache(envelope.result.settings);
     applyTheme(settingsCache.appearance?.theme);
     rebuildKeymap(); // U25：shortcuts 段保存后键位同步
+    // T-P3-137：保存成功即分节列表刷新——settingsCache 已被服务端回包整体
+    // 替换（元素对象全新），持有旧行引用的列表必须重渲（闭包引用失效类
+    // bug 的根治点——如供应商列表上移/下移后消失）。只刷列表不回填表单
+    // （防覆盖用户未保存的输入——refill 仅导入路径）。
+    fireSectionRefresh();
   } else {
     appendLine(`设置保存失败：${envelope.error?.message ?? ""}`, "warn");
   }
@@ -94,7 +99,16 @@ export function fireSectionRefresh() {
 export function openDialog({ title, description, body, actions = [], width, onClose, dismissible = true }) {
   const overlay = document.createElement("div");
   overlay.className = "dialog-overlay";
-  const widthClass = width === "xl" ? " dialog-xl" : width === "lg" ? " dialog-lg" : width === "md" ? " dialog-md" : "";
+  const widthClass =
+    width === "max"
+      ? " dialog-max"
+      : width === "xl"
+        ? " dialog-xl"
+        : width === "lg"
+          ? " dialog-lg"
+          : width === "md"
+            ? " dialog-md"
+            : "";
   const dialog = document.createElement("div");
   dialog.className = `dialog${widthClass}`;
   dialog.setAttribute("role", "dialog");
