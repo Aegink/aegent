@@ -14,7 +14,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   SETTINGS_HINT,
+  applyProfile,
   defaultSettings,
+  failoverOrderFromProviders,
   loadSettings,
   parseSettingsFile,
   parseSettingsShape,
@@ -126,6 +128,68 @@ describe("parseSettingsShape / parseSettingsFile", () => {
     expect(resolveEnhancementTarget({ provider: "ghost" }, providers, "gpt-d")).toBeUndefined();
     // 任务未配置 = undefined（零行为）
     expect(resolveEnhancementTarget(undefined, providers, "gpt-d")).toBeUndefined();
+  });
+
+  it("Profiles 档（U19/T-P3-121）：parse 校验 fail-closed + applyProfile 产切换 patch", () => {
+    const s = parseSettingsShape({
+      profiles: [
+        {
+          name: "coding",
+          defaultProvider: "main",
+          defaultModel: "gpt-big",
+          permission: { approvalTimeoutMs: 60_000 },
+          sandbox: { network: "deny" },
+        },
+        { name: "cheap", defaultProvider: "mini" },
+      ],
+      activeProfile: "coding",
+    });
+    expect(s.profiles).toHaveLength(2);
+    expect(s.activeProfile).toBe("coding");
+    expect(() => parseSettingsShape({ profiles: [{ defaultProvider: "x" }] })).toThrow(
+      /profiles\[\].name 缺失/,
+    );
+    expect(() => parseSettingsShape({ profiles: [{ name: "a" }] })).toThrow(
+      /profiles\[\].defaultProvider 缺失/,
+    );
+    expect(() =>
+      parseSettingsShape({
+        profiles: [
+          { name: "a", defaultProvider: "x" },
+          { name: "a", defaultProvider: "y" },
+        ],
+      }),
+    ).toThrow(/profiles 档名重复：a/);
+    // 切换 = 批量写生效段（providers 清单不进 patch——组合档不改清单）
+    const patch = applyProfile(s.profiles![0]!);
+    expect(patch).toEqual({
+      defaultProvider: "main",
+      defaultModel: "gpt-big",
+      permission: { approvalTimeoutMs: 60_000 },
+      sandbox: { network: "deny" },
+    });
+    expect(patch["providers"]).toBeUndefined();
+    expect(patch["profiles"]).toBeUndefined();
+  });
+
+  it("failoverOrderFromProviders（U19——J15 队列序消费面）：providers 数组序 = failover 序", () => {
+    const providers = [
+      { name: "first", adapter: "openai" as const, baseUrl: "https://a", model: "m1" },
+      { name: "second", adapter: "anthropic" as const, baseUrl: "https://b", model: "m2" },
+      { name: "no-model", adapter: "openai" as const, baseUrl: "https://c" }, // 无 model → defaultModel 兜底（U5 装配同源）
+      { name: "fourth", adapter: "openai" as const, baseUrl: "https://d", model: "m4" },
+    ];
+    const order = failoverOrderFromProviders(providers, "m-default");
+    expect(order).toEqual([
+      { name: "first", provider: "openai", modelId: "m1" },
+      { name: "second", provider: "anthropic", modelId: "m2" },
+      { name: "no-model", provider: "openai", modelId: "m-default" },
+      { name: "fourth", provider: "openai", modelId: "m4" },
+    ]);
+    // 顺序即优先级：数组序不变 = 队列序不变（UI 上移/下移改 settings 数组序）
+    expect(order.map((o) => o.name)).toEqual(["first", "second", "no-model", "fourth"]);
+    // 无 defaultModel 且条目无 model → 跳过（无法成 identity）
+    expect(failoverOrderFromProviders([providers[2]!], undefined)).toEqual([]);
   });
 
   it("JSON 语法错 → SettingsError 带 1-based 行列号与修复指引", () => {

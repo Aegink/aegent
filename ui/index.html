@@ -11,6 +11,7 @@
       <span id="conn-status">连接中…</span>
       <span id="surface-id"></span>
       <span id="lease-status"></span>
+      <select id="profile-quick" title="场景快速切换（Profiles）" hidden></select>
       <button id="lease-btn" type="button" hidden>取得写租约</button>
       <button id="history-btn" type="button" title="会话历史">☰ 历史</button>
       <button id="search-btn" type="button" title="跨会话搜索（Ctrl+Shift+F）">🔍 搜索</button>
@@ -61,7 +62,7 @@
             <input id="provider-model" type="text" placeholder="模型" autocomplete="off" />
             <button type="submit">新增</button>
           </form>
-          <p class="hint">默认标记 = 启动装配选中的供应商（新会话生效）。</p>
+          <p class="hint">默认标记 = 启动装配选中的供应商（新会话生效）。↑↓ 顺序 = 故障转移优先级（J15 队列序）。</p>
         </section>
         <section data-section="credentials">
           <h2>凭据</h2>
@@ -191,6 +192,27 @@
               <option value="high">high</option>
             </select>
           </label>
+        </section>
+        <!-- U19/T-P3-121 Profiles 配置档：命名场景组合（provider+模型+权限+沙箱）
+             切换 = 批量写生效段（applyProfile patch——providers 清单不动）；
+             供应商列表 ↑↓ 排序 = 故障转移优先级（J15 队列序消费面） -->
+        <section data-section="profiles">
+          <h2>场景配置档</h2>
+          <ul id="profile-list"></ul>
+          <form id="profile-form">
+            <input id="profile-name" type="text" placeholder="档名（如 coding / cheap）" autocomplete="off" />
+            <input id="profile-provider" type="text" placeholder="默认供应商条目名" autocomplete="off" />
+            <input id="profile-model" type="text" placeholder="默认模型（可选）" autocomplete="off" />
+            <input id="profile-timeout" type="number" min="1000" step="1000" placeholder="审批超时 ms（可选）" />
+            <select id="profile-network">
+              <option value="">网络档：跟随全局（可选）</option>
+              <option value="allow">allow</option>
+              <option value="deny">deny</option>
+            </select>
+            <button id="profile-snapshot" type="button">填入当前生效值</button>
+            <button type="submit">建档</button>
+          </form>
+          <p class="hint">建档 = 保存命名组合；切换 = 批量写回默认供应商/模型/权限/沙箱生效段（providers 清单不动；在途轮不受影响——新 turn 生效，J6 同款）。供应商列表的 ↑↓ 顺序 = 故障转移优先级（J15）。</p>
         </section>
         <section data-section="about">
           <h2>关于</h2>

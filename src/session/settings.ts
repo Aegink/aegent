@@ -120,8 +120,26 @@ export interface SettingsShape {
     judge?: EnhancementModelEntry;
     summarizer?: EnhancementModelEntry;
   };
+  /** Profiles 组合档（U19——命名场景快照；切换 = 批量写生效段）。 */
+  profiles?: ProfileEntry[];
+  /** 当前应用中的 Profile 名（UI 快速切换器标记——仅记录，不改变生效语义）。 */
+  activeProfile?: string;
   /** 首跑引导（U13——引导清单完成标记；缺省 undefined = 未完成）。 */
   onboardingDone?: boolean;
+}
+
+/**
+ * Profiles 组合档条目（U19/T-P3-121——provider+模型+权限档+沙箱档的命名
+ * 组合；cc-switch·ProfileSwitcher 行为锚）。切换 = 批量写生效段（applyProfile
+ * 产 patch——providers 清单不动）。
+ */
+export interface ProfileEntry {
+  name: string;
+  /** 切换后写入生效段的值（defaultProvider 必填——组合档的主锚）。 */
+  defaultProvider: string;
+  defaultModel?: string;
+  permission?: { approvalTimeoutMs?: number };
+  sandbox?: { network?: "allow" | "deny"; workspace?: string; db?: string };
 }
 
 /** 缺省配置（无文件无环境也能启动——echo provider 最小装配）。 */
@@ -136,6 +154,7 @@ export function defaultSettings(): SettingsShape {
     projects: [],
     prompts: [],
     mcp: [],
+    profiles: [],
   };
 }
 export const SETTINGS_HINT =
@@ -297,6 +316,41 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
     }
   }
   out.activeProject = assertString(rec["activeProject"], "activeProject");
+  const profiles = rec["profiles"];
+  if (profiles !== undefined) {
+    if (!Array.isArray(profiles)) throw new SettingsError("profiles 须为数组");
+    const seen = new Set<string>();
+    for (const entry of profiles) {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+        throw new SettingsError("profiles 条目必须是对象");
+      }
+      const e = entry as Record<string, unknown>;
+      const name = assertString(e["name"], "profiles[].name");
+      if (name === undefined) throw new SettingsError("profiles[].name 缺失");
+      if (seen.has(name)) throw new SettingsError(`profiles 档名重复：${name}`);
+      seen.add(name);
+      const defaultProvider = assertString(e["defaultProvider"], "profiles[].defaultProvider");
+      if (defaultProvider === undefined) throw new SettingsError("profiles[].defaultProvider 缺失");
+      const permission = e["permission"];
+      if (permission !== undefined && (permission === null || typeof permission !== "object" || Array.isArray(permission))) {
+        throw new SettingsError("profiles[].permission 须为对象");
+      }
+      const sandbox = e["sandbox"];
+      if (sandbox !== undefined && (sandbox === null || typeof sandbox !== "object" || Array.isArray(sandbox))) {
+        throw new SettingsError("profiles[].sandbox 须为对象");
+      }
+      out.profiles!.push({
+        name,
+        defaultProvider,
+        ...(assertString(e["defaultModel"], "profiles[].defaultModel") !== undefined
+          ? { defaultModel: e["defaultModel"] as string }
+          : {}),
+        ...(permission !== undefined ? { permission: permission as ProfileEntry["permission"] } : {}),
+        ...(sandbox !== undefined ? { sandbox: sandbox as ProfileEntry["sandbox"] } : {}),
+      });
+    }
+  }
+  out.activeProfile = assertString(rec["activeProfile"], "activeProfile");
   const prompts = rec["prompts"];
   if (prompts !== undefined) {
     if (!Array.isArray(prompts)) throw new SettingsError("prompts 须为数组");
@@ -602,4 +656,36 @@ export function resolveEnhancementTarget(
   const modelId = task.model ?? entry.model ?? defaultModel;
   if (modelId === undefined) return undefined;
   return { entry, modelId };
+}
+
+/**
+ * Profile 切换的 patch 生成（U19/T-P3-121 纯函数——"切换 = 批量改 settings
+ * 生效值"，providers 清单不动；UI 发此 patch 走既有 settings update 通道）。
+ */
+export function applyProfile(profile: ProfileEntry): Record<string, unknown> {
+  return {
+    defaultProvider: profile.defaultProvider,
+    ...(profile.defaultModel !== undefined ? { defaultModel: profile.defaultModel } : {}),
+    ...(profile.permission !== undefined ? { permission: profile.permission } : {}),
+    ...(profile.sandbox !== undefined ? { sandbox: profile.sandbox } : {}),
+  };
+}
+
+/**
+ * 故障转移优先级序（U19/T-P3-121——J15"队列非开关 + sort_index 序"的
+ * settings 消费面：providers 数组序 = failover 队列序；无 model 条目跳过
+ * ——与多注册表装配跳过规则同源，无法成 identity 的条目不进队列）。
+ * 装配方按此序构造 J15 backends（failover 装配随真实多供应商需求——记档）。
+ */
+export function failoverOrderFromProviders(
+  providers: readonly ProviderEntry[],
+  defaultModel: string | undefined,
+): { name: string; provider: string; modelId: string }[] {
+  const order: { name: string; provider: string; modelId: string }[] = [];
+  for (const entry of providers) {
+    const modelId = entry.model ?? defaultModel;
+    if (modelId === undefined) continue;
+    order.push({ name: entry.name, provider: entry.adapter ?? "openai", modelId });
+  }
+  return order;
 }

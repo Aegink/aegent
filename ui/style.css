@@ -1263,3 +1263,23 @@ mark.search-hit.active {
 #mcp-wizard button {
   margin-right: 6px;
 }
+
+/* U19/T-P3-121 Profiles 组合档 + 状态栏快速切换器 */
+#profile-quick {
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  max-width: 120px;
+}
+
+.profile-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: 13px;
+  word-break: break-all;
+}

@@ -268,7 +268,7 @@
 - **风险 / 未知**：增强任务清单（判官/摘要两个起步——标题生成无独立面记档）
 - **完成记录（2026-09-29）**：验收 `npx vitest run src/session/settings.test.ts src/policy/judge.test.ts src/diagnostics/tauri-shell.test.ts src/host/server.test.ts` → **58 passed**（settings 19〔含 enhancement 六例〕+ judge 15〔含 U18 身份审计例〕+ tauri-shell 资产 + server 回归；tsc 干净）。落地：①**settings enhancement 段**：EnhancementModelEntry（provider 引用条目名——不裸写 baseUrl，凭据按条目走 credentials 面；model 可选；reasoning 枚举校验 minimal|low|medium|high）+ parse fail-closed + 白名单加 enhancement；②**回退链纯函数** `resolveEnhancementTarget`（session/settings.ts）：任务 model → 被引用条目 model → defaultModel（"缺省回退主模型"卡面语义——条目不存在/无 modelId 可用 = undefined 不虚构）；③**消费端接线**（agent-child）：buildModelsRegistry 增 `resolveTarget`（同 identity 复用注册表实例、否则按条目新建但不进换模注册表——J6 换模面不变）→ enhancement.judge 在位时传 assembly 的 judgeModel 槽（C42 既有——未配 = 无判官零行为变化）；enhancement.summarizer 在位时替换 summarizerModel（未配 = 主模型——F5 既有回退）。**记档**：①显式单模型分支（--provider）不消费 enhancement（零变化）；②reasoning 档位为配置面记录——适配层无 reasoning 请求参数，消费随 J3 扩展；③标题生成无独立任务面（卡面预判兑现）；④agent-child main 无进程内测试注入面——接线由回退链纯函数机验 + tsc + 回归保证（如实记档）；⑤judge.test 的配置读取可见面 = 配置身份进审计 model 字段（audit.model = provider:modelId）。
 
-#### T-P3-121 · U19 · Profiles 配置档与故障转移徽标 `[ ]`
+#### T-P3-121 · U19 · Profiles 配置档与故障转移徽标 `[x]`
 - **依据需求**：U19（"配置组合档一键切场景；多供应商故障转移优先级徽标"）
 - **上游首选参考**：[cc-switch·ProfileSwitcher/ProfileManageDialog](../oss/cc-switch/src/components/profiles) + [FailoverPriorityBadge](../oss/cc-switch/src/components/providers)（🔴 只学行为）
 - **取什么 / 别抄什么**：取"组合档 = 子配置集一键切换 + 优先级可见可调"行为；不抄其多应用切换语义
@@ -276,6 +276,7 @@
 - **验收**：`npx vitest run src/session/settings.test.ts`（扩——Profiles 往返 + 顺序语义）+ ui 资产断言 + J15 消费链断言
 - **依赖**：T-P3-104（供应商列表）；P1 J15
 - **风险 / 未知**：切换时在途会话的语义（新 turn 生效——J6 同款）
+- **完成记录（2026-09-29）**：验收 `npx vitest run src/session/settings.test.ts src/diagnostics/tauri-shell.test.ts src/host/server.test.ts` → **45 passed**（settings 21〔含 Profiles/failoverOrder 四例〕+ tauri-shell 资产 + server 回归；tsc 干净）。落地：①**settings Profiles 档**：ProfileEntry（name 唯一 + defaultProvider 必填 + defaultModel/permission/sandbox 可选快照——parse fail-closed）+ activeProfile 记录位 + patch 白名单加 profiles/activeProfile；②**applyProfile 纯函数**：切换 = 生成批量 patch（defaultProvider/defaultModel/permission/sandbox——providers 清单不进 patch）走既有 settings update 通道（wire 零新增）；③**failoverOrderFromProviders 纯函数**：providers 数组序 = J15 队列序（"队列非开关 + sort_index 序"行为锚；无 model 条目以 defaultModel 兜底——与 U5 多注册表跳过规则同源；装配方按此序构造 backends——**failover provider 真实装配记档 YAGNI**：J15 库面/顺序面在位，装配是三行接线随真实多供应商需求）；④**ui**：场景配置档分节（清单 ★ 当前/建档/切换/删除 + "填入当前生效值"快照辅助）+ 状态栏 profile-quick 快速切换器（select，有档才显示）+ providers 分节 ↑↓ 排序按钮（等效"拖拽排序"的原生实现——顺序语义同，记档）+ hint 提示 J15 优先级语义。**卡内定形**：切换生效语义 = 在途轮不受影响、新 turn 生效（J6 同款——settings 生效值由装配启动时捕获，多注册表条目实例化面 U5 既有）；providers 段 patch 在段级整体替换语义下天然携带顺序（数组序即档序）。
 
 #### T-P3-122 · U20 · 配置导入导出与深链分享（备份/迁移/导入确认） `[ ]`
 - **依据需求**：U20（"配置包导出/导入（含备份列表）、深链导入的确认面"）

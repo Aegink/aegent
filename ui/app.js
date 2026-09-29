@@ -873,7 +873,35 @@ function renderProviderList() {
       renderProviderList();
       markDirty("providers");
     });
-    li.append(label, defaultBtn, switchBtn, healthBtn, delBtn);
+    // U19/T-P3-121：故障转移优先级排序（数组序 = J15 队列序——可见可调）
+    const orderIndex = settingsCache.providers.indexOf(entry);
+    const moveBtn = (label2, delta) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = label2;
+      b.disabled =
+        delta < 0 ? orderIndex === 0 : orderIndex === settingsCache.providers.length - 1;
+      b.title = delta < 0 ? "故障转移优先级：上移" : "故障转移优先级：下移";
+      b.addEventListener("click", () => {
+        const arr = [...settingsCache.providers];
+        const j = orderIndex + delta;
+        [arr[orderIndex], arr[j]] = [arr[j], arr[orderIndex]];
+        settingsCache.providers = arr;
+        dirtySections.add("providers");
+        renderProviderList();
+        markDirty("providers");
+      });
+      return b;
+    };
+    li.append(
+      label,
+      defaultBtn,
+      switchBtn,
+      healthBtn,
+      moveBtn("↑", -1),
+      moveBtn("↓", 1),
+      delBtn,
+    );
     list.appendChild(li);
     // U5：编辑（点击条目名 → 表单回填 → 提交 = 条目更新，providers 段替换）
     label.style.cursor = "pointer";
@@ -935,6 +963,7 @@ function fillSettingsForm() {
   renderProjectList();
   renderPromptList();
   renderMcpList();
+  renderProfileList();
   // U18/T-P3-120：辅助模型分节回填（缺省回退主模型链——空输入 = 未配置）
   const task = (name) => settingsCache?.enhancement?.[name] ?? {};
   document.getElementById("enh-judge-provider").value = task("judge").provider ?? "";
@@ -976,6 +1005,128 @@ enhancementInputHandler("enh-judge", "judge", "reasoning");
 enhancementInputHandler("enh-summarizer", "summarizer", "provider");
 enhancementInputHandler("enh-summarizer", "summarizer", "model");
 enhancementInputHandler("enh-summarizer", "summarizer", "reasoning");
+
+// —— U19/T-P3-121 Profiles 组合档 + 故障转移优先级排序
+function applyProfileValues(p) {
+  // 切换 = 批量写生效段（applyProfile 同语义——UI 侧呈现层实现）
+  settingsCache.defaultProvider = p.defaultProvider;
+  settingsCache.defaultModel = p.defaultModel;
+  settingsCache.permission = p.permission ?? settingsCache.permission;
+  settingsCache.sandbox = p.sandbox ?? settingsCache.sandbox;
+  settingsCache.activeProfile = p.name;
+  for (const sec of ["defaultProvider", "defaultModel", "permission", "sandbox", "activeProfile"]) {
+    dirtySections.add(sec);
+  }
+  renderProfileList();
+  renderProviderList();
+  markDirty("defaultProvider");
+  markDirty("defaultModel");
+  markDirty("permission");
+  markDirty("sandbox");
+  markDirty("activeProfile");
+}
+
+function renderProfileList() {
+  const list = document.getElementById("profile-list");
+  list.replaceChildren();
+  const profiles = settingsCache?.profiles ?? [];
+  for (const p of profiles) {
+    const li = document.createElement("li");
+    li.className = "profile-item";
+    const isActive = settingsCache?.activeProfile === p.name;
+    const label = document.createElement("span");
+    label.textContent = `${isActive ? "★ " : ""}${p.name} → ${p.defaultProvider}${p.defaultModel ? `/${p.defaultModel}` : ""}${p.sandbox?.network ? `（网络 ${p.sandbox.network}）` : ""}`;
+    const applyBtn = document.createElement("button");
+    applyBtn.type = "button";
+    applyBtn.textContent = isActive ? "★ 当前" : "切换";
+    applyBtn.className = isActive ? "default-mark" : "";
+    applyBtn.addEventListener("click", () => {
+      applyProfileValues(p);
+    });
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.textContent = "删除";
+    delBtn.className = "danger";
+    delBtn.addEventListener("click", () => {
+      if (!window.confirm(`删除配置档「${p.name}」？`)) return;
+      settingsCache.profiles = (settingsCache.profiles ?? []).filter((x) => x.name !== p.name);
+      if (settingsCache.activeProfile === p.name) settingsCache.activeProfile = undefined;
+      dirtySections.add("profiles");
+      dirtySections.add("activeProfile");
+      renderProfileList();
+      markDirty("profiles");
+      markDirty("activeProfile");
+    });
+    li.append(label, applyBtn, delBtn);
+    list.appendChild(li);
+  }
+  if (profiles.length === 0) {
+    const li = document.createElement("li");
+    li.className = "hint";
+    li.textContent = "（无配置档——填表单或先填入当前生效值再建档）";
+    list.appendChild(li);
+  }
+  renderProfileQuick();
+}
+
+function renderProfileQuick() {
+  const sel = document.getElementById("profile-quick");
+  const profiles = settingsCache?.profiles ?? [];
+  sel.hidden = profiles.length === 0;
+  sel.replaceChildren();
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "场景";
+  sel.appendChild(placeholder);
+  for (const p of profiles) {
+    const opt = document.createElement("option");
+    opt.value = p.name;
+    opt.textContent = `${settingsCache?.activeProfile === p.name ? "★ " : ""}${p.name}`;
+    sel.appendChild(opt);
+  }
+}
+
+document.getElementById("profile-quick").addEventListener("change", (ev) => {
+  const name = ev.target.value;
+  ev.target.value = "";
+  const p = (settingsCache?.profiles ?? []).find((x) => x.name === name);
+  if (p !== undefined) {
+    applyProfileValues(p);
+    toast(`已切换配置档：${p.name}`, "info");
+  }
+});
+
+document.getElementById("profile-form").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const name = document.getElementById("profile-name").value.trim();
+  const provider = document.getElementById("profile-provider").value.trim();
+  const model = document.getElementById("profile-model").value.trim();
+  const timeoutRaw = document.getElementById("profile-timeout").value;
+  const network = document.getElementById("profile-network").value;
+  if (name === "" || provider === "") return;
+  const entry = {
+    name,
+    defaultProvider: provider,
+    ...(model !== "" ? { defaultModel: model } : {}),
+    ...(timeoutRaw !== "" ? { permission: { approvalTimeoutMs: Number(timeoutRaw) } } : {}),
+    ...(network !== "" ? { sandbox: { network } } : {}),
+  };
+  const profiles = (settingsCache.profiles ?? []).filter((x) => x.name !== name);
+  profiles.push(entry);
+  settingsCache.profiles = profiles;
+  document.getElementById("profile-name").value = "";
+  dirtySections.add("profiles");
+  renderProfileList();
+  markDirty("profiles");
+});
+
+document.getElementById("profile-snapshot").addEventListener("click", () => {
+  document.getElementById("profile-provider").value = settingsCache?.defaultProvider ?? "";
+  document.getElementById("profile-model").value = settingsCache?.defaultModel ?? "";
+  document.getElementById("profile-timeout").value =
+    settingsCache?.permission?.approvalTimeoutMs ?? "";
+  document.getElementById("profile-network").value = settingsCache?.sandbox?.network ?? "";
+});
 
 async function openSettings() {
   const envelope = await sendSettings({ op: "get" });

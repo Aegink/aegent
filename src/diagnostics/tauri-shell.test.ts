@@ -110,7 +110,7 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     // 八分节（providers/credentials/permission/sandbox/appearance/logging/projects/about——
     // settings.json 各段一一对应；U5 卡在 providers 分节扩展切换与健康徽标；
     // logging 为 T-P3-132 #28 补落；projects 为 U11/T-P3-110 项目档）
-    for (const section of ["providers", "credentials", "permission", "sandbox", "appearance", "logging", "projects", "prompts", "mcp", "enhancement", "about"]) {
+    for (const section of ["providers", "credentials", "permission", "sandbox", "appearance", "logging", "projects", "prompts", "mcp", "enhancement", "profiles", "about"]) {
       expect(html).toContain(`data-section="${section}"`);
     }
     // 导航入口（状态栏齿轮）与凭据不回显（U2 面注入防呆）
@@ -232,6 +232,13 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(html).toContain('id="enh-summarizer-model"');
     expect(app).toContain('markDirty("enhancement")'); // 即改即存
     expect(html).toContain("回退主模型链"); // 缺省回退语义提示
+    // U19/T-P3-121：Profiles 组合档 + 故障转移优先级排序 + 状态栏快速切换
+    expect(html).toContain('id="profile-list"');
+    expect(html).toContain('id="profile-quick"');
+    expect(html).toContain('id="profile-snapshot"');
+    expect(app).toContain("applyProfileValues"); // 切换 = 批量写生效段
+    expect(app).toContain("故障转移优先级"); // 排序按钮提示（↑↓ = J15 队列序）
+    expect(html).toContain("故障转移优先级"); // providers 分节 hint
     // U12/T-P3-111：用量面板（上下文检查器 + 成本统计页——J21 消费端）
     expect(html).toContain('id="usage-panel"');
     expect(html).toContain('id="ctx-meter-fill"');
