@@ -1200,6 +1200,10 @@ export function spawnAgentProcess(options: SpawnAgentOptions): AgentProcess {
   });
   child.stdout.on("close", () => queue.finish());
   child.on("close", () => queue.finish());
+  // 子进程退出后父进程仍可能补发请求（收尾竞态）——stdin 对端已关触发
+  // EPIPE 是生命周期正常终态而非异常；不挂监听会成为 uncaught exception
+  // 带崩宿主（live 真实子进程 + vitest worker 收尾竞速，2026-09-29 记档修复）。
+  child.stdin.on("error", () => {});
 
   return {
     send(request: AgentRequest): void {

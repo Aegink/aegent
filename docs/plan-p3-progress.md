@@ -264,6 +264,7 @@
 | U24 指令中心走查（T-P3-127） | 编辑手感与保存确认是人工面 | ⚙ 设置 → 指令中心 → 编辑项目/全局 AGENTS.md（确认面）→ 插入模板 → 规则文件写一行坏规则看 lint 提示 → 保存后新会话生效 | 待人工走查 |
 | U25 快捷键走查（T-P3-128） | 捕获改绑手感是人工面 | ⚙ 设置 → 快捷键 → 点"修改"按新组合（试冲突组合看阻断提示、试 Ctrl+T 看保留键提示）→ 新键位开合面板 → 恢复默认 | 待人工走查 |
 | U26 语音走查（T-P3-129） | 真实麦克风 + 真实 STT 端点是人工面（mock 三路机验已过） | ⚙ 设置 → 语音【实验性】配端点/模型 + 凭据分节录 stt key → 输入区 🎤 录音 → 转写填入输入框；拒绝权限看降级提示 | 待用户供真实端点（随 U8 重开） |
+| 插件管理走查（T-P3-133） | 真实插件装载/工具实调是人工面（fixture 八例机验已过） | 建测试插件目录（plugin.json + index.js）→ ⚙ 设置 → 插件 → 安装（先校验）→ 清单见 trust 徽标/capabilities chips → 新会话模型实调 `<插件名>__<工具名>` → 停用/删除/坏清单错误行 | 待人工走查 |
 
 ### U8 真实平台联调逐项闭环表（T-P3-115，2026-09-29）
 
@@ -284,6 +285,8 @@
 ### 补全卡 T-P3-133 · 插件管理（2026-09-29 用户裁决追加——"参考几个仓库补齐插件管理"；337 条外新增）
 
 **状态**：✅ 落地（2026-09-29）——I4/I5/I9 的管理面延伸（内核机制 P1/P2 全在位，补生产装配点与管理 UI）。台账：settings plugins 段（name 唯一禁 `__` + transport inprocess|ws + source + allowTools + enabled；parse fail-closed）+ **装配消费真新装配点**（plugin-loader.ts：inprocess = plugin.json 再校验 + 清单名一致性核对 + 动态 import default 导出 → loadPlugin → 工具以 `<插件名>__<工具名>` 命名空间进 ToolRegistry〔execute 无 ctx——D4 红线〕；ws = connectWsPlugin + onToolRegistration 消费 allowTools〔不受信默认 deny——显式例外是策略面〕；never-fail 跳过 + finish 收尾 disposeAll）+ host 安装校验（plugins-gateway.ts：listPlugins/checkPluginDir——只读 plugin.json 走 I9 validateManifest，host 零代码执行；停用条目跳过校验；ws URL 形状）+ settings op:"plugins-list" + ui 第十九分节（清单卡片 transport/trust 徽标/capabilities chips/错误行 + 启停/删除 + 安装表单）。验收 86 passed + 全量 **1821 passed / 7 skipped，exit 0**（206 文件）；tsc 干净、architecture 0 error / 22 warning（agent-child 曾超行压缩归还）。记档：事件投递接线（handle.deliver 挂 store.append 后置观察）随需要接线；插件市场远程渠道维持 YAGNI；作用域 projects 三态不取（U11 同款边界）；inprocess 隔离边界 = 子进程（untrusted 建议 ws）。
+
+**真实全量复核（2026-09-29 用户供端点）**：live-p2 **6/6 passed**（真实流式 turn/C42 判官真实裁决/F16 缓存归因/F19+F27 压缩/会话数据面/L6 审计）；live 全量首跑 **exit 1 = uncaught EPIPE**（agent-process 父进程向已退出子进程 stdin 补发——收尾竞态）→ 修复（stdin 挂 error 监听——EPIPE 是对端已关的正常终态）→ 复跑 **0 unhandled**（修复验证 ✅）；远程端点随之中断（curl HTTP=000），用户切本地网关 → **最终真实全量 1827 passed / 1 skipped，exit 0**（live 6/6 转正，live-p2 181s）。顺手修 llm-replay 第二处抖动（tool/result 事件**顶层** timing 抹平——首次修复只盖了 message.timing，三连跑验证稳定）。凭据掩码档 private/live-endpoints.md 端点 3。
 
 **参考仓借鉴映射（T-P3-133）**：pi-desktop·InstalledPluginsPanel（清单/启停/卸载确认/来源 tag/错误行——🔴 只学行为）+ codex·plugin/manifest.rs（插件贡献资源清单形状——清单独立文件约定）+ pi-desktop·activation.ts（作用域三态——**不取**，收敛记档）。
 

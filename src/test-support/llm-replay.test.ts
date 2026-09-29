@@ -160,17 +160,20 @@ describe("录制→回放等价（O15 验收①：避免手写 mock 漂移）", 
       stableStringify(
         events.map((e) => {
           const base = { ...e, seq: 0, ts: 0 };
-          const message = (base as { message?: unknown }).message;
+          // 事件顶层 timing（tool/result 的 L9 分段计时）与 message.timing
+          // （assistant/message）同为真实时延——统一抹平。
+          const withTop = "timing" in base ? { ...base, timing: zeroNumbers(base.timing) } : base;
+          const message = (withTop as { message?: unknown }).message;
           const withTiming =
             message !== null && typeof message === "object" && "timing" in (message as object)
               ? {
-                  ...base,
+                  ...withTop,
                   message: {
                     ...(message as Record<string, unknown>),
                     timing: zeroNumbers((message as { timing: unknown }).timing),
                   },
                 }
-              : base;
+              : withTop;
           return "stream" in withTiming && Array.isArray(withTiming.stream)
             ? { ...withTiming, stream: withTiming.stream.map((s) => ({ time: 0, chunk: s.chunk })) }
             : withTiming;
