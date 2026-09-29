@@ -1090,3 +1090,137 @@ mark.search-hit.active {
   word-break: break-all;
   font-size: 13px;
 }
+
+/* U15/T-P3-117 工作面板：右侧抽屉三 Tab（文件树/变更评审/子代理监控） */
+#workpanel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 420px;
+  max-width: 92vw;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  box-shadow: -6px 0 18px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  z-index: 20;
+}
+
+#workpanel[hidden] {
+  display: none;
+}
+
+#work-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.work-tab {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.work-tab.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.work-tree {
+  max-height: 40vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.tree-row {
+  padding: 2px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-file {
+  cursor: pointer;
+}
+
+.tree-file:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.preview-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 8px 0 4px;
+  font-size: 12px;
+  color: var(--muted, #9aa);
+}
+
+#work-preview {
+  max-height: 34vh;
+  overflow: auto;
+  margin: 0;
+}
+
+.review-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: 13px;
+}
+
+.review-badge {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  background: var(--border);
+}
+
+.review-write .review-badge {
+  background: var(--ok, #3a7);
+  color: var(--bg);
+}
+
+.review-edit .review-badge {
+  background: var(--warn, #c92);
+  color: var(--bg);
+}
+
+.review-delete .review-badge {
+  background: var(--danger, #d45);
+  color: var(--bg);
+}
+
+#work-review-list {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+  max-height: 42vh;
+  overflow-y: auto;
+}
+
+#work-delegation-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+#work-delegation-table th,
+#work-delegation-table td {
+  text-align: left;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  word-break: break-all;
+}

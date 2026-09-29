@@ -5,7 +5,7 @@
  * 等重目录。只报名单不含内容——注入面无字节。
  */
 
-import { readdirSync, statSync } from "node:fs";
+import { openSync, readSync, closeSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
 const SKIP_DIRS = new Set([".git", "node_modules", "dist", "__pycache__"]);
@@ -68,4 +68,76 @@ export function listWorkspaceFiles(root: string): WorkspaceFileList {
     // root 不可读 = 空表（fail-open 只读面——列举不可用不阻塞会话）
   }
   return { root: base, entries, truncated };
+}
+
+// ===== U15/T-P3-117：文件树 Tab 的点击预览面（host 只读单文件） =====
+
+/** 预览字节上限（超出读前缀 + truncated 标记——UI 提示面）。 */
+export const MAX_PREVIEW_BYTES = 512 * 1024;
+/** 预览路径长度上限（防呆——正常 workspace 相对路径远小于此）。 */
+export const MAX_PREVIEW_PATH_CHARS = 512;
+
+export type WorkspaceFilePreviewError =
+  | "WORKSPACE_FILE_BAD_PATH"
+  | "WORKSPACE_FILE_ESCAPES"
+  | "WORKSPACE_FILE_UNAVAILABLE"
+  | "WORKSPACE_FILE_BINARY";
+
+export class WorkspaceFileError extends Error {
+  constructor(
+    readonly code: WorkspaceFilePreviewError,
+    message: string,
+  ) {
+    super(message);
+    this.name = "WorkspaceFileError";
+  }
+}
+
+export interface WorkspaceFilePreview {
+  readonly path: string;
+  readonly content: string;
+  /** true = 超字节上限只读了前缀。 */
+  readonly truncated: boolean;
+}
+
+/**
+ * workspace 内单文件只读预览（U15 文件树 Tab——点击预览）。安全面：
+ * 相对路径归一后必须仍在 workspace 根内（绝对路径与 `..` 逃逸在 resolve
+ * 层拒绝）；二进制（前 4KB 含 NUL）不预览；超上限读前缀。
+ */
+export function readWorkspaceFile(root: string, relPath: string): WorkspaceFilePreview {
+  if (typeof relPath !== "string" || relPath === "" || relPath.length > MAX_PREVIEW_PATH_CHARS) {
+    throw new WorkspaceFileError("WORKSPACE_FILE_BAD_PATH", "预览路径须为非空且长度受限的字符串");
+  }
+  if (relPath.includes("\0")) {
+    throw new WorkspaceFileError("WORKSPACE_FILE_BAD_PATH", "预览路径含非法字节");
+  }
+  const base = path.resolve(root);
+  const abs = path.resolve(base, relPath);
+  if (abs !== base && !abs.startsWith(base + path.sep)) {
+    throw new WorkspaceFileError("WORKSPACE_FILE_ESCAPES", `预览路径越出 workspace：${relPath}`);
+  }
+  let st: { isDirectory(): boolean; size: number };
+  try {
+    st = statSync(abs);
+  } catch {
+    throw new WorkspaceFileError("WORKSPACE_FILE_UNAVAILABLE", `文件不可读（不存在或无权限）：${relPath}`);
+  }
+  if (st.isDirectory()) {
+    throw new WorkspaceFileError("WORKSPACE_FILE_UNAVAILABLE", "目录不可预览（文件树中点击文件）");
+  }
+  const truncated = st.size > MAX_PREVIEW_BYTES;
+  const readLen = truncated ? MAX_PREVIEW_BYTES : st.size;
+  const buf = Buffer.alloc(readLen);
+  const fd = openSync(abs, "r");
+  try {
+    readSync(fd, buf, 0, readLen, 0);
+  } finally {
+    closeSync(fd);
+  }
+  // 二进制防呆：前 4KB 含 NUL 视为二进制（文本预览会出乱码误导）
+  if (buf.subarray(0, Math.min(readLen, 4096)).includes(0)) {
+    throw new WorkspaceFileError("WORKSPACE_FILE_BINARY", "二进制文件不预览");
+  }
+  return { path: relPath, content: buf.toString("utf8"), truncated };
 }

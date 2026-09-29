@@ -114,9 +114,10 @@ export interface HostProtocolServerOptions {
    */
   onQuery?: (query: {
     sessionId: string;
-    op: "events" | "sessions" | "search" | "files" | "meta" | "usage";
+    op: "events" | "sessions" | "search" | "files" | "meta" | "usage" | "review" | "file";
     afterSeq?: number;
     criteria?: { contentLike: string; limit?: number; offset?: number };
+    path?: string;
   }) => Promise<unknown>;
   /**
    * settings 信封回调（U14/T-P3-103 host 面配置——bridge 直答，不经 agent、

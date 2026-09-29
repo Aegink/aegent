@@ -228,7 +228,7 @@
 
 **词汇表预判**：16c 全部零事件预判（面板/库/向导/配置面——既有事件与 wire 词汇在位）。
 
-#### T-P3-117 · U15 · 工作面板三 Tab（文件树/变更评审/子代理监控） `[ ]`
+#### T-P3-117 · U15 · 工作面板三 Tab（文件树/变更评审/子代理监控） `[x]`
 - **依据需求**：U15（"文件树浏览、变更评审 Tab、子代理监控 Tab"）
 - **上游首选参考**：[pi-desktop·workpanel 五件](../oss/pi-desktop/apps/desktop/src/components/workpanel)（WorkPanel/FilesTab/ReviewTab/SubagentPanel——🔴 只学行为）
 - **取什么 / 别抄什么**：取"三 Tab 工作面板 + 变更从消息流提取纯函数 + 委派状态收集器"三行为；不抄其 React 状态管理
@@ -236,6 +236,7 @@
 - **验收**：ui 资产断言 + `npx vitest run src/session/review-changes.test.ts`（新——提取纯函数：从流算变更清单/汇总）+ 子代理监控数据源断言 + 人工走查
 - **依赖**：T-P3-107（16b 渲染基础）；P2 15a Q2；P1 E5/H2
 - **风险 / 未知**：文件树在大 workspace 的性能（懒加载子目录——按需记档）
+- **完成记录（2026-09-29）**：验收 `npx vitest run src/session/review-changes.test.ts src/host/server.test.ts src/diagnostics/tauri-shell.test.ts` → **29 passed**（review-changes 6 新 + server 14〔含 review/file e2e〕+ tauri-shell 9；tsc 干净）。落地：①**提取纯函数** `src/session/review-changes.ts`（reviewChangesFromEvents + summarizeReviewChanges——纯函数从流算不建状态，卡面纪律；callId 成对 tool/call→tool/result，失败调用不计入，在途 task 标 running）；②**wire**：query op 闭集追加 `review`（工作面板聚合面——本会话内存序、跨会话回源库，恢复视图同享；events op 同款读面）+ `file`（workspace 单文件只读预览——parse 层 path 必填非空 ≤512）；③**预览面**：files-list.ts 增 readWorkspaceFile（workspace 内 resolve 断言〔`..`/绝对路径逃逸拒绝 WORKSPACE_FILE_ESCAPES〕+ 512KB 前缀读 truncated 标记 + 前 4KB NUL 二进制防呆）；④**ui**：工作面板右侧抽屉三 Tab（📁 文件树〔op:files 会话期缓存复用 + 点击 op:file 预览〕/ 🔍 变更评审〔写入/修改/删除徽标 + 汇总统计行〕/ 🤖 子代理〔委派表格：描述/子会话/状态/耗时〕）+ 🛠 状态栏入口 + n5 turn_settled 面板可见自动刷新；⑤**测试窗口**：镜像流 e2e 须按 E16 嵌套序列 emit（turn/start→step/start→tool 事件→step/end→turn/end）。**卡内定形（记档）**：变更提取面 = write/edit 显式 path + apply-patch 头自包含提取（不 import kernel 解析器）+ bash/pwsh 启发式（rm 目标=删除、重定向目标=写入、`>>` 合并匹配、/dev/null 排除；mv/cp/tee/sed -i 不提取——YAGNI）；write 的"新增或覆盖"从流不可分统称写入；路径反斜杠归一 posix、按路径聚合末次操作定态。人工走查列入确认清单（三 Tab 视觉/预览手感）。
 
 #### T-P3-118 · U16 · 提示词库（用户模板 CRUD + 斜杠调用） `[ ]`
 - **依据需求**：U16（"用户自建/编辑/删除 prompt 模板；Composer 斜杠调用时列出"）

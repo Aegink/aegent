@@ -231,6 +231,21 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(app).toContain("onboardingDone"); // 首跑标记（settings）
     expect(app).toContain("showRecoveryIfInterrupted"); // M3 可视化
     expect(app).toContain("aegentShowUpdate"); // U7 接线点（T-P3-114）
+    // U15/T-P3-117：工作面板三 Tab（文件树/变更评审/子代理监控）+ 两新 op
+    expect(html).toContain('id="workpanel"');
+    expect(html).toContain('id="work-btn"');
+    expect(html).toContain('data-worktab="files"');
+    expect(html).toContain('data-worktab="review"');
+    expect(html).toContain('data-worktab="subagent"');
+    expect(html).toContain('id="work-filetree"');
+    expect(html).toContain('id="work-delegation-table"');
+    expect(app).toContain('op: "review"'); // 变更/委派纯函数直答数据源
+    expect(app).toContain('op: "file"'); // 文件树点击预览
+    expect(app).toContain("refreshWorkReview"); // turn_settled 自动刷新接线
+    expect(app).toContain("previewWorkspaceFile");
+    for (const marker of [".work-tab", ".tree-row", ".review-badge", "#work-preview"]) {
+      expect(css).toContain(marker);
+    }
     for (const marker of [".search-hit", ".mm-row", "#find-bar", "#minimap", ".ac-row", ".attachment-chip"]) {
       expect(css).toContain(marker);
     }

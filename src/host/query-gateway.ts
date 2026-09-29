@@ -7,13 +7,17 @@
  * - files：workspace 只读文件列举（U10/T-P3-109——@ 补全数据面）
  * - meta：注册表清单（U10——ready 捕获的工具/技能名单，/ 补全来源）
  * - usage：用量与上下文聚合（U12/T-P3-111——usage_rollup/成本/压缩统计）
+ * - review：工作面板聚合面（U15/T-P3-117——变更评审 + 子代理委派一览，
+ *   纯函数从流算不建状态；本会话内存序、跨会话回源库——恢复视图同享）
+ * - file：workspace 单文件只读预览（U15 文件树 Tab——workspace 内断言）
  */
 
 import type { SessionStore } from "../session/store.js";
 import type { SqliteEventStorage } from "../session/db.js";
 import type { PricingEntry } from "../session/settings.js";
 import { querySessionsDb } from "../session/query.js";
-import { listWorkspaceFiles } from "./files-list.js";
+import { reviewChangesFromEvents } from "../session/review-changes.js";
+import { listWorkspaceFiles, readWorkspaceFile } from "./files-list.js";
 import { ensureUsageView, usageBySession, usageByTurn } from "../obs/usage.js";
 import { costRollup } from "../obs/cost.js";
 import { compactionStats } from "../obs/compaction-stats.js";
@@ -22,9 +26,10 @@ import { compactionStats } from "../obs/compaction-stats.js";
  * type/requestId 后的查询本体）。 */
 export interface HostQuery {
   sessionId: string;
-  op: "events" | "sessions" | "search" | "files" | "meta" | "usage";
+  op: "events" | "sessions" | "search" | "files" | "meta" | "usage" | "review" | "file";
   afterSeq?: number;
   criteria?: { contentLike: string; limit?: number; offset?: number };
+  path?: string;
 }
 
 /** U10/T-P3-109：ready 消息捕获的注册表清单（工具/技能——/ 补全来源）。 */
@@ -98,6 +103,21 @@ export async function handleHostQuery(
   if (query.op === "meta") {
     const caps = deps.capabilities();
     return { tools: caps?.tools ?? [], skills: caps?.skills ?? [] };
+  }
+  // U15/T-P3-117：工作面板聚合面——变更提取纯函数从流算（不建状态）。
+  // 读面与 events op 同款：本会话内存序（最新无 write-behind 滞后）、
+  // 跨会话回源库（历史会话的恢复视图同享工作面板）。
+  if (query.op === "review") {
+    const stream =
+      query.sessionId === deps.hostSessionId()
+        ? (store.load(query.sessionId) ?? [])
+        : (deps.sessionsLibrary?.readAll(query.sessionId) ?? []);
+    return { review: reviewChangesFromEvents(stream) };
+  }
+  if (query.op === "file") {
+    return {
+      file: readWorkspaceFile(deps.workspaceRoot ?? process.cwd(), query.path!),
+    };
   }
   // U12/T-P3-111：用量与上下文可视化（聚合面消费端）——数据源单源：
   // token 全部来自事件库 usage_rollup（assistant/message 的 usage 落流

@@ -55,10 +55,12 @@ export type ClientEnvelope =
       type: "query";
       requestId: string;
       sessionId: string;
-      op: "events" | "sessions" | "search" | "files" | "meta" | "usage";
+      op: "events" | "sessions" | "search" | "files" | "meta" | "usage" | "review" | "file";
       afterSeq?: number;
       /** op=search：检索条件（contentLike 必填非空——空串检索无意义面禁足）。 */
       criteria?: { contentLike: string; limit?: number; offset?: number };
+      /** op=file：预览目标（workspace 相对路径——U15 文件树 Tab）。 */
+      path?: string;
     }
   /**
    * U14/T-P3-103 settings 直答信封（host 面配置——不经 agent、不落流）：
@@ -149,6 +151,7 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
       "op",
       "afterSeq",
       "criteria",
+      "path",
     ]);
     if (unknownKey) throw new Error(`query 信封${unknownKey}`);
     if (typeof record["requestId"] !== "string" || record["requestId"] === "") {
@@ -163,10 +166,12 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
       record["op"] !== "search" &&
       record["op"] !== "files" &&
       record["op"] !== "meta" &&
-      record["op"] !== "usage"
+      record["op"] !== "usage" &&
+      record["op"] !== "review" &&
+      record["op"] !== "file"
     ) {
       throw new Error(
-        `query 的 op 非法：${String(record["op"])}（合法：events|sessions|search|files|meta|usage）`,
+        `query 的 op 非法：${String(record["op"])}（合法：events|sessions|search|files|meta|usage|review|file）`,
       );
     }
     const op = record["op"] as
@@ -175,7 +180,9 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
       | "search"
       | "files"
       | "meta"
-      | "usage";
+      | "usage"
+      | "review"
+      | "file";
     if (
       record["afterSeq"] !== undefined &&
       (typeof record["afterSeq"] !== "number" || !Number.isInteger(record["afterSeq"]) || record["afterSeq"] < 0)
@@ -222,6 +229,21 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
     } else if (op === "search") {
       throw new Error("query op=search 需要 criteria.contentLike");
     }
+    // op=file 的目标面（U15/T-P3-117）：path 必填非空、长度受限——
+    // workspace 边界在 gateway 的 readWorkspaceFile resolve 层拒绝。
+    let path: string | undefined;
+    if (record["path"] !== undefined) {
+      if (op !== "file") throw new Error("query 的 path 仅 op=file 可带");
+      if (typeof record["path"] !== "string" || record["path"] === "") {
+        throw new Error("query 的 path 须为非空字符串");
+      }
+      if (record["path"].length > 512) {
+        throw new Error("query 的 path 超长（上限 512 字符）");
+      }
+      path = record["path"];
+    } else if (op === "file") {
+      throw new Error("query op=file 需要 path（workspace 相对路径）");
+    }
     return {
       type: "query",
       requestId: record["requestId"],
@@ -229,6 +251,7 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
       op,
       ...(record["afterSeq"] !== undefined ? { afterSeq: record["afterSeq"] as number } : {}),
       ...(criteria !== undefined ? { criteria } : {}),
+      ...(path !== undefined ? { path } : {}),
     };
   }
   if (type === "settings") {

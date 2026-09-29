@@ -15,6 +15,7 @@
       <button id="history-btn" type="button" title="会话历史">☰ 历史</button>
       <button id="search-btn" type="button" title="跨会话搜索（Ctrl+Shift+F）">🔍 搜索</button>
       <button id="usage-btn" type="button" title="用量与上下文">📊 用量</button>
+      <button id="work-btn" type="button" title="工作面板（文件/变更/子代理）">🛠 工作</button>
       <button id="notify-btn" type="button" title="通知中心">🔔<span id="notify-badge" hidden></span></button>
       <button id="settings-btn" type="button" title="设置">⚙ 设置</button>
     </header>
@@ -158,6 +159,47 @@
             </thead>
             <tbody></tbody>
           </table>
+        </section>
+      </div>
+    </aside>
+    <!-- U15/T-P3-117 工作面板：三 Tab（文件树/变更评审/子代理监控）——
+         变更与委派从事件流提取（op:"review" 纯函数直答，不建状态）；
+         文件树 = op:"files" 列举 + op:"file" 点击预览（workspace 内只读） -->
+    <aside id="workpanel" hidden aria-label="工作面板">
+      <header class="settings-head">
+        <span>工作面板</span>
+        <button id="work-close" type="button">关闭</button>
+      </header>
+      <nav id="work-tabs">
+        <button type="button" data-worktab="files" class="work-tab active">📁 文件</button>
+        <button type="button" data-worktab="review" class="work-tab">🔍 变更评审</button>
+        <button type="button" data-worktab="subagent" class="work-tab">🤖 子代理</button>
+      </nav>
+      <div class="settings-body">
+        <section data-worktab-body="files">
+          <div id="work-filetree" class="work-tree"></div>
+          <p id="work-tree-hint" class="hint"></p>
+          <div id="work-preview-box" hidden>
+            <header class="preview-head">
+              <span id="work-preview-path"></span>
+              <button id="work-preview-close" type="button">收起</button>
+            </header>
+            <pre id="work-preview" class="card-args"></pre>
+          </div>
+        </section>
+        <section data-worktab-body="review" hidden>
+          <p id="work-review-summary" class="hint"></p>
+          <ul id="work-review-list"></ul>
+          <p class="hint">从事件流提取（write/edit/apply-patch 显式路径 + bash 的 rm/重定向推断——via 列标注来源）；失败调用不计入。</p>
+        </section>
+        <section data-worktab-body="subagent" hidden>
+          <table id="work-delegation-table">
+            <thead>
+              <tr><th>任务</th><th>子会话</th><th>状态</th><th>耗时</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <p id="work-delegation-hint" class="hint"></p>
         </section>
       </div>
     </aside>

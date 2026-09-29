@@ -1367,6 +1367,165 @@ document.getElementById("usage-close").addEventListener("click", () => {
 });
 
 // ---------------------------------------------------------------------------
+// U15/T-P3-117 工作面板：三 Tab（文件树/变更评审/子代理监控）。变更与委派
+// 数据源 = query op:"review"（纯函数从流直答）；文件树 = op:"files"（@ 补全
+// 缓存复用）+ op:"file" 点击预览；n5 turn_settled 时面板可见则自动刷新。
+// ---------------------------------------------------------------------------
+
+const workPanel = document.getElementById("workpanel");
+let workActiveTab = "files";
+let lastReviewReport = null; // 变更/委派共用一次 review 拉取
+
+function setWorkTab(tab) {
+  workActiveTab = tab;
+  for (const btn of document.querySelectorAll("#work-tabs .work-tab")) {
+    btn.classList.toggle("active", btn.dataset.worktab === tab);
+  }
+  for (const sec of document.querySelectorAll("#workpanel [data-worktab-body]")) {
+    sec.hidden = sec.dataset.worktabBody !== tab;
+  }
+}
+
+async function fetchReviewReport() {
+  const envelope = await sendQuery({ sessionId: sessionIdValue || "-", op: "review" });
+  return envelope.ok ? envelope.result : null;
+}
+
+function renderReviewReport(report) {
+  if (!report) return;
+  const ops = report.operations ?? [];
+  const writes = ops.filter((o) => o.op === "write").length;
+  const edits = ops.filter((o) => o.op === "edit").length;
+  const deletes = ops.filter((o) => o.op === "delete").length;
+  document.getElementById("work-review-summary").textContent =
+    `本会话 ${report.changes.length} 个文件被触碰：写入 ${writes} · 修改 ${edits} · 删除 ${deletes}`;
+  const list = document.getElementById("work-review-list");
+  list.replaceChildren();
+  for (const c of report.changes) {
+    const li = document.createElement("li");
+    li.className = `review-item review-${c.op}`;
+    const badge = document.createElement("span");
+    badge.className = "review-badge";
+    badge.textContent = c.op === "write" ? "写入" : c.op === "edit" ? "修改" : "删除";
+    const path = document.createElement("code");
+    path.textContent = c.path;
+    const via = document.createElement("span");
+    via.className = "hint";
+    via.textContent = `via ${c.via}`;
+    li.append(badge, path, via);
+    list.appendChild(li);
+  }
+  if (report.changes.length === 0) {
+    const li = document.createElement("li");
+    li.className = "hint";
+    li.textContent = "（本会话暂无文件写操作——agent 改动后自动刷新）";
+    list.appendChild(li);
+  }
+
+  const body = document.querySelector("#work-delegation-table tbody");
+  body.replaceChildren();
+  for (const d of report.delegations ?? []) {
+    const tr = document.createElement("tr");
+    const statusText =
+      d.status === "completed" ? "✔ 完成" : d.status === "failed" ? "✘ 失败" : d.status === "cancelled" ? "⊘ 取消" : "⏳ 进行中";
+    for (const text of [
+      d.description || "（无描述）",
+      d.subagentSessionId ?? "—",
+      d.errorCode ? `${statusText}（${d.errorCode}）` : statusText,
+      d.durationMs !== undefined ? `${(d.durationMs / 1000).toFixed(1)}s` : "—",
+    ]) {
+      const td = document.createElement("td");
+      td.textContent = text;
+      tr.appendChild(td);
+    }
+    body.appendChild(tr);
+  }
+  if ((report.delegations ?? []).length === 0) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 4;
+    td.textContent = "（本会话暂无子代理委派——task 工具调用后可见）";
+    tr.appendChild(td);
+    body.appendChild(tr);
+  }
+  document.getElementById("work-delegation-hint").textContent =
+    "委派状态/耗时取 task 调用与结算的流内事实（H1/H2 面）；点击子代理 Tab 查看一览。";
+}
+
+async function refreshWorkReview() {
+  lastReviewReport = await fetchReviewReport();
+  renderReviewReport(lastReviewReport);
+}
+
+function renderFileTree(entries, truncated) {
+  const tree = document.getElementById("work-filetree");
+  tree.replaceChildren();
+  // 全量清单按目录深度缩进成树（条目上限 1000 已在 host 侧防呆）
+  for (const e of entries) {
+    const row = document.createElement("div");
+    row.className = "tree-row";
+    const depth = e.path.split("/").length - (e.dir ? 2 : 1);
+    row.style.paddingLeft = `${Math.max(0, depth) * 14 + 4}px`;
+    if (e.dir) {
+      row.textContent = `📁 ${e.path.split("/").filter(Boolean).pop() ?? e.path}/`;
+      row.classList.add("tree-dir");
+    } else {
+      row.textContent = `📄 ${e.path.split("/").pop()}`;
+      row.classList.add("tree-file");
+      row.addEventListener("click", () => void previewWorkspaceFile(e.path));
+    }
+    tree.appendChild(row);
+  }
+  if (entries.length === 0) {
+    const p = document.createElement("p");
+    p.className = "hint";
+    p.textContent = "（workspace 无可列举文件——检查 --workspace 或 sandbox 档）";
+    tree.appendChild(p);
+  }
+  document.getElementById("work-tree-hint").textContent = truncated
+    ? "文件清单超上限 1000 条已截断（大目录树提示）——可输入完整路径到输入区用 @ 补全定位。"
+    : `共 ${entries.length} 项——点击文件预览内容。`;
+}
+
+async function previewWorkspaceFile(relPath) {
+  const box = document.getElementById("work-preview-box");
+  const pre = document.getElementById("work-preview");
+  const label = document.getElementById("work-preview-path");
+  label.textContent = relPath;
+  pre.textContent = "读取中…";
+  box.hidden = false;
+  const envelope = await sendQuery({ sessionId: sessionIdValue || "-", op: "file", path: relPath });
+  if (!envelope.ok) {
+    pre.textContent = `预览不可用：${envelope.error?.message ?? ""}`;
+    return;
+  }
+  const f = envelope.result;
+  pre.textContent = f.truncated ? `${f.content}\n…（超 512KB 只读前缀）` : f.content;
+}
+
+async function openWorkpanel() {
+  workPanel.hidden = false;
+  setWorkTab(workActiveTab);
+  const files = await ensureFileCache(); // 与 @ 补全同一会话期缓存
+  if (files) renderFileTree(files.entries ?? [], files.truncated === true);
+  await refreshWorkReview();
+}
+
+document.getElementById("work-btn").addEventListener("click", () => {
+  if (workPanel.hidden) void openWorkpanel();
+  else workPanel.hidden = true;
+});
+document.getElementById("work-close").addEventListener("click", () => {
+  workPanel.hidden = true;
+});
+document.getElementById("work-preview-close").addEventListener("click", () => {
+  document.getElementById("work-preview-box").hidden = true;
+});
+for (const btn of document.querySelectorAll("#work-tabs .work-tab")) {
+  btn.addEventListener("click", () => setWorkTab(btn.dataset.worktab));
+}
+
+// ---------------------------------------------------------------------------
 // U13/T-P3-112 五件套：通知中心（N5 分型消费）+ Toast 轻提示 + 首次引导
 // 清单（settings 首跑标记）+ 启动恢复横幅（M3 诊断 + 一键续跑）+ 更新
 // 横幅与发布说明弹窗（U7 消费端——真实更新源 T-P3-114 接线）。
@@ -1410,6 +1569,10 @@ function consumeN5(payload) {
   if (notifications.length > 50) notifications.shift(); // 面板容量防呆
   toast(n5ToastText(payload), payload.kind);
   renderNotifyList();
+  // U15：工作面板开着时随轮结算自动刷新（变更/委派是流投影——重算便宜）
+  if (payload.kind === "turn_settled" && workPanel !== null && !workPanel.hidden) {
+    void refreshWorkReview();
+  }
 }
 
 function n5ToastText(n) {

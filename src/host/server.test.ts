@@ -879,6 +879,76 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
     await new Promise((r) => setTimeout(r, 50)); // Windows 句柄释放缓冲
   });
 
+  it("query op=review/file（U15/T-P3-117）：工作面板聚合面 + 预览边界", async () => {
+    const ws = mkdtempSync(path.join(tmpdir(), "aegent-host-work-"));
+    settingsTmpDirs.push(ws);
+    writeFileSync(path.join(ws, "a.txt"), "hello");
+    mkdirSync(path.join(ws, "sub"), { recursive: true });
+    writeFileSync(path.join(ws, "sub", "b.md"), "body");
+    const agent = fakeAgent();
+    // 流内写事实：write a.ts 成功 + edit a.ts 失败 + task 委派完成（经
+    // agent.emit 进镜像流——seq/ts 由 store 分配，与生产事件路径同源）。
+    // E16：step/turn 域事件须 turn/step 依次开启（嵌套完整序列）。
+    const emitEvent = (event: Record<string, unknown>): void => {
+      agent.emit({ type: "event", event: event as never });
+    };
+    emitEvent({ type: "turn/start", turn: 1 });
+    emitEvent({ type: "step/start", turn: 1, step: 1 });
+    emitEvent({ type: "tool/call", turn: 1, step: 1, callId: "c1", name: "write", arguments: JSON.stringify({ path: "a.txt", content: "x" }) });
+    emitEvent({ type: "tool/result", turn: 1, step: 1, callId: "c1", message: { content: "ok" } });
+    emitEvent({ type: "step/end", turn: 1, step: 1 });
+    emitEvent({ type: "step/start", turn: 1, step: 2 });
+    emitEvent({ type: "tool/call", turn: 1, step: 2, callId: "c2", name: "edit", arguments: JSON.stringify({ path: "missing.txt", oldText: "a", newText: "b" }) });
+    emitEvent({ type: "tool/result", turn: 1, step: 2, callId: "c2", message: { content: "not found", isError: true }, error: { name: "EditError", code: "EDIT_NOT_FOUND" } });
+    emitEvent({ type: "step/end", turn: 1, step: 2 });
+    emitEvent({ type: "turn/end", turn: 1, reason: { kind: "completed" } });
+    emitEvent({ type: "turn/start", turn: 2 });
+    emitEvent({ type: "step/start", turn: 2, step: 1 });
+    emitEvent({ type: "tool/call", turn: 2, step: 1, callId: "t1", name: "task", arguments: JSON.stringify({ description: "探索目录", prompt: "ls" }) });
+    emitEvent({ type: "tool/result", turn: 2, step: 1, callId: "t1", message: { content: "done" }, meta: { subagent: { sessionId: "s-child", stopReason: "completed" } } });
+    const { port } = await startServer({ agent, workspaceRoot: ws });
+    const client = await wsConnect(port);
+    await client.hello("web-w1");
+
+    const queryCall = (call: Record<string, unknown>, requestId: string) => {
+      client.raw({ type: "query", requestId, ...call });
+      return client.waitFor((e) => e.type === "response" && e.requestId === requestId, `query(${requestId})`) as Promise<Record<string, unknown>>;
+    };
+
+    // 变更评审：成功 write 入清单、失败 edit 排除、task 委派一览（含耗时面）
+    const review = await queryCall({ sessionId: "s-h1", op: "review" }, "r1");
+    expect(review.ok).toBe(true);
+    const report = review.result as {
+      review: {
+        changes: { path: string; op: string; via: string }[];
+        operations: { path: string; op: string }[];
+        delegations: { description: string; status: string; subagentSessionId?: string; durationMs?: number }[];
+      };
+    };
+    expect(report.review.changes).toEqual([{ path: "a.txt", op: "write", via: "write", lastSeq: expect.any(Number) }]);
+    expect(report.review.delegations).toHaveLength(1);
+    expect(report.review.delegations[0]).toMatchObject({
+      description: "探索目录",
+      status: "completed",
+      subagentSessionId: "s-child",
+    });
+    expect(report.review.delegations[0]!.durationMs).toBeGreaterThanOrEqual(0);
+
+    // 文件预览：workspace 内可读；逃逸路径与目录类型化拒绝
+    const preview = await queryCall({ sessionId: "-", op: "file", path: "sub/b.md" }, "r2");
+    expect(preview.ok).toBe(true);
+    expect((preview.result as { file: { content: string; truncated: boolean } }).file).toEqual({
+      path: "sub/b.md",
+      content: "body",
+      truncated: false,
+    });
+    const escape = await queryCall({ sessionId: "-", op: "file", path: "../escape.txt" }, "r3");
+    expect((escape.error as { code: string }).code).toBe("WORKSPACE_FILE_ESCAPES");
+    const dirPreview = await queryCall({ sessionId: "-", op: "file", path: "sub" }, "r4");
+    expect((dirPreview.error as { code: string }).code).toBe("WORKSPACE_FILE_UNAVAILABLE");
+    client.close();
+  });
+
   it("notification name=n5（U13/T-P3-112）：notifyHub 分类通知全端 WS 广播", async () => {
     const hub = new NotificationHub();
     const agent = fakeAgent();
