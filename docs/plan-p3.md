@@ -377,12 +377,13 @@
 - **风险 / 未知**：浏览器 MediaRecorder 编码格式与 STT 端点兼容（webm/opus——卡内定形）
 - **完成记录（2026-09-29）**：验收 `npx vitest run src/host/server.test.ts src/host/speech-gateway.test.ts src/diagnostics/tauri-shell.test.ts src/attachments/` → **64 passed**（server 19〔+1 stt e2e 三路〕+ speech-gateway 5 新〔代理三路+base64 解码+stt 段 parse〕+ shell 9 + attachments 31 回归〔P4 stt.test 契约面零改动〕；tsc 干净、architecture **0 error / 22 warning 基线保持**——gateway 曾 2 error〔419 行 + host→attachments 未声明〕，speech/skills 面拆分 + host requires 加 attachments 后归还）。落地：①**settings `stt` 段**（baseUrl/model 必填 + language 可选——parse fail-closed）+ patch 白名单；**key 零明文**：STT 端点 key 走 credentials 库 "stt" 键名（U2 通道复用，settings 段不存 key）；②**转写代理**：settings op:"stt-transcribe"（mediaType + base64 音频）→ `runSttTranscribe`（speech-gateway.ts）→ P4 `transcribeAudio`（AUDIO_MEDIA_TYPES 白名单/URL/Authorization 组装全复用）→ {text, model} 回执；未配置 → 类型化 STT_NOT_CONFIGURED；③**ui 第十八分节** data-section="speech"："语音【实验性】"标记 + STT 配置三字段即改即存 + key 录入 hint 指向凭据分节；④**Composer 麦克风按钮** 🎤（点击开始/再点结束——按住说话在 WebView 的可靠性差，卡内定形记档）：MediaRecorder 录音〔缺省 audio/webm——P4 白名单含 audio/webm，卡内定形预判兑现〕→ blobToBase64 → 转写 → **文本填入输入框不自动发送**（用户确认后回车）；**权限拒绝降级**（NotAllowedError → toast 提示引导浏览器设置；无 mediaDevices → 环境不支持提示）。**记档**：①TTS 播报面不落（卡面授权"可先只落 STT 侧"）；②真实 STT 端点联调随 U8 重开（mock fetch 三路机验在位——gateway 第 7 参 fetch 注入面）；③gateway 职责拆分完成三件套：skills-gateway/instructions-gateway/speech-gateway——FileSettingsGateway 主类回 338 行（每面一文件，行数纪律收口）。人工走查（真实麦克风+真实端点）列入确认清单。
 
-#### T-P3-130 · 收口 · 16d 盘点 + P3 全段终验收 `[ ]`
+#### T-P3-130 · 收口 · 16d 盘点 + P3 全段终验收 `[x]`
 - **依据需求**：批次 16d 收口 + P3 全段终验收
 - **要产出**：盘点面：①U22 技能开关 × I2 装配链；②U23 五预设 × H 族权限降级（预设工具集即 H3/H5 的声明面）；③U23 模型 fallback 链 × U18 辅助模型档一致性；④U24 指令编辑 × protected 路径防线；⑤U25 键位 × 浏览器保留键；⑥U26 STT 链 × P4 面；⑦P3 全段对账（26 条状态表）+ 人工确认清单闭环复核
 - **验收**：`npx vitest run`（全量）+ 工具链四件（count-features = 337——#29 裁决修正，2026-09-29）+ license-audit
 - **依赖**：T-P3-101 ~ 129 全部
 - **风险 / 未知**：无
+- **完成记录（2026-09-29）**：验收全量 `npx vitest run` → **1813 passed / 7 skipped，exit 0**（205 文件：204 passed + 1 skipped〔live-p2 env gate〕；基线 1777/7〔202 文件〕→ 净增 36 passed、3 新测试文件〔subagents-config/keymap/speech-gateway〕；**两例既有基建 flake 本批顺手修复**：llm-replay 计时抖动〔normalize 补 timing 数值抹平——三次连跑验证稳定〕+ complexity.test 收尾竞态〔flush await 化——T-P3-111 cost.test 同款修法〕，两处全为测试基建面非产品代码）+ 工具链五件全绿：count-features **337** / check-doc-links 显式传参 **1217 链接 0 失效** / architecture **0 error / 22 warning**（基线保持——16d 期间三度触顶均在当场拆分治理归还：protocol-settings 拆分〔T-P3-125〕、agent-child-config 拆分〔T-P3-126〕、skills/instructions/speech-gateway 三拆〔T-P3-127/129〕；host requires 增 attachments〔U26 STT 代理真实消费〕）/ vocabulary **0 问题**（词汇表 30 不变——16d 零事件兑现）/ license-audit **exit 0**）+ `tsc --noEmit` 干净。七项盘点面与 **P3 全段 27 条对账表**全部落 `plan-p3-progress.md` 收官报告。批次 16d 完成：6 张卡全勾 ✅ + 组报告 ✅ + P3 全段收官报告《P3 功能全景与借鉴映射》✅。
 
 ## §7 批次完成定义
 
@@ -391,4 +392,4 @@
 - **16c**：9 张卡全勾 ✅；工作面板三 Tab 可用（文件树/变更评审/子代理监控）✅；提示词库/MCP 向导/辅助模型卡/Profiles/导入导出/CLI TUI 各面验收 ✅；报告入 `plan-p3-progress.md` ✅。
 - **16d**：6 张卡全勾 ✅；技能管理（清单/编辑器/来源目录）✅；子智能体管理（内置五预设/自定义/模型 fallback 链/权限 chips）✅；指令中心/快捷键/语音设置各面验收 ✅。
 - P3 对账：27 条逐条状态表（落地/放弃理由）入 progress ✅。
-- **段收官产出《P3 功能全景与借鉴映射》**（`YYYYMMDD_P3功能全景与借鉴映射.md`——P0/P1 惯例固化）✅。
+- **段收官产出《P3 功能全景与借鉴映射》**（`20260929_P3功能全景与借鉴映射.md`——P0/P1 惯例固化）✅。

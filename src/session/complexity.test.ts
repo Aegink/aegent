@@ -67,7 +67,7 @@ afterAll(() => {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
 });
 
-function seedQueryDb(turnCount: number): string {
+async function seedQueryDb(turnCount: number): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), "aegent-complexity-"));
   dirs.push(dir);
   const dbPath = join(dir, "events.sqlite");
@@ -76,7 +76,10 @@ function seedQueryDb(turnCount: number): string {
   for (let turn = 1; turn <= turnCount; turn++) {
     store.append("s-perf", oneTurn(turn, (turn - 1) * 6 + 1).map((e) => ({ ...e, ts: 1_700_000_000_000 + turn })));
   }
-  store.flush("s-perf");
+  // flush 返回 Promise（write-behind 排空异步落库）——必须 await 后再
+  // close，否则收尾回调撞上已关连接（unhandled rejection；T-P3-111
+  // cost.test 同款竞态的收尾面）。
+  await store.flush("s-perf");
   storage.close();
   return dbPath;
 }
@@ -106,9 +109,9 @@ describe("热点复杂度增长曲线（T7——断言形状不断言绝对耗�
     expect(ratio).toBeLessThan(LINEAR_RATIO_CEILING);
   });
 
-  it("querySessions 检索：2n/n 耗时比 < 4（索引面不随库容超线性）", () => {
-    const smallDb = seedQueryDb(500); // 3 000 行
-    const largeDb = seedQueryDb(1_000); // 6 000 行
+  it("querySessions 检索：2n/n 耗时比 < 4（索引面不随库容超线性）", async () => {
+    const smallDb = await seedQueryDb(500); // 3 000 行
+    const largeDb = await seedQueryDb(1_000); // 6 000 行
     const tSmall = minOf3(() => querySessions(smallDb, { types: ["user/message"] }));
     const tLarge = minOf3(() => querySessions(largeDb, { types: ["user/message"] }));
     const ratio = tLarge / tSmall;

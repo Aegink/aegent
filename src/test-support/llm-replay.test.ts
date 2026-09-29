@@ -145,15 +145,35 @@ describe("录制→回放等价（O15 验收①：避免手写 mock 漂移）", 
     const replay = new ReplayProvider(parseCalls(recorder.toFixture()));
     const replayedStream = await runTurn(replay);
 
-    // 归一化易变值（seq/ts + E14 定时流的真实 time）后逐字节相等——
-    // 事件流快照等价即"无漂移"（时间戳不属于被记录的事实，fixture 本就不录 time）
+    // 归一化易变值（seq/ts + E14 定时流的真实 time + 真实时延计时）后逐
+    // 字节相等——事件流快照等价即"无漂移"（时间戳与耗时都不属于被记录的
+    // 事实，fixture 本就不录；计时 0/1ms 边界抖动曾两次记档——平滑面）。
+    const zeroNumbers = (value: unknown): unknown => {
+      if (typeof value === "number") return 0;
+      if (Array.isArray(value)) return value.map(zeroNumbers);
+      if (value !== null && typeof value === "object") {
+        return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, zeroNumbers(v)]));
+      }
+      return value;
+    };
     const normalize = (events: readonly SessionEvent[]) =>
       stableStringify(
         events.map((e) => {
           const base = { ...e, seq: 0, ts: 0 };
-          return "stream" in base && Array.isArray(base.stream)
-            ? { ...base, stream: base.stream.map((s) => ({ time: 0, chunk: s.chunk })) }
-            : base;
+          const message = (base as { message?: unknown }).message;
+          const withTiming =
+            message !== null && typeof message === "object" && "timing" in (message as object)
+              ? {
+                  ...base,
+                  message: {
+                    ...(message as Record<string, unknown>),
+                    timing: zeroNumbers((message as { timing: unknown }).timing),
+                  },
+                }
+              : base;
+          return "stream" in withTiming && Array.isArray(withTiming.stream)
+            ? { ...withTiming, stream: withTiming.stream.map((s) => ({ time: 0, chunk: s.chunk })) }
+            : withTiming;
         }),
       );
     expect(normalize(replayedStream)).toBe(normalize(realStream));

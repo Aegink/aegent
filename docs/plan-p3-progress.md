@@ -160,6 +160,80 @@
 **批次 16c 完成定义复核（plan-p3.md §7）**：9 张卡全勾 ✅；工作面板三 Tab 可用 ✅（+协作 Tab）；提示词库/MCP 向导/辅助模型卡/Profiles/导入导出/CLI TUI 各面验收 ✅；报告入 plan-p3-progress.md ✅（本节）。
 
 
+### 批次 16d · 收官报告（2026-09-29）——P3 全段收官
+
+**状态**：✅ 收官（2026-09-29）——5 条需求 / 6 张卡全关（T-P3-125 ~ 129 + 收口 T-P3-130）。**P3 全段（批次 16a~16d，31 卡）至此全部收官**。台账：
+
+- **T-P3-125 U22 技能管理** ✅（settings skills 段〔disabled/roots〕+ loadSkills 停用过滤/多根合并/origin 标注/`tools:` frontmatter 解析 + 装配三面收口〔系统提示/skill_load/ready 补全——子代理同透传〕+ settings op:skills-list/skill-save〔slug 双防线 + 128KB 上限〕+ protocol-settings 拆分〔protocol.ts 398 触顶治理〕+ ui 十四分节；85 passed）。记档：技能删除面不落（原文无此要求，停用开关已覆盖"可停"）；"内置与用户标记"映射为来源标记（工作区 vs 外部 roots）；工具集为声明面。
+- **T-P3-126 U23 子智能体管理** ✅（subagents-config.ts：BUILTIN_SUBAGENTS 五内置〔explorer/code-reviewer/test-runner/fixer/ui-designer——我方工具集映射〕+ resolveSubagent 字段级覆盖合并 + resolveSubagentModel〔与 U18 同构链〕+ subagentCatalog 两分区 + settings subagents 段〔停用最简记录 = pi-desktop enabledHandles 语义〕+ task 工具 `subagent_type` 参数 + runner 消费〔工具集 = C25 activation session 层白名单；身份段 = ChildAssemblyOptions.extraPrompt；独立模型 = agent-child 预解析 Map + modelForTurn 恒捕获〕+ op:subagents-list + ui 十五分节；137 passed）。记档：用户自定义存 settings 段而非卡面预判的 ~/.aegent/subagents 目录（卡内自由度——pi-desktop 亦为文档存储）；fallbacks 数据面（真实装配随 J15）。
+- **T-P3-127 U24 指令中心** ✅（三文件位：workspace AGENTS.md / 全局 ~/.aegent/AGENTS.md / 用户规则 ~/.aegent/rules.txt + parseRulesText〔每行 `规则 -> allow|ask|deny`，坏行跳过落 issue〕+ **装配消费**〔全局层 = SystemPromptDeps.globalAgentsPath 进 F2 合并最远层；规则文件 = loadUserRuleSources 进 ChildAssemblyOptions.rules——C22 user 档既有评估链〕+ op:instructions-list/instruction-save〔target 白名单三位〕+ instructions-gateway 拆分 + ui 十六分节〔保存确认面 + 规则 lint 提示 + 模板插入〕；policy 297 + server/shell/system-prompt 57 passed）。记档：C22 另两档〔session-runtime/turn-override〕是运行时批准缓存非文件面；agent-child-subagents.ts 更名 agent-child-config.ts〔U23+U24 装配 helper 收拢〕。
+- **T-P3-128 U25 快捷键系统** ✅（ui/keymap.js 纯逻辑注册表〔DEFAULT_KEYMAP 八 action + eventToCombo 规范化 + createKeymap 部分覆盖合并 + detectConflict〔注册表冲突 + RESERVED_COMBOS 保留键提示不拦截〕+ resolveAction 输入区分发语义〕+ settings shortcuts 段〔非法值宽容忽略〕+ app.js 统一分发替换 Ctrl+F 硬编码 + ui 十七分节〔清单/捕获态改绑〔冲突阻断保存〕/恢复默认〕+ keymap.d.ts；57 passed）。
+- **T-P3-129 U26 语音设置与输入（实验性）** ✅（settings stt 段〔baseUrl/model 必填〕+ key 走 credentials "stt" 键名〔零明文〕+ op:stt-transcribe → runSttTranscribe〔speech-gateway.ts〕→ P4 transcribeAudio 复用 + ui 十八分节"语音【实验性】" + Composer 🎤 按钮〔MediaRecorder → base64 上送 → 文本填入输入框不自动发送〕+ 权限拒绝降级〔NotAllowedError → toast 引导〕；64 passed 含 attachments 31 回归）。记档：TTS 不落（卡面授权）；真实 STT 端点联调随 U8 重开（fake fetch 注入面在位）。
+- **T-P3-130 收口** ✅（见下盘点面）。
+
+- **验收台账**：全量 `npx vitest run` **1813 passed / 7 skipped，exit 0**（205 文件：204 passed + 1 skipped = live-p2 env gate；16d 基线 1777/7〔202 文件〕→ 净增 36 passed、3 新测试文件〔subagents-config/keymap/speech-gateway〕）。`npx tsc --noEmit` 全程干净。工具链五件全绿：
+  - `count-features.sh` = **337**（层数 20；P3=27）；
+  - `check-doc-links.sh`（显式传参 10 文件）**1217 链接 0 失效**；
+  - `architecture:check` **0 error / 22 warning**（基线保持——16d 期间三度触顶均在当场拆分治理归还：①T-P3-125 protocol-settings.ts〔protocol.ts 398 触顶〕；②T-P3-126 agent-child-config.ts〔agent-child.ts 超行〕；③T-P3-127/129 instructions/skills/speech-gateway 三拆〔settings-gateway 超行〕；host requires 增 **attachments**〔U26 STT 代理真实消费——装配面渐进采用先例续记〕）；
+  - `vocabulary:check` 0 问题（**16d 零事件兑现**——词汇表 30 不变）；
+  - `license-audit` exit 0。
+- **既有基建 flake 顺手修复（16b 记档建议兑现——两处全为测试基建面，非产品代码）**：①llm-replay.test 计时抖动：normalize 补 timing 数值抹平（真实时延 0/1ms 边界与 time/seq/ts 同属"非被记录事实"）——三次连跑验证稳定；②complexity.test 收尾竞态：seedQueryDb 的 flush await 化（write-behind 排空先于 close——T-P3-111 cost.test 同款修法）。修复后全量 exit 0（此前 run 收尾常带 2 unhandled errors）。
+
+**盘点面（T-P3-130 七项）**：
+1. **U22 技能开关 × I2 装配链** ✅——settings.skills.disabled 经 agent-child → ChildAssemblyOptions.skillsDisabled → loadSkillsFromRoots(disabled) 单点过滤，系统提示清单（assembly contextLayer）/ skill_load 工具（含子代理透传 subagent.ts）/ ready 补全面（agent-process）三处同一数据源——"停用即从新会话装配剔除"无旁路。机验：skills.test disabled 用例 + skills_load 工具透传例。
+2. **U23 五预设 × H 族权限降级** ✅——预设工具集经 C25 activation 的 session 层白名单收窄（H3 Deny broker / H5 deriveSubagentRules 降级链原样叠加在其上——"降级面之上再收窄"，激活失败不进批准层与 allow/ask/deny 语义正交）；预设身份 = extraPrompt 系统提示追加段（persona 同款位）；深度/默认禁用等 H1-H5 既有防线零改动。机验：subagents-config.test runner 集成两例（停用拒绝 + extraPrompt 落 system/message）+ 既有 task.test 全绿（H3/H5 断言未动）。
+3. **U23 模型 fallback 链 × U18 辅助模型档一致性** ✅——resolveSubagentModel 与 resolveEnhancementTarget 同构三段链（定义级 model → 被引条目 model → defaultModel），agent-child 消费同走 registry.resolveTarget（同 identity 复用注册表实例、不进换模注册表——J6 面不变）；差异面仅"未配置 = 回退父会话模型"（U18 判官未配 = 无判官）。机验：subagents-config.test 回退链四例。
+4. **U24 指令编辑 × protected 路径防线** ✅——写回面 = target 白名单三值（INSTRUCTION_TARGETS 单一事实源在 protocol-settings，parse 层闭集校验），host 侧路径收敛在 instructionPaths（无任意路径面）；技能写回同款 slug 双防线（parse 层 + gateway 层）；全部 tmp 原子替换。规则文件装配消费走 C22 既有 RuleSource→loadRules→gate 评估链（无第二评估路径）。
+5. **U25 键位 × 浏览器保留键** ✅——RESERVED_COMBOS 名单提示不拦截（卡内定形），捕获态冲突检测双轨：注册表内冲突阻断保存（类型化提示占用方）、保留键 warning 后允许保存（UI 自测引导）；分发语义保持既有行为（打字中 Ctrl+F 可搜、Escape 关搜索条、裸键还给编辑——keymap.test 分发三例钉死）。
+6. **U26 STT 链 × P4 面** ✅——UI MediaRecorder（audio/webm——P4 AUDIO_MEDIA_TYPES 白名单含 webm，卡内定形预判兑现）→ settings op:"stt-transcribe" → runSttTranscribe → P4 transcribeAudio 原函数（白名单/URL/Authorization/响应契约全复用零旁路）；key 零明文（credentials "stt" 键——server.test e2e 断言未配置/配置/白名单外三路）。TTS 不落（卡面授权）；真实端点联调随 U8（fake fetch 注入面在位）。
+7. **P3 全段对账（27 条状态表）**：见下表——**27/27 闭环，零悬挂**。
+
+**P3 全段对账表（27 条逐条状态——T-P3-130 验收；16a~16c 21 条沿用既有记录，16d 5 条新落）**：
+
+| 条目 | 状态 | 批次/卡 | 记录 |
+| --- | --- | --- | --- |
+| U1 配置文件面 | ✅ 落地 | 16a/T-P3-101 | settings v1 + 优先级链 + fail-closed |
+| U2 凭据管理 | ✅ 落地 | 16a/T-P3-102 | DPAPI + CLI key 面 + 零明文 |
+| U14 设置中心 | ✅ 落地 | 16a/T-P3-103 + 132 | 分节八→十八（16b~16d 扩展）+ 主题 |
+| U5 模型/端点管理 | ✅ 落地 | 16a/T-P3-104 | 多注册表 + 会话期切换 + 健康徽标 |
+| U3 会话历史 | ✅ 落地 | 16a/T-P3-105 | 列表/续聊/删除（session_index 聚合——定案） |
+| U4 渲染分层 | ✅ 落地 | 16b/T-P3-107 | vendor 两库 + XSS 十例机验 |
+| U9 导航检索 | ✅ 落地 | 16b/T-P3-108 | Ctrl+F + 跨会话搜索 + 小地图 |
+| U10 Composer | ✅ 落地 | 16b/T-P3-109 | 多行 + @//补全 + 粘贴图 |
+| U11 项目管理 | ✅ 落地 | 16b/T-P3-110 | projects 段 + 切换 = 新会话生效（记档） |
+| U12 用量可视化 | ✅ 落地 | 16b/T-P3-111 | op:usage 单源 + 成本页 |
+| U13 通知引导 | ✅ 落地 | 16b/T-P3-112 | N5 hub + 引导 + 恢复 + 更新横幅 |
+| U6 桌面壳分发 | ✅ 落地 | 16b/T-P3-113 | SEA 失败实证回退便携 node + 31.08MiB |
+| U7 自动更新 | ✅ 落地 | 16b/T-P3-114 | updater 单插件 + minisign 两路演示 |
+| U8 真实联调 | ✅ 闭环 | 16b/T-P3-115 | 4 放弃 + 2 部分转正零悬挂 |
+| U15 工作面板 | ✅ 落地 | 16c/T-P3-117 | 三 Tab + 纯函数提取 |
+| U16 提示词库 | ✅ 落地 | 16c/T-P3-118 | settings 段 + / 补全 + {{var}} |
+| U17 MCP 向导 | ✅ 落地 | 16c/T-P3-119 | 装配消费 + mcp-check（stdio 收敛记档） |
+| U18 辅助模型 | ✅ 落地 | 16c/T-P3-120 | enhancement 段 + 回退链 + 判官/摘要接线 |
+| U19 Profiles | ✅ 落地 | 16c/T-P3-121 | 组合档 + applyProfile + failover 顺序面 |
+| U20 导入导出 | ✅ 落地 | 16c/T-P3-122 | 导出零凭据 + 三层确认 + 备份滚动 |
+| U21 CLI 编辑器 | ✅ 落地 | 16c/T-P3-123 | kill-ring/Ctrl+R/续行 + 零回归 |
+| U27 会话间协作 | ✅ 落地 | 16c/T-P3-131 | session/collab 新事件（#30）+ 快照定死 + 环检测 |
+| U22 技能管理 | ✅ 落地 | 16d/T-P3-125 | skills 段 + 多根/停用装配 + 编辑器写回 + 来源目录 |
+| U23 子智能体管理 | ✅ 落地 | 16d/T-P3-126 | 五内置预设 + task subagent_type + activation 收窄 + 独立模型链 |
+| U24 指令中心 | ✅ 落地 | 16d/T-P3-127 | 三文件位 + parseRulesText + 装配消费 + 保存确认 |
+| U25 快捷键系统 | ✅ 落地 | 16d/T-P3-128 | keymap 注册表 + 捕获改绑 + 冲突双轨提示 |
+| U26 语音设置 | ✅ 落地 | 16d/T-P3-129 | stt 段 + 转写代理（P4 复用）+ 🎤 录音填入（实验性） |
+
+**U 域原文与锚点核对（开工三件套②，2026-09-29）**：requirements.md:664-668 五条（U22~U26）逐字对照卡面摘录——全部一致无漏项失真（U22 括号内"卡片/描述/内置与用户标记/启用开关"等明细在"要产出"完整覆盖；U26 的 STT/TTS 双面按卡面"可先只落 STT 侧——卡内定形"授权收敛并记档）；snapshot.sh 零漂移（仅日期戳，已还原）。
+
+**卡内定形记档（16d 特有）**：
+- settings 分节十八分节全家族：providers/credentials/permission/sandbox/appearance/logging/projects/prompts/skills/subagents/instructions/shortcuts/mcp/enhancement/profiles/transfer/speech/about——patch 白名单 17 段 + 标量位；gateway 职责拆分四件套（settings-gateway 主类 338 行 + skills/instructions/speech 三分面）。
+- 行数纪律三拆模式固化：触顶即拆域文件（protocol-settings / agent-child-config / instructions+skills+speech-gateway），每拆一个回归点即还基线。
+- U22/U24 文件写回双防线模式：parse 层形状校验（slug/白名单）+ gateway 层业务校验（重名/字节上限/路径收敛），tmp 原子替换统一。
+- U23 runner 消费三通道：工具集 = C25 activation session 层（不建新机制）；身份 = extraPrompt（persona 同款位）；模型 = modelForTurn 恒捕获闭包（J7 语义）。
+- **16b 遗留发现闭环**：usage/notify/search 三面板抽屉定位样式已于 T-P3-125 补齐（style.css 与 settings/history 同款 fixed 抽屉）。
+
+**人工确认清单新增（16d）**：U22 技能管理全链走查（新建/编辑/停用/来源目录）、U23 子智能体走查（五预设开关/自定义建档/task subagent_type 实调）、U24 指令中心走查（三文件位编辑/保存确认/规则 lint）、U25 快捷键走查（捕获改绑手感/保留键提示）、U26 语音走查（真实麦克风 + 真实 STT 端点——随 U8 重开）。
+
+**批次 16d 完成定义复核（plan-p3.md §7）**：6 张卡全勾 ✅；技能管理（清单/编辑器/来源目录）✅；子智能体管理（内置五预设/自定义/模型 fallback 链/权限 chips）✅；指令中心/快捷键/语音设置各面验收 ✅；P3 对账 27 条状态表 ✅；段收官产出《P3 功能全景与借鉴映射》✅（20260929_P3功能全景与借鉴映射.md）。
+
+
 ## 待澄清（执行会话新发现；编号接续 #28 起）
 
 | # | 需求ID | 我看到的（含路径:行） | 与需求文档的矛盾 | 建议 | 裁决与落实 |
@@ -185,6 +259,11 @@
 | U19 Profiles 走查（T-P3-121） | 切换联动视觉无自动化判据 | ⚙ 设置 → 场景配置档建档/切换 → 状态栏 select 快速切换 → providers ↑↓ 排序 | 待人工走查 |
 | U20 导入导出走查（T-P3-122） | 浏览器下载/文件选择是人工面 | ⚙ 设置 → 导出下载 json → 改配置 → 导入同包 → 摘要确认 → 生效 + bak.0 出现 | 待人工走查 |
 | U21 CLI 终端手感（T-P3-123） | 真实终端按键是人工面 | 终端跑 aegent → 行尾 \ 续行多行 prompt → Ctrl+R 模糊搜历史 → 回车提交 | 待人工走查（Windows 负例记档在案） |
+| U22 技能管理走查（T-P3-125） | 文件写回/开关联动视觉无自动化判据 | ⚙ 设置 → 技能 → 新建技能（表单+工具集多选）→ 清单可见 → 停用 → 新会话系统提示不含该技能 → 来源目录增删 | 待人工走查 |
+| U23 子智能体走查（T-P3-126） | 预设身份/工具收窄的真实轮次是人工面 | ⚙ 设置 → 子智能体 → 五预设开关 → 自定义建档（模型+fallback）→ 输入区让模型 task(subagent_type=explorer) → 子会话身份与工具面可见 | 待人工走查 |
+| U24 指令中心走查（T-P3-127） | 编辑手感与保存确认是人工面 | ⚙ 设置 → 指令中心 → 编辑项目/全局 AGENTS.md（确认面）→ 插入模板 → 规则文件写一行坏规则看 lint 提示 → 保存后新会话生效 | 待人工走查 |
+| U25 快捷键走查（T-P3-128） | 捕获改绑手感是人工面 | ⚙ 设置 → 快捷键 → 点"修改"按新组合（试冲突组合看阻断提示、试 Ctrl+T 看保留键提示）→ 新键位开合面板 → 恢复默认 | 待人工走查 |
+| U26 语音走查（T-P3-129） | 真实麦克风 + 真实 STT 端点是人工面（mock 三路机验已过） | ⚙ 设置 → 语音【实验性】配端点/模型 + 凭据分节录 stt key → 输入区 🎤 录音 → 转写填入输入框；拒绝权限看降级提示 | 待用户供真实端点（随 U8 重开） |
 
 ### U8 真实平台联调逐项闭环表（T-P3-115，2026-09-29）
 
@@ -202,39 +281,19 @@
 
 ---
 
-## 批次 16d 提示词（当前活跃——批次 16c 收官后接力；2026-09-29 收官时更新）
+## 批次提示词（P3 全段收官——无后续批次；2026-09-29 更新）
 
 ```
-继续 aegent 的 P3 实施。推进模式不变：一会话一批次——本会话做批次 16d 全批
-（P3 管理面组；5 条需求 ID：U22 U23 U24 U25 U26；6 张卡 T-P3-125~129 +
-T-P3-130 收口），做完收官即停，P3 全段收官（段报告《P3 功能全景与借鉴映
-射》归本会话）。卡序：docs/plan-p3.md §6，读 §1 全局约束后从第一张 [ ]
-任务卡开始执行（执行协议沿用 docs/plan-p0.md §0）。本批特有的注意：
-1. **开工三件套（每次会话必做，缺一不可）**：①读 plan 卡序与全局约束；
-   ②打开 docs/requirements.md 对应域原文（本会话 = U22~U26，在
-   requirements.md:664-668），与卡面"依据需求"摘录**逐字对照**——发现
-   摘录漏项/失真立即写 progress 待澄清立案，不擅自扩范围；③
-   `bash tools/snapshot.sh` + `git diff oss/SOURCES.lock` 核对上游锚点漂
-   移，漂移则先重验锚点再动手。
-2. 已裁决/已定案事项（不再翻案）：U3 列表走 session_index 聚合（Q2 消费
-   面归 U9）——定案；#28（U14 日志分节）已落实关闭；#29（count-features
-   口径）✅ 已裁决（2026-09-29）——脚本实况 337 为准，卡面数字已修正；
-   #30（session/collab 新事件，词汇 29→30）✅ 已追认（2026-09-29）——
-   U27 落地面维持（回退面记录留 l0-events.md 落地记录 27 供追溯）。全量基线 **1777 passed / 7 skipped**（202 文件；6
-   skipped = live-p2 env gate；两例既有基建 flake 已记档——llm-replay 计
-   时抖动/http-mock 端口竞态，遇失败先重跑确认是否命中 flake）、词汇表
-   30、count-features 337、architecture 0 error / 22 warning（protocol.ts
-   400 行上限两度触顶已压缩治理；新增长文件注意 400 行上限——managed 域
-   硬 error，host 域 protocol/bridge/settings-gateway 已近满，优先考虑拆
-   分而非续写）。工具链五件收官必跑（check-doc-links 显式传参）。
-3. 本批特有的注意：①16b 遗留发现——usage/notify/search 三面板在
-   style.css 无定位规则（展开呈文档流块非抽屉），建议本批视觉走查时统一
-   补齐（T-P3-128 快捷键/走查顺手项）；②U23 子智能体管理依赖 U18 模型档
-   面（T-P3-120 已落 enhancement/resolveTarget——复用该链）；③U26 语音
-   的 STT 真实端点仍缺（P4/U8 既有），UI 消费端照卡落，真实联调归 U8 重
-   开；④设置面板已十三分节（settings-gateway 白名单加段需同步 parse 校
-   验——T-P3-119/120/121/122 的增段模式可循）。
-4. 收官出组报告（写入本文件）+ P3 全段《P3 功能全景与借鉴映射》
-   （YYYYMMDD_P3功能全景与借鉴映射.md，P0/P1/P2 惯例固化）+ 更新本文件
-   的批次提示词与全量基线后停止。不要问要不要继续。
+P3 全段（批次 16a~16d，31 卡）已于 2026-09-29 全部收官：
+- 全量基线 1813 passed / 7 skipped，exit 0（205 文件）；词汇表 30；
+  count-features 337；architecture 0 error / 22 warning；tsc 干净；
+  工具链五件全绿（check-doc-links 显式传参 1217 链接 0 失效）。
+- 两例既有基建 flake 已于 16d 收口顺手修复（llm-replay 计时抹平 /
+  complexity.test flush await 化）——全量运行现为稳定 exit 0。
+- 段报告：docs/20260929_P3功能全景与借鉴映射.md；
+  对账表：docs/plan-p3-progress.md（27/27 闭环零悬挂）。
+- 待用户：人工确认清单走查（U14/U5/U3/U6/U7/U4/U15~U21/U22~U26）；
+  U8 放弃项可随时凭据重开。
+- 若需启动下一段计划（P4 或收尾面），请先展卡再执行——无现存 [ ] 卡。
 ```
+
