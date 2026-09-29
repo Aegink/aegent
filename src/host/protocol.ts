@@ -121,17 +121,13 @@ export interface HostProtocolServerOptions {
   /**
    * settings 信封回调（U14/T-P3-103 host 面配置——bridge 直答，不经 agent、
    * 不落流；op 闭集 get / update / credentials 系列 / probe / session-delete
-   * ——形状校验在 protocol-parse）。
+   * / mcp-check〔U17〕/ import〔U20〕——形状校验在 protocol-parse）。
    */
   onSettings?: (call: {
     op:
-      | "get"
-      | "update"
-      | "credentials-set"
-      | "credentials-delete"
-      | "credentials-list"
-      | "probe"
-      | "session-delete"
+      | "get" | "update" | "credentials-set" | "credentials-delete" | "credentials-list"
+      | "probe" | "session-delete"
+      // U17 mcp-check：连接校验；U20 import：配置包导入
       | "mcp-check"
       | "import";
     patch?: Record<string, unknown>;
@@ -140,7 +136,7 @@ export interface HostProtocolServerOptions {
     provider?: string;
     key?: string;
     sessionId?: string;
-    /** op=mcp-check（U17）：name/command/args = McpServerEntry 形状。 */
+    /** op=mcp-check（U17）：McpServerEntry 形状。 */
     name?: string;
     command?: string;
     args?: string[];

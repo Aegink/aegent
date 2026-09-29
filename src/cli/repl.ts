@@ -17,6 +17,7 @@ import {
 } from "../kernel/agent-protocol.js";
 import type { JsonRecord, SessionEvent } from "../kernel/events.js";
 import { PERMISSION_PRESETS } from "../kernel/session-config.js";
+import { withContinuation } from "./editor.js";
 
 export interface AgentConnection {
   send(request: AgentRequest): void;
@@ -416,7 +417,9 @@ export async function runCli(options: RunCliOptions): Promise<void> {
 
   let exitRequested = false;
   let sentPrompts = 0;
-  for await (const line of options.input) {
+  // U21/T-P3-123：反斜杠续行合并（行尾 `\` = 与下一行拼接成多行 prompt
+  // ——CLI 多行输入的最小面；命令与 prompt 共用合并面，无害）。
+  for await (const line of withContinuation(options.input)) {
     const trimmed = line.trim();
     if (trimmed === "") continue;
     if (trimmed === "/exit" || trimmed === "/quit") {

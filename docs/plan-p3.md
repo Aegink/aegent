@@ -288,7 +288,7 @@
 - **风险 / 未知**：深链 scheme 注册（Tauri 插件面——U7 同款插件解禁逻辑）
 - **完成记录（2026-09-29）**：验收 `npx vitest run src/session/settings-transfer.test.ts src/session/settings.test.ts src/host/server.test.ts src/diagnostics/tauri-shell.test.ts` → **50 passed**（transfer 4 新 + settings 回归 + server import e2e 两路 + tauri-shell 资产；tsc 干净）。落地：①**settings-transfer.ts**：exportSettingsPayload（kind 标记配置包 + apiKey 键断言——凭据不打包双保险，凭据独立 credentials.bin 本就零 key）+ buildImportPreview（**确认前只读面**：JSON/kind/parseSettingsShape 三层校验，坏包类型化拒绝 SETTINGS_IMPORT_BAD_JSON|KIND|SHAPE）+ summarizePackage（确认对话框逐项摘要）+ applyImportedSettings（本地态保留：onboardingDone 不覆盖、activeProfile 仅同名档保留）+ backupSettingsFile（导入前滚动备份 settings.json.bak.0~4——最近 5 份，最老挤出）；②**wire**：settings 信封 op:"import"（载荷 settings 对象——parse 层对象形状、gateway 层 parse 校验 + 备份 + 落盘）；③**ui 第十一分节** data-section="transfer"：导出（Blob 下载 aegent-settings-YYYY-MM-DD.json）+ 导入（file input → 本地预览/摘要 → confirm 逐项列出变更 → 确认后才上送——**导入必确认**，cc-switch deeplink 三确认行为锚：不可信输入面）+ hint 零凭据提示；④**深链钩子** `window.aegentApplyDeepLink(data)`（宿主接线面——aegentShowUpdate 同款模式：预览 → confirm → 应用三态回执）。**执行时定形（记档）**：深链 scheme 注册（Tauri deep-link 插件 + Windows 注册表）不落——真实分发渠道面，分享本地走导出文件；插件解禁需计划明文授权，钩子形状已在位可接。
 
-#### T-P3-123 · U21 · CLI 终端体验升级（kill-ring/模糊搜索/多行编辑） `[ ]`
+#### T-P3-123 · U21 · CLI 终端体验升级（kill-ring/模糊搜索/多行编辑） `[x]`
 - **依据需求**：U21（"REPL 编辑器升级——kill-ring、模糊历史搜索、多行编辑；CLI 是 K1 主入口，产品化不能只顾图形端"）
 - **上游首选参考**：[pi·tui·editor/kill-ring/alt-screen-search/fuzzy](../oss/pi/packages/tui/src)（🔴 只学行为——完整 TUI 编辑器组件）
 - **取什么 / 别抄什么**：取"kill-ring（Ctrl+K/U/W 剪贴环）+ 模糊历史搜索 + 多行编辑"三行为；全 TUI 重绘（alt-screen/鼠标/组件框架）不取——渐进路线（readline 之上增强，倾向 kill-ring + 模糊历史搜索先行，全重绘 YAGNI 记档）
@@ -296,6 +296,7 @@
 - **验收**：`npx vitest run src/cli/editor.test.ts`（新）+ `src/cli/cli.test.ts`（扩）——三行为用例 + 既有 REPL 命令零回归
 - **依赖**：无（独立面——16c 可并行）
 - **风险 / 未知**：Windows 终端按键差异（Ctrl+W 等——跨终端兼容负例记档）
+- **完成记录（2026-09-29）**：验收 `npx vitest run src/cli/editor.test.ts src/cli/cli.test.ts` → **38 passed**（editor 8 新 + cli 30〔含续行端到端〕；tsc 干净、architecture 0 error——protocol.ts 行数治理压缩注释归还）。落地：①**纯逻辑核心** `src/cli/editor.ts`：createKillRing（剪贴环纯结构——push/yank/yankPop 环内回溯、容量 16 滚动）+ fuzzyMatch/fuzzySearchHistory（子序列语义、大小写不敏感；**约定 history[0] = 最新**——readline rl.history 同约定，保持原序过滤不评分重排——reverse-i-search 翻页语义，顺序稳定可预期）+ createHistorySearcher（Ctrl+R 状态机：feed/backspace/next 环绕/accept 回填/cancel 退出）+ withContinuation（反斜杠续行 AsyncIterable 包装——行尾 `\` 与下一行以换行拼接、EOF 未闭合 flush 不丢输入）；②**接线**：repl.ts 输入循环经 withContinuation（多行 prompt 真实生效——echo 端到端断言两物理行 = 一个 prompt）；index.ts 挂 attachReverseSearch（**薄壳**：非 TTY 不接管零变化；搜索态 = 清行 + rl.write 回填，不动 readline 内部缓冲；启动横幅加提示）；③**跨终端负例记档（卡面预警）**：Ctrl+W/Ctrl+R/Escape 在部分 Windows 终端可能被终端自身消费或键位报告差异——键位增强是 best-effort，核心交互（回车/命令/续行）不依赖它们；kill-ring 的 readline 默认键位（Ctrl+K/U/W）与显式 KillRing 结构并存（结构面为未来全 TUI 预留——渐进路线，全屏重绘 YAGNI 兑现）。既有 REPL 命令零回归（cli.test 30 passed 含存量全部用例）。
 
 #### T-P3-131 · U27 · 会话间协作（派任务/消息往来/权限上限快照） `[ ]`（16c 第九张——判断修正补录，编号追加不重排）
 - **依据需求**：U27（"会话之间的任务派发与消息往来；权限上限快照；会话引用谱系；往来可视化"）

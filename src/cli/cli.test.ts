@@ -1081,4 +1081,27 @@ describe("N1/T-P1-110 CLI 会话 id 生成点", () => {
       expect.objectContaining({ code: "INVALID_SESSION_ID" }),
     );
   });
+  it("U21/T-P3-123：反斜杠续行——两行输入拼成一个多行 prompt（echo 原样回显换行内容）", async () => {
+    const lines = await runScriptedSession(
+      {
+        assembly: {
+          workspaceRoot: mkdtempSync(path.join(tmpdir(), "aegent-cli-")),
+          contextWindow: 200_000,
+          approvalTimeoutMs: 5_000,
+        },
+      },
+      async function* () {
+        yield "多行第一段 \\";
+        yield "多行第二段";
+        yield "普通单行";
+      },
+    );
+    // 续行合并：echo 回显的 prompt 内容含换行（摘要单行化用 ⏎ 标记）
+    expect(lines).toContain("── turn 1 开始");
+    expect(lines.join("|")).toContain("多行第一段");
+    expect(lines.join("|")).toContain("多行第二段");
+    // 续行只产生一轮（两物理行 = 一个 prompt），普通单行另起一轮
+    expect(lines).toContain("── turn 2 开始");
+    expect(lines).toContain("⬢ echo: 普通单行");
+  });
 });

@@ -21,6 +21,7 @@ import { loadSettings, resolveChildLaunchArgv } from "../session/settings.js";
 import { runKeyCommand } from "./key.js";
 import { runSessionsCommand } from "./sessions.js";
 import { runCli } from "./repl.js";
+import { attachReverseSearch } from "./editor.js";
 
 /** 编译产物旁的子进程入口（dist/src/cli/index.js → dist/src/kernel/agent-child.js）。 */
 export function defaultChildEntryPath(): string {
@@ -139,9 +140,11 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
     args,
   });
   if (!smoke) {
-    process.stdout.write("aegent CLI（输入指令回车执行；/exit 退出）\n");
+    process.stdout.write("aegent CLI（输入指令回车执行；/exit 退出；行尾 \\ 续行；Ctrl+R 搜索历史）\n");
   }
   const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
+  // U21/T-P3-123：Ctrl+R 模糊历史搜索（非 TTY 不接管——管道/smoke 零变化）
+  attachReverseSearch(rl);
   await runCli({
     connection,
     input: rl,
