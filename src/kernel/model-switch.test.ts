@@ -672,7 +672,7 @@ function eventsOf(items: readonly AgentMessage[]): SessionEvent[] {
 describe("model/switch 协议命令 —— agent-process 全链", () => {
   it("换模立即受理、下一 turn 生效：turn1 用 m1，model/switch 后 turn2 用 m2", async () => {
     const h = harnessWithRegistry();
-    expect(await h.recv(isReady, "ready")).toEqual({ type: "ready" });
+    expect(await h.recv(isReady, "ready")).toMatchObject({ type: "ready" });
 
     h.send({ type: "prompt", messageId: "a", content: "甲" });
     await h.recv(

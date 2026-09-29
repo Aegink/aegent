@@ -24,14 +24,8 @@ import type { SessionEvent } from "../kernel/events.js";
 import { NotLeaseHolderError } from "../session/owner-port.js";
 import type { SessionStore } from "../session/store.js";
 import { SqliteEventStorage } from "../session/db.js";
-// U9/T-P3-108：op:"search" 的 Q2 消费面（已打开库上的条件检索）
-import { querySessionsDb } from "../session/query.js";
-// U10/T-P3-109：op:"files" 的 workspace 只读列举
-import { listWorkspaceFiles } from "./files-list.js";
-// U12/T-P3-111：op:"usage" 的聚合消费面（usage 视图 / 成本聚合 / 压缩统计）
-import { ensureUsageView, usageBySession, usageByTurn } from "../obs/usage.js";
-import { costRollup } from "../obs/cost.js";
-import { compactionStats } from "../obs/compaction-stats.js";
+// U9/U10/U12 查询面的 op 分流实现拆分至 query-gateway.ts（行数纪律拆分）
+import { handleHostQuery } from "./query-gateway.js";
 import { AgentHost } from "./registry.js";
 import {
   HostProtocolServer,
@@ -254,115 +248,30 @@ export class HostBridge implements SessionRouter {
         const released = this.options.host.surfaces.releaseRunLease(lease.surfaceId);
         return { released };
       },
-      // K5/T-P1-128 恢复视图（只读直答——不落流、不经 agent、不需要租约）。
-      // U3/T-P3-105：op:"sessions" = 会话历史清单（SQLite 库在位才有数据）；
-      // op:"events" 放宽为任意会话只读（历史查看入口——写命令仍限本会话）。
-      onQuery: async (query) => {
-        const store = this.options.store;
-        if (store === undefined) {
-          const error = new Error("host 未配置事件存储，查询面不可用");
-          (error as unknown as { code: string }).code = "STORE_UNAVAILABLE";
-          throw error;
-        }
-        if (query.op === "sessions") {
-          const library = this.options.sessionsLibrary;
-          if (library === undefined) {
-            const error = new Error("host 未配置 SQLite 事件库，会话清单不可用");
-            (error as unknown as { code: string }).code = "SESSIONS_UNAVAILABLE";
-            throw error;
-          }
-          return { sessions: library.listSessionSummaries() };
-        }
-        // U9/T-P3-108：跨会话检索（Q2 消费面）——只回命中摘要行（sessionId/
-        // seq/type/ts/excerpt），不回事件整值（payload 全量不出检索面）。
-        if (query.op === "search") {
-          const library = this.options.sessionsLibrary;
-          if (library === undefined) {
-            const error = new Error("host 未配置 SQLite 事件库，跨会话检索不可用");
-            (error as unknown as { code: string }).code = "SESSIONS_UNAVAILABLE";
-            throw error;
-          }
-          const criteria = query.criteria!;
-          const result = querySessionsDb(library.db, {
-            contentLike: criteria.contentLike,
-            ...(criteria.limit !== undefined ? { limit: criteria.limit } : {}),
-            ...(criteria.offset !== undefined ? { offset: criteria.offset } : {}),
-          });
-          return {
-            rows: result.rows.map((r) => ({
-              sessionId: r.sessionId,
-              seq: r.seq,
-              type: r.type,
-              ts: r.ts,
-              excerpt: r.excerpt ?? "",
-            })),
-            total: result.total,
-            hasMore: result.hasMore,
-          };
-        }
-        // U10/T-P3-109：workspace 只读文件列举（@ 补全数据面）+ 注册表
-        // 清单（ready 捕获——/ 补全来源）。都是只读直答，不经 agent 不落流。
-        if (query.op === "files") {
-          const root = this.options.workspaceRoot ?? process.cwd();
-          return listWorkspaceFiles(root);
-        }
-        if (query.op === "meta") {
-          return {
-            tools: this.agentCapabilities?.tools ?? [],
-            skills: this.agentCapabilities?.skills ?? [],
-          };
-        }
-        // U12/T-P3-111：用量与上下文可视化（聚合面消费端）——数据源单源：
-        // token 全部来自事件库 usage_rollup（assistant/message 的 usage 落流
-        // 投影）；成本 = costRollup × settings 计价（未配置 = 如实缺席）；
-        // 压缩统计 = 会话流内 compaction 事件（store 投影）。
-        if (query.op === "usage") {
-          const library = this.options.sessionsLibrary;
-          if (library === undefined) {
-            const error = new Error("host 未配置 SQLite 事件库，用量面不可用");
-            (error as unknown as { code: string }).code = "SESSIONS_UNAVAILABLE";
-            throw error;
-          }
-          // 幂等建视图（本 host 是 usage_rollup 的首个生产消费方——IF NOT
-          // EXISTS 语义见 obs/usage.ts，无迁移问题）
-          ensureUsageView(library.db);
-          const sessionId = this.options.host.sessionId;
-          const turns = usageByTurn(library.db, sessionId);
-          const lastUsage = turns.length > 0 ? turns[turns.length - 1] : undefined;
-          const pricing =
-            this.options.settingsGateway !== undefined
-              ? ((await this.options.settingsGateway.get()).pricing ?? [])
-              : [];
-          const stream = this.options.store?.load(sessionId) ?? [];
-          return {
-            contextWindow: this.options.contextWindow,
-            currentSession: {
-              turns,
-              contextTokens: lastUsage?.totalTokens,
-              compaction: compactionStats(stream),
-            },
-            sessions: usageBySession(library.db),
-            costs: costRollup(library.db, pricing),
-          };
-        }
-        // 本会话：内存序读取（同步）：镜像 append 的直接产物——最新、无
-        // write-behind 缓冲滞后（restore/readAll 只见已 flush 部分——E1
-        // 纪律的读面选择）。U3：跨会话（历史查看入口）直接回源 SQLite 库
-        // ——历史会话不在内存镜像；库未配置 = 空流（无历史可看）。
-        if (query.sessionId !== this.options.host.sessionId) {
-          if (this.options.sessionsLibrary === undefined) return { events: [] };
-          const archived = this.options.sessionsLibrary.readAll(query.sessionId);
-          const events =
-            query.afterSeq !== undefined
-              ? archived.filter((e) => e.seq > query.afterSeq!)
-              : [...archived];
-          return { events };
-        }
-        const all = store.load(query.sessionId);
-        const events =
-          query.afterSeq !== undefined ? all.filter((e) => e.seq > query.afterSeq!) : [...all];
-        return { events };
-      },
+      // K5/T-P1-128 恢复视图 + U3 sessions + U9 search + U10 files/meta +
+      // U12 usage——onQuery 的 op 分流实现拆分至 query-gateway.ts（行数纪律），
+      // 本处只做依赖注入（capabilities 是活查询——ready 捕获在泵内）。
+      onQuery: (query) =>
+        handleHostQuery(
+          {
+            hostSessionId: () => this.options.host.sessionId,
+            ...(this.options.store !== undefined ? { store: this.options.store } : {}),
+            ...(this.options.sessionsLibrary !== undefined
+              ? { sessionsLibrary: this.options.sessionsLibrary }
+              : {}),
+            ...(this.options.settingsGateway !== undefined
+              ? { settingsGateway: this.options.settingsGateway }
+              : {}),
+            ...(this.options.workspaceRoot !== undefined
+              ? { workspaceRoot: this.options.workspaceRoot }
+              : {}),
+            ...(this.options.contextWindow !== undefined
+              ? { contextWindow: this.options.contextWindow }
+              : {}),
+            capabilities: () => this.agentCapabilities,
+          },
+          query,
+        ),
       // U14/T-P3-103 settings 直答（host 面配置——不经 agent 不落流）。
       onSettings: async (call) => {
         const gateway = this.options.settingsGateway;

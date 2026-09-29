@@ -22,7 +22,7 @@
  * hello 的二次校验在 HostProtocolServer 正常处理中自然通过）。
  */
 
-import { createServer, type IncomingMessage, type Server as HttpServer } from "node:http";
+import { createServer, type Server as HttpServer } from "node:http";
 import { createInterface } from "node:readline";
 import fs from "node:fs";
 import path from "node:path";
@@ -37,19 +37,11 @@ import { InMemoryEventStorage, SessionStore, type EventStorage } from "../sessio
 import { createCredentialStore } from "../session/credentials.js";
 import { FileSettingsGateway } from "./settings-gateway.js";
 import { HostBridge, type AgentChannel } from "./bridge.js";
+import { serveStatic } from "./static-files.js";
+import { parseHostServerArgv, type HostServerArgv } from "./argv.js";
 import { NotificationHub } from "./notify.js";
 import { HostRegistry } from "./registry.js";
 
-/** 静态资产扩展名 → content-type（ui/ 资产的最小表）。 */
-const CONTENT_TYPES: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".ico": "image/x-icon",
-};
 
 export interface HostServerOptions {
   /** 会话 id（--session 显式或 createSessionId 生成——N1 规范生成点同款）。 */
@@ -248,96 +240,10 @@ function attachSurface(bridge: HostBridge, ws: WebSocket): void {
   });
 }
 
-/** 静态资产服务（路径穿越防呆：resolve 后必须落在 uiDir 内）。 */
-function serveStatic(uiDir: string, req: IncomingMessage, res: import("node:http").ServerResponse): void {
-  const url = new URL(req.url ?? "/", "http://localhost");
-  if (req.method !== "GET" && req.method !== "HEAD") {
-    res.writeHead(405).end();
-    return;
-  }
-  const root = path.resolve(uiDir);
-  const rel = url.pathname === "/" ? "index.html" : url.pathname.replace(/^\/+/, "");
-  const file = path.resolve(root, rel);
-  if (!file.startsWith(root + path.sep) && file !== root) {
-    res.writeHead(403).end("forbidden");
-    return;
-  }
-  fs.readFile(file, (error, data) => {
-    if (error !== null) {
-      res.writeHead(404).end("not found");
-      return;
-    }
-    const type = CONTENT_TYPES[path.extname(file).toLowerCase()];
-    res.writeHead(200, {
-      "content-type": type ?? "application/octet-stream",
-      "cache-control": "no-cache",
-    });
-    res.end(data);
-  });
-}
-
 // ---------------------------------------------------------------------------
 // 生产入口：node dist/src/host/server.js [--session <id>] [--port <n>]
 //   [--ui <dir>] [--host-db <path>] [--provider echo|openai] …（透传子进程）
 // ---------------------------------------------------------------------------
-
-export interface HostServerArgv {
-  sessionId: string;
-  port: number;
-  uiDir: string;
-  hostDbPath?: string;
-  /** U1/T-P3-101：settings.json 显式路径（缺省 <home>/.aegent/settings.json）。 */
-  settingsPath?: string;
-  /** U6/T-P3-113：子进程入口覆盖（便携/壳布局——bundle 相邻 agent-child.cjs）。 */
-  agentEntryPath?: string;
-  childArgs: string[];
-}
-
-export function parseHostServerArgv(
-  argv: readonly string[],
-  defaults: { uiDir: string },
-): HostServerArgv {
-  let sessionId = createSessionId();
-  let port = 8787;
-  let uiDir = defaults.uiDir;
-  let hostDbPath: string | undefined;
-  let settingsPath: string | undefined;
-  // U6/T-P3-113：便携/壳布局的子进程入口覆盖（bundle 里 dist 树不在位——
-  // agent-child 打包成相邻 agent-child.cjs，由壳/便携运行器显式传入）。
-  let agentEntryPath: string | undefined;
-  const childArgs: string[] = [];
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === undefined) continue;
-    if (a === "--session" && i + 1 < argv.length) {
-      sessionId = argv[++i] ?? sessionId;
-    } else if (a === "--port" && i + 1 < argv.length) {
-      port = Number(argv[++i]);
-    } else if (a === "--ui" && i + 1 < argv.length) {
-      uiDir = argv[++i] ?? uiDir;
-    } else if (a === "--host-db" && i + 1 < argv.length) {
-      hostDbPath = argv[++i];
-    } else if (a === "--settings" && i + 1 < argv.length) {
-      settingsPath = argv[++i];
-    } else if (a === "--agent-entry" && i + 1 < argv.length) {
-      agentEntryPath = argv[++i];
-    } else {
-      childArgs.push(a);
-    }
-  }
-  if (!isValidSessionId(sessionId)) {
-    throw new Error(`--session 不合法：${sessionId}`);
-  }
-  return {
-    sessionId,
-    port,
-    uiDir,
-    ...(hostDbPath !== undefined ? { hostDbPath } : {}),
-    ...(settingsPath !== undefined ? { settingsPath } : {}),
-    ...(agentEntryPath !== undefined ? { agentEntryPath } : {}),
-    childArgs,
-  };
-}
 
 /** 仓库根的 ui/ 缺省位（dist/src/host/server.js 上溯三级）。 */
 export function defaultUiDir(): string {
