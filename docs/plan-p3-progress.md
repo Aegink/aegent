@@ -314,29 +314,30 @@ token + 组件类 + 内联 SVG + hash 路由，不引 React/Vite/Tailwind/rechar
    方案文档；②本批无 requirements 域条目（337 条外用户裁决增量）——
    核对对象改为方案文档与功能覆盖矩阵；③git status 干净即可（无上游
    新克隆，SOURCES.lock 不动）。
-2. **实施顺序（卡面①~⑥，每步可独立验证，勿跳步）**：
+2. **实施顺序（卡面①~⑥，每步可独立验证，勿跳步；模块化拆分是本卡
+   核心产物——巨石 app.js 3316 行/index.html 509 行拆解，方案 §三批 A
+   的文件结构树与拆分策略照执行）**：
    ① ui/theme.css——token 全套（方案 §2.1 色板暗亮双主题 + §2.2 字号
      相对刻度 14px 基准 calc 系 + CJK 等宽栈 + 4px 栅格 + 圆角 6/10/14
      + 阴影两级）；style.css 头部 @import 引入；
    ② ui/icons.js——内联 SVG ~24 枚线性图标（单色 currentColor，导出
-     icon(name) 函数；清单：设置/搜索/图表/插头/机器人/键盘/麦克风/
-     文件夹/历史/关闭/刷新/发送/外部链接/通知/工作台/对话/头像占位等）；
-   ③ ui/router.js——hash 路由（#chat/#settings/<section>/#usage/
-     #work/<tab>/#notify/#history/#search；视图切换 + hashchange 监听
-     + 首路由解析 + go(view) API）；
-   ④ ui/index.html 骨架重排——**铁律：所有既有 id/data-* 钩子一个不动**
-     （app.js 3316 行按 id 取元素），只动容器层级：外壳 = 左侧边栏
-     （260px；导航组：对话/历史/搜索/工作台/用量/通知+未读徽标；底部：
-     租约状态/profile-quick/设置入口/surface+版本）+ 主内容路由容器
-     （data-view 七个视图互斥；settings 视图 = 左侧二级分类导航三组
-     〔基础设置/Agent 能力/数据与系统〕+ 十九个 data-section 整体迁入；
-     chat 视图 = 既有状态栏+stream+composer）；find-bar/toast/横幅保持
-     fixed 浮层；
-   ⑤ ui/app.js 接线——顶部新增 router 接线段（hashchange→视图切换→
-     侧栏 active 态；首载默认 #chat）；既有 openSettings/openUsage/
-     openHistory 等面板函数**内部实现改为 router.go(...)，函数名保留**
-     （兼容全部既有调用点）；sendRequest/sendSettings/sendQuery 等
-     协议面零触碰；
+     icon(name) 函数）；
+   ③ **共享层下沉**：ui/api.js（sendRequest/sendSettings/sendQuery/
+     WS 连接与重连——从 app.js 下沉，签名不变）+ ui/state.js
+     （settingsCache/sessionId/inflight/lastUserPrompt——单向被依赖
+     防环）+ ui/router.js（hash 路由 go(view)/hashchange/首路由解析）；
+     **此步完成后全量回归一次**（纯搬家零行为变化），再继续；
+   ④ **逐视图搬运（每视图一回归）**：settings/usage/work/notify/
+     history/search 迁出为 ui/views/*.js 视图模块（原生动态 import；
+     契约 = render(container, params) + 可选 unmount()——toast 计时器/
+     审批倒计时随卸载收束；**视图内逻辑照搬不重写**——既有函数体随视图
+     迁移，id/data-* 钩子全保留；app.js 对应代码段删除）；index.html
+     瘦身为骨架（侧栏 260px + main 路由容器 + chat 视图 + 浮层）；
+     settings 视图 = 左侧二级分类导航三组〔基础设置/Agent 能力/数据与
+     系统〕+ 十九个 data-section 迁入；
+   ⑤ ui/app.js 瘦身为入口（WS 生命周期 + 路由启动 + 聊天流主逻辑）；
+     既有 openSettings/openUsage/openHistory 等面板函数**内部实现改为
+     router.go(...)，函数名保留**（兼容全部既有调用点）；协议面零触碰；
    ⑥ ui/components.css——组件类逐个落（方案 §2.3/§2.5：按钮四态/输入
      /开关 44×24/胶囊分段 tabs/卡片/行式设置项〔opencode 配方：8px 容器
      0.5px inset 描边 20px 行距 13px 文案〕/chip/表格/空状态虚线框/骨架
@@ -350,9 +351,13 @@ token + 组件类 + 内联 SVG + hash 路由，不引 React/Vite/Tailwind/rechar
    复制 aegent-desktop.exe 进 dist/portable、安装器进 dist/）+ 机器
    等效冒烟（启动壳 → HTTP 200 → 窗口可见性 MainWindowTitle=aegent）。
 4. **已定案不翻案**：方案 A 零构建链（用户拍板——不引 React/Vite/
-   Tailwind/recharts，图表 SVG 手绘归批 B）；U6 壳窗口 show 修复已落；
-   散写色值的全量迁移归批 B 逐段消化（批 A 只锁 token 立住+骨架可用+
-   功能全在）；功能覆盖矩阵任何一行失能 = 卡不过，不许带病收官。
+   Tailwind/recharts，图表 SVG 手绘归批 B）；**模块化拆分是用户追加硬
+   要求（不要全在一个巨大的 html）**——文件结构树/拆分策略/视图契约
+   （render+unmount）见方案文档 §三批 A；铁律 = 既有 id/data-* 钩子
+   保留、协议面签名不变、共享层先行每视图一回归、不一次性大爆炸；
+   U6 壳窗口 show 修复已落；散写色值的全量迁移归批 B 逐段消化（批 A
+   只锁 token 立住+骨架可用+功能全在+模块边界清晰）；功能覆盖矩阵任何
+   一行失能 = 卡不过，不许带病收官。
 5. **收尾**：打勾 T-P3-134 + 完成记录 + progress 台账（含走查清单更新）
    + commit（feat(ui): UI 批次 A ...）+ 记忆更新（批 A 落地状态、批 B
    T-P3-135 待展卡）。遇到阻塞按 §0.2 偏离记档，不擅自扩范围。不要问
