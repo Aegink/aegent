@@ -338,77 +338,68 @@
 
 **记档**：①批 A 前清掉上会话冒烟残留进程（aegent-desktop ×4 + portable node host——占用 exe 与 8787）；②方案 §七遗留 `dist/portable/host.mjs` 已清除；③`views/settings.js` 1983 行已知债——批 B 逐分节重做时按方案拆 `views/settings/` 子模块；④feedback.js 为方案文件树外新增（appendLine/toast 等跨视图原语——避免 state.js 混入 DOM 职责）；⑤aegentApplyDeepLink 因设置域迁出改为动态 import 委派（同步返回→Promise——宿主 eval 不消费返回值，行为面不变）。
 
-## 批次提示词（UI 批次 A 开工——T-P3-134；2026-09-29 更新）
-
-> **✅ 批 A 已收官（2026-09-29，本提示词已执行完毕）**——下会话开工步骤：先按方案 §三批 B **展卡 T-P3-135**（设置页面化逐页重做 + 统计 SVG——消费批 A 的 token/组件类/路由）并更新本节为批 B 开工提示词，再独立执行。
+## 批次提示词（UI 批次 B 开工——T-P3-135；2026-09-29 更新）
 
 ```
-继续 aegent 的 UI 全面升级。用户已裁决技术路线 = 方案 A（零构建链：CSS 变量
-token + 组件类 + 内联 SVG + hash 路由，不引 React/Vite/Tailwind/recharts）。
-本会话做 **T-P3-134 · UI 批次 A：设计系统与布局架构**（一张卡，做完收官即
-停，批 B/C 后续会话另展）。任务卡：docs/plan-p3.md §8 末尾的
-「T-P3-134」（已展卡，含实施顺序①~⑥与验收）。
+继续 aegent 的 UI 全面升级，做 T-P3-135（UI 批次 B：设置页面化逐页重做 +
+统计页 SVG 可视化）。先读 docs/plan-p3-progress.md 的「批次提示词」段，按
+其指引执行（方案与规格唯一事实源 = docs/20260929_UI全面升级方案.md）。
+做完收官即停，不要问要不要继续。
 
-0. **方案与规格的唯一事实源**：docs/20260929_UI全面升级方案.md（v2 细节
-   规格版）——开工先通读：§二设计规格表（token 逐值/行式卡配方/组件形态
-   ——色值字号圆角都是参考仓源码提取的，照抄即可）、§2.4 应用骨架与消息
-   流、§2.5 组件库地图（46 件目录）、**§3.5 功能覆盖矩阵（28 行〔实列口径〕——升级
-   零功能丢失的验收基线，每收一段核对一行）**。参考仓源码锚点都在方案里
-   （oss/zcode/packages/ui/src 的 styles.css :137 亮色/:308 暗色 token、
-   SettingsPage.tsx :1375 骨架、ChatPromptEditor.tsx :347 输入容器；
-   oss/opencode/.../settings-v2.css 行式卡配方），拿不准形态就开参考文件
-   看原文，不要凭记忆造。
-1. **开工三件套**：①读 plan-p3.md §8 T-P3-134 卡面（实施顺序①~⑥）与
-   方案文档；②本批无 requirements 域条目（337 条外用户裁决增量）——
-   核对对象改为方案文档与功能覆盖矩阵；③git status 干净即可（无上游
-   新克隆，SOURCES.lock 不动）。
-2. **实施顺序（卡面①~⑥，每步可独立验证，勿跳步；模块化拆分是本卡
-   核心产物——巨石 app.js 3316 行/index.html 509 行拆解，方案 §三批 A
-   的文件结构树与拆分策略照执行）**：
-   ① ui/theme.css——token 全套（方案 §2.1 色板暗亮双主题 + §2.2 字号
-     相对刻度 14px 基准 calc 系 + CJK 等宽栈 + 4px 栅格 + 圆角 6/10/14
-     + 阴影两级）；style.css 头部 @import 引入；
-   ② ui/icons.js——内联 SVG ~24 枚线性图标（单色 currentColor，导出
-     icon(name) 函数）；
-   ③ **共享层下沉**：ui/api.js（sendRequest/sendSettings/sendQuery/
-     WS 连接与重连——从 app.js 下沉，签名不变）+ ui/state.js
-     （settingsCache/sessionId/inflight/lastUserPrompt——单向被依赖
-     防环）+ ui/router.js（hash 路由 go(view)/hashchange/首路由解析）；
-     **此步完成后全量回归一次**（纯搬家零行为变化），再继续；
-   ④ **逐视图搬运（每视图一回归）**：settings/usage/work/notify/
-     history/search 迁出为 ui/views/*.js 视图模块（原生动态 import；
-     契约 = render(container, params) + 可选 unmount()——toast 计时器/
-     审批倒计时随卸载收束；**视图内逻辑照搬不重写**——既有函数体随视图
-     迁移，id/data-* 钩子全保留；app.js 对应代码段删除）；index.html
-     瘦身为骨架（侧栏 260px + main 路由容器 + chat 视图 + 浮层）；
-     settings 视图 = 左侧二级分类导航三组〔基础设置/Agent 能力/数据与
-     系统〕+ 十九个 data-section 迁入；
-   ⑤ ui/app.js 瘦身为入口（WS 生命周期 + 路由启动 + 聊天流主逻辑）；
-     既有 openSettings/openUsage/openHistory 等面板函数**内部实现改为
-     router.go(...)，函数名保留**（兼容全部既有调用点）；协议面零触碰；
-   ⑥ ui/components.css——组件类逐个落（方案 §2.3/§2.5：按钮四态/输入
-     /开关 44×24/胶囊分段 tabs/卡片/行式设置项〔opencode 配方：8px 容器
-     0.5px inset 描边 20px 行距 13px 文案〕/chip/表格/空状态虚线框/骨架
-     行/对话框/kbd/toast）；index.html 新增样式 link。
-3. **验收（卡面全项）**：token 证伪 grep（新增样式无散写色值）+ 路由深
-   链用例 + tauri-shell 断言更新（侧栏 id/路由容器/19 分节仍在——既有
-   断言全保留）+ **功能覆盖矩阵逐行核对** + 全量 npx vitest run 回归
-   全绿（settings/server/ui-render/keymap 硬门）+ node --check ui/app.js
-   + tsc 干净 + 产物重打同步（npm run build:single + TAURI_SIGNING_
-   PRIVATE_KEY=F:/aegent/private/tauri-updater.key npx tauri build +
-   复制 aegent-desktop.exe 进 dist/portable、安装器进 dist/）+ 机器
-   等效冒烟（启动壳 → HTTP 200 → 窗口可见性 MainWindowTitle=aegent）。
-4. **已定案不翻案**：方案 A 零构建链（用户拍板——不引 React/Vite/
-   Tailwind/recharts，图表 SVG 手绘归批 B）；**模块化拆分是用户追加硬
-   要求（不要全在一个巨大的 html）**——文件结构树/拆分策略/视图契约
-   （render+unmount）见方案文档 §三批 A；铁律 = 既有 id/data-* 钩子
-   保留、协议面签名不变、共享层先行每视图一回归、不一次性大爆炸；
-   U6 壳窗口 show 修复已落；散写色值的全量迁移归批 B 逐段消化（批 A
-   只锁 token 立住+骨架可用+功能全在+模块边界清晰）；功能覆盖矩阵任何
-   一行失能 = 卡不过，不许带病收官。
-5. **收尾**：打勾 T-P3-134 + 完成记录 + progress 台账（含走查清单更新）
-   + commit（feat(ui): UI 批次 A ...）+ 记忆更新（批 A 落地状态、批 B
-   T-P3-135 待展卡）。遇到阻塞按 §0.2 偏离记档，不擅自扩范围。不要问
-   要不要继续。
+0. **已定基线（批 A 已落，不翻案）**：方案 A 零构建链（不引 React/Vite/
+   Tailwind/recharts——图表 SVG 手绘、交互简化）；批 A（T-P3-134）已落地：
+   theme.css token 全套（全站唯一取色处）+ components.css 组件类库（row-list/
+   row 行式母版、.switch 44×24、tabs-pill、kbd、dialog、empty-state 等——
+   本批直接消费）+ hash 路由（#settings/<section> 深链）+ 侧栏骨架 +
+   views/*.js 模块化（views/settings.js 1983 行 = 本批拆子模块的兑现点）。
+   矩阵实列 28 行（"29 行"口径笔误已修正）。
+1. **开工三件套**：①读 plan-p3.md §8 「T-P3-135」卡面（实施顺序①~⑩）与
+   方案文档 §2.3/§三批 B；②本批无 requirements 域条目（337 条外用户裁决
+   增量）——核对对象改为方案文档与功能覆盖矩阵（28 行，本批义务行 =
+   升级落位为 B 的全部行）；③git status 干净即可。
+2. **实施顺序（卡面①~⑩，每页一回归，勿跳步）**：
+   ① views/settings.js 拆 views/settings/ 子模块（按二级导航三组分域——
+     基础设置/Agent 能力/数据与系统；markDirty/dirtySections 等域状态归
+     各子模块或留 settings.js 壳，render+unmount 契约不变，每拆一块全量
+     回归）；
+   ② 设置页头 sticky tab-header 形态（40px 40px 32px padding + 标题
+     15px/640 + 24px 渐隐——方案 §2.3 逐值）；
+   ③ 简单分节先行落行式卡：permission/sandbox/appearance/logging/about
+     （row-list/row 母版 + .switch 开关）；
+   ④ providers/credentials 页（行式卡 + 连接测试模态——opencode
+     dialog-connect-provider 形态：服务名/地址/key/格式下拉/模型列表双栏；
+     probe 逻辑原样）；
+   ⑤ mcp 页（36px 图标座 + 包边状态点〔绿=连接/红=失败/灰=停用〕+ 开关 +
+     命令行等宽 + capability chips——McpServerList.tsx :114-135 形态）；
+   ⑥ subagents/skills/prompts 页（分组卡片/空状态虚线框引导/工具数徽标/
+     顶部搜索框）；
+   ⑦ shortcuts 页（kbd 键位胶囊 + 绑定行 + 搜索过滤——ShortcutBindingRow
+     形态；捕获态交互原样）；
+   ⑧ plugins 页（市场式卡片行：图标座 + 来源 tag + 描述 line-clamp + 右侧
+     操作组 + 错误行红文本——pi-desktop InstalledPluginsPanel 形态）；
+   ⑨ instructions/speech/profiles/transfer 页（行式卡；导入导出确认面
+     模态化——.dialog 组件类替代原生 confirm，其余 confirm 保持）；
+   ⑩ **用量升级统计页**（views/usage.js 重做：摘要卡行 grid-cols-5 +
+     Intl compact + tabular-nums + 近 7/30 日胶囊切换 + SVG 趋势线
+     〔--chart-1~6 六色板/网格虚线/图例色点/单档 hover 竖线〕+ 热力图
+     〔aspect-square rounded-[4px] 五档 --heat-0~4 + 月份标签行〕+ 模型
+     甜甜圈——数据源 op:"usage" 单源；**byDay 每日聚合单点定形**：host 侧
+     usage 补 byDay 或前端对 turns 现算，实施时定形记档——方案 §1.2 唯一
+     数据缺口；取 host 路线须过 settings/server e2e）。
+3. **验收（卡面全项）**：逐页形态走查清单（对照 §2.3 规格逐值，入 progress
+   人工确认清单）+ settings/server e2e 回归全绿（硬门）+ 全量 npx vitest
+   run 回归全绿 + tauri-shell 断言保持（既有断言不删，拆分重定目标）+
+   token 证伪 grep（本批新改样式段无散写色值——重写页面段的存量色值顺手
+   消化，未重写段归批 C/收尾）+ 路由深链回归 + node --check + tsc 干净 +
+   产物重打同步（npm run build:single + TAURI_SIGNING_PRIVATE_KEY=
+   F:/aegent/private/tauri-updater.key npx tauri build + 复制
+   aegent-desktop.exe 进 dist/portable、安装器进 dist/）+ 机器等效冒烟
+   （启动壳 → HTTP 200 → 窗口可见性 MainWindowTitle=aegent）。
+4. **铁律（同批 A）**：id/data-* 钩子保留、协议面（sendRequest/
+   sendSettings/sendQuery）签名不变、数据面逻辑（settings patch/防抖/
+   校验）原样保留、每页一回归不一次性大爆炸；功能覆盖矩阵任何一行失能 =
+   卡不过，不许带病收官。遇到阻塞按 §0.2 偏离记档，不擅自扩范围。
+5. **收尾**：打勾 T-P3-135 + 完成记录 + progress 台账（含走查清单更新）+
+   commit（feat(ui): UI 批次 B ...）+ 记忆更新（批 B 落地状态、批 C
+   T-P3-136 待展卡）。不要问要不要继续。
 ```
-
