@@ -28,7 +28,11 @@ import { createOpenAiCompatProvider } from "../models/openai-compat.js";
 import { createAnthropicMessagesProvider } from "../models/anthropic-messages.js";
 import { withRetry, type RetryObservation } from "../models/retry.js";
 import type { RegisteredModel } from "./model-switch.js";
-import { resolveSubagentAssembly } from "./agent-child-subagents.js";
+import {
+  globalAgentsFile,
+  loadUserRuleSources,
+  resolveSubagentAssembly,
+} from "./agent-child-config.js";
 import { createLogger } from "./logger.js";
 
 /** A5/T-P1-51 重试留痕 logger（openai 装配专用，模块级单例避免句柄膨胀）。 */
@@ -261,9 +265,7 @@ async function main(): Promise<void> {
     identity = { provider: "anthropic", modelId: cli.model ?? "claude-sonnet-4-5" };
   }
 
-  // U5/T-P3-104：settings 多注册表装配——未显式给 --provider 且
-  // settings.json providers 在位时，全条目实例化进 models 注册表
-  // （J6 会话期换模可选面；单模型显式分支不受影响，行为零变化）。
+  // U5/T-P3-104：settings 多注册表装配（J6 换模可选面；单模型分支零变化）。
   const settingsFile = (await loadSettings(cli.settingsPath)).settings;
   const registry =
     cli.provider === undefined ? await buildModelsRegistry(settingsFile, cli.settingsPath) : undefined;
@@ -272,9 +274,7 @@ async function main(): Promise<void> {
     identity = registry.initial.identity;
   }
 
-  // U18/T-P3-120：辅助任务模型消费（judge/summarizer 与主对话分离——缺省
-  // 回退主模型，仅多注册表分支消费；回退链在 resolveTarget 内实现，与
-  // session/settings.resolveEnhancementTarget 同链）。
+  // U18/T-P3-120：辅助模型消费（缺省回退主模型；回退链同 resolveEnhancementTarget）。
   let judgeTarget: RegisteredModel | undefined;
   let summarizerTarget: RegisteredModel | undefined;
   if (registry !== undefined && settingsFile.enhancement !== undefined) {
@@ -290,15 +290,16 @@ async function main(): Promise<void> {
       )) ?? undefined;
   }
 
-  // U23/T-P3-126：子代理装配解析（settings subagents 段——拆分在 agent-child-subagents.ts）。
+  // U23+U24：子代理装配 / 用户规则 / 全局指令（拆分在 agent-child-config.ts）。
   const subagentsOptions = registry ? await resolveSubagentAssembly(settingsFile, registry.resolveTarget) : undefined;
+  const userRules = loadUserRuleSources();
+  const globalAgentsPath = globalAgentsFile();
 
   // J27/T-P1-61：retrying 事件落流观察者的 late-binding 槽（模块级声明）。
   const options: AgentChildOptions = {
     ...(cli.rawLogDir ? { rawLogDir: cli.rawLogDir } : {}),
     sessionId,
-    // U17/T-P3-119：settings mcp 段的 enabled 条目 → 装配消费（agent-process
-    // 在 ready 前连接注册；单 server 失败跳过——never-fail 装配）
+    // U17/T-P3-119：settings mcp 段 enabled 条目 → ready 前连接注册（never-fail）
     ...(settingsFile.mcp?.some((s) => s.enabled !== false)
       ? { mcpServers: settingsFile.mcp.filter((s) => s.enabled !== false) }
       : {}),
@@ -306,9 +307,8 @@ async function main(): Promise<void> {
     ...(subagentsOptions ? { subagents: subagentsOptions } : {}),
     ...(storage ? { storage } : {}),
     ...(provider ? { provider, identity } : {}),
-    // F5/T-P1-18：真实 provider 时启用真摘要（LLM 生成 + 截断回退）——
-    // echo 模式不给（P0 截断摘要，冷启动路径零变化）。U18：enhancement
-    // summarizer 条目在位时用辅助模型（否则主模型——既有回退）。
+    // F5/T-P1-18：真摘要（LLM 生成 + 截断回退）——echo 模式不给。U18：
+    // enhancement summarizer 在位时用辅助模型（否则主模型——既有回退）。
     ...((cli.provider === "openai" || cli.provider === "anthropic" || registry !== undefined) &&
     provider &&
     identity
@@ -337,15 +337,16 @@ async function main(): Promise<void> {
             ...(cli.network === "allow" || cli.network === "deny"
               ? { networkPolicy: cli.network }
               : {}),
-            // U22/T-P3-125：技能管理装配消费（settings skills 段——disabled
-            // 停用名单 + roots 附加来源目录；缺省 undefined = 全启用单根，
-            // 既有行为零变化）
+            // U22/T-P3-125：技能管理装配消费（settings skills 段——缺省全启用单根）
             ...(settingsFile.skills?.disabled?.length
               ? { skillsDisabled: settingsFile.skills.disabled }
               : {}),
             ...(settingsFile.skills?.roots?.length
               ? { skillsRoots: settingsFile.skills.roots }
               : {}),
+            // U24/T-P3-127：C22 user 档规则文件 + 全局指令（~/.aegent 两位）
+            ...(userRules.length > 0 ? { rules: userRules } : {}),
+            ...(globalAgentsPath !== undefined ? { globalAgentsPath } : {}),
             // G1/G7 plan 模式（测试/实测开关：AEGENT_PLAN=1）——G4 计划
             // artifact 父目录 .aegent/sessions（savePlanArtifact 内部按
             // <dir>/<sessionId>/plan.md 落盘；untracked 不入 git stash，

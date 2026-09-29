@@ -27,8 +27,15 @@ import {
   SKILLS_DIR,
 } from "../kernel/skills.js";
 import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import {
+  instructionPaths,
+  listInstructions,
+  saveInstruction,
+  type InstructionTarget,
+} from "./instructions-gateway.js";
 import {
   applyImportedSettings,
   backupSettingsFile,
@@ -155,6 +162,21 @@ export interface SettingsGateway {
     builtins: (SubagentDefinition & { enabled: boolean; overridden: boolean })[];
     custom: SubagentDefinition[];
   }>;
+  /**
+   * U24/T-P3-127：指令中心数据面（三文件位——workspace AGENTS.md /
+   * 全局 ~/.aegent/AGENTS.md / 用户规则 ~/.aegent/rules.txt；各带存在性
+   * 与内容；规则位附 lint issues——parseRulesText 逐行校验）。
+   */
+  instructionsList(): Promise<{
+    project: { path: string; exists: boolean; content: string };
+    global: { path: string; exists: boolean; content: string };
+    rules: { path: string; exists: boolean; content: string; issues: { line: number; message: string }[] };
+  }>;
+  /**
+   * U24/T-P3-127：指令文件写回（target 白名单三位——host 侧路径收敛，
+   * 防任意文件写；保存确认面在 UI 层）。
+   */
+  instructionSave(target: "project-agents" | "global-agents" | "user-rules", content: string): Promise<{ saved: true; path: string }>;
 }
 
 /** 生产缺省探测依赖（真网络——tests 注入 fake）。 */
@@ -175,6 +197,11 @@ export class FileSettingsGateway implements SettingsGateway {
      * skill-save 写入的根；缺省 undefined = 技能管理面不可用）。
      */
     private readonly workspaceRoot?: string,
+    /**
+     * U24/T-P3-127：home 目录根（全局 AGENTS.md 与用户规则文件的定位——
+     * 缺省 os.homedir()；测试注入临时目录）。
+     */
+    private readonly homeDir: string = homedir(),
   ) {}
 
   async get(): Promise<SettingsShape> {
@@ -349,5 +376,17 @@ export class FileSettingsGateway implements SettingsGateway {
   }> {
     const settings = await this.get();
     return subagentCatalog(settings.subagents);
+  }
+
+  async instructionsList(): Promise<ReturnType<typeof listInstructions>> {
+    return listInstructions(instructionPaths(this.workspaceRoot, this.homeDir));
+  }
+
+  async instructionSave(
+    target: InstructionTarget,
+    content: string,
+  ): Promise<{ saved: true; path: string }> {
+    if (target === "project-agents" && this.workspaceRoot === undefined) this.skillsUnavailable();
+    return saveInstruction(instructionPaths(this.workspaceRoot, this.homeDir), target, content);
   }
 }

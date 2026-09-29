@@ -1116,6 +1116,71 @@ process.stdin.on("data", (c) => {
     client.close();
   });
 
+  it("settings op=instructions-list/instruction-save（U24/T-P3-127）：指令中心三文件位", async () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), "aegent-host-instr-"));
+    settingsTmpDirs.push(tmp);
+    const ws = mkdtempSync(path.join(tmpdir(), "aegent-host-instr-ws-"));
+    settingsTmpDirs.push(ws);
+    const { port } = await startServer({
+      agent: fakeAgent(),
+      settingsGateway: new FileSettingsGateway(
+        path.join(tmp, "settings.json"),
+        new PlainFileCredentialStore(path.join(tmp, "credentials.bin")),
+        undefined,
+        undefined,
+        ws, // U22/U24：workspace 根（项目 AGENTS.md 位）
+        tmp, // U24：home 注入（全局 AGENTS.md / rules.txt 落临时目录）
+      ),
+    });
+    const client = await wsConnect(port);
+    await client.hello("web-n1");
+    const settingsCall = (call: Record<string, unknown>, requestId: string) => {
+      client.raw({ type: "settings", requestId, ...call });
+      return client.waitFor((e) => e.type === "response" && e.requestId === requestId, `settings(${requestId})`) as Promise<Record<string, unknown>>;
+    };
+
+    // 空清单：三文件位路径正确、全部不存在
+    const empty = await settingsCall({ op: "instructions-list" }, "n0");
+    expect(empty.ok).toBe(true);
+    const view = empty.result as {
+      project: { path: string; exists: boolean; content: string };
+      global: { path: string; exists: boolean; content: string };
+      rules: { path: string; exists: boolean; content: string; issues: unknown[] };
+    };
+    expect(view.project.path).toBe(path.join(ws, "AGENTS.md"));
+    expect(view.global.path).toBe(path.join(tmp, ".aegent", "AGENTS.md"));
+    expect(view.rules.path).toBe(path.join(tmp, ".aegent", "rules.txt"));
+    expect(view.project.exists).toBe(false);
+
+    // 写回项目 AGENTS.md → 文件在位（tmp 原子替换后无 .tmp 残留）
+    const saveProject = await settingsCall(
+      { op: "instruction-save", target: "project-agents", content: "## 代码风格\n- 最小改动" },
+      "n1",
+    );
+    expect(saveProject.ok).toBe(true);
+    expect(existsSync(path.join(ws, "AGENTS.md"))).toBe(true);
+    expect(existsSync(path.join(ws, "AGENTS.md.tmp"))).toBe(false);
+
+    // 写回规则文件（含一行坏形状）→ list 回读并 lint 点名
+    const saveRules = await settingsCall(
+      { op: "instruction-save", target: "user-rules", content: "Bash(git status) -> allow\n没有箭头的行\n" },
+      "n2",
+    );
+    expect(saveRules.ok).toBe(true);
+    const listed = await settingsCall({ op: "instructions-list" }, "n3");
+    const v2 = listed.result as typeof view;
+    expect(v2.project.exists).toBe(true);
+    expect(v2.project.content).toContain("最小改动");
+    expect(v2.rules.exists).toBe(true);
+    expect((v2.rules.issues as { line: number }[]).map((i) => i.line)).toEqual([2]);
+
+    // 非法 target → parse 层拒绝（坏信封 (unparsed) 回执）
+    client.raw({ type: "settings", requestId: "n4", op: "instruction-save", target: "../escape", content: "x" });
+    const unparsed = await client.waitFor((e) => e.type === "response" && e.requestId === "(unparsed)", "非法 target 回执");
+    expect((unparsed.error as { code: string }).code).toBe("PROTOCOL_MALFORMED");
+    client.close();
+  });
+
   it("settings op=import（U20/T-P3-122）：配置包导入 + 备份滚动 + 坏包拒绝", async () => {
     const tmp = mkdtempSync(path.join(tmpdir(), "aegent-host-import-"));
     settingsTmpDirs.push(tmp);

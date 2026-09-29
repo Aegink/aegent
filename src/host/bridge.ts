@@ -26,6 +26,7 @@ import type { SessionStore } from "../session/store.js";
 import { SqliteEventStorage } from "../session/db.js";
 // U9/U10/U12 查询面的 op 分流实现拆分至 query-gateway.ts（行数纪律拆分）
 import { handleHostQuery } from "./query-gateway.js";
+import type { InstructionTarget } from "./protocol-settings.js";
 import { AgentHost } from "./registry.js";
 import {
   HostProtocolServer,
@@ -313,6 +314,11 @@ export class HostBridge implements SessionRouter {
         if (call.op === "skill-save") return gateway.skillSave(call.skill!);
         // U23/T-P3-126：子代理管理页清单
         if (call.op === "subagents-list") return gateway.subagentsList();
+        // U24/T-P3-127：指令中心（三文件位数据面 + 白名单写回）
+        if (call.op === "instructions-list") return gateway.instructionsList();
+        if (call.op === "instruction-save") {
+          return gateway.instructionSave(call.target as InstructionTarget, call.content!);
+        }
         return { credentials: await gateway.credentialsList() };
       },
     };

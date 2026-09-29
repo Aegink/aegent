@@ -9,6 +9,7 @@ import {
   loadedRuleText,
   loadRules,
   parseRulePattern,
+  parseRulesText,
 } from "./rule-loader.js";
 import { createRuleSetModule } from "./rules.js";
 
@@ -328,3 +329,52 @@ describe("C21 · 参数匹配委托（链上路径）", () => {
   });
 });
 
+
+// ---------------------------------------------------------------------------
+// U24/T-P3-127：规则文本文件解析（~/.aegent/rules.txt 文件位）
+// ---------------------------------------------------------------------------
+
+describe("parseRulesText（U24/T-P3-127 指令中心——规则文件校验往返）", () => {
+  it("合法行 → RuleSource（raw/action/line）；注释与空行跳过", () => {
+    const text = [
+      "# 注释行",
+      "",
+      "Bash(git status) -> allow",
+      "Bash(git push) -> deny",
+      "  write(src/**) -> ask  ",
+    ].join("\n");
+    const { sources, issues } = parseRulesText(text);
+    expect(issues).toEqual([]);
+    expect(sources).toEqual([
+      { raw: "Bash(git status)", action: "allow", line: 3 },
+      { raw: "Bash(git push)", action: "deny", line: 4 },
+      { raw: "write(src/**)", action: "ask", line: 5 },
+    ]);
+  });
+
+  it("坏行跳过并落 issue（行号+原文）；缺动作/非法动作同处置", () => {
+    const text = [
+      "Bash(git status) -> allow",
+      "没有箭头的行",
+      "Bash(x) -> Allow", // 动作大小写敏感（非法）
+      " -> allow", // 空规则原文
+    ].join("\n");
+    const { sources, issues } = parseRulesText(text);
+    expect(sources).toHaveLength(1);
+    expect(issues.map((i) => i.line)).toEqual([2, 3, 4]);
+    expect(issues[0]!.message).toContain("没有箭头的行");
+  });
+
+  it("解析产物经 loadRules→lintRules 校验往返（形状合法但工具不存在的行由 lint 点名）", () => {
+    const text = "Bash(git status) -> allow\n写坏行 -> deny\nBash(npm *) -> ask\n";
+    const { sources, issues } = parseRulesText(text);
+    expect(issues).toHaveLength(0); // 形状层面三行都合法（工具名合法性在 lint 层）
+    const loaded = loadRules(sources, builtinRuleMatchers);
+    expect(loaded).toHaveLength(3);
+    const linted = lintRules(loaded, { knownToolNames: ["Bash"] });
+    // "写坏行" 是形状合法的裸工具规则，但工具不在注册表 → unknown-tool
+    //（deny 规则缺 alternatives 另由 C55 纪律点名——两条 lint 都在）
+    expect(linted.some((i) => i.kind === "unknown-tool" && i.raw === "写坏行")).toBe(true);
+    expect(linted.filter((i) => i.raw === "Bash(git status)" || i.raw === "Bash(npm *)")).toHaveLength(0);
+  });
+});

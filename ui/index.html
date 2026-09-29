@@ -184,6 +184,26 @@
           </div>
           <button id="subagent-new" type="button">新建自定义子代理</button>
         </section>
+        <!-- U24/T-P3-127 指令中心：全局/项目级指令文件与用户规则文件的
+             集中管理（C22 project/user 两档的文件位 UI 面）——查看/编辑/
+             保存确认 + 规则 lint + 模板插入辅助 -->
+        <section data-section="instructions">
+          <h2>指令中心</h2>
+          <p class="hint">层级（全局 → 项目就近覆盖）与规则文件（C22 user 档）集中编辑；保存前有确认面，新会话生效。</p>
+          <h3>项目 AGENTS.md（<span id="instr-project-path">workspace</span>）</h3>
+          <textarea id="instr-project" rows="5" placeholder="（项目级指令——F2 收集链最近层）"></textarea>
+          <button class="instr-save" data-target="project-agents" type="button">保存项目指令</button>
+          <button class="instr-tpl" data-target="project-agents" type="button">插入模板</button>
+          <h3>全局 AGENTS.md（~/.aegent/AGENTS.md——最远层）</h3>
+          <textarea id="instr-global" rows="5" placeholder="（全局指令——所有 workspace 生效）"></textarea>
+          <button class="instr-save" data-target="global-agents" type="button">保存全局指令</button>
+          <button class="instr-tpl" data-target="global-agents" type="button">插入模板</button>
+          <h3>用户级规则（~/.aegent/rules.txt——每行 `<code>规则 -&gt; allow|ask|deny</code>`）</h3>
+          <textarea id="instr-rules" rows="5" placeholder="# 注释行；如：Bash(git status) -> allow"></textarea>
+          <p id="instr-rules-lint" class="hint"></p>
+          <button class="instr-save" data-target="user-rules" type="button">保存用户规则</button>
+          <button class="instr-tpl" data-target="user-rules" type="button">插入模板</button>
+        </section>
         <!-- U17/T-P3-119 MCP 管理向导：分步添加（类型→参数→校验→保存）+
              统一面板（清单/启停/编辑/删除）；连接校验走 settings op:mcp-check -->
         <section data-section="mcp">

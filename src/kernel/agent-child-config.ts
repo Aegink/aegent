@@ -1,6 +1,8 @@
 /**
- * 子代理装配解析（U23/T-P3-126——agent-child 的行数纪律拆分位）：
- * settings subagents 段 → agent-process 的 subagents 装配选项。
+ * agent-child 装配配置解析（U23/T-P3-126 + U24/T-P3-127——agent-child 的
+ * 行数纪律拆分位）：
+ *   - 子代理装配（settings subagents 段 → defs + 独立模型闭包）；
+ *   - 用户规则文件（C22 user 档文件位 ~/.aegent/rules.txt → RuleSource[]）。
  *
  * 独立模型预解析（resolveSubagentModel 链 + registry.resolveTarget）进
  * Map——预设量小，resolveModel 保持同步签名供 runner 按次取用。未配置
@@ -8,7 +10,12 @@
  * 会话模型——"独立配置缺省回退主模型"语义，与 U18 链同构）。
  */
 
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import path from "node:path";
+
 import type { RegisteredModel } from "./model-switch.js";
+import { parseRulesText } from "../policy/rule-loader.js";
 import type { SettingsShape } from "../session/settings.js";
 import {
   resolveSubagentModel,
@@ -45,4 +52,33 @@ export function resolveSubagentAssembly(
       ...(modelMap.size > 0 ? { resolveModel: (s: ResolvedSubagent) => modelMap.get(s.name) } : {}),
     };
   })();
+}
+
+// ---------------------------------------------------------------------------
+// 用户规则文件（C22 user 档文件位——U24/T-P3-127 指令中心）
+// ---------------------------------------------------------------------------
+
+/** 用户级规则文件路径（`~/.aegent/rules.txt`——指令中心编辑写回的位）。 */
+export function userRulesPath(home?: string): string {
+  return path.join(home ?? homedir(), ".aegent", "rules.txt");
+}
+
+/** 全局指令文件路径（`~/.aegent/AGENTS.md`——F2 合并的最远层）。 */
+export function globalAgentsFile(home?: string): string {
+  return path.join(home ?? homedir(), ".aegent", "AGENTS.md");
+}
+
+/**
+ * 装配消费（agent-child main 调用）：读规则文件 → parseRulesText 解析。
+ * 文件缺失 = 空规则集（可选能力）；坏行已由解析层跳过（装配只装载合法
+ * 行——"一条坏规则不炸整个配置"的文件位延伸）。
+ */
+export function loadUserRuleSources(rulesPath?: string): import("../policy/rule-loader.js").RuleSource[] {
+  const file = rulesPath ?? userRulesPath();
+  if (!existsSync(file)) return [];
+  try {
+    return parseRulesText(readFileSync(file, "utf8")).sources;
+  } catch {
+    return []; // 读取失败与缺失同语义（规则面可选，不做权限诊断）
+  }
 }

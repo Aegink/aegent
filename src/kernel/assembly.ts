@@ -294,6 +294,11 @@ export interface ChildAssemblyOptions {
    */
   extraPrompt?: string;
   /**
+   * U24/T-P3-127 全局指令文件（~/.aegent/AGENTS.md——F2 合并的最远层）。
+   * 缺省 undefined = 不加全局层（既有行为零变化）。
+   */
+  globalAgentsPath?: string;
+  /**
    * C12/C13 编辑前必须先读（T-P1-71）：提供 ReadGateService 时 read 记账、
    * edit/write/apply_patch 校验（未读拒/过期拒）。缺省 undefined = 不启用
    * （C13 整体丢弃，工具照常用）。
@@ -652,6 +657,7 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
         approvalTier: "on_request",
         describeWritableRoots: () => pathGuard.describeWritableRoots(),
         cwd: options.workspaceRoot,
+        ...(options.globalAgentsPath !== undefined ? { globalAgentsPath: options.globalAgentsPath } : {}),
         ...(skillLoad.skills.length > 0 ? { skills: skillLoad.skills } : {}),
         ...(planModeService ? { planMode: true } : {}),
         ...(options.delegation ? { delegation: true } : {}),

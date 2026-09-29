@@ -359,3 +359,36 @@ export {
   loadedRuleText,
   loadedRuleDenial,
 } from "./rule-match.js";
+
+// ---------------------------------------------------------------------------
+// 规则文本文件解析（U24/T-P3-127 指令中心——C22 user 档的文件位）
+// ---------------------------------------------------------------------------
+
+/**
+ * 规则文本 → RuleSource[]（`~/.aegent/rules.txt` 的文件格式解析——
+ * 每行 `<规则原文> -> <allow|ask|deny>`；`#` 注释行与空行跳过）。
+ *
+ * 坏行处置（与既有"一条坏规则不炸整个配置"纪律一致）：语法畸形行**跳过**
+ * 并落 issue（行号 + 原文——UI 保存前提示面），不进规则集；动作词非法
+ * 同处置（fail-closed：宁缺毋滥——看不懂的行不装进权限层）。保存侧不
+ * 阻断（配置是用户权威），装配侧只装载合法行。
+ */
+export function parseRulesText(text: string): {
+  sources: RuleSource[];
+  issues: { line: number; message: string }[];
+} {
+  const sources: RuleSource[] = [];
+  const issues: { line: number; message: string }[] = [];
+  const lines = text.split(/\r?\n/);
+  for (const [index, rawLine] of lines.entries()) {
+    const line = rawLine.trim();
+    if (line === "" || line.startsWith("#")) continue;
+    const m = /^(.+?)\s*->\s*(allow|ask|deny)\s*$/.exec(line);
+    if (m === null) {
+      issues.push({ line: index + 1, message: `行不合 "<规则> -> <allow|ask|deny>" 形状：${line.slice(0, 80)}` });
+      continue;
+    }
+    sources.push({ raw: m[1]!.trim(), action: m[2] as PolicyAction, line: index + 1 });
+  }
+  return { sources, issues };
+}

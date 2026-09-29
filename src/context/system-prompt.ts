@@ -131,6 +131,12 @@ export interface SystemPromptDeps {
   /** AGENTS.md 收集边界（缺省文件系统根；生产装配传工作区根）。 */
   root?: string;
   /**
+   * 全局指令文件（U24/T-P3-127——`~/.aegent/AGENTS.md`）：作为最远层参与
+   * F2 合并（项目层小节就近覆盖全局——合并语义原样）；缺省 undefined =
+   * 不加全局层（既有行为零变化）。
+   */
+  globalAgentsPath?: string;
+  /**
    * 技能清单（I2/T-P1-08）：装配侧经 loadSkills 扫描后传入，渲染为尾段
    * （正文按名经 skill_load 工具读取）；空/缺省 = 不加段（零行为变化）。
    */
@@ -168,6 +174,15 @@ export async function assembleSystemPrompt(deps: SystemPromptDeps): Promise<stri
   // 3. 项目指令（F2：收集 + 小节就近覆盖；单文件读取失败跳过——用户文件容错）
   const root = deps.root ?? path.parse(path.resolve(deps.cwd)).root;
   const contents: { filepath: string; content: string }[] = [];
+  // U24/T-P3-127：全局层（~/.aegent/AGENTS.md）为最远层——unshift 进
+  // 收集结果首位（mergeAgentsDocs 的远→近序：项目小节覆盖全局同名小节）。
+  if (deps.globalAgentsPath !== undefined && exists(deps.globalAgentsPath)) {
+    try {
+      contents.unshift({ filepath: deps.globalAgentsPath, content: readFile(deps.globalAgentsPath) });
+    } catch {
+      // 读失败跳过（用户文件容错——与项目层同纪律）
+    }
+  }
   for (const filepath of collectAgentsFiles(deps.cwd, root, exists)) {
     try {
       contents.push({ filepath, content: readFile(filepath) });

@@ -1264,6 +1264,7 @@ async function openSettings() {
   renderSkillRoots();
   void refreshSkillsList(); // U22：技能清单（文件系统面——每次打开刷新）
   void refreshSubagentsList(); // U23：子代理清单（内置+自定义——每次打开刷新）
+  void openInstructionsOnce(); // U24：指令中心（打开时拉一次，保存后局部刷新）
 }
 
 settingsBtn.addEventListener("click", () => void openSettings());
@@ -1999,6 +2000,89 @@ document.getElementById("subagent-save").addEventListener("click", () => {
   toast("子代理预设已保存（新会话生效）", "info");
   void refreshSubagentsList();
 });
+
+// ---------------------------------------------------------------------------
+// U24/T-P3-127 指令中心：全局/项目 AGENTS.md + 用户规则文件（C22 project/
+// user 档文件位）——查看/编辑/保存确认 + 规则 lint + 模板插入辅助。
+// ---------------------------------------------------------------------------
+
+const INSTR_TARGETS = {
+  "project-agents": "instr-project",
+  "global-agents": "instr-global",
+  "user-rules": "instr-rules",
+};
+const INSTR_TARGET_LABEL = {
+  "project-agents": "项目 AGENTS.md",
+  "global-agents": "全局 AGENTS.md",
+  "user-rules": "用户级规则 rules.txt",
+};
+const INSTR_TEMPLATES = {
+  "project-agents": "## 代码风格\n- 缩进与命名遵循现有代码\n\n## 提交约定\n- ",
+  "global-agents": "## 通用偏好\n- 中文回复\n- 先结论后理由\n",
+  "user-rules": "# 每行：<规则> -> <allow|ask|deny>\nBash(git status) -> allow\nBash(git push) -> deny\n",
+};
+
+async function refreshInstructions() {
+  const envelope = await sendSettings({ op: "instructions-list" });
+  if (!envelope.ok) {
+    document.getElementById("instr-rules-lint").textContent =
+      `指令面不可用：${envelope.error?.message ?? ""}`;
+    return;
+  }
+  const v = envelope.result;
+  document.getElementById("instr-project").value = v.project.content;
+  document.getElementById("instr-global").value = v.global.content;
+  document.getElementById("instr-rules").value = v.rules.content;
+  document.getElementById("instr-project-path").textContent =
+    v.project.path.split(/[\\/]/).slice(0, -1).join("/");
+  renderRulesLint(v.rules.issues ?? []);
+}
+
+function renderRulesLint(issues) {
+  const el = document.getElementById("instr-rules-lint");
+  if (issues.length === 0) {
+    el.textContent = "规则 lint：无问题（合法行全部装载）";
+    return;
+  }
+  el.textContent = `规则 lint：${issues.length} 行未装载——${issues
+    .slice(0, 5)
+    .map((i) => `第 ${i.line} 行 ${i.message}`)
+    .join("；")}${issues.length > 5 ? "…" : ""}`;
+}
+
+async function openInstructionsOnce() {
+  // 指令分节只在设置打开时拉一次（保存后局部刷新）
+  if (!document.getElementById("instr-project").dataset.loaded) {
+    await refreshInstructions();
+    document.getElementById("instr-project").dataset.loaded = "1";
+  }
+}
+
+for (const btn of document.querySelectorAll(".instr-save")) {
+  btn.addEventListener("click", async () => {
+    const target = btn.dataset.target;
+    const content = document.getElementById(INSTR_TARGETS[target]).value;
+    // 保存确认面（U24 卡面要求——覆盖用户文件前显式确认）
+    if (!window.confirm(`确认保存到「${INSTR_TARGET_LABEL[target]}」？\n（保存后新会话生效；目标：覆盖写入）`)) return;
+    const envelope = await sendSettings({ op: "instruction-save", target, content });
+    if (!envelope.ok) {
+      appendLine(`指令保存失败：${envelope.error?.code ?? ""} ${envelope.error?.message ?? ""}`, "warn");
+      return;
+    }
+    appendLine(`指令已保存：${envelope.result.path}`, "meta");
+    toast(`${INSTR_TARGET_LABEL[target]} 已保存（新会话生效）`, "info");
+    if (target === "user-rules") await refreshInstructions();
+  });
+}
+
+for (const btn of document.querySelectorAll(".instr-tpl")) {
+  btn.addEventListener("click", () => {
+    const target = btn.dataset.target;
+    const ta = document.getElementById(INSTR_TARGETS[target]);
+    ta.value = ta.value === "" ? (INSTR_TEMPLATES[target] ?? "") : `${ta.value}\n${INSTR_TEMPLATES[target] ?? ""}`;
+    ta.focus();
+  });
+}
 
 // ---------------------------------------------------------------------------
 // U3/T-P3-105 会话历史侧栏：query op:"sessions" 清单 + 只读查看 +

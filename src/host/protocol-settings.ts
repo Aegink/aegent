@@ -27,7 +27,11 @@ export type SettingsOp =
   /** U22/T-P3-125：技能编辑器写回（新建/编辑——写 workspace 技能目录）。 */
   | "skill-save"
   /** U23/T-P3-126：子代理管理页清单（内置五预设 + 用户自定义分区）。 */
-  | "subagents-list";
+  | "subagents-list"
+  /** U24/T-P3-127：指令中心数据面（三文件位 + 规则 lint issues）。 */
+  | "instructions-list"
+  /** U24/T-P3-127：指令文件写回（target 白名单三位）。 */
+  | "instruction-save";
 
 /** 技能编辑器写回载荷（op=skill-save；frontmatter + 正文的一次性形状）。 */
 export interface SkillSavePayload {
@@ -56,10 +60,18 @@ export type SettingsCall = {
   args?: string[];
   /** op=skill-save：技能编辑器写回载荷（U22）。 */
   skill?: SkillSavePayload;
+  /** op=instruction-save：指令写回目标（U24——白名单三值之一）。 */
+  target?: string;
+  /** op=instruction-save：指令文件内容（U24）。 */
+  content?: string;
 };
 
 /** 技能名 slug 规则（U22——目录名安全面：小写字母数字开头，禁 `..`）。 */
 const SKILL_SLUG_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+
+/** U24/T-P3-127 指令写回目标白名单（host 侧路径收敛——防任意文件写）。 */
+export const INSTRUCTION_TARGETS = ["project-agents", "global-agents", "user-rules"] as const;
+export type InstructionTarget = (typeof INSTRUCTION_TARGETS)[number];
 
 /** 解析 settings 信封（op 闭集 + 各 op 载荷形状——坏形状整信封拒绝）。 */
 export function parseSettingsEnvelope(record: Record<string, unknown>): SettingsCall {
@@ -76,6 +88,8 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     "args",
     "settings",
     "skill",
+    "target",
+    "content",
   ]);
   if (unknownKey) throw new Error(`settings 信封${unknownKey}`);
   if (typeof record["requestId"] !== "string" || record["requestId"] === "") {
@@ -94,10 +108,12 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     op !== "import" &&
     op !== "skills-list" &&
     op !== "skill-save" &&
-    op !== "subagents-list"
+    op !== "subagents-list" &&
+    op !== "instructions-list" &&
+    op !== "instruction-save"
   ) {
     throw new Error(
-      `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|mcp-check|import|skills-list|skill-save|subagents-list）`,
+      `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|mcp-check|import|skills-list|skill-save|subagents-list|instructions-list|instruction-save）`,
     );
   }
   if (op === "update") {
@@ -173,6 +189,18 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
       throw new Error("settings op=skill-save 的 skill.tools 须为非空字符串数组");
     }
   }
+  // U24/T-P3-127：instruction-save 的载荷 = target（白名单三值）+ content
+  // （字符串——内容校验在 gateway 的规则 lint 面，save 不阻断）
+  if (op === "instruction-save") {
+    if (typeof record["target"] !== "string" || !(INSTRUCTION_TARGETS as readonly string[]).includes(record["target"])) {
+      throw new Error(
+        `settings op=instruction-save 需要 target（合法：${INSTRUCTION_TARGETS.join("|")}）`,
+      );
+    }
+    if (typeof record["content"] !== "string") {
+      throw new Error("settings op=instruction-save 需要 content 字符串");
+    }
+  }
   return {
     op,
     ...(record["patch"] !== undefined ? { patch: record["patch"] as Record<string, unknown> } : {}),
@@ -188,6 +216,8 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     ...(record["skill"] !== undefined && typeof record["skill"] === "object" && !Array.isArray(record["skill"])
       ? { skill: record["skill"] as unknown as SkillSavePayload }
       : {}),
+    ...(typeof record["target"] === "string" ? { target: record["target"] } : {}),
+    ...(typeof record["content"] === "string" ? { content: record["content"] } : {}),
   };
 }
 
