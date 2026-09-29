@@ -304,6 +304,10 @@ export class HostBridge implements SessionRouter {
             }),
           };
         }
+        // U20/T-P3-122：配置包导入（UI 已确认——备份滚动 + 合并落盘）
+        if (call.op === "import") {
+          return gateway.importSettings(call.settings!);
+        }
         return { credentials: await gateway.credentialsList() };
       },
     };

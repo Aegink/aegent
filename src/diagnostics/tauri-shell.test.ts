@@ -110,7 +110,7 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     // 八分节（providers/credentials/permission/sandbox/appearance/logging/projects/about——
     // settings.json 各段一一对应；U5 卡在 providers 分节扩展切换与健康徽标；
     // logging 为 T-P3-132 #28 补落；projects 为 U11/T-P3-110 项目档）
-    for (const section of ["providers", "credentials", "permission", "sandbox", "appearance", "logging", "projects", "prompts", "mcp", "enhancement", "profiles", "about"]) {
+    for (const section of ["providers", "credentials", "permission", "sandbox", "appearance", "logging", "projects", "prompts", "mcp", "enhancement", "profiles", "transfer", "about"]) {
       expect(html).toContain(`data-section="${section}"`);
     }
     // 导航入口（状态栏齿轮）与凭据不回显（U2 面注入防呆）
@@ -239,6 +239,14 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(app).toContain("applyProfileValues"); // 切换 = 批量写生效段
     expect(app).toContain("故障转移优先级"); // 排序按钮提示（↑↓ = J15 队列序）
     expect(html).toContain("故障转移优先级"); // providers 分节 hint
+    // U20/T-P3-122：导入导出（确认面 + 备份 + 深链钩子）
+    expect(html).toContain('id="export-btn"');
+    expect(html).toContain('id="import-file"');
+    expect(html).toContain('id="import-apply"');
+    expect(app).toContain('op: "import"'); // 导入 wire 面
+    expect(app).toContain("aegentApplyDeepLink"); // 深链宿主接线钩子
+    expect(app).toContain("确认导入"); // 导入必确认（不可信输入面）
+    expect(html).toContain("不含凭据"); // 零明文纪律的 UI 提示
     // U12/T-P3-111：用量面板（上下文检查器 + 成本统计页——J21 消费端）
     expect(html).toContain('id="usage-panel"');
     expect(html).toContain('id="ctx-meter-fill"');

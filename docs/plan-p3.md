@@ -278,7 +278,7 @@
 - **风险 / 未知**：切换时在途会话的语义（新 turn 生效——J6 同款）
 - **完成记录（2026-09-29）**：验收 `npx vitest run src/session/settings.test.ts src/diagnostics/tauri-shell.test.ts src/host/server.test.ts` → **45 passed**（settings 21〔含 Profiles/failoverOrder 四例〕+ tauri-shell 资产 + server 回归；tsc 干净）。落地：①**settings Profiles 档**：ProfileEntry（name 唯一 + defaultProvider 必填 + defaultModel/permission/sandbox 可选快照——parse fail-closed）+ activeProfile 记录位 + patch 白名单加 profiles/activeProfile；②**applyProfile 纯函数**：切换 = 生成批量 patch（defaultProvider/defaultModel/permission/sandbox——providers 清单不进 patch）走既有 settings update 通道（wire 零新增）；③**failoverOrderFromProviders 纯函数**：providers 数组序 = J15 队列序（"队列非开关 + sort_index 序"行为锚；无 model 条目以 defaultModel 兜底——与 U5 多注册表跳过规则同源；装配方按此序构造 backends——**failover provider 真实装配记档 YAGNI**：J15 库面/顺序面在位，装配是三行接线随真实多供应商需求）；④**ui**：场景配置档分节（清单 ★ 当前/建档/切换/删除 + "填入当前生效值"快照辅助）+ 状态栏 profile-quick 快速切换器（select，有档才显示）+ providers 分节 ↑↓ 排序按钮（等效"拖拽排序"的原生实现——顺序语义同，记档）+ hint 提示 J15 优先级语义。**卡内定形**：切换生效语义 = 在途轮不受影响、新 turn 生效（J6 同款——settings 生效值由装配启动时捕获，多注册表条目实例化面 U5 既有）；providers 段 patch 在段级整体替换语义下天然携带顺序（数组序即档序）。
 
-#### T-P3-122 · U20 · 配置导入导出与深链分享（备份/迁移/导入确认） `[ ]`
+#### T-P3-122 · U20 · 配置导入导出与深链分享（备份/迁移/导入确认） `[x]`
 - **依据需求**：U20（"配置包导出/导入（含备份列表）、深链导入的确认面"）
 - **上游首选参考**：[cc-switch·ImportExportSection/BackupListSection](../oss/cc-switch/src/components/settings) + [deeplink 三确认](../oss/cc-switch/src/components/deeplink)（🔴 只学行为）
 - **取什么 / 别抄什么**：取"导出包 + 导入确认 + 备份列表"行为；深链协议（自定义 scheme）最小面——aegent://import?data= 形态（Tauri deep-link 插件或浏览器协议——执行时定形）；**导入必确认**（不可信输入面）
@@ -286,6 +286,7 @@
 - **验收**：`npx vitest run src/session/settings-transfer.test.ts`——往返 + 凭据排除断言 + 备份滚动 + 坏包拒绝 + ui 资产断言
 - **依赖**：T-P3-101/102
 - **风险 / 未知**：深链 scheme 注册（Tauri 插件面——U7 同款插件解禁逻辑）
+- **完成记录（2026-09-29）**：验收 `npx vitest run src/session/settings-transfer.test.ts src/session/settings.test.ts src/host/server.test.ts src/diagnostics/tauri-shell.test.ts` → **50 passed**（transfer 4 新 + settings 回归 + server import e2e 两路 + tauri-shell 资产；tsc 干净）。落地：①**settings-transfer.ts**：exportSettingsPayload（kind 标记配置包 + apiKey 键断言——凭据不打包双保险，凭据独立 credentials.bin 本就零 key）+ buildImportPreview（**确认前只读面**：JSON/kind/parseSettingsShape 三层校验，坏包类型化拒绝 SETTINGS_IMPORT_BAD_JSON|KIND|SHAPE）+ summarizePackage（确认对话框逐项摘要）+ applyImportedSettings（本地态保留：onboardingDone 不覆盖、activeProfile 仅同名档保留）+ backupSettingsFile（导入前滚动备份 settings.json.bak.0~4——最近 5 份，最老挤出）；②**wire**：settings 信封 op:"import"（载荷 settings 对象——parse 层对象形状、gateway 层 parse 校验 + 备份 + 落盘）；③**ui 第十一分节** data-section="transfer"：导出（Blob 下载 aegent-settings-YYYY-MM-DD.json）+ 导入（file input → 本地预览/摘要 → confirm 逐项列出变更 → 确认后才上送——**导入必确认**，cc-switch deeplink 三确认行为锚：不可信输入面）+ hint 零凭据提示；④**深链钩子** `window.aegentApplyDeepLink(data)`（宿主接线面——aegentShowUpdate 同款模式：预览 → confirm → 应用三态回执）。**执行时定形（记档）**：深链 scheme 注册（Tauri deep-link 插件 + Windows 注册表）不落——真实分发渠道面，分享本地走导出文件；插件解禁需计划明文授权，钩子形状已在位可接。
 
 #### T-P3-123 · U21 · CLI 终端体验升级（kill-ring/模糊搜索/多行编辑） `[ ]`
 - **依据需求**：U21（"REPL 编辑器升级——kill-ring、模糊历史搜索、多行编辑；CLI 是 K1 主入口，产品化不能只顾图形端"）

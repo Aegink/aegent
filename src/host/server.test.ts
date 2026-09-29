@@ -1026,6 +1026,64 @@ process.stdin.on("data", (c) => {
     client.close();
   });
 
+  it("settings op=import（U20/T-P3-122）：配置包导入 + 备份滚动 + 坏包拒绝", async () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), "aegent-host-import-"));
+    settingsTmpDirs.push(tmp);
+    const settingsPath = path.join(tmp, "settings.json");
+    // 预置现有配置（导入后应被覆盖且 onboardingDone 保留）
+    writeFileSync(
+      settingsPath,
+      JSON.stringify({ version: 1, providers: [], onboardingDone: true }),
+      "utf8",
+    );
+    const { port } = await startServer({
+      agent: fakeAgent(),
+      settingsGateway: new FileSettingsGateway(
+        settingsPath,
+        new PlainFileCredentialStore(path.join(tmp, "credentials.bin")),
+      ),
+    });
+    const client = await wsConnect(port);
+    await client.hello("web-i1");
+    const settingsCall = (call: Record<string, unknown>, requestId: string) => {
+      client.raw({ type: "settings", requestId, ...call });
+      return client.waitFor((e) => e.type === "response" && e.requestId === requestId, `settings(${requestId})`) as Promise<Record<string, unknown>>;
+    };
+
+    // 好包：providers + prompts 导入，onboardingDone 本地态保留，备份滚动落 bak.0
+    const good = await settingsCall(
+      {
+        op: "import",
+        settings: {
+          version: 1,
+          providers: [{ name: "main", adapter: "openai", baseUrl: "https://x", model: "m" }],
+          defaultProvider: "main",
+          prompts: [{ name: "r", content: "评审" }],
+        },
+      },
+      "i1",
+    );
+    expect(good.ok).toBe(true);
+    const applied = good.result as { applied: true; summary: string[] };
+    expect(applied.applied).toBe(true);
+    expect(applied.summary.some((l) => l.includes("供应商条目 1 个"))).toBe(true);
+    // 落盘验证：配置被覆盖、本地态保留、备份滚动落 bak.0
+    expect(JSON.parse(readFileSync(settingsPath, "utf8")).defaultProvider).toBe("main");
+    expect(JSON.parse(readFileSync(settingsPath, "utf8")).onboardingDone).toBe(true);
+    expect(existsSync(`${settingsPath}.bak.0`)).toBe(true);
+    expect(JSON.parse(readFileSync(`${settingsPath}.bak.0`, "utf8")).onboardingDone).toBe(true);
+
+    // 坏包：providers 形状非法 → 拒绝且不落盘（fail-closed——原配置仍可读）
+    const bad = await settingsCall(
+      { op: "import", settings: { version: 1, providers: "x" } },
+      "i2",
+    );
+    expect(bad.ok).toBe(false);
+    const still = JSON.parse(readFileSync(settingsPath, "utf8"));
+    expect(still.defaultProvider).toBe("main"); // 坏包未覆盖
+    client.close();
+  });
+
   it("notification name=n5（U13/T-P3-112）：notifyHub 分类通知全端 WS 广播", async () => {
     const hub = new NotificationHub();
     const agent = fakeAgent();

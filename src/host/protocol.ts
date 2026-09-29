@@ -132,8 +132,11 @@ export interface HostProtocolServerOptions {
       | "credentials-list"
       | "probe"
       | "session-delete"
-      | "mcp-check";
+      | "mcp-check"
+      | "import";
     patch?: Record<string, unknown>;
+    /** op=import：配置包内的 settings 段（U20——形状校验在 gateway）。 */
+    settings?: Record<string, unknown>;
     provider?: string;
     key?: string;
     sessionId?: string;

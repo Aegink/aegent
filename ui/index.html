@@ -214,6 +214,19 @@
           </form>
           <p class="hint">建档 = 保存命名组合；切换 = 批量写回默认供应商/模型/权限/沙箱生效段（providers 清单不动；在途轮不受影响——新 turn 生效，J6 同款）。供应商列表的 ↑↓ 顺序 = 故障转移优先级（J15）。</p>
         </section>
+        <!-- U20/T-P3-122 导入导出与深链分享：导出包零凭据 + 导入必确认
+             （不可信输入面——摘要逐项列出后 confirm）+ 深链钩子 -->
+        <section data-section="transfer">
+          <h2>导入与导出</h2>
+          <button id="export-btn" type="button">导出配置包</button>
+          <span id="export-status" class="hint"></span>
+          <hr />
+          <label>选择配置包<input id="import-file" type="file" accept=".json,application/json" /></label>
+          <pre id="import-preview" class="card-args" hidden></pre>
+          <p id="import-summary" class="hint"></p>
+          <button id="import-apply" type="button" hidden>确认导入（覆盖当前配置）</button>
+          <p class="hint">导入前自动备份（settings.json.bak.0~4 滚动 5 份）；配置包不含凭据——换机请在各供应商条目重新录入 key。</p>
+        </section>
         <section data-section="about">
           <h2>关于</h2>
           <p>aegent 0.1.0 —— 本地优先的 agent 工作台（事件即真相；配置即本页）。</p>

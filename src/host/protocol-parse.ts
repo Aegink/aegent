@@ -81,7 +81,8 @@ export type ClientEnvelope =
         | "credentials-list"
         | "probe"
         | "session-delete"
-        | "mcp-check";
+        | "mcp-check"
+        | "import";
       patch?: Record<string, unknown>;
       provider?: string;
       key?: string;
@@ -271,6 +272,7 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
       "name",
       "command",
       "args",
+      "settings",
     ]);
     if (unknownKey) throw new Error(`settings 信封${unknownKey}`);
     if (typeof record["requestId"] !== "string" || record["requestId"] === "") {
@@ -285,10 +287,11 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
       op !== "credentials-list" &&
       op !== "probe" &&
       op !== "session-delete" &&
-      op !== "mcp-check"
+      op !== "mcp-check" &&
+      op !== "import"
     ) {
       throw new Error(
-        `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|mcp-check）`,
+        `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|mcp-check|import）`,
       );
     }
     if (op === "session-delete") {
@@ -332,11 +335,22 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
         throw new Error("settings op=mcp-check 的 args 须为字符串数组");
       }
     }
+    // U20/T-P3-122：import 的载荷 = 配置包内 settings 对象（形状校验在
+    // gateway 落盘前——parse 层只管"必须是对象"）
+    if (op === "import") {
+      const st = record["settings"];
+      if (st === null || typeof st !== "object" || Array.isArray(st)) {
+        throw new Error("settings op=import 需要 settings 对象（配置包内的 settings 段）");
+      }
+    }
     return {
       type: "settings",
       requestId: record["requestId"],
       op,
       ...(record["patch"] !== undefined ? { patch: record["patch"] as Record<string, unknown> } : {}),
+      ...(record["settings"] !== undefined && typeof record["settings"] === "object" && !Array.isArray(record["settings"])
+        ? { settings: record["settings"] as Record<string, unknown> }
+        : {}),
       ...(typeof record["provider"] === "string" ? { provider: record["provider"] } : {}),
       ...(typeof record["key"] === "string" ? { key: record["key"] } : {}),
       ...(typeof record["sessionId"] === "string" ? { sessionId: record["sessionId"] } : {}),

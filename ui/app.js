@@ -1128,6 +1128,126 @@ document.getElementById("profile-snapshot").addEventListener("click", () => {
   document.getElementById("profile-network").value = settingsCache?.sandbox?.network ?? "";
 });
 
+// —— U20/T-P3-122 导入导出与深链分享（导出零凭据；导入必确认——不可信输入）
+function buildExportText() {
+  const payload = {
+    version: 1,
+    kind: "aegent-settings-export",
+    exportedAt: new Date().toISOString(),
+    settings: settingsCache,
+  };
+  const text = JSON.stringify(payload, null, 2);
+  if (text.includes('"apiKey"')) throw new Error("导出包含 apiKey 字段（拒绝导出）");
+  return text;
+}
+
+// 摘要行（与 src/session/settings-transfer.ts summarizePackage 同语义——UI 侧呈现层）
+function summarizeImported(s) {
+  const lines = [`供应商条目 ${(s.providers ?? []).length} 个（默认 ${s.defaultProvider ?? "未设置"}）`];
+  if (s.defaultModel !== undefined) lines.push(`默认模型 ${s.defaultModel}`);
+  if (s.permission?.approvalTimeoutMs !== undefined) lines.push(`审批超时 ${s.permission.approvalTimeoutMs}ms`);
+  if (s.sandbox?.network !== undefined) lines.push(`网络档 ${s.sandbox.network}`);
+  if ((s.projects ?? []).length > 0) lines.push(`项目 ${s.projects.length} 个`);
+  if ((s.prompts ?? []).length > 0) lines.push(`提示词模板 ${s.prompts.length} 个`);
+  if ((s.mcp ?? []).length > 0) lines.push(`MCP server ${s.mcp.length} 个`);
+  if ((s.profiles ?? []).length > 0) lines.push(`配置档 ${s.profiles.length} 个`);
+  return lines;
+}
+
+async function applyImportedSettingsObject(importedSettings) {
+  const envelope = await sendSettings({ op: "import", settings: importedSettings });
+  if (!envelope.ok) {
+    appendLine(`导入失败：${envelope.error?.code ?? ""} ${envelope.error?.message ?? ""}`, "warn");
+    return false;
+  }
+  settingsCache = envelope.result.settings;
+  promptsCacheLoaded = true;
+  applyTheme(settingsCache.appearance?.theme);
+  fillSettingsForm();
+  return true;
+}
+
+document.getElementById("export-btn").addEventListener("click", () => {
+  if (settingsCache === null) {
+    document.getElementById("export-status").textContent = "设置未加载——先打开设置读取";
+    return;
+  }
+  try {
+    const text = buildExportText();
+    const blob = new Blob([text], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `aegent-settings-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    document.getElementById("export-status").textContent = "已导出（不含凭据）";
+  } catch (e) {
+    document.getElementById("export-status").textContent = `导出失败：${e.message}`;
+  }
+});
+
+document.getElementById("import-file").addEventListener("change", (ev) => {
+  const file = ev.target.files?.[0];
+  if (file === undefined) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const text = String(reader.result);
+    const previewEl = document.getElementById("import-preview");
+    const summaryEl = document.getElementById("import-summary");
+    const applyBtn = document.getElementById("import-apply");
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed?.kind !== "aegent-settings-export") throw new Error("kind 不符（须为 aegent-settings-export 配置包）");
+      const summary = summarizeImported(parsed.settings ?? {});
+      previewEl.textContent = text.length > 4000 ? `${text.slice(0, 4000)}\n…（截断预览）` : text;
+      previewEl.hidden = false;
+      summaryEl.textContent = `导入将变更：${summary.join("；")}`;
+      summaryEl.dataset.ok = "1";
+      applyBtn.hidden = false;
+      applyBtn.dataset.payload = text; // 确认后才上送（确认面 = C 族防线的用户侧延伸）
+    } catch (e) {
+      previewEl.hidden = true;
+      applyBtn.hidden = true;
+      summaryEl.textContent = `✘ 导入包不可用：${e.message}`;
+    }
+  };
+  reader.readAsText(file);
+});
+
+document.getElementById("import-apply").addEventListener("click", (ev) => {
+  const payload = ev.target.dataset.payload;
+  if (payload === undefined) return;
+  const parsed = JSON.parse(payload);
+  const summary = summarizeImported(parsed.settings ?? {}).join("；");
+  // 导入必确认（cc-switch deeplink 三确认行为锚——不可信输入逐项列出后确认）
+  if (!window.confirm(`确认导入以下配置并覆盖当前值？\n\n${summary}\n\n（导入前自动备份当前配置）`)) return;
+  void applyImportedSettingsObject(parsed.settings).then((ok) => {
+    if (ok) {
+      ev.target.hidden = true;
+      document.getElementById("import-summary").textContent = "✔ 导入完成（备份已滚动）";
+      toast("配置导入完成", "info");
+    }
+  });
+});
+
+// 深链确认钩子（宿主接线面——aegentShowUpdate 同款；scheme 注册随真实分发
+// 接入，记档）：aegent://import?data=<urlencoded 配置包> → 本钩子收 data。
+window.aegentApplyDeepLink = function (encodedData) {
+  try {
+    const text = decodeURIComponent(encodedData);
+    const parsed = JSON.parse(text);
+    if (parsed?.kind !== "aegent-settings-export") throw new Error("kind 不符");
+    const summary = summarizeImported(parsed.settings ?? {}).join("；");
+    if (!window.confirm(`收到深链分享配置，确认导入？\n\n${summary}`)) return "dismissed";
+    void applyImportedSettingsObject(parsed.settings).then(() => toast("配置导入完成", "info"));
+    return "accepted";
+  } catch (e) {
+    appendLine(`深链导入失败：${e.message}`, "warn");
+    return "rejected";
+  }
+};
+
 async function openSettings() {
   const envelope = await sendSettings({ op: "get" });
   if (!envelope.ok) {

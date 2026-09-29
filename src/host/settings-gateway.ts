@@ -20,6 +20,11 @@ import { probeProvider, type HealthCheckResult } from "../models/health.js";
 import type { CredentialStore } from "../session/credentials.js";
 import type { SqliteEventStorage } from "../session/db.js";
 import { probeServer } from "../mcp/registry-bridge.js";
+import {
+  applyImportedSettings,
+  backupSettingsFile,
+  summarizePackage,
+} from "../session/settings-transfer.js";
 import type { McpToolInfo } from "../mcp/client.js";
 
 /** settings patch 白名单段（提段整体替换；version 不许 patch——迁移链单向门）。 */
@@ -84,6 +89,8 @@ export interface SettingsGateway {
    * 关闭——向导"测连接"数据面；失败转类型化回执不上抛）。
    */
   mcpCheck(entry: McpServerEntry): Promise<McpCheckResult>;
+  /** U20/T-P3-122：配置包导入（备份滚动 + 本地态合并 + 落盘）。 */
+  importSettings(imported: Record<string, unknown>): Promise<{ applied: true; summary: string[] }>;
 }
 
 /** 生产缺省探测依赖（真网络——tests 注入 fake）。 */
@@ -168,5 +175,19 @@ export class FileSettingsGateway implements SettingsGateway {
         },
       };
     }
+  }
+
+  /**
+   * U20/T-P3-122：导入（备份滚动 → 本地态合并 → 落盘）。确认在 UI 侧
+   * （buildImportPreview 摘要 + 用户对话框）；本面只做最终校验与落盘。
+   */
+  async importSettings(
+    imported: Record<string, unknown>,
+  ): Promise<{ applied: true; summary: string[] }> {
+    const current = await this.get();
+    backupSettingsFile(this.settingsPath);
+    const merged = applyImportedSettings(current, parseSettingsShape(imported));
+    await saveSettings(this.settingsPath, merged);
+    return { applied: true, summary: summarizePackage(merged) };
   }
 }
