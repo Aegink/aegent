@@ -36,24 +36,28 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     const lib = readFileSync(path.join(TAURI_DIR, "src", "lib.rs"), "utf8");
     expect(lib).toContain("tauri::Builder::default()");
     expect(lib).toContain("tauri::generate_context!()");
-    // 零插件（九插件群不取）：lib.rs 不出现插件注册面
-    expect(lib).not.toMatch(/\.plugin\(/);
+    // 九插件群不取——U7/T-P3-114 解禁例外：updater 恰一插件（签名校验链）
+    const pluginRegs = lib.match(/\.plugin\(/g) ?? [];
+    expect(pluginRegs).toHaveLength(1);
+    expect(lib).toContain("tauri_plugin_updater");
     const main = readFileSync(path.join(TAURI_DIR, "src", "main.rs"), "utf8");
     // cc-switch main.rs 同款 release 惯例（windows_subsystem）
     expect(main).toContain('windows_subsystem = "windows"');
   });
 
-  it("Cargo.toml 依赖闭集：仅 tauri + tauri-build，零插件零额外运行时依赖", () => {
+  it("Cargo.toml 依赖闭集：tauri + updater 单插件（U7 解禁例外）+ serde_json（generate_context 面）", () => {
     const cargo = readFileSync(path.join(TAURI_DIR, "Cargo.toml"), "utf8");
     const depsSection = cargo.split("[dependencies]")[1]?.split("\n[") ?? [];
     const deps = (depsSection[0] ?? "")
       .split("\n")
       .filter((l) => l.includes("=") && !l.trim().startsWith("#"));
-    expect(deps.length).toBe(1);
-    expect(deps[0]).toContain("tauri =");
+    expect(deps.length).toBe(3);
+    expect(cargo).toContain('tauri = { version = "2"');
+    expect(cargo).toContain("tauri-plugin-updater");
+    expect(cargo).toContain('serde_json = "1"');
     expect(cargo).toContain("tauri-build");
-    // 行数纪律：Cargo.toml 保持最小面
-    expect(cargo.split("\n").length).toBeLessThanOrEqual(40);
+    // 行数纪律：Cargo.toml 保持最小面（updater 注释两行使上限放宽）
+    expect(cargo.split("\n").length).toBeLessThanOrEqual(44);
   });
 
   it("tauri.conf.json 形状：frontendDist 指向 ui/ 静态资产 + bundle 收窄 nsis + 主/画中画双窗口（K9/T-P2-409）", () => {
@@ -80,15 +84,13 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(conf.app.security.csp).toContain("ws://127.0.0.1");
   });
 
-  it("capabilities 零插件：仅 core:default 最小面", () => {
+  it("capabilities 最小面：core:default + updater:default（U7 解禁例外恰一项）", () => {
     const caps = JSON.parse(
       readFileSync(path.join(TAURI_DIR, "capabilities", "default.json"), "utf8"),
     );
     // K9：画中画窗口同受 capabilities 约束（core:default 最小面不变）
     expect(caps.windows).toEqual(["main", "pip"]);
-    for (const permission of caps.permissions as string[]) {
-      expect(permission.startsWith("core:")).toBe(true);
-    }
+    expect(caps.permissions).toEqual(["core:default", "updater:default"]);
   });
 
   it("ui/ 资产在位：index.html + app.js + style.css（K2/K5 同一份资产不漂移）", () => {
@@ -231,6 +233,43 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(app).toContain("aegentShowUpdate"); // U7 接线点（T-P3-114）
     for (const marker of [".search-hit", ".mm-row", "#find-bar", "#minimap", ".ac-row", ".attachment-chip"]) {
       expect(css).toContain(marker);
+    }
+  });
+
+  it("U6/T-P3-113 · sidecar 分发面：bundle 脚本 + 壳进程管理（起 host/健康探测/退出收束）+ 资源清单", () => {
+    const root = path.resolve(import.meta.dirname, "..", "..");
+    // ①②便携 bundle 面：build:single 脚本 + 布局构建器（SEA 回退②案）
+    const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
+    expect(pkg.scripts["build:single"]).toContain("build-host-bundle.mjs");
+    expect(statSync(path.join(root, "tools", "build-host-bundle.mjs")).isFile()).toBe(true);
+    expect(statSync(path.join(root, "tools", "sea-attempt.mjs")).isFile()).toBe(true); // ①案失败实证脚本
+    // ③壳 Rust 侧进程管理：spawn host.cjs / TCP 健康探测 / RunEvent::Exit kill
+    const lib = readFileSync(path.join(root, "src-tauri", "src", "lib.rs"), "utf8");
+    expect(lib).toContain('"host.cjs"'); // 起 portable host
+    expect(lib).toContain('"--agent-entry"'); // 子进程入口传参
+    expect(lib).toContain("TcpStream::connect"); // TCP 健康探测
+    expect(lib).toContain("RunEvent::Exit"); // 退出收束
+    expect(lib).toContain("child.kill()");
+    expect(lib).toContain("settings.json"); // 启动参数来自 U1 配置（壳不加环境变量的说明）
+    // ④资源清单：portable 布局随安装器分发（与 exe 同目录——exe_dir 解析）
+    const conf = readFileSync(path.join(root, "src-tauri", "tauri.conf.json"), "utf8");
+    for (const marker of ["host.cjs", "agent-child.cjs", "node.exe", "schema.sql", "ui/"]) {
+      expect(conf).toContain(marker);
+    }
+    expect(conf).toContain('"visible": false'); // 主窗先隐藏（健康探测后进 UI）
+    // U7/T-P3-114：updater 接线（插件解禁例外 + 签名链 + 本地演示面）
+    const cargo = readFileSync(path.join(root, "src-tauri", "Cargo.toml"), "utf8");
+    expect(cargo).toContain("tauri-plugin-updater"); // 单插件入册
+    expect(lib).toContain("tauri_plugin_updater::Builder::new()"); // 插件注册
+    expect(lib).toContain("spawn_update_check"); // 启动检查
+    expect(lib).toContain("aegentShowUpdate"); // UI 横幅钩子（U13 消费端）
+    expect(conf).toContain("createUpdaterArtifacts"); // 构建签名产物
+    expect(conf).toContain('"pubkey"'); // minisign 公钥（private/ 生成）
+    expect(conf).toContain("dangerousInsecureTransportProtocol"); // localhost 演示例外
+    for (const name of ["gen-update-keys.mjs", "update-demo.mjs"]) {
+      expect(statSync(path.join(root, "tools", name)).isFile()).toBe(true);
     }
   });
 

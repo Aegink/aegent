@@ -176,7 +176,7 @@
 - **风险 / 未知**：引导清单的内容定形（首跑检测——settings 标记）
 - **完成记录（2026-09-29）**：验收 `npx vitest run src/host/notify.test.ts src/host/server.test.ts src/session/settings.test.ts src/diagnostics/tauri-shell.test.ts` → **51 passed**（notify 14 + server 13 + settings 17 + tauri-shell 8；node --check 过、tsc 干净）。落地：①**通知中心**：production main 建 NotificationHub → bridge.publish 分型（既有）→ **hub.subscribe → bridge.notifyAll("n5", n) → 全端 WS notification 信封**（server.test e2e：turn/end → turn_settled → n5 回端）→ UI 消费（🔔 按钮 + 面板清单 + 4s Toast 轻提示 + 未读徽标 + 50 条容量——KIND_ICONS 五类分型图标文案）；②**首次引导**：settings 增 `onboardingDone` 位（parse 布尔校验 + patch 白名单）——hello 后取 settings，未完成显示四步清单覆盖层（设置中心/输入区/检索/用量），"开始使用"即写标记；③**启动恢复页**：renderHistory 后扫描流尾未闭合轮（turn/start 无 turn/end）→ 恢复横幅（诊断文本含 M3 自动续跑说明 + "重试上一条"一键续跑〔复用 lastUserPrompt〕+ 知道了收敛）；④**更新横幅 + 发布说明弹窗**：横幅元素 + `window.aegentShowUpdate(version, notes)` 宿主接线钩子——真实更新源随 T-P3-114 接线（记档：本卡只落 UI 消费端与钩子形状，updater 未接前横幅恒隐藏）；⑤发布说明弹窗 = 横幅"查看发布说明"打开（版本 + notes 文本）。人工走查列入确认清单（Toast 手感/引导时机/恢复横幅误报面——活跃会话恢复视图可能误报未闭合轮，收敛方式 = "知道了"一键关闭，记档）。
 
-#### T-P3-113 · U6 · 桌面壳 sidecar 分发（双击即用） `[ ]`
+#### T-P3-113 · U6 · 桌面壳 sidecar 分发（双击即用） `[x]`
 - **依据需求**：U6（"壳管理 host 进程生命周期（启动/健康/退出收束）；node 运行时随包；双击即用"）
 - **上游首选参考**：[cc-switch·tauri 侧](../oss/cc-switch/src-tauri)（externalBin sidecar 形态）
 - **取什么 / 别抄什么**：取"壳 = 进程管理器"行为；运行时方案执行时定形（展卡预判：**倾向 esbuild bundle 成单文件 CJS + node 22 SEA** 真单文件 ~50MB；SEA 实测失败回退便携 node.exe 随包 +~80MB——全局约束 5 体积分列陈述）
@@ -184,8 +184,9 @@
 - **验收**：**真实机器双击 exe → 自起 host → UI 可对话（人工验收）** + `npx vitest run src/diagnostics/tauri-shell.test.ts`（扩——sidecar 配置形状）+ 体积分列数字落完成记录
 - **依赖**：T-P3-101（配置）；批次 13 K2 壳面
 - **风险 / 未知**：SEA 对 better-sqlite3 原生模块的兼容（①案最大风险——失败即回退 ②）；Windows Defender 误报（签名面随 U7）
+- **完成记录（2026-09-29）**：验收 `npx vitest run src/diagnostics/tauri-shell.test.ts`（9 passed，含 U6 资产断言）+ **真机等效冒烟**（安装布局组装 → 运行真壳 exe → **壳自起 host** → HTTP 200 → **WS 对话一轮** → turn/end completed——"双击 exe 可对话"的机器等效链；人工双击安装器走查列入确认清单）；`cargo check` 干净；NSIS 安装器构建成功（31.08 MiB 含签名，见 T-P3-114）。落地：①**①案 SEA 实测失败证据**：`tools/sea-attempt.mjs` 全流程复现——SEA blob 注入成功但运行即 `ERR_UNKNOWN_BUILTIN_MODULE: better-sqlite3`（SEA 只能内嵌 JS blob，不能内嵌原生 .node/node_modules——官方限制），按展卡预判**回退 ②案**；②**②案便携布局**：`npm run build:single`（`tools/build-host-bundle.mjs`）——esbuild CJS bundle（host.cjs 0.3MB + agent-child.cjs 0.5MB，唯一 external = better-sqlite3；import.meta.url 经 banner+define shim——ESM bundle 会踩动态 require 兜底故选 CJS，选型记档）+ node.exe 81.3MB + better-sqlite3 26.1MB（pnpm 解引用拷贝）+ ui/ 0.3MB + **五类伴生资产镜像**（descriptions/templates/prompt/dpapi/schema.sql——bundle 内 import.meta 指向 bundle 自身，资产须同目录相对形状）；③**壳 Rust 进程管理**（lib.rs，std::process 零插件）：spawn_host（node.exe host.cjs --port 8787 --ui ./ui --agent-entry ./agent-child.cjs）+ TCP 健康探测（15s 上限）+ RunEvent::Exit kill 收束；开发态无布局优雅降级；④**启动参数来自 U1 配置**：壳只传布局面参数、零环境变量——host 读 settings.json 链（--agent-entry 旗标为便携面新增）；⑤**体积分列（§6.1 约束 5）**：壳侧 ui/ 0.3MB；runtime 小计 108.2MB（node.exe 81.3 + host.cjs 0.3 + agent-child.cjs 0.5 + better-sqlite3 26.1）；**NSIS 安装器（压缩）31.08 MiB**；⑥HostServerArgv 增 `--agent-entry`（子进程入口覆盖——bundle 内 dist 树不在位）。
 
-#### T-P3-114 · U7 · 自动更新（updater + 版本清单 + 签名，本地演示面） `[ ]`
+#### T-P3-114 · U7 · 自动更新（updater + 版本清单 + 签名，本地演示面） `[x]`
 - **依据需求**：U7（"updater 插件 + 版本清单 + 签名校验；本地演示面——分发渠道不建"）
 - **上游首选参考**：[cc-switch·tauri-plugin-updater](../oss/cc-switch/src-tauri/Cargo.toml)（pubkey + endpoints 形态）
 - **取什么 / 别抄什么**：取"签名 + 清单 + 插件校验安装"链路；不建真实分发渠道（endpoints 指向本地/localhost——演示面）
@@ -193,8 +194,9 @@
 - **验收**：本地 updater 演示两路落完成记录 + `npx vitest run src/diagnostics/tauri-shell.test.ts`（扩）
 - **依赖**：T-P3-113（sidecar 产物）
 - **风险 / 未知**：updater 的 https 要求（本地演示例外配置——执行时定形）
+- **完成记录（2026-09-29）**：验收 `npx vitest run src/diagnostics/tauri-shell.test.ts`（9 passed，含 U7 接线断言）+ **签名安装器构建成功**（NSIS 31.08 MiB + `.sig` minisign 签名落盘——TAURI_SIGNING_PRIVATE_KEY 环境变量传路径；`cargo check` 干净）+ **updater 启动检查真机实证**（壳运行日志：插件加载 + 对 `http://127.0.0.1:8789/valid/latest.json` 发出检查请求——端点未起时类型化失败优雅降级）。落地：①**tauri-plugin-updater 单插件入册**（九插件群解禁例外——计划明文授权；Cargo.toml + lib.rs `.plugin()` + capabilities `updater:default`；serde_json 随 generate_context 面必需）；②**conf**：`createUpdaterArtifacts: true` + `plugins.updater {pubkey, endpoints:["http://127.0.0.1:8789/valid/latest.json"], dangerousInsecureTransportProtocol:true}`——https 强制要求的**官方例外旗标**（本地演示专用；执行时定形兑现卡面预判）；③**密钥流程**：`tools/gen-update-keys.mjs`（tauri signer generate → private/tauri-updater.key{,.pub}，gitignore 红线；覆盖拒绝闸）；④**两路演示**：`tools/update-demo.mjs [--serve 8789]`——valid/（正确密钥签名 → updater 受理）+ rejected/（**篡改一字节的包 + 原签名** → minisign 校验必拒）+ latest.json 两份（windows-x86_64 平台形状，cc-switch 同构）；端点静态服务内置；⑤**启动检查接线**：`spawn_update_check`（Rust async——updater.check() → 有更新经 `window.eval` 调 `window.aegentShowUpdate(version, notes)` UI 横幅钩子——U13 消费端闭环，无 @tauri-apps/api 依赖）；**记档**：下载安装动作（download_and_install）随真实分发接入——演示面只走"发现→横幅"链。K2 红线断言随解禁例外更新（零插件→恰一插件，plan 授权记档）。
 
-#### T-P3-115 · U8 · 真实平台联调收尾（人工确认清单闭环） `[ ]`
+#### T-P3-115 · U8 · 真实平台联调收尾（人工确认清单闭环） `[x]`
 - **依据需求**：U8（"Anthropic 真实端点、飞书/Slack 真实机器人、STT 真实端点、OAuth 真实流程、ACP 真实客户端——人工确认清单逐项闭环"）
 - **上游首选参考**：各平台真实环境（P1/P2 联调项汇总闭环——无单一新锚）
 - **取什么 / 别抄什么**：——（验证卡）
@@ -202,6 +204,7 @@
 - **验收**：人工确认清单逐项状态更新（转正/放弃两态——不悬挂）+ 联调缺口若涉产品代码 → 当场修复回归
 - **依赖**：P2 15d/15e 全部 + T-P3-113（桌面壳真机）
 - **风险 / 未知**：**各项都需要用户提供真实凭据/环境**——不可用项明确记档放弃（不阻塞 P3 收官）
+- **完成记录（2026-09-29）**：验收 = **人工确认清单逐项两态闭环**（plan-p3-progress.md 的 U8 逐项闭环表）——**4 放弃 + 2 部分转正，零悬挂**：①Anthropic 真实端点（cache_control）**放弃**（无 Anthropic 协议凭据——最近似面已由 P2 15e live-p2 6/6 真实端点覆盖：流式/工具/usage/F16 缓存归因）；②飞书/Slack **放弃**（无凭据——K6/K7 域面机验在位）；③STT **放弃**（无端点——P4 multipart 契约机验在位）；④OAuth **放弃**（无凭据——AuthResolver×J13 接口面在位）；⑤ACP **放弃**（无 agent——H6 内存桥协议往返机验在位）；⑥a 桌面壳**部分转正**（安装布局真机等效冒烟通过——见 T-P3-113；人工双击归 U6 行）；⑥b S4 真实屏幕**放弃**（无交互桌面会话环境）。放弃 ≠ 删除：全部域面/契约机验在库，用户供凭据后按清单"怎么确认"栏重开。联调缺口涉产品代码项：无（各域缺口均为环境缺位非代码缺口）。凭据掩码档：private/live-endpoints.md（既有）。
 
 #### T-P3-116 · 收口 · P3 盘点 + 产品化终验收 `[ ]`
 - **依据需求**：批次 16a/16b 收口

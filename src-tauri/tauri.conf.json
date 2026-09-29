@@ -16,7 +16,8 @@
         "minWidth": 800,
         "minHeight": 600,
         "center": true,
-        "resizable": true
+        "resizable": true,
+        "visible": false
       },
       {
         "label": "pip",
@@ -43,6 +44,28 @@
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.ico"
-    ]
+    ],
+    "resources": {
+      "../dist/portable/host.cjs": "host.cjs",
+      "../dist/portable/agent-child.cjs": "agent-child.cjs",
+      "../dist/portable/node.exe": "node.exe",
+      "../dist/portable/schema.sql": "schema.sql",
+      "../dist/portable/ui/": "ui/",
+      "../dist/portable/node_modules/": "node_modules/",
+      "../dist/portable/descriptions/": "descriptions/",
+      "../dist/portable/templates/": "templates/",
+      "../dist/portable/prompt/": "prompt/",
+      "../dist/portable/dpapi/": "dpapi/"
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZFMDU2QkVGQkFFMkNENkQKUldSdHplSzY3MnNGYnJnLzRLYlNVSEk4Q2QrMXVKeHRHaEV4VUg4OVdFM3FhaWNvU1VxSzZtREEK",
+      "endpoints": [
+        "http://127.0.0.1:8789/valid/latest.json"
+      ],
+      "dangerousInsecureTransportProtocol": true
+    }
   }
 }

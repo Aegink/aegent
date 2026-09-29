@@ -288,6 +288,8 @@ export interface HostServerArgv {
   hostDbPath?: string;
   /** U1/T-P3-101：settings.json 显式路径（缺省 <home>/.aegent/settings.json）。 */
   settingsPath?: string;
+  /** U6/T-P3-113：子进程入口覆盖（便携/壳布局——bundle 相邻 agent-child.cjs）。 */
+  agentEntryPath?: string;
   childArgs: string[];
 }
 
@@ -300,6 +302,9 @@ export function parseHostServerArgv(
   let uiDir = defaults.uiDir;
   let hostDbPath: string | undefined;
   let settingsPath: string | undefined;
+  // U6/T-P3-113：便携/壳布局的子进程入口覆盖（bundle 里 dist 树不在位——
+  // agent-child 打包成相邻 agent-child.cjs，由壳/便携运行器显式传入）。
+  let agentEntryPath: string | undefined;
   const childArgs: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -314,6 +319,8 @@ export function parseHostServerArgv(
       hostDbPath = argv[++i];
     } else if (a === "--settings" && i + 1 < argv.length) {
       settingsPath = argv[++i];
+    } else if (a === "--agent-entry" && i + 1 < argv.length) {
+      agentEntryPath = argv[++i];
     } else {
       childArgs.push(a);
     }
@@ -327,6 +334,7 @@ export function parseHostServerArgv(
     uiDir,
     ...(hostDbPath !== undefined ? { hostDbPath } : {}),
     ...(settingsPath !== undefined ? { settingsPath } : {}),
+    ...(agentEntryPath !== undefined ? { agentEntryPath } : {}),
     childArgs,
   };
 }
@@ -352,7 +360,7 @@ export function defaultAgentChildEntry(): string {
   );
 }
 
-async function main(argv: readonly string[]): Promise<void> {
+export async function main(argv: readonly string[]): Promise<void> {
   const parsed = parseHostServerArgv(argv, { uiDir: defaultUiDir() });
   // U1/T-P3-101：settings 装配（CLI 同款三入口共用面——损坏 fail-closed
   // 直达启动失败出口）。host 的 childArgs 与 CLI 同走 resolveChildLaunchArgv。
@@ -381,7 +389,7 @@ async function main(argv: readonly string[]): Promise<void> {
     sessionId: parsed.sessionId,
     port: parsed.port,
     uiDir: parsed.uiDir,
-    agentEntryPath: defaultAgentChildEntry(),
+    agentEntryPath: parsed.agentEntryPath ?? defaultAgentChildEntry(),
     childArgs: [...launchArgs, ...(parsed.settingsPath !== undefined ? ["--settings", parsed.settingsPath] : [])],
     storage,
     settingsGateway,
