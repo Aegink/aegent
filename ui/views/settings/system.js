@@ -27,6 +27,7 @@ import {
   dirtySections,
   flushSettings,
   openDialog,
+  confirmDialog,
   refillFormsAfterImport,
   rowEl,
   rowCopyEl,
@@ -169,8 +170,8 @@ function renderProjectList() {
     const editBtn = btnEl("编辑", "btn");
     editBtn.addEventListener("click", () => openProjectDialog(p));
     const delBtn = btnEl("删除", "btn btn-danger");
-    delBtn.addEventListener("click", () => {
-      if (!window.confirm(`删除项目「${p.name}」？`)) return;
+    delBtn.addEventListener("click", async () => {
+      if (!(await confirmDialog(`删除项目「${p.name}」？项目档与指令内容将一并移除。`, { title: "删除项目", confirmLabel: "删除", danger: true }))) return;
       settingsCache.projects = settingsCache.projects.filter((x) => x.name !== p.name);
       if (settingsCache.activeProject === p.name) settingsCache.activeProject = undefined;
       dirtySections.add("projects");
@@ -210,6 +211,8 @@ function openProjectDialog(p) {
   }
   openDialog({
     title: p !== undefined ? `编辑项目：${p.name}` : "新建项目",
+    description: "设为活动后，新会话以该项目 workspace 启动（当前会话不受影响）。",
+    width: "md",
     body: form,
     actions: [
       { label: "取消", className: "btn btn-ghost" },
@@ -475,7 +478,8 @@ export async function applyImportedSettingsObject(importedSettings) {
 function confirmImportDialog(summaryText, onConfirm) {
   openDialog({
     title: "确认导入",
-    body: `${summaryText}\n\n（导入前自动备份当前配置）`,
+    description: `${summaryText}\n\n导入前自动备份当前配置（settings.json.bak.0~4 滚动 5 份）；配置包不含凭据。`,
+    width: "md",
     actions: [
       { label: "取消", className: "btn btn-ghost" },
       { label: "确认导入（覆盖当前配置）", className: "btn btn-primary", onClick: onConfirm },
@@ -511,8 +515,8 @@ export function bind() {
     btn.addEventListener("click", async () => {
       const target = btn.dataset.target;
       const content = document.getElementById(INSTR_TARGETS[target]).value;
-      // 保存确认面（U24 卡面要求——覆盖用户文件前显式确认；保持原生 confirm）
-      if (!window.confirm(`确认保存到「${INSTR_TARGET_LABEL[target]}」？\n（保存后新会话生效；目标：覆盖写入）`)) return;
+      // 保存确认面（U24 卡面要求——覆盖用户文件前显式确认；批 B 走查反馈统一为模态）
+      if (!(await confirmDialog(`确认保存到「${INSTR_TARGET_LABEL[target]}」？保存后新会话生效（覆盖写入）。`, { title: "保存指令", confirmLabel: "保存" }))) return;
       const envelope = await sendSettings({ op: "instruction-save", target, content });
       if (!envelope.ok) {
         appendLine(`指令保存失败：${envelope.error?.code ?? ""} ${envelope.error?.message ?? ""}`, "warn");
@@ -538,8 +542,8 @@ export function bind() {
     renderShortcutList();
   });
 
-  document.getElementById("shortcut-reset").addEventListener("click", () => {
-    if (!window.confirm("恢复全部默认键位？（清除所有自定义绑定）")) return;
+  document.getElementById("shortcut-reset").addEventListener("click", async () => {
+    if (!(await confirmDialog("恢复全部默认键位？所有自定义绑定将被清除。", { title: "恢复默认键位", confirmLabel: "恢复默认" }))) return;
     settingsCache.shortcuts = {};
     delete settingsCache.shortcuts;
     dirtySections.add("shortcuts");

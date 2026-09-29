@@ -21,6 +21,7 @@ import {
   markDirty,
   dirtySections,
   openDialog,
+  confirmDialog,
   rowEl,
   rowCopyEl,
   rowControl,
@@ -288,8 +289,8 @@ function renderMcpList() {
       markDirty("mcp");
     }, `启停 MCP server ${s.name}`);
     const delBtn = btnEl("删除", "btn btn-danger");
-    delBtn.addEventListener("click", () => {
-      if (!window.confirm(`删除 MCP server「${s.name}」？`)) return;
+    delBtn.addEventListener("click", async () => {
+      if (!(await confirmDialog(`删除 MCP server「${s.name}」？装载清单将移除该条目。`, { title: "删除 MCP server", confirmLabel: "删除", danger: true }))) return;
       settingsCache.mcp = (settingsCache.mcp ?? []).filter((x) => x.name !== s.name);
       mcpCheckFailures.delete(s.name);
       dirtySections.add("mcp");
@@ -577,8 +578,8 @@ function renderSubagentList() {
       subagentRow(c, {
         kindLabel: "（自定义）",
         onEdit: () => openSubagentEditor(c, false),
-        onDelete: () => {
-          if (!window.confirm(`删除自定义子代理「${c.name}」？`)) return;
+        onDelete: async () => {
+          if (!(await confirmDialog(`删除自定义子代理「${c.name}」？task 调用将不再可用。`, { title: "删除子代理", confirmLabel: "删除", danger: true }))) return;
           settingsCache.subagents = (settingsCache.subagents ?? []).filter((d) => d.name !== c.name);
           dirtySections.add("subagents");
           markDirty("subagents");
@@ -681,8 +682,8 @@ function renderPromptList() {
     const editBtn = btnEl("编辑", "btn", "点击编辑该模板");
     editBtn.addEventListener("click", () => openPromptDialog(p));
     const delBtn = btnEl("删除", "btn btn-danger");
-    delBtn.addEventListener("click", () => {
-      if (!window.confirm(`删除提示词模板「${p.name}」？`)) return;
+    delBtn.addEventListener("click", async () => {
+      if (!(await confirmDialog(`删除提示词模板「${p.name}」？/ 补全中将不再出现。`, { title: "删除模板", confirmLabel: "删除", danger: true }))) return;
       settingsCache.prompts = (settingsCache.prompts ?? []).filter((x) => x.name !== p.name);
       if (editingPromptName === p.name) editingPromptName = null;
       dirtySections.add("prompts");
@@ -715,6 +716,8 @@ function openPromptDialog(p) {
   }
   openDialog({
     title: p !== undefined ? `编辑模板：${p.name}` : "新建提示词模板",
+    description: "模板名即输入区 / 补全的调用标识；正文 {{var}} 为变量占位符（选中后保留手改）。",
+    width: "md",
     body: form,
     actions: [
       { label: "取消", className: "btn btn-ghost" },
@@ -850,8 +853,8 @@ async function refreshPluginsList() {
       void refreshPluginsList();
     }, `启停插件 ${p.name}`);
     const delBtn = btnEl("删除", "btn btn-danger", "从装载清单移除（不删除插件目录文件）");
-    delBtn.addEventListener("click", () => {
-      if (!window.confirm(`从装载清单移除插件「${p.name}」？（不删除插件目录文件）`)) return;
+    delBtn.addEventListener("click", async () => {
+      if (!(await confirmDialog(`从装载清单移除插件「${p.name}」？（不删除插件目录文件）`, { title: "移除插件", confirmLabel: "移除", danger: true }))) return;
       settingsCache.plugins = (settingsCache.plugins ?? []).filter((d) => d.name !== p.name);
       dirtySections.add("plugins");
       markDirty("plugins");
@@ -881,6 +884,8 @@ function openPluginInstallDialog() {
   const form = holder.firstElementChild;
   openDialog({
     title: "安装插件（先校验）",
+    description: "进程内 = 本地目录（plugin.json + index.js，受信面）；ws = 进程外不可信隔离（I4，工具登记默认 deny）。",
+    width: "md",
     body: form,
     actions: [
       { label: "取消", className: "btn btn-ghost" },

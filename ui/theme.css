@@ -75,11 +75,13 @@
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
+  --radius-xl: 16px; /* 模态外壳（ZCode rounded-2xl 同档） */
   --radius-card: 12px;
   --radius-full: 999px;
   --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.25);
   --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.35);
   --scrim: rgba(0, 0, 0, 0.45); /* 对话框/引导遮罩 */
+  --scrim-strong: rgba(0, 0, 0, 0.6); /* 模态遮罩（ZCode bg-black/60 同档） */
 
   /* —— 布局骨架尺寸（方案 §2.4） —— */
   --sidebar-width: 260px;

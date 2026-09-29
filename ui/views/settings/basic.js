@@ -15,6 +15,7 @@ import {
   markDirty,
   dirtySections,
   openDialog,
+  confirmDialog,
   rowEl,
   rowCopyEl,
   rowControl,
@@ -319,6 +320,9 @@ function openProviderDialog(entry) {
   }
   openDialog({
     title: entry !== undefined ? `编辑供应商：${entry.name}` : "添加供应商",
+    description:
+      "供应商条目供启动装配与会话期切换（保存后新会话生效）；API key 请在「凭据」分节独立录入（零明文）。",
+    width: "md",
     body: form,
     actions: [
       entry !== undefined
@@ -441,8 +445,8 @@ function renderProfileList() {
       applyProfileValues(p);
     });
     const delBtn = btnEl("删除", "btn btn-danger");
-    delBtn.addEventListener("click", () => {
-      if (!window.confirm(`删除配置档「${p.name}」？`)) return;
+    delBtn.addEventListener("click", async () => {
+      if (!(await confirmDialog(`删除配置档「${p.name}」？切换记录不可恢复。`, { title: "删除配置档", confirmLabel: "删除", danger: true }))) return;
       settingsCache.profiles = (settingsCache.profiles ?? []).filter((x) => x.name !== p.name);
       if (settingsCache.activeProfile === p.name) settingsCache.activeProfile = undefined;
       dirtySections.add("profiles");

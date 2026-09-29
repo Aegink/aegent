@@ -19,7 +19,7 @@ import {
 import { appendLine } from "../feedback.js";
 import { go } from "../router.js";
 import { injectIcons } from "../icons.js";
-import { flushSettings, setRefillForms } from "./settings/core.js";
+import { flushSettings, setRefillForms, upgradeSelects } from "./settings/core.js";
 import * as basic from "./settings/basic.js";
 import * as agents from "./settings/agents.js";
 import * as system from "./settings/system.js";
@@ -145,6 +145,7 @@ function bindShell() {
 export async function render(container, route) {
   container.innerHTML = TEMPLATE;
   injectIcons(container);
+  upgradeSelects(container); // 原生 select → 自定义下拉（桥接：id/值/change 语义不变）
   setRefillForms(refillAllForms);
   bindShell();
   basic.bind();

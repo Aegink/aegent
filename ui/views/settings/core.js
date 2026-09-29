@@ -9,6 +9,7 @@
 import { sendSettings } from "../../api.js";
 import { settingsCache, setSettingsCache, applyTheme, rebuildKeymap } from "../../state.js";
 import { appendLine } from "../../feedback.js";
+import { icon } from "../../icons.js";
 
 // ---------------------------------------------------------------------------
 // 保存时序（即改即存：段级 patch，500ms 防抖合并——原 settings.js 壳体原样）
@@ -63,35 +64,53 @@ export function refillFormsAfterImport() {
 }
 
 // ---------------------------------------------------------------------------
-// 模态基座（.dialog 组件类接线——title + body 节点 + actions 按钮；Esc/遮罩
-// 点击关闭。overlay 挂 document.body——设置视图卸载时随壳收束，也支持
-// 视图未挂载时的深链确认调用）
+// 模态基座（ZCode dialog 形态：遮罩 blur + Header(title+desc)+右上 X 关闭 +
+// Footer 右对齐 + 宽度三档 + 入动画；Esc/遮罩/X 均可关闭并回调 onClose）。
+// overlay 挂 document.body——设置视图卸载时随壳收束，也支持视图未挂载时的
+// 深链确认调用。body 内的原生 select 经 upgradeSelects 自动升级为自定义下拉。
 // ---------------------------------------------------------------------------
 
 /**
- * 打开模态。body：文本字符串或 DOM 节点（表单模态传构造好的 form）。
- * actions：{ label, className?, close?（默认 true——点击后关模态）, onClick? }。
+ * 打开模态。body：文本字符串或 DOM 节点（表单模态传构造好的 form）；
+ * description：标题下的说明行（muted）；width："sm"(420)/"md"(520)/"lg"(620)；
+ * actions：{ label, className?, close?（默认 true——点击后关模态）, onClick? }；
+ * onClose：非 action 关闭路径（X/Esc/遮罩）的回调（confirmDialog 的取消面）。
  * 返回 { close }（程序化关闭——保存成功后的收尾）。
  */
-export function openDialog({ title, body, actions = [] }) {
+export function openDialog({ title, description, body, actions = [], width, onClose }) {
   const overlay = document.createElement("div");
   overlay.className = "dialog-overlay";
   const dialog = document.createElement("div");
-  dialog.className = "dialog";
+  dialog.className = width === "md" ? "dialog dialog-md" : width === "lg" ? "dialog dialog-lg" : "dialog";
   dialog.setAttribute("role", "dialog");
   dialog.setAttribute("aria-modal", "true");
+  const header = document.createElement("div");
+  header.className = "dialog-header";
   const titleEl = document.createElement("div");
   titleEl.className = "dialog-title";
   titleEl.textContent = title;
+  header.appendChild(titleEl);
+  if (description !== undefined) {
+    const descEl = document.createElement("div");
+    descEl.className = "dialog-desc";
+    descEl.textContent = description;
+    header.appendChild(descEl);
+  }
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "dialog-close";
+  closeBtn.setAttribute("aria-label", "关闭");
+  closeBtn.appendChild(icon("close"));
   const bodyEl = document.createElement("div");
   bodyEl.className = "dialog-body";
   if (typeof body === "string") {
     bodyEl.textContent = body;
   } else if (body instanceof Node) {
     bodyEl.appendChild(body);
+    upgradeSelects(bodyEl); // 模态内原生 select 升级为自定义下拉
   }
-  const actionsEl = document.createElement("div");
-  actionsEl.className = "dialog-actions";
+  const footer = document.createElement("div");
+  footer.className = "dialog-footer";
   const escHandler = (ev) => {
     if (ev.key === "Escape") {
       ev.preventDefault();
@@ -99,29 +118,151 @@ export function openDialog({ title, body, actions = [] }) {
       close();
     }
   };
-  const close = () => {
+  const close = (fromAction = false) => {
     window.removeEventListener("keydown", escHandler, true);
+    document.body.style.overflow = "";
     overlay.remove();
+    if (!fromAction && onClose !== undefined) onClose();
   };
   overlay.addEventListener("click", (ev) => {
     if (ev.target === overlay) close();
   });
   window.addEventListener("keydown", escHandler, true);
+  closeBtn.addEventListener("click", () => close());
+  // 打开期间锁定背景滚动（ZCode/shadcn 同款语义）
+  document.body.style.overflow = "hidden";
   for (const a of actions) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = a.className ?? "btn";
     btn.textContent = a.label;
     btn.addEventListener("click", () => {
-      if (a.close !== false) close();
+      if (a.close !== false) close(true);
       void a.onClick?.();
     });
-    actionsEl.appendChild(btn);
+    footer.appendChild(btn);
   }
-  dialog.append(titleEl, bodyEl, actionsEl);
+  dialog.append(header, closeBtn, bodyEl, footer);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
   return { close };
+}
+
+/** 确认对话框（Promise 化——替代原生 window.confirm 的统一形态；danger =
+ *  确认按钮红变体用于删除类）。X/Esc/遮罩/取消 均 resolve(false)。 */
+export function confirmDialog(message, { title = "确认操作", confirmLabel = "确认", danger = false } = {}) {
+  return new Promise((resolve) => {
+    openDialog({
+      title,
+      description: message,
+      width: "sm",
+      onClose: () => resolve(false),
+      actions: [
+        { label: "取消", className: "btn btn-ghost", onClick: () => resolve(false) },
+        { label: confirmLabel, className: danger ? "btn btn-danger" : "btn btn-primary", onClick: () => resolve(true) },
+      ],
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 自定义下拉（ZCode select 形态：触发器 = input 变体 + chevron；面板 =
+// rounded 面板 + 选中 check + hover 面。桥接原生 select：DOM 保留原 select
+// （隐藏）——id/选项/change 监听/fill() 的 .value 赋值全兼容；实例 value
+// setter 拦截使触发器随程序化赋值同步。键盘化选单不取（记档：点选语义）。
+// ---------------------------------------------------------------------------
+
+export function upgradeSelects(root) {
+  for (const sel of root.querySelectorAll("select.select")) {
+    if (sel.dataset.upgraded === "1") continue;
+    sel.dataset.upgraded = "1";
+    const wrap = document.createElement("span");
+    wrap.className = "select-wrap";
+    sel.parentNode.insertBefore(wrap, sel);
+    sel.classList.add("sr-select-native"); // 原生控件隐藏但保留（值语义面）
+    wrap.appendChild(sel);
+
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.className = "select-trigger";
+    trigger.setAttribute("aria-haspopup", "listbox");
+    const valueText = document.createElement("span");
+    valueText.className = "select-value-text";
+    const chevron = icon("chevronDown");
+    chevron.classList.add("select-chevron");
+    trigger.append(valueText, chevron);
+
+    const panel = document.createElement("div");
+    panel.className = "select-panel";
+    panel.hidden = true;
+    for (const opt of sel.options) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "select-option";
+      item.dataset.value = opt.value;
+      const label = document.createElement("span");
+      label.textContent = opt.textContent;
+      item.appendChild(label);
+      if (opt.disabled) item.disabled = true;
+      item.addEventListener("click", () => {
+        sel.value = opt.value; // 实例 setter → syncSelected → change 监听照常
+        sel.dispatchEvent(new Event("change", { bubbles: false }));
+        closePanel();
+      });
+      panel.appendChild(item);
+    }
+    const syncSelected = () => {
+      valueText.textContent = sel.selectedOptions[0]?.textContent ?? "";
+      for (const item of panel.querySelectorAll(".select-option")) {
+        const isSelected = item.dataset.value === sel.value;
+        item.classList.toggle("selected", isSelected);
+        if (isSelected && !item.querySelector(".select-check")) {
+          const check = icon("check");
+          check.classList.add("select-check");
+          item.appendChild(check);
+        } else if (!isSelected) {
+          item.querySelector(".select-check")?.remove();
+        }
+      }
+    };
+    sel.addEventListener("change", syncSelected);
+
+    const onDocClick = (ev) => {
+      if (!wrap.contains(ev.target)) closePanel();
+    };
+    const openPanel = () => {
+      panel.hidden = false;
+      trigger.classList.add("open");
+      syncSelected();
+      setTimeout(() => document.addEventListener("click", onDocClick, true), 0);
+    };
+    const closePanel = () => {
+      panel.hidden = true;
+      trigger.classList.remove("open");
+      document.removeEventListener("click", onDocClick, true);
+    };
+    trigger.addEventListener("click", () => {
+      if (panel.hidden) openPanel();
+      else closePanel();
+    });
+
+    // 实例级 value setter 拦截（fill() 直接 .value = x 时触发器同步——
+    // 原型属性被实例属性遮蔽，get/set 转发原生语义）
+    const desc = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value");
+    Object.defineProperty(sel, "value", {
+      get() {
+        return desc.get.call(this);
+      },
+      set(v) {
+        desc.set.call(this, v);
+        syncSelected();
+      },
+      configurable: true,
+    });
+
+    syncSelected();
+    wrap.append(trigger, panel);
+  }
 }
 
 // ---------------------------------------------------------------------------
