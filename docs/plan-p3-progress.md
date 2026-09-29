@@ -2,7 +2,7 @@
 
 > 本文件接续 [`plan-p2-progress.md`](plan-p2-progress.md)（P2 段批次 15a~15e **已于 2026-09-28 全部收官**——48 条逐条对账表与段收官文档 [`20260928_P2功能全景与借鉴映射.md`](20260928_P2功能全景与借鉴映射.md)；全量基线 1672 passed / 1 skipped（191 文件）、词汇表 29 事件〔#24/#27 已于 P2 段追认〕、count-features 337、架构检查 0 error / 21 warning）——**P3 产品化层执行进度**（批次报告 / 待澄清 / 人工确认清单）记入本文件。
 > 执行协议沿用 [`plan-p0.md`](plan-p0.md) §0；计划本体在 [`plan-p3.md`](plan-p3.md)（U 域 **27 条** / 批次 16a~16d / 31 卡，2026-09-28 用户裁决"让 aegent 从内核变成产品"）。
-> **待澄清编号接续（#28/#29 已立案——#28 已落实关闭、#29 待用户裁决；新增立案从 #30 起）**——词汇表立案管线不变（`l0-events.md` §8 落地记录全局连续；16a/16b 零事件兑现，词汇表 29 不变）。
+> **待澄清编号接续（#28/#29 已立案并关闭、#30 已追认关闭——#28 落实 / #29 裁决 2026-09-29 按脚本实况 337 / #30 追认 2026-09-29；新增立案从 #31 起）**——词汇表立案管线不变（`l0-events.md` §8 落地记录全局连续；词汇表现为 30）。
 
 ---
 
@@ -104,7 +104,7 @@
 - **T-P3-123 U21 CLI 编辑器** ✅（editor.ts：createKillRing + fuzzyMatch/fuzzySearchHistory〔子序列语义 + history[0]=最新约定〕+ createHistorySearcher 状态机 + withContinuation 反斜杠续行〔EOF flush〕+ attachReverseSearch 薄壳接线〔非 TTY 零变化〕+ repl/index 接线；38 passed）。跨终端负例记档：Ctrl+W/R/Escape 部分终端被自身消费——键位增强 best-effort，核心交互不依赖。
 - **T-P3-131 U27 会话间协作** ✅（**事件形状定形：流内新事件** `session/collab` 单类型 + direction 四值〔dispatch/receive/update/report〕，双方流各自落事件可独立重建 + **词汇表管线兑现 #30**：词汇表 29→30〔l0-events.md 落地记录 27 + kernel.md 词条 + 五处计数断言〕+ CollaborationService〔dispatch 快照固化双流 + runNext 串行执行 + completion 回投源流 + notify〕+ **权限快照定死双向断言**〔排队中设置先升后降，执行恒为提交快照〕+ 环检测 DAG〔COLLAB_CYCLE/SELF/TARGET_MISSING/BAD_KIND〕+ collaborationsFromEvents 投影挂 op:"review" + 协作 Tab；65 passed）。记档：executor 为注入面——跨会话路由随 U11 偏离记档的运行时面。
 
-- **验收台账**：全量 `npx vitest run` **1777 passed / 7 skipped**（202 文件；基线 1732/7〔197 文件〕→ 净增 45 passed、5 文件〔review-changes/prompt-library/settings-transfer/collaboration/editor 五个新测试文件〕。7 skipped 构成不变 = 6 例 live-p2 env gate + 1 例既有）。`npx tsc --noEmit` 全程干净；工具链五件全绿：count-features **337**（口径 #29 既有立案——卡面"331"同款笔误，脚本实况为准）/ check-doc-links 显式传参 **988 链接 0 失效** / architecture **0 error / 22 warning**（治理：protocol.ts 两度触及 400 行上限〔host 域硬 error〕——注释压缩归还；policy 增 kernel/host requires mcp——装配中心双向边渐进先例，环警告非 error）/ vocabulary **0 问题**（词汇 29→30：Collaboration Message）/ license-audit **exit 0**。
+- **验收台账**：全量 `npx vitest run` **1777 passed / 7 skipped**（202 文件；基线 1732/7〔197 文件〕→ 净增 45 passed、5 文件〔review-changes/prompt-library/settings-transfer/collaboration/editor 五个新测试文件〕。7 skipped 构成不变 = 6 例 live-p2 env gate + 1 例既有）。`npx tsc --noEmit` 全程干净；工具链五件全绿：count-features **337**（口径 #29 ✅ 用户裁决 2026-09-29——卡面笔误，实况为准，卡面已修正）/ check-doc-links 显式传参 **988 链接 0 失效** / architecture **0 error / 22 warning**（治理：protocol.ts 两度触及 400 行上限〔host 域硬 error〕——注释压缩归还；policy 增 kernel/host requires mcp——装配中心双向边渐进先例，环警告非 error）/ vocabulary **0 问题**（词汇 29→30：Collaboration Message）/ license-audit **exit 0**。
 
 **盘点面（T-P3-124 六项）**：
 1. **U15 变更提取纯函数 × 流轻量纪律** ✅——reviewChangesFromEvents(events) 纯函数：流进报告出零状态（每次打开/每轮结算重算——不建任何索引或缓存结构）；op:"review" 直答不改流；bash 启发式面（rm/重定向）via 字段标注可区分事实等级。机验：review-changes.test 6 例。
@@ -147,7 +147,7 @@
 **U 域原文与锚点核对（开工三件套②，2026-09-29）**：requirements.md:657-663/668/669 八条逐字对照卡面摘录——全部一致无漏项失真（U20 括号内"MCP/提示词/技能三类导入确认"在展卡结论与"取什么"栏完整覆盖，仅摘录行缩写——不立案）；snapshot.sh 零漂移（仅日期戳）。
 
 **卡内定形记档（16c 特有）**：
-- session/collab 事件形状：单类型 + direction 四值（不拆四事件）——双方流各自落事件可独立重建；#30 立案待用户追认（回退面见 l0-events.md 落地记录 27）。
+- session/collab 事件形状：单类型 + direction 四值（不拆四事件）——双方流各自落事件可独立重建；#30 ✅ 已追认（2026-09-29 用户："全部认可所有需要追认的"；回退面记录保留于 l0-events.md 落地记录 27 供追溯）。
 - 权限快照语义：卡面"快照 ∩ 当前"表述按 U27 原文"提交时定死"执行——双向不变（防提权是硬断言，逆方向不降权）；executor 只见 CollabTask 快照无活设置通道。
 - U17 stdio 收敛：域面 HTTP transport 不存在（I3 LIMITATIONS），向导 http 选项灰置；真实生态联调随 U8 重开。
 - MCP 装配：ready 前连接注册（tools 清单一次性报全）；单 server 失败 never-fail 跳过；architecture-policy 增 kernel/host requires mcp（装配中心双向边先例——环警告非 error）。
@@ -163,7 +163,7 @@
 ## 待澄清（执行会话新发现；编号接续 #28 起）
 
 | # | 需求ID | 我看到的（含路径:行） | 与需求文档的矛盾 | 建议 | 裁决与落实 |
-| #29 | U6/U7 收口 | T-P3-116 卡面与 plan-p3.md §7 的 16b 完成定义写 "count-features = 324"；脚本实况 **337**（tools/count-features.sh 统计 requirements.md §4 条目数——U 域扩至 27 后恒为 337，不随实现变化）。 | 计划数字与脚本口径不符（324 无从对上任何历史口径——疑为展卡笔误） | 建议按脚本实况修正 §7 与 T-P3-116 卡面数字为 337（与 16a 收口口径一致）；本批报告按 337 记录 | 待用户裁决 |
+| #29 | U6/U7 收口 | T-P3-116 卡面与 plan-p3.md §7 的 16b 完成定义写 "count-features = 324"；脚本实况 **337**（tools/count-features.sh 统计 requirements.md §4 条目数——U 域扩至 27 后恒为 337，不随实现变化）。 | 计划数字与脚本口径不符（324 无从对上任何历史口径——疑为展卡笔误） | 建议按脚本实况修正 §7 与 T-P3-116 卡面数字为 337（与 16a 收口口径一致）；本批报告按 337 记录 | **✅ 用户裁决（2026-09-29："全部认可所有需要追认的"）**——按脚本实况 337 为准；plan-p3.md 各卡面/§7 数字（324/331/336）已修正 |
 | --- | --- | --- | --- | --- | --- |
 | #28 | U14 | requirements.md:653 原文列"…沙箱档/**代理**/语言/**日志**/关于的多分节设置页"；上游行为锚 oss/cc-switch/src/components/settings/**LogConfigPanel.tsx** 在位。16a 落地六分节（providers/credentials/permission/sandbox/appearance/about）——无日志分节；plan-p3.md T-P3-103 卡"取什么"未明示日志分节不取（"代理"有展卡 YAGNI 裁决，"日志"没有）。缺口在收口后补核 requirements 原文时发现（用户质疑待澄清表"无"的核对支撑，2026-09-29）。 | U14"日志"分节未落地且无卡内豁免记录——原文与实现不符 | 建议补落"日志"分节（settings v1 增 logging 段：E14 rawLogDir 开关/目录——LogConfigPanel 行为映射），可随 16c 提示词库或 16d 设置扩展顺手做；或用户裁决豁免记档 | **用户认可补落（2026-09-29）**——立卡 **T-P3-132**（plan-p3.md §3 末尾追加，编号不重排），随 16b 会话首卡之前执行；**已落实（T-P3-132，2026-09-29）**——logging 段 + 白名单 + ui 第七分节 + resolveChildLaunchArgv `--raw-log-dir` 装配槽，验收 31 passed（settings 14 + tauri-shell 7 + server 10），16a 全闭 |
 
@@ -218,10 +218,9 @@ T-P3-130 收口），做完收官即停，P3 全段收官（段报告《P3 功�
    移，漂移则先重验锚点再动手。
 2. 已裁决/已定案事项（不再翻案）：U3 列表走 session_index 聚合（Q2 消费
    面归 U9）——定案；#28（U14 日志分节）已落实关闭；#29（count-features
-   口径）待裁决——脚本实况 337 为准（16c 卡面"331"同款笔误已按实况记
-   录）；**#30（session/collab 新事件，词汇 29→30）待用户追认**——U27 已
-   按"协作消息是持久事实"判据落地（l0-events.md 落地记录 27），若追认被
-   拒按其回退面执行。全量基线 **1777 passed / 7 skipped**（202 文件；6
+   口径）✅ 已裁决（2026-09-29）——脚本实况 337 为准，卡面数字已修正；
+   #30（session/collab 新事件，词汇 29→30）✅ 已追认（2026-09-29）——
+   U27 落地面维持（回退面记录留 l0-events.md 落地记录 27 供追溯）。全量基线 **1777 passed / 7 skipped**（202 文件；6
    skipped = live-p2 env gate；两例既有基建 flake 已记档——llm-replay 计
    时抖动/http-mock 端口竞态，遇失败先重跑确认是否命中 flake）、词汇表
    30、count-features 337、architecture 0 error / 22 warning（protocol.ts
