@@ -248,7 +248,7 @@
 - **风险 / 未知**：模板变量语法（`{{var}}` 单一约定——YAGNI 记档）
 - **完成记录（2026-09-29）**：验收 `npx vitest run src/session/prompt-library.test.ts src/session/settings.test.ts src/host/server.test.ts src/diagnostics/tauri-shell.test.ts` → **46 passed**（prompt-library 8 新 + settings 回归 + server 扩 prompts 白名单 e2e + tauri-shell 资产断言；tsc 干净）。落地：①**存储定形**（卡面二选一）：settings 同域——SettingsShape 增 `prompts?: PromptEntry[]`（name 唯一/content 非空 parse 校验 fail-closed〔重名类型化拒绝〕）+ patch 白名单加 prompts 段——T-P3-103 settings 直答通道零新增 wire；②**纯函数** `src/session/prompt-library.ts`：upsertPrompt（同名原位替换保序/新名追加）+ deletePrompt（幂等）+ extractTemplateVars（`{{var}}` 去重保序、空白占位不算）+ renderTemplate（命中替换、缺变量保留原文不虚构）；③**ui 第九分节** data-section="prompts"（列表〔点击回填编辑〕/ 表单 name+desc+content / 删除 confirm）+ flushSettings 数组段缺省发 `[]` 修正（对象段 `?? {}` 会把 prompts/projects 空段发成 `{}` 被 parse 拒——顺手修的正确性缺陷）；④**Composer / 补全混入**：候选加 📝 模板类（ensurePromptsCache——settings get 一次会话期缓存），选中 = 整段正文替换 /token 填入输入框（非命令执行），含变量时 Toast 提示占位符手改。**分界记档（卡面要求）**：与 I8 persona 的分界 = I8 是系统级 agent 人格预设（装配面）、本库是用户自建模板（用户内容面）——不共用存储不共用调用链。人工走查列入确认清单。
 
-#### T-P3-119 · U17 · MCP 管理向导（分步添加 + 校验 + 统一面板） `[ ]`
+#### T-P3-119 · U17 · MCP 管理向导（分步添加 + 校验 + 统一面板） `[x]`
 - **依据需求**：U17（"MCP server 的向导式添加、统一管理面板（启停/编辑/删除）、连接校验"）
 - **上游首选参考**：[cc-switch·mcp 四件](../oss/cc-switch/src/components/mcp)（McpWizardModal/McpFormModal/UnifiedMcpPanel/useMcpValidation——🔴 只学行为）
 - **取什么 / 别抄什么**：取"向导分步（类型选择→参数→校验→保存）+ 统一面板 + 连接校验"三行为；不抄其特定生态预设
@@ -256,6 +256,7 @@
 - **验收**：`npx vitest run src/mcp/`（扩——settings 装配面）+ ui 资产断言 + 向导往返
 - **依赖**：P0 mcp 域；T-P3-103（设置页）
 - **风险 / 未知**：MCP server 真实进程的校验演示（echo 型 mock server——真实生态联调随 U8）
+- **完成记录（2026-09-29）**：验收 `npx vitest run src/mcp/ src/session/settings.test.ts src/kernel/agent-process.test.ts src/host/server.test.ts src/diagnostics/tauri-shell.test.ts` → **127 passed**（11 文件全绿；tsc 干净、architecture 0 error）。落地：①**settings mcp 段**：McpServerEntry（name 唯一 + 不含 `__`〔registry-bridge.validateServerName 同规则〕+ command 必填 + args 字符串数组 + enabled 开关——parse fail-closed）+ patch 白名单加 mcp；②**装配消费（真新装配——mcp 域此前只有库面零生产装配点）**：agent-process 增 `mcpServers` 选项——**ready 前连接注册**（tools 清单一次性报全），单 server 失败 warn 跳过不炸启动（never-fail 装配，与 H2 never-reject 同纪律），收尾 dispose 连接；agent-child 从 settings.mcp 过滤 enabled 条目传入；③**连接校验**：mcp 域增 `probeServer`（launch 一次 initialize+tools/list 后立即关闭——registry-bridge 握手语义复用）+ settings 信封 op:`mcp-check`（parse 层校验 name/command/args 形状 + gateway 层失败转类型化回执不上抛）；④**ui 第十分节** data-section="mcp"：统一面板（清单/启停 toggle/编辑回填/删除 confirm）+ 两步向导（步骤1 类型+参数〔**http 型灰置——mcp 域 stdio-only 的 I3 LIMITATIONS 既有记档，卡面"stdio/http 两型"按域面现实收敛为 stdio，记档**〕→ 步骤2 测连接〔须通过才可保存〕）；⑤架构治理：architecture-policy 增 kernel requires mcp（agent-process 装配消费）与 host requires mcp（mcp-check）——装配中心双向边渐进采用先例（kernel↔mcp 环警告，双域 managed=false 非硬失败）。**测试转义坑记档**：stub MCP server 脚本内嵌模板字符串的 `\n` 双层转义易碎——改用 String.fromCharCode(10) 绕开。真实生态联调随 U8（echo 型 stub 已两路演示：通过/失败）。
 
 #### T-P3-120 · U18 · 辅助模型配置卡（判官/摘要等增强任务分档） `[ ]`
 - **依据需求**：U18（"判官/摘要/标题等增强任务的模型独立配置（选哪个模型 + reasoning 档位），与主对话模型分离"）

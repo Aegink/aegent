@@ -74,6 +74,38 @@ export async function connectAndRegister(
   return { client, registeredToolNames };
 }
 
+/**
+ * 连接校验探针（U17/T-P3-119）——launch 一次 initialize + tools/list 后
+ * 立即关闭（不做工具注册，不持连接）：向导"测连接"的数据面。握手/列工具
+ * 失败原样上抛（调用方转类型化校验回执——坏命令/无响应/无能力三态）。
+ */
+export async function probeServer(
+  config: McpServerConfig,
+  options?: { requestTimeoutMs?: number },
+): Promise<{ protocolVersion: string; tools: McpToolInfo[] }> {
+  validateServerName(config.name);
+  const transport = createMcpStdioTransport(config.command, config.args ?? []);
+  const client = new McpClient(
+    transport,
+    config.name,
+    transport.onLine.bind(transport),
+    transport.onFail.bind(transport),
+  );
+  const timeout = options?.requestTimeoutMs;
+  try {
+    const capabilities =
+      timeout !== undefined ? await client.initialize(timeout) : await client.initialize();
+    const tools: McpToolInfo[] = capabilities.tools
+      ? timeout !== undefined
+        ? await client.listTools(timeout)
+        : await client.listTools()
+      : [];
+    return { protocolVersion: capabilities.protocolVersion, tools };
+  } finally {
+    client.dispose();
+  }
+}
+
 /** MCP 工具描述 → ToolDef（inputSchema 透传 + tools/call 执行体）。 */
 export function toToolDef(
   client: McpClient,

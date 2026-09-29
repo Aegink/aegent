@@ -1237,4 +1237,97 @@ describe("agent-process × ready 清单（U10/T-P3-109 补全来源）", () => {
     await running;
     rmSync(ws, { recursive: true, force: true });
   }, 30_000);
+
+  it("U17/T-P3-119：settings mcp 段装配消费——ready 前连接注册 stub server 工具；失败 server 跳过不炸启动", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "aegent-mcp-assembly-"));
+    const stub = path.join(dir, "stub-mcp-server.js");
+    writeFileSync(
+      stub,
+      `const EOL = String.fromCharCode(10);
+let buf = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (c) => {
+  buf += c;
+  for (;;) {
+    const nl = buf.indexOf(EOL);
+    if (nl === -1) break;
+    const line = buf.slice(0, nl).trim();
+    buf = buf.slice(nl + 1);
+    if (!line) continue;
+    const msg = JSON.parse(line);
+    if (msg.method === "initialize") {
+      process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "stub" } } }) + EOL);
+    } else if (msg.method === "tools/list") {
+      process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { tools: [{ name: "echo", description: "回显", inputSchema: { type: "object" } }] } }) + EOL);
+    }
+  }
+});
+`,
+      "utf8",
+    );
+
+    const input = new PassThrough();
+    const output = new PassThrough();
+    let exitCode: number | null = null;
+    let resolveExit: (code: number) => void = () => {};
+    const exited = new Promise<number>((resolve) => {
+      resolveExit = resolve;
+    });
+    const running = runAgentChildStdio({
+      input,
+      output,
+      exit: (code) => {
+        if (exitCode === null) {
+          exitCode = code;
+          resolveExit(code);
+        }
+      },
+      // U17 装配消费：一个正常 stub + 一个坏命令条目（never-fail 装配）
+      mcpServers: [
+        { name: "demo", command: process.execPath, args: [stub] },
+        { name: "bad", command: "aegent-nonexistent-cmd-xyz" },
+      ],
+    });
+    const items: AgentMessage[] = [];
+    const waiters: ((r: IteratorResult<AgentMessage>) => void)[] = [];
+    let buf = "";
+    output.setEncoding("utf-8");
+    output.on("data", (chunk: string) => {
+      buf += chunk;
+      for (;;) {
+        const nl = buf.indexOf("\n");
+        if (nl < 0) break;
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        const msg = decodeMessage(line);
+        const w = waiters.shift();
+        if (w) w({ value: msg, done: false });
+        else items.push(msg);
+      }
+    });
+    const next = async (): Promise<AgentMessage> => {
+      for (;;) {
+        const item = items.shift();
+        if (item) return item;
+        const r = await new Promise<IteratorResult<AgentMessage>>((resolve) =>
+          waiters.push(resolve),
+        );
+        if (!r.done && r.value) return r.value;
+      }
+    };
+
+    // ready 在 MCP 注册完成后发送——tools 清单含 stub 工具（坏 server 已跳过）
+    const ready = await next();
+    expect(ready).toMatchObject({ type: "ready" });
+    expect((ready as { tools?: string[] }).tools).toContain("demo__echo");
+    expect((ready as { tools?: string[] }).tools).not.toContain("bad__echo");
+
+    input.write(`${JSON.stringify({ type: "dispose" })}
+`);
+    expect(await exited).toBe(0);
+    input.end();
+    await running;
+    rmSync(dir, { recursive: true, force: true });
+  }, 30_000);
 });

@@ -233,6 +233,11 @@ async function main(): Promise<void> {
   const options: AgentChildOptions = {
     ...(cli.rawLogDir ? { rawLogDir: cli.rawLogDir } : {}),
     sessionId,
+    // U17/T-P3-119：settings mcp 段的 enabled 条目 → 装配消费（agent-process
+    // 在 ready 前连接注册；单 server 失败跳过——never-fail 装配）
+    ...(settingsFile.mcp?.some((s) => s.enabled !== false)
+      ? { mcpServers: settingsFile.mcp.filter((s) => s.enabled !== false) }
+      : {}),
     ...(storage ? { storage } : {}),
     ...(provider ? { provider, identity } : {}),
     // F5/T-P1-18：真实 provider 时启用真摘要（LLM 生成 + 截断回退）——

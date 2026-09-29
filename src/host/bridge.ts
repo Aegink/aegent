@@ -294,6 +294,16 @@ export class HostBridge implements SessionRouter {
         if (call.op === "session-delete") {
           return gateway.sessionDelete(call.sessionId!);
         }
+        // U17/T-P3-119：MCP 连接校验（向导"测连接"——launch 一次握手+列工具）
+        if (call.op === "mcp-check") {
+          return {
+            check: await gateway.mcpCheck({
+              name: call.name!,
+              command: call.command!,
+              ...(Array.isArray(call.args) ? { args: call.args } : {}),
+            }),
+          };
+        }
         return { credentials: await gateway.credentialsList() };
       },
     };

@@ -934,6 +934,7 @@ function fillSettingsForm() {
   renderProviderList();
   renderProjectList();
   renderPromptList();
+  renderMcpList();
 }
 
 async function openSettings() {
@@ -1159,6 +1160,144 @@ document.getElementById("prompt-form").addEventListener("submit", (ev) => {
   dirtySections.add("prompts");
   renderPromptList();
   markDirty("prompts");
+});
+
+// —— U17/T-P3-119 MCP 管理向导 + 统一面板（settings mcp 段；连接校验走
+// settings op:"mcp-check"——launch 一次握手+列工具后关闭，回执转 UI 状态）
+let editingMcpName = null;
+let mcpWizardEntry = null; // 向导当前编辑的 {name, command, args}
+let mcpTestOk = false;
+
+function renderMcpList() {
+  const list = document.getElementById("mcp-list");
+  list.replaceChildren();
+  for (const s of settingsCache?.mcp ?? []) {
+    const li = document.createElement("li");
+    li.className = "mcp-item";
+    const label = document.createElement("span");
+    label.textContent = `🔌 ${s.name} → ${s.command}${(s.args ?? []).length > 0 ? ` ${(s.args ?? []).join(" ")}` : ""}${s.enabled === false ? "（已停用）" : ""}`;
+    const toggleBtn = document.createElement("button");
+    toggleBtn.type = "button";
+    toggleBtn.textContent = s.enabled === false ? "启用" : "停用";
+    toggleBtn.addEventListener("click", () => {
+      // 缺省启用（enabled 缺省 true）：停用写 false、启用删字段回缺省
+      settingsCache.mcp = (settingsCache.mcp ?? []).map((x) => {
+        if (x.name !== s.name) return x;
+        if (x.enabled === false) {
+          const { enabled: _omit, ...rest } = x;
+          return rest;
+        }
+        return { ...x, enabled: false };
+      });
+      dirtySections.add("mcp");
+      renderMcpList();
+      markDirty("mcp");
+    });
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.textContent = "删除";
+    delBtn.className = "danger";
+    delBtn.addEventListener("click", () => {
+      if (!window.confirm(`删除 MCP server「${s.name}」？`)) return;
+      settingsCache.mcp = (settingsCache.mcp ?? []).filter((x) => x.name !== s.name);
+      dirtySections.add("mcp");
+      renderMcpList();
+      markDirty("mcp");
+    });
+    li.append(label, toggleBtn, delBtn);
+    list.appendChild(li);
+    label.style.cursor = "pointer";
+    label.title = "点击编辑该 server";
+    label.addEventListener("click", () => {
+      editingMcpName = s.name;
+      openMcpWizard(s);
+    });
+  }
+  if ((settingsCache?.mcp ?? []).length === 0) {
+    const li = document.createElement("li");
+    li.className = "hint";
+    li.textContent = "（无 MCP server——点「添加 server」走向导）";
+    list.appendChild(li);
+  }
+}
+
+function openMcpWizard(entry) {
+  mcpWizardEntry = entry ?? null;
+  mcpTestOk = false;
+  document.getElementById("mcp-wizard").hidden = false;
+  document.getElementById("mcp-step1").hidden = false;
+  document.getElementById("mcp-step2").hidden = true;
+  document.getElementById("mcp-save").disabled = true;
+  document.getElementById("mcp-check-result").textContent = "未测试";
+  document.getElementById("mcp-name").value = entry?.name ?? "";
+  document.getElementById("mcp-command").value = entry?.command ?? "";
+  document.getElementById("mcp-args").value = (entry?.args ?? []).join(" ");
+}
+
+document.getElementById("mcp-add").addEventListener("click", () => {
+  editingMcpName = null;
+  openMcpWizard(null);
+});
+document.getElementById("mcp-next").addEventListener("click", () => {
+  const name = document.getElementById("mcp-name").value.trim();
+  const command = document.getElementById("mcp-command").value.trim();
+  const args = document.getElementById("mcp-args").value.trim().split(/\s+/).filter((a) => a !== "");
+  if (name === "" || name.includes("__") || command === "") {
+    toast("名称（不含 __）与启动命令必填", "warn");
+    return;
+  }
+  mcpWizardEntry = { name, command, ...(args.length > 0 ? { args } : {}) };
+  document.getElementById("mcp-step1").hidden = true;
+  document.getElementById("mcp-step2").hidden = false;
+});
+document.getElementById("mcp-back").addEventListener("click", () => {
+  document.getElementById("mcp-step2").hidden = true;
+  document.getElementById("mcp-step1").hidden = false;
+});
+document.getElementById("mcp-test").addEventListener("click", () => {
+  if (mcpWizardEntry === null) return;
+  const resultEl = document.getElementById("mcp-check-result");
+  resultEl.textContent = "测试中…（最长 8 秒）";
+  void sendSettings({
+    op: "mcp-check",
+    name: mcpWizardEntry.name,
+    command: mcpWizardEntry.command,
+    ...(mcpWizardEntry.args !== undefined ? { args: mcpWizardEntry.args } : {}),
+  }).then((envelope) => {
+    if (!envelope.ok) {
+      resultEl.textContent = `校验不可用：${envelope.error?.message ?? ""}`;
+      return;
+    }
+    const check = envelope.result.check;
+    if (check.ok) {
+      mcpTestOk = true;
+      document.getElementById("mcp-save").disabled = false;
+      resultEl.textContent = `✔ 连接成功（协议 ${check.protocolVersion}，${(check.tools ?? []).length} 个工具）`;
+    } else {
+      resultEl.textContent = `✘ 连接失败：${check.error?.message ?? ""}`;
+    }
+  });
+});
+document.getElementById("mcp-save").addEventListener("click", () => {
+  if (mcpWizardEntry === null || !mcpTestOk) return;
+  // 重名校验（对其他条目——本条目编辑改名时以 editingMcpName 排除自身）
+  const conflict = (settingsCache.mcp ?? []).some(
+    (x) => x.name === mcpWizardEntry.name && x.name !== editingMcpName,
+  );
+  if (conflict) {
+    toast("server 名已存在", "warn");
+    return;
+  }
+  let list = (settingsCache.mcp ?? []).filter(
+    (x) => x.name !== mcpWizardEntry.name && x.name !== editingMcpName,
+  );
+  list.push(mcpWizardEntry);
+  settingsCache.mcp = list;
+  editingMcpName = null;
+  document.getElementById("mcp-wizard").hidden = true;
+  dirtySections.add("mcp");
+  renderMcpList();
+  markDirty("mcp");
 });
 
 document.getElementById("project-form").addEventListener("submit", (ev) => {

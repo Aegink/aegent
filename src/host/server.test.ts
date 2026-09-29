@@ -970,6 +970,62 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
     client.close();
   });
 
+  it("settings op=mcp-check（U17/T-P3-119）：MCP 向导连接校验两路（通过/失败）", async () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), "aegent-host-mcp-"));
+    settingsTmpDirs.push(tmp);
+    // 真 stdio MCP stub server（registry-bridge.test 同款形状——echo 型演示面）
+    writeFileSync(
+      path.join(tmp, "stub-mcp-server.js"),
+      `let buf = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (c) => {
+  buf += c;
+  for (;;) {
+    const nl = buf.indexOf("\\n");
+    if (nl === -1) break;
+    const line = buf.slice(0, nl).trim();
+    buf = buf.slice(nl + 1);
+    if (!line) continue;
+    const msg = JSON.parse(line);
+    if (msg.method === "initialize") {
+      process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "stub" } } }) + "\\n");
+    } else if (msg.method === "tools/list") {
+      process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { tools: [{ name: "echo", description: "回显", inputSchema: { type: "object" } }] } }) + "\\n");
+    }
+  }
+});\n`,
+      "utf8",
+    );
+    const { port } = await startServer({
+      agent: fakeAgent(),
+      settingsGateway: new FileSettingsGateway(
+        path.join(tmp, "settings.json"),
+        new PlainFileCredentialStore(path.join(tmp, "credentials.bin")),
+      ),
+    });
+    const client = await wsConnect(port);
+    await client.hello("web-m1");
+    const settingsCall = (call: Record<string, unknown>, requestId: string) => {
+      client.raw({ type: "settings", requestId, ...call });
+      return client.waitFor((e) => e.type === "response" && e.requestId === requestId, `settings(${requestId})`) as Promise<Record<string, unknown>>;
+    };
+    // 通过路：stub server 握手 + 列工具
+    const okCheck = await settingsCall(
+      { op: "mcp-check", name: "demo", command: process.execPath, args: [path.join(tmp, "stub-mcp-server.js")] },
+      "m1",
+    );
+    expect(okCheck.ok).toBe(true);
+    const check = (okCheck.result as { check: { ok: boolean; protocolVersion: string; tools: unknown[] } }).check;
+    expect(check.ok).toBe(true);
+    expect(check.protocolVersion).toBe("2024-11-05");
+    expect(check.tools).toHaveLength(1);
+    // 失败路：不存在的命令 → 类型化失败回执（不上抛）
+    const badCheck = await settingsCall({ op: "mcp-check", name: "bad", command: "aegent-nonexistent-cmd-xyz" }, "m2");
+    expect(badCheck.ok).toBe(true);
+    expect((badCheck.result as { check: { ok: boolean; error?: { code: string } } }).check.ok).toBe(false);
+    client.close();
+  });
+
   it("notification name=n5（U13/T-P3-112）：notifyHub 分类通知全端 WS 广播", async () => {
     const hub = new NotificationHub();
     const agent = fakeAgent();

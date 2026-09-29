@@ -1235,3 +1235,31 @@ mark.search-hit.active {
   font-size: 13px;
   word-break: break-all;
 }
+
+/* U17/T-P3-119 MCP 管理分节（settings 面板第十分节：统一面板 + 两步向导） */
+.mcp-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: 13px;
+  word-break: break-all;
+}
+
+#mcp-wizard {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+#mcp-wizard input,
+#mcp-wizard select {
+  width: 100%;
+  margin: 3px 0;
+}
+
+#mcp-wizard button {
+  margin-right: 6px;
+}

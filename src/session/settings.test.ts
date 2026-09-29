@@ -50,6 +50,38 @@ describe("parseSettingsShape / parseSettingsFile", () => {
     expect(() => parseSettingsShape({ appearance: { theme: "blue" } })).toThrow(/theme 非法/);
   });
 
+  it("mcp 段解析（U17/T-P3-119）：形状校验 fail-closed（重名/分隔符/args 类型/enabled）", () => {
+    const s = parseSettingsShape({
+      mcp: [
+        { name: "demo", command: "node", args: ["server.js"] },
+        { name: "off", command: "node", enabled: false },
+      ],
+    });
+    expect(s.mcp).toEqual([
+      { name: "demo", command: "node", args: ["server.js"] },
+      { name: "off", command: "node", enabled: false },
+    ]);
+    expect(() => parseSettingsShape({ mcp: "no" })).toThrow(/mcp 须为数组/);
+    expect(() => parseSettingsShape({ mcp: [{ command: "node" }] })).toThrow(/mcp\[\].name 缺失/);
+    expect(() => parseSettingsShape({ mcp: [{ name: "a__b", command: "node" }] })).toThrow(
+      /命名空间分隔符/,
+    );
+    expect(() =>
+      parseSettingsShape({
+        mcp: [
+          { name: "a", command: "node" },
+          { name: "a", command: "node" },
+        ],
+      }),
+    ).toThrow(/mcp server 名重复：a/);
+    expect(() => parseSettingsShape({ mcp: [{ name: "a", command: "node", args: [1] }] })).toThrow(
+      /args 须为字符串数组/,
+    );
+    expect(() =>
+      parseSettingsShape({ mcp: [{ name: "a", command: "node", enabled: "yes" }] }),
+    ).toThrow(/enabled 须为布尔值/);
+  });
+
   it("JSON 语法错 → SettingsError 带 1-based 行列号与修复指引", () => {
     const text = '{\n  "providers": [\n    bad\n  ]\n}';
     try {

@@ -134,6 +134,34 @@
           </form>
           <p class="hint">模板在输入区 / 补全中列出（📝），选中即填入输入框；变量占位符保留手改。系统级人格预设（persona）不在此管理。</p>
         </section>
+        <!-- U17/T-P3-119 MCP 管理向导：分步添加（类型→参数→校验→保存）+
+             统一面板（清单/启停/编辑/删除）；连接校验走 settings op:mcp-check -->
+        <section data-section="mcp">
+          <h2>MCP 服务器</h2>
+          <ul id="mcp-list"></ul>
+          <div id="mcp-wizard" hidden>
+            <div id="mcp-step1">
+              <label>类型
+                <select id="mcp-type">
+                  <option value="stdio">stdio（本地命令）</option>
+                  <option value="http" disabled>http（mcp 域暂未支持——随 HTTP transport 扩展）</option>
+                </select>
+              </label>
+              <input id="mcp-name" type="text" placeholder="名称（工具前缀，不含 __）" autocomplete="off" />
+              <input id="mcp-command" type="text" placeholder="启动命令（如 node）" autocomplete="off" />
+              <input id="mcp-args" type="text" placeholder="参数（空格分隔，如 /path/server.js）" autocomplete="off" />
+              <button id="mcp-next" type="button">下一步：测连接</button>
+            </div>
+            <div id="mcp-step2" hidden>
+              <p id="mcp-check-result" class="hint">未测试</p>
+              <button id="mcp-test" type="button">测连接</button>
+              <button id="mcp-save" type="button" disabled>保存</button>
+              <button id="mcp-back" type="button">上一步</button>
+            </div>
+          </div>
+          <button id="mcp-add" type="button">添加 server</button>
+          <p class="hint">启停即时落档，新会话生效（子进程装配期连接注册；单 server 失败不影响启动）。</p>
+        </section>
         <section data-section="about">
           <h2>关于</h2>
           <p>aegent 0.1.0 —— 本地优先的 agent 工作台（事件即真相；配置即本页）。</p>

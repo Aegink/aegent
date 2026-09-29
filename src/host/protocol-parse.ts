@@ -80,12 +80,17 @@ export type ClientEnvelope =
         | "credentials-delete"
         | "credentials-list"
         | "probe"
-        | "session-delete";
+        | "session-delete"
+        | "mcp-check";
       patch?: Record<string, unknown>;
       provider?: string;
       key?: string;
       /** op=session-delete：目标会话 id（U3 删除入口的 wire 面）。 */
       sessionId?: string;
+      /** op=mcp-check：连接校验目标（U17——McpServerEntry 形状）。 */
+      name?: string;
+      command?: string;
+      args?: string[];
     };
 
 function rejectUnknownKeys(value: Record<string, unknown>, allowed: readonly string[]): string | null {
@@ -263,6 +268,9 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
       "provider",
       "key",
       "sessionId",
+      "name",
+      "command",
+      "args",
     ]);
     if (unknownKey) throw new Error(`settings 信封${unknownKey}`);
     if (typeof record["requestId"] !== "string" || record["requestId"] === "") {
@@ -276,10 +284,11 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
       op !== "credentials-delete" &&
       op !== "credentials-list" &&
       op !== "probe" &&
-      op !== "session-delete"
+      op !== "session-delete" &&
+      op !== "mcp-check"
     ) {
       throw new Error(
-        `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete）`,
+        `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|mcp-check）`,
       );
     }
     if (op === "session-delete") {
@@ -307,6 +316,22 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
         throw new Error(`settings op=${op} 需要 provider 非空字符串`);
       }
     }
+    // U17/T-P3-119：mcp-check 的载荷 = name/command/args（McpServerEntry 形状
+    // ——名字规则与 args 类型在 parse 层即校验，连接失败在 gateway 层转回执）
+    if (op === "mcp-check") {
+      if (typeof record["name"] !== "string" || record["name"] === "" || record["name"].includes("__")) {
+        throw new Error("settings op=mcp-check 需要 name（非空且不含 \"__\"）");
+      }
+      if (typeof record["command"] !== "string" || record["command"] === "") {
+        throw new Error("settings op=mcp-check 需要 command 非空字符串");
+      }
+      if (
+        record["args"] !== undefined &&
+        (!Array.isArray(record["args"]) || record["args"].some((a) => typeof a !== "string"))
+      ) {
+        throw new Error("settings op=mcp-check 的 args 须为字符串数组");
+      }
+    }
     return {
       type: "settings",
       requestId: record["requestId"],
@@ -315,6 +340,9 @@ export function parseClientEnvelope(line: string): ClientEnvelope {
       ...(typeof record["provider"] === "string" ? { provider: record["provider"] } : {}),
       ...(typeof record["key"] === "string" ? { key: record["key"] } : {}),
       ...(typeof record["sessionId"] === "string" ? { sessionId: record["sessionId"] } : {}),
+      ...(typeof record["name"] === "string" ? { name: record["name"] } : {}),
+      ...(typeof record["command"] === "string" ? { command: record["command"] } : {}),
+      ...(Array.isArray(record["args"]) ? { args: record["args"] as string[] } : {}),
     };
   }
   if (type === "request") {

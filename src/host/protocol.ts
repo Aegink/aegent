@@ -108,9 +108,8 @@ export interface HostProtocolServerOptions {
   onLease?: (lease: { op: "acquire" | "release"; surfaceId: string }) => Promise<unknown>;
   /**
    * query 信封回调（K5/T-P1-128 恢复视图——bridge 直答只读，不经 agent）。
-   * U3 起 op:"sessions" = 会话历史清单；op:"events" 放宽为任意会话只读。
-   * U9/T-P3-108 起 op:"search" = 跨会话检索（Q2 消费面，criteria.contentLike）。
-   * reject（Error 带 code）→ ok:false response。
+   * U3 起 op:"sessions" = 会话历史清单；op:"events" 放宽为任意会话只读；
+   * U9/T-P3-108 起 op:"search" = 跨会话检索。reject（Error 带 code）→ ok:false。
    */
   onQuery?: (query: {
     sessionId: string;
@@ -132,11 +131,16 @@ export interface HostProtocolServerOptions {
       | "credentials-delete"
       | "credentials-list"
       | "probe"
-      | "session-delete";
+      | "session-delete"
+      | "mcp-check";
     patch?: Record<string, unknown>;
     provider?: string;
     key?: string;
     sessionId?: string;
+    /** op=mcp-check（U17）：name/command/args = McpServerEntry 形状。 */
+    name?: string;
+    command?: string;
+    args?: string[];
   }) => Promise<unknown>;
 }
 

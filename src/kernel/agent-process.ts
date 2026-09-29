@@ -61,6 +61,7 @@ import { NodeExecutionEnv } from "./tools/env.js";
 import { ToolRegistry } from "./tools/registry.js";
 import { DEFAULT_SPILL_DIR } from "./tools/truncate.js";
 import { sweepSessionSpill } from "./tools/spill-gc.js";
+import { connectAndRegister } from "../mcp/registry-bridge.js";
 
 // ---------------------------------------------------------------------------
 // echo provider（P0 子进程内置：回声最后一条 user 消息；协议与进程全真）
@@ -88,6 +89,12 @@ export interface AgentChildOptions {
   sessionId?: string;
   /** E14/T-P1-90 原始分片日志目录（缺省不写——旁路通道按需开启）。 */
   rawLogDir?: string;
+  /**
+   * U17/T-P3-119：MCP server 清单（settings mcp 段 enabled 条目——agent-child
+   * 传入）。装配期连接注册，工具名 `<server>__<tool>` 进注册表（与 builtin
+   * 同轨）；单 server 失败 warn 跳过不炸启动。缺省无 = 零 MCP 面（行为不变）。
+   */
+  mcpServers?: import("../session/settings.js").McpServerEntry[];
   provider?: ModelProvider;
   identity?: ModelIdentity;
   /** 缺省用 process.stdin/stdout（测试可注入内存流做进程外单测）。 */
@@ -344,6 +351,19 @@ export async function runAgentChildStdio(
       ...(runSubagent ? { task: { runSubagent } } : {}),
     },
   );
+  // U17/T-P3-119：MCP server 装配消费（settings mcp 段——agent-child 传入
+  // 已过滤 enabled 的条目）。装配期连接注册（ready 前完成——tools 清单
+  // 一次性报全）；单 server 失败 warn 继续不炸启动（never-fail 装配——
+  // 与 H2 never-reject 结算同纪律）。连接句柄在收尾 dispose（防 stdio
+  // 子进程悬挂——父进程退出前显式关闭）。
+  const mcpConnections: import("../mcp/registry-bridge.js").McpConnection[] = [];
+  for (const cfg of options.mcpServers ?? []) {
+    try {
+      mcpConnections.push(await connectAndRegister(toolRegistry, cfg));
+    } catch (e) {
+      console.error(`[mcp] server "${cfg.name}" 连接失败（跳过）:`, e instanceof Error ? e.message : e);
+    }
+  }
   const decideTurnBase: AgentLoopDeps["decideTurn"] = (record) =>
     record.toolCalls.length > 0 ? { action: "continue" } : { action: "end" };
   const loopDeps: AgentLoopDeps = {
@@ -466,6 +486,13 @@ export async function runAgentChildStdio(
     if (finishing) return;
     finishing = true;
     try {
+      for (const conn of mcpConnections) {
+        try {
+          conn.client.dispose();
+        } catch {
+          // 收尾关连接不炸退出面
+        }
+      }
       await sweepSessionSpill(options.spillDir ?? DEFAULT_SPILL_DIR, sessionId);
     } finally {
       exit(0);

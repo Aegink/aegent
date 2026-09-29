@@ -68,6 +68,17 @@ export interface PromptEntry {
   description?: string;
 }
 
+/** MCP server 条目（U17/T-P3-119——向导落档；装配消费在 agent-child）。 */
+export interface McpServerEntry {
+  /** server 名（工具名命名空间前缀——须非空且不含 "__"，registry-bridge 同规则）。 */
+  name: string;
+  /** stdio 启动命令与参数（HTTP/SSE transport 随 mcp 域扩展——I3 LIMITATIONS）。 */
+  command: string;
+  args?: string[];
+  /** 启停开关（false = 装配跳过；缺省 true）。 */
+  enabled?: boolean;
+}
+
 export interface SettingsShape {
   version: 1;
   providers: ProviderEntry[];
@@ -88,6 +99,8 @@ export interface SettingsShape {
   pricing?: PricingEntry[];
   /** 提示词模板库（U16——用户自建/编辑/删除；Composer / 补全调用）。 */
   prompts?: PromptEntry[];
+  /** MCP server 清单（U17——向导式添加落档；装配期连接注册，单 server 失败不炸启动）。 */
+  mcp?: McpServerEntry[];
   /** 首跑引导（U13——引导清单完成标记；缺省 undefined = 未完成）。 */
   onboardingDone?: boolean;
 }
@@ -103,6 +116,7 @@ export function defaultSettings(): SettingsShape {
     logging: {},
     projects: [],
     prompts: [],
+    mcp: [],
   };
 }
 export const SETTINGS_HINT =
@@ -293,6 +307,37 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
     throw new SettingsError("onboardingDone 须为布尔值");
   }
   if (rec["onboardingDone"] === true) out.onboardingDone = true;
+  const mcp = rec["mcp"];
+  if (mcp !== undefined) {
+    if (!Array.isArray(mcp)) throw new SettingsError("mcp 须为数组");
+    const seen = new Set<string>();
+    for (const entry of mcp) {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+        throw new SettingsError("mcp 条目必须是对象");
+      }
+      const e = entry as Record<string, unknown>;
+      const name = assertString(e["name"], "mcp[].name");
+      if (name === undefined) throw new SettingsError("mcp[].name 缺失");
+      // registry-bridge.validateServerName 同规则（工具名命名空间前缀防歧义）
+      if (name.includes("__")) throw new SettingsError(`mcp[].name 含命名空间分隔符 "__"：${name}`);
+      if (seen.has(name)) throw new SettingsError(`mcp server 名重复：${name}`);
+      seen.add(name);
+      const command = assertString(e["command"], "mcp[].command");
+      if (command === undefined) throw new SettingsError("mcp[].command 缺失");
+      if (e["args"] !== undefined && (!Array.isArray(e["args"]) || e["args"].some((a) => typeof a !== "string"))) {
+        throw new SettingsError("mcp[].args 须为字符串数组");
+      }
+      if (e["enabled"] !== undefined && typeof e["enabled"] !== "boolean") {
+        throw new SettingsError("mcp[].enabled 须为布尔值");
+      }
+      out.mcp!.push({
+        name,
+        command,
+        ...(Array.isArray(e["args"]) ? { args: e["args"] as string[] } : {}),
+        ...(e["enabled"] === false ? { enabled: false } : {}),
+      });
+    }
+  }
   const pricing = rec["pricing"];
   if (pricing !== undefined) {
     if (!Array.isArray(pricing)) throw new SettingsError("pricing 须为数组");

@@ -12,12 +12,15 @@ import {
   loadSettings,
   parseSettingsShape,
   saveSettings,
+  type McpServerEntry,
   type SettingsShape,
 } from "../session/settings.js";
 import { maskToken } from "../models/oauth.js";
 import { probeProvider, type HealthCheckResult } from "../models/health.js";
 import type { CredentialStore } from "../session/credentials.js";
 import type { SqliteEventStorage } from "../session/db.js";
+import { probeServer } from "../mcp/registry-bridge.js";
+import type { McpToolInfo } from "../mcp/client.js";
 
 /** settings patch 白名单段（提段整体替换；version 不许 patch——迁移链单向门）。 */
 export const SETTINGS_PATCH_SECTIONS = [
@@ -30,10 +33,19 @@ export const SETTINGS_PATCH_SECTIONS = [
   "activeProject",
   "pricing",
   "prompts",
+  "mcp",
   "onboardingDone",
   "defaultProvider",
   "defaultModel",
 ] as const;
+
+/** U17/T-P3-119 连接校验回执（向导"测连接"——launch 一次握手+列工具后关闭）。 */
+export interface McpCheckResult {
+  readonly ok: boolean;
+  readonly protocolVersion?: string;
+  readonly tools?: McpToolInfo[];
+  readonly error?: { code: string; message: string };
+}
 
 /** 段级补丁合并（UI 发整段——providers 数组整体替换、对象段整体替换）。 */
 export function applySettingsPatch(current: SettingsShape, patch: Record<string, unknown>): SettingsShape {
@@ -64,6 +76,11 @@ export interface SettingsGateway {
   probeProvider(name: string): Promise<HealthCheckResult>;
   /** U3/T-P3-105：会话删除（硬删除三表事务；库未配置时类型化拒绝）。 */
   sessionDelete(sessionId: string): Promise<{ deleted: boolean }>;
+  /**
+   * U17/T-P3-119：MCP server 连接校验（launch 一次握手 + tools/list 后
+   * 关闭——向导"测连接"数据面；失败转类型化回执不上抛）。
+   */
+  mcpCheck(entry: McpServerEntry): Promise<McpCheckResult>;
 }
 
 /** 生产缺省探测依赖（真网络——tests 注入 fake）。 */
@@ -133,5 +150,20 @@ export class FileSettingsGateway implements SettingsGateway {
       throw error;
     }
     return { deleted: this.sessionDb.deleteSession(sessionId) };
+  }
+
+  async mcpCheck(entry: McpServerEntry): Promise<McpCheckResult> {
+    try {
+      const r = await probeServer(entry, { requestTimeoutMs: 8_000 });
+      return { ok: true, protocolVersion: r.protocolVersion, tools: r.tools };
+    } catch (e) {
+      return {
+        ok: false,
+        error: {
+          code: "MCP_CHECK_FAILED",
+          message: e instanceof Error ? e.message : String(e),
+        },
+      };
+    }
   }
 }
