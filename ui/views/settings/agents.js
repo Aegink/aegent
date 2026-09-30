@@ -100,6 +100,7 @@ export const SECTIONS_HTML = `
     <h2 class="section-title">技能</h2>
     <div class="section-tools">
       <input id="skill-search" class="input input-search" type="text" placeholder="搜索技能…" autocomplete="off" />
+      <button id="skill-import" type="button" class="btn">导入技能</button>
       <button id="skill-new" type="button" class="btn btn-primary">新建技能</button>
     </div>
   </div>
@@ -112,6 +113,7 @@ export const SECTIONS_HTML = `
     <div class="hint">工具集（可选——勾选该技能声明的工作工具）</div>
     <div id="skill-tools" class="chip-picker"></div>
     <textarea id="skill-body" class="textarea" rows="6" placeholder="技能正文（写入 SKILL.md 的 frontmatter 之后——给模型看的操作指引）"></textarea>
+    <div id="skill-bytes" class="skill-bytes"></div>
     <div class="form-actions">
       <button id="skill-save" type="button" class="btn btn-primary">保存技能</button>
       <button id="skill-cancel" type="button" class="btn btn-ghost">取消</button>
@@ -123,7 +125,7 @@ export const SECTIONS_HTML = `
     <input id="skill-root-path" class="input" type="text" placeholder="附加技能来源目录（绝对路径）" autocomplete="off" />
     <button type="submit" class="btn">添加来源</button>
   </form>
-  <p class="hint">workspace 主目录（.zcode/skills）恒为首个来源；附加目录的技能同样出现在清单。停用 = 从新会话装配剔除（清单/系统提示/skill_load 三面一致）；技能正文上限 128KB。</p>
+  <p class="hint">workspace 主目录（.zcode/skills）恒为首个来源；附加目录的技能同样出现在清单。停用 = 从新会话装配剔除（清单/系统提示/skill_load 三面一致）；技能正文上限 128KB（超 80% 计数器变黄）。「导入技能」扫 Claude Code / Codex / .agents 等外部源整目录复制（同名跳过绝不覆盖）；删除 = 删技能目录（含附属资源，受控根护栏）。</p>
 </section>
 <section data-section="subagents">
   <div class="section-head">
@@ -770,18 +772,41 @@ async function openMcpImportDialog() {
 
 // ---------------------------------------------------------------------------
 // U22/T-P3-125 技能管理：清单（多根扫描 + 停用开关 + 搜索）+ 编辑器写回
+// T-P3-144 v2：外部源导入（scan/apply）/ 行级删除（受控根护栏在 host）/
+// Reveal / 新建种子模板 / 字节计数器 / 外部来源保存确认 / 根计数与诊断折叠
 // ---------------------------------------------------------------------------
 
 /** 技能清单缓存（open 时刷新——文件系统面，不与会话期缓存混用）。 */
 let skillsView = null;
 let editingSkillName = null; // 非 null = 编辑器在改既有技能（同名覆盖）
+let editingSkillOrigin = null; // 编辑目标的来源根（外部来源保存确认面）
+let skillBodyTouched = false; // 正文是否用户手写过（种子模板门控）
 const skillToolsSelected = new Set();
 let skillFilter = "";
+
+/** 正文上限（与 host MAX_SKILL_BODY_BYTES 同值——pi-desktop SkillEditorSheet 同源）。 */
+const SKILL_BODY_MAX_BYTES = 128 * 1024;
 
 function skillMatches(s) {
   if (skillFilter === "") return true;
   const q = skillFilter.toLowerCase();
   return s.name.toLowerCase().includes(q) || (s.description ?? "").toLowerCase().includes(q);
+}
+
+/** 正文字节计数（pi-desktop 形态：>80% 黄、超限红 + 保存禁用）。 */
+function updateSkillBytes() {
+  const el = document.getElementById("skill-bytes");
+  if (el === null) return;
+  const n = new TextEncoder().encode(document.getElementById("skill-body").value).length;
+  el.textContent = n >= 1024 ? `${(n / 1024).toFixed(1)}KB / 128KB` : `${n}B / 128KB`;
+  el.classList.toggle("warn", n > SKILL_BODY_MAX_BYTES * 0.8 && n <= SKILL_BODY_MAX_BYTES);
+  el.classList.toggle("over", n > SKILL_BODY_MAX_BYTES);
+  document.getElementById("skill-save").disabled = n > SKILL_BODY_MAX_BYTES;
+}
+
+/** C：种子模板（pi-desktop skillTemplate 同语义——"空编辑器教不会格式"）。 */
+function skillSeedBody(name) {
+  return `## 何时使用\n\n<「${name}」解决什么问题、什么时候该用它——一句话给模型判断依据>\n\n## 步骤\n\n1. \n\n## 注意\n\n- \n`;
 }
 
 async function refreshSkillsList() {
@@ -835,20 +860,53 @@ async function refreshSkillsList() {
     editBtn.addEventListener("click", () => {
       void openSkillEditor(s);
     });
-    row.append(badge, copy, rowControl(toolsRow, toggle, editBtn));
+    const revealBtn = btnEl("目录", "btn", "打开技能所在文件夹");
+    revealBtn.addEventListener("click", () => {
+      void sendSettings({ op: "skill-reveal", path: s.filePath }).then((envelope) => {
+        if (!envelope.ok) toast(`打开失败：${envelope.error?.message ?? ""}`, "warn");
+      });
+    });
+    const delBtn = btnEl("删除", "btn btn-danger", "删除技能目录（含附属资源——受控根护栏在 host）");
+    delBtn.addEventListener("click", async () => {
+      if (!(await confirmDialog(`删除技能「${s.name}」？将删除其技能目录（含附属资源），不可恢复。`, { title: "删除技能", confirmLabel: "删除", danger: true }))) return;
+      const envelope = await sendSettings({ op: "skill-delete", path: s.filePath });
+      if (!envelope.ok) {
+        toast(`删除失败：${envelope.error?.message ?? ""}`, "warn");
+        return;
+      }
+      // 停用名单按名匹配——已删技能的停用记录同步清理
+      const cur = (settingsCache.skills?.disabled ?? []).filter((x) => x !== s.name);
+      settingsCache.skills = { ...(settingsCache.skills ?? {}), ...(cur.length > 0 ? { disabled: cur } : {}) };
+      if (cur.length === 0 && settingsCache.skills !== undefined) delete settingsCache.skills.disabled;
+      dirtySections.add("skills");
+      markDirty("skills");
+      toast(`技能已删除：${s.name}`, "info");
+      void refreshSkillsList();
+    });
+    row.append(badge, copy, rowControl(toolsRow, toggle, editBtn, revealBtn, delBtn));
     list.appendChild(row);
   }
-  for (const d of skillsView.diagnostics) {
-    const row = rowEl();
-    const warnEl = document.createElement("div");
-    warnEl.className = "row-copy";
-    const t = document.createElement("div");
-    t.className = "row-desc error-text";
-    t.textContent = `诊断 [${d.code}] ${d.path}——${d.message}`;
-    warnEl.appendChild(t);
-    row.append(warnEl);
-    list.appendChild(row);
+  if (skillsView.diagnostics.length > 0) {
+    // 诊断折叠汇总（zcode 琥珀横幅形态的轻量版——量小时一行可展开）
+    const details = document.createElement("details");
+    details.className = "skill-diag";
+    const summary = document.createElement("summary");
+    summary.textContent = `诊断（${skillsView.diagnostics.length}）`;
+    details.appendChild(summary);
+    for (const d of skillsView.diagnostics) {
+      const row = rowEl();
+      const warnEl = document.createElement("div");
+      warnEl.className = "row-copy";
+      const t = document.createElement("div");
+      t.className = "row-desc error-text";
+      t.textContent = `[${d.code}] ${d.path}——${d.message}`;
+      warnEl.appendChild(t);
+      row.append(warnEl);
+      details.appendChild(row);
+    }
+    list.appendChild(details);
   }
+  renderSkillRoots(); // 技能计数随清单刷新（skillsView.roots 序对应已就绪）
 }
 
 function renderSkillRoots() {
@@ -860,11 +918,19 @@ function renderSkillRoots() {
     list.appendChild(emptyState("无附加来源", "workspace 主目录恒在——附加目录的技能同样自动发现"));
     return;
   }
-  for (const r of roots) {
+  for (let i = 0; i < roots.length; i++) {
+    const r = roots[i];
+    // 技能计数（E）：settingsCache roots 序对应 skillsView.roots[1..]
+    // （首根 = workspace 主技能目录）；skillsView 未加载时无计数
+    const originDir = skillsView?.roots?.[i + 1];
+    const count =
+      originDir !== undefined
+        ? (skillsView?.skills ?? []).filter((s) => s.origin === originDir).length
+        : undefined;
     const row = rowEl();
     const descEl = document.createElement("div");
     descEl.className = "row-desc mono";
-    descEl.textContent = r;
+    descEl.textContent = count !== undefined ? `${r}（${count} 个技能）` : r;
     const delBtn = btnEl("删除", "btn btn-danger");
     delBtn.addEventListener("click", () => {
       settingsCache.skills = {
@@ -884,6 +950,8 @@ function renderSkillRoots() {
 
 async function openSkillEditor(skill) {
   editingSkillName = skill?.name ?? null;
+  editingSkillOrigin = skill?.origin ?? null;
+  skillBodyTouched = (skill?.body ?? "") !== ""; // 既有技能 = 已有正文——种子不触发
   skillToolsSelected.clear();
   // 工具集候选 = ready 协议的注册表工具名（meta 会话期缓存——无会话时为空）
   const meta = (await ensureMetaCache(getSessionId())) ?? { tools: [], skills: [] };
@@ -911,8 +979,161 @@ async function openSkillEditor(skill) {
   document.getElementById("skill-name").value = skill?.name ?? "";
   document.getElementById("skill-desc").value = skill?.description ?? "";
   document.getElementById("skill-body").value = skill?.body ?? "";
+  updateSkillBytes();
   document.getElementById("skill-editor").hidden = false;
   document.getElementById("skill-new").hidden = true;
+}
+
+// ---------------------------------------------------------------------------
+// T-P3-144 外部技能源导入模态（scan/apply——形态复用 MCP 导入模态基座）
+// ---------------------------------------------------------------------------
+
+function fmtSkillBytes(n) {
+  return n >= 1024 ? `${(n / 1024).toFixed(1)}KB` : `${n}B`;
+}
+
+async function openSkillImportDialog() {
+  const holder = document.createElement("div");
+  holder.innerHTML = `
+    <div class="mcp-import-head">
+      <label class="check-line"><input id="skill-imp-all" type="checkbox" checked /> 全选</label>
+      <span id="skill-imp-count" class="hint">已选 0/0</span>
+      <button id="skill-imp-refresh" type="button" class="btn">刷新</button>
+    </div>
+    <div id="skill-imp-list" class="mcp-import-list"><p class="hint">扫描中…</p></div>
+    <p class="hint">候选只读不写——导入 = 整目录复制进工作区技能主目录（同名跳过，绝不覆盖）；单文件技能自动转成 &lt;名&gt;/SKILL.md 目录形状。</p>`;
+  let scan = null; // 最近一次扫描结果（刷新按钮重扫）
+  const listBox = holder.querySelector("#skill-imp-list");
+  const countEl = holder.querySelector("#skill-imp-count");
+
+  function syncCount() {
+    const boxes = [...listBox.querySelectorAll("input[data-idx]")];
+    const picked = boxes.filter((b) => b.checked).length;
+    countEl.textContent = `已选 ${picked}/${boxes.length}`;
+    holder.querySelector("#skill-imp-all").checked = boxes.length > 0 && picked === boxes.length;
+  }
+
+  function renderScan() {
+    listBox.replaceChildren();
+    if (scan === null) {
+      listBox.appendChild(document.createTextNode("扫描中…"));
+      return;
+    }
+    if (scan.candidates.length === 0) {
+      listBox.appendChild(emptyState("未发现可导入的技能", "没有检出候选——来源状态见下方明细"));
+    }
+    const bySource = new Map();
+    for (let i = 0; i < scan.candidates.length; i++) {
+      const c = scan.candidates[i];
+      if (!bySource.has(c.sourceLabel)) bySource.set(c.sourceLabel, []);
+      bySource.get(c.sourceLabel).push([c, i]);
+    }
+    for (const [label, items] of bySource) {
+      const head = document.createElement("div");
+      head.className = "group-title";
+      head.textContent = `${label}（${items.length}）`;
+      listBox.appendChild(head);
+      for (const [c, idx] of items) {
+        const line = document.createElement("label");
+        line.className = "check-line mcp-imp-line";
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.checked = true;
+        box.dataset.idx = String(idx);
+        box.addEventListener("change", syncCount);
+        const nameEl = document.createElement("span");
+        nameEl.className = "row-title";
+        nameEl.textContent = c.name;
+        const descEl = document.createElement("span");
+        descEl.className = "row-desc";
+        descEl.textContent = `${c.description ?? "（无描述）"} · ${fmtSkillBytes(c.bytes)}${c.kind === "file" ? " · 单文件" : ""}`;
+        line.append(box, nameEl, descEl);
+        if (c.warning !== undefined) line.title = c.warning;
+        listBox.appendChild(line);
+      }
+    }
+    const detail = document.createElement("p");
+    detail.className = "hint";
+    const bits = [];
+    for (const src of scan.sources) {
+      if (!src.exists) continue;
+      const flags = [];
+      if (src.error !== undefined) flags.push(`错误：${src.error}`);
+      if ((src.skipped ?? 0) > 0) flags.push(`跳过 ${src.skipped} 个（空正文/重名）`);
+      if (flags.length > 0) bits.push(`${src.label}（${src.dir}）：${flags.join("；")}`);
+    }
+    detail.textContent = bits.length > 0 ? bits.join("\n") : "";
+    detail.hidden = bits.length === 0;
+    listBox.appendChild(detail);
+    syncCount();
+  }
+
+  async function rescan() {
+    scan = null;
+    renderScan();
+    const envelope = await sendSettings({ op: "skill-import-scan" });
+    if (!listBox.isConnected) return; // 模态已关
+    if (!envelope.ok) {
+      listBox.replaceChildren();
+      listBox.appendChild(emptyState("扫描不可用", envelope.error?.message ?? ""));
+      return;
+    }
+    scan = envelope.result;
+    renderScan();
+  }
+
+  holder.querySelector("#skill-imp-all").addEventListener("change", (ev) => {
+    const checked = ev.target.checked;
+    for (const box of listBox.querySelectorAll("input[data-idx]")) box.checked = checked;
+    syncCount();
+  });
+  holder.querySelector("#skill-imp-refresh").addEventListener("click", () => void rescan());
+
+  openDialog({
+    title: "导入外部 Agent 技能",
+    description:
+      "扫描 Claude Code / Codex CLI / 通用 .agents / OpenCode / Qwen / Trae / Kiro / Roo / Windsurf / 工作区生态位落盘的技能目录（只读）。",
+    width: "lg",
+    body: holder,
+    actions: [
+      { label: "取消", className: "btn btn-ghost" },
+      {
+        label: "导入所选",
+        className: "btn btn-primary",
+        onClick: async () => {
+          if (scan === null) {
+            toast("扫描尚未完成", "warn");
+            return;
+          }
+          const boxes = [...holder.querySelectorAll("input[data-idx]")];
+          const items = boxes
+            .filter((b) => b.checked)
+            .map((b) => scan.candidates[Number(b.dataset.idx)])
+            .filter((c) => c !== undefined)
+            .map((c) => ({ name: c.name, sourcePath: c.sourcePath, kind: c.kind }));
+          if (items.length === 0) {
+            toast("未选择可导入项", "warn");
+            return;
+          }
+          const envelope = await sendSettings({ op: "skill-import-apply", items });
+          if (!envelope.ok) {
+            toast(`导入不可用：${envelope.error?.message ?? ""}`, "warn");
+            return;
+          }
+          const r = envelope.result;
+          toast(
+            `已导入 ${r.imported.length} 个${r.skipped.length > 0 ? `（跳过同名 ${r.skipped.length} 个）` : ""}${r.failed.length > 0 ? `，失败 ${r.failed.length} 个` : ""}`,
+            r.imported.length > 0 ? "info" : "warn",
+          );
+          if (r.failed.length > 0) {
+            appendLine(`技能导入失败明细：${r.failed.map((f) => `${f.name}——${f.error}`).join("；")}`, "warn");
+          }
+          if (r.imported.length > 0) void refreshSkillsList();
+        },
+      },
+    ],
+  });
+  void rescan();
 }
 
 // ---------------------------------------------------------------------------
@@ -1548,13 +1769,30 @@ export function bind() {
     skillFilter = ev.target.value.trim();
     void refreshSkillsList();
   });
+  document.getElementById("skill-import").addEventListener("click", () => void openSkillImportDialog());
   document.getElementById("skill-new").addEventListener("click", () => {
     void openSkillEditor(null);
+  });
+  // C：种子模板——新建时输入名称且正文未写 → 一次性填充三段骨架
+  document.getElementById("skill-name").addEventListener("input", () => {
+    if (editingSkillName !== null || skillBodyTouched) return;
+    const name = document.getElementById("skill-name").value.trim();
+    const bodyEl = document.getElementById("skill-body");
+    if (name !== "" && bodyEl.value.trim() === "") {
+      bodyEl.value = skillSeedBody(name);
+      updateSkillBytes();
+    }
+  });
+  // D：字节计数（正文手写即置 touched——种子不再触发）
+  document.getElementById("skill-body").addEventListener("input", () => {
+    skillBodyTouched = true;
+    updateSkillBytes();
   });
   document.getElementById("skill-cancel").addEventListener("click", () => {
     document.getElementById("skill-editor").hidden = true;
     document.getElementById("skill-new").hidden = false;
     editingSkillName = null;
+    editingSkillOrigin = null;
   });
   document.getElementById("skill-save").addEventListener("click", async () => {
     const name = document.getElementById("skill-name").value.trim();
@@ -1563,6 +1801,19 @@ export function bind() {
     if (name === "" || description === "" || body.trim() === "") {
       toast("技能名、描述与正文必填", "warn");
       return;
+    }
+    if (new TextEncoder().encode(body).length > SKILL_BODY_MAX_BYTES) {
+      toast(`正文超限（上限 128KB）`, "warn");
+      return;
+    }
+    // D：外部来源技能保存语义澄清——写的是主目录同名副本（原文件不动），
+    // 现状静默变副本无感知，先确认（pi-desktop 无此面——来源根只读模型不同）
+    if (editingSkillOrigin !== null && editingSkillOrigin !== skillsView?.roots?.[0]) {
+      const ok = await confirmDialog(
+        `该技能来自外部来源（${editingSkillOrigin}）。\n保存将写入工作区主目录的同名副本（原文件不动）。继续？`,
+        { title: "保存外部来源技能", confirmLabel: "保存副本" },
+      );
+      if (!ok) return;
     }
     const envelope = await sendSettings({
       op: "skill-save",
@@ -1592,6 +1843,7 @@ export function bind() {
     editingSkillName = null;
     appendLine(`技能已保存：${name}（新会话装配生效）`, "meta");
     toast("技能已保存", "info");
+    editingSkillOrigin = null;
     void refreshSkillsList();
   });
   document.getElementById("skill-root-form").addEventListener("submit", (ev) => {

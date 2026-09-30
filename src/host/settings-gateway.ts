@@ -41,7 +41,14 @@ import {
 import { runSttTranscribe } from "./speech-gateway.js";
 import { listPlugins } from "./plugins-gateway.js";
 import { mcpImportScan, type McpImportScanResult } from "./mcp-import-op.js";
-import { listSkills, saveSkill } from "./skills-gateway.js";
+import { listSkills, saveSkill, deleteSkillDir, revealSkillDir } from "./skills-gateway.js";
+import {
+  skillImportScan,
+  skillImportApply,
+  type SkillImportScanResult,
+  type SkillImportApplyResult,
+  type SkillImportItem,
+} from "./skill-import-op.js";
 import {
   applyImportedSettings,
   backupSettingsFile,
@@ -165,6 +172,14 @@ export interface SettingsGateway {
   pluginThemeCss(name: string): Promise<{ css: string; base: "light" | "dark"; displayName: string }>;
   /** T-P3-143：外部 MCP 配置扫描（只读——并入 settings patch 在 UI 侧）。 */
   mcpImportScan(): Promise<McpImportScanResult>;
+  /** T-P3-144：外部技能源扫描（只读——候选勾选后走 apply）。 */
+  skillImportScan(): Promise<SkillImportScanResult>;
+  /** T-P3-144：技能导入执行（复制进 workspace 技能主目录——护栏在 op）。 */
+  skillImportApply(items: SkillImportItem[]): Promise<SkillImportApplyResult>;
+  /** T-P3-144：技能删除（受控根护栏——防误删配置根外目录）。 */
+  skillDelete(skillPath: string): Promise<{ deleted: true; path: string }>;
+  /** T-P3-144：打开技能所在文件夹（Reveal——pi-desktop 先例）。 */
+  skillReveal(skillPath: string): Promise<{ revealed: true }>;
 }
 
 /** 生产缺省探测依赖（真网络——tests 注入 fake）。 */
@@ -180,20 +195,11 @@ export class FileSettingsGateway implements SettingsGateway {
     private readonly healthProbe: (name: string, baseUrl: string) => Promise<HealthCheckResult> = defaultHealthProbe(),
     /** U3：会话删除的目标库（host 的 SQLite 事件库——未配置 = 删除面不可用）。 */
     private readonly sessionDb?: SqliteEventStorage,
-    /**
-     * U22/T-P3-125：技能目录根（workspace 主目录——skills-list 扫描与
-     * skill-save 写入的根；缺省 undefined = 技能管理面不可用）。
-     */
+    /** U22：技能目录根（缺省 undefined = 技能管理面不可用）。 */
     private readonly workspaceRoot?: string,
-    /**
-     * U24/T-P3-127：home 目录根（全局 AGENTS.md 与用户规则文件的定位——
-     * 缺省 os.homedir()；测试注入临时目录）。
-     */
+    /** U24：home 目录根（缺省 os.homedir()；测试注入临时目录）。 */
     private readonly homeDir: string = homedir(),
-    /**
-     * U26/T-P3-129：STT fetch 注入面（测试 fake；缺省全局 fetch——
-     * 真实端点联调随 U8）。
-     */
+    /** U26：STT fetch 注入面（测试 fake；缺省全局 fetch）。 */
     private readonly sttFetch: typeof fetch = fetch,
   ) {}
 
@@ -267,10 +273,7 @@ export class FileSettingsGateway implements SettingsGateway {
     }
   }
 
-  /**
-   * U20/T-P3-122：导入（备份滚动 → 本地态合并 → 落盘）。确认在 UI 侧
-   * （buildImportPreview 摘要 + 用户对话框）；本面只做最终校验与落盘。
-   */
+  /** U20：配置包导入（确认在 UI 侧——本面只做最终校验与落盘）。 */
   async importSettings(
     imported: Record<string, unknown>,
   ): Promise<{ applied: true; summary: string[] }> {
@@ -361,9 +364,28 @@ export class FileSettingsGateway implements SettingsGateway {
 
   /** T-P3-143：外部 MCP 配置扫描（源路径由 homeDir/workspaceRoot 派生）。 */
   async mcpImportScan(): Promise<McpImportScanResult> {
-    return mcpImportScan({
-      homeDir: this.homeDir,
-      ...(this.workspaceRoot !== undefined ? { workspaceRoot: this.workspaceRoot } : {}),
-    });
+    return mcpImportScan({ homeDir: this.homeDir, ...(this.workspaceRoot !== undefined ? { workspaceRoot: this.workspaceRoot } : {}) });
+  }
+
+  /** T-P3-144：技能导入扫描（源路径由 homeDir/workspaceRoot 派生）。 */
+  async skillImportScan(): Promise<SkillImportScanResult> {
+    return skillImportScan({ homeDir: this.homeDir, ...(this.workspaceRoot !== undefined ? { workspaceRoot: this.workspaceRoot } : {}) });
+  }
+
+  /** T-P3-144：技能导入执行（落点 = workspace 技能主目录）。 */
+  async skillImportApply(items: SkillImportItem[]): Promise<SkillImportApplyResult> {
+    if (this.workspaceRoot === undefined) this.skillsUnavailable();
+    return skillImportApply({ homeDir: this.homeDir, workspaceRoot: this.workspaceRoot! }, items);
+  }
+
+  /** T-P3-144：技能删除（受控根护栏在 skills-gateway）。 */
+  async skillDelete(skillPath: string): Promise<{ deleted: true; path: string }> {
+    if (this.workspaceRoot === undefined) this.skillsUnavailable();
+    return deleteSkillDir(await this.get(), this.workspaceRoot!, skillPath);
+  }
+
+  /** T-P3-144：Reveal（打开技能所在文件夹）。 */
+  async skillReveal(skillPath: string): Promise<{ revealed: true }> {
+    return revealSkillDir(skillPath);
   }
 }

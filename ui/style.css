@@ -2961,3 +2961,27 @@ mark.search-hit.active {
   justify-content: center;
   margin-top: 10px;
 }
+
+/* T-P3-144 技能页 v2：正文字节计数器 / 诊断折叠汇总 */
+.skill-bytes {
+  margin-top: 4px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-subtle);
+}
+.skill-bytes.warn {
+  color: var(--warn);
+}
+.skill-bytes.over {
+  color: var(--destructive);
+  font-weight: 600;
+}
+.skill-diag {
+  margin: 8px 0 2px;
+}
+.skill-diag summary {
+  cursor: pointer;
+  font-size: var(--text-ui-sm);
+  color: var(--warn);
+  user-select: none;
+}

@@ -86,3 +86,6 @@ src-tauri/gen/schemas/
 
 # ---- 凭据与本地私密（全局规则：不入库）----
 private/
+
+# 运行时工作区（会话/技能/凭据——host 缺省 cwd 派生，防运行时数据入库）
+.zcode/

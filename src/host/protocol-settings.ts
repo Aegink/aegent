@@ -12,6 +12,7 @@
 // catch 层（parse 层抛原文，转写面单点）。
 
 import { THINKING_LEVELS } from "../session/settings.js";
+import type { SkillImportItem } from "./skill-import-op.js";
 
 /** settings 直答 op 闭集（与 bridge 分流一一对应）。 */
 export type SettingsOp =
@@ -55,7 +56,15 @@ export type SettingsOp =
   /** T-P3-141：插件主题 CSS 读取（UI 注入 <style>——pi-desktop 主题即插件）。 */
   | "plugin-theme-css"
   /** T-P3-143：外部 Agent MCP 配置扫描（只读——导入候选与每源报告）。 */
-  | "mcp-import-scan";
+  | "mcp-import-scan"
+  /** T-P3-144：外部技能源扫描（只读——候选与每源报告）。 */
+  | "skill-import-scan"
+  /** T-P3-144：技能导入执行（整目录复制进 workspace 技能主目录）。 */
+  | "skill-import-apply"
+  /** T-P3-144：技能删除（受控根护栏）。 */
+  | "skill-delete"
+  /** T-P3-144：打开技能所在文件夹（Reveal）。 */
+  | "skill-reveal";
 
 /** 技能编辑器写回载荷（op=skill-save；frontmatter + 正文的一次性形状）。 */
 export interface SkillSavePayload {
@@ -90,6 +99,10 @@ export type SettingsCall = {
   timeoutMs?: number;
   /** op=skill-save：技能编辑器写回载荷（U22）。 */
   skill?: SkillSavePayload;
+  /** op=skill-import-apply：导入项（T-P3-144——候选从 scan 回传）。 */
+  items?: SkillImportItem[];
+  /** op=skill-delete / skill-reveal：SKILL.md 绝对路径（T-P3-144）。 */
+  path?: string;
   /** op=instruction-save：指令写回目标（U24——白名单三值之一）。 */
   target?: string;
   /** op=instruction-save / stt-transcribe：内容或音频 base64（U24/U26）。 */
@@ -130,6 +143,8 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     "timeoutMs",
     "settings",
     "skill",
+    "items",
+    "path",
     "target",
     "content",
     "mediaType",
@@ -167,10 +182,14 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     op !== "policy-audit" &&
     op !== "sandbox-doctor" &&
     op !== "plugin-theme-css" &&
-    op !== "mcp-import-scan"
+    op !== "mcp-import-scan" &&
+    op !== "skill-import-scan" &&
+    op !== "skill-import-apply" &&
+    op !== "skill-delete" &&
+    op !== "skill-reveal"
   ) {
     throw new Error(
-      `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|import|skills-list|skill-save|subagents-list|instructions-list|instruction-save|stt-transcribe|plugins-list|provider-models|provider-test|policy-audit|sandbox-doctor|plugin-theme-css|mcp-import-scan）`,
+      `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|import|skills-list|skill-save|subagents-list|instructions-list|instruction-save|stt-transcribe|plugins-list|provider-models|provider-test|policy-audit|sandbox-doctor|plugin-theme-css|mcp-import-scan|skill-import-scan|skill-import-apply|skill-delete|skill-reveal）`,
     );
   }
   if (op === "plugin-theme-css") {
@@ -231,6 +250,28 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
       (typeof record["timeoutMs"] !== "number" || !Number.isFinite(record["timeoutMs"]) || record["timeoutMs"] <= 0)
     ) {
       throw new Error("settings op=mcp-check 的 timeoutMs 须为正数");
+    }
+  }
+  // T-P3-144：skill-import-apply 载荷 = items（名称/来源路径/kind 闭集——
+  // 源路径护栏与 slug 校验在 op 层，parse 只管形状）；skill-delete/reveal
+  // 的载荷 = SKILL.md 绝对路径（受控根护栏在 gateway）。
+  if (op === "skill-import-apply") {
+    if (!Array.isArray(record["items"]) || (record["items"] as unknown[]).length === 0) {
+      throw new Error("settings op=skill-import-apply 需要 items 非空数组");
+    }
+    for (const item of record["items"] as unknown[]) {
+      if (item === null || typeof item !== "object" || Array.isArray(item)) {
+        throw new Error("settings op=skill-import-apply 的 items[] 须为对象");
+      }
+      const it = item as Record<string, unknown>;
+      if (typeof it["name"] !== "string" || it["name"] === "") throw new Error("settings op=skill-import-apply 的 items[].name 缺失");
+      if (typeof it["sourcePath"] !== "string" || it["sourcePath"] === "") throw new Error("settings op=skill-import-apply 的 items[].sourcePath 缺失");
+      if (it["kind"] !== "dir" && it["kind"] !== "file") throw new Error("settings op=skill-import-apply 的 items[].kind 非法（合法：dir|file）");
+    }
+  }
+  if (op === "skill-delete" || op === "skill-reveal") {
+    if (typeof record["path"] !== "string" || record["path"] === "") {
+      throw new Error(`settings op=${op} 需要 path（SKILL.md 绝对路径）非空字符串`);
     }
   }
   // U20/T-P3-122：import 的载荷 = 配置包内 settings 对象（形状校验在
@@ -325,6 +366,8 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     ...(typeof record["name"] === "string" ? { name: record["name"] } : {}),
     ...(typeof record["command"] === "string" ? { command: record["command"] } : {}),
     ...(Array.isArray(record["args"]) ? { args: record["args"] as string[] } : {}),
+    ...(Array.isArray(record["items"]) ? { items: record["items"] as SkillImportItem[] } : {}),
+    ...(typeof record["path"] === "string" ? { path: record["path"] } : {}),
     ...(record["env"] !== undefined && typeof record["env"] === "object" && !Array.isArray(record["env"])
       ? { env: record["env"] as Record<string, string> }
       : {}),

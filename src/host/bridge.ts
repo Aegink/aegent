@@ -318,21 +318,20 @@ export class HostBridge implements SessionRouter {
           };
         }
         // U20/T-P3-122：配置包导入（UI 已确认——备份滚动 + 合并落盘）
-        if (call.op === "import") {
-          return gateway.importSettings(call.settings!);
-        }
+        if (call.op === "import") return gateway.importSettings(call.settings!);
         if (call.op === "skills-list") return gateway.skillsList();
         if (call.op === "skill-save") return gateway.skillSave(call.skill!);
+        // T-P3-144：技能导入扫描/执行 + 删除/Reveal（护栏与复制在域文件）
+        if (call.op === "skill-import-scan") return gateway.skillImportScan();
+        if (call.op === "skill-import-apply") return gateway.skillImportApply(call.items!);
+        if (call.op === "skill-delete") return gateway.skillDelete(call.path!);
+        if (call.op === "skill-reveal") return gateway.skillReveal(call.path!);
         // U23 子代理清单 / U24 指令中心（三文件位 + 白名单写回）
         if (call.op === "subagents-list") return gateway.subagentsList();
         if (call.op === "instructions-list") return gateway.instructionsList();
-        if (call.op === "instruction-save") {
-          return gateway.instructionSave(call.target as InstructionTarget, call.content!);
-        }
-        // U26/T-P3-129：语音转写代理（UI 录音 → P4 STT → 文本回端）
-        if (call.op === "stt-transcribe") {
-          return gateway.sttTranscribe({ base64: call.content!, mediaType: call.mediaType! });
-        }
+        if (call.op === "instruction-save") return gateway.instructionSave(call.target as InstructionTarget, call.content!);
+        // U26：语音转写代理（UI 录音 → P4 STT → 文本回端）
+        if (call.op === "stt-transcribe") return gateway.sttTranscribe({ base64: call.content!, mediaType: call.mediaType! });
         // T-P3-133 插件清单 / T-P3-137 供应商模型拉取与真实测试（host 代理）
         if (call.op === "plugins-list") return gateway.pluginsList();
         if (call.op === "provider-models" || call.op === "provider-test") {

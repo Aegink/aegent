@@ -3,8 +3,9 @@
  * 技能清单（多根扫描 + 停用过滤 + 正文回填）与编辑器写回。
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { mkdir, rename, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import path from "node:path";
 
 import {
@@ -105,4 +106,56 @@ export async function saveSkill(
   await writeFile(tmp, `${frontmatter}${payload.body}\n`, "utf8");
   await rename(tmp, target);
   return { saved: true, path: target };
+}
+
+/**
+ * 技能删除（T-P3-144 批次 B——zcode 删除护栏同构：SKILL.md 路径 resolve 后
+ * 必须严格位于受控技能根〔workspace 主技能目录或 skills.roots 之一〕内部，
+ * 防配置根指向 home 之类时误删整目录；整目录递归删——附属资源随技能走）。
+ */
+export function deleteSkillDir(
+  settings: SettingsShape,
+  workspaceRoot: string,
+  skillFilePath: string,
+): { deleted: true; path: string } {
+  const resolved = path.resolve(skillFilePath);
+  if (path.basename(resolved) !== SKILL_FILENAME) {
+    const error = new Error("删除目标须为 SKILL.md 路径");
+    (error as unknown as { code: string }).code = "SKILL_DELETE_BAD_TARGET";
+    throw error;
+  }
+  const skillDir = path.dirname(resolved);
+  const roots = [
+    path.resolve(workspaceRoot, SKILLS_DIR),
+    ...(settings.skills?.roots ?? []).map((r) => path.resolve(r)),
+  ];
+  if (!roots.some((root) => skillDir.startsWith(root + path.sep))) {
+    const error = new Error(`删除目标不在受控技能根内：${skillDir}`);
+    (error as unknown as { code: string }).code = "SKILL_DELETE_UNCONTROLLED";
+    throw error;
+  }
+  rmSync(skillDir, { recursive: true });
+  return { deleted: true, path: skillDir };
+}
+
+/**
+ * 打开技能所在文件夹（T-P3-144 批次 B——pi-desktop Reveal 先例；轻量定位
+ * 面：win32 explorer / darwin open / linux xdg-open，detached 不阻塞）。
+ */
+export function revealSkillDir(skillFilePath: string): { revealed: true } {
+  const resolved = path.resolve(skillFilePath);
+  if (path.basename(resolved) !== SKILL_FILENAME) {
+    const error = new Error("定位目标须为 SKILL.md 路径");
+    (error as unknown as { code: string }).code = "SKILL_REVEAL_BAD_TARGET";
+    throw error;
+  }
+  const dir = path.dirname(resolved);
+  if (!existsSync(dir)) {
+    const error = new Error(`技能目录不存在：${dir}`);
+    (error as unknown as { code: string }).code = "SKILL_REVEAL_MISSING";
+    throw error;
+  }
+  const cmd = process.platform === "win32" ? "explorer" : process.platform === "darwin" ? "open" : "xdg-open";
+  spawn(cmd, [dir], { detached: true, stdio: "ignore" }).unref();
+  return { revealed: true };
 }
