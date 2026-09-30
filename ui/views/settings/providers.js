@@ -364,19 +364,21 @@ function renderProviderList() {
 }
 
 /** 行内测试连接（… 菜单——对服务的第一个模型真实发"你好"；成功写
- *  verified 标记即改即存）。 */
+ *  verified 标记即改即存）。文案带协议标签——模型级协议是否生效肉眼可验。 */
 async function rowTest(entry) {
   const first = entryModels(entry)[0];
   if (first === undefined) {
     toast("该服务没有模型——先编辑添加", "warn");
     return;
   }
-  toast(`正在测试 ${entry.name} · ${first.id}（真实发送「你好」）…`, "info");
+  const adapter = first.adapter ?? entry.adapter ?? "openai";
+  const adapterLabel = ADAPTER_LABEL[adapter] ?? adapter;
+  toast(`正在测试 ${entry.name} · ${first.id}（${adapterLabel}，真实发送「你好」）…`, "info");
   const envelope = await sendSettings({
     op: "provider-test",
     provider: entry.name,
     baseUrl: entry.baseUrl ?? "",
-    adapter: first.adapter ?? entry.adapter ?? "openai",
+    adapter,
     modelId: first.id,
     ...(entry.headers !== undefined ? { headers: entry.headers } : {}),
   });
@@ -385,7 +387,7 @@ async function rowTest(entry) {
     first.verified = true;
     dirtySections.add("providers");
     markDirty("providers");
-    toast(`✔ ${entry.name} · ${first.id} 回复：「${result.reply ?? ""}」（${result.latencyMs ?? "?"}ms）`, "info");
+    toast(`✔ ${entry.name} · ${first.id}（${adapterLabel}）回复：「${result.reply ?? ""}」（${result.latencyMs ?? "?"}ms）`, "info");
   } else {
     toast(`✘ 测试失败：${result.error ?? "未知错误"}`, "warn");
   }
@@ -797,7 +799,7 @@ async function runTestConnection(form) {
     const result = envelope.ok ? envelope.result : { ok: false, error: envelope.error?.message ?? "" };
     if (result.ok === true) {
       target.verified = true;
-      statusEl.textContent = `✔ 已连接 · ${target.id} 回复：「${result.reply ?? ""}」（${result.latencyMs ?? "?"}ms）——可以使用`;
+      statusEl.textContent = `✔ 已连接 · ${target.id}（${ADAPTER_LABEL[testAdapter] ?? testAdapter}）回复：「${result.reply ?? ""}」（${result.latencyMs ?? "?"}ms）——可以使用`;
       statusEl.classList.add("probe-ok");
       appendLine(`供应商测试成功：${name || editingProviderName} / ${target.id}`, "meta");
     } else {
