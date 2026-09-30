@@ -991,6 +991,15 @@ code,
   border-color: var(--border-hover);
 }
 
+/* 未使用的条目（预存密钥——用户裁决：形态与上方服务 tile 全一致，仅灰态） */
+.provider-tile.provider-tile-muted {
+  opacity: 0.55;
+}
+
+.provider-tile.provider-tile-muted:hover {
+  opacity: 0.8; /* 悬停略提亮便于查看，但保持"未启用"观感 */
+}
+
 /* 上移/下移的动态反馈（用户反馈：看不出动了没有）——被移动行高亮闪烁，
    位置滑动由 providers.js 的 FLIP 过渡承担 */
 .provider-tile.tile-flash {

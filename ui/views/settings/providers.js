@@ -1177,7 +1177,13 @@ function renderOrphanKeys() {
   title.textContent = "预存密钥（未被服务引用）";
   box.appendChild(title);
   for (const meta of orphans) {
-    const row = rowEl();
+    // 与上方服务 tile 同构（用户裁决"未使用的也全面和上面一样，只是变灰"）——
+    // 头像座/名称/徽标/右侧删除，整体 muted 灰态表达未启用
+    const tile = document.createElement("div");
+    tile.className = "provider-tile provider-tile-muted";
+    const avatar = document.createElement("span");
+    avatar.className = "avatar-badge";
+    avatar.textContent = (meta.name[0] ?? "?").toUpperCase();
     const titleEl = document.createElement("div");
     titleEl.className = "row-title";
     titleEl.textContent = meta.name;
@@ -1187,8 +1193,8 @@ function renderOrphanKeys() {
     descEl.textContent = `${meta.masked ?? ""}（更新于 ${meta.updatedAt}）`;
     const delBtn = btnEl("✕", "btn btn-icon", `删除预存密钥 ${meta.name}`);
     delBtn.addEventListener("click", () => void deleteOrphanKey(meta.name));
-    row.append(rowCopyEl(titleEl, descEl), rowControl(delBtn));
-    box.appendChild(row);
+    tile.append(avatar, rowCopyEl(titleEl, descEl), rowControl(delBtn));
+    box.appendChild(tile);
   }
 }
 
