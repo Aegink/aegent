@@ -235,8 +235,44 @@ export interface SettingsShape {
     workspace?: string;
     db?: string;
   };
-  /** 外观（U14 主题全端一致暗/亮；语言 zh-CN 缺省）。 */
-  appearance?: { theme?: "dark" | "light"; language?: "zh-CN" | "en" };
+  /**
+   * 外观（U14 主题暗/亮 → T-P3-141 批次全面扩展：主题模式（含跟随系统/
+   * 按时间表）+ 皮肤/强调色/插件主题 + 字号字体 + 消息流外观 + 背景图 +
+   * 界面语言/回复语言——qwen outputLanguage 与 zcode localePreference 同构）。
+   * `theme` 兼容保留 = 解析后的显式档（mode 为 dark/light 时与其同步落盘；
+   * system/schedule 档不动它——旧 UI/旧档零破坏）。
+   */
+  appearance?: {
+    theme?: "dark" | "light";
+    themeMode?: "system" | "dark" | "light" | "schedule";
+    /** 按时间表档的两个边界（"HH:MM"——跨午夜区间合法，如 22:00→06:00）。 */
+    scheduleLightStart?: string;
+    scheduleDarkStart?: string;
+    /** 内置皮肤 id（空/缺省 = 默认色板——ui/views/settings/basic.js 闭集同源）。 */
+    skin?: string;
+    /** 强调色 id（空/缺省 = 默认 sky——闭集同源）。 */
+    accent?: string;
+    /** 插件主题（插件名——plugin.json theme 贡献；缺省 = 不使用）。 */
+    pluginTheme?: string;
+    /** UI 字号（px 基准，12/14/16/18——theme.css calc 刻度全站联动）。 */
+    uiFontSize?: number;
+    /** 界面/等宽字体首选族（自定义 font-family 首值；空 = 默认栈）。 */
+    fontBase?: string;
+    fontMono?: string;
+    /** 消息流外观（zcode messageStreamShowReasoning / grok show_timestamps 同位）。 */
+    chatShowReasoning?: boolean;
+    showTimestamps?: boolean;
+    chatContentWidth?: "default" | "wide" | "full";
+    animations?: boolean;
+    colorBlindFriendly?: boolean;
+    /** 背景图（dataURL——base64 上限 3MB 二进制；空 = 不使用）。 */
+    backgroundImage?: string;
+    backgroundImageOpacity?: number;
+    /** 界面语言（zcode localePreference 同构：system 跟随系统）。 */
+    language?: "system" | "zh-CN" | "en";
+    /** 回复语言（qwen outputLanguage 同构——内核输出语言，与界面语言分离；auto = 跟随输入）。 */
+    outputLanguage?: "auto" | "zh-CN" | "en";
+  };
   /** 日志（U14/T-P3-132 #28 补落——E14 原始分片日志目录的持久化位；空 = 缺省不写）。 */
   logging?: { rawLogDir?: string };
   /** 项目档（U11——多项目列表；activeProject 生效语义 = 新会话启动）。 */
@@ -567,13 +603,126 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
     if (theme !== undefined && theme !== "dark" && theme !== "light") {
       throw new SettingsError(`appearance.theme 非法：${String(theme)}（合法：dark|light）`);
     }
-    const language = a["language"];
-    if (language !== undefined && language !== "zh-CN" && language !== "en") {
-      throw new SettingsError(`appearance.language 非法：${String(language)}（合法：zh-CN|en）`);
+    // T-P3-141 批次：外观全字段校验（枚举闭集 fail-closed + 形状/上限——
+    // 与 sandbox/permission 段同一纪律）。
+    const themeMode = a["themeMode"];
+    if (
+      themeMode !== undefined &&
+      themeMode !== "system" &&
+      themeMode !== "dark" &&
+      themeMode !== "light" &&
+      themeMode !== "schedule"
+    ) {
+      throw new SettingsError(
+        `appearance.themeMode 非法：${String(themeMode)}（合法：system|dark|light|schedule）`,
+      );
     }
+    const assertHhmm = (value: unknown, field: string): void => {
+      if (value !== undefined && !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(value))) {
+        throw new SettingsError(`appearance.${field} 须为 "HH:MM" 形状，收到：${String(value)}`);
+      }
+    };
+    assertHhmm(a["scheduleLightStart"], "scheduleLightStart");
+    assertHhmm(a["scheduleDarkStart"], "scheduleDarkStart");
+    for (const field of ["skin", "accent", "pluginTheme", "fontBase", "fontMono"] as const) {
+      if (a[field] !== undefined && (typeof a[field] !== "string" || a[field].length > 120)) {
+        throw new SettingsError(`appearance.${field} 须为非空短字符串（≤120 字符）`);
+      }
+    }
+    const uiFontSize = a["uiFontSize"];
+    if (uiFontSize !== undefined && ![12, 14, 16, 18].includes(uiFontSize as number)) {
+      throw new SettingsError(`appearance.uiFontSize 非法：${String(uiFontSize)}（合法：12|14|16|18）`);
+    }
+    const chatContentWidth = a["chatContentWidth"];
+    if (
+      chatContentWidth !== undefined &&
+      chatContentWidth !== "default" &&
+      chatContentWidth !== "wide" &&
+      chatContentWidth !== "full"
+    ) {
+      throw new SettingsError(
+        `appearance.chatContentWidth 非法：${String(chatContentWidth)}（合法：default|wide|full）`,
+      );
+    }
+    for (const field of [
+      "chatShowReasoning",
+      "showTimestamps",
+      "animations",
+      "colorBlindFriendly",
+    ] as const) {
+      if (a[field] !== undefined && typeof a[field] !== "boolean") {
+        throw new SettingsError(`appearance.${field} 须为布尔`);
+      }
+    }
+    const backgroundImage = a["backgroundImage"];
+    if (backgroundImage !== undefined) {
+      if (
+        typeof backgroundImage !== "string" ||
+        (backgroundImage !== "" && !/^data:image\/(png|jpeg|webp);base64,/.test(backgroundImage))
+      ) {
+        throw new SettingsError("appearance.backgroundImage 须为 png/jpeg/webp 的 dataURL（或空串清除）");
+      }
+      if (backgroundImage.length > 4_200_000) {
+        throw new SettingsError("appearance.backgroundImage 超过 3MB 上限（base64 形状）");
+      }
+    }
+    const bgOpacity = a["backgroundImageOpacity"];
+    if (
+      bgOpacity !== undefined &&
+      (typeof bgOpacity !== "number" || !Number.isFinite(bgOpacity) || bgOpacity < 0 || bgOpacity > 100)
+    ) {
+      throw new SettingsError("appearance.backgroundImageOpacity 须为 0-100 数字");
+    }
+    const language = a["language"];
+    if (language !== undefined && language !== "system" && language !== "zh-CN" && language !== "en") {
+      throw new SettingsError(`appearance.language 非法：${String(language)}（合法：system|zh-CN|en）`);
+    }
+    const outputLanguage = a["outputLanguage"];
+    if (outputLanguage !== undefined && outputLanguage !== "auto" && outputLanguage !== "zh-CN" && outputLanguage !== "en") {
+      throw new SettingsError(`appearance.outputLanguage 非法：${String(outputLanguage)}（合法：auto|zh-CN|en）`);
+    }
+    const boolOrUndef = (field: string): boolean | undefined =>
+      a[field] === undefined ? undefined : (a[field] as boolean);
+    const strOrUndef = (field: string): string | undefined => {
+      const value = a[field];
+      return value === undefined || value === "" ? undefined : (value as string);
+    };
     out.appearance = {
       ...(theme !== undefined ? { theme: theme as "dark" | "light" } : {}),
-      ...(language !== undefined ? { language: language as "zh-CN" | "en" } : {}),
+      ...(themeMode !== undefined ? { themeMode: themeMode as "system" | "dark" | "light" | "schedule" } : {}),
+      ...(strOrUndef("scheduleLightStart") !== undefined
+        ? { scheduleLightStart: a["scheduleLightStart"] as string }
+        : {}),
+      ...(strOrUndef("scheduleDarkStart") !== undefined
+        ? { scheduleDarkStart: a["scheduleDarkStart"] as string }
+        : {}),
+      ...(strOrUndef("skin") !== undefined ? { skin: a["skin"] as string } : {}),
+      ...(strOrUndef("accent") !== undefined ? { accent: a["accent"] as string } : {}),
+      ...(strOrUndef("pluginTheme") !== undefined ? { pluginTheme: a["pluginTheme"] as string } : {}),
+      ...(uiFontSize !== undefined ? { uiFontSize: uiFontSize as number } : {}),
+      ...(strOrUndef("fontBase") !== undefined ? { fontBase: a["fontBase"] as string } : {}),
+      ...(strOrUndef("fontMono") !== undefined ? { fontMono: a["fontMono"] as string } : {}),
+      ...(boolOrUndef("chatShowReasoning") !== undefined
+        ? { chatShowReasoning: a["chatShowReasoning"] as boolean }
+        : {}),
+      ...(boolOrUndef("showTimestamps") !== undefined
+        ? { showTimestamps: a["showTimestamps"] as boolean }
+        : {}),
+      ...(chatContentWidth !== undefined
+        ? { chatContentWidth: chatContentWidth as "default" | "wide" | "full" }
+        : {}),
+      ...(boolOrUndef("animations") !== undefined ? { animations: a["animations"] as boolean } : {}),
+      ...(boolOrUndef("colorBlindFriendly") !== undefined
+        ? { colorBlindFriendly: a["colorBlindFriendly"] as boolean }
+        : {}),
+      ...(a["backgroundImage"] !== undefined
+        ? { backgroundImage: backgroundImage as string }
+        : {}),
+      ...(bgOpacity !== undefined ? { backgroundImageOpacity: bgOpacity as number } : {}),
+      ...(language !== undefined ? { language: language as "system" | "zh-CN" | "en" } : {}),
+      ...(outputLanguage !== undefined
+        ? { outputLanguage: outputLanguage as "auto" | "zh-CN" | "en" }
+        : {}),
     };
   }
   const logging = rec["logging"];
@@ -1013,6 +1162,8 @@ function parseChildArgs(childArgs: readonly string[]): {
   sandboxMode?: string;
   /** T-P3-140 批次 A：写白名单显式槽（逐条 --write-whitelist 收集）。 */
   writeWhitelist?: readonly string[];
+  /** T-P3-141：回复语言显式槽（auto 不注入）。 */
+  outputLanguage?: string;
   contextWindow?: number;
   rawLogDir?: string;
 } {
@@ -1027,6 +1178,7 @@ function parseChildArgs(childArgs: readonly string[]): {
     permissionMode?: string;
     sandboxMode?: string;
     writeWhitelist?: string[];
+    outputLanguage?: string;
     contextWindow?: number;
     rawLogDir?: string;
   } = {};
@@ -1050,6 +1202,7 @@ function parseChildArgs(childArgs: readonly string[]): {
   out.rawLogDir = pick("--raw-log-dir");
   out.permissionMode = pick("--permission-mode");
   out.sandboxMode = pick("--sandbox-mode");
+  out.outputLanguage = pick("--output-language");
   const whitelist = pickAll("--write-whitelist").filter((w) => w !== "");
   if (whitelist.length > 0) out.writeWhitelist = whitelist;
   const timeout = pick("--approval-timeout");
@@ -1120,6 +1273,11 @@ export function resolveChildLaunchArgv(
     for (const w of settings.sandbox?.writeWhitelist ?? []) {
       inject("--write-whitelist", w);
     }
+  }
+  // T-P3-141：回复语言（qwen outputLanguage 同构——内核输出语言注入系统
+  // 提示；auto = 跟随输入不注入，装配零变化）
+  if (explicit.outputLanguage === undefined && settings.appearance?.outputLanguage !== undefined && settings.appearance.outputLanguage !== "auto") {
+    inject("--output-language", settings.appearance.outputLanguage);
   }
   // U14/T-P3-132（#28）：日志分节的装配消费——E14 原始分片日志目录随配置档
   // 注入（agent-child 既有 --raw-log-dir / AEGENT_RAW_LOG_DIR 面零改动）。

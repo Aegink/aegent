@@ -48,6 +48,7 @@ import {
   hooks,
 } from "./state.js";
 import { lineEl, appendLine, scrollBottom, oneLine, toast } from "./feedback.js";
+import { applyLocalePreference, t } from "./i18n.js";
 import { go, startRouter } from "./router.js";
 import { injectIcons } from "./icons.js";
 
@@ -296,6 +297,7 @@ function renderEvent(e, options = {}) {
       el.className = `bubble user ${e.source === "injected" ? "dim" : ""}`.trim();
       el.textContent = e.message?.content ?? "";
       if (e.source !== "injected") setLastUserPrompt(e.message?.content ?? "");
+      appendMsgTime(el, e.ts); // T-P3-141：时间戳开关（设置外观段）
       return el;
     }
     case "assistant/message": {
@@ -308,6 +310,7 @@ function renderEvent(e, options = {}) {
       } else {
         bubble.innerHTML = renderMarkdown(content); // 恢复视图直接终态
       }
+      appendMsgTime(bubble, e.ts);
       return bubble;
     }
     case "tool/call":
@@ -329,6 +332,16 @@ function renderEvent(e, options = {}) {
 
 // —— 日期分隔（批 C 消息流）：事件 ts 的本地日分组——跨日插入分隔条；
 // lastStreamDay 随流重建归零（resetStreamView 只读查看共用面）。
+
+/** 时间戳 chip（T-P3-141 外观段"显示时间戳"）：设置关闭时不渲染（渲染期
+ *  判定——恢复视图与 live 流一致）；流式气泡在正文后追加。 */
+function appendMsgTime(bubble, ts) {
+  if (settingsCache?.appearance?.showTimestamps !== true || ts === undefined) return;
+  const time = document.createElement("span");
+  time.className = "msg-time";
+  time.textContent = new Date(ts).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  bubble.appendChild(time);
+}
 function dayKey(ts) {
   if (typeof ts !== "number" || !Number.isFinite(ts)) return null;
   const d = new Date(ts);
@@ -1155,7 +1168,10 @@ async function maybeOnboard() {
   const envelope = await sendSettings({ op: "get" });
   if (!envelope.ok) return;
   setSettingsCache(envelope.result.settings);
-  applyTheme(settingsCache.appearance?.theme); // 启动即应用已存主题（批 A token 双主题——原缺口：需开一次设置才切）
+  // T-P3-141：i18n 先于外观应用（data-i18n 扫描需语言就绪）——applyTheme
+  // 现在是全量外观应用（模式/皮肤/强调色/字号/字体/开关/背景/插件主题）
+  applyLocalePreference(settingsCache.appearance?.language);
+  applyTheme(settingsCache.appearance?.theme); // 启动即应用已存外观（批 A 缺口修复的延续）
   if (settingsCache.onboardingDone === true) return;
   document.getElementById("onboarding").hidden = false;
 }

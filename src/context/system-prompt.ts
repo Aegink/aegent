@@ -158,6 +158,12 @@ export interface SystemPromptDeps {
   readFile?: (p: string) => string;
   /** 基础提示覆盖（缺省读 base.md 文件——F1 的"改文件不改代码"通道）。 */
   basePrompt?: string;
+  /**
+   * 回复语言（T-P3-141——qwen outputLanguage 同构）：非 auto 时追加输出
+   * 语言指令段（面向用户的回复恒用该语言，代码/标识符除外）；缺省 = 不加
+   * 段（零行为变化——跟随输入语言）。
+   */
+  outputLanguage?: "zh-CN" | "en";
 }
 
 export async function assembleSystemPrompt(deps: SystemPromptDeps): Promise<string> {
@@ -201,9 +207,29 @@ export async function assembleSystemPrompt(deps: SystemPromptDeps): Promise<stri
   // 6. 子代理 delegation 声明段（H3/T-P1-44）：子代理装配才渲染
   const delegationSection = deps.delegation ? renderDelegationSection() : "";
 
-  return [base, permissions, agents, planSection, delegationSection, skillsSection]
+  // 7. 回复语言指令段（T-P3-141——qwen outputLanguage 同构）：非 auto 才渲染
+  const outputLanguageSection =
+    deps.outputLanguage !== undefined ? renderOutputLanguageSection(deps.outputLanguage) : "";
+
+  return [base, permissions, agents, planSection, delegationSection, outputLanguageSection, skillsSection]
     .filter((part) => part.trim() !== "")
     .join("\n\n");
+}
+
+/** 回复语言指令（T-P3-141）：面向用户的回复恒用该语言；代码/标识符除外。 */
+function renderOutputLanguageSection(language: "zh-CN" | "en"): string {
+  return language === "en"
+    ? [
+        "## Output language",
+        "Always write user-facing replies in English (code, identifiers, and",
+        "log excerpts stay verbatim). This overrides the language of the user's",
+        "message.",
+      ].join("\n")
+    : [
+        "## 回复语言",
+        "始终用简体中文撰写面向用户的回复（代码、标识符、日志摘录保持原样）。",
+        "本指令优先于用户消息所用的语言。",
+      ].join("\n");
 }
 
 /**

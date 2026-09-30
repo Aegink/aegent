@@ -68,6 +68,8 @@ interface ChildCliArgs {
   sandboxMode?: string;
   /** T-P3-140 批次 A/D：工作区外写白名单（可重复 --write-whitelist 收集）。 */
   writeWhitelist?: string[];
+  /** T-P3-141：回复语言（settings.appearance.outputLanguage 注入——auto 不注入）。 */
+  outputLanguage?: string;
   apiKey?: string;
   baseUrl?: string;
   model?: string;
@@ -105,6 +107,7 @@ function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv): ChildCliArg
     else if (a === "--network" && i + 1 < argv.length) args.network = argv[++i];
     // T-P3-140 批次 A：沙箱档 argv 面（settings 翻译注入 / CLI 显式两路）
     else if (a === "--sandbox-mode" && i + 1 < argv.length) args.sandboxMode = argv[++i];
+    else if (a === "--output-language" && i + 1 < argv.length) args.outputLanguage = argv[++i];
     else if (a === "--write-whitelist" && i + 1 < argv.length) {
       (args.writeWhitelist ??= []).push(argv[++i] ?? "");
     }
@@ -425,6 +428,11 @@ async function main(): Promise<void> {
               : {}),
             ...(cli.writeWhitelist !== undefined && cli.writeWhitelist.length > 0
               ? { writeWhitelist: cli.writeWhitelist }
+              : {}),
+            // T-P3-141：回复语言（qwen outputLanguage 同构——系统提示注入
+            // 输出语言指令；缺省/ auto = 装配零变化）
+            ...(cli.outputLanguage !== undefined && cli.outputLanguage !== "auto"
+              ? { outputLanguage: cli.outputLanguage as "zh-CN" | "en" }
               : {}),
             // B8a/T-P1-20：网络档（--network allow|deny）——提供时装配创建
             // NetworkGuard 并注册 webfetch；缺省无网络工具（fail-closed；

@@ -51,7 +51,9 @@ export type SettingsOp =
   /** T-P3-137 八轮 E：审批历史（策略拒绝/审批记录——bridge 扫当前会话流）。 */
   | "policy-audit"
   /** T-P3-140 批次 B：沙箱自检（doctor 四项检查 + 生效面一览——无载荷）。 */
-  | "sandbox-doctor";
+  | "sandbox-doctor"
+  /** T-P3-141：插件主题 CSS 读取（UI 注入 <style>——pi-desktop 主题即插件）。 */
+  | "plugin-theme-css";
 
 /** 技能编辑器写回载荷（op=skill-save；frontmatter + 正文的一次性形状）。 */
 export interface SkillSavePayload {
@@ -153,11 +155,17 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     op !== "provider-models" &&
     op !== "provider-test" &&
     op !== "policy-audit" &&
-    op !== "sandbox-doctor"
+    op !== "sandbox-doctor" &&
+    op !== "plugin-theme-css"
   ) {
     throw new Error(
-      `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|import|skills-list|skill-save|subagents-list|instructions-list|instruction-save|stt-transcribe|plugins-list|provider-models|provider-test|policy-audit|sandbox-doctor）`,
+      `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|import|skills-list|skill-save|subagents-list|instructions-list|instruction-save|stt-transcribe|plugins-list|provider-models|provider-test|policy-audit|sandbox-doctor|plugin-theme-css）`,
     );
+  }
+  if (op === "plugin-theme-css") {
+    if (typeof record["name"] !== "string" || record["name"] === "") {
+      throw new Error("settings op=plugin-theme-css 需要 name（插件名）非空字符串");
+    }
   }
   if (op === "update") {
     if (record["patch"] === null || typeof record["patch"] !== "object" || Array.isArray(record["patch"])) {

@@ -17,39 +17,39 @@
       <aside id="sidebar" aria-label="主导航">
         <header class="sidebar-head">
           <span class="sidebar-brand">aegent</span>
-          <button id="sidebar-toggle" type="button" title="折叠/展开侧栏">«</button>
+          <button id="sidebar-toggle" type="button" data-i18n-title="折叠/展开侧栏" title="折叠/展开侧栏">«</button>
         </header>
         <nav class="sidebar-nav">
-          <button id="chat-btn" class="nav-item active" type="button" data-route="chat" title="对话">
-            <span data-icon="chat"></span><span class="nav-label">对话</span>
+          <button id="chat-btn" class="nav-item active" type="button" data-route="chat" data-i18n-title="对话" title="对话">
+            <span data-icon="chat"></span><span class="nav-label" data-i18n="对话">对话</span>
           </button>
-          <button id="history-btn" class="nav-item" type="button" data-route="history" title="会话历史">
-            <span data-icon="history"></span><span class="nav-label">历史</span>
+          <button id="history-btn" class="nav-item" type="button" data-route="history" data-i18n-title="会话历史" title="会话历史">
+            <span data-icon="history"></span><span class="nav-label" data-i18n="历史">历史</span>
           </button>
-          <button id="search-btn" class="nav-item" type="button" data-route="search" title="跨会话搜索（Ctrl+Shift+F）">
-            <span data-icon="search"></span><span class="nav-label">搜索</span>
+          <button id="search-btn" class="nav-item" type="button" data-route="search" data-i18n-title="跨会话搜索（Ctrl+Shift+F）" title="跨会话搜索（Ctrl+Shift+F）">
+            <span data-icon="search"></span><span class="nav-label" data-i18n="搜索">搜索</span>
           </button>
-          <button id="work-btn" class="nav-item" type="button" data-route="work" title="工作面板（文件/变更/子代理/协作）">
-            <span data-icon="work"></span><span class="nav-label">工作台</span>
+          <button id="work-btn" class="nav-item" type="button" data-route="work" data-i18n-title="工作面板（文件/变更/子代理/协作）" title="工作面板（文件/变更/子代理/协作）">
+            <span data-icon="work"></span><span class="nav-label" data-i18n="工作台">工作台</span>
           </button>
-          <button id="usage-btn" class="nav-item" type="button" data-route="usage" title="用量与上下文">
-            <span data-icon="usage"></span><span class="nav-label">用量</span>
+          <button id="usage-btn" class="nav-item" type="button" data-route="usage" data-i18n-title="用量与上下文" title="用量与上下文">
+            <span data-icon="usage"></span><span class="nav-label" data-i18n="用量">用量</span>
           </button>
-          <button id="notify-btn" class="nav-item" type="button" data-route="notify" title="通知中心">
-            <span data-icon="bell"></span><span class="nav-label">通知</span><span id="notify-badge" class="nav-badge" hidden></span>
+          <button id="notify-btn" class="nav-item" type="button" data-route="notify" data-i18n-title="通知中心" title="通知中心">
+            <span data-icon="bell"></span><span class="nav-label" data-i18n="通知">通知</span><span id="notify-badge" class="nav-badge" hidden></span>
           </button>
         </nav>
         <div class="sidebar-foot">
-          <select id="profile-quick" title="场景快速切换（Profiles）" hidden></select>
+          <select id="profile-quick" data-i18n-title="场景快速切换（Profiles）" title="场景快速切换（Profiles）" hidden></select>
           <div class="foot-status">
             <span id="conn-status">连接中…</span>
             <span id="surface-id"></span>
             <span id="lease-status"></span>
           </div>
           <div class="foot-actions">
-            <button id="lease-btn" type="button" hidden>取得写租约</button>
-            <button id="settings-btn" class="nav-item" type="button" data-route="settings" title="设置中心">
-              <span data-icon="settings"></span><span class="nav-label">设置</span>
+            <button id="lease-btn" type="button" data-i18n="取得写租约" hidden>取得写租约</button>
+            <button id="settings-btn" class="nav-item" type="button" data-route="settings" data-i18n-title="设置中心" title="设置中心">
+              <span data-icon="settings"></span><span class="nav-label" data-i18n="设置">设置</span>
             </button>
           </div>
           <span class="foot-version">aegent v0.1.0</span>

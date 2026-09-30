@@ -9,7 +9,7 @@
  * 一致）。ws 条目 = ws:// URL（I4——trust 恒 untrusted，无清单文件）。
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
 import { validateManifest, type PluginManifest } from "../kernel/plugin-manifest.js";
@@ -29,7 +29,7 @@ export interface PluginDiagnostics {
   readonly enabled: boolean;
   readonly allowTools: boolean;
   /** inprocess 清单校验产出（校验通过时在位——trust 徽标数据面）。 */
-  readonly manifest?: Pick<PluginManifest, "name" | "trust" | "capabilities">;
+  readonly manifest?: Pick<PluginManifest, "name" | "trust" | "capabilities" | "theme">;
   /** 校验失败诊断（fail 类型化——清单坏不炸面，错误行可见）。 */
   readonly error?: string;
 }
@@ -49,7 +49,9 @@ function wsUrlError(source: string): string | undefined {
 }
 
 /** inprocess 目录校验（清单存在 → JSON 解析 → I9 全量校验——零代码执行）。 */
-function inprocessError(dir: string): { error?: string; manifest?: Pick<PluginManifest, "name" | "trust" | "capabilities"> } {
+function inprocessError(
+  dir: string,
+): { error?: string; manifest?: Pick<PluginManifest, "name" | "trust" | "capabilities" | "theme"> } {
   const manifestPath = path.join(dir, PLUGIN_MANIFEST_FILENAME);
   if (!existsSync(manifestPath)) {
     return { error: `插件目录缺少 ${PLUGIN_MANIFEST_FILENAME}（约定：清单 + ${PLUGIN_ENTRY_FILENAME} 入口）` };
@@ -65,10 +67,15 @@ function inprocessError(dir: string): { error?: string; manifest?: Pick<PluginMa
     return { error: `清单校验失败：${result.errors.join("；")}` };
   }
   const manifest = result.manifest;
-  if (!existsSync(path.join(dir, PLUGIN_ENTRY_FILENAME))) {
+  // T-P3-141：入口按需——声明了 capabilities/hooks 才要求 index.js（有代码
+  // 才有入口）；纯主题/资源插件零代码可载，无入口合法（内核装载面照旧
+  // never-fail 跳过——主题应用走 host 的 CSS 读取，不经内核入口）。
+  const needsEntry =
+    manifest.capabilities.length > 0 || (manifest.hooks?.length ?? 0) > 0;
+  if (needsEntry && !existsSync(path.join(dir, PLUGIN_ENTRY_FILENAME))) {
     return { error: `插件目录缺少入口 ${PLUGIN_ENTRY_FILENAME}` };
   }
-  return { manifest: { name: manifest.name, trust: manifest.trust, capabilities: manifest.capabilities } };
+  return { manifest: { name: manifest.name, trust: manifest.trust, capabilities: manifest.capabilities, ...(manifest.theme !== undefined ? { theme: manifest.theme } : {}) } };
 }
 
 /** 装载清单视图（settings.plugins → 逐条校验诊断——管理页数据面）。 */
@@ -114,4 +121,58 @@ export function checkPluginDir(dir: string): { ok: boolean; name?: string; trust
   const checked = inprocessError(dir);
   if (checked.error !== undefined) return { ok: false, error: checked.error };
   return { ok: true, name: checked.manifest!.name, trust: checked.manifest!.trust };
+}
+
+/** 插件主题 CSS 的读取上限（256KB——主题样式不是应用载体）。 */
+const PLUGIN_THEME_CSS_MAX_BYTES = 256 * 1024;
+
+/** 插件主题 CSS 读取（T-P3-141——UI 注入 <style> 的数据面）：
+ *  按插件名定位 enabled 的 inprocess 条目 → 清单 theme 贡献 → 相对 css
+ *  文件读取。路径收敛在插件目录内（防清单写 .. / 绝对路径的任意文件读）、
+ *  体积上限、类型化拒绝（找不到/无主题/超限），UI 回退基础主题。 */
+export function pluginThemeCss(
+  settings: SettingsShape,
+  name: string,
+): { css: string; base: "light" | "dark"; displayName: string } {
+  const entry = (settings.plugins ?? []).find((p) => p.name === name && p.enabled !== false);
+  if (entry === undefined || (entry.transport ?? "inprocess") !== "inprocess") {
+    const error = new Error(`插件「${name}」不存在、已停用或非目录插件`);
+    (error as unknown as { code: string }).code = "PLUGIN_THEME_NOT_FOUND";
+    throw error;
+  }
+  const checked = inprocessError(entry.source);
+  if (checked.error !== undefined || checked.manifest === undefined) {
+    const error = new Error(`插件「${name}」清单校验失败：${checked.error ?? ""}`);
+    (error as unknown as { code: string }).code = "PLUGIN_THEME_NOT_FOUND";
+    throw error;
+  }
+  const theme = checked.manifest.theme;
+  if (theme === undefined) {
+    const error = new Error(`插件「${name}」未声明 theme 贡献`);
+    (error as unknown as { code: string }).code = "PLUGIN_THEME_NOT_FOUND";
+    throw error;
+  }
+  const rootDir = path.resolve(entry.source);
+  const cssPath = path.resolve(rootDir, theme.css);
+  if (!cssPath.startsWith(rootDir + path.sep) && cssPath !== rootDir) {
+    const error = new Error(`插件「${name}」的 theme.css 越出插件目录（防任意文件读）`);
+    (error as unknown as { code: string }).code = "PLUGIN_THEME_NOT_FOUND";
+    throw error;
+  }
+  let css: string;
+  try {
+    const stat = statSync(cssPath);
+    if (stat.size > PLUGIN_THEME_CSS_MAX_BYTES) {
+      const error = new Error(`插件主题 css 超过 256KB 上限：${theme.css}`);
+      (error as unknown as { code: string }).code = "PLUGIN_THEME_NOT_FOUND";
+      throw error;
+    }
+    css = readFileSync(cssPath, "utf8");
+  } catch (e) {
+    if (e instanceof Error && (e as unknown as { code?: string }).code === "PLUGIN_THEME_NOT_FOUND") throw e;
+    const error = new Error(`插件主题 css 读取失败：${theme.css}`);
+    (error as unknown as { code: string }).code = "PLUGIN_THEME_NOT_FOUND";
+    throw error;
+  }
+  return { css, base: theme.base, displayName: theme.name ?? name };
 }

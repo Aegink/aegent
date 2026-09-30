@@ -55,6 +55,34 @@ const B_AGENTS = [
   "提交信息用中文。",
 ].join("\n");
 
+describe("回复语言指令段（T-P3-141——qwen outputLanguage 同构）", () => {
+  const deps = (outputLanguage?: "zh-CN" | "en") => ({
+    approvalTier: "on_request" as const,
+    describeWritableRoots: async () => "F:/repo",
+    cwd: "F:/repo",
+    root: "F:/repo",
+    existsFile: () => false,
+    readFile: () => "",
+    basePrompt: "基础提示。",
+    ...(outputLanguage !== undefined ? { outputLanguage } : {}),
+  });
+
+  it("en → 英文指令段；zh-CN → 中文指令段", async () => {
+    const en = await assembleSystemPrompt(deps("en"));
+    expect(en).toContain("## Output language");
+    expect(en).toContain("Always write user-facing replies in English");
+    const zh = await assembleSystemPrompt(deps("zh-CN"));
+    expect(zh).toContain("## 回复语言");
+    expect(zh).toContain("始终用简体中文撰写面向用户的回复");
+  });
+
+  it("缺省（auto/未设置）→ 不加段（装配零变化）", async () => {
+    const none = await assembleSystemPrompt(deps(undefined));
+    expect(none).not.toContain("Output language");
+    expect(none).not.toContain("回复语言");
+  });
+});
+
 describe("验收①：嵌套目录收集 + 就近覆盖（F2）", () => {
   it("a/b/c 下运行：a 与 a/b 的 AGENTS.md 同时生效，b 的『测试规范』覆盖 a", async () => {
     const { exists, readFile } = fakeFs({

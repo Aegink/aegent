@@ -1923,6 +1923,47 @@ code,
   color: var(--warn);
   border-color: var(--warn);
 }
+
+/* T-P3-141 外观页：皮肤色板 chips / 强调色 swatch / 字号分段 */
+.skin-chips {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.skin-chip {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+/* hidden 属性全局兜底（.row 等组件类的 display 规则会压过 UA 的
+   [hidden]{display:none}——时间表行/字体行实测踩中） */
+[hidden] {
+  display: none !important;
+}
+.accent-swatches {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+.accent-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  border: 2px solid transparent;
+  outline: 1px solid var(--border);
+  cursor: pointer;
+  padding: 0;
+}
+.accent-swatch.active {
+  border-color: var(--text);
+  outline: 1px solid var(--text-subtle);
+}
+.font-size-seg {
+  display: inline-flex;
+  gap: 6px;
+}
 .card-justification {
   margin: 4px 0 0;
   font-size: 12px;

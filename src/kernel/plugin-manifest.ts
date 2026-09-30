@@ -28,6 +28,7 @@ export const PLUGIN_MANIFEST_FIELDS = [
   "trust",
   "capabilities",
   "hooks",
+  "theme",
 ] as const;
 
 export interface PluginManifest {
@@ -39,6 +40,17 @@ export interface PluginManifest {
   readonly capabilities: readonly string[];
   /** hooks 贡献声明（point 闭集 + 每项有对应 handler 才可安装）。 */
   readonly hooks?: readonly { readonly point: ChainPoint; readonly name: string }[];
+  /**
+   * 主题贡献（T-P3-141 批次——pi-desktop 主题即插件同构）：base 声明该主题
+   * 的明暗基底（UI 在其上应用——主题 CSS 只需覆盖差异 token）；css = 插件
+   * 目录内的相对文件（宿主经 plugin-theme-css op 读取注入 <style>，路径
+   * 收敛在插件目录内——防任意文件读）。
+   */
+  readonly theme?: {
+    readonly name?: string;
+    readonly base: "light" | "dark";
+    readonly css: string;
+  };
 }
 
 export class PluginManifestError extends Error {
@@ -142,6 +154,41 @@ export function validateManifest(
     }
   }
 
+  // theme（可选贡献——pi-desktop 主题即插件同构：base 明暗基底 + 相对 css 文件）
+  let theme: PluginManifest["theme"] | undefined;
+  const rawTheme = record.theme;
+  if (rawTheme !== undefined) {
+    if (rawTheme === null || typeof rawTheme !== "object" || Array.isArray(rawTheme)) {
+      errors.push("theme 必须是对象（{base, css}——pi-desktop 主题贡献形状）");
+    } else {
+      const t = rawTheme as Record<string, unknown>;
+      const baseOk = t.base === "light" || t.base === "dark";
+      if (!baseOk) {
+        errors.push(`theme.base 必须是 "light" | "dark"，收到 ${JSON.stringify(t.base) ?? "undefined"}`);
+      }
+      const cssOk =
+        typeof t.css === "string" &&
+        t.css.trim() !== "" &&
+        !pathIsAbsoluteLike(t.css) &&
+        !t.css.includes("..");
+      if (!cssOk) {
+        errors.push(
+          "theme.css 必须是插件目录内的相对文件名（禁绝对路径与 .. 上跳）",
+        );
+      }
+      if (t.name !== undefined && (typeof t.name !== "string" || t.name.trim() === "")) {
+        errors.push("theme.name 必须是非空字符串（可省略——缺省用插件名）");
+      }
+      if (baseOk && cssOk) {
+        theme = {
+          ...(typeof t.name === "string" ? { name: t.name } : {}),
+          base: t.base as "light" | "dark",
+          css: t.css as string,
+        };
+      }
+    }
+  }
+
   if (errors.length > 0) return { ok: false, errors };
   return {
     ok: true,
@@ -150,8 +197,14 @@ export function validateManifest(
       trust: trust as HookTrust,
       capabilities: capabilities as readonly string[],
       ...(hooks !== undefined ? { hooks } : {}),
+      ...(theme !== undefined ? { theme } : {}),
     },
   };
+}
+
+/** 绝对路径形状粗判（盘符 / UNC / POSIX 根——theme.css 收敛相对名的防线）。 */
+function pathIsAbsoluteLike(value: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(value) || /^\\\\/.test(value) || value.startsWith("/");
 }
 
 /**

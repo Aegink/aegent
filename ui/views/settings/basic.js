@@ -7,9 +7,10 @@
  */
 
 import { sendSettings } from "../../api.js";
-import { settingsCache, applyTheme, getSessionId } from "../../state.js";
+import { settingsCache, applyTheme, applyAppearance, getSessionId } from "../../state.js";
 import { sendRequest } from "../../api.js";
 import { toast } from "../../feedback.js";
+import { t, applyLocalePreference } from "../../i18n.js";
 import {
   markDirty,
   dirtySections,
@@ -21,8 +22,17 @@ import {
   emptyState,
   chipEl,
   confirmDialog,
+  switchEl,
 } from "./core.js";
 import { refreshCredentials as refreshProviderCredentials } from "./providers.js";
+
+/** 行标题构造（rowCopyEl 的标题位——本文件多处复用）。 */
+function rowTitleEl(text) {
+  const el = document.createElement("div");
+  el.className = "row-title";
+  el.textContent = text;
+  return el;
+}
 
 export const SECTIONS_HTML = `
 <section data-section="permission">
@@ -134,31 +144,158 @@ export const SECTIONS_HTML = `
   </div>
 </section>
 <section data-section="appearance">
-  <div class="section-head"><h2 class="section-title">外观与语言</h2></div>
+  <div class="section-head"><h2 class="section-title" data-i18n="外观与语言">外观与语言</h2></div>
+
+  <div class="group-title" data-i18n="主题与外观">主题与外观</div>
   <div class="row-list">
     <div class="row">
       <div class="row-copy">
-        <div class="row-title">主题</div>
-        <div class="row-desc">暗色 / 亮色（全端 CSS 变量换值，即改即存）</div>
+        <div class="row-title" data-i18n="主题模式">主题模式</div>
+        <div class="row-desc" data-i18n="跟随系统深浅色自动切换（推荐）">跟随系统深浅色自动切换（推荐）</div>
       </div>
       <div class="row-control">
-        <select id="appearance-theme" class="select">
-          <option value="dark">暗色</option>
-          <option value="light">亮色</option>
+        <select id="appearance-theme-mode" class="select">
+          <option value="system" data-i18n="跟随系统">跟随系统</option>
+          <option value="dark" data-i18n="暗色">暗色</option>
+          <option value="light" data-i18n="亮色">亮色</option>
+          <option value="schedule" data-i18n="按时间表">按时间表</option>
+        </select>
+      </div>
+    </div>
+    <div class="row" id="appearance-schedule-light-row" hidden>
+      <div class="row-copy">
+        <div class="row-title" data-i18n="浅色开始">浅色开始</div>
+        <div class="row-desc" data-i18n="跨午夜区间合法（如 22:00 → 06:00）">跨午夜区间合法（如 22:00 → 06:00）</div>
+      </div>
+      <div class="row-control"><input id="appearance-schedule-light" class="input" type="time" value="07:00" /></div>
+    </div>
+    <div class="row" id="appearance-schedule-dark-row" hidden>
+      <div class="row-copy">
+        <div class="row-title" data-i18n="暗色开始">暗色开始</div>
+      </div>
+      <div class="row-control"><input id="appearance-schedule-dark" class="input" type="time" value="19:00" /></div>
+    </div>
+  </div>
+  <div class="group-title" data-i18n="皮肤">皮肤</div>
+  <p class="hint" data-i18n="皮肤决定整套界面色板（随主题模式给出暗/亮变体）">皮肤决定整套界面色板（随主题模式给出暗/亮变体）</p>
+  <div id="appearance-skin-list" class="tile-list"></div>
+  <div class="group-title" data-i18n="强调色">强调色</div>
+  <p class="hint" data-i18n="强调色影响主色、焦点环、链接与图表首色">强调色影响主色、焦点环、链接与图表首色</p>
+  <div id="appearance-accent-list" class="row-list"></div>
+  <div class="group-title" data-i18n="插件主题">插件主题</div>
+  <div class="row-list">
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title" data-i18n="插件主题">插件主题</div>
+        <div class="row-desc" data-i18n="主题由插件贡献（插件管理页安装）——停用插件即回退基础主题">主题由插件贡献（插件管理页安装）——停用插件即回退基础主题</div>
+      </div>
+      <div class="row-control">
+        <select id="appearance-plugin-theme" class="select">
+          <option value="" data-i18n="不使用">不使用</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="group-title" data-i18n="语言">语言</div>
+  <div class="row-list">
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title" data-i18n="界面语言">界面语言</div>
+        <div class="row-desc" data-i18n="切换后整页刷新生效（未翻译文案暂显示中文）">切换后整页刷新生效（未翻译文案暂显示中文）</div>
+      </div>
+      <div class="row-control">
+        <select id="appearance-language" class="select">
+          <option value="system" data-i18n="跟随系统">跟随系统</option>
+          <option value="zh-CN">简体中文</option>
+          <option value="en">English</option>
         </select>
       </div>
     </div>
     <div class="row">
       <div class="row-copy">
-        <div class="row-title">语言</div>
-        <div class="row-desc">界面语言</div>
+        <div class="row-title" data-i18n="回复语言">回复语言</div>
+        <div class="row-desc" data-i18n="内核输出语言——与界面语言分离（qwen outputLanguage 同构）">内核输出语言——与界面语言分离（qwen outputLanguage 同构）</div>
       </div>
       <div class="row-control">
-        <select id="appearance-language" class="select">
-          <option value="zh-CN">中文</option>
+        <select id="appearance-output-language" class="select">
+          <option value="auto" data-i18n="自动跟随">自动跟随</option>
+          <option value="zh-CN">简体中文</option>
           <option value="en">English</option>
         </select>
       </div>
+    </div>
+  </div>
+  <p class="hint" data-i18n="模型始终用该语言回复（代码与标识符除外）；自动 = 跟随你的输入">模型始终用该语言回复（代码与标识符除外）；自动 = 跟随你的输入</p>
+
+  <div class="group-title" data-i18n="字体与字号">字体与字号</div>
+  <div class="row-list">
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title" data-i18n="界面字号">界面字号</div>
+        <div class="row-desc" data-i18n="只缩放文字（间距/图标不缩放——zcode 安全缩放同款）">只缩放文字（间距/图标不缩放——zcode 安全缩放同款）</div>
+      </div>
+      <div class="row-control" id="appearance-font-size"></div>
+    </div>
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title" data-i18n="界面字体">界面字体</div>
+      </div>
+      <div class="row-control">
+        <select id="appearance-font-base-select" class="select">
+          <option value="" data-i18n="默认">默认</option>
+          <option value="sans" data-i18n="无衬线">无衬线</option>
+          <option value="serif" data-i18n="衬线">衬线</option>
+          <option value="custom" data-i18n="自定义">自定义</option>
+        </select>
+      </div>
+    </div>
+    <div class="row" id="appearance-font-base-row" hidden>
+      <div class="row-copy"><div class="row-title"></div></div>
+      <div class="row-control"><input id="appearance-font-base" class="input input-wide" type="text" data-i18n-placeholder="输入字体名，如 Consolas" placeholder="输入字体名，如 Consolas" autocomplete="off" /></div>
+    </div>
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title" data-i18n="等宽字体（代码/终端）">等宽字体（代码/终端）</div>
+      </div>
+      <div class="row-control">
+        <select id="appearance-font-mono-select" class="select">
+          <option value="" data-i18n="默认">默认</option>
+          <option value="custom" data-i18n="自定义">自定义</option>
+        </select>
+      </div>
+    </div>
+    <div class="row" id="appearance-font-mono-row" hidden>
+      <div class="row-copy"><div class="row-title"></div></div>
+      <div class="row-control"><input id="appearance-font-mono" class="input input-wide" type="text" data-i18n-placeholder="自定义字体名，如 JetBrains Mono" placeholder="自定义字体名，如 JetBrains Mono" autocomplete="off" /></div>
+    </div>
+  </div>
+  <p class="hint" data-i18n="自定义字体自动追加中文回退链（防中文落宋体）">自定义字体自动追加中文回退链（防中文落宋体）</p>
+
+  <div class="group-title" data-i18n="消息流">消息流</div>
+  <div id="appearance-stream-list" class="row-list"></div>
+
+  <div class="group-title" data-i18n="无障碍">无障碍</div>
+  <div id="appearance-a11y-list" class="row-list"></div>
+
+  <div class="group-title" data-i18n="背景图">背景图</div>
+  <div class="row-list">
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title" data-i18n="背景图">背景图</div>
+        <div class="row-desc" data-i18n="背景图只铺对话区（内容面保持底色——浮层可读性优先）；png/jpeg/webp ≤ 3MB">背景图只铺对话区（内容面保持底色——浮层可读性优先）；png/jpeg/webp ≤ 3MB</div>
+      </div>
+      <div class="row-control">
+        <input id="appearance-bg-file" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+        <button id="appearance-bg-pick" type="button" class="btn" data-i18n="选择图片…">选择图片…</button>
+        <button id="appearance-bg-clear" type="button" class="btn btn-danger" data-i18n="清除">清除</button>
+      </div>
+    </div>
+    <div class="row" id="appearance-bg-opacity-row" hidden>
+      <div class="row-copy">
+        <div class="row-title" data-i18n="图片可见度">图片可见度</div>
+      </div>
+      <div class="row-control"><input id="appearance-bg-opacity" class="input" type="range" min="10" max="100" step="5" value="60" /></div>
     </div>
   </div>
 </section>
@@ -699,6 +836,216 @@ function renderSandboxWhitelist() {
 }
 
 // ---------------------------------------------------------------------------
+// 外观（T-P3-141 批次 A~F——pideck 三属性 + zcode i18n/pi-desktop 字号同构；
+// 皮肤/强调色闭集与 ui/theme.css 的 data-appearance/data-accent 块同源——
+// 前端零构建链复制，改动需两侧同步）。改字段即 applyAppearance 即时预览
+//（codex/opencode picker 的"改即见效"），500ms 防抖统一落盘。
+// ---------------------------------------------------------------------------
+
+const SKIN_PRESETS = [
+  { id: "", label: "默认", chips: ["#171717", "#262626", "#0ea5e9", "#e5e5e5"] },
+  { id: "catppuccin", label: "Catppuccin", chips: ["#1e1e2e", "#313244", "#89b4fa", "#cdd6f4"] },
+  { id: "tokyonight", label: "Tokyonight", chips: ["#1a1b26", "#24283b", "#7aa2f7", "#c0caf5"] },
+  { id: "nord", label: "Nord", chips: ["#2e3440", "#3b4252", "#88c0d0", "#eceff4"] },
+  { id: "solarized", label: "Solarized", chips: ["#002b36", "#073642", "#268bd2", "#eee8d5"] },
+];
+const ACCENT_PRESETS = [
+  { id: "", color: "#0ea5e9", label: "Sky" },
+  { id: "green", color: "#22c55e", label: "Green" },
+  { id: "violet", color: "#a78bfa", label: "Violet" },
+  { id: "amber", color: "#f59e0b", label: "Amber" },
+  { id: "rose", color: "#fb7185", label: "Rose" },
+  { id: "cyan", color: "#22d3ee", label: "Cyan" },
+];
+const FONT_SIZES = [12, 14, 16, 18];
+
+function setAppearanceField(field, value) {
+  settingsCache.appearance = { ...(settingsCache.appearance ?? {}), [field]: value };
+  applyAppearance(); // 即时预览——保存走 markDirty 防抖
+  markDirty("appearance");
+}
+
+function renderSkinList() {
+  const box = document.getElementById("appearance-skin-list");
+  if (box === null) return;
+  box.replaceChildren();
+  const current = settingsCache?.appearance?.skin ?? "";
+  for (const skin of SKIN_PRESETS) {
+    const row = rowEl();
+    const titleEl = rowTitleEl(skin.label);
+    if (current === skin.id) titleEl.appendChild(chipEl(t("当前"), true));
+    const chips = document.createElement("span");
+    chips.className = "skin-chips";
+    for (const color of skin.chips) {
+      const dot = document.createElement("span");
+      dot.className = "skin-chip";
+      dot.style.background = color;
+      chips.appendChild(dot);
+    }
+    titleEl.appendChild(chips);
+    const useBtn = btnEl(current === skin.id ? t("使用中") : t("启用"), "btn", `切换皮肤 ${skin.label}`);
+    useBtn.disabled = current === skin.id;
+    useBtn.addEventListener("click", () => {
+      setAppearanceField("skin", skin.id);
+      renderSkinList();
+    });
+    // desc 位给色板预览文案（rowCopyEl 双节点契约——缺省 append undefined 陷阱）
+    row.append(
+      rowCopyEl(titleEl, Object.assign(document.createElement("div"), { className: "row-desc" })),
+      rowControl(useBtn),
+    );
+    box.appendChild(row);
+  }
+}
+
+function renderAccentList() {
+  const box = document.getElementById("appearance-accent-list");
+  if (box === null) return;
+  box.replaceChildren();
+  const row = rowEl();
+  const wrap = document.createElement("div");
+  wrap.className = "accent-swatches";
+  const current = settingsCache?.appearance?.accent ?? "";
+  for (const preset of ACCENT_PRESETS) {
+    const swatch = document.createElement("button");
+    swatch.type = "button";
+    swatch.className = `accent-swatch${current === preset.id ? " active" : ""}`;
+    swatch.style.background = preset.color;
+    swatch.title = preset.label;
+    swatch.setAttribute("aria-label", preset.label);
+    swatch.addEventListener("click", () => {
+      setAppearanceField("accent", preset.id);
+      renderAccentList();
+    });
+    wrap.appendChild(swatch);
+  }
+  row.append(
+    rowCopyEl(rowTitleEl(t("强调色")), Object.assign(document.createElement("div"), { className: "row-desc" })),
+    rowControl(wrap),
+  );
+  box.appendChild(row);
+}
+
+function renderFontSize() {
+  const box = document.getElementById("appearance-font-size");
+  if (box === null) return;
+  box.replaceChildren();
+  const current = settingsCache?.appearance?.uiFontSize ?? 14;
+  const wrap = document.createElement("div");
+  wrap.className = "font-size-seg";
+  const labels = { 12: t("小"), 14: t("标准"), 16: t("大"), 18: t("特大") };
+  for (const size of FONT_SIZES) {
+    const btn = btnEl(labels[size], `btn${current === size ? " active-mark" : ""}`, `UI 字号 ${size}px`);
+    btn.disabled = current === size;
+    btn.addEventListener("click", () => {
+      setAppearanceField("uiFontSize", size);
+      renderFontSize();
+    });
+    wrap.appendChild(btn);
+  }
+  box.appendChild(wrap);
+}
+
+function renderToggleRow(box, titleKey, descKey, field, checked, extra) {
+  const row = rowEl();
+  const titleEl = rowTitleEl(t(titleKey));
+  const desc = document.createElement("div");
+  desc.className = "row-desc";
+  desc.textContent = t(descKey);
+  const toggle = switchEl(checked, (next) => {
+    setAppearanceField(field, next);
+    renderStreamAndA11y();
+    if (extra) extra(next);
+  }, t(titleKey));
+  row.append(rowCopyEl(titleEl, desc), rowControl(toggle));
+  box.appendChild(row);
+}
+
+function renderStreamAndA11y() {
+  const stream = document.getElementById("appearance-stream-list");
+  if (stream !== null) {
+    stream.replaceChildren();
+    const a = settingsCache?.appearance ?? {};
+    renderToggleRow(stream, "显示推理过程", "关闭后隐藏模型推理段（数据仍保留，随时可开回）", "chatShowReasoning", a.chatShowReasoning !== false);
+    renderToggleRow(stream, "显示时间戳", "每条消息气泡尾部显示发送时间", "showTimestamps", a.showTimestamps === true);
+    // 会话宽度（三档 select）
+    const widthRow = rowEl();
+    const widthSel = document.createElement("select");
+    widthSel.className = "select";
+    widthSel.setAttribute("aria-label", t("会话宽度"));
+    for (const [value, label] of [
+      ["default", t("标准（820px）")],
+      ["wide", t("宽（1100px）")],
+      ["full", t("全宽")],
+    ]) {
+      const o = document.createElement("option");
+      o.value = value;
+      o.textContent = label;
+      widthSel.appendChild(o);
+    }
+    widthSel.value = a.chatContentWidth ?? "default";
+    widthSel.addEventListener("change", () => {
+      setAppearanceField("chatContentWidth", widthSel.value);
+    });
+    widthRow.append(
+      rowCopyEl(rowTitleEl(t("会话宽度"))),
+      rowControl(widthSel),
+    );
+    stream.appendChild(widthRow);
+    renderToggleRow(stream, "动效", "关闭全部过渡与动画（含系统 reduce-motion 偏好）", "animations", a.animations !== false);
+  }
+  const a11y = document.getElementById("appearance-a11y-list");
+  if (a11y !== null) {
+    a11y.replaceChildren();
+    renderToggleRow(
+      a11y,
+      "色盲友好色板",
+      "图表/轨迹/状态色改用蓝橙安全对（Okabe-Ito——claude daltonized 同位）",
+      "colorBlindFriendly",
+      settingsCache?.appearance?.colorBlindFriendly === true,
+    );
+  }
+}
+
+async function refreshPluginThemeOptions() {
+  const sel = document.getElementById("appearance-plugin-theme");
+  if (sel === null) return;
+  const envelope = await sendSettings({ op: "plugins-list" });
+  // plugins-list 回执 = 诊断数组本身（非 {plugins:[...]} 包装）
+  const plugins = envelope.ok ? envelope.result ?? [] : [];
+  const themes = (Array.isArray(plugins) ? plugins : []).filter(
+    (p) => p.enabled && p.manifest?.theme !== undefined,
+  );
+  sel.replaceChildren();
+  const none = document.createElement("option");
+  none.value = "";
+  none.textContent = t("不使用");
+  sel.appendChild(none);
+  for (const p of themes) {
+    const o = document.createElement("option");
+    o.value = p.name;
+    o.textContent = p.manifest.theme.name ?? p.name;
+    sel.appendChild(o);
+  }
+  sel.value = settingsCache?.appearance?.pluginTheme ?? "";
+}
+
+function syncScheduleRows() {
+  const mode = settingsCache?.appearance?.themeMode ?? "dark";
+  const schedule = document.getElementById("appearance-theme-mode")?.value === "schedule";
+  void mode;
+  document.getElementById("appearance-schedule-light-row").hidden = !schedule;
+  document.getElementById("appearance-schedule-dark-row").hidden = !schedule;
+}
+
+function syncFontRows() {
+  const baseSel = document.getElementById("appearance-font-base-select");
+  const monoSel = document.getElementById("appearance-font-mono-select");
+  document.getElementById("appearance-font-base-row").hidden = baseSel?.value !== "custom";
+  document.getElementById("appearance-font-mono-row").hidden = monoSel?.value !== "custom";
+}
+
+// ---------------------------------------------------------------------------
 // Profiles（U19/T-P3-121）：组合档清单 + applyProfile 批量写生效段
 // ---------------------------------------------------------------------------
 
@@ -866,14 +1213,82 @@ export function bind() {
       markDirty("sandbox");
     });
   }
-  document.getElementById("appearance-theme").addEventListener("change", (ev) => {
-    settingsCache.appearance = { ...settingsCache.appearance, theme: ev.target.value };
-    applyTheme(ev.target.value);
-    markDirty("appearance");
+  // —— 外观（T-P3-141）：模式/时间表/皮肤/强调色/插件主题/语言/字号字体/
+  // 消息流开关/背景图——全部即改即存（applyAppearance 即时预览 + 防抖落盘）
+  document.getElementById("appearance-theme-mode").addEventListener("change", (ev) => {
+    setAppearanceField("themeMode", ev.target.value);
+    // 显式档同步 theme 兼容字段（旧 UI/旧档零破坏——applyAppearance 语义）
+    if (ev.target.value === "dark" || ev.target.value === "light") {
+      settingsCache.appearance = { ...(settingsCache.appearance ?? {}), theme: ev.target.value };
+    }
+    syncScheduleRows();
+  });
+  document.getElementById("appearance-schedule-light").addEventListener("change", (ev) => {
+    setAppearanceField("scheduleLightStart", ev.target.value);
+  });
+  document.getElementById("appearance-schedule-dark").addEventListener("change", (ev) => {
+    setAppearanceField("scheduleDarkStart", ev.target.value);
+  });
+  document.getElementById("appearance-plugin-theme").addEventListener("change", (ev) => {
+    setAppearanceField("pluginTheme", ev.target.value);
+    toast(t("外观已应用"), "info");
   });
   document.getElementById("appearance-language").addEventListener("change", (ev) => {
-    settingsCache.appearance = { ...settingsCache.appearance, language: ev.target.value };
+    settingsCache.appearance = { ...(settingsCache.appearance ?? {}), language: ev.target.value };
     markDirty("appearance");
+    // i18n 切换：保存 flush（500ms）后整页刷新——零构建链的全量生效面
+    applyLocalePreference(ev.target.value);
+    toast(t("语言已切换，正在刷新…"), "info");
+    setTimeout(() => location.reload(), 900);
+  });
+  document.getElementById("appearance-output-language").addEventListener("change", (ev) => {
+    setAppearanceField("outputLanguage", ev.target.value);
+  });
+  document.getElementById("appearance-font-base-select").addEventListener("change", (ev) => {
+    const v = ev.target.value;
+    if (v === "") setAppearanceField("fontBase", "");
+    else if (v === "sans") setAppearanceField("fontBase", "system-ui, sans-serif");
+    else if (v === "serif") setAppearanceField("fontBase", "Georgia, 'Times New Roman', serif");
+    syncFontRows();
+  });
+  document.getElementById("appearance-font-base").addEventListener("change", (ev) => {
+    setAppearanceField("fontBase", ev.target.value.trim());
+  });
+  document.getElementById("appearance-font-mono-select").addEventListener("change", (ev) => {
+    if (ev.target.value === "") setAppearanceField("fontMono", "");
+    syncFontRows();
+  });
+  document.getElementById("appearance-font-mono").addEventListener("change", (ev) => {
+    setAppearanceField("fontMono", ev.target.value.trim());
+  });
+  document.getElementById("appearance-bg-pick").addEventListener("click", () => {
+    document.getElementById("appearance-bg-file").click();
+  });
+  document.getElementById("appearance-bg-file").addEventListener("change", (ev) => {
+    const file = ev.target.files?.[0];
+    if (file === undefined) return;
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) {
+      toast(t("仅支持 png/jpeg/webp 图片"), "warn");
+      return;
+    }
+    if (file.size > 3 * 1024 * 1024) {
+      toast(t("图片超过 3MB 上限"), "warn");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAppearanceField("backgroundImage", String(reader.result ?? ""));
+      document.getElementById("appearance-bg-opacity-row").hidden = false;
+    };
+    reader.readAsDataURL(file);
+    ev.target.value = "";
+  });
+  document.getElementById("appearance-bg-clear").addEventListener("click", () => {
+    setAppearanceField("backgroundImage", "");
+    document.getElementById("appearance-bg-opacity-row").hidden = true;
+  });
+  document.getElementById("appearance-bg-opacity").addEventListener("input", (ev) => {
+    setAppearanceField("backgroundImageOpacity", Number(ev.target.value));
   });
 
   document.getElementById("profile-form").addEventListener("submit", (ev) => {
@@ -927,7 +1342,34 @@ export function fill() {
   renderSandboxModes();
   renderSandboxWhitelist();
   void refreshSandboxDoctor();
-  document.getElementById("appearance-theme").value = settingsCache?.appearance?.theme ?? "dark";
-  document.getElementById("appearance-language").value = settingsCache?.appearance?.language ?? "zh-CN";
+  // —— 外观（T-P3-141）回填：模式/时间表/插件主题选项/字号字体/开关族
+  document.getElementById("appearance-theme-mode").value =
+    settingsCache?.appearance?.themeMode ?? settingsCache?.appearance?.theme ?? "dark";
+  document.getElementById("appearance-schedule-light").value =
+    settingsCache?.appearance?.scheduleLightStart ?? "07:00";
+  document.getElementById("appearance-schedule-dark").value =
+    settingsCache?.appearance?.scheduleDarkStart ?? "19:00";
+  syncScheduleRows();
+  renderSkinList();
+  renderAccentList();
+  renderFontSize();
+  renderStreamAndA11y();
+  void refreshPluginThemeOptions();
+  document.getElementById("appearance-language").value =
+    settingsCache?.appearance?.language ?? "system";
+  document.getElementById("appearance-output-language").value =
+    settingsCache?.appearance?.outputLanguage ?? "auto";
+  const fontBase = settingsCache?.appearance?.fontBase ?? "";
+  document.getElementById("appearance-font-base-select").value =
+    fontBase === "" ? "" : fontBase.includes("serif") && !fontBase.includes("sans") ? "serif" : "custom";
+  document.getElementById("appearance-font-base").value = fontBase;
+  const fontMono = settingsCache?.appearance?.fontMono ?? "";
+  document.getElementById("appearance-font-mono-select").value = fontMono === "" ? "" : "custom";
+  document.getElementById("appearance-font-mono").value = fontMono;
+  syncFontRows();
+  document.getElementById("appearance-bg-opacity").value =
+    String(settingsCache?.appearance?.backgroundImageOpacity ?? 60);
+  document.getElementById("appearance-bg-opacity-row").hidden =
+    (settingsCache?.appearance?.backgroundImage ?? "") === "";
   renderProfileList();
 }

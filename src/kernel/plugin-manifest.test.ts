@@ -89,6 +89,41 @@ describe("validateManifest（I9 安装期全量校验）", () => {
   });
 });
 
+describe("theme 贡献（T-P3-141——pi-desktop 主题即插件同构）", () => {
+  it("合法 theme 通过并回读（base 闭集 + 相对 css）", () => {
+    const result = validateManifest(
+      { ...goodManifest, theme: { name: "Acme Night", base: "dark", css: "theme.css" } },
+      AVAILABLE,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.manifest.theme).toEqual({ name: "Acme Night", base: "dark", css: "theme.css" });
+    }
+  });
+
+  it("theme 缺 name 可省略（回退插件名）", () => {
+    const result = validateManifest({ ...goodManifest, theme: { base: "light", css: "theme.css" } }, AVAILABLE);
+    expect(result.ok).toBe(true);
+  });
+
+  it("theme.base 非法 / css 绝对路径 / css 上跳 → 逐项拒绝", () => {
+    const badBase = validateManifest({ ...goodManifest, theme: { base: "auto", css: "t.css" } }, AVAILABLE);
+    expect(badBase.ok).toBe(false);
+    if (!badBase.ok) expect(badBase.errors.join("；")).toContain("theme.base");
+    // 绝对路径两形状：POSIX 根 + 盘符（String.raw 保反斜杠字面——heredoc 转义陷阱）
+    const absPosix = validateManifest({ ...goodManifest, theme: { base: "dark", css: "/etc/t.css" } }, AVAILABLE);
+    expect(absPosix.ok).toBe(false);
+    const absWin = validateManifest(
+      { ...goodManifest, theme: { base: "dark", css: String.raw`C:\evil\t.css` } },
+      AVAILABLE,
+    );
+    expect(absWin.ok).toBe(false);
+    const upJump = validateManifest({ ...goodManifest, theme: { base: "dark", css: "../t.css" } }, AVAILABLE);
+    expect(upJump.ok).toBe(false);
+    if (!upJump.ok) expect(upJump.errors.join("；")).toContain("..");
+  });
+});
+
 describe("installPlugin（安装 = 校验通过后注册 hooks 贡献）", () => {
   it("合法清单安装后能力可用：trusted 进内核链（hook 名带插件前缀）", async () => {
     const registry = new HookRegistry();

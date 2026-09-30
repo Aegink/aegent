@@ -17,6 +17,7 @@ import {
   rebuildKeymap,
 } from "../state.js";
 import { appendLine } from "../feedback.js";
+import { t } from "../i18n.js";
 import { go } from "../router.js";
 import { injectIcons } from "../icons.js";
 import { flushSettings, setRefillForms, upgradeSelects } from "./settings/core.js";
@@ -64,9 +65,9 @@ const NAV_GROUPS = [
 
 const NAV_HTML = NAV_GROUPS.map(
   (group) =>
-    `<div class="nav-group-title">${group.title}</div>` +
+    `<div class="nav-group-title">${t(group.title)}</div>` +
     group.sections
-      .map(([id, label]) => `<button type="button" class="nav-item" data-nav="${id}">${label}</button>`)
+      .map(([id, label]) => `<button type="button" class="nav-item" data-nav="${id}">${t(label)}</button>`)
       .join(""),
 ).join("");
 

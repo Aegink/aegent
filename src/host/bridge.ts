@@ -283,13 +283,15 @@ export class HostBridge implements SessionRouter {
           throw error;
         }
         if (call.op === "policy-audit") {
-          // 审批历史（八轮 E——扫描逻辑在 policy-audit-op 域文件；store 在 bridge 手里故在此拦截）
+          // 审批历史（八轮 E——扫描在 policy-audit-op 域文件；store 在 bridge 手里故此拦截）
           const sessionId = this.options.host.sessionId;
           const store = this.options.store;
           const all = store === undefined ? [] : store.load(sessionId);
           return { entries: buildPolicyAuditEntries(all) };
         }
         if (call.op === "sandbox-doctor") return gateway.sandboxDoctor();
+        // T-P3-141：插件主题 CSS（pi-desktop 主题即插件——UI 注入 <style>）
+        if (call.op === "plugin-theme-css") return gateway.pluginThemeCss(call.name!);
         if (call.op === "get") return { settings: await gateway.get() };
         if (call.op === "update") return { settings: await gateway.update(call.patch ?? {}) };
         if (call.op === "credentials-set") {
@@ -301,9 +303,7 @@ export class HostBridge implements SessionRouter {
         if (call.op === "probe") {
           return { health: await gateway.probeProvider(call.provider!) };
         }
-        if (call.op === "session-delete") {
-          return gateway.sessionDelete(call.sessionId!);
-        }
+        if (call.op === "session-delete") return gateway.sessionDelete(call.sessionId!);
         // U17/T-P3-119：MCP 连接校验（向导"测连接"——launch 一次握手+列工具）
         if (call.op === "mcp-check") {
           return {

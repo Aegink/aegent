@@ -31,6 +31,7 @@ import { homedir } from "node:os";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { sandboxDoctorOp } from "./settings-sandbox-doctor.js";
+import { pluginThemeCss } from "./plugins-gateway.js";
 import {
   instructionPaths,
   listInstructions,
@@ -197,6 +198,11 @@ export interface SettingsGateway {
    * 自检卡的数据面；装配与回执在 settings-sandbox-doctor 域文件）。
    */
   sandboxDoctor(): ReturnType<typeof sandboxDoctorOp>;
+  /**
+   * T-P3-141：插件主题 CSS（UI 注入 <style> 的数据面——pi-desktop 主题即
+   * 插件；路径收敛与上限在 plugins-gateway，类型化拒绝转信封错误）。
+   */
+  pluginThemeCss(name: string): Promise<{ css: string; base: "light" | "dark"; displayName: string }>;
 }
 
 /** 生产缺省探测依赖（真网络——tests 注入 fake）。 */
@@ -383,5 +389,10 @@ export class FileSettingsGateway implements SettingsGateway {
 
   async sandboxDoctor() {
     return sandboxDoctorOp(this.settingsPath, this.workspaceRoot);
+  }
+
+  async pluginThemeCss(name: string): Promise<{ css: string; base: "light" | "dark"; displayName: string }> {
+    const settings = await this.get();
+    return pluginThemeCss(settings, name);
   }
 }

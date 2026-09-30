@@ -262,6 +262,11 @@ export interface ChildAssemblyOptions {
    */
   writeWhitelist?: readonly string[];
   /**
+   * T-P3-141：回复语言（qwen outputLanguage 同构——非 auto 时系统提示注入
+   * 输出语言指令；缺省/auto = 装配零变化）。
+   */
+  outputLanguage?: "zh-CN" | "en";
+  /**
    * B8b/T-P1-21 question 的答复等待上界（毫秒）；缺省同 approvalTimeoutMs
    * ——超时按拒结算（C50 语义复用），测试用短上界。
    */
@@ -818,6 +823,7 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
         ...(skillLoad.skills.length > 0 ? { skills: skillLoad.skills } : {}),
         ...(planModeService ? { planMode: true } : {}),
         ...(options.delegation ? { delegation: true } : {}),
+        ...(options.outputLanguage !== undefined ? { outputLanguage: options.outputLanguage } : {}),
       });
       // I8 人格段（T-P2-305）：--persona 选了预设则渲染后追加进同一条系统
       // 提示（人格随会话流持久——恢复自动生效）；未选择 = 零追加。

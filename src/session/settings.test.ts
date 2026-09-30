@@ -54,6 +54,58 @@ describe("parseSettingsShape / parseSettingsFile", () => {
     expect(() => parseSettingsShape({ appearance: { theme: "blue" } })).toThrow(/theme 非法/);
   });
 
+  it("appearance 全字段 parse（T-P3-141）：枚举闭集 + 形状/上限 fail-closed", () => {
+    const ok = parseSettingsShape({
+      appearance: {
+        themeMode: "schedule",
+        scheduleLightStart: "07:00",
+        scheduleDarkStart: "19:00",
+        skin: "catppuccin",
+        accent: "green",
+        pluginTheme: "acme",
+        uiFontSize: 16,
+        fontBase: "Consolas",
+        fontMono: "JetBrains Mono",
+        chatShowReasoning: false,
+        showTimestamps: true,
+        chatContentWidth: "wide",
+        animations: false,
+        colorBlindFriendly: true,
+        backgroundImageOpacity: 55,
+        language: "system",
+        outputLanguage: "en",
+      },
+    });
+    expect(ok.appearance?.themeMode).toBe("schedule");
+    expect(ok.appearance?.skin).toBe("catppuccin");
+    expect(ok.appearance?.uiFontSize).toBe(16);
+    expect(ok.appearance?.chatContentWidth).toBe("wide");
+    expect(ok.appearance?.language).toBe("system");
+    // 空串的可清除字段落 undefined（清除语义）
+    const cleared = parseSettingsShape({ appearance: { skin: "", accent: "" } });
+    expect(cleared.appearance?.skin).toBeUndefined();
+    // 枚举/形状/上限 fail-closed
+    expect(() => parseSettingsShape({ appearance: { themeMode: "auto" } })).toThrow(/themeMode 非法/);
+    expect(() => parseSettingsShape({ appearance: { scheduleLightStart: "7点" } })).toThrow(/scheduleLightStart/);
+    expect(() => parseSettingsShape({ appearance: { uiFontSize: 15 } })).toThrow(/uiFontSize 非法/);
+    expect(() => parseSettingsShape({ appearance: { chatContentWidth: "max" } })).toThrow(/chatContentWidth 非法/);
+    expect(() => parseSettingsShape({ appearance: { showTimestamps: "yes" } })).toThrow(/showTimestamps 须为布尔/);
+    expect(() => parseSettingsShape({ appearance: { backgroundImage: "data:text/html;base64,AAAA" } })).toThrow(
+      /backgroundImage 须为/,
+    );
+    expect(() =>
+      parseSettingsShape({ appearance: { backgroundImage: `data:image/png;base64,${"A".repeat(4_200_001)}` } }),
+    ).toThrow(/3MB/);
+    expect(() => parseSettingsShape({ appearance: { backgroundImageOpacity: 120 } })).toThrow(
+      /backgroundImageOpacity/,
+    );
+    expect(() => parseSettingsShape({ appearance: { language: "fr" } })).toThrow(/language 非法/);
+    expect(() => parseSettingsShape({ appearance: { outputLanguage: "fr" } })).toThrow(/outputLanguage 非法/);
+    // dataURL 合法形状通过
+    const withBg = parseSettingsShape({ appearance: { backgroundImage: "data:image/png;base64,AAAA" } });
+    expect(withBg.appearance?.backgroundImage).toBe("data:image/png;base64,AAAA");
+  });
+
   it("mcp 段解析（U17/T-P3-119）：形状校验 fail-closed（重名/分隔符/args 类型/enabled）", () => {
     const s = parseSettingsShape({
       mcp: [
@@ -428,6 +480,24 @@ describe("resolveChildLaunchArgv（优先级链：显式 > env > file > 缺省�
     expect(second).toBeGreaterThan(first);
     expect(args[second + 1]).toBe("F:/data");
     expect(resolveChildLaunchArgv([], {}, settings).args).not.toContain("--write-whitelist");
+  });
+
+  it("outputLanguage 装配注入（T-P3-141）：非 auto 跟随 / auto 与缺省不注入", () => {
+    const withLang = parseSettingsShape({
+      providers: [{ name: "main", baseUrl: "https://f.example.com", model: "m" }],
+      defaultProvider: "main",
+      appearance: { outputLanguage: "en" },
+    });
+    const { args } = resolveChildLaunchArgv([], {}, withLang);
+    expect(args[args.indexOf("--output-language") + 1]).toBe("en");
+    // auto 与缺省 → 不注入（装配零变化）
+    const auto = parseSettingsShape({
+      providers: [{ name: "main", baseUrl: "https://f.example.com", model: "m" }],
+      defaultProvider: "main",
+      appearance: { outputLanguage: "auto" },
+    });
+    expect(resolveChildLaunchArgv([], {}, auto).args).not.toContain("--output-language");
+    expect(resolveChildLaunchArgv([], {}, settings).args).not.toContain("--output-language");
   });
 
   it("sandbox 段 parse：mode 闭集校验 + writeWhitelist 形状校验（fail-closed）", () => {

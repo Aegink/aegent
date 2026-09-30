@@ -124,6 +124,198 @@ body[data-theme="light"] {
   --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.12);
 }
 
+/* ==========================================================================
+   T-P3-141 批次：外观扩展（皮肤 / 强调色 / 消息流外观 / 背景）——
+   pideck 三属性同构（data-theme 既有 + data-appearance + data-accent），
+   色值只在本文件出现（取色唯一处纪律延续）；皮肤给暗亮双变体，
+   仅暗色皮肤的亮色档回退默认亮色块。
+   ========================================================================== */
+
+/* —— 皮肤：Catppuccin（暗=mocha / 亮=latte） —— */
+body[data-appearance="catppuccin"] {
+  color-scheme: dark;
+  --bg: #1e1e2e;
+  --bg-sidebar: #181825;
+  --bg-card: #313244;
+  --surface: rgba(205, 214, 244, 0.06);
+  --surface-hover: rgba(205, 214, 244, 0.12);
+  --border: rgba(205, 214, 244, 0.12);
+  --border-hover: rgba(205, 214, 244, 0.32);
+  --text: #cdd6f4;
+  --text-subtle: rgba(205, 214, 244, 0.62);
+  --text-subtlest: rgba(205, 214, 244, 0.38);
+  --brand: #89b4fa;
+  --primary: #cba6f7;
+  --primary-foreground: #1e1e2e;
+  --traj-user: #89b4fa;
+  --traj-assistant: #a6e3a1;
+  --traj-reasoning: #cba6f7;
+  --traj-tool-call: #f9e2af;
+  --traj-tool-result: #94e2d5;
+}
+body[data-appearance="catppuccin"][data-theme="light"] {
+  color-scheme: light;
+  --bg: #eff1f5;
+  --bg-sidebar: #e6e9ef;
+  --bg-card: #ffffff;
+  --surface: rgba(76, 79, 105, 0.05);
+  --surface-hover: rgba(76, 79, 105, 0.1);
+  --border: rgba(76, 79, 105, 0.14);
+  --text: #4c4f69;
+  --text-subtle: rgba(76, 79, 105, 0.66);
+  --text-subtlest: rgba(76, 79, 105, 0.4);
+  --brand: #1e66f5;
+  --primary: #8839ef;
+  --primary-foreground: #eff1f5;
+}
+
+/* —— 皮肤：Tokyonight（仅暗色——亮色档回退默认亮色块） —— */
+body[data-appearance="tokyonight"] {
+  color-scheme: dark;
+  --bg: #1a1b26;
+  --bg-sidebar: #16161e;
+  --bg-card: #24283b;
+  --surface: rgba(192, 202, 245, 0.06);
+  --surface-hover: rgba(192, 202, 245, 0.12);
+  --border: rgba(192, 202, 245, 0.12);
+  --text: #c0caf5;
+  --text-subtle: rgba(192, 202, 245, 0.62);
+  --text-subtlest: rgba(192, 202, 245, 0.38);
+  --brand: #7aa2f7;
+  --traj-user: #7aa2f7;
+  --traj-assistant: #9ece6a;
+  --traj-reasoning: #bb9af7;
+  --traj-tool-call: #e0af68;
+  --traj-tool-result: #7dcfff;
+}
+
+/* —— 皮肤：Nord（仅暗色） —— */
+body[data-appearance="nord"] {
+  color-scheme: dark;
+  --bg: #2e3440;
+  --bg-sidebar: #272c36;
+  --bg-card: #3b4252;
+  --surface: rgba(236, 239, 244, 0.06);
+  --surface-hover: rgba(236, 239, 244, 0.12);
+  --border: rgba(236, 239, 244, 0.14);
+  --text: #eceff4;
+  --text-subtle: rgba(236, 239, 244, 0.62);
+  --text-subtlest: rgba(236, 239, 244, 0.38);
+  --brand: #88c0d0;
+  --traj-user: #81a1c1;
+  --traj-assistant: #a3be8c;
+  --traj-reasoning: #b48ead;
+  --traj-tool-call: #ebcb8b;
+  --traj-tool-result: #8fbcbb;
+}
+
+/* —— 皮肤：Solarized（暗=solarized-dark / 亮=solarized-light） —— */
+body[data-appearance="solarized"] {
+  color-scheme: dark;
+  --bg: #002b36;
+  --bg-sidebar: #01212a;
+  --bg-card: #073642;
+  --surface: rgba(147, 161, 161, 0.08);
+  --surface-hover: rgba(147, 161, 161, 0.15);
+  --border: rgba(147, 161, 161, 0.18);
+  --text: #eee8d5;
+  --text-subtle: rgba(238, 232, 213, 0.62);
+  --text-subtlest: rgba(238, 232, 213, 0.38);
+  --brand: #268bd2;
+  --traj-user: #268bd2;
+  --traj-assistant: #859900;
+  --traj-reasoning: #6c71c4;
+  --traj-tool-call: #b58900;
+  --traj-tool-result: #2aa198;
+}
+body[data-appearance="solarized"][data-theme="light"] {
+  color-scheme: light;
+  --bg: #fdf6e3;
+  --bg-sidebar: #f2ebd8;
+  --bg-card: #fffbf0;
+  --surface: rgba(88, 110, 117, 0.06);
+  --surface-hover: rgba(88, 110, 117, 0.12);
+  --border: rgba(88, 110, 117, 0.18);
+  --text: #586e75;
+  --text-subtle: rgba(88, 110, 117, 0.68);
+  --text-subtlest: rgba(88, 110, 117, 0.42);
+  --brand: #268bd2;
+}
+
+/* —— 强调色（data-accent：主色/焦点/链接/图表首色联动；pideck accent 同位） —— */
+body[data-accent="green"] { --brand: #22c55e; --chart-1: #22c55e; }
+body[data-accent="violet"] { --brand: #a78bfa; --chart-1: #a78bfa; }
+body[data-accent="amber"] { --brand: #f59e0b; --chart-1: #f59e0b; }
+body[data-accent="rose"] { --brand: #fb7185; --chart-1: #fb7185; }
+body[data-accent="cyan"] { --brand: #22d3ee; --chart-1: #22d3ee; }
+
+/* —— 消息流外观（zcode messageStreamShowReasoning / grok show_timestamps 同位） —— */
+body.hide-reasoning .line.reasoning { display: none; }
+.msg-time {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtlest);
+  text-align: right;
+}
+
+/* —— 会话宽度（pi-desktop chatContentMaxWidth / pideck 60-100% 同位） —— */
+body.chat-wide #stream,
+body.chat-wide #composer .composer-box { max-width: 1100px; }
+body.chat-full #stream,
+body.chat-full #composer .composer-box { max-width: min(100%, 1400px); }
+
+/* —— 动效总开关（codex animations 同位；reduce-motion 系统偏好同样生效） —— */
+body.no-anim *,
+body.no-anim *::before,
+body.no-anim *::after {
+  transition: none !important;
+  animation: none !important;
+  scroll-behavior: auto !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* —— 色盲友好色板（claude daltonized 同位——Okabe-Ito 蓝橙安全对，防红绿混淆） —— */
+body.daltonized {
+  --success: #0092cc;
+  --warning: #e69f00;
+  --destructive: #d55e00;
+  --chart-1: #0072b2;
+  --chart-2: #e69f00;
+  --chart-3: #009e73;
+  --chart-4: #cc79a7;
+  --chart-5: #56b4e9;
+  --chart-6: #f0e442;
+  --traj-user: #0072b2;
+  --traj-assistant: #009e73;
+  --traj-reasoning: #cc79a7;
+  --traj-tool-call: #e69f00;
+  --traj-tool-result: #56b4e9;
+  --code-keyword: #0072b2;
+  --code-string: #009e73;
+}
+
+/* —— 背景图（pideck 壁纸同位：主内容区铺图 + 遮罩即"存储=图片可见度"；
+      内容面保持 token 底色——浮层可读性优先） —— */
+#view-root { position: relative; }
+#view-root > .app-bg-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+#view-root > .app-bg-layer + * { position: relative; z-index: 1; }
+
 /* 中文断行优化：标题/描述防"单字断行" */
 .text-wrap-phrase {
   text-wrap: pretty;
