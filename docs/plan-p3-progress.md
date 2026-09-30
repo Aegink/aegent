@@ -477,3 +477,11 @@ docs/20260930_UI页面重构对照清单.md 的"聊天页/会话历史页/侧栏
 
 > 批 C 完成后：进入"全面逐页重构"阶段——按 `docs/20260930_UI页面重构对照清单.md`
 > 一页一页推进（每页用户验收打勾后才下一页），提示词届时按剩余页面现写。
+
+## 开源发布（2026-09-30，用户五条指令裁决）
+
+1. **对照清单供应商页 `[x]`**（用户验收打勾——T-P3-137 四轮反馈全部确认）。
+2. **隐私清扫**：全树+全历史扫描——用户端点（中转 IP/备用域名）在 docs 3 文件 5 处 → 掩码 `<redacted-*>`；`git log -S` 全历史 key 模式零命中（当日会话用过的 key 未曾落盘）；`oss/` 上游副本从未入库（gitignore 域）；tools/test 中的 key 均为假值。
+3. **AGPL-3.0-or-later**：LICENSE 全文入库（SPDX 官方文本）+ README 免责声明六条（无担保/Agent 执行风险/模型输出自核/零遥测+密钥自管/无隶属/THIRD_PARTY 约定）+ 参考项目致谢表（MIT/Apache/LGPL-只学行为/claude-official 专有只读）+ THIRD_PARTY 顶部补本项目协议声明 + package.json license 字段。用户裁决口径："最严格的协议" = AGPL（分发与网络服务均须开放源码）。
+4. **push 授权变更**：用户明确解除"仅限本地"红线，指定 https://github.com/Aegink/aegent.git。执行：bundle 全量备份（private/repo-backup-20260930.bundle，24.9MB 本地留档）→ `git filter-branch --tree-filter` 掩码全历史（450 提交重写，docs 用户端点清零——HEAD 与 main 链 `-S` 扫描零残留）→ 删 pre-push 拦截钩子 → remote add origin → push main（**0f274bb**，643 文件；远端树抽验零 private/scratch/dist/oss 副本）。**本地 main 与远端同步同 hash；refs/original 旧历史仅本地留存**（含未掩码版——不推送）。
+5. 后续 push 纪律：仅推 `origin main`（**勿推 tag**——`research/v1` 指向旧历史对象）；敏感物继续走 private/（gitignore）。
