@@ -672,23 +672,22 @@ function draftModelCard(m) {
   const idEl = document.createElement("span");
   idEl.className = "model-id mono";
   idEl.textContent = m.id;
+  idEl.title = m.id; // 截断兜底时悬浮可见全名
   head.appendChild(idEl);
-  if (m.verified === true) {
-    const v = chipEl("✓ 已实测", true);
-    v.title = "测试连接成功（真实发送过消息）";
-    head.appendChild(v);
-  }
   if (m.alias) {
     const a = chipEl(m.alias);
     head.appendChild(a);
   }
+  // 头行 meta 短格式（pi-desktop 同款 "1M · 375k"——前缀词与思考档不进
+  // 头行，长 meta 会把模型名压成省略号、× 挤下换行——用户走查实测抓漏）
   const meta = [];
-  if (m.contextWindow !== undefined) meta.push(`上下文 ${fmtTokens(m.contextWindow)}`);
-  if (m.maxOutputTokens !== undefined) meta.push(`输出 ${fmtTokens(m.maxOutputTokens)}`);
-  if (m.reasoning) meta.push(`思考 ${m.reasoning}`);
+  if (m.verified === true) meta.push("✓");
+  if (m.contextWindow !== undefined) meta.push(fmtTokens(m.contextWindow));
+  if (m.maxOutputTokens !== undefined) meta.push(fmtTokens(m.maxOutputTokens));
   const metaEl = document.createElement("span");
   metaEl.className = "model-meta";
   metaEl.textContent = meta.join(" · ");
+  if (m.verified === true) metaEl.title = "✓ 已实测——测试连接成功（真实发送过消息）";
   head.appendChild(metaEl);
   const advBtn = btnEl(advancedOpenId === m.id ? "收起" : "高级", "btn btn-icon", "模型高级设置（别名/上下文/最大输出/思考等级）");
   advBtn.addEventListener("click", () => {

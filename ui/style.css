@@ -1060,10 +1060,11 @@ code,
   padding: 8px 12px;
 }
 
-/* 大模态双栏（左 = 服务模型清单，右 = 模型设置） */
+/* 大模态双栏（左 = 服务模型清单，右 = 模型设置——右栏是表单优先侧：
+   42:58 分栏让长模型 ID 完整显示不截断，走查反馈修正） */
 .setup-panes {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 42fr) minmax(0, 58fr);
   gap: 12px;
   min-height: 0;
 }
@@ -1137,7 +1138,7 @@ code,
 .model-card-head {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap; /* 头行不换行——✕ 删除钮永不掉行（走查反馈） */
   gap: 6px;
 }
 
@@ -1148,6 +1149,8 @@ code,
 }
 
 .model-meta {
+  flex: none; /* meta 右对齐不缩——空间压力由 model-id 截断兜底承担 */
+  white-space: nowrap;
   font-size: var(--text-ui-xs);
   color: var(--text-subtlest);
 }
