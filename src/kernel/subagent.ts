@@ -81,6 +81,15 @@ export interface SubagentRunnerDeps {
   readonly spillDir?: string;
   /** 审批上界透传（Deny broker 不消费——DenyPermissionBroker 不问超时）。 */
   readonly approvalTimeoutMs: number;
+  /**
+   * T-P3-140 批次 A：父会话的沙箱装配切片（模式路由后端 + 活 defaultMode
+   * ——子代理 bash/pwsh 与父同档同强制面）。**不带审批通道**：子代理的
+   * 升级申请类型化拒绝（fail-closed——审批是人的通道，子代理语境无人可问）。
+   */
+  readonly shellSandbox?: {
+    readonly backend: import("../sandbox/backend.js").SandboxBackend;
+    readonly defaultMode: import("../sandbox/backend.js").SandboxMode;
+  };
   /** U22/T-P3-125：附加技能来源目录（父装配 skillsRoots 透传——skill_load 面一致）。 */
   readonly skillsRoots?: readonly string[];
   /** U22/T-P3-125：停用技能名单（父装配 skillsDisabled 透传——子代理同纪律）。 */
@@ -202,11 +211,33 @@ export function createSubagentRunner(
       sessionId: childSessionId,
       ...(deps.spillDir !== undefined ? { spillDir: deps.spillDir } : {}),
     });
+    // T-P3-140 批次 A：沙箱切片捕获（非空收窄进 getter 闭包——const 收窄
+    // 对后建闭包持续生效）。
+    const shellSandbox = deps.shellSandbox;
     registerBuiltinTools(subRegistry, {
       pathGuard: subAssembly.pathGuard,
       skillsRoot: deps.workspaceRoot,
       ...(deps.skillsRoots !== undefined ? { skillsRoots: deps.skillsRoots } : {}),
       ...(deps.skillsDisabled !== undefined ? { skillsDisabled: deps.skillsDisabled } : {}),
+      // T-P3-140 批次 A：子代理与父同档同强制面（getter 保活读父
+      // configStore——派发后切档对本子代理同样生效）；无 approvals——
+      // 升级申请类型化拒绝（fail-closed：审批是人的通道，子代理语境无人可问）
+      ...(shellSandbox !== undefined
+        ? {
+            bashSandbox: {
+              backend: shellSandbox.backend,
+              get defaultMode() {
+                return shellSandbox.defaultMode;
+              },
+            },
+            pwshSandbox: {
+              backend: shellSandbox.backend,
+              get defaultMode() {
+                return shellSandbox.defaultMode;
+              },
+            },
+          }
+        : {}),
       task: {
         runSubagent: createSubagentRunner({
           ...deps,

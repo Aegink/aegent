@@ -49,7 +49,9 @@ export type SettingsOp =
    */
   | "provider-test"
   /** T-P3-137 八轮 E：审批历史（策略拒绝/审批记录——bridge 扫当前会话流）。 */
-  | "policy-audit";
+  | "policy-audit"
+  /** T-P3-140 批次 B：沙箱自检（doctor 四项检查 + 生效面一览——无载荷）。 */
+  | "sandbox-doctor";
 
 /** 技能编辑器写回载荷（op=skill-save；frontmatter + 正文的一次性形状）。 */
 export interface SkillSavePayload {
@@ -150,10 +152,11 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     op !== "plugins-list" &&
     op !== "provider-models" &&
     op !== "provider-test" &&
-    op !== "policy-audit"
+    op !== "policy-audit" &&
+    op !== "sandbox-doctor"
   ) {
     throw new Error(
-      `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|mcp-check|import|skills-list|skill-save|subagents-list|instructions-list|instruction-save|stt-transcribe|plugins-list|provider-models|provider-test|policy-audit）`,
+      `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|import|skills-list|skill-save|subagents-list|instructions-list|instruction-save|stt-transcribe|plugins-list|provider-models|provider-test|policy-audit|sandbox-doctor）`,
     );
   }
   if (op === "update") {

@@ -86,7 +86,8 @@
         "models",
         "obs",
         "policy",
-        "session"
+        "session",
+        "sandbox"
       ],
       "publicEntrypoints": [],
       "owner": "wangh"

@@ -676,6 +676,48 @@ describe("bash 沙箱升级（B15/T-P1-58）", () => {
       .properties.sandboxPermissions;
     expect(perm.enum).toEqual(["workspace-write", "danger-full-access"]);
   });
+
+  it("活 defaultMode：getter 每调用现读（config/refresh 切档即生效——T-P3-140 批次 A）", async () => {
+    const dir = tempDir();
+    const { spawns, backend } = fakeBackend();
+    let liveMode = "read-only";
+    const registry = new ToolRegistry();
+    registerBuiltinTools(registry, {
+      pathGuard: PathGuard.forWorkspace(dir),
+      bashSandbox: {
+        backend: backend as never,
+        get defaultMode() {
+          return liveMode;
+        },
+      } as never,
+    });
+    await dispatch(registry, "bash", { command: "echo a" });
+    expect(spawns[0]).toMatchObject({ mode: "read-only" });
+    liveMode = "danger-full-access"; // 模拟 config/refresh 切档（store 活值）
+    await dispatch(registry, "bash", { command: "echo b" });
+    expect(spawns[1]).toMatchObject({ mode: "danger-full-access" });
+    // 升级目标以活值为基准：已是最宽档时再升 → INVALID（不消耗审批）
+    const up = await dispatch(registry, "bash", {
+      command: "echo c",
+      sandboxPermissions: "danger-full-access",
+      justification: "已是最宽档",
+    });
+    expect(up.error?.code).toBe("SANDBOX_ESCALATION_INVALID");
+    expect(spawns).toHaveLength(2);
+  });
+
+  it("pwsh 沙箱装配：走 backend.spawn（同后端同档），无升级参数面（批次 A）", async () => {
+    const dir = tempDir();
+    const { spawns, backend } = fakeBackend();
+    const registry = new ToolRegistry();
+    registerBuiltinTools(registry, {
+      pathGuard: PathGuard.forWorkspace(dir),
+      pwshSandbox: { backend: backend as never, defaultMode: "workspace-write" },
+    });
+    const result = await dispatch(registry, "pwsh", { command: "Get-Location" });
+    expect(result.isError).toBeUndefined();
+    expect(spawns[0]).toMatchObject({ command: "Get-Location", mode: "workspace-write" });
+  });
 });
 
 // ---------------------------------------------------------------------------

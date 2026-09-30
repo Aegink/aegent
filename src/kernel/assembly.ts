@@ -45,6 +45,17 @@ import { type HookRegistry } from "./hooks.js";
 import type { JsonRecord, SessionEvent, LlmFailure } from "./events.js";
 import type { PrefixChange } from "../context/prefix-anchor.js";
 import { createNetworkGuard } from "../sandbox/network.js";
+import {
+  createRoutingBackend,
+  resolveSandboxHelperPath,
+  Win32SandboxBackend,
+} from "../sandbox/containment.js";
+import { canonicalize } from "../sandbox/workspace-sid.js";
+import { NodeExecutionEnv, type ExecutionEnv } from "./tools/env.js";
+import { createHash } from "node:crypto";
+import { mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { SessionStore } from "../session/store.js";
 import { RevertService } from "../session/revert.js";
 import {
@@ -208,6 +219,48 @@ export interface ChildAssemblyOptions {
    * 活查询，config/refresh 会话内切换即生效）。
    */
   permissionMode?: string;
+  /**
+   * T-P3-140 批次 A：沙箱模式初始（settings.sandbox.mode——settings.json
+   * 装配注入；子进程内经 SessionConfigStore.initial 转成活查询，config/
+   * refresh 会话内切换即生效，权限模式预设同样写它）。缺省 undefined =
+   * 全自动（danger-full-access 直通——既有行为零变化，装沙箱是显式选择）。
+   */
+  sandboxMode?: import("../sandbox/backend.js").SandboxMode;
+  /**
+   * T-P3-140 批次 A：沙箱模式活查询（agent-process 传 () =>
+   * configStore.sandboxMode——与 approvalMode getter 同语义：活值优先于
+   * 初始值，都缺席 = 全自动）。
+   */
+  sandboxModeProvider?: () => import("../sandbox/backend.js").SandboxMode | undefined;
+  /**
+   * T-P3-140 批次 A：helper exe 路径（测试注入/替代实现）；缺省
+   * resolveSandboxHelperPath() 三段式解析（env → 发行包伴随位 → 仓库约定）。
+   */
+  sandboxHelperPath?: string;
+  /**
+   * T-P3-140 批次 A：受限档的私有 temp 目录（dsh "tempDir: null to
+   * disable temp writes"——环境 temp 根绝不隐式授予）；缺省装配按工作区
+   * 派生一个并落盘（helper 每次 run 补 grant）。null = 显式禁 temp。
+   */
+  sandboxTempDir?: string | null;
+  /**
+   * T-P3-140 批次 A：沙箱接线显式武装（生产入口 agent-child 传 true——
+   * helper 在场即接线，defaultMode 全自动档 = local 直通零行为差）。缺省
+   * false 时仅在显式配置了初始档时接线（受限档塌缩面可测）。测试装配不
+   * 传 = 零行为变化（不依赖本机 helper 是否在场，CI 确定性）。
+   */
+  sandboxWiring?: boolean;
+  /**
+   * T-P3-140 批次 A：沙箱 local 直通档的执行环境（agent-process 传与
+   * ToolRegistry 同一个 env 实例——全自动档与无沙箱路径共用一套 spawn
+   * 面，测试注入 fake env 也同时生效两者）。缺省装配自建 NodeExecutionEnv。
+   */
+  sandboxLocalEnv?: ExecutionEnv;
+  /**
+   * T-P3-140 批次 D：工作区外的显式写白名单（PathGuard writeWhitelist
+   * 透传——codex writable_roots 同位）。缺省无 = 仅工作区可写。
+   */
+  writeWhitelist?: readonly string[];
   /**
    * B8b/T-P1-21 question 的答复等待上界（毫秒）；缺省同 approvalTimeoutMs
    * ——超时按拒结算（C50 语义复用），测试用短上界。
@@ -439,6 +492,24 @@ export interface ChildAssembly {
    */
   networkGuard?: import("../sandbox/network.js").NetworkGuard;
   /**
+   * T-P3-140 批次 A：bash/pwsh 的沙箱装配（模式路由后端 + 活 defaultMode
+   * + 升级审批通道）——agent-process 传给 registerBuiltinTools。缺省
+   * undefined = env 直通（P0 行为；escalation 参数报 SANDBOX_UNAVAILABLE）。
+   * pwshSandbox 是同一后端的"无审批"切片（受限档同样强制，但升级申请在
+   * bash 一侧——pwsh 不双开升级面）。
+   */
+  bashSandbox?: {
+    backend: import("../sandbox/backend.js").SandboxBackend;
+    readonly defaultMode: import("../sandbox/backend.js").SandboxMode;
+    approvals?: PendingApprovals;
+    sessionId?: string;
+    approvalTimeoutMs?: number;
+  };
+  pwshSandbox?: {
+    backend: import("../sandbox/backend.js").SandboxBackend;
+    readonly defaultMode: import("../sandbox/backend.js").SandboxMode;
+  };
+  /**
    * B8b/T-P1-21 question 工具依赖（与权限审批共用的同一个 PendingApprovals
    * ——不新增第二套挂起注册表）——agent-process 传给 registerBuiltinTools。
    */
@@ -642,7 +713,80 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
   /** 本 turn 已完成的模型 step 数（相位判定；轮边界重置）。 */
   let completedModelSteps = 0;
 
-  const pathGuard = PathGuard.forWorkspace(options.workspaceRoot);
+  const pathGuard =
+    options.writeWhitelist !== undefined && options.writeWhitelist.length > 0
+      ? PathGuard.forWorkspace(options.workspaceRoot, {
+          writeWhitelist: options.writeWhitelist,
+        })
+      : PathGuard.forWorkspace(options.workspaceRoot);
+
+  // —— T-P3-140 批次 A：沙箱三档生产接线（模式路由后端 + 活 defaultMode）。
+  // 受限档强制面 = win32 受限令牌 helper（缺席 → D5 fail-closed + 可见降级
+  // 告警）；全自动档恒 local 直通（既有行为零变化）。defaultMode 活值 =
+  // provider() ?? 初始 ?? 全自动；helper 缺席时受限档塌缩全自动（每档一次
+  // warn——不静默放宽，自检面板常显降级事实）。接线门槛 = 显式 opt-in
+  //（sandboxWiring）或显式初始档——最小装配与既有测试路径零变化。
+  const sandboxArmed =
+    options.sandboxWiring === true || options.sandboxMode !== undefined;
+  const sandboxHelperPath = options.sandboxHelperPath ?? resolveSandboxHelperPath();
+  const win32SandboxBackend = new Win32SandboxBackend({
+    helperPath: sandboxHelperPath,
+    workspace: options.workspaceRoot,
+    // 私有 temp 目录（dsh "tempDir: null to disable temp writes"——环境
+    // temp 根绝不隐式授予）：按 canonical 工作区路径派生独立目录并落盘
+    //（helper 每次 run 补 grant；canonical 失败回原样——派生仍确定）。
+    tempDir:
+      options.sandboxTempDir !== undefined
+        ? options.sandboxTempDir
+        : (() => {
+            const dir = path.join(
+              tmpdir(),
+              `aegent-sandbox-${createHash("sha256").update(canonicalize(options.workspaceRoot)).digest("hex").slice(0, 16)}`,
+            );
+            try {
+              mkdirSync(dir, { recursive: true });
+            } catch {
+              // temp 目录建不了 = temp 面放弃（workspace-write 仍可用），
+              // 不炸装配——helper 侧 grant 缺目录会类型化报错。
+            }
+            return dir;
+          })(),
+  });
+  const sandboxExecutionEnv: ExecutionEnv = options.sandboxLocalEnv ?? new NodeExecutionEnv();
+  const sandboxBackend = createRoutingBackend({
+    ...(win32SandboxBackend.isHelperAvailable() ? { restricted: win32SandboxBackend } : {}),
+    localEnv: sandboxExecutionEnv,
+    ...(logger !== undefined
+      ? { logger: { warn: (message: string) => logger.warn(message) } }
+      : {}),
+  });
+  const degradedWarnedModes = new Set<string>();
+  const sandboxDefaultMode = (): import("../sandbox/backend.js").SandboxMode => {
+    const configured = options.sandboxModeProvider?.() ?? options.sandboxMode;
+    if (configured === undefined || configured === "danger-full-access") {
+      return "danger-full-access";
+    }
+    if (!win32SandboxBackend.isHelperAvailable()) {
+      if (!degradedWarnedModes.has(configured)) {
+        degradedWarnedModes.add(configured);
+        logger?.warn(
+          `子进程管辖降级：沙箱档「${configured}」配置在场但 helper 不在场` +
+            `（${sandboxHelperPath}）——bash/pwsh 按全自动降级运行，升级申请不受理` +
+            `（自检面板常显此事实；恢复强管辖后新会话即真实强制）。`,
+        );
+      }
+      return "danger-full-access";
+    }
+    return configured;
+  };
+  const shellSandbox = sandboxArmed
+    ? {
+        backend: sandboxBackend,
+        get defaultMode() {
+          return sandboxDefaultMode();
+        },
+      }
+    : undefined;
 
   // —— modelRequest 层：系统提示 + 新窗口重建 + 调用后压力测量
   const contextLayer: ChainLayer<
@@ -996,6 +1140,23 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
     ...(options.networkPolicy !== undefined
       ? {
           networkGuard: createNetworkGuard({ policy: options.networkPolicy }),
+        }
+      : {}),
+    // T-P3-140 批次 A：沙箱三档接线（武装时暴露——agent-process 传
+    // registerBuiltinTools；bash 带升级审批通道，pwsh 是无升级切片）。
+    ...(shellSandbox !== undefined
+      ? {
+          bashSandbox: {
+            backend: shellSandbox.backend,
+            defaultMode: shellSandbox.defaultMode,
+            approvals: pending,
+            sessionId,
+            approvalTimeoutMs: options.approvalTimeoutMs,
+          },
+          pwshSandbox: {
+            backend: shellSandbox.backend,
+            defaultMode: shellSandbox.defaultMode,
+          },
         }
       : {}),
     // B8b/T-P1-21：question 依赖（共用 pending 注册表）+ 协议答复处理；

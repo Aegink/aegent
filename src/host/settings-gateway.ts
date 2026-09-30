@@ -30,6 +30,7 @@ import { probeServer } from "../mcp/registry-bridge.js";
 import { homedir } from "node:os";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { sandboxDoctorOp } from "./settings-sandbox-doctor.js";
 import {
   instructionPaths,
   listInstructions,
@@ -191,6 +192,11 @@ export interface SettingsGateway {
    * 可以使用；回执带回复摘要与延迟，错误转文案不上抛）。
    */
   providerTest(payload: ProviderTestPayload): Promise<ProviderTestResult>;
+  /**
+   * T-P3-140 批次 B：沙箱自检（doctor 四项检查 + 生效面一览——沙箱页
+   * 自检卡的数据面；装配与回执在 settings-sandbox-doctor 域文件）。
+   */
+  sandboxDoctor(): ReturnType<typeof sandboxDoctorOp>;
 }
 
 /** 生产缺省探测依赖（真网络——tests 注入 fake）。 */
@@ -373,5 +379,9 @@ export class FileSettingsGateway implements SettingsGateway {
   /** T-P3-137：真实对话测试（发"你好"——成功才算可以使用）。 */
   async providerTest(payload: ProviderTestPayload): Promise<ProviderTestResult> {
     return providerTestOp(this.credentials, payload);
+  }
+
+  async sandboxDoctor() {
+    return sandboxDoctorOp(this.settingsPath, this.workspaceRoot);
   }
 }

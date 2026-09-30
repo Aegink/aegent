@@ -34,6 +34,7 @@ import {
   validateEscalationArgs,
 } from "../../../sandbox/escalation.js";
 import type { SandboxMode } from "../../../sandbox/backend.js";
+import { SandboxUnavailableError } from "../../../sandbox/backend.js";
 import type { PendingApprovals } from "../../../policy/pending.js";
 import { isSpawnFailure, markStarted } from "../bash-retry-guard.js";
 import type { ToolContext } from "../context.js";
@@ -255,6 +256,11 @@ export function createBashTool(options: {
         // D15：命令已启动——成功结果同样标记（自动重发会产生重复副作用）
         return markStarted(toResult(result));
       } catch (e) {
+        if (e instanceof SandboxUnavailableError) {
+          // fail-closed 拒绝发生在 spawn 前——命令未启动，无 started 标记
+          //（与 isSpawnFailure 同语义位：重试安全，但会得到同样的类型化拒绝）
+          return toolError("BashError", e.code, e.message);
+        }
         if (e instanceof TimeoutError) {
           // 子进程已启动后被 kill（env 实现层回收）——已启动，标记
           return markStarted(

@@ -33,6 +33,7 @@ import { createOpenAiCompatProvider } from "../models/openai-compat.js";
 import { createGoogleGenerateProvider } from "../models/google-generate.js";
 import { createAnthropicMessagesProvider } from "../models/anthropic-messages.js";
 import { withRetry, type RetryObservation } from "../models/retry.js";
+import { SANDBOX_MODES, type SandboxMode } from "../sandbox/backend.js";
 import type { RegisteredModel } from "./model-switch.js";
 import {
   globalAgentsFile,
@@ -60,6 +61,13 @@ interface ChildCliArgs {
   /** T-P3-137 八轮 A：权限模式（settings.permission.mode 注入；configStore 初始）。 */
   permissionMode?: string;
   network?: string;
+  /**
+   * T-P3-140 批次 A：沙箱模式（settings.sandbox.mode 注入；闭集校验在
+   * main 入口——坏值启动即败，fail-closed）。
+   */
+  sandboxMode?: string;
+  /** T-P3-140 批次 A/D：工作区外写白名单（可重复 --write-whitelist 收集）。 */
+  writeWhitelist?: string[];
   apiKey?: string;
   baseUrl?: string;
   model?: string;
@@ -95,6 +103,11 @@ function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv): ChildCliArg
     else if (a === "--permission-mode" && i + 1 < argv.length)
       args.permissionMode = argv[++i];
     else if (a === "--network" && i + 1 < argv.length) args.network = argv[++i];
+    // T-P3-140 批次 A：沙箱档 argv 面（settings 翻译注入 / CLI 显式两路）
+    else if (a === "--sandbox-mode" && i + 1 < argv.length) args.sandboxMode = argv[++i];
+    else if (a === "--write-whitelist" && i + 1 < argv.length) {
+      (args.writeWhitelist ??= []).push(argv[++i] ?? "");
+    }
     else if (a === "--persona" && i + 1 < argv.length) args.persona = argv[++i];
     // U1/T-P3-101：settings 档经父进程翻译注入的模型面槽位（此前只有 env
     // 回退——settings.json 的 providers 条目需要 argv 面才能在 env 缺位时
@@ -252,6 +265,13 @@ async function main(): Promise<void> {
   if (cli.network !== undefined && cli.network !== "allow" && cli.network !== "deny") {
     throw new Error(`--network 只接受 allow|deny，收到：${cli.network}`);
   }
+  // T-P3-140 批次 A：沙箱档闭集校验（坏值启动即败——fail-closed 装配纪律）
+  if (cli.sandboxMode !== undefined && !(SANDBOX_MODES as readonly string[]).includes(cli.sandboxMode)) {
+    throw new Error(
+      `--sandbox-mode 非法：${cli.sandboxMode}（合法：${SANDBOX_MODES.join("|")}）`,
+    );
+  }
+  cli.writeWhitelist = (cli.writeWhitelist ?? []).filter((w) => w !== "");
   // N1/T-P1-110：wire 通道（--session / env AEGENT_SESSION）提供的会话 id
   // 过形状校验（防御性——CLI 侧已生成/校验，子进程不信 wire）；缺省 "s0"
   // 是 mock/测试脚手架值（进程内构造面与脚手架路径不校验，记档）。
@@ -376,7 +396,12 @@ async function main(): Promise<void> {
           },
         }
       : {}),
-    ...(cli.provider === "openai" || cli.db || cli.workspace || cli.contextWindow !== undefined
+    ...(cli.provider === "openai" ||
+    cli.db ||
+    cli.workspace ||
+    cli.contextWindow !== undefined ||
+    cli.sandboxMode !== undefined ||
+    (cli.writeWhitelist !== undefined && cli.writeWhitelist.length > 0)
       ? {
           assembly: {
             workspaceRoot: cli.workspace ?? process.cwd(),
@@ -391,6 +416,16 @@ async function main(): Promise<void> {
             // T-P3-137 八轮 A：权限模式（--permission-mode 注入——configStore
             // 初始 approvalMode；会话内切换经 config/refresh 通道）
             ...(cli.permissionMode !== undefined ? { permissionMode: cli.permissionMode } : {}),
+            // T-P3-140 批次 A：沙箱三档（--sandbox-mode 注入；闭集已校验；
+            // sandboxWiring 武装生产入口——helper 在场即接线，全自动档
+            // local 直通零行为差）+ 写白名单（批次 D——PathGuard 透传）
+            sandboxWiring: true,
+            ...(cli.sandboxMode !== undefined
+              ? { sandboxMode: cli.sandboxMode as SandboxMode }
+              : {}),
+            ...(cli.writeWhitelist !== undefined && cli.writeWhitelist.length > 0
+              ? { writeWhitelist: cli.writeWhitelist }
+              : {}),
             // B8a/T-P1-20：网络档（--network allow|deny）——提供时装配创建
             // NetworkGuard 并注册 webfetch；缺省无网络工具（fail-closed；
             // 非法值已在 main 入口拒绝）

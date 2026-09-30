@@ -24,6 +24,13 @@ import type { ExecOptions, ExecResult, ExecutionEnv } from "../kernel/tools/env.
 /** 命令允许的文件效果档位（dsh sandbox 契约词汇，冻结只追加）。 */
 export type SandboxMode = "read-only" | "workspace-write" | "danger-full-access";
 
+/** 模式闭集（parse/CLI/UI 共用的单一来源——词汇行业收敛，见调研报告 §一.2）。 */
+export const SANDBOX_MODES: readonly SandboxMode[] = [
+  "read-only",
+  "workspace-write",
+  "danger-full-access",
+];
+
 export const SANDBOX_UNAVAILABLE = "SANDBOX_UNAVAILABLE";
 
 /** 请求的模式无法被当前后端强制时抛出（绝不降级为不受限运行）。 */

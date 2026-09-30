@@ -26,6 +26,7 @@ import type { SessionStore } from "../session/store.js";
 import { SqliteEventStorage } from "../session/db.js";
 // U9/U10/U12 查询面的 op 分流实现拆分至 query-gateway.ts（行数纪律拆分）
 import { handleHostQuery } from "./query-gateway.js";
+import { buildPolicyAuditEntries } from "./policy-audit-op.js";
 import type { InstructionTarget } from "./protocol-settings.js";
 import { AgentHost } from "./registry.js";
 import {
@@ -282,30 +283,13 @@ export class HostBridge implements SessionRouter {
           throw error;
         }
         if (call.op === "policy-audit") {
-          // T-P3-137 八轮 E：审批历史——扫当前会话流的策略拒绝与审批答复
-          // （store 在 bridge 手里，gateway 无 store 故在此拦截）。
+          // 审批历史（八轮 E——扫描逻辑在 policy-audit-op 域文件；store 在 bridge 手里故在此拦截）
           const sessionId = this.options.host.sessionId;
           const store = this.options.store;
           const all = store === undefined ? [] : store.load(sessionId);
-          // tool/result 不带工具名（name 在 tool/call）——先建 callId 映射
-          const callNames = new Map<string, string>();
-          for (const ev of all) {
-            if (ev.type === "tool/call") callNames.set(ev.callId, ev.name);
-          }
-          const entries: { time: string; tool: string; reason: string }[] = [];
-          for (const ev of [...all].reverse()) {
-            if (entries.length >= 50) break;
-            if (ev.type !== "tool/result" || ev.message?.isError !== true) continue;
-            const err = ev.error as { name?: unknown; reason?: unknown } | undefined;
-            if (err?.name !== "PolicyGate") continue;
-            entries.push({
-              time: new Date(ev.ts).toLocaleString("zh-CN"),
-              tool: callNames.get(ev.callId) ?? "?",
-              reason: typeof err.reason === "string" ? err.reason.slice(0, 120) : "",
-            });
-          }
-          return { entries };
+          return { entries: buildPolicyAuditEntries(all) };
         }
+        if (call.op === "sandbox-doctor") return gateway.sandboxDoctor();
         if (call.op === "get") return { settings: await gateway.get() };
         if (call.op === "update") return { settings: await gateway.update(call.patch ?? {}) };
         if (call.op === "credentials-set") {

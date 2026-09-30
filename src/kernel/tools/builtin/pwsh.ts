@@ -25,6 +25,7 @@ import type { ToolExecutionResult } from "../../loop.js";
 import { TimeoutError } from "../../timeout.js";
 import { analyzeShellCommand } from "../../../policy/shell-semantics.js";
 import { PathGuard, PathGuardError } from "../../../sandbox/path-guard.js";
+import { SandboxUnavailableError } from "../../../sandbox/backend.js";
 import { isSpawnFailure, markStarted } from "../bash-retry-guard.js";
 import type { ToolContext } from "../context.js";
 import type { ToolDef } from "../registry.js";
@@ -32,7 +33,20 @@ import { toolError } from "./util.js";
 import { MAX_TIMEOUT_SECONDS, toResult } from "./bash.js";
 import type { BashArgs } from "./bash.js";
 
-export function createPwshTool(options: { pathGuard: PathGuard }): ToolDef {
+export function createPwshTool(options: {
+  pathGuard: PathGuard;
+  /**
+   * T-P3-140 批次 A：沙箱装配（模式路由后端 + 活 defaultMode）。提供时
+   * 命令走 backend.spawn（mode = 每次调用读的 defaultMode——getter 保活
+   * 读 configStore；helper 在场时受限档真实强制）。缺省 env 直通（P0
+   * 行为）。**无升级参数**：升级面只在 bash 一侧（pwsh 双开会造出第二
+   * 升级通道，审批语义复杂度不值——受限档同样强制，足额）。
+   */
+  sandbox?: {
+    backend: import("../../../sandbox/backend.js").SandboxBackend;
+    readonly defaultMode: import("../../../sandbox/backend.js").SandboxMode;
+  };
+}): ToolDef {
   return {
     name: "pwsh",
     async execute(args, ctx: ToolContext) {
@@ -64,7 +78,9 @@ export function createPwshTool(options: { pathGuard: PathGuard }): ToolDef {
         }
         throw e;
       }
-      if (!ctx.env) {
+      // 沙箱装配在场时 env 缺位不再是错误（backend.spawn 承担执行——bash
+      // 同款语义）；两者都缺席才是装配缺失。
+      if (!ctx.env && options.sandbox === undefined) {
         return toolError(
           "PwshError",
           "EXECUTION_ENV_MISSING",
@@ -76,10 +92,23 @@ export function createPwshTool(options: { pathGuard: PathGuard }): ToolDef {
         timeout !== undefined ? `命令已启动（超时 ${String(timeout)}s）` : "命令已启动",
       );
       try {
-        const result = await ctx.env.exec(
-          command,
-          timeout !== undefined ? { timeoutMs: timeout * 1000 } : undefined,
-        );
+        // T-P3-140 批次 A：沙箱装配在场 → backend.spawn（mode 每调用活读
+        // ——helper 缺席时受限档塌缩全自动由装配 getter 承担，工具面只见
+        // 后端语义）；缺省 env 直通（P0 行为）。超时 kill 语义由后端决定
+        //（win32 helper 回 TIMEOUT → TimeoutError，local 直通等价 env）。
+        const sandboxOptions = options.sandbox;
+        const result =
+          sandboxOptions !== undefined
+            ? await sandboxOptions.backend.spawn({
+                command,
+                mode: sandboxOptions.defaultMode,
+                ...(timeout !== undefined ? { timeoutMs: timeout * 1000 } : {}),
+              })
+            : // env 分支：上方守卫保证无沙箱时 ctx.env 必在位（断言注释）
+              await ctx.env!.exec(
+                command,
+                timeout !== undefined ? { timeoutMs: timeout * 1000 } : undefined,
+              );
         return markStarted(toResult(result));
       } catch (e) {
         if (e instanceof TimeoutError) {
@@ -91,6 +120,11 @@ export function createPwshTool(options: { pathGuard: PathGuard }): ToolDef {
               "execution timed out",
             ),
           );
+        }
+        if (e instanceof SandboxUnavailableError) {
+          // fail-closed 拒绝发生在 spawn 前——命令未启动，无 started 标记
+          //（与 isSpawnFailure 同语义位：可安全重试，但重试也会同样拒绝）
+          return toolError("PwshError", e.code, e.message);
         }
         if (isSpawnFailure(e)) {
           return toolError(

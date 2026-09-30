@@ -25,6 +25,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { locateJsonError } from "../models/config.js";
+import { SANDBOX_MODES, type SandboxMode } from "../sandbox/backend.js";
 import { isValidSubagentSlug, type SubagentDefinition } from "./subagents-config.js";
 
 // ---------------------------------------------------------------------------
@@ -221,8 +222,19 @@ export interface SettingsShape {
     approvalTimeoutMs?: number;
     mode?: PermissionMode;
   };
-  /** 沙箱档（B8a 网络档 + workspace/事件库落位）。 */
-  sandbox?: { network?: "allow" | "deny"; workspace?: string; db?: string };
+  /**
+   * 沙箱档（B8a 网络档 + workspace/事件库落位）。T-P3-140 批次 A：mode =
+   * 沙箱三档（read-only / workspace-write / danger-full-access——闭集见
+   * sandbox/backend.ts SANDBOX_MODES；缺省 = 全自动直通）；writeWhitelist
+   * = 工作区外显式写白名单（PathGuard writeWhitelist 装配透传）。
+   */
+  sandbox?: {
+    network?: "allow" | "deny";
+    mode?: import("../sandbox/backend.js").SandboxMode;
+    writeWhitelist?: readonly string[];
+    workspace?: string;
+    db?: string;
+  };
   /** 外观（U14 主题全端一致暗/亮；语言 zh-CN 缺省）。 */
   appearance?: { theme?: "dark" | "light"; language?: "zh-CN" | "en" };
   /** 日志（U14/T-P3-132 #28 补落——E14 原始分片日志目录的持久化位；空 = 缺省不写）。 */
@@ -284,7 +296,14 @@ export interface ProfileEntry {
   defaultProvider: string;
   defaultModel?: string;
   permission?: { approvalTimeoutMs?: number };
-  sandbox?: { network?: "allow" | "deny"; workspace?: string; db?: string };
+  /** T-P3-140 批次 F：组合档带沙箱 mode（切换 = 批量写生效段，含 mode）。 */
+  sandbox?: {
+    network?: "allow" | "deny";
+    mode?: import("../sandbox/backend.js").SandboxMode;
+    writeWhitelist?: readonly string[];
+    workspace?: string;
+    db?: string;
+  };
 }
 
 /** 缺省配置（无文件无环境也能启动——echo provider 最小装配）。 */
@@ -507,8 +526,31 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
     if (network !== undefined && network !== "allow" && network !== "deny") {
       throw new SettingsError(`sandbox.network 非法：${String(network)}（合法：allow|deny）`);
     }
+    // T-P3-140 批次 A：沙箱模式闭集校验（SANDBOX_MODES 单一来源）；缺省
+    // undefined = 全自动直通（装配侧语义，settings 面不设默认值）。
+    const mode = s["mode"];
+    if (mode !== undefined && !(SANDBOX_MODES as readonly string[]).includes(mode as string)) {
+      throw new SettingsError(
+        `sandbox.mode 非法：${String(mode)}（合法：${SANDBOX_MODES.join("|")}）`,
+      );
+    }
+    // T-P3-140 批次 D：写白名单（非空字符串数组，去重保序——PathGuard
+    // writeWhitelist 装配透传）。
+    const whitelist = s["writeWhitelist"];
+    if (whitelist !== undefined) {
+      if (
+        !Array.isArray(whitelist) ||
+        whitelist.some((w) => typeof w !== "string" || w.trim() === "")
+      ) {
+        throw new SettingsError("sandbox.writeWhitelist 须为非空字符串数组");
+      }
+    }
     out.sandbox = {
       ...(network !== undefined ? { network: network as "allow" | "deny" } : {}),
+      ...(mode !== undefined ? { mode: mode as SandboxMode } : {}),
+      ...(whitelist !== undefined
+        ? { writeWhitelist: [...new Set((whitelist as string[]).map((w) => w.trim()))] }
+        : {}),
       ...(assertString(s["workspace"], "sandbox.workspace") !== undefined
         ? { workspace: s["workspace"] as string }
         : {}),
@@ -589,6 +631,26 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
       const sandbox = e["sandbox"];
       if (sandbox !== undefined && (sandbox === null || typeof sandbox !== "object" || Array.isArray(sandbox))) {
         throw new SettingsError("profiles[].sandbox 须为对象");
+      }
+      // T-P3-140 批次 F：组合档沙箱段字段校验（mode 闭集 + writeWhitelist
+      // 形状——与顶层 sandbox 段同一纪律；缺省字段宽容省略）。
+      if (sandbox !== undefined) {
+        const ps = sandbox as Record<string, unknown>;
+        if (ps["mode"] !== undefined && !(SANDBOX_MODES as readonly string[]).includes(ps["mode"] as string)) {
+          throw new SettingsError(
+            `profiles[].sandbox.mode 非法：${String(ps["mode"])}（合法：${SANDBOX_MODES.join("|")}）`,
+          );
+        }
+        if (
+          ps["writeWhitelist"] !== undefined &&
+          (!Array.isArray(ps["writeWhitelist"]) ||
+            (ps["writeWhitelist"] as unknown[]).some((w) => typeof w !== "string" || w.trim() === ""))
+        ) {
+          throw new SettingsError("profiles[].sandbox.writeWhitelist 须为非空字符串数组");
+        }
+        if (ps["network"] !== undefined && ps["network"] !== "allow" && ps["network"] !== "deny") {
+          throw new SettingsError(`profiles[].sandbox.network 非法：${String(ps["network"])}`);
+        }
       }
       out.profiles!.push({
         name,
@@ -947,6 +1009,10 @@ function parseChildArgs(childArgs: readonly string[]): {
   network?: string;
   approvalTimeoutMs?: number;
   permissionMode?: string;
+  /** T-P3-140 批次 A：沙箱模式显式槽（settings 档只在缺位时注入）。 */
+  sandboxMode?: string;
+  /** T-P3-140 批次 A：写白名单显式槽（逐条 --write-whitelist 收集）。 */
+  writeWhitelist?: readonly string[];
   contextWindow?: number;
   rawLogDir?: string;
 } {
@@ -959,12 +1025,21 @@ function parseChildArgs(childArgs: readonly string[]): {
     network?: string;
     approvalTimeoutMs?: number;
     permissionMode?: string;
+    sandboxMode?: string;
+    writeWhitelist?: string[];
     contextWindow?: number;
     rawLogDir?: string;
   } = {};
   const pick = (flag: string): string | undefined => {
     const i = childArgs.indexOf(flag);
     return i >= 0 && i + 1 < childArgs.length ? childArgs[i + 1] : undefined;
+  };
+  const pickAll = (flag: string): string[] => {
+    const values: string[] = [];
+    for (let i = 0; i < childArgs.length; i++) {
+      if (childArgs[i] === flag && i + 1 < childArgs.length) values.push(childArgs[i + 1] ?? "");
+    }
+    return values;
   };
   out.provider = pick("--provider");
   out.model = pick("--model");
@@ -974,6 +1049,9 @@ function parseChildArgs(childArgs: readonly string[]): {
   out.network = pick("--network");
   out.rawLogDir = pick("--raw-log-dir");
   out.permissionMode = pick("--permission-mode");
+  out.sandboxMode = pick("--sandbox-mode");
+  const whitelist = pickAll("--write-whitelist").filter((w) => w !== "");
+  if (whitelist.length > 0) out.writeWhitelist = whitelist;
   const timeout = pick("--approval-timeout");
   if (timeout !== undefined) out.approvalTimeoutMs = Number(timeout);
   const window = pick("--context-window");
@@ -1033,6 +1111,16 @@ export function resolveChildLaunchArgv(
   inject("--db", explicit.db ?? env["AEGENT_DB"] ?? settings.sandbox?.db);
   inject("--workspace", explicit.workspace ?? settings.sandbox?.workspace);
   inject("--network", explicit.network ?? settings.sandbox?.network);
+  // T-P3-140 批次 A：沙箱三档 + 写白名单的 argv 注入（显式参数优先——
+  // 沙箱是安全面，settings 档只在显式槽缺位时生效；白名单逐条重复注入）
+  if (explicit.sandboxMode === undefined && settings.sandbox?.mode !== undefined) {
+    inject("--sandbox-mode", settings.sandbox.mode);
+  }
+  if (explicit.writeWhitelist === undefined && (settings.sandbox?.writeWhitelist?.length ?? 0) > 0) {
+    for (const w of settings.sandbox?.writeWhitelist ?? []) {
+      inject("--write-whitelist", w);
+    }
+  }
   // U14/T-P3-132（#28）：日志分节的装配消费——E14 原始分片日志目录随配置档
   // 注入（agent-child 既有 --raw-log-dir / AEGENT_RAW_LOG_DIR 面零改动）。
   inject("--raw-log-dir", explicit.rawLogDir ?? env["AEGENT_RAW_LOG_DIR"] ?? settings.logging?.rawLogDir);

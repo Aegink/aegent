@@ -76,24 +76,51 @@ export const SECTIONS_HTML = `
 </section>
 <section data-section="sandbox">
   <div class="section-head"><h2 class="section-title">沙箱档</h2></div>
+
+  <div class="group-title">沙箱模式 <span class="badge">bash / pwsh</span></div>
+  <p class="hint">命令子进程的文件效果档——helper 强制面在场时<b>真实生效</b>（受限令牌 + ACL + 进程树管辖）。全局默认（新会话起效）；保存后当前会话立即热切换。缺省 = 全自动（直通）。</p>
+  <div id="sandbox-mode-list" class="tile-list"></div>
+
+  <div class="group-title">网络档</div>
   <div class="row-list">
     <div class="row">
       <div class="row-copy">
         <div class="row-title">网络档</div>
-        <div class="row-desc">工作区进程的网络访问档（allow 放行 / deny 拒绝）</div>
+        <div class="row-desc">工具层网络入口（webfetch 等）的放行/拒绝——deny 档与路径守卫、权限链互不影响</div>
       </div>
       <div class="row-control">
         <select id="sandbox-network" class="select">
           <option value="">（未设置）</option>
-          <option value="allow">allow</option>
-          <option value="deny">deny</option>
+          <option value="allow">allow（放行）</option>
+          <option value="deny">deny（拒绝）</option>
         </select>
       </div>
     </div>
+  </div>
+  <p class="hint" id="sandbox-network-hint">deny 档当前只承诺工具层拦截；OS 级强制（WFP + 专用账户）需一次性 provision——自检会给出当前强制面与修复命令。allow 档也恒拦云元数据端点（IMDS/SSRF 防护）。</p>
+
+  <div class="group-title">写白名单 <span class="badge">工作区外</span></div>
+  <p class="hint">工作区之外的显式可写目录（出口级守卫——任何批准都绕不过）。改动新会话生效。</p>
+  <div id="sandbox-whitelist" class="row-list"></div>
+  <div class="perm-add-row">
+    <input id="sandbox-whitelist-add" class="input" type="text" placeholder="目录绝对路径，如 F:\shared-libs" autocomplete="off" />
+    <button id="sandbox-whitelist-append" type="button" class="btn">＋ 添加</button>
+  </div>
+
+  <div class="group-title">内置保护 <span class="badge">只读展示</span></div>
+  <p class="hint">以下名字/路径在任何档位都被保护（防改配置提权、防凭据外带）——内核内置，不可配置。</p>
+  <div id="sandbox-protected" class="row-list"></div>
+
+  <div class="group-title">自检 <span class="badge">doctor</span></div>
+  <div id="sandbox-doctor" class="row-list"></div>
+  <div class="form-actions"><button id="sandbox-doctor-refresh" type="button" class="btn">运行自检</button></div>
+
+  <div class="group-title">落位</div>
+  <div class="row-list">
     <div class="row">
       <div class="row-copy">
         <div class="row-title">工作区</div>
-        <div class="row-desc">沙箱可见的 workspace 目录</div>
+        <div class="row-desc">沙箱可见的工作区目录（守卫边界基座）</div>
       </div>
       <div class="row-control"><input id="sandbox-workspace" class="input input-wide" type="text" placeholder="（未设置）" autocomplete="off" /></div>
     </div>
@@ -147,6 +174,12 @@ export const SECTIONS_HTML = `
       <option value="">网络档：跟随全局（可选）</option>
       <option value="allow">allow</option>
       <option value="deny">deny</option>
+    </select>
+    <select id="profile-sandbox-mode" class="select">
+      <option value="">沙箱档：跟随全局（可选）</option>
+      <option value="read-only">read-only（只读）</option>
+      <option value="workspace-write">workspace-write（工作区写入）</option>
+      <option value="danger-full-access">danger-full-access（全自动）</option>
     </select>
     <div class="form-actions">
       <button id="profile-snapshot" type="button" class="btn">填入当前生效值</button>
@@ -469,10 +502,198 @@ async function refreshPolicyAudit() {
     const titleEl = document.createElement("div");
     titleEl.className = "row-title mono";
     titleEl.textContent = e.tool;
+    // T-P3-140 批次 E：沙箱升级标记（徽标 + 理由——fail-closed 的可见事实）
+    if (e.escalation) titleEl.appendChild(chipEl(`沙箱升级→${e.escalation}`, true));
     const descEl = document.createElement("div");
     descEl.className = "row-desc";
-    descEl.textContent = `${e.reason}（${e.time}）`;
+    descEl.textContent = e.justification
+      ? `${e.reason}（理由：${e.justification} · ${e.time}）`
+      : `${e.reason}（${e.time}）`;
     row.append(rowCopyEl(titleEl, descEl));
+    box.appendChild(row);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 沙箱档（T-P3-140 批次 A/B/C/D——三档模式卡 + doctor 自检 + 写白名单 +
+// 内置保护展示）。模式目录与 src/sandbox/backend.ts SANDBOX_MODES 及
+// session-config REFRESHABLE_CONFIG_KEYS 同源——前端零构建链复制，改动需
+// 两侧同步。缺省档 = danger-full-access（直通，与既有行为零差）。
+// ---------------------------------------------------------------------------
+
+const SANDBOX_MODE_UI = [
+  {
+    name: "read-only",
+    label: "只读",
+    desc: "命令以只读令牌运行——工作区与全部路径写拒绝（探索/评估陌生项目）",
+  },
+  {
+    name: "workspace-write",
+    label: "工作区写入",
+    desc: "仅工作区与私有 temp 可写，其余全盘只读 + 进程树管辖（日常推荐）",
+  },
+  {
+    name: "danger-full-access",
+    label: "全自动",
+    desc: "无强制（直通）——升级申请面收口；deny 规则与出口守卫仍然拦截",
+  },
+];
+
+function renderSandboxModes() {
+  const box = document.getElementById("sandbox-mode-list");
+  if (box === null) return;
+  box.replaceChildren();
+  const current = settingsCache?.sandbox?.mode ?? "danger-full-access";
+  for (const mode of SANDBOX_MODE_UI) {
+    const row = rowEl();
+    const titleEl = document.createElement("div");
+    titleEl.className = "row-title";
+    titleEl.textContent = mode.label;
+    if (current === mode.name) titleEl.appendChild(chipEl("当前", true));
+    const descEl = document.createElement("div");
+    descEl.className = "row-desc";
+    descEl.textContent = mode.desc;
+    const useBtn = btnEl(current === mode.name ? "使用中" : "启用", "btn", `切换沙箱模式 ${mode.label}`);
+    useBtn.disabled = current === mode.name;
+    useBtn.addEventListener("click", () => void applySandboxMode(mode.name));
+    row.append(rowCopyEl(titleEl, descEl), rowControl(useBtn));
+    box.appendChild(row);
+  }
+}
+
+async function applySandboxMode(name) {
+  // 全局默认持久化（新会话起效）+ 当前会话热切换（config/refresh 即时生效
+  // ——sandboxMode 在 REFRESHABLE_CONFIG_KEYS 白名单，权限模式预设同通道）
+  settingsCache.sandbox = { ...(settingsCache.sandbox ?? {}), mode: name };
+  markDirty("sandbox");
+  const sid = getSessionId();
+  if (sid !== "") {
+    try {
+      await sendRequest(sid, { type: "config/refresh", patch: { sandboxMode: name } });
+      toast(`沙箱模式已切换：${name}（当前会话即时生效 + 新会话默认）`, "info");
+    } catch {
+      toast(`沙箱模式已保存：${name}（新会话生效——当前会话切换失败）`, "warn");
+    }
+  } else {
+    toast(`沙箱模式已保存：${name}（新会话生效）`, "info");
+  }
+  renderSandboxModes();
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast("已复制到剪贴板", "info");
+  } catch {
+    toast("复制失败（WebView 剪贴板不可用）", "warn");
+  }
+}
+
+const DOCTOR_STATUS_ICON = { ok: "✔", warn: "▲", error: "✘" };
+
+async function refreshSandboxDoctor() {
+  const box = document.getElementById("sandbox-doctor");
+  if (box === null) return;
+  box.replaceChildren();
+  const envelope = await sendSettings({ op: "sandbox-doctor" });
+  if (!envelope.ok) {
+    box.appendChild(emptyState("自检不可用", envelope.error?.message ?? ""));
+    return;
+  }
+  const d = envelope.result;
+  // 生效面一览行（模式 × 后端——降级事实常显，不静默）
+  const backendLine = d.helperAvailable
+    ? "win32 受限令牌 helper（强管辖）"
+    : "local 弱兜底（受限档不可用——命令未启动即报错）";
+  const modeLine = d.sandboxMode ?? "danger-full-access（缺省）";
+  const overview = rowEl();
+  const overviewCopy = rowCopyEl(
+    Object.assign(document.createElement("div"), {
+      className: "row-title",
+      textContent: `生效模式：${modeLine}`,
+    }),
+    Object.assign(document.createElement("div"), {
+      className: "row-desc",
+      textContent: `强制后端：${backendLine} · helper 路径：${d.helperPath}`,
+    }),
+  );
+  overview.appendChild(overviewCopy);
+  box.appendChild(overview);
+  for (const check of d.checks ?? []) {
+    const row = rowEl();
+    const titleEl = document.createElement("div");
+    titleEl.className = "row-title";
+    titleEl.textContent = `${DOCTOR_STATUS_ICON[check.status] ?? "?"} ${check.title}`;
+    const descEl = document.createElement("div");
+    descEl.className = "row-desc";
+    descEl.textContent = check.details.join("；");
+    const controls = [];
+    if (check.remediation) {
+      const copyBtn = btnEl("复制修复命令", "btn", "复制修复命令到剪贴板");
+      copyBtn.addEventListener("click", () => void copyText(check.remediation));
+      controls.push(copyBtn);
+    }
+    row.append(rowCopyEl(titleEl, descEl), rowControl(...controls));
+    box.appendChild(row);
+  }
+  // C 批次：网络档强制面提示随自检联动刷新
+  const hint = document.getElementById("sandbox-network-hint");
+  if (hint !== null) {
+    const netCheck = (d.checks ?? []).find((c) => c.id === "network-isolation");
+    const provisioned = netCheck !== undefined && netCheck.status === "ok";
+    hint.textContent =
+      d.networkPolicy === "deny"
+        ? provisioned
+          ? "deny 档：工具层拦截 + OS 级强制在位（WFP 按专用账户拦截子进程出站）。"
+          : "deny 档：当前只承诺工具层拦截（webfetch 等）——子进程网络不被承诺管住；管理员运行 provision 后升级为 OS 级强制。allow 档也恒拦云元数据端点（IMDS/SSRF 防护）。"
+        : `网络档：${d.networkPolicy ?? "未设置（缺省放行）"}——工具层 fetch 可用；IMDS/SSRF 黑名单恒在（独立于档位）。`;
+  }
+  // D 批次：内置保护只读展示（doctor 载荷同程带回）
+  const protectedBox = document.getElementById("sandbox-protected");
+  if (protectedBox !== null) {
+    protectedBox.replaceChildren();
+    const names = d.protectedNames ?? [];
+    const row = rowEl();
+    row.append(
+      rowCopyEl(
+        Object.assign(document.createElement("div"), {
+          className: "row-title",
+          textContent: `保护名清单（${String(names.length)} 项）`,
+        }),
+        Object.assign(document.createElement("div"), {
+          className: "row-desc mono",
+          textContent: names.join("、"),
+        }),
+      ),
+    );
+    protectedBox.appendChild(row);
+  }
+}
+
+function renderSandboxWhitelist() {
+  const box = document.getElementById("sandbox-whitelist");
+  if (box === null) return;
+  box.replaceChildren();
+  const list = settingsCache?.sandbox?.writeWhitelist ?? [];
+  if (list.length === 0) {
+    box.appendChild(emptyState("无白名单条目", "工作区外的写入一律拒绝——需要额外可写目录时在此添加"));
+    return;
+  }
+  for (const dir of list) {
+    const row = rowEl();
+    const titleEl = document.createElement("div");
+    titleEl.className = "row-title mono";
+    titleEl.textContent = dir;
+    const delBtn = btnEl("移除", "btn btn-danger", `移除白名单 ${dir}`);
+    delBtn.addEventListener("click", () => {
+      settingsCache.sandbox = {
+        ...(settingsCache.sandbox ?? {}),
+        writeWhitelist: (settingsCache?.sandbox?.writeWhitelist ?? []).filter((w) => w !== dir),
+      };
+      markDirty("sandbox");
+      renderSandboxWhitelist();
+    });
+    row.append(rowCopyEl(titleEl), rowControl(delBtn));
     box.appendChild(row);
   }
 }
@@ -519,7 +740,7 @@ function renderProfileList() {
     if (isActive) titleEl.appendChild(chipEl("当前", true));
     const descEl = document.createElement("div");
     descEl.className = "row-desc";
-    descEl.textContent = `→ ${p.defaultProvider}${p.defaultModel ? `/${p.defaultModel}` : ""}${p.sandbox?.network ? `（网络 ${p.sandbox.network}）` : ""}`;
+    descEl.textContent = `→ ${p.defaultProvider}${p.defaultModel ? `/${p.defaultModel}` : ""}${p.sandbox?.network ? `（网络 ${p.sandbox.network}）` : ""}${p.sandbox?.mode ? `（沙箱 ${p.sandbox.mode}）` : ""}`;
     const applyBtn = btnEl(isActive ? "★ 当前" : "切换", isActive ? "btn active-mark" : "btn");
     applyBtn.addEventListener("click", () => {
       applyProfileValues(p);
@@ -592,6 +813,24 @@ export function bind() {
     void savePolicyRules(next);
     input.value = "";
   });
+  document.getElementById("sandbox-doctor-refresh").addEventListener("click", () => void refreshSandboxDoctor());
+  document.getElementById("sandbox-whitelist-append").addEventListener("click", () => {
+    const input = document.getElementById("sandbox-whitelist-add");
+    const dir = input.value.trim();
+    if (dir === "") {
+      toast("输入目录绝对路径", "warn");
+      return;
+    }
+    const list = settingsCache?.sandbox?.writeWhitelist ?? [];
+    if (list.includes(dir)) {
+      toast("该目录已在白名单", "warn");
+      return;
+    }
+    settingsCache.sandbox = { ...(settingsCache.sandbox ?? {}), writeWhitelist: [...list, dir] };
+    markDirty("sandbox");
+    input.value = "";
+    renderSandboxWhitelist();
+  });
   document.getElementById("perm-audit-refresh").addEventListener("click", () => void refreshPolicyAudit());
   document.getElementById("perm-test-run").addEventListener("click", () => {
     const input = document.getElementById("perm-test-input");
@@ -644,13 +883,18 @@ export function bind() {
     const model = document.getElementById("profile-model").value.trim();
     const timeoutRaw = document.getElementById("profile-timeout").value;
     const network = document.getElementById("profile-network").value;
+    const sandboxMode = document.getElementById("profile-sandbox-mode").value;
     if (name === "" || provider === "") return;
+    const sandboxPatch = {
+      ...(network !== "" ? { network } : {}),
+      ...(sandboxMode !== "" ? { mode: sandboxMode } : {}),
+    };
     const entry = {
       name,
       defaultProvider: provider,
       ...(model !== "" ? { defaultModel: model } : {}),
       ...(timeoutRaw !== "" ? { permission: { approvalTimeoutMs: Number(timeoutRaw) } } : {}),
-      ...(network !== "" ? { sandbox: { network } } : {}),
+      ...(Object.keys(sandboxPatch).length > 0 ? { sandbox: sandboxPatch } : {}),
     };
     const profiles = (settingsCache.profiles ?? []).filter((x) => x.name !== name);
     profiles.push(entry);
@@ -667,6 +911,7 @@ export function bind() {
     document.getElementById("profile-timeout").value =
       settingsCache?.permission?.approvalTimeoutMs ?? "";
     document.getElementById("profile-network").value = settingsCache?.sandbox?.network ?? "";
+    document.getElementById("profile-sandbox-mode").value = settingsCache?.sandbox?.mode ?? "";
   });
 }
 
@@ -679,6 +924,9 @@ export function fill() {
   document.getElementById("sandbox-network").value = settingsCache?.sandbox?.network ?? "";
   document.getElementById("sandbox-workspace").value = settingsCache?.sandbox?.workspace ?? "";
   document.getElementById("sandbox-db").value = settingsCache?.sandbox?.db ?? "";
+  renderSandboxModes();
+  renderSandboxWhitelist();
+  void refreshSandboxDoctor();
   document.getElementById("appearance-theme").value = settingsCache?.appearance?.theme ?? "dark";
   document.getElementById("appearance-language").value = settingsCache?.appearance?.language ?? "zh-CN";
   renderProfileList();

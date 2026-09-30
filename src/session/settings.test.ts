@@ -396,4 +396,78 @@ describe("resolveChildLaunchArgv（优先级链：显式 > env > file > 缺省�
     // 无 logging 档 → 不注入
     expect(resolveChildLaunchArgv([], {}, settings).args).not.toContain("--raw-log-dir");
   });
+
+  it("sandbox.mode 装配注入（T-P3-140 批次 A）：file 档跟随 / 显式槽占用不覆盖", () => {
+    const withMode = parseSettingsShape({
+      providers: [{ name: "main", baseUrl: "https://f.example.com", model: "m" }],
+      defaultProvider: "main",
+      sandbox: { mode: "workspace-write" },
+    });
+    const { args } = resolveChildLaunchArgv([], {}, withMode);
+    expect(args[args.indexOf("--sandbox-mode") + 1]).toBe("workspace-write");
+    // 显式参数最高：childArgs 已有 --sandbox-mode 槽位不重复注入
+    const explicit = resolveChildLaunchArgv(["--sandbox-mode", "read-only"], {}, withMode);
+    expect(explicit.args.filter((a) => a === "--sandbox-mode")).toHaveLength(1);
+    expect(explicit.args[explicit.args.indexOf("--sandbox-mode") + 1]).toBe("read-only");
+    // 无 mode 档 → 不注入（缺省 = 全自动直通，装配面零变化）
+    expect(resolveChildLaunchArgv([], {}, settings).args).not.toContain("--sandbox-mode");
+  });
+
+  it("writeWhitelist 逐条注入 --write-whitelist（顺序保持；空清单不注入）", () => {
+    const withList = parseSettingsShape({
+      providers: [{ name: "main", baseUrl: "https://f.example.com", model: "m" }],
+      defaultProvider: "main",
+      sandbox: { writeWhitelist: ["F:/libs", "F:/data"] },
+    });
+    const { args } = resolveChildLaunchArgv([], {}, withList);
+    const first = args.indexOf("--write-whitelist");
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(args[first + 1]).toBe("F:/libs");
+    // 重复旗标交错排列：[flag, v1, flag, v2, ...]——第二处按序续找
+    const second = args.indexOf("--write-whitelist", first + 1);
+    expect(second).toBeGreaterThan(first);
+    expect(args[second + 1]).toBe("F:/data");
+    expect(resolveChildLaunchArgv([], {}, settings).args).not.toContain("--write-whitelist");
+  });
+
+  it("sandbox 段 parse：mode 闭集校验 + writeWhitelist 形状校验（fail-closed）", () => {
+    expect(() =>
+      parseSettingsShape({
+        providers: [{ name: "m" }],
+        defaultProvider: "m",
+        sandbox: { mode: "everything-goes" },
+      }),
+    ).toThrow(/sandbox.mode/);
+    expect(() =>
+      parseSettingsShape({
+        providers: [{ name: "m" }],
+        defaultProvider: "m",
+        sandbox: { writeWhitelist: [""] },
+      }),
+    ).toThrow(/writeWhitelist/);
+    // 合法值通过且去重保序
+    const ok = parseSettingsShape({
+      providers: [{ name: "m" }],
+      defaultProvider: "m",
+      sandbox: { mode: "read-only", writeWhitelist: ["F:/a", "F:/a", "F:/b"] },
+    });
+    expect(ok.sandbox?.mode).toBe("read-only");
+    expect(ok.sandbox?.writeWhitelist).toEqual(["F:/a", "F:/b"]);
+  });
+
+  it("profiles[].sandbox 带 mode（批次 F）：合法档透传 + 非法档 fail-closed", () => {
+    const ok = parseSettingsShape({
+      providers: [{ name: "m" }],
+      defaultProvider: "m",
+      profiles: [{ name: "p1", defaultProvider: "m", sandbox: { mode: "workspace-write" } }],
+    });
+    expect(ok.profiles?.[0]?.sandbox?.mode).toBe("workspace-write");
+    expect(() =>
+      parseSettingsShape({
+        providers: [{ name: "m" }],
+        defaultProvider: "m",
+        profiles: [{ name: "p2", defaultProvider: "m", sandbox: { mode: "sudo" } }],
+      }),
+    ).toThrow(/profiles\[\].sandbox.mode/);
+  });
 });

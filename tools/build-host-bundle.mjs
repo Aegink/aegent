@@ -109,6 +109,24 @@ cpSync(path.join(repoRoot, "src/session/schema.sql"), path.join(outDir, "schema.
 // 缺失"——走查实测发现）。
 cpSync(path.join(repoRoot, "src/sandbox/dpapi/dpapi.ps1"), path.join(outDir, "dpapi.ps1"));
 
+// T-P3-140 批次 A：沙箱 helper 进发行链——受限令牌后端的强制面随包分发
+//（bundle 后 import.meta.url 指向 portable 根的 host/agent-child .cjs，
+// resolveSandboxHelperPath 的"伴随位"解析即命中此处）。缺席不阻断打包
+//（开发机未跑 cargo build 时降级为 local 弱兜底 + 自检面板可见），但
+// 显式提示——发行链纪律：缺强制面必须对打包者可见。
+const helperSrc = path.join(
+  repoRoot,
+  "src/sandbox/win32-helper/target/release/win32-sandbox-helper.exe",
+);
+if (existsSync(helperSrc)) {
+  cpSync(helperSrc, path.join(outDir, "win32-sandbox-helper.exe"));
+  console.log("sandbox helper → dist/portable/win32-sandbox-helper.exe（受限令牌强制面随包）");
+} else {
+  console.warn(
+    "[warn] 沙箱 helper 不在场（npm run build:sandbox-helper）——便携包将以 local 弱兜底运行受限档",
+  );
+}
+
 // 3) 体积分列输出
 console.log("—— 体积分列（U6 验收）——");
 console.log(`壳侧 ui/              : ${mb(du(uiDst))}`);

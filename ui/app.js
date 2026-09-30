@@ -438,6 +438,15 @@ function buildCard(name, payload) {
     chip.className = "chip";
     chip.textContent = String(payload.category ?? "tool");
     title.appendChild(chip);
+    // T-P3-140 批次 E：沙箱升级徽标（升级目标一眼可见——fail-closed 审批面；
+    // escalation 值自带 "sandbox → X" 形状，剥前缀避免与中文标签重复）
+    const escArgs = payload.args && typeof payload.args === "object" ? payload.args : undefined;
+    if (typeof escArgs?.escalation === "string") {
+      const escChip = document.createElement("span");
+      escChip.className = "chip chip-warn";
+      escChip.textContent = `沙箱升级 ${escArgs.escalation.replace(/^sandbox\s*→\s*/, "→ ")}`;
+      title.appendChild(escChip);
+    }
     const countdown = document.createElement("span");
     countdown.className = "countdown";
     title.appendChild(countdown);
@@ -449,6 +458,13 @@ function buildCard(name, payload) {
       }
       countdown.textContent = `${Math.max(0, Math.ceil((deadline - Date.now()) / 1000))}s`;
     }, 1000);
+    // T-P3-140 批次 E：升级理由独立展示行（审批人先读理由再看参数）
+    if (typeof escArgs?.justification === "string" && escArgs.justification !== "") {
+      const justification = document.createElement("div");
+      justification.className = "card-justification";
+      justification.textContent = `理由：${escArgs.justification}`;
+      card.appendChild(justification);
+    }
     const args = document.createElement("pre");
     args.className = "card-args";
     args.textContent = JSON.stringify(payload.args, null, 2);

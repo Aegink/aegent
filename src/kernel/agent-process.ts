@@ -271,6 +271,10 @@ export async function runAgentChildStdio(
   // H1/H4/T-P1-42：subagent 选项不进 createChildAssembly（它只驱动 task
   // 工具注册，见下方 registerBuiltinTools）。
   const subagentOptions = options.assembly?.subagent;
+  // T-P3-140 批次 A：执行环境单例——ToolRegistry（无沙箱直通路径）与沙箱
+  // 路由后端的 local 直通档共用同一个实例（全自动档与无沙箱行为完全一致；
+  // 测试注入面也只有一处）。
+  const executionEnv = new NodeExecutionEnv();
   // B21/T-P1-63：会话配置分层（可热刷新白名单 vs 会话内静态设置）——
   // 初始值取装配面既有可配项（缺省 undefined = getter 返回 undefined，
   // 未刷新路径零行为变化）；热刷新经协议命令 config/refresh。
@@ -285,6 +289,12 @@ export async function runAgentChildStdio(
       // resolveChildLaunchArgv --permission-mode 注入的装配面）
       ...(options.assembly?.permissionMode !== undefined
         ? { approvalMode: options.assembly.permissionMode as ApprovalMode }
+        : {}),
+      // T-P3-140 批次 A：沙箱模式初始（settings.sandbox.mode 经
+      // --sandbox-mode 注入的装配面；活刷新沿 REFRESHABLE_CONFIG_KEYS
+      // 既有通道——模式卡/权限预设的热切换都写它）
+      ...(options.assembly?.sandboxMode !== undefined
+        ? { sandboxMode: options.assembly.sandboxMode }
         : {}),
       ...(options.queueMaxSize !== undefined ? { queueMaxSize: options.queueMaxSize } : {}),
     },
@@ -305,12 +315,32 @@ export async function runAgentChildStdio(
         ...(configStore.approvalMode !== undefined
           ? { approvalMode: () => configStore.approvalMode }
           : {}),
+        // T-P3-140 批次 A：沙箱模式活查询（同款语义——settings.sandbox.mode
+        // 初始 + 权限模式预设/沙箱模式卡经 config/refresh 热切换即生效）
+        sandboxModeProvider: () => configStore.sandboxMode,
+        // 同一 env 实例贯通 ToolRegistry 与沙箱 local 直通档（D4——测试
+        // 注入 fake env 两者同时生效，全自动档与无沙箱路径无第二套 spawn 面）
+        sandboxLocalEnv: executionEnv,
+        sandboxWiring: true,
       })
     : undefined;
 
   // H1/H4/T-P1-42：子代理 runner（顶层会话 depth=0）。降级规则的输入 =
   // 装配 rules 选项原样（deriveSubagentRules 在 runner 内对每层子装配
   // 现算——捕获时点即派发时点，captureDelegatedPolicyOverrides 同构）。
+  // T-P3-140 批次 A：子代理沙箱切片（backend + 活 defaultMode，不带审批
+  // ——升级在子代理语境 fail-closed；getter 保活读父 configStore）。
+  const shellSandboxSlice = (() => {
+    const base = assembly?.bashSandbox;
+    if (base === undefined) return undefined;
+    return {
+      backend: base.backend,
+      get defaultMode() {
+        return base.defaultMode;
+      },
+    };
+  })();
+
   const runSubagent = subagentOptions
     ? createSubagentRunner({
         parentSessionId: sessionId,
@@ -335,6 +365,8 @@ export async function runAgentChildStdio(
           : {}),
         // U23/T-P3-126：预设清单 + 独立模型解析闭包（runner 内按次解析）
         ...(options.subagents?.defs !== undefined ? { subagentDefs: options.subagents.defs } : {}),
+        // T-P3-140 批次 A：子代理与父同档同强制面（切片见 shellSandboxSlice）
+        ...(shellSandboxSlice !== undefined ? { shellSandbox: shellSandboxSlice } : {}),
         ...(options.subagents?.resolveModel !== undefined
           ? { resolveSubagentModel: options.subagents.resolveModel }
           : {}),
@@ -349,7 +381,7 @@ export async function runAgentChildStdio(
   // Q3（T-P1-14）：sessionId/spillDir 传进注册表——spill 标记带真实会话身份，
   // 会话关闭清理才能按身份命中（缺省标记记 unknown-session 无法清理）。
   const toolRegistry = new ToolRegistry({
-    env: new NodeExecutionEnv(),
+    env: executionEnv,
     sessionId,
     ...(options.spillDir !== undefined ? { spillDir: options.spillDir } : {}),
     // C12/C13：读记账（可选装配，缺省不启用——工具照常用）
@@ -384,6 +416,10 @@ export async function runAgentChildStdio(
             // B8a/T-P1-20：networkPolicy 装配选项提供时注册 webfetch
             //（D3 唯一入口随守卫注入，无守卫不注册）
             ...(assembly.networkGuard ? { networkGuard: assembly.networkGuard } : {}),
+            // T-P3-140 批次 A：沙箱三档接线（模式路由后端 + 活 defaultMode
+            // ——bash 带升级审批通道，pwsh 是无升级切片；缺席 = env 直通）
+            ...(assembly.bashSandbox !== undefined ? { bashSandbox: assembly.bashSandbox } : {}),
+            ...(assembly.pwshSandbox !== undefined ? { pwshSandbox: assembly.pwshSandbox } : {}),
             // B8b/T-P1-21：question 工具依赖（共用审批挂起注册表）
             question: { ...assembly.question },
             // Q2/T-P2-105：会话查询工具（库路径提供时才注册——只读类）

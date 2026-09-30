@@ -109,6 +109,14 @@ export function registerBuiltinTools(
       sessionId?: string;
       approvalTimeoutMs?: number;
     };
+    /**
+     * T-P3-140 批次 A：pwsh 的沙箱装配切片（同一后端 + 活 defaultMode，
+     * 无升级面——升级只在 bash 一侧）。提供时 pwsh 走 backend.spawn。
+     */
+    pwshSandbox?: {
+      backend: SandboxBackend;
+      defaultMode: SandboxMode;
+    };
     /** B8b/T-P1-60 lsp 的 server 解析面（按文件路径返回客户端）；缺省无 server。 */
     lspClientFor?: LspClientFor;
     /**
@@ -131,7 +139,10 @@ export function registerBuiltinTools(
     }),
     // D11（T-P1-28）：PowerShell 一等 shell——与 bash 平行注册（dsh
     // tool-bash/tool-pwsh 同构；Windows 沙箱态宿主正路，见 win32-backend）
-    createPwshTool({ pathGuard: guard }),
+    createPwshTool({
+      pathGuard: guard,
+      ...(options.pwshSandbox !== undefined ? { sandbox: options.pwshSandbox } : {}),
+    }),
     createEditTool({ writeQueue, pathGuard: guard }),
     // B8 残余（T-P1-56）：V4A patch 多文件编辑——write/edit 同款写队列
     // 与守卫注入（delete/move 的删除面走 guard.remove）

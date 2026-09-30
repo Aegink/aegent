@@ -1918,6 +1918,21 @@ code,
   color: var(--warn);
 }
 
+/* T-P3-140 批次 E：沙箱升级徽标 + 理由展示行（升级审批显著位） */
+.card-title .chip-warn {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.card-justification {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
 /* U9/T-P3-108 对话导航与检索：会话内搜索条/命中高亮/小地图/跨会话搜索列表 */
 #find-bar {
   position: fixed;
