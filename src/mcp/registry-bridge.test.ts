@@ -154,4 +154,65 @@ describe("MCP 客户端（I3/T-P1-64）", () => {
     expect(() => validateServerName("a__b")).toThrow();
     expect(() => validateServerName("files")).not.toThrow();
   });
+
+  it("条目 env 覆盖到子进程（T-P3-143）：叠加宿主环境，同名以条目为准", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "aegent-mcp-"));
+    tmpDirs.push(dir);
+    // 桩 server：peek 工具回显指定环境变量（既有值 + 条目覆盖值 + 宿主值）
+    const file = path.join(dir, "env-probe-server.js");
+    writeFileSync(
+      file,
+      `
+let buf = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (c) => {
+  buf += c;
+  for (;;) {
+    const nl = buf.indexOf("\\n");
+    if (nl === -1) break;
+    const line = buf.slice(0, nl).trim();
+    buf = buf.slice(nl + 1);
+    if (!line) continue;
+    const msg = JSON.parse(line);
+    if (msg.method === "initialize") {
+      process.stdout.write(JSON.stringify({
+        jsonrpc: "2.0", id: msg.id,
+        result: { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "stub" } },
+      }) + "\\n");
+    } else if (msg.method === "tools/list") {
+      process.stdout.write(JSON.stringify({
+        jsonrpc: "2.0", id: msg.id,
+        result: { tools: [{ name: "peek", description: "回显环境变量", inputSchema: { type: "object" } }] },
+      }) + "\\n");
+    } else if (msg.method === "tools/call") {
+      process.stdout.write(JSON.stringify({
+        jsonrpc: "2.0", id: msg.id,
+        result: { content: [{ type: "text", text: String(process.env[msg.params.arguments.name] ?? "(unset)") }] },
+      }) + "\\n");
+    }
+  }
+});
+`,
+      "utf8",
+    );
+    const registry = new ToolRegistry();
+    const conn = await connectAndRegister(registry, {
+      name: "envprobe",
+      command: process.execPath,
+      args: [file],
+      // MCP_ENV_PROBE 为条目覆盖值；PATH 为宿主环境继承样本
+      env: { MCP_ENV_PROBE: "from-entry" },
+    });
+    const peek = async (name: string) =>
+      (
+        await registry.dispatch({
+          callId: `c-${name}`,
+          name: "envprobe__peek",
+          arguments: JSON.stringify({ name }),
+        })
+      ).content;
+    await expect(peek("MCP_ENV_PROBE")).resolves.toBe("from-entry");
+    await expect(peek("PATH")).resolves.not.toBe("(unset)");
+    conn.client.dispose();
+  });
 });

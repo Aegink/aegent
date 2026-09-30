@@ -40,6 +40,7 @@ import {
 } from "./instructions-gateway.js";
 import { runSttTranscribe } from "./speech-gateway.js";
 import { listPlugins } from "./plugins-gateway.js";
+import { mcpImportScan, type McpImportScanResult } from "./mcp-import-op.js";
 import { listSkills, saveSkill } from "./skills-gateway.js";
 import {
   applyImportedSettings,
@@ -107,25 +108,15 @@ export interface SettingsGateway {
   credentialsSet(provider: string, key: string): Promise<{ masked: string }>;
   credentialsDelete(provider: string): Promise<{ deleted: boolean }>;
   credentialsList(): Promise<{ name: string; updatedAt: string; masked?: string }[]>;
-  /**
-   * 健康探测（U5/T-P3-104——J16 probeProvider 的 UI 消费面）：按条目名
-   * 探测其 baseUrl 可达性；探测不触碰熔断器（J16 分域不变量）。
-   */
+  /** 健康探测（U5/T-P3-104——J16 probeProvider 消费面；不触碰熔断器）。 */
   probeProvider(name: string): Promise<HealthCheckResult>;
   /** U3/T-P3-105：会话删除（硬删除三表事务；库未配置时类型化拒绝）。 */
   sessionDelete(sessionId: string): Promise<{ deleted: boolean }>;
-  /**
-   * U17/T-P3-119：MCP server 连接校验（launch 一次握手 + tools/list 后
-   * 关闭——向导"测连接"数据面；失败转类型化回执不上抛）。
-   */
+  /** U17/T-P3-119：MCP 连接校验（真握手+列工具后关闭；失败转类型化回执）。 */
   mcpCheck(entry: McpServerEntry): Promise<McpCheckResult>;
   /** U20/T-P3-122：配置包导入（备份滚动 + 本地态合并 + 落盘）。 */
   importSettings(imported: Record<string, unknown>): Promise<{ applied: true; summary: string[] }>;
-  /**
-   * U22/T-P3-125：技能清单（多根扫描——workspace 主目录 + skills.roots
-   * 附加来源；disabled 停用过滤与装配面同链）。技能目录不可用（无
-   * workspaceRoot）时类型化拒绝。
-   */
+  /** U22：技能清单（多根扫描 + 停用过滤；无 workspaceRoot 类型化拒绝）。 */
   skillsList(): Promise<{
     skills: {
       name: string;
@@ -140,69 +131,40 @@ export interface SettingsGateway {
     roots: string[];
     disabled: string[];
   }>;
-  /**
-   * U22/T-P3-125：技能编辑器写回（新建/编辑——写 workspace 技能目录的
-   * SKILL.md；name slug 与字节上限在此层校验，编辑覆盖既有技能）。
-   */
+  /** U22：技能编辑器写回（workspace SKILL.md；slug 与字节上限在此校验）。 */
   skillSave(payload: {
     name: string;
     description: string;
     body: string;
     tools?: readonly string[];
   }): Promise<{ saved: true; path: string }>;
-  /**
-   * U23/T-P3-126：子代理管理页清单（内置五预设 + 用户自定义分区——
-   * 覆盖记录折叠进内置行；每项带工具集/模型/fallbacks 的 chips 数据面）。
-   */
+  /** U23：子代理清单（内置五预设 + 自定义——覆盖记录折叠进内置行）。 */
   subagentsList(): Promise<{
     builtins: (SubagentDefinition & { enabled: boolean; overridden: boolean })[];
     custom: SubagentDefinition[];
   }>;
-  /**
-   * U24/T-P3-127：指令中心数据面（三文件位——workspace AGENTS.md /
-   * 全局 ~/.aegent/AGENTS.md / 用户规则 ~/.aegent/rules.txt；各带存在性
-   * 与内容；规则位附 lint issues——parseRulesText 逐行校验）。
-   */
+  /** U24：指令中心数据面（三文件位 + 规则位 lint issues）。 */
   instructionsList(): Promise<{
     project: { path: string; exists: boolean; content: string };
     global: { path: string; exists: boolean; content: string };
     rules: { path: string; exists: boolean; content: string; issues: { line: number; message: string }[] };
   }>;
-  /**
-   * U24/T-P3-127：指令文件写回（target 白名单三位——host 侧路径收敛，
-   * 防任意文件写；保存确认面在 UI 层）。
-   */
+  /** U24：指令写回（target 白名单三位——host 侧路径收敛防任意文件写）。 */
   instructionSave(target: "project-agents" | "global-agents" | "user-rules", content: string): Promise<{ saved: true; path: string }>;
-  /**
-   * U26/T-P3-129：语音转写代理（UI 录音上送 → P4 transcribeAudio → 文本；
-   * 配置读 settings.stt、key 按 "stt" 键名走 credentials——零明文）。
-   */
+  /** U26：语音转写代理（P4 消费端；key 按 "stt" 走 credentials——零明文）。 */
   sttTranscribe(payload: { base64: string; mediaType: string }): Promise<{ text: string; model: string }>;
-  /**
-   * T-P3-133：插件装载清单（settings.plugins → 逐条安装期校验诊断——
-   * inprocess 只读 plugin.json 零代码执行；ws 校验 URL 形状）。
-   */
+  /** T-P3-133：插件装载清单（安装期校验诊断——零代码执行）。 */
   pluginsList(): Promise<ReturnType<typeof listPlugins>>;
-  /**
-   * T-P3-137：供应商模型清单拉取（host 代理 GET /models——WebView CSP
-   * 不放外网；自足载荷 baseUrl/adapter/headers 直传，apiKey 缺省走凭据）。
-   */
+  /** T-P3-137：模型清单拉取（host 代理 /models——CSP 不放外网）。 */
   providerModels(payload: ProviderModelsPayload): Promise<{ models: { id: string }[] }>;
-  /**
-   * T-P3-137：供应商真实对话测试（host 代理发"你好"单轮——成功才算
-   * 可以使用；回执带回复摘要与延迟，错误转文案不上抛）。
-   */
+  /** T-P3-137：真实对话测试（发"你好"单轮——成功才算可以使用）。 */
   providerTest(payload: ProviderTestPayload): Promise<ProviderTestResult>;
-  /**
-   * T-P3-140 批次 B：沙箱自检（doctor 四项检查 + 生效面一览——沙箱页
-   * 自检卡的数据面；装配与回执在 settings-sandbox-doctor 域文件）。
-   */
+  /** T-P3-140：沙箱自检（doctor 四项 + 生效面——域文件已拆分）。 */
   sandboxDoctor(): ReturnType<typeof sandboxDoctorOp>;
-  /**
-   * T-P3-141：插件主题 CSS（UI 注入 <style> 的数据面——pi-desktop 主题即
-   * 插件；路径收敛与上限在 plugins-gateway，类型化拒绝转信封错误）。
-   */
+  /** T-P3-141：插件主题 CSS（UI 注入 <style>——路径收敛与上限在网关）。 */
   pluginThemeCss(name: string): Promise<{ css: string; base: "light" | "dark"; displayName: string }>;
+  /** T-P3-143：外部 MCP 配置扫描（只读——并入 settings patch 在 UI 侧）。 */
+  mcpImportScan(): Promise<McpImportScanResult>;
 }
 
 /** 生产缺省探测依赖（真网络——tests 注入 fake）。 */
@@ -291,7 +253,8 @@ export class FileSettingsGateway implements SettingsGateway {
 
   async mcpCheck(entry: McpServerEntry): Promise<McpCheckResult> {
     try {
-      const r = await probeServer(entry, { requestTimeoutMs: 8_000 });
+      // T-P3-143：条目级 timeoutMs 优先（慢启动 server 放宽——缺省 8s 探针档）
+      const r = await probeServer(entry, { requestTimeoutMs: entry.timeoutMs ?? 8_000 });
       return { ok: true, protocolVersion: r.protocolVersion, tools: r.tools };
     } catch (e) {
       return {
@@ -394,5 +357,13 @@ export class FileSettingsGateway implements SettingsGateway {
   async pluginThemeCss(name: string): Promise<{ css: string; base: "light" | "dark"; displayName: string }> {
     const settings = await this.get();
     return pluginThemeCss(settings, name);
+  }
+
+  /** T-P3-143：外部 MCP 配置扫描（源路径由 homeDir/workspaceRoot 派生）。 */
+  async mcpImportScan(): Promise<McpImportScanResult> {
+    return mcpImportScan({
+      homeDir: this.homeDir,
+      ...(this.workspaceRoot !== undefined ? { workspaceRoot: this.workspaceRoot } : {}),
+    });
   }
 }

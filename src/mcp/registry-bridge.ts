@@ -18,6 +18,10 @@ export interface McpServerConfig {
   name: string;
   command: string;
   args?: string[];
+  /** server 进程环境变量覆盖（T-P3-143——叠加宿主环境，同名以条目为准）。 */
+  env?: Record<string, string>;
+  /** 握手/列工具/调用的单请求超时 ms（缺省 client 的 10s 常量）。 */
+  timeoutMs?: number;
 }
 
 /** 已连接 server 的句柄（调用面复用——装配持有）。 */
@@ -50,14 +54,14 @@ export async function connectAndRegister(
   options?: { requestTimeoutMs?: number },
 ): Promise<McpConnection> {
   validateServerName(config.name);
-  const transport = createMcpStdioTransport(config.command, config.args ?? []);
+  const transport = createMcpStdioTransport(config.command, config.args ?? [], config.env);
   const client = new McpClient(
     transport,
     config.name,
     transport.onLine.bind(transport),
     transport.onFail.bind(transport),
   );
-  const timeout = options?.requestTimeoutMs;
+  const timeout = options?.requestTimeoutMs ?? config.timeoutMs;
   const capabilities =
     timeout !== undefined ? await client.initialize(timeout) : await client.initialize();
   if (!capabilities.tools) {
@@ -84,14 +88,14 @@ export async function probeServer(
   options?: { requestTimeoutMs?: number },
 ): Promise<{ protocolVersion: string; tools: McpToolInfo[] }> {
   validateServerName(config.name);
-  const transport = createMcpStdioTransport(config.command, config.args ?? []);
+  const transport = createMcpStdioTransport(config.command, config.args ?? [], config.env);
   const client = new McpClient(
     transport,
     config.name,
     transport.onLine.bind(transport),
     transport.onFail.bind(transport),
   );
-  const timeout = options?.requestTimeoutMs;
+  const timeout = options?.requestTimeoutMs ?? config.timeoutMs;
   try {
     const capabilities =
       timeout !== undefined ? await client.initialize(timeout) : await client.initialize();

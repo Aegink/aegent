@@ -184,12 +184,21 @@ export class McpClient {
     }
 }
 
-/** stdio transport：spawn MCP server 子进程，stdin/stdout 按行读写。 */
+/**
+ * stdio transport：spawn MCP server 子进程，stdin/stdout 按行读写。
+ * env 覆盖语义取 opencode（index.ts:340-357 全量继承 + 用户 environment
+ * 叠加——同名字段以条目为准）：npx/python 系 server 依赖 PATH/APPDATA 等
+ * 运行面，缺省继承宿主环境；显式 env 仅做覆盖，不整包替换。
+ */
 export function createMcpStdioTransport(
     command: string,
     args: string[],
+    env?: Record<string, string>,
 ): { send(line: string): void; dispose(): void; onLine(handler: (line: string) => void): void; onFail(handler: (reason: string) => void): void } {
-    const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(command, args, {
+        stdio: ["pipe", "pipe", "pipe"],
+        ...(env !== undefined && Object.keys(env).length > 0 ? { env: { ...process.env, ...env } } : {}),
+    });
     let lineHandler: ((line: string) => void) | undefined;
     let failHandler: ((reason: string) => void) | undefined;
     let stdoutBuffer = "";

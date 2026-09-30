@@ -138,6 +138,26 @@ describe("parseSettingsShape / parseSettingsFile", () => {
     ).toThrow(/enabled 须为布尔值/);
   });
 
+  it("mcp 条目 env/timeoutMs（T-P3-143）：合法透传 + 非法 fail-closed", () => {
+    const ok = parseSettingsShape({
+      mcp: [{ name: "mem", command: "npx", env: { MY_KEY: "v1", EMPTY: "" }, timeoutMs: 20_000 }],
+    });
+    expect(ok.mcp?.[0]?.env).toEqual({ MY_KEY: "v1", EMPTY: "" });
+    expect(ok.mcp?.[0]?.timeoutMs).toBe(20_000);
+    expect(() =>
+      parseSettingsShape({ mcp: [{ name: "a", command: "node", env: "K=V" }] }),
+    ).toThrow(/env 须为对象/);
+    expect(() =>
+      parseSettingsShape({ mcp: [{ name: "a", command: "node", env: { K: 1 } }] }),
+    ).toThrow(/env\.K 须为字符串/);
+    expect(() =>
+      parseSettingsShape({ mcp: [{ name: "a", command: "node", timeoutMs: 0 }] }),
+    ).toThrow(/timeoutMs 须为正数/);
+    expect(() =>
+      parseSettingsShape({ mcp: [{ name: "a", command: "node", timeoutMs: "soon" }] }),
+    ).toThrow(/timeoutMs 须为正数/);
+  });
+
   it("enhancement 段解析（U18/T-P3-120）：任务条目校验 fail-closed", () => {
     const s = parseSettingsShape({
       enhancement: {

@@ -289,9 +289,10 @@ export class HostBridge implements SessionRouter {
           const all = store === undefined ? [] : store.load(sessionId);
           return { entries: buildPolicyAuditEntries(all) };
         }
+        // T-P3-140 自检 / T-P3-141 插件主题 CSS / T-P3-143 外部 MCP 扫描（只读）
         if (call.op === "sandbox-doctor") return gateway.sandboxDoctor();
-        // T-P3-141：插件主题 CSS（pi-desktop 主题即插件——UI 注入 <style>）
         if (call.op === "plugin-theme-css") return gateway.pluginThemeCss(call.name!);
+        if (call.op === "mcp-import-scan") return gateway.mcpImportScan();
         if (call.op === "get") return { settings: await gateway.get() };
         if (call.op === "update") return { settings: await gateway.update(call.patch ?? {}) };
         if (call.op === "credentials-set") {
@@ -311,6 +312,8 @@ export class HostBridge implements SessionRouter {
               name: call.name!,
               command: call.command!,
               ...(Array.isArray(call.args) ? { args: call.args } : {}),
+              ...(call.env !== undefined ? { env: call.env } : {}),
+              ...(call.timeoutMs !== undefined ? { timeoutMs: call.timeoutMs } : {}),
             }),
           };
         }
@@ -318,12 +321,10 @@ export class HostBridge implements SessionRouter {
         if (call.op === "import") {
           return gateway.importSettings(call.settings!);
         }
-        // U22/T-P3-125：技能管理（清单多根扫描 + 编辑器写回）
         if (call.op === "skills-list") return gateway.skillsList();
         if (call.op === "skill-save") return gateway.skillSave(call.skill!);
-        // U23/T-P3-126：子代理管理页清单
+        // U23 子代理清单 / U24 指令中心（三文件位 + 白名单写回）
         if (call.op === "subagents-list") return gateway.subagentsList();
-        // U24/T-P3-127：指令中心（三文件位数据面 + 白名单写回）
         if (call.op === "instructions-list") return gateway.instructionsList();
         if (call.op === "instruction-save") {
           return gateway.instructionSave(call.target as InstructionTarget, call.content!);
@@ -332,9 +333,8 @@ export class HostBridge implements SessionRouter {
         if (call.op === "stt-transcribe") {
           return gateway.sttTranscribe({ base64: call.content!, mediaType: call.mediaType! });
         }
-        // T-P3-133：插件装载清单（安装期校验诊断）
+        // T-P3-133 插件清单 / T-P3-137 供应商模型拉取与真实测试（host 代理）
         if (call.op === "plugins-list") return gateway.pluginsList();
-        // T-P3-137：供应商模型清单拉取 / 真实对话测试（host 代理——CSP 面）
         if (call.op === "provider-models" || call.op === "provider-test") {
           const payload = {
             provider: call.provider!,

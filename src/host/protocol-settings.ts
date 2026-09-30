@@ -53,7 +53,9 @@ export type SettingsOp =
   /** T-P3-140 批次 B：沙箱自检（doctor 四项检查 + 生效面一览——无载荷）。 */
   | "sandbox-doctor"
   /** T-P3-141：插件主题 CSS 读取（UI 注入 <style>——pi-desktop 主题即插件）。 */
-  | "plugin-theme-css";
+  | "plugin-theme-css"
+  /** T-P3-143：外部 Agent MCP 配置扫描（只读——导入候选与每源报告）。 */
+  | "mcp-import-scan";
 
 /** 技能编辑器写回载荷（op=skill-save；frontmatter + 正文的一次性形状）。 */
 export interface SkillSavePayload {
@@ -80,6 +82,12 @@ export type SettingsCall = {
   name?: string;
   command?: string;
   args?: string[];
+  /**
+   * op=mcp-check：server 环境变量覆盖与单请求超时（T-P3-143——行级测试
+   * 与向导共用载荷，形状与 mcp[] 条目一致）。
+   */
+  env?: Record<string, string>;
+  timeoutMs?: number;
   /** op=skill-save：技能编辑器写回载荷（U22）。 */
   skill?: SkillSavePayload;
   /** op=instruction-save：指令写回目标（U24——白名单三值之一）。 */
@@ -118,6 +126,8 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     "name",
     "command",
     "args",
+    "env",
+    "timeoutMs",
     "settings",
     "skill",
     "target",
@@ -156,10 +166,11 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     op !== "provider-test" &&
     op !== "policy-audit" &&
     op !== "sandbox-doctor" &&
-    op !== "plugin-theme-css"
+    op !== "plugin-theme-css" &&
+    op !== "mcp-import-scan"
   ) {
     throw new Error(
-      `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|import|skills-list|skill-save|subagents-list|instructions-list|instruction-save|stt-transcribe|plugins-list|provider-models|provider-test|policy-audit|sandbox-doctor|plugin-theme-css）`,
+      `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|import|skills-list|skill-save|subagents-list|instructions-list|instruction-save|stt-transcribe|plugins-list|provider-models|provider-test|policy-audit|sandbox-doctor|plugin-theme-css|mcp-import-scan）`,
     );
   }
   if (op === "plugin-theme-css") {
@@ -206,6 +217,20 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
       (!Array.isArray(record["args"]) || record["args"].some((a) => typeof a !== "string"))
     ) {
       throw new Error("settings op=mcp-check 的 args 须为字符串数组");
+    }
+    // T-P3-143：env/timeoutMs（行级测试带条目级覆盖——形状同 mcp[] 校验）
+    if (
+      record["env"] !== undefined &&
+      (record["env"] === null || typeof record["env"] !== "object" || Array.isArray(record["env"]) ||
+        Object.values(record["env"] as Record<string, unknown>).some((v) => typeof v !== "string"))
+    ) {
+      throw new Error("settings op=mcp-check 的 env 须为对象（键值均为字符串）");
+    }
+    if (
+      record["timeoutMs"] !== undefined &&
+      (typeof record["timeoutMs"] !== "number" || !Number.isFinite(record["timeoutMs"]) || record["timeoutMs"] <= 0)
+    ) {
+      throw new Error("settings op=mcp-check 的 timeoutMs 须为正数");
     }
   }
   // U20/T-P3-122：import 的载荷 = 配置包内 settings 对象（形状校验在
@@ -300,6 +325,10 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     ...(typeof record["name"] === "string" ? { name: record["name"] } : {}),
     ...(typeof record["command"] === "string" ? { command: record["command"] } : {}),
     ...(Array.isArray(record["args"]) ? { args: record["args"] as string[] } : {}),
+    ...(record["env"] !== undefined && typeof record["env"] === "object" && !Array.isArray(record["env"])
+      ? { env: record["env"] as Record<string, string> }
+      : {}),
+    ...(typeof record["timeoutMs"] === "number" ? { timeoutMs: record["timeoutMs"] } : {}),
     ...(record["skill"] !== undefined && typeof record["skill"] === "object" && !Array.isArray(record["skill"])
       ? { skill: record["skill"] as unknown as SkillSavePayload }
       : {}),

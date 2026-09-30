@@ -2886,3 +2886,78 @@ mark.search-hit.active {
   font-size: var(--text-ui-sm);
   word-break: break-word;
 }
+
+/* T-P3-143 MCP 页 v2：双形式向导分段切换 / 高级折叠 / 导入模态 / 空状态按钮组 */
+.mcp-mode-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.mcp-mode-title {
+  font-size: var(--text-ui);
+  font-weight: 600;
+  color: var(--text);
+}
+.mcp-mode-seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.mcp-mode-seg .seg-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-subtle);
+  font-size: var(--text-ui-sm);
+  padding: 5px 14px;
+  cursor: pointer;
+}
+.mcp-mode-seg .seg-btn.active {
+  background: var(--panel-strong, var(--panel));
+  color: var(--text);
+  font-weight: 600;
+}
+.mcp-adv {
+  margin-top: 8px;
+}
+.mcp-adv summary {
+  cursor: pointer;
+  font-size: var(--text-ui-sm);
+  color: var(--text-subtle);
+  user-select: none;
+}
+.mcp-adv[open] summary {
+  margin-bottom: 6px;
+}
+.mcp-import-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.mcp-import-list {
+  max-height: 46vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.mcp-imp-line {
+  justify-content: flex-start;
+}
+.mcp-imp-line .row-title {
+  min-width: 140px;
+}
+.mcp-imp-line .row-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.empty-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 10px;
+}

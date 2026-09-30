@@ -181,6 +181,13 @@ export interface McpServerEntry {
   /** stdio 启动命令与参数（HTTP/SSE transport 随 mcp 域扩展——I3 LIMITATIONS）。 */
   command: string;
   args?: string[];
+  /**
+   * server 进程环境变量覆盖（T-P3-143——API key 型 server 必需； spawn 时
+   * 叠加在宿主环境之上，同名字段以条目为准——opencode environment 同构）。
+   */
+  env?: Record<string, string>;
+  /** 连接/列工具/调用的单请求超时 ms（缺省 10s——慢启动 server 可放宽）。 */
+  timeoutMs?: number;
   /** 启停开关（false = 装配跳过；缺省 true）。 */
   enabled?: boolean;
 }
@@ -1061,10 +1068,31 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
       if (e["enabled"] !== undefined && typeof e["enabled"] !== "boolean") {
         throw new SettingsError("mcp[].enabled 须为布尔值");
       }
+      // T-P3-143：env（string:string 平面对象——值非字符串直接拒绝，防凭据
+      // 类对象被静默转写）与 timeoutMs（正有限数）。
+      let env: Record<string, string> | undefined;
+      if (e["env"] !== undefined) {
+        if (e["env"] === null || typeof e["env"] !== "object" || Array.isArray(e["env"])) {
+          throw new SettingsError("mcp[].env 须为对象（键值均为字符串）");
+        }
+        env = {};
+        for (const [k, v] of Object.entries(e["env"] as Record<string, unknown>)) {
+          if (typeof v !== "string") throw new SettingsError(`mcp[].env.${k} 须为字符串`);
+          env[k] = v;
+        }
+      }
+      if (
+        e["timeoutMs"] !== undefined &&
+        (typeof e["timeoutMs"] !== "number" || !Number.isFinite(e["timeoutMs"]) || e["timeoutMs"] <= 0)
+      ) {
+        throw new SettingsError("mcp[].timeoutMs 须为正数");
+      }
       out.mcp!.push({
         name,
         command,
         ...(Array.isArray(e["args"]) ? { args: e["args"] as string[] } : {}),
+        ...(env !== undefined ? { env } : {}),
+        ...(e["timeoutMs"] !== undefined ? { timeoutMs: e["timeoutMs"] as number } : {}),
         ...(e["enabled"] === false ? { enabled: false } : {}),
       });
     }
