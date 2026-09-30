@@ -62,6 +62,24 @@ import {
 /** gate 级拒绝的错误码（deny 或审批拒绝）；审批超时另见 PERMISSION_TIMEOUT。 */
 export const TOOL_POLICY_DENIED = "TOOL_POLICY_DENIED";
 
+/**
+ * 工具分类（T-P3-137 八轮 A——审批模式映射的依据，pi-desktop accept-edits
+ * 与 agentscope EXPLORE 的只读/编辑分类同构）：
+ * - 编辑类（accept-edits 模式自动放行）：直接改写文件的工具；
+ * - 写类（read-only 模式拒绝）：能修改文件系统/状态/委派的一切工具——
+ *   bash/pwsh 可间接写、task 委派子代理行为不可静态判定，均从严。
+ * 其余工具视为只读（read-only 模式放行）。
+ */
+export const EDIT_CLASS_TOOLS: ReadonlySet<string> = new Set(["edit", "write", "apply_patch"]);
+export const WRITE_CLASS_TOOLS: ReadonlySet<string> = new Set([
+  "bash",
+  "pwsh",
+  "edit",
+  "write",
+  "apply_patch",
+  "task",
+]);
+
 /** C25 激活失败错误码：不可达 ≠ 策略拒绝（不产生 Verdict、不进批准层）。 */
 export const TOOL_NOT_ACTIVE = "TOOL_NOT_ACTIVE";
 
@@ -109,6 +127,14 @@ export interface ToolGateOptions extends ToolPolicyEvalOptions {
    * 规则照常）。每调用活查询；缺省 undefined = 零行为变化。
    */
   readonly unattended?: () => boolean;
+  /**
+   * T-P3-137 八轮 A：审批模式活查询（SessionConfigStore.approvalMode——
+   * config/refresh 会话内切换即生效）。ask/abstain 进 broker 前按模式映射：
+   * auto → 放行（全自动，仍拦 deny 规则与内置保护——它们在链上先于本门）；
+   * read-only + 写类工具 → deny；accept-edits + 编辑类工具 → 放行；
+   * ask-all / undefined → 落 broker（零行为变化）。unattended 优先于本值。
+   */
+  readonly approvalMode?: () => string | undefined;
   /**
    * C56 判官端口（T-P1-80）：ask 复核——allow 假阳性免挂起、deny 确定性
    * 拒绝、abstain 落回 broker ask（**落回人，不隐式放行**）。预算由
@@ -258,6 +284,26 @@ export function createToolGateLayer(
           reason: `无人值守：询问转为拒绝（原询问：${verdict.reason}）`,
         },
       };
+    }
+    // T-P3-137 八轮 A：审批模式映射（unattended 优先于本值——无人值守时
+    // ask 全转 deny；auto/read-only/accept-edits 在进 judge/broker 前分流）。
+    const approvalMode = options.approvalMode?.();
+    if (approvalMode === "auto") {
+      return next({ ...e, arguments: JSON.stringify(args) }); // 全自动放行
+    }
+    if (approvalMode === "read-only" && WRITE_CLASS_TOOLS.has(e.name)) {
+      return {
+        content: `只读模式：${e.name} 的写类调用已拒绝`,
+        isError: true,
+        error: {
+          name: "PolicyGate",
+          code: TOOL_POLICY_DENIED,
+          reason: `只读模式：写类调用拒绝（原询问：${verdict.reason}）`,
+        },
+      };
+    }
+    if (approvalMode === "accept-edits" && EDIT_CLASS_TOOLS.has(e.name)) {
+      return next({ ...e, arguments: JSON.stringify(args) }); // 编辑类自动放行
     }
     // C56 判官复核（T-P1-80，ask 分支内——C42"贵路径修正便宜路径"的
     // 接口面）：allow → 放行（假阳性免挂起，broker 零调用）/ deny →

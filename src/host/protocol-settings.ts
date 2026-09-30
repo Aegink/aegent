@@ -47,7 +47,9 @@ export type SettingsOp =
    * T-P3-137：供应商真实对话测试（host 代理发"你好"单轮——用户裁决
    * "成功才算可以使用"；成功回执含模型回复摘要与延迟）。
    */
-  | "provider-test";
+  | "provider-test"
+  /** T-P3-137 八轮 E：审批历史（策略拒绝/审批记录——bridge 扫当前会话流）。 */
+  | "policy-audit";
 
 /** 技能编辑器写回载荷（op=skill-save；frontmatter + 正文的一次性形状）。 */
 export interface SkillSavePayload {
@@ -147,10 +149,11 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     op !== "stt-transcribe" &&
     op !== "plugins-list" &&
     op !== "provider-models" &&
-    op !== "provider-test"
+    op !== "provider-test" &&
+    op !== "policy-audit"
   ) {
     throw new Error(
-      `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|mcp-check|import|skills-list|skill-save|subagents-list|instructions-list|instruction-save|stt-transcribe|plugins-list|provider-models|provider-test）`,
+      `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|mcp-check|import|skills-list|skill-save|subagents-list|instructions-list|instruction-save|stt-transcribe|plugins-list|provider-models|provider-test|policy-audit）`,
     );
   }
   if (op === "update") {

@@ -36,6 +36,7 @@ import { withRetry, type RetryObservation } from "../models/retry.js";
 import type { RegisteredModel } from "./model-switch.js";
 import {
   globalAgentsFile,
+  loadProjectRuleSources,
   loadUserRuleSources,
   resolveSubagentAssembly,
 } from "./agent-child-config.js";
@@ -56,6 +57,8 @@ interface ChildCliArgs {
   /** I8 人格预设（T-P2-305）：--persona <id>——装配期解析（未知 id 启动即败）。 */
   persona?: string;
   approvalTimeoutMs?: number;
+  /** T-P3-137 八轮 A：权限模式（settings.permission.mode 注入；configStore 初始）。 */
+  permissionMode?: string;
   network?: string;
   apiKey?: string;
   baseUrl?: string;
@@ -89,6 +92,8 @@ function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv): ChildCliArg
       args.contextWindow = Number(argv[++i]);
     else if (a === "--approval-timeout" && i + 1 < argv.length)
       args.approvalTimeoutMs = Number(argv[++i]);
+    else if (a === "--permission-mode" && i + 1 < argv.length)
+      args.permissionMode = argv[++i];
     else if (a === "--network" && i + 1 < argv.length) args.network = argv[++i];
     else if (a === "--persona" && i + 1 < argv.length) args.persona = argv[++i];
     // U1/T-P3-101：settings 档经父进程翻译注入的模型面槽位（此前只有 env
@@ -337,7 +342,12 @@ async function main(): Promise<void> {
 
   // U23+U24：子代理装配 / 用户规则 / 全局指令（拆分在 agent-child-config.ts）。
   const subagentsOptions = registry ? await resolveSubagentAssembly(settingsFile, registry.resolveTarget) : undefined;
-  const userRules = loadUserRuleSources();
+  // T-P3-137 八轮 C：规则两层装载——用户层在前、项目层在后（首匹配胜 =
+  // 用户级优先于项目级）；项目文件缺失 = 空集（与用户层同语义）。
+  const userRules = [
+    ...loadUserRuleSources(),
+    ...loadProjectRuleSources(cli.workspace ?? process.cwd()),
+  ];
   const globalAgentsPath = globalAgentsFile();
   // J27/T-P1-61：retrying 事件落流观察者的 late-binding 槽（模块级声明）。
   const options: AgentChildOptions = {
@@ -378,6 +388,9 @@ async function main(): Promise<void> {
             checkpointRepoRoot: cli.workspace ?? process.cwd(),
             contextWindow: cli.contextWindow ?? 200_000,
             approvalTimeoutMs: cli.approvalTimeoutMs ?? 120_000,
+            // T-P3-137 八轮 A：权限模式（--permission-mode 注入——configStore
+            // 初始 approvalMode；会话内切换经 config/refresh 通道）
+            ...(cli.permissionMode !== undefined ? { permissionMode: cli.permissionMode } : {}),
             // B8a/T-P1-20：网络档（--network allow|deny）——提供时装配创建
             // NetworkGuard 并注册 webfetch；缺省无网络工具（fail-closed；
             // 非法值已在 main 入口拒绝）

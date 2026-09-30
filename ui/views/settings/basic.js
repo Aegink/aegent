@@ -7,7 +7,8 @@
  */
 
 import { sendSettings } from "../../api.js";
-import { settingsCache, applyTheme } from "../../state.js";
+import { settingsCache, applyTheme, getSessionId } from "../../state.js";
+import { sendRequest } from "../../api.js";
 import { toast } from "../../feedback.js";
 import {
   markDirty,
@@ -26,17 +27,21 @@ import { refreshCredentials as refreshProviderCredentials } from "./providers.js
 export const SECTIONS_HTML = `
 <section data-section="permission">
   <div class="section-head"><h2 class="section-title">权限档</h2></div>
+  <div class="group-title">权限模式</div>
+  <p class="hint">全局默认（新会话起效）；保存后当前会话立即热切换（config/refresh 通道）。五档光谱：全问 ←→ 自动批编辑 ←→ 只读 ←→ 全自动 ←→ 无人值守。</p>
+  <div id="perm-mode-list" class="tile-list"></div>
+  <div class="group-title">审批超时</div>
   <div class="row-list">
     <div class="row">
       <div class="row-copy">
         <div class="row-title">审批超时（毫秒）</div>
-        <div class="row-desc">写操作等待用户审批的时长——超时按拒绝处理</div>
+        <div class="row-desc">裁决为"询问"的操作等待审批的时长——超时按拒绝处理</div>
       </div>
       <div class="row-control"><input id="perm-timeout" class="input input-num" type="number" min="1000" step="1000" /></div>
     </div>
   </div>
   <div class="group-title">决策规则 <span id="perm-rule-count" class="badge">0</span></div>
-  <p class="hint">工具调用的放行/询问/拒绝规则——<strong>按声明顺序首条匹配生效</strong>，全部不命中则默认询问。存于 <code id="perm-rules-path"></code>，保存后<strong>新会话装配生效</strong>。全文编辑在「指令中心」。</p>
+  <p class="hint">工具调用的放行/询问/拒绝规则——<strong>按声明顺序首条匹配生效</strong>，全部不命中则按权限模式裁决。存于 <code id="perm-rules-path"></code>（用户级），项目级 <code>.aegent/rules.txt</code>（若存在）也会装载、排在用户级之后。全文编辑在「指令中心」。</p>
   <div id="perm-rules-list" class="row-list"></div>
   <div class="perm-add-row">
     <input id="perm-rule-add" class="input" type="text" placeholder="新规则式样，如 Bash(git *) 或 write(src/**)" autocomplete="off" />
@@ -48,6 +53,9 @@ export const SECTIONS_HTML = `
     <button id="perm-rule-append" type="button" class="btn">＋ 添加规则</button>
   </div>
   <div id="perm-rules-lint" class="perm-lint"></div>
+  <div class="group-title">工具默认策略 <span class="badge">兜底</span></div>
+  <p class="hint">每类工具的兜底动作——生成对应规则追加在清单<strong>末尾</strong>（手写规则在前会优先生效）。</p>
+  <div id="perm-tool-defaults" class="row-list"></div>
   <div class="group-title">规则试配器</div>
   <p class="hint">输入一条工具调用（如 <code>Bash(git status)</code>），按声明顺序预览会命中哪条规则——仅语法层预览，实际裁决以内核策略链为准。</p>
   <div class="perm-add-row">
@@ -55,11 +63,15 @@ export const SECTIONS_HTML = `
     <button id="perm-test-run" type="button" class="btn">试配</button>
   </div>
   <div id="perm-test-result" class="perm-lint"></div>
+  <div class="group-title">最近策略拒绝 <span class="badge">当前会话</span></div>
+  <div id="perm-audit" class="row-list"></div>
+  <div class="form-actions"><button id="perm-audit-refresh" type="button" class="btn">刷新</button></div>
   <div class="group-title">策略链（内核固定顺序）</div>
   <div class="row-list">
     <div class="row"><div class="row-copy"><div class="row-title">① 决策规则</div><div class="row-desc">上面清单——首条匹配的规则决定 allow / ask / deny</div></div></div>
-    <div class="row"><div class="row-copy"><div class="row-title">② 内置保护</div><div class="row-desc">危险命令清单、系统目录保护名、IMDS/SSRF 黑名单——内核内置，独立于规则（deny 不可被规则覆盖绕过）</div></div></div>
-    <div class="row"><div class="row-copy"><div class="row-title">③ 审批</div><div class="row-desc">裁决为 ask 的操作挂起等你审批（超时 = 上面的毫秒数，拒绝收尾）；allow 直接放行、deny 直接拒绝</div></div></div>
+    <div class="row"><div class="row-copy"><div class="row-title">② 权限模式</div><div class="row-desc">当前模式的映射（全自动放行 / 只读拒写类 / 编辑类放行）——deny 规则与内置保护在链上更早，不会被模式绕过</div></div></div>
+    <div class="row"><div class="row-copy"><div class="row-title">③ 内置保护</div><div class="row-desc">危险命令清单、系统目录保护名、IMDS/SSRF 黑名单——内核内置</div></div></div>
+    <div class="row"><div class="row-copy"><div class="row-title">④ 审批</div><div class="row-desc">裁决为"询问"的操作挂起等你审批（超时 = 上面的毫秒数，拒绝收尾）；allow 直接放行、deny 直接拒绝</div></div></div>
   </div>
 </section>
 <section data-section="sandbox">
@@ -226,6 +238,7 @@ async function refreshPolicyRules() {
   }
   permRulesContent = envelope.result.rules.content ?? "";
   renderPolicyRules();
+  renderToolDefaults(); // 工具默认策略下拉（管理段回填）
 }
 
 async function savePolicyRules(nextContent) {
@@ -273,6 +286,196 @@ function testRuleMatch(input) {
 }
 
 
+
+// ---------------------------------------------------------------------------
+// 权限模式（T-P3-137 八轮 A——五档成套切换：全局默认（settings 持久）+
+// 当前会话热切换（config/refresh 通道）。模式目录与 src/kernel/session-config.ts
+// PERMISSION_MODES_DIRECTORY 同源——前端零构建链复制，改动需两侧同步）。
+// ---------------------------------------------------------------------------
+
+const PERMISSION_MODE_UI = [
+  { name: "ask", label: "每次询问", desc: "裁决为询问的操作都挂起等你批（默认，最安全）" },
+  { name: "accept-edits", label: "自动批编辑", desc: "编辑/写入/补丁类工具自动放行，其余照问（人在旁边快速迭代）" },
+  { name: "read-only", label: "只读", desc: "写类调用直接拒绝——探索代码库、规划实现用" },
+  { name: "auto", label: "全自动", desc: "询问全部自动放行（deny 规则与内置保护仍然拦截）" },
+  { name: "unattended", label: "无人值守", desc: "询问全部自动拒绝（定时任务/不在场时的安全默认）" },
+];
+const PERMISSION_MODE_VALUES = {
+  ask: { approvalMode: "ask-all", unattended: false },
+  "accept-edits": { approvalMode: "accept-edits", unattended: false },
+  "read-only": { approvalMode: "read-only", sandboxMode: "read-only", unattended: false },
+  auto: { approvalMode: "auto", sandboxMode: "danger-full-access", unattended: false },
+  unattended: { approvalMode: "ask-all", unattended: true },
+};
+
+function renderPermissionModes() {
+  const box = document.getElementById("perm-mode-list");
+  if (box === null) return;
+  box.replaceChildren();
+  const current = settingsCache?.permission?.mode ?? "ask";
+  for (const mode of PERMISSION_MODE_UI) {
+    const row = rowEl();
+    const titleEl = document.createElement("div");
+    titleEl.className = "row-title";
+    titleEl.textContent = mode.label;
+    if (current === mode.name) titleEl.appendChild(chipEl("当前", true));
+    const descEl = document.createElement("div");
+    descEl.className = "row-desc";
+    descEl.textContent = mode.desc;
+    const useBtn = btnEl(current === mode.name ? "使用中" : "启用", "btn", `切换到权限模式 ${mode.label}`);
+    useBtn.disabled = current === mode.name;
+    useBtn.addEventListener("click", () => void applyPermissionMode(mode.name));
+    row.append(rowCopyEl(titleEl, descEl), rowControl(useBtn));
+    box.appendChild(row);
+  }
+}
+
+async function applyPermissionMode(name) {
+  // 全局默认持久化（新会话起效）+ 当前会话热切换（config/refresh 即时生效）
+  settingsCache.permission = { ...(settingsCache.permission ?? {}), mode: name };
+  markDirty("permission");
+  const sid = getSessionId();
+  if (sid !== "") {
+    try {
+      await sendRequest(sid, { type: "config/refresh", patch: { ...PERMISSION_MODE_VALUES[name] } });
+      toast(`权限模式已切换：${name}（当前会话即时生效 + 新会话默认）`, "info");
+    } catch {
+      toast(`权限模式已保存：${name}（新会话生效——当前会话切换失败）`, "warn");
+    }
+  } else {
+    toast(`权限模式已保存：${name}（新会话生效）`, "info");
+  }
+  renderPermissionModes();
+}
+
+// ---------------------------------------------------------------------------
+// 工具默认策略（八轮 D——opencode per-tool permission 的等价糖：每类工具
+// 的兜底动作生成规则追加在清单末尾管理段——手写规则在前优先生效）
+// ---------------------------------------------------------------------------
+
+const TOOL_DEFAULT_TARGETS = [
+  ["bash", "Bash"],
+  ["pwsh", "Pwsh"],
+  ["edit", "Edit"],
+  ["write", "Write"],
+  ["webfetch", "WebFetch"],
+  ["task", "Task"],
+];
+const TOOL_DEFAULTS_MARKER = "# --- 工具默认策略（权限档页生成，勿手改） ---";
+
+function parseToolDefaults(content) {
+  const out = {};
+  let inSection = false;
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line === TOOL_DEFAULTS_MARKER) {
+      inSection = true;
+      continue;
+    }
+    if (!inSection || line === "" || line.startsWith("#")) continue;
+    const m = /^([^(]+?)\s*\(\*\)\s*->\s*(allow|ask|deny)\s*$/.exec(line);
+    if (m !== null) out[m[1].trim()] = m[2];
+  }
+  return out;
+}
+
+function buildToolDefaultsSection(defaults) {
+  const rows = TOOL_DEFAULT_TARGETS.filter(([key]) => defaults[key] !== undefined && defaults[key] !== "").map(
+    ([key, ruleName]) => `${ruleName}(*) -> ${defaults[key]}`,
+  );
+  if (rows.length === 0) return "";
+  return `${TOOL_DEFAULTS_MARKER}\n${rows.join("\n")}\n`;
+}
+
+function renderToolDefaults() {
+  const box = document.getElementById("perm-tool-defaults");
+  if (box === null) return;
+  box.replaceChildren();
+  const current = parseToolDefaults(permRulesContent);
+  for (const [key, ruleName] of TOOL_DEFAULT_TARGETS) {
+    const row = rowEl();
+    const titleEl = document.createElement("div");
+    titleEl.className = "row-title";
+    titleEl.textContent = ruleName;
+    const descEl = document.createElement("div");
+    descEl.className = "row-desc";
+    descEl.textContent =
+      key === "bash" || key === "pwsh"
+        ? "命令执行——兜底动作（编辑类自动批模式对它不生效）"
+        : key === "task"
+          ? "子任务委派——兜底动作"
+          : "兜底动作";
+    const sel = document.createElement("select");
+    sel.className = "select";
+    sel.setAttribute("aria-label", `${ruleName} 默认动作`);
+    sel.dataset.tool = key;
+    for (const [value, label] of [
+      ["", "（未设置）"],
+      ["allow", "allow（放行）"],
+      ["ask", "ask（询问）"],
+      ["deny", "deny（拒绝）"],
+    ]) {
+      const o = document.createElement("option");
+      o.value = value;
+      o.textContent = label;
+      sel.appendChild(o);
+    }
+    sel.value = current[key] ?? "";
+    sel.addEventListener("change", () => saveToolDefaults());
+    row.append(rowCopyEl(titleEl, descEl), rowControl(sel));
+    box.appendChild(row);
+  }
+}
+
+function saveToolDefaults() {
+  const box = document.getElementById("perm-tool-defaults");
+  if (box === null) return;
+  const defaults = {};
+  for (const sel of box.querySelectorAll("select")) {
+    if (sel.value !== "") defaults[sel.dataset.tool] = sel.value;
+  }
+  // 剥离旧管理段 → 追加新段（手写规则区保持原样——首匹配胜下手写优先）
+  const stripped = permRulesContent.split(/\r?\n/).filter((l) => {
+    if (l.trim() === TOOL_DEFAULTS_MARKER) return false;
+    if (l.trim().startsWith("#") || l.trim() === "") return true;
+    return !/^[A-Za-z_]+\s*\(\*\)\s*->\s*(allow|ask|deny)\s*$/.test(l.trim()) || parseToolDefaults(permRulesContent)[/^([^(]+?)/.exec(l.trim())?.[1]?.trim() ?? ""] === undefined;
+  });
+  const base = stripped.join("\n").replace(/\n+$/, "");
+  const next = base === "" ? buildToolDefaultsSection(defaults) : `${base}\n${buildToolDefaultsSection(defaults)}`;
+  void savePolicyRules(next.endsWith("\n") || next === "" ? next : `${next}\n`);
+  renderToolDefaults();
+}
+
+// ---------------------------------------------------------------------------
+// 审批历史（八轮 E——bridge policy-audit op 扫当前会话流的策略拒绝）
+// ---------------------------------------------------------------------------
+
+async function refreshPolicyAudit() {
+  const box = document.getElementById("perm-audit");
+  if (box === null) return;
+  box.replaceChildren();
+  const envelope = await sendSettings({ op: "policy-audit" });
+  if (!envelope.ok) {
+    box.appendChild(emptyState("审批历史不可用", envelope.error?.message ?? ""));
+    return;
+  }
+  const entries = envelope.result.entries ?? [];
+  if (entries.length === 0) {
+    box.appendChild(emptyState("当前会话没有策略拒绝记录", "被规则/模式拒绝的调用会在这里列出"));
+    return;
+  }
+  for (const e of entries) {
+    const row = rowEl();
+    const titleEl = document.createElement("div");
+    titleEl.className = "row-title mono";
+    titleEl.textContent = e.tool;
+    const descEl = document.createElement("div");
+    descEl.className = "row-desc";
+    descEl.textContent = `${e.reason}（${e.time}）`;
+    row.append(rowCopyEl(titleEl, descEl));
+    box.appendChild(row);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Profiles（U19/T-P3-121）：组合档清单 + applyProfile 批量写生效段
@@ -389,6 +592,7 @@ export function bind() {
     void savePolicyRules(next);
     input.value = "";
   });
+  document.getElementById("perm-audit-refresh").addEventListener("click", () => void refreshPolicyAudit());
   document.getElementById("perm-test-run").addEventListener("click", () => {
     const input = document.getElementById("perm-test-input");
     const out = document.getElementById("perm-test-result");
@@ -470,6 +674,8 @@ export function fill() {
   document.getElementById("perm-timeout").value =
     settingsCache?.permission?.approvalTimeoutMs ?? "";
   void refreshPolicyRules(); // 决策规则清单（读 user-rules 文件位）
+  renderPermissionModes(); // 权限模式卡（settings.permission.mode 当前值）
+  void refreshPolicyAudit(); // 审批历史（当前会话流的策略拒绝）
   document.getElementById("sandbox-network").value = settingsCache?.sandbox?.network ?? "";
   document.getElementById("sandbox-workspace").value = settingsCache?.sandbox?.workspace ?? "";
   document.getElementById("sandbox-db").value = settingsCache?.sandbox?.db ?? "";

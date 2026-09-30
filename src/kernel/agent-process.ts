@@ -34,7 +34,7 @@ import {
 } from "../session/reference.js";
 import { ToolClassLimiter, TurnAdmission } from "./admission.js";
 import { isWriteExecuteTool } from "../policy/protected-paths.js";
-import { SessionConfigStore, StaticConfigImmutableError } from "./session-config.js";
+import { SessionConfigStore, type ApprovalMode, StaticConfigImmutableError } from "./session-config.js";
 import type { RetryObservation } from "../models/retry.js";
 import {
   type AgentMessage,
@@ -281,6 +281,11 @@ export async function runAgentChildStdio(
       ...(options.assembly?.approvalTimeoutMs !== undefined
         ? { approvalTimeoutMs: options.assembly.approvalTimeoutMs }
         : {}),
+      // T-P3-137 八轮 A：权限模式初始（settings.permission.mode 经
+      // resolveChildLaunchArgv --permission-mode 注入的装配面）
+      ...(options.assembly?.permissionMode !== undefined
+        ? { approvalMode: options.assembly.permissionMode as ApprovalMode }
+        : {}),
       ...(options.queueMaxSize !== undefined ? { queueMaxSize: options.queueMaxSize } : {}),
     },
     // C8：预设切换经 onInfo 留痕（logger.info——"预设事件保留用户意图"）
@@ -296,6 +301,10 @@ export async function runAgentChildStdio(
         // C33：无人值守活查询接 SessionConfigStore（config/refresh 通道
         // 切换即生效；store getter 缺省 undefined → === true 为 false）
         unattended: () => configStore.unattended === true,
+        // T-P3-137 八轮 A：审批模式活查询（同上活查询语义）
+        ...(configStore.approvalMode !== undefined
+          ? { approvalMode: () => configStore.approvalMode }
+          : {}),
       })
     : undefined;
 

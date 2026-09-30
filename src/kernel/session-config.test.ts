@@ -45,11 +45,13 @@ describe("SessionConfigStore —— B21 配置两类", () => {
   it("白名单闭集冻结只追加；未刷新路径 getter 返回装配初始值（零行为变化）", () => {
     // T-P1-73：sandboxMode 追加入白名单（C8 观测面 knob——只追加的预期演进）
     // T-P1-77：unattended 追加入白名单（C33 无人值守开关）
+    // T-P3-137 八轮 A：approvalMode 追加入白名单（审批模式 knob——gate ask 分支映射）
     expect(REFRESHABLE_CONFIG_KEYS).toEqual([
       "approvalTimeoutMs",
       "queueMaxSize",
       "sandboxMode",
       "unattended",
+      "approvalMode",
     ]);
     const store = new SessionConfigStore("s1");
     expect(store.approvalTimeoutMs).toBeUndefined();

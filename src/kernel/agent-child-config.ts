@@ -82,3 +82,22 @@ export function loadUserRuleSources(rulesPath?: string): import("../policy/rule-
     return []; // 读取失败与缺失同语义（规则面可选，不做权限诊断）
   }
 }
+
+/**
+ * 项目层规则文件（T-P3-137 八轮 C——kimi/qwen 分层同构）：
+ * `<workspace>/.aegent/rules.txt`。装载顺序 = 用户层在前、项目层在后
+ * （首匹配胜——用户级规则优先于项目级）。文件缺失 = 空集。
+ */
+export function projectRulesPath(workspaceRoot: string): string {
+  return path.join(workspaceRoot, ".aegent", "rules.txt");
+}
+
+export function loadProjectRuleSources(workspaceRoot: string): import("../policy/rule-loader.js").RuleSource[] {
+  const file = projectRulesPath(workspaceRoot);
+  if (!existsSync(file)) return [];
+  try {
+    return parseRulesText(readFileSync(file, "utf8")).sources;
+  } catch {
+    return [];
+  }
+}

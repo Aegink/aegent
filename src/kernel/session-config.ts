@@ -49,12 +49,46 @@ export class UnknownPresetError extends Error {
   }
 }
 
+/**
+ * 权限模式五档（T-P3-137 八轮 A——用户裁决"权限档全面参考参考项目"；参考
+ * agentscope 五档/pi-desktop 全局+会话双层/kimi 三档/qwen yolo 归一）。
+ * 每模式 = 成套 knob 值（C8 "预设是命名记录、切换是逐 knob 写入"同构），
+ * 经既有 refresh 通道写入（applyPermissionMode）——不新增第二配置来源。
+ *
+ * | 模式 | approvalMode | unattended | sandboxMode | 语义 |
+ * | --- | --- | --- | --- | --- |
+ * | ask | ask-all | false | — | 每次询问（默认，最安全） |
+ * | accept-edits | accept-edits | false | — | 编辑类工具自动放行，其余照问 |
+ * | read-only | read-only | false | read-only | 写类调用拒绝（探索/规划） |
+ * | auto | auto | false | danger-full-access | 全自动（仍拦 deny 规则与内置保护） |
+ * | unattended | ask-all | **true** | — | 无人值守：ask 全转 deny（C33 优先） |
+ */
+export const PERMISSION_MODES_DIRECTORY = {
+  ask: { label: "每次询问（默认）", values: { approvalMode: "ask-all", unattended: false } },
+  "accept-edits": {
+    label: "自动批编辑",
+    values: { approvalMode: "accept-edits", unattended: false },
+  },
+  "read-only": {
+    label: "只读",
+    values: { approvalMode: "read-only", sandboxMode: "read-only", unattended: false },
+  },
+  auto: {
+    label: "全自动",
+    values: { approvalMode: "auto", sandboxMode: "danger-full-access", unattended: false },
+  },
+  unattended: { label: "无人值守（询问转拒绝）", values: { approvalMode: "ask-all", unattended: true } },
+} as const satisfies Record<string, { label: string; values: { approvalMode: ApprovalMode; unattended: boolean; sandboxMode?: SandboxMode } }>;
+
+export type PermissionModeName = keyof typeof PERMISSION_MODES_DIRECTORY;
+
 /** 可热刷新字段白名单（闭集，冻结只追加——C10 先例）。 */
 export const REFRESHABLE_CONFIG_KEYS = [
   "approvalTimeoutMs",
   "queueMaxSize",
   "sandboxMode",
   "unattended",
+  "approvalMode",
 ] as const;
 
 export type RefreshableConfigKey = (typeof REFRESHABLE_CONFIG_KEYS)[number];
@@ -71,6 +105,10 @@ export class StaticConfigImmutableError extends Error {
   }
 }
 
+/** 审批模式 knob 闭集（T-P3-137 八轮 A——gate ask 分支映射的消费值）。 */
+export const APPROVAL_MODES = ["ask-all", "accept-edits", "read-only", "auto"] as const;
+export type ApprovalMode = (typeof APPROVAL_MODES)[number];
+
 export interface SessionConfigValues {
   /** 审批答复上界（毫秒）——question/escalation 等审批通道的等待上界。 */
   approvalTimeoutMs?: number;
@@ -81,6 +119,10 @@ export interface SessionConfigValues {
   /** C33 无人值守（T-P1-77）：true 时 gate 把每一个 ask/abstain 转为 deny
    * （保留检测只改结局——agentscope DONT_ASK 语义）。缺省 undefined = 零行为变化。 */
   unattended?: boolean;
+  /** T-P3-137 八轮 A：审批模式 knob——gate ask 分支映射：auto=放行、
+   * read-only=写类拒绝、accept-edits=编辑类放行、ask-all=落 broker。
+   * unattended=true 时优先于本值（无人值守最高优先）。 */
+  approvalMode?: ApprovalMode;
 }
 
 export interface SessionConfigStoreOptions {
@@ -94,6 +136,7 @@ export class SessionConfigStore {
     queueMaxSize: number | undefined;
     sandboxMode: SandboxMode | undefined;
     unattended: boolean | undefined;
+    approvalMode: ApprovalMode | undefined;
   };
 
   constructor(
@@ -106,6 +149,7 @@ export class SessionConfigStore {
       queueMaxSize: initial?.queueMaxSize,
       sandboxMode: initial?.sandboxMode,
       unattended: initial?.unattended,
+      approvalMode: initial?.approvalMode,
     };
   }
 
@@ -124,6 +168,11 @@ export class SessionConfigStore {
   /** C33 无人值守开关（活查询消费面——gate 每调用读当前值）。 */
   get unattended(): boolean | undefined {
     return this.values.unattended;
+  }
+
+  /** T-P3-137 八轮 A：审批模式 knob（gate ask 分支活查询消费面）。 */
+  get approvalMode(): ApprovalMode | undefined {
+    return this.values.approvalMode;
   }
 
   /**
@@ -154,7 +203,8 @@ export class SessionConfigStore {
           (["read-only", "workspace-write", "danger-full-access"] as const satisfies readonly SandboxMode[]).includes(
             value as SandboxMode,
           )) ||
-        (key === "unattended" && typeof value === "boolean");
+        (key === "unattended" && typeof value === "boolean") ||
+        (key === "approvalMode" && typeof value === "string" && (APPROVAL_MODES as readonly string[]).includes(value));
       if (!valid) {
         throw new StaticConfigImmutableError(key);
       }
@@ -171,6 +221,8 @@ export class SessionConfigStore {
         this.values.sandboxMode = value as SandboxMode;
       } else if (key === "unattended") {
         this.values.unattended = value as boolean;
+      } else if (key === "approvalMode") {
+        this.values.approvalMode = value as ApprovalMode;
       }
       applied.push(key);
     }
@@ -194,6 +246,25 @@ export class SessionConfigStore {
     const result = this.refresh({ ...preset.values });
     this.options?.onInfo?.(
       `权限预设切换 [${this.sessionId}]：${String(name)}（${preset.label}）→ 生效 ${result.applied.join("/")}`,
+    );
+    return result;
+  }
+
+  /**
+   * 权限模式成套切换（T-P3-137 八轮 A）：语义同 applyPreset（C8 机制——
+   * 经既有 refresh 通道逐 knob 写入；在途 turn 不受影响）。未知模式类型化
+   * 拒绝（零写入）；切换经 onInfo 留痕。
+   */
+  applyPermissionMode(name: PermissionModeName | string): { applied: RefreshableConfigKey[] } {
+    const mode = (PERMISSION_MODES_DIRECTORY as Record<string, { label: string; values: JsonRecord }>)[
+      name
+    ];
+    if (mode === undefined) {
+      throw new UnknownPresetError(name);
+    }
+    const result = this.refresh({ ...mode.values });
+    this.options?.onInfo?.(
+      `权限模式切换 [${this.sessionId}]：${String(name)}（${mode.label}）→ 生效 ${result.applied.join("/")}`,
     );
     return result;
   }

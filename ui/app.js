@@ -453,16 +453,25 @@ function buildCard(name, payload) {
     args.className = "card-args";
     args.textContent = JSON.stringify(payload.args, null, 2);
     card.append(title, args);
-    for (const action of ["allow", "deny"]) {
+    // T-P3-137 八轮 B（用户裁决"不止外观，功能也要一样"——参考 opencode/
+    // pi-desktop 审批三选）：allow 带 scope（once=允许一次 / session=本会话
+    // 内同类调用不再问——C22 session-runtime 作用域，子进程 approvalCache 记账）
+    const actions = [
+      { label: "允许一次", action: "allow", scope: "once", className: "allow" },
+      { label: "本会话内允许", action: "allow", scope: "session", className: "allow allow-session" },
+      { label: "拒绝", action: "deny", scope: undefined, className: "deny" },
+    ];
+    for (const { label, action, scope, className } of actions) {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.textContent = action === "allow" ? "允许" : "拒绝";
-      btn.className = action;
+      btn.textContent = label;
+      btn.className = className;
       btn.addEventListener("click", async () => {
         await sendRequest(sessionId(), {
           type: "approve",
           requestId: payload.requestId,
           action,
+          ...(scope !== undefined ? { scope } : {}),
           source: SURFACE_KIND,
         });
         removeCard(payload.requestId);

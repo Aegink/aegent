@@ -37,11 +37,12 @@ function rulesModule(
 const payload = (
   args: JsonRecord,
   callId = "c1",
+  name = "bash",
 ): ToolCallPayload => ({
   turn: 1,
   step: 1,
   callId,
-  name: "bash",
+  name,
   arguments: JSON.stringify(args),
 });
 
@@ -433,6 +434,81 @@ describe("C33 · 无人值守模式：ASK→DENY 转换（T-P1-77）", () => {
     expect(result.isError).toBe(true);
     expect(result.content).toContain("无人值守");
     expect(pending.listPending()).toHaveLength(0);
+  });
+
+  // T-P3-137 八轮 A：审批模式映射（gate ask 分支——unattended 后、judge 前）
+  function makeModeHarness(
+    entries: ReadonlyArray<readonly [Action, string]>,
+    approvalMode: (() => string | undefined) | undefined,
+  ) {
+    const pending = new PendingApprovals();
+    const broker = new ManualPermissionBroker(pending, 5_000);
+    const layer = createToolGateLayer({
+      chain: assemblePolicyChain({ user: [rulesModule(entries)] }),
+      broker,
+      sessionId: "s1",
+      ...(approvalMode !== undefined ? { approvalMode } : {}),
+    });
+    const received: ToolCallPayload[] = [];
+    const next = makeNext(async (e2) => {
+      received.push(e2);
+      return { content: `executed ${e2.name}` };
+    });
+    return { layer, next, received, pending };
+  }
+
+  it("审批模式 auto：ask 全部放行（全自动——deny 规则与内置保护仍在链上先于此）", async () => {
+    const { layer, next, received, pending } = makeModeHarness(
+      [["ask", "bash(git *)"]],
+      () => "auto",
+    );
+    const result = await layer({ sessionId: "s1" }, payload({ command: "git push" }), next);
+    expect(received).toHaveLength(1);
+    expect(result.isError).toBeUndefined();
+    expect(pending.listPending()).toHaveLength(0);
+  });
+
+  it("审批模式 read-only：写类工具 ask → deny，只读工具照常", async () => {
+    const harness = makeModeHarness([["ask", "bash(*)"]], () => "read-only");
+    const denied = await harness.layer({ sessionId: "s1" }, payload({ command: "rm -rf /tmp/x" }), harness.next);
+    expect(denied.isError).toBe(true);
+    expect(denied.content).toContain("只读模式");
+    expect(harness.pending.listPending()).toHaveLength(0);
+  });
+
+  it("审批模式 accept-edits：编辑类工具 ask → 放行，bash 照常落 broker", async () => {
+    const harness = makeModeHarness([["ask", "edit(*)"], ["ask", "bash(*)"]], () => "accept-edits");
+    // 编辑类放行（payload 构造为 edit 工具）
+    const editResult = await harness.layer(
+      { sessionId: "s1" },
+      payload({ path: "/x", content: "y" }, "c-edit", "edit"),
+      harness.next,
+    );
+    expect(harness.received).toHaveLength(1);
+    expect(editResult.isError).toBeUndefined();
+    // bash 非编辑类——保持 ask（挂起；broker 挂起在微任务后落）
+    const bashPromise = Promise.resolve(
+      harness.layer({ sessionId: "s1" }, payload({ command: "ls" }), harness.next),
+    ).catch(() => ({ content: "timeout" }) as ToolExecutionResult);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(harness.pending.listPending()).toHaveLength(1);
+    const entry = harness.pending.listPending()[0];
+    await harness.pending.reply(entry?.id ?? "", { action: "deny" });
+    await bashPromise;
+  });
+
+  it("审批模式缺省（undefined/ask-all）：落 broker ask——零行为变化", async () => {
+    for (const mode of [undefined, () => "ask-all"]) {
+      const harness = makeModeHarness([["ask", "bash(*)"]], mode);
+      const promise = Promise.resolve(
+        harness.layer({ sessionId: "s1" }, payload({ command: "ls" }), harness.next),
+      ).catch(() => ({ content: "timeout" }) as ToolExecutionResult);
+      await new Promise((r) => setTimeout(r, 10));
+      expect(harness.pending.listPending()).toHaveLength(1); // 挂起了——未映射
+      const entry = harness.pending.listPending()[0];
+      await harness.pending.reply(entry?.id ?? "", { action: "deny" });
+      await promise;
+    }
   });
 
   it("deny/allow 规则照常（转换只改 ask 结局——保留检测）", async () => {

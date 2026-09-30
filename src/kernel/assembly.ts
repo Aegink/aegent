@@ -203,6 +203,12 @@ export interface ChildAssemblyOptions {
   /** 审批等待上界（C50：Manual broker 必填，无默认值）。 */
   approvalTimeoutMs: number;
   /**
+   * T-P3-137 八轮 A：权限模式（settings.permission.mode——settings.json
+   * 装配注入；子进程内经 SessionConfigStore.initial 转成 approvalMode
+   * 活查询，config/refresh 会话内切换即生效）。
+   */
+  permissionMode?: string;
+  /**
    * B8b/T-P1-21 question 的答复等待上界（毫秒）；缺省同 approvalTimeoutMs
    * ——超时按拒结算（C50 语义复用），测试用短上界。
    */
@@ -317,6 +323,13 @@ export interface ChildAssemblyOptions {
    * undefined = 零行为变化。
    */
   unattended?: () => boolean;
+  /**
+   * T-P3-137 八轮 A：审批模式活查询（SessionConfigStore.approvalMode——
+   * config/refresh 会话内切换即生效）。gate ask 分支映射：auto 放行 /
+   * read-only 写类拒绝 / accept-edits 编辑类放行 / ask-all 落 broker。
+   * 缺省 undefined = 零行为变化（每次询问）。
+   */
+  approvalMode?: () => string | undefined;
   /**
    * G3/G6 会话目标（T-P1-12）：提供时构造 GoalService——新会话（流内无
    * goal 事实）以此落初始 goal/set 事件；已有 goal 事实的会话按流重建
@@ -902,6 +915,8 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
     ...(options.activation !== undefined ? { activation: options.activation } : {}),
     // C33：无人值守活查询（缺省 undefined = 零行为变化）
     ...(options.unattended !== undefined ? { unattended: options.unattended } : {}),
+    // T-P3-137 八轮 A：审批模式活查询（缺省 undefined = 零行为变化）
+    ...(options.approvalMode !== undefined ? { approvalMode: options.approvalMode } : {}),
     // C42/T-P2-203：判官本体（J3 独立 judge 段）+ 会话级预算记账（C56
     // 预算槽）+ L2 审计（judge 决策可追溯——logger 宣告面，与审批审计
     // 同款；零词汇表事件）。缺省 undefined = 无判官（ask 全部落人）。

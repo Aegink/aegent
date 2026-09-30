@@ -43,6 +43,20 @@ export type ProviderAdapter = (typeof PROVIDER_ADAPTERS)[number];
  *  reasoning_options 归一与高级面板胶囊共用；reasoning 字段默认档从这里取）。 */
 export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 
+/** 权限模式五档（T-P3-137 八轮 A——参考 agentscope 五档/pi-desktop 全局+会话
+ *  双层/kimi 三档归一）：ask=每次询问（默认）；accept-edits=编辑类工具自动
+ *  放行；read-only=只读（写类拒绝）；auto=全自动（仍拦 deny 规则与内置
+ *  保护）；unattended=无人值守（ask 转 deny——C33 同语义）。会话内切换经
+ *  config/refresh 通道（session-config.ts 模式目录成套写 knob）。 */
+export const PERMISSION_MODES = [
+  "ask",
+  "accept-edits",
+  "read-only",
+  "auto",
+  "unattended",
+] as const;
+export type PermissionMode = (typeof PERMISSION_MODES)[number];
+
 /** 会话装配映射（适配实现选择——wire 身份收敛：responses 回退 openai）。 */
 export function adapterForAssembly(
   adapter: ProviderAdapter,
@@ -201,8 +215,12 @@ export interface SettingsShape {
   providers: ProviderEntry[];
   defaultProvider?: string;
   defaultModel?: string;
-  /** 权限档（现有装配面词汇——approvalTimeoutMs 是 C 族审批上界）。 */
-  permission?: { approvalTimeoutMs?: number };
+  /** 权限档（现有装配面词汇——approvalTimeoutMs 是 C 族审批上界；mode 是
+   * T-P3-137 八轮权限模式五档——全局默认，会话内可经 config/refresh 切换）。 */
+  permission?: {
+    approvalTimeoutMs?: number;
+    mode?: PermissionMode;
+  };
   /** 沙箱档（B8a 网络档 + workspace/事件库落位）。 */
   sandbox?: { network?: "allow" | "deny"; workspace?: string; db?: string };
   /** 外观（U14 主题全端一致暗/亮；语言 zh-CN 缺省）。 */
@@ -465,13 +483,21 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
     if (permission === null || typeof permission !== "object") {
       throw new SettingsError("permission 须为对象");
     }
-    const timeout = (permission as Record<string, unknown>)["approvalTimeoutMs"];
+    const permRec = permission as Record<string, unknown>;
+    const timeout = permRec["approvalTimeoutMs"];
     if (timeout !== undefined) {
       if (typeof timeout !== "number" || !Number.isInteger(timeout) || timeout <= 0) {
         throw new SettingsError("permission.approvalTimeoutMs 须为正整数");
       }
-      out.permission = { approvalTimeoutMs: timeout };
     }
+    const mode = permRec["mode"];
+    if (mode !== undefined && (typeof mode !== "string" || !(PERMISSION_MODES as readonly string[]).includes(mode))) {
+      throw new SettingsError(`permission.mode 非法：${String(mode)}（合法：${PERMISSION_MODES.join("|")}）`);
+    }
+    out.permission = {
+      ...(timeout !== undefined ? { approvalTimeoutMs: timeout } : {}),
+      ...(mode !== undefined ? { mode: mode as PermissionMode } : {}),
+    };
   }
   const sandbox = rec["sandbox"];
   if (sandbox !== undefined) {
@@ -920,6 +946,7 @@ function parseChildArgs(childArgs: readonly string[]): {
   workspace?: string;
   network?: string;
   approvalTimeoutMs?: number;
+  permissionMode?: string;
   contextWindow?: number;
   rawLogDir?: string;
 } {
@@ -931,6 +958,7 @@ function parseChildArgs(childArgs: readonly string[]): {
     workspace?: string;
     network?: string;
     approvalTimeoutMs?: number;
+    permissionMode?: string;
     contextWindow?: number;
     rawLogDir?: string;
   } = {};
@@ -945,6 +973,7 @@ function parseChildArgs(childArgs: readonly string[]): {
   out.workspace = pick("--workspace");
   out.network = pick("--network");
   out.rawLogDir = pick("--raw-log-dir");
+  out.permissionMode = pick("--permission-mode");
   const timeout = pick("--approval-timeout");
   if (timeout !== undefined) out.approvalTimeoutMs = Number(timeout);
   const window = pick("--context-window");
@@ -1010,6 +1039,9 @@ export function resolveChildLaunchArgv(
   if (explicit.approvalTimeoutMs === undefined && settings.permission?.approvalTimeoutMs !== undefined) {
     inject("--approval-timeout", String(settings.permission.approvalTimeoutMs));
   }
+  // T-P3-137 八轮 A：权限模式五档随配置档注入（子进程 configStore 初始——
+  // 会话内切换另经 config/refresh 通道，不改本注入）。
+  inject("--permission-mode", explicit.permissionMode ?? settings.permission?.mode);
   return { args };
 }
 
