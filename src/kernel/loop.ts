@@ -53,6 +53,7 @@ import {
 import { normalizePromptVerdict, type PromptGate } from "./prompt-gate.js";
 import { MUTATION_RETRY_BUDGET_EXHAUSTED, type MutationRetryBudget } from "./tools/mutation-budget.js";
 import type { Logger } from "./logger.js";
+import type { ModelRequestOptions } from "./model-switch.js";
 import type { RawChunkLog } from "./raw-chunk-log.js";
 import {
   type ChainExecutor,
@@ -305,6 +306,8 @@ export interface AgentLoopDeps {
   modelForTurn?(turn: number): {
     provider: ModelProvider;
     identity: ModelIdentity;
+    /** T-P3-137 三轮：模型级思考档/联网搜索（RegisteredModel 透传）。 */
+    options?: ModelRequestOptions;
   };
   /**
    * J11 换模事务（T-P1-05 装配接线）：turn 以 error 终止时通知装配——
@@ -409,6 +412,8 @@ export class AgentLoop {
   private turnModel: {
     provider: ModelProvider;
     identity: ModelIdentity;
+    /** T-P3-137 三轮：模型级思考档/联网搜索（RegisteredModel.options 捕获透传）。 */
+    options?: ModelRequestOptions;
   };
   private readonly toolChain: ChainExecutor<
     LoopContext,
@@ -1259,6 +1264,8 @@ export class AgentLoop {
           identity: payload.identity,
           messages: payload.messages,
           ...(tools ? { tools } : {}),
+          // T-P3-137 三轮：模型级思考档/联网搜索随 turn 捕获透传（RegisteredModel.options）
+          ...(this.turnModel.options !== undefined ? { ...this.turnModel.options } : {}),
         })) {
           if (firstChunkAt === undefined) firstChunkAt = Date.now();
           timed.push({ time: Date.now(), chunk });

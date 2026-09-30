@@ -51,7 +51,26 @@ export interface ChatRequest {
   messages: ChatMessage[];
   tools?: ChatTool[];
   signal?: AbortSignal;
+  /**
+   * 默认思考档（T-P3-137 三轮真实消费——settings providers 模型级 reasoning
+   * 透传；off/缺省 = 请求不带思考参数。各适配层自行映射 wire 形状）。
+   */
+  reasoningEffort?: string;
+  /** 原生联网搜索（anthropic 形态附 web_search server 工具；openai chat 无此能力）。 */
+  webSearch?: boolean;
 }
+
+/** 思考档位 → 思考预算粗档（T-P3-137 三轮——anthropic budget_tokens /
+ *  google thinkingBudget 与 provider-test 探测共用；openai 侧用档位名本身
+ *  作 reasoning_effort，不走预算）。 */
+export const THINKING_BUDGET: Readonly<Record<string, number>> = {
+  minimal: 1024,
+  low: 4096,
+  medium: 8192,
+  high: 16384,
+  xhigh: 24576,
+  max: 32768,
+};
 
 export interface ModelProvider {
   /** 单次流式调用：一次连接、顺序产出 StreamChunk，done 后终止。 */

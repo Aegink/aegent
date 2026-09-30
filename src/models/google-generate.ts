@@ -19,7 +19,7 @@
  */
 
 import type { StreamChunk, TokenUsage } from "../kernel/events.js";
-import { ProviderHttpError, type ChatMessage, type ChatRequest, type ChatTool, type ModelProvider } from "./provider.js";
+import { ProviderHttpError, THINKING_BUDGET, type ChatMessage, type ChatRequest, type ChatTool, type ModelProvider } from "./provider.js";
 import { ProviderConfigError, parseExtraHeaders, type ProviderConfig } from "./config.js";
 import type { AuthMaterial, AuthResolver } from "./auth.js";
 import type { ModelIdentity } from "./identity.js";
@@ -151,6 +151,15 @@ function toGoogleTools(tools: readonly ChatTool[]): unknown {
   };
 }
 
+/** 档位 → thinkingConfig.thinkingBudget（共享 THINKING_BUDGET 映射；off/未知档不带）。 */
+function googleThinking(level: string | undefined): { generationConfig: { thinkingConfig: { thinkingBudget: number } } } | undefined {
+  if (level === undefined || level === "off") return undefined;
+  const budget = THINKING_BUDGET[level];
+  return budget === undefined
+    ? undefined
+    : { generationConfig: { thinkingConfig: { thinkingBudget: budget } } };
+}
+
 async function* streamChatGoogle(
   settings: GoogleGenerateSettings,
   req: ChatRequest,
@@ -173,6 +182,9 @@ async function* streamChatGoogle(
       contents,
       ...(systemInstruction !== undefined ? { systemInstruction } : {}),
       ...(req.tools && req.tools.length > 0 ? { tools: [toGoogleTools(req.tools)] } : {}),
+      // T-P3-137 三轮：模型级思考档真实消费（google thinkingConfig.thinkingBudget
+      // 档位映射；off/缺省不带。google 装配暂缓记档——provider-test/直连场景可用）
+      ...(googleThinking(req.reasoningEffort) ?? {}),
     }),
     signal: req.signal,
   });

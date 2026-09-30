@@ -11,6 +11,8 @@
 // 本文件不 import bounded：错误消息的有界转写统一在 protocol.ts 的
 // catch 层（parse 层抛原文，转写面单点）。
 
+import { THINKING_LEVELS } from "../session/settings.js";
+
 /** settings 直答 op 闭集（与 bridge 分流一一对应）。 */
 export type SettingsOp =
   | "get"
@@ -120,6 +122,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     "modelId",
     "apiKey",
     "headers",
+    "reasoning",
   ]);
   if (unknownKey) throw new Error(`settings 信封${unknownKey}`);
   if (typeof record["requestId"] !== "string" || record["requestId"] === "") {
@@ -260,6 +263,10 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     if (op === "provider-test" && (typeof record["modelId"] !== "string" || record["modelId"] === "")) {
       throw new Error("settings op=provider-test 需要 modelId（真实对话的目标模型）");
     }
+    // T-P3-137 三轮：默认思考档（可选——传入即测试请求真实消费该档）
+    if (record["reasoning"] !== undefined && (typeof record["reasoning"] !== "string" || !(THINKING_LEVELS as readonly string[]).includes(record["reasoning"]))) {
+      throw new Error(`settings op=${op} 的 reasoning 非法（合法：${THINKING_LEVELS.join("|")}）`);
+    }
     if (
       record["headers"] !== undefined &&
       (record["headers"] === null || typeof record["headers"] !== "object" || Array.isArray(record["headers"]))
@@ -292,6 +299,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     ...(typeof record["adapter"] === "string" ? { adapter: record["adapter"] } : {}),
     ...(typeof record["modelId"] === "string" ? { modelId: record["modelId"] } : {}),
     ...(typeof record["apiKey"] === "string" ? { apiKey: record["apiKey"] } : {}),
+    ...(typeof record["reasoning"] === "string" ? { reasoning: record["reasoning"] } : {}),
   };
 }
 

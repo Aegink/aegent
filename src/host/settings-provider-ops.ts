@@ -21,6 +21,8 @@ export interface ProviderModelsPayload {
 
 export interface ProviderTestPayload extends ProviderModelsPayload {
   modelId: string;
+  /** 默认思考档（T-P3-137 三轮——测试请求同步消费，验证档位真实可用）。 */
+  reasoning?: string;
 }
 
 /** T-P3-137：模型清单拉取（GET /models 归一——apiKey 缺省走凭据）。 */
@@ -53,5 +55,6 @@ export async function providerTestOp(
     { baseUrl: payload.baseUrl, adapter: payload.adapter, headers: payload.headers },
     payload.modelId,
     apiKey,
+    payload.reasoning,
   );
 }

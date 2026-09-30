@@ -84,6 +84,61 @@ const ADAPTER_LABEL = {
   google: "Google Generative AI",
 };
 
+// —— 内置模型目录（T-P3-137 三轮——pi-desktop models.dev 快照同源裁剪：
+//    ui/model-catalog.json 11 家主流 provider / 252 模型；勾选模型时自动
+//    预填 上下文/最大输出/思考档位/附件能力——"跟随目录；手动修改后固定"） ——
+let modelCatalog = null; // {providers: {pid: {models: [{id, ctx, out, img, pdf, re, lv}]}}}
+let catalogPromise = null;
+
+function ensureModelCatalog() {
+  if (modelCatalog !== null) return Promise.resolve(modelCatalog);
+  if (catalogPromise === null) {
+    catalogPromise = fetch("model-catalog.json")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        modelCatalog = data;
+        return data;
+      })
+      .catch(() => null);
+  }
+  return catalogPromise;
+}
+
+/** 目录匹配：模型 ID 尾段（/ 分隔最后一段）精确命中——中转自定义前缀
+ *  （如 cline-pass/deepseek-v4.1-flash）也按尾段对上目录同名条目。 */
+function catalogLookup(modelId) {
+  if (modelCatalog === null || modelCatalog?.models === undefined) return undefined;
+  const tail = modelId.split("/").pop() ?? modelId;
+  return modelCatalog.models[tail];
+}
+
+/** 勾选/添加模型时按目录预填缺省（不覆盖用户已改的值——?? 语义）。 */
+function applyCatalogDefaults(m) {
+  const cat = catalogLookup(m.id);
+  if (cat === undefined) return false;
+  if (m.contextWindow === undefined && cat.ctx !== undefined) m.contextWindow = cat.ctx;
+  if (m.maxOutputTokens === undefined && cat.out !== undefined) m.maxOutputTokens = cat.out;
+  if (m.thinkingLevels === undefined && cat.lv !== undefined) m.thinkingLevels = [...cat.lv];
+  if (m.imageInput === undefined && cat.img === 1) m.imageInput = true;
+  if (m.pdfInput === undefined && cat.pdf === 1) m.pdfInput = true;
+  return true;
+}
+
+/** 统一加入草稿（去重 + 目录预填——目录未加载完时异步补填并重渲染）。 */
+function addDraftModel(id) {
+  if (draftModels.some((m) => m.id === id)) return false;
+  const m = { id };
+  if (modelCatalog !== null) {
+    applyCatalogDefaults(m);
+  } else {
+    void ensureModelCatalog().then(() => {
+      if (applyCatalogDefaults(m)) renderDraftModels();
+    });
+  }
+  draftModels.push(m);
+  return true;
+}
+
 function hasSecret(name) {
   return credentials.some((c) => c.name === name);
 }
@@ -380,6 +435,8 @@ async function rowTest(entry) {
     baseUrl: entry.baseUrl ?? "",
     adapter,
     modelId: first.id,
+    // 默认思考档同步消费（模型级 reasoning——真实进测试请求）
+    ...(first.reasoning !== undefined && first.reasoning !== "off" ? { reasoning: first.reasoning } : {}),
     ...(entry.headers !== undefined ? { headers: entry.headers } : {}),
   });
   const result = envelope.ok ? envelope.result : { ok: false, error: envelope.error?.message ?? "" };
@@ -406,6 +463,7 @@ function openProviderDialog(entry) {
   draftModels = entry !== undefined ? JSON.parse(JSON.stringify(entryModels(entry))) : [];
   draftHeaders = entry?.headers !== undefined ? { ...entry.headers } : {};
   draftAdapter = entry?.adapter ?? "openai";
+  void ensureModelCatalog(); // 目录预取（勾选时若已到则同步预填）
   const holder = document.createElement("div");
   holder.innerHTML = `
   <form id="provider-form">
@@ -464,8 +522,8 @@ function openProviderDialog(entry) {
       (id) => leftFilter === "" || id.toLowerCase().includes(leftFilter.toLowerCase()),
     );
     for (const id of visible) {
-      if (checked && !draftModels.some((m) => m.id === id)) draftModels.push({ id });
-      if (!checked) draftModels = draftModels.filter((m) => m.id !== id);
+      if (checked) addDraftModel(id);
+      else draftModels = draftModels.filter((m) => m.id !== id);
     }
     renderDraftModels();
     renderDiscoveredList();
@@ -477,11 +535,10 @@ function openProviderDialog(entry) {
       toast("输入模型 ID", "warn");
       return;
     }
-    if (draftModels.some((m) => m.id === id)) {
+    if (!addDraftModel(id)) {
       toast("该模型已在清单", "warn");
       return;
     }
-    draftModels.push({ id });
     input.value = "";
     renderDraftModels();
     renderDiscoveredList();
@@ -576,10 +633,12 @@ function renderDiscoveredList() {
     cb.type = "checkbox";
     cb.checked = draftModels.some((m) => m.id === id);
     cb.addEventListener("change", () => {
-      if (cb.checked) draftModels.push({ id });
+      if (cb.checked) addDraftModel(id);
       else draftModels = draftModels.filter((m) => m.id !== id);
       renderDraftModels();
     });
+    // 目录命中的模型标注参数来源（已填上下文/输出——pi-desktop 目录预填语义）
+    if (catalogLookup(id) !== undefined) line.title = "内置目录已收录——勾选即自动预填上下文/输出/思考档位/能力";
     const label = document.createElement("span");
     label.className = "model-id mono";
     label.textContent = id;
@@ -669,13 +728,35 @@ function draftModelCard(m) {
   return card;
 }
 
-/** 模型高级设置面板（别名 + 上下文/最大输出快捷档 + 思考等级胶囊）。 */
+/** 模型高级设置面板（pi-desktop ProviderSetupDialog 展开形态——用户裁决
+ *  "高级设置补全且真实可用"）：别名 / 上下文·最大输出两列（目录预填）/
+ *  思考档位多选胶囊 + 默认思考等级下拉（spec.reasoning 真实进请求——openai
+ *  reasoning_effort / anthropic thinking budget / google thinkingConfig，
+ *  测试连接同步消费）/ 能力复选（图片/PDF/可供 AI 自动调度/原生联网搜索
+ *  ——webSearch 仅 anthropic 形态真实生效）。 */
 function advancedPanel(m) {
   const panel = document.createElement("div");
   panel.className = "advanced-panel";
-  const aliasLabel = document.createElement("label");
-  aliasLabel.className = "adv-field";
-  aliasLabel.append(document.createTextNode("别名"));
+  const infoEl = (text) => {
+    const i = document.createElement("span");
+    i.className = "adv-info";
+    i.textContent = "?";
+    i.title = text;
+    return i;
+  };
+  const hintEl = (text) => {
+    const h = document.createElement("div");
+    h.className = "adv-hint";
+    h.textContent = text;
+    return h;
+  };
+
+  // —— 别名（显示处生效；请求仍用模型 ID） ——
+  const aliasField = document.createElement("div");
+  aliasField.className = "adv-field";
+  const aliasHead = document.createElement("div");
+  aliasHead.className = "adv-label";
+  aliasHead.append(document.createTextNode("别名"), infoEl("在显示模型名称的地方生效；请求仍使用模型 ID"));
   const aliasInput = document.createElement("input");
   aliasInput.className = "input";
   aliasInput.type = "text";
@@ -684,10 +765,13 @@ function advancedPanel(m) {
   aliasInput.addEventListener("input", () => {
     m.alias = aliasInput.value.trim() || undefined;
   });
-  aliasLabel.appendChild(aliasInput);
-  panel.appendChild(aliasLabel);
+  aliasField.append(aliasHead, aliasInput);
+  panel.appendChild(aliasField);
 
-  const limitRow = (labelText, presets, field) => {
+  // —— 上下文窗口 | 最大输出 两列（目录预填值 + "手动修改后固定"） ——
+  const grid = document.createElement("div");
+  grid.className = "adv-grid2";
+  const limitField = (labelText, presets, field, catalogNote) => {
     const wrap = document.createElement("div");
     wrap.className = "adv-field";
     const head = document.createElement("div");
@@ -725,42 +809,122 @@ function advancedPanel(m) {
       m[field] = Number.isInteger(v) && v > 0 ? v : undefined;
       sync();
     });
-    chips.appendChild(input);
-    sync();
-    wrap.appendChild(chips);
+    wrap.append(chips, input, hintEl(catalogNote));
     return wrap;
   };
-  panel.appendChild(limitRow("上下文窗口", CTX_PRESETS, "contextWindow"));
-  panel.appendChild(limitRow("最大输出", OUT_PRESETS, "maxOutputTokens"));
+  grid.append(
+    limitField("上下文窗口", CTX_PRESETS, "contextWindow", "勾选时已按内置目录预填；手动修改后固定为你的值"),
+    limitField("最大输出", OUT_PRESETS, "maxOutputTokens", "勾选时已按内置目录预填；手动修改后固定为你的值"),
+  );
+  panel.appendChild(grid);
 
-  const reasonWrap = document.createElement("div");
-  reasonWrap.className = "adv-field";
-  const reasonHead = document.createElement("div");
-  reasonHead.className = "adv-label";
-  reasonHead.textContent = "思考等级（记录面——消费随 J3）";
-  reasonWrap.appendChild(reasonHead);
-  const reasonChips = document.createElement("div");
-  reasonChips.className = "preset-chips";
-  const syncReason = () => {
-    for (const b of reasonChips.querySelectorAll(".preset-chip")) {
-      b.classList.toggle("active", b.dataset.value === (m.reasoning ?? ""));
+  // —— 思考档位多选胶囊（目录标注档位优先；未标注 = 全档手动开启） ——
+  const thinkField = document.createElement("div");
+  thinkField.className = "adv-field";
+  const thinkHead = document.createElement("div");
+  thinkHead.className = "adv-label";
+  thinkHead.append(
+    document.createTextNode("思考等级"),
+    infoEl("勾选该模型可用的思考档位；默认档随每次请求真实发送（reasoning_effort / thinking budget / thinkingConfig）"),
+  );
+  const thinkChips = document.createElement("div");
+  thinkChips.className = "preset-chips";
+  const shownLevels = m.thinkingLevels ?? [...REASONING_LEVELS];
+  const ensureLevels = () => {
+    if (m.thinkingLevels === undefined) m.thinkingLevels = [...shownLevels]; // 用户动过才落档
+  };
+  const syncThink = () => {
+    for (const b of thinkChips.querySelectorAll(".preset-chip")) {
+      b.classList.toggle("active", m.thinkingLevels?.includes(b.dataset.value) === true);
     }
   };
-  for (const level of ["", ...REASONING_LEVELS]) {
+  for (const level of shownLevels) {
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "preset-chip";
     chip.dataset.value = level;
-    chip.textContent = level === "" ? "（未设置）" : level;
+    chip.textContent = level;
     chip.addEventListener("click", () => {
-      m.reasoning = level === "" ? undefined : level;
-      syncReason();
+      ensureLevels();
+      const i = m.thinkingLevels.indexOf(level);
+      if (i >= 0) m.thinkingLevels.splice(i, 1);
+      else m.thinkingLevels.push(level);
+      syncThink();
     });
-    reasonChips.appendChild(chip);
+    thinkChips.appendChild(chip);
   }
-  syncReason();
-  reasonWrap.appendChild(reasonChips);
-  panel.appendChild(reasonWrap);
+  syncThink();
+  thinkField.append(
+    thinkHead,
+    thinkChips,
+    hintEl(m.thinkingLevels !== undefined ? "内置目录标注的档位" : "目录未标注——已列出全部档位可手动开启"),
+  );
+  panel.appendChild(thinkField);
+
+  // —— 默认思考等级下拉（off + 档位集 ∪ 现值；真实进请求） ——
+  const defField = document.createElement("div");
+  defField.className = "adv-field";
+  const defHead = document.createElement("div");
+  defHead.className = "adv-label";
+  defHead.append(
+    document.createTextNode("默认思考等级"),
+    infoEl("随该模型每次请求真实发送（openai reasoning_effort / anthropic thinking budget / google thinkingConfig）；off = 不启用思考；测试连接同步消费"),
+  );
+  const defSel = document.createElement("select");
+  defSel.className = "select";
+  defSel.setAttribute("aria-label", `模型 ${m.id} 的默认思考等级`);
+  for (const level of ["off", ...shownLevels, ...(m.reasoning !== undefined && !shownLevels.includes(m.reasoning) ? [m.reasoning] : [])]) {
+    const o = document.createElement("option");
+    o.value = level;
+    o.textContent = level;
+    defSel.appendChild(o);
+  }
+  defSel.value = m.reasoning ?? "off";
+  defSel.addEventListener("change", () => {
+    m.reasoning = defSel.value === "off" ? undefined : defSel.value;
+  });
+  defField.append(defHead, defSel);
+  panel.appendChild(defField);
+
+  // —— 能力复选（图片/PDF 目录预填；webSearch 仅 anthropic 形态真实生效） ——
+  const capField = document.createElement("div");
+  capField.className = "adv-field";
+  const capHead = document.createElement("div");
+  capHead.className = "adv-label";
+  capHead.append(document.createTextNode("能力"));
+  const capChecks = document.createElement("div");
+  capChecks.className = "adv-checks";
+  const capCheck = (labelText, get, set, info) => {
+    const line = document.createElement("label");
+    line.className = "adv-check";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = get() === true;
+    cb.addEventListener("change", () => set(cb.checked));
+    line.append(cb, document.createTextNode(labelText));
+    if (info !== undefined) line.appendChild(infoEl(info));
+    capChecks.appendChild(line);
+    return cb;
+  };
+  capCheck("图片", () => m.imageInput, (v) => { m.imageInput = v; }, "模型支持图片输入（内置目录预填；发送附件时由端点裁决）");
+  capCheck("PDF", () => m.pdfInput, (v) => { m.pdfInput = v; }, "模型支持 PDF 输入（内置目录预填；发送附件时由端点裁决）");
+  capCheck("可供 AI 自动调度", () => m.forSubagents, (v) => { m.forSubagents = v; }, "允许 AI 在委派子任务时自动选用此模型（消费随子智能体装配面）");
+  const webCb = capCheck(
+    "原生联网搜索",
+    () => m.webSearch,
+    (v) => { m.webSearch = v; },
+    undefined,
+  );
+  const effectiveAdapter = m.adapter ?? draftAdapter;
+  if (effectiveAdapter === "anthropic") {
+    webCb.title = "为该模型的请求附加 web_search server 工具（需端点实际支持；按次计费由提供商收取）";
+  } else {
+    webCb.disabled = true;
+    webCb.checked = false;
+    webCb.title = "原生联网搜索需要 Anthropic Messages 接口风格（openai chat 端点无此能力——协议下拉切到 Anthropic 后可勾）";
+  }
+  capField.append(capHead, capChecks);
+  panel.appendChild(capField);
   return panel;
 }
 
@@ -792,6 +956,8 @@ async function runTestConnection(form) {
       baseUrl,
       adapter: testAdapter,
       modelId: target.id,
+      // 默认思考档同步消费——测试连接即可验证档位真实可用
+      ...(target.reasoning !== undefined && target.reasoning !== "off" ? { reasoning: target.reasoning } : {}),
       ...(Object.keys(draftHeaders).length > 0 ? { headers: draftHeaders } : {}),
       ...(apiKey !== "" ? { apiKey } : {}),
     });

@@ -39,16 +39,25 @@
 import { identityKey, type ModelIdentity } from "../models/identity.js";
 import type { ModelProvider } from "../models/provider.js";
 
-/** 注册表条目：身份 + 承载它的 provider（装配时成对注册）。 */
+/** 注册表条目：身份 + 承载它的 provider + 模型级请求选项（装配时成对注册）。 */
 export interface RegisteredModel {
   identity: ModelIdentity;
   provider: ModelProvider;
+  /** T-P3-137 三轮：思考档/联网搜索随模型走（spec 透传——每次请求带上）。 */
+  options?: ModelRequestOptions;
+}
+
+/** 模型级请求选项（settings providers 模型规格 → wire 透传）。 */
+export interface ModelRequestOptions {
+  reasoningEffort?: string;
+  webSearch?: boolean;
 }
 
 /** 一个 turn 的捕获值：该 turn 全程使用的 provider 与身份。 */
 export interface TurnModel {
   provider: ModelProvider;
   identity: ModelIdentity;
+  options?: ModelRequestOptions;
 }
 
 /** J8/J11 换模状态机五态（四态验收对象 = deferred/pending/preference/incompatible）。 */
@@ -277,6 +286,7 @@ export class ModelSwitchService {
     const model: TurnModel = {
       provider: entry.provider,
       identity: entry.identity,
+      ...(entry.options !== undefined ? { options: entry.options } : {}),
     };
     this.currentCapture = { turn, model };
     return model;

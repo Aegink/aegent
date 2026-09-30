@@ -185,6 +185,19 @@ describe("anthropic-messages 流式适配 —— J5/T-P1-108", () => {
     expect(recorded.headers["x-api-key"]).toBe("sk-ant-test");
     expect(recorded.headers["anthropic-version"]).toBe("2023-06-01");
     expect(recorded.path).toBe("/v1/messages");
+    expect(body["thinking"]).toBeUndefined(); // 缺省不带思考参数
+  });
+
+  it("T-P3-137 三轮：reasoningEffort → thinking budget（max_tokens 抬底）+ webSearch → web_search server 工具", async () => {
+    mock.mountSseSequence([{ events: [anthropicEvents.messageStart, anthropicEvents.messageStop] }]);
+    const provider = makeProvider(mock);
+    await collect(provider, { ...makeReq(), reasoningEffort: "high", webSearch: true });
+    const recorded = mock.requests()[0]!;
+    const body = JSON.parse(recorded.body) as Record<string, unknown>;
+    expect(body["thinking"]).toEqual({ type: "enabled", budget_tokens: 16384 }); // high → budget 映射
+    expect(body["max_tokens"]).toBe(17408); // anthropic 硬规则：max_tokens > budget_tokens（16384+1024）
+    const tools = body["tools"] as Array<Record<string, unknown>>;
+    expect(tools).toEqual([{ type: "web_search_20250305", name: "web_search", max_uses: 3 }]); // server 工具与 function tools 并列
   });
 
   it("流中 error 事件帧 → 类型化抛出（T-P1-102 预留 blocked 判据的真实面）", async () => {

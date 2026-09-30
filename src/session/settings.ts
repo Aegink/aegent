@@ -39,6 +39,10 @@ import { isValidSubagentSlug, type SubagentDefinition } from "./subagents-config
 export const PROVIDER_ADAPTERS = ["openai", "openai-responses", "anthropic", "google"] as const;
 export type ProviderAdapter = (typeof PROVIDER_ADAPTERS)[number];
 
+/** 思考档位闭集（T-P3-137 三轮——pi-desktop ThinkingLevel 同集；目录
+ *  reasoning_options 归一与高级面板胶囊共用；reasoning 字段默认档从这里取）。 */
+export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
 /** 会话装配映射（适配实现选择——wire 身份收敛：responses 回退 openai）。 */
 export function adapterForAssembly(
   adapter: ProviderAdapter,
@@ -60,8 +64,25 @@ export interface ProviderModelSpec {
   alias?: string;
   contextWindow?: number;
   maxOutputTokens?: number;
-  /** 思考等级（off|minimal|low|medium|high|xhigh|max——记录面）。 */
+  /**
+   * 默认思考档（T-P3-137 三轮真实消费：openai-compat → reasoning_effort、
+   * anthropic → thinking.budget_tokens、google → thinkingConfig.thinkingBudget；
+   * off/缺省 = 请求不带思考参数）。
+   */
   reasoning?: string;
+  /** 该模型支持的思考档位（内置目录填充——高级面板胶囊选项面；缺省 = 全档可手选）。 */
+  thinkingLevels?: string[];
+  /** 附件能力·图片输入（内置目录填充可手改）。 */
+  imageInput?: boolean;
+  /** 附件能力·PDF 输入（内置目录填充可手改）。 */
+  pdfInput?: boolean;
+  /** 可供 AI 自动调度（子智能体委派选模——消费随子智能体装配面，记档）。 */
+  forSubagents?: boolean;
+  /**
+   * 原生联网搜索（anthropic 形态真实附 web_search server 工具；
+   * openai chat 端点无此能力——UI 校验禁勾 + 记档）。
+   */
+  webSearch?: boolean;
   verified?: boolean;
 }
 
@@ -386,6 +407,21 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
           }
           const ctx = typeof contextWindow === "number" ? contextWindow : undefined;
           const maxOut = typeof maxOutputTokens === "number" ? maxOutputTokens : undefined;
+          const reasoning = spec["reasoning"];
+          if (reasoning !== undefined && (typeof reasoning !== "string" || !(THINKING_LEVELS as readonly string[]).includes(reasoning))) {
+            throw new SettingsError(`providers[].models[].reasoning 非法：${name}/${id}（合法：${THINKING_LEVELS.join("|")}）`);
+          }
+          const thinkingLevels = spec["thinkingLevels"];
+          if (thinkingLevels !== undefined) {
+            if (!Array.isArray(thinkingLevels) || thinkingLevels.some((l) => typeof l !== "string" || !(THINKING_LEVELS as readonly string[]).includes(l))) {
+              throw new SettingsError(`providers[].models[].thinkingLevels 须为档位数组：${name}/${id}（合法：${THINKING_LEVELS.join("|")}）`);
+            }
+          }
+          for (const flag of ["imageInput", "pdfInput", "forSubagents", "webSearch"] as const) {
+            if (spec[flag] !== undefined && typeof spec[flag] !== "boolean") {
+              throw new SettingsError(`providers[].models[].${flag} 须为布尔：${name}/${id}`);
+            }
+          }
           if (spec["verified"] !== undefined && typeof spec["verified"] !== "boolean") {
             throw new SettingsError(`providers[].models[].verified 须为布尔：${name}/${id}`);
           }
@@ -397,9 +433,12 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
               : {}),
             ...(ctx !== undefined ? { contextWindow: ctx } : {}),
             ...(maxOut !== undefined ? { maxOutputTokens: maxOut } : {}),
-            ...(assertString(spec["reasoning"], `providers[].models[].reasoning(${name}/${id})`) !== undefined
-              ? { reasoning: spec["reasoning"] as string }
-              : {}),
+            ...(reasoning !== undefined ? { reasoning: reasoning as string } : {}),
+            ...(thinkingLevels !== undefined ? { thinkingLevels: thinkingLevels as string[] } : {}),
+            ...(spec["imageInput"] !== undefined ? { imageInput: spec["imageInput"] as boolean } : {}),
+            ...(spec["pdfInput"] !== undefined ? { pdfInput: spec["pdfInput"] as boolean } : {}),
+            ...(spec["forSubagents"] !== undefined ? { forSubagents: spec["forSubagents"] as boolean } : {}),
+            ...(spec["webSearch"] !== undefined ? { webSearch: spec["webSearch"] as boolean } : {}),
             ...(spec["verified"] !== undefined ? { verified: spec["verified"] as boolean } : {}),
           });
         }

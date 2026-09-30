@@ -11,16 +11,18 @@
  *
  * testProviderChat：真实发一轮"你好"（用户裁决"成功才算可以使用"——比
  * pi-desktop 的 /models 连通探测更严）：
- * - openai：POST /chat/completions {model, messages, max_tokens}；
- * - openai-responses：POST /responses {model, input, max_output_tokens}
+ * - openai：POST /chat/completions {model, messages, max_tokens, reasoning_effort?}；
+ * - openai-responses：POST /responses {model, input, max_output_tokens, reasoning?}
  *   （output[].content[].text 提取）；
- * - anthropic：POST /v1/messages {model, max_tokens, messages}；
+ * - anthropic：POST /v1/messages {model, max_tokens, thinking?, messages}；
  * - google：POST /v1beta/models/{model}:generateContent?key=
- *   {contents:[{parts:[{text}]}]}（candidates[0] 提取）。
+ *   {contents:[{parts:[{text}]}], generationConfig}（candidates[0] 提取）。
  * 200 且 content 非空才算成功，回执带回复摘要与延迟；401/403 转鉴权失败
  * 文案，429 转限流，超时 20s。保留头（authorization 等）在 settings parse
  * 层已剔除——此处把用户自定义头并进请求（鉴权键由本模块后置写入）。
  */
+
+import { THINKING_BUDGET } from "../models/provider.js";
 
 const MODELS_TIMEOUT_MS = 10_000;
 const CHAT_TIMEOUT_MS = 20_000;
@@ -160,27 +162,56 @@ function extractReply(adapter: ProviderEndpointSpec["adapter"], parsed: unknown)
   return text !== undefined && text.trim() !== "" ? text : undefined;
 }
 
-/** 真实对话测试（发"你好"——200 且 content 非空才算成功）。 */
+/** 真实对话测试（发"你好"——200 且 content 非空才算成功；reasoning 缺省不
+ *  带思考参数，传入即按该档真实消费——用户可实测验证档位可用性）。 */
 export async function testProviderChat(
   spec: ProviderEndpointSpec,
   modelId: string,
   apiKey: string,
+  reasoning?: string,
 ): Promise<ProviderTestResult> {
   const base = trimBase(spec.baseUrl);
   let url: string;
   let body: unknown;
   if (spec.adapter === "anthropic") {
     url = `${anthropicBase(base)}/messages`;
-    body = { model: modelId, max_tokens: CHAT_PROBE_MAX_TOKENS, messages: [{ role: "user", content: "你好" }] };
+    const budget = reasoning !== undefined && reasoning !== "off" ? THINKING_BUDGET[reasoning] : undefined;
+    body = {
+      model: modelId,
+      // anthropic 硬规则：max_tokens 必须大于 budget_tokens——开思考时抬底
+      max_tokens: budget !== undefined ? Math.max(CHAT_PROBE_MAX_TOKENS, budget + 1024) : CHAT_PROBE_MAX_TOKENS,
+      ...(budget !== undefined ? { thinking: { type: "enabled", budget_tokens: budget } } : {}),
+      messages: [{ role: "user", content: "你好" }],
+    };
   } else if (spec.adapter === "google") {
     url = `${googleBase(base)}/models/${encodeURIComponent(modelId)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-    body = { contents: [{ parts: [{ text: "你好" }] }], generationConfig: { maxOutputTokens: CHAT_PROBE_MAX_TOKENS } };
+    const gBudget = reasoning !== undefined && reasoning !== "off" ? THINKING_BUDGET[reasoning] : undefined;
+    body = {
+      contents: [{ parts: [{ text: "你好" }] }],
+      generationConfig: {
+        maxOutputTokens: CHAT_PROBE_MAX_TOKENS,
+        ...(gBudget !== undefined ? { thinkingConfig: { thinkingBudget: gBudget } } : {}),
+      },
+    };
   } else if (spec.adapter === "openai-responses") {
     url = `${base}/responses`;
-    body = { model: modelId, input: "你好", max_output_tokens: CHAT_PROBE_MAX_TOKENS, stream: false };
+    body = {
+      model: modelId,
+      input: "你好",
+      max_output_tokens: CHAT_PROBE_MAX_TOKENS,
+      ...(reasoning !== undefined && reasoning !== "off" ? { reasoning: { effort: reasoning } } : {}),
+      stream: false,
+    };
   } else {
     url = `${base}/chat/completions`;
-    body = { model: modelId, messages: [{ role: "user", content: "你好" }], max_tokens: CHAT_PROBE_MAX_TOKENS, stream: false };
+    body = {
+      model: modelId,
+      messages: [{ role: "user", content: "你好" }],
+      max_tokens: CHAT_PROBE_MAX_TOKENS,
+      // 思考档真实消费（OpenAI 兼容 reasoning_effort 别名——off/缺省不带）
+      ...(reasoning !== undefined && reasoning !== "off" ? { reasoning_effort: reasoning } : {}),
+      stream: false,
+    };
   }
   const started = Date.now();
   let res: Response;

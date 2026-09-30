@@ -42,6 +42,7 @@ describe("parseSettingsShape / parseSettingsFile", () => {
     expect(s.defaultProvider).toBe("main");
   });
 
+
   it("未知顶层键宽容忽略（前向兼容），已知字段类型错 fail-closed", () => {
     const s = parseSettingsShape({ futureField: 1, appearance: { theme: "light" } });
     expect(s.appearance?.theme).toBe("light");

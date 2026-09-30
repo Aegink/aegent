@@ -102,6 +102,11 @@ async function* streamChatOpenAi(
       ...(req.tools && req.tools.length > 0
         ? { tools: req.tools.map(toWireTool) }
         : {}),
+      // T-P3-137 三轮：模型级思考档真实消费（OpenAI 兼容别名 reasoning_effort；
+      // off/缺省不带——严格端点对未知参数报错，off 语义即"不启用"）
+      ...(req.reasoningEffort !== undefined && req.reasoningEffort !== "off"
+        ? { reasoning_effort: req.reasoningEffort }
+        : {}),
       stream: true,
       stream_options: { include_usage: true },
     }),

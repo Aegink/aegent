@@ -29,6 +29,7 @@ import { ProviderConfigError, parseExtraHeaders, type ProviderConfig } from "./c
 import type { AuthMaterial, AuthResolver } from "./auth.js";
 import {
   ProviderHttpError,
+  THINKING_BUDGET,
   type ChatMessage,
   type ChatRequest,
   type ChatTool,
@@ -183,6 +184,29 @@ function toAnthropicTool(t: ChatTool): unknown {
   };
 }
 
+// ——— T-P3-137 三轮：模型级思考档 / 原生联网搜索的 wire 映射 ———
+
+function anthropicThinking(level: string | undefined): { thinking: { type: string; budget_tokens: number } } | undefined {
+  if (level === undefined || level === "off") return undefined;
+  const budget = THINKING_BUDGET[level];
+  return budget === undefined
+    ? undefined
+    : { thinking: { type: "enabled", budget_tokens: budget } };
+}
+
+/** anthropic 硬规则：max_tokens 必须大于 budget_tokens——开思考时抬底。 */
+function anthropicMaxTokens(base: number, level: string | undefined): number {
+  const budget = anthropicThinking(level)?.thinking.budget_tokens;
+  return budget !== undefined ? Math.max(base, budget + 1024) : base;
+}
+
+/** web_search server 工具（与 function tools 并列；端点不支持/未开通时报错上抛）。 */
+function anthropicWebSearchTools(functionTools: ChatTool[] | undefined): unknown[] {
+  const tools: unknown[] = (functionTools ?? []).map(toAnthropicTool);
+  tools.push({ type: "web_search_20250305", name: "web_search", max_uses: 3 });
+  return tools;
+}
+
 // ---------------------------------------------------------------------------
 // SSE 流映射
 // ---------------------------------------------------------------------------
@@ -219,10 +243,16 @@ async function* streamChatAnthropic(
     headers,
     body: JSON.stringify({
       model: req.identity.modelId,
-      max_tokens: settings.maxTokens ?? DEFAULT_MAX_TOKENS,
+      max_tokens: anthropicMaxTokens(settings.maxTokens ?? DEFAULT_MAX_TOKENS, req.reasoningEffort),
       ...(system !== undefined ? { system } : {}),
       messages,
       ...(req.tools && req.tools.length > 0 ? { tools: req.tools.map(toAnthropicTool) } : {}),
+      // T-P3-137 三轮：模型级思考档真实消费（anthropic 扩展思考——budget_tokens
+      // 档位映射；off/缺省不带。规则：max_tokens 必须大于 budget_tokens）
+      ...(anthropicThinking(req.reasoningEffort) ?? {}),
+      // 原生联网搜索（server 工具——webSearch 模型级开关真实附 web_search；
+      // 与 function tools 并列，计费/支持度由端点裁决）
+      ...(req.webSearch ? { tools: anthropicWebSearchTools(req.tools) } : {}),
       stream: true,
     }),
     signal: req.signal,

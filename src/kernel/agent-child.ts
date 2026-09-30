@@ -163,6 +163,15 @@ async function buildModelsRegistry(
           retryObserver?.(o);
         },
       }),
+      // T-P3-137 三轮：模型级思考档/联网搜索随装配注册（spec 透传——请求带）
+      ...(spec.reasoning !== undefined || spec.webSearch !== undefined
+        ? {
+            options: {
+              ...(spec.reasoning !== undefined ? { reasoningEffort: spec.reasoning } : {}),
+              ...(spec.webSearch !== undefined ? { webSearch: spec.webSearch } : {}),
+            },
+          }
+        : {}),
     };
     models.push(registered);
     if (entry.name === settings.defaultProvider) defaultEntryModels.push(registered);
@@ -220,6 +229,14 @@ async function buildModelsRegistry(
           retryObserver?.(o);
         },
       }),
+      ...(spec?.reasoning !== undefined || spec?.webSearch !== undefined
+        ? {
+            options: {
+              ...(spec.reasoning !== undefined ? { reasoningEffort: spec.reasoning } : {}),
+              ...(spec.webSearch !== undefined ? { webSearch: spec.webSearch } : {}),
+            },
+          }
+        : {}),
     };
   };
   return { models, initial, resolveTarget };

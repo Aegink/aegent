@@ -1203,6 +1203,65 @@ code,
   color: var(--text-subtle);
 }
 
+/* 高级面板两列限额（上下文窗口 | 最大输出——pi-desktop 展开形态） */
+.adv-grid2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+@media (max-width: 720px) {
+  .adv-grid2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 标签旁的 "?" 提示位（title tooltip——pi-desktop hint 语义） */
+.adv-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  color: var(--text-subtlest);
+  cursor: help;
+  user-select: none;
+}
+
+/* 字段下的说明行（目录预填/手动固定/档位来源） */
+.adv-hint {
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtlest);
+  line-height: 1.4;
+}
+
+/* 能力复选行（图片/PDF/自动调度/联网搜索——横排 wrap） */
+.adv-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
+.adv-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-ui-sm);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.adv-check input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 /* 快捷档胶囊（上下文/最大输出/思考等级——pi-desktop presets 形态） */
 .preset-chips {
   display: flex;

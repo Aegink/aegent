@@ -154,11 +154,24 @@ describe("openai-compat 流式适配 —— J1/J2", () => {
     expect(body["model"]).toBe("gpt-test");
     expect(body["stream"]).toBe(true);
     expect(body["stream_options"]).toEqual({ include_usage: true });
+    expect(body["reasoning_effort"]).toBeUndefined(); // 缺省不带思考参数（严格端点零惊扰）
     expect(body.messages[1]?.["tool_calls"]).toEqual([
       { id: "call_1", type: "function", function: { name: "read", arguments: '{"path":"/x"}' } },
     ]);
     expect(body.messages[1]?.["content"]).toBeNull(); // 空正文+tool_calls → content:null
     expect(body.messages[2]).toEqual({ role: "tool", tool_call_id: "call_9", content: "file content" });
+  });
+
+  it("T-P3-137 三轮：reasoningEffort → 请求体 reasoning_effort（off/缺省不带——思考档真实消费）", async () => {
+    mock.mountSseSequence([{ events: [wireChunk({ content: "ok" })] }]);
+    await collect(makeProvider(), { ...makeReq(), reasoningEffort: "medium" });
+    const withEffort = JSON.parse(mock.requestAt(0, "带思考档请求").body) as Record<string, unknown>;
+    expect(withEffort["reasoning_effort"]).toBe("medium");
+
+    mock.mountSseSequence([{ events: [wireChunk({ content: "ok" })] }]);
+    await collect(makeProvider(), { ...makeReq(), reasoningEffort: "off" });
+    const offEffort = JSON.parse(mock.requestAt(1, "off 档请求").body) as Record<string, unknown>;
+    expect(offEffort["reasoning_effort"]).toBeUndefined();
   });
 
   it("P1/T-P1-124：user images → OpenAI 多模态 content 数组（text + image_url data URL）", async () => {
