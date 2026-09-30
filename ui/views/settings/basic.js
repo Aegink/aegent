@@ -304,8 +304,20 @@ export const SECTIONS_HTML = `
   <div id="profile-list" class="row-list"></div>
   <form id="profile-form" class="card-box form-grid">
     <input id="profile-name" class="input" type="text" placeholder="档名（如 coding / cheap）" autocomplete="off" />
-    <input id="profile-provider" class="input" type="text" placeholder="默认供应商条目名" autocomplete="off" />
-    <input id="profile-model" class="input" type="text" placeholder="默认模型（可选）" autocomplete="off" />
+    <select id="profile-provider" class="select" aria-label="供应商">
+      <option value="">选择供应商…</option>
+    </select>
+    <select id="profile-model" class="select" aria-label="默认模型">
+      <option value="">默认模型（可选）</option>
+    </select>
+    <select id="profile-mode" class="select" aria-label="权限模式">
+      <option value="">权限模式：不捆绑（可选）</option>
+      <option value="ask">权限：每次询问</option>
+      <option value="accept-edits">权限：自动批编辑</option>
+      <option value="read-only">权限：只读</option>
+      <option value="auto">权限：全自动</option>
+      <option value="unattended">权限：无人值守</option>
+    </select>
     <input id="profile-timeout" class="input" type="number" min="1000" step="1000" placeholder="审批超时 ms（可选）" />
     <select id="profile-network" class="select">
       <option value="">网络档：跟随全局（可选）</option>
@@ -318,12 +330,13 @@ export const SECTIONS_HTML = `
       <option value="workspace-write">workspace-write（工作区写入）</option>
       <option value="danger-full-access">danger-full-access（全自动）</option>
     </select>
+    <div id="profile-resource-list" class="profile-resources"></div>
     <div class="form-actions">
       <button id="profile-snapshot" type="button" class="btn">填入当前生效值</button>
       <button type="submit" class="btn btn-primary">建档</button>
     </div>
   </form>
-  <p class="hint">建档 = 保存命名组合；切换 = 批量写回默认供应商/模型/权限/沙箱生效段（providers 清单不动；在途轮不受影响——新 turn 生效，J6 同款）。供应商列表的 ↑↓ 顺序 = 故障转移优先级（J15）。</p>
+  <p class="hint">建档 = 保存命名组合（供应商/模型下拉选自注册表）。<strong>资源捆绑</strong>：每组可单独开「捆绑」并勾选成员——未开的组切换时<strong>不动</strong>，开了的组按勾选落盘（MCP/插件=启用集，技能=停用名单；资源新会话生效）；「填入当前生效值」= 三组全部按当前状态拍入。切换 = 批量写回生效段 + <strong>当前会话热应用</strong>（权限/沙箱/模型即时）；<strong>切走前自动把当前状态存回旧档</strong>（无损往返）。行内「编辑」回填表单可改任意字段，「复制」克隆一份。</p>
 </section>
 `;
 
@@ -1049,14 +1062,132 @@ function syncFontRows() {
 // Profiles（U19/T-P3-121）：组合档清单 + applyProfile 批量写生效段
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Profiles v2（T-P3-142——cc-switch ProfilePayload 同构）：供应商/模型下拉选 +
+// 权限模式捆绑 + 三态资源快照 + 切换热应用（config/refresh + model/switch 既有
+// 通道）+ 切走自动重拍旧档（无损往返）。
+// ---------------------------------------------------------------------------
+
+/** 权限模式五档标签（PERMISSION_MODE_UI 的 id→label 映射——摘要徽标用）。 */
+const PROFILE_MODE_LABELS = Object.fromEntries(PERMISSION_MODE_UI.map((m) => [m.name, m.label]));
+
+/** wire 身份收敛（settings.ts adapterForAssembly 同源复制——responses 回退 openai）。 */
+const PROFILE_ADAPTER_WIRE = {
+  openai: "openai",
+  "openai-responses": "openai",
+  anthropic: "anthropic",
+  google: "google",
+};
+
+function profileEntryModels(entry) {
+  return entry?.models ?? (entry?.model !== undefined ? [{ id: entry.model }] : []);
+}
+
+/**
+ * 自动重拍（B 批次——cc-switch autosave-resnapshot 同构）：把当前生效状态
+ * 存回指定档（供应商/模型/权限模式/超时/沙箱/网络 + 资源三槽快照）——
+ * 用户在其它页的调整切走时不丢、回来状态一致。
+ */
+function snapshotCurrentIntoProfile(entry) {
+  entry.defaultProvider = settingsCache.defaultProvider;
+  entry.defaultModel = settingsCache.defaultModel;
+  entry.permission = {
+    ...(settingsCache.permission ?? {}),
+    approvalTimeoutMs: settingsCache.permission?.approvalTimeoutMs,
+    mode: settingsCache.permission?.mode,
+  };
+  entry.sandbox = {
+    ...(entry.sandbox ?? {}),
+    network: settingsCache.sandbox?.network,
+    mode: settingsCache.sandbox?.mode,
+  };
+  entry.mcpEnabled = (settingsCache.mcp ?? []).filter((s) => s.enabled !== false).map((s) => s.name);
+  entry.skillsDisabled = [...(settingsCache.skills?.disabled ?? [])];
+  entry.pluginsEnabled = (settingsCache.plugins ?? []).filter((x) => x.enabled === true).map((x) => x.name);
+  dirtySections.add("profiles");
+}
+
+/** 热应用 patch（A 批次——只含场景真正捆绑的维度；mode 预设自带的沙箱值
+ *  被场景自身的 sandbox.mode 覆盖）。 */
+function profileHotPatch(p) {
+  const patch = {};
+  const modeVals = p.permission?.mode !== undefined ? PERMISSION_MODE_VALUES[p.permission.mode] : undefined;
+  if (modeVals !== undefined) {
+    patch.approvalMode = modeVals.approvalMode;
+    patch.unattended = modeVals.unattended;
+  }
+  const sandboxMode = p.sandbox?.mode ?? modeVals?.sandboxMode;
+  if (sandboxMode !== undefined) patch.sandboxMode = sandboxMode;
+  if (p.permission?.approvalTimeoutMs !== undefined) {
+    patch.approvalTimeoutMs = p.permission.approvalTimeoutMs;
+  }
+  return patch;
+}
+
+/** 场景热应用（A 批次）：权限/沙箱走 config/refresh、模型走 J6
+ *  model/switch——全部既有通道纯接线；失败逐项降级不互相阻断。 */
+async function hotApplyProfile(p) {
+  const sid = getSessionId();
+  if (sid === "") {
+    toast(`场景已切换：${p.name}（新会话生效）`, "info");
+    return;
+  }
+  const notes = [];
+  const patch = profileHotPatch(p);
+  if (Object.keys(patch).length > 0) {
+    try {
+      await sendRequest(sid, { type: "config/refresh", patch });
+      notes.push("权限/沙箱即时生效");
+    } catch {
+      notes.push("权限/沙箱热切失败（新会话生效）");
+    }
+  }
+  const entry = (settingsCache.providers ?? []).find((x) => x.name === p.defaultProvider);
+  const modelId = p.defaultModel ?? profileEntryModels(entry)[0]?.id;
+  if (entry !== undefined && modelId !== undefined && entry.enabled !== false) {
+    try {
+      await sendRequest(sid, {
+        type: "model/switch",
+        identity: { provider: PROFILE_ADAPTER_WIRE[entry.adapter ?? "openai"] ?? "openai", modelId },
+      });
+      notes.push("模型已切换");
+    } catch {
+      notes.push("模型热切失败（新会话生效）");
+    }
+  }
+  notes.push("MCP/技能/插件新会话生效");
+  toast(`场景已切换：${p.name}（${notes.join("；")}）`, "info");
+}
+
 export function applyProfileValues(p) {
-  // 切换 = 批量写生效段（applyProfile 同语义——UI 侧呈现层实现）
+  // B：切走前把当前生效状态存回旧档（无损往返——activeProfile 空或同名跳过）
+  const profiles = settingsCache.profiles ?? [];
+  const previous = profiles.find((x) => x.name === settingsCache.activeProfile);
+  if (previous !== undefined && previous.name !== p.name) {
+    snapshotCurrentIntoProfile(previous);
+  }
+  // A：批量写生效段（三态——undefined 槽不动）
   settingsCache.defaultProvider = p.defaultProvider;
   settingsCache.defaultModel = p.defaultModel;
-  settingsCache.permission = p.permission ?? settingsCache.permission;
+  settingsCache.permission = { ...(settingsCache.permission ?? {}), ...(p.permission ?? {}) };
   settingsCache.sandbox = p.sandbox ?? settingsCache.sandbox;
+  if (p.mcpEnabled !== undefined) {
+    settingsCache.mcp = (settingsCache.mcp ?? []).map((s) => ({
+      ...s,
+      enabled: p.mcpEnabled.includes(s.name),
+    }));
+  }
+  if (p.skillsDisabled !== undefined) {
+    settingsCache.skills = { ...(settingsCache.skills ?? {}), disabled: [...p.skillsDisabled] };
+  }
+  if (p.pluginsEnabled !== undefined) {
+    settingsCache.plugins = (settingsCache.plugins ?? []).map((x) => ({
+      ...x,
+      enabled: p.pluginsEnabled.includes(x.name),
+    }));
+  }
   settingsCache.activeProfile = p.name;
-  for (const sec of ["defaultProvider", "defaultModel", "permission", "sandbox", "activeProfile"]) {
+  for (const sec of ["defaultProvider", "defaultModel", "permission", "sandbox", "profiles", "mcp", "skills", "plugins", "activeProfile"]) {
     dirtySections.add(sec);
   }
   renderProfileList();
@@ -1065,7 +1196,9 @@ export function applyProfileValues(p) {
   markDirty("defaultModel");
   markDirty("permission");
   markDirty("sandbox");
+  markDirty("profiles");
   markDirty("activeProfile");
+  void hotApplyProfile(p);
 }
 
 function renderProfileList() {
@@ -1087,10 +1220,38 @@ function renderProfileList() {
     if (isActive) titleEl.appendChild(chipEl("当前", true));
     const descEl = document.createElement("div");
     descEl.className = "row-desc";
-    descEl.textContent = `→ ${p.defaultProvider}${p.defaultModel ? `/${p.defaultModel}` : ""}${p.sandbox?.network ? `（网络 ${p.sandbox.network}）` : ""}${p.sandbox?.mode ? `（沙箱 ${p.sandbox.mode}）` : ""}`;
+    // T-P3-142：完整捆绑摘要徽标（供应商/模型/权限/超时/沙箱/网络/资源计数）
+    const bits = [`→ ${p.defaultProvider}${p.defaultModel ? `/${p.defaultModel}` : ""}`];
+    if (p.permission?.mode !== undefined) bits.push(`权限 ${PROFILE_MODE_LABELS[p.permission.mode] ?? p.permission.mode}`);
+    if (p.permission?.approvalTimeoutMs !== undefined) bits.push(`超时 ${String(p.permission.approvalTimeoutMs)}ms`);
+    if (p.sandbox?.mode !== undefined) bits.push(`沙箱 ${p.sandbox.mode}`);
+    if (p.sandbox?.network !== undefined) bits.push(`网络 ${p.sandbox.network}`);
+    if (p.mcpEnabled !== undefined) bits.push(`MCP ${String(p.mcpEnabled.length)}`);
+    if (p.skillsDisabled !== undefined) bits.push(`技能停 ${String(p.skillsDisabled.length)}`);
+    if (p.pluginsEnabled !== undefined) bits.push(`插件 ${String(p.pluginsEnabled.length)}`);
+    descEl.textContent = bits.join(" · ");
     const applyBtn = btnEl(isActive ? "★ 当前" : "切换", isActive ? "btn active-mark" : "btn");
     applyBtn.addEventListener("click", () => {
       applyProfileValues(p);
+    });
+    // 走查反馈"功能简陋"：编辑（回填表单改任意字段含资源捆绑）+ 复制（克隆）
+    const editBtn = btnEl("编辑", "btn");
+    editBtn.addEventListener("click", () => {
+      loadProfileIntoForm(p);
+    });
+    const copyBtn = btnEl("复制", "btn");
+    copyBtn.addEventListener("click", () => {
+      let copyName = `${p.name}-副本`;
+      for (let i = 2; (settingsCache.profiles ?? []).some((x) => x.name === copyName); i++) {
+        copyName = `${p.name}-副本${String(i)}`;
+      }
+      const clone = JSON.parse(JSON.stringify(p));
+      clone.name = copyName;
+      settingsCache.profiles = [...(settingsCache.profiles ?? []), clone];
+      dirtySections.add("profiles");
+      renderProfileList();
+      markDirty("profiles");
+      toast(`已复制为「${copyName}」`, "info");
     });
     const delBtn = btnEl("删除", "btn btn-danger");
     delBtn.addEventListener("click", async () => {
@@ -1103,7 +1264,7 @@ function renderProfileList() {
       markDirty("profiles");
       markDirty("activeProfile");
     });
-    row.append(rowCopyEl(titleEl, descEl), rowControl(applyBtn, delBtn));
+    row.append(rowCopyEl(titleEl, descEl), rowControl(applyBtn, editBtn, copyBtn, delBtn));
     list.appendChild(row);
   }
   renderProfileQuick();
@@ -1127,13 +1288,175 @@ function renderProfileQuick() {
   }
 }
 
-/** 侧栏快速切换入口（app.js 经动态 import 调用——设置域归属本域）。 */
+/** 侧栏快速切换入口（app.js 经动态 import 调用——设置域归属本域；toast 由
+ *  hotApplyProfile 统一发——双入口不重复）。 */
 export function applyQuickProfile(name) {
   const p = (settingsCache?.profiles ?? []).find((x) => x.name === name);
   if (p !== undefined) {
     applyProfileValues(p);
-    toast(`已切换配置档：${p.name}`, "info");
   }
+}
+
+/** 建档表单的供应商下拉（注册表实列——手输名字拼错静默失效的根治）。 */
+function renderProfileProviderOptions() {
+  const sel = document.getElementById("profile-provider");
+  if (sel === null) return;
+  const current = sel.value;
+  sel.replaceChildren();
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "选择供应商…";
+  sel.appendChild(placeholder);
+  for (const p of settingsCache?.providers ?? []) {
+    if (p.enabled === false) continue;
+    const opt = document.createElement("option");
+    opt.value = p.name;
+    opt.textContent = p.name;
+    sel.appendChild(opt);
+  }
+  sel.value = current;
+}
+
+/** 建档表单的模型下拉（随供应商级联——entryModels 同构）。 */
+function renderProfileModelOptions(providerName) {
+  const sel = document.getElementById("profile-model");
+  if (sel === null) return;
+  sel.replaceChildren();
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "默认模型（可选）";
+  sel.appendChild(placeholder);
+  const entry = (settingsCache?.providers ?? []).find((x) => x.name === providerName);
+  for (const m of profileEntryModels(entry)) {
+    const opt = document.createElement("option");
+    opt.value = m.id;
+    opt.textContent = m.id;
+    sel.appendChild(opt);
+  }
+}
+
+// —— 资源捆绑配置面（走查反馈"插件/MCP/技能没有可配置"——三组显式 chips）：
+// 组级「捆绑」开关 + 成员勾选；三态 = 组未开（切换不动）/ 开了按勾选落盘。
+const profileResourceState = {
+  mcp: { bundled: false, names: [] },
+  skills: { bundled: false, names: [] }, // 停用名单语义：勾上 = 该技能在此场景停用
+  plugins: { bundled: false, names: [] },
+};
+let profileSkillsCache = null; // skills-list 全量技能名（分节打开时拉取）
+
+function resourceUnion(known, stateNames) {
+  return [...new Set([...(known ?? []), ...(stateNames ?? [])])];
+}
+
+function renderProfileResources() {
+  const box = document.getElementById("profile-resource-list");
+  if (box === null) return;
+  box.replaceChildren();
+  const groups = [
+    {
+      key: "mcp",
+      label: "MCP 服务器（启用集）",
+      desc: "捆绑后：勾选的服务启用，未勾选停用",
+      known: (settingsCache?.mcp ?? []).map((s) => s.name),
+    },
+    {
+      key: "skills",
+      label: "技能（停用名单）",
+      desc: "捆绑后：勾选的技能停用，未勾选可用",
+      known: profileSkillsCache ?? [],
+    },
+    {
+      key: "plugins",
+      label: "插件（启用集）",
+      desc: "捆绑后：勾选的插件启用，未勾选停用",
+      known: (settingsCache?.plugins ?? []).map((x) => x.name),
+    },
+  ];
+  for (const group of groups) {
+    const state = profileResourceState[group.key];
+    const cell = document.createElement("div");
+    cell.className = "res-group";
+    const head = document.createElement("div");
+    head.className = "res-group-head";
+    const title = document.createElement("div");
+    title.className = "row-title";
+    title.textContent = group.label;
+    const desc = document.createElement("div");
+    desc.className = "row-desc";
+    desc.textContent = group.desc;
+    const toggle = switchEl(state.bundled, (next) => {
+      state.bundled = next;
+      renderProfileResources();
+    }, `捆绑${group.label}`);
+    head.append(title, toggle);
+    cell.append(head, desc);
+    if (state.bundled) {
+      const chips = document.createElement("div");
+      chips.className = "res-chips";
+      const all = resourceUnion(group.known, state.names);
+      if (all.length === 0) {
+        const empty = document.createElement("span");
+        empty.className = "res-empty";
+        empty.textContent = "（当前无可用成员）";
+        chips.appendChild(empty);
+      }
+      for (const name of all) {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = `res-chip${state.names.includes(name) ? " on" : ""}`;
+        chip.textContent = name;
+        chip.addEventListener("click", () => {
+          state.names = state.names.includes(name)
+            ? state.names.filter((n) => n !== name)
+            : [...state.names, name];
+          renderProfileResources();
+        });
+        chips.appendChild(chip);
+      }
+      cell.appendChild(chips);
+    }
+    box.appendChild(cell);
+  }
+}
+
+/** 技能名清单（skills-list op——分节打开时拉取；失败不炸面，chips 退化） */
+async function refreshProfileSkills() {
+  try {
+    const envelope = await sendSettings({ op: "skills-list" });
+    if (envelope.ok) {
+      profileSkillsCache = (envelope.result?.skills ?? []).map((s) => s.name);
+      renderProfileResources();
+    }
+  } catch {
+    profileSkillsCache = null;
+  }
+}
+
+/** 资源状态 → 三态快照（未捆绑的组不出现在 entry——切换时不动）。 */
+function profileResourceSnapshot() {
+  return {
+    ...(profileResourceState.mcp.bundled ? { mcpEnabled: [...profileResourceState.mcp.names] } : {}),
+    ...(profileResourceState.skills.bundled ? { skillsDisabled: [...profileResourceState.skills.names] } : {}),
+    ...(profileResourceState.plugins.bundled ? { pluginsEnabled: [...profileResourceState.plugins.names] } : {}),
+  };
+}
+
+/** 编辑回填（走查反馈——场景可改任意字段含资源捆绑）。 */
+function loadProfileIntoForm(p) {
+  document.getElementById("profile-name").value = p.name;
+  renderProfileProviderOptions();
+  document.getElementById("profile-provider").value = p.defaultProvider;
+  renderProfileModelOptions(p.defaultProvider);
+  document.getElementById("profile-model").value = p.defaultModel ?? "";
+  document.getElementById("profile-mode").value = p.permission?.mode ?? "";
+  document.getElementById("profile-timeout").value = p.permission?.approvalTimeoutMs ?? "";
+  document.getElementById("profile-network").value = p.sandbox?.network ?? "";
+  document.getElementById("profile-sandbox-mode").value = p.sandbox?.mode ?? "";
+  profileResourceState.mcp = { bundled: p.mcpEnabled !== undefined, names: [...(p.mcpEnabled ?? [])] };
+  profileResourceState.skills = { bundled: p.skillsDisabled !== undefined, names: [...(p.skillsDisabled ?? [])] };
+  profileResourceState.plugins = { bundled: p.pluginsEnabled !== undefined, names: [...(p.pluginsEnabled ?? [])] };
+  renderProfileResources();
+  document.getElementById("profile-name").scrollIntoView({ block: "center" });
 }
 
 // ---------------------------------------------------------------------------
@@ -1291,25 +1614,56 @@ export function bind() {
     setAppearanceField("backgroundImageOpacity", Number(ev.target.value));
   });
 
+  // —— 场景档 v2（T-P3-142）：供应商/模型下拉级联 + 档名校验（D 批次）+
+  // 资源捆绑显式配置（三态：组未开 = 不动 / 开了按勾选落盘）
+  document.getElementById("profile-provider").addEventListener("change", (ev) => {
+    renderProfileModelOptions(ev.target.value);
+  });
   document.getElementById("profile-form").addEventListener("submit", (ev) => {
     ev.preventDefault();
     const name = document.getElementById("profile-name").value.trim();
-    const provider = document.getElementById("profile-provider").value.trim();
-    const model = document.getElementById("profile-model").value.trim();
+    const provider = document.getElementById("profile-provider").value;
+    const model = document.getElementById("profile-model").value;
+    const mode = document.getElementById("profile-mode").value;
     const timeoutRaw = document.getElementById("profile-timeout").value;
     const network = document.getElementById("profile-network").value;
     const sandboxMode = document.getElementById("profile-sandbox-mode").value;
-    if (name === "" || provider === "") return;
-    const sandboxPatch = {
-      ...(network !== "" ? { network } : {}),
-      ...(sandboxMode !== "" ? { mode: sandboxMode } : {}),
-    };
+    // D 批次：档名校验（≤40 字符 + 禁文件名保留字符——为未来文件化留安全边界，
+    // 中文名合法）
+    if (name === "" || provider === "") {
+      toast("档名与供应商必填", "warn");
+      return;
+    }
+    if (name.length > 40 || /[\\/:*?"<>|\u0000-\u001f]/.test(name)) {
+      toast("档名不合法（≤40 字符，禁 \\ / : * ? \" < > |）", "warn");
+      return;
+    }
+    const permissionPatch =
+      mode !== "" || timeoutRaw !== ""
+        ? {
+            permission: {
+              ...(mode !== "" ? { mode } : {}),
+              ...(timeoutRaw !== "" ? { approvalTimeoutMs: Number(timeoutRaw) } : {}),
+            },
+          }
+        : {};
+    const sandboxPatch =
+      network !== "" || sandboxMode !== ""
+        ? {
+            sandbox: {
+              ...(network !== "" ? { network } : {}),
+              ...(sandboxMode !== "" ? { mode: sandboxMode } : {}),
+            },
+          }
+        : {};
     const entry = {
       name,
       defaultProvider: provider,
       ...(model !== "" ? { defaultModel: model } : {}),
-      ...(timeoutRaw !== "" ? { permission: { approvalTimeoutMs: Number(timeoutRaw) } } : {}),
-      ...(Object.keys(sandboxPatch).length > 0 ? { sandbox: sandboxPatch } : {}),
+      ...permissionPatch,
+      ...sandboxPatch,
+      // C 批次：资源三态——组开了「捆绑」才落盘（undefined = 切换不动）
+      ...profileResourceSnapshot(),
     };
     const profiles = (settingsCache.profiles ?? []).filter((x) => x.name !== name);
     profiles.push(entry);
@@ -1318,15 +1672,33 @@ export function bind() {
     dirtySections.add("profiles");
     renderProfileList();
     markDirty("profiles");
+    toast(`已保存场景：${name}`, "info");
   });
 
   document.getElementById("profile-snapshot").addEventListener("click", () => {
     document.getElementById("profile-provider").value = settingsCache?.defaultProvider ?? "";
+    renderProfileModelOptions(settingsCache?.defaultProvider ?? "");
     document.getElementById("profile-model").value = settingsCache?.defaultModel ?? "";
+    document.getElementById("profile-mode").value = settingsCache?.permission?.mode ?? "";
     document.getElementById("profile-timeout").value =
       settingsCache?.permission?.approvalTimeoutMs ?? "";
     document.getElementById("profile-network").value = settingsCache?.sandbox?.network ?? "";
     document.getElementById("profile-sandbox-mode").value = settingsCache?.sandbox?.mode ?? "";
+    // C 批次：资源三组全开并按当前状态拍入（cc-switch snapshot_current 同构）
+    profileResourceState.mcp = {
+      bundled: true,
+      names: (settingsCache?.mcp ?? []).filter((s) => s.enabled !== false).map((s) => s.name),
+    };
+    profileResourceState.skills = {
+      bundled: true,
+      names: [...(settingsCache?.skills?.disabled ?? [])],
+    };
+    profileResourceState.plugins = {
+      bundled: true,
+      names: (settingsCache?.plugins ?? []).filter((x) => x.enabled === true).map((x) => x.name),
+    };
+    renderProfileResources();
+    toast("已填入当前生效值（含 MCP/技能/插件捆绑快照）", "info");
   });
 }
 
@@ -1371,5 +1743,12 @@ export function fill() {
     String(settingsCache?.appearance?.backgroundImageOpacity ?? 60);
   document.getElementById("appearance-bg-opacity-row").hidden =
     (settingsCache?.appearance?.backgroundImage ?? "") === "";
+  // 场景档 v2 回填：供应商/模型/权限模式下拉（级联）+ 资源捆绑配置面
+  renderProfileProviderOptions();
+  document.getElementById("profile-provider").value = "";
+  renderProfileModelOptions("");
+  document.getElementById("profile-mode").value = "";
+  renderProfileResources();
+  void refreshProfileSkills(); // 技能名清单（异步——回来自动重渲 chips）
   renderProfileList();
 }

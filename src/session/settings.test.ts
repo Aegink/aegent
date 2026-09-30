@@ -540,4 +540,59 @@ describe("resolveChildLaunchArgv（优先级链：显式 > env > file > 缺省�
       }),
     ).toThrow(/profiles\[\].sandbox.mode/);
   });
+
+  it("profiles v2（T-P3-142）：permission.mode 捆绑 + 资源三态快照 + 校验 fail-closed", () => {
+    const ok = parseSettingsShape({
+      providers: [{ name: "m" }],
+      defaultProvider: "m",
+      profiles: [
+        {
+          name: "coding",
+          defaultProvider: "m",
+          defaultModel: "big",
+          permission: { mode: "auto", approvalTimeoutMs: 30_000 },
+          sandbox: { mode: "workspace-write", network: "deny" },
+          mcpEnabled: ["fetch", "git"],
+          skillsDisabled: ["demo-skill"],
+          pluginsEnabled: ["theme-nightfall"],
+        },
+      ],
+    });
+    const p = ok.profiles?.[0];
+    expect(p?.permission).toEqual({ mode: "auto", approvalTimeoutMs: 30_000 });
+    expect(p?.sandbox).toEqual({ mode: "workspace-write", network: "deny" });
+    expect(p?.mcpEnabled).toEqual(["fetch", "git"]);
+    expect(p?.skillsDisabled).toEqual(["demo-skill"]);
+    expect(p?.pluginsEnabled).toEqual(["theme-nightfall"]);
+    // permission.mode 五档闭集 fail-closed
+    expect(() =>
+      parseSettingsShape({
+        providers: [{ name: "m" }],
+        defaultProvider: "m",
+        profiles: [{ name: "p3", defaultProvider: "m", permission: { mode: "yolo" } }],
+      }),
+    ).toThrow(/profiles\[\].permission.mode/);
+    // 资源三态：数组形状 + 上限校验
+    expect(() =>
+      parseSettingsShape({
+        providers: [{ name: "m" }],
+        defaultProvider: "m",
+        profiles: [{ name: "p4", defaultProvider: "m", mcpEnabled: [""] }],
+      }),
+    ).toThrow(/profiles\[\].mcpEnabled/);
+    expect(() =>
+      parseSettingsShape({
+        providers: [{ name: "m" }],
+        defaultProvider: "m",
+        profiles: [{ name: "p5", defaultProvider: "m", skillsDisabled: Array(101).fill("x") }],
+      }),
+    ).toThrow(/profiles\[\].skillsDisabled/);
+    // 空数组 = 拍到空集（合法——切换时清空该资源组）
+    const empty = parseSettingsShape({
+      providers: [{ name: "m" }],
+      defaultProvider: "m",
+      profiles: [{ name: "p6", defaultProvider: "m", pluginsEnabled: [] }],
+    });
+    expect(empty.profiles?.[0]?.pluginsEnabled).toEqual([]);
+  });
 });

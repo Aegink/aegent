@@ -331,7 +331,12 @@ export interface ProfileEntry {
   /** 切换后写入生效段的值（defaultProvider 必填——组合档的主锚）。 */
   defaultProvider: string;
   defaultModel?: string;
-  permission?: { approvalTimeoutMs?: number };
+  /**
+   * T-P3-142 批次 A：权限面捆绑补全（mode 五档——此前只有超时，"写代码
+   * 场景 = Claude + 全自动"做不到的概念半残根源）。mode 缺省 = 不捆绑
+   * （切换不动权限模式——三态语义）。
+   */
+  permission?: { approvalTimeoutMs?: number; mode?: PermissionMode };
   /** T-P3-140 批次 F：组合档带沙箱 mode（切换 = 批量写生效段，含 mode）。 */
   sandbox?: {
     network?: "allow" | "deny";
@@ -340,6 +345,15 @@ export interface ProfileEntry {
     workspace?: string;
     db?: string;
   };
+  /**
+   * T-P3-142 批次 C：资源捆绑三态快照（cc-switch ProfilePayload 同构——
+   * **undefined = 未拍过（切换时不动）/ 数组（含空）= 拍到即目标**）。
+   * mcpEnabled = MCP 服务器名启用集；skillsDisabled = 技能停用名单；
+   * pluginsEnabled = 插件名启用集。资源是装配面（新会话生效）。
+   */
+  mcpEnabled?: readonly string[];
+  skillsDisabled?: readonly string[];
+  pluginsEnabled?: readonly string[];
 }
 
 /** 缺省配置（无文件无环境也能启动——echo provider 最小装配）。 */
@@ -777,6 +791,32 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
       if (permission !== undefined && (permission === null || typeof permission !== "object" || Array.isArray(permission))) {
         throw new SettingsError("profiles[].permission 须为对象");
       }
+      // T-P3-142 批次 A：权限模式捆绑校验（五档闭集——与顶层 permission.mode
+      // 同一纪律；缺省 = 不捆绑，切换不动权限模式）。
+      if (permission !== undefined) {
+        const pm = (permission as Record<string, unknown>)["mode"];
+        if (pm !== undefined && !(PERMISSION_MODES as readonly string[]).includes(pm as string)) {
+          throw new SettingsError(
+            `profiles[].permission.mode 非法：${String(pm)}（合法：${PERMISSION_MODES.join("|")}）`,
+          );
+        }
+      }
+      // T-P3-142 批次 C：资源捆绑三态快照校验（数组形状 + 非空字符串 +
+      // 条目上限——undefined = 未拍过，数组（含空）= 目标集）。
+      for (const field of ["mcpEnabled", "skillsDisabled", "pluginsEnabled"] as const) {
+        const value = e[field];
+        if (value !== undefined) {
+          if (
+            !Array.isArray(value) ||
+            value.some((v) => typeof v !== "string" || v.trim() === "") ||
+            value.length > 100
+          ) {
+            throw new SettingsError(
+              `profiles[].${field} 须为非空字符串数组（≤100 条；缺省 undefined = 不捆绑）`,
+            );
+          }
+        }
+      }
       const sandbox = e["sandbox"];
       if (sandbox !== undefined && (sandbox === null || typeof sandbox !== "object" || Array.isArray(sandbox))) {
         throw new SettingsError("profiles[].sandbox 须为对象");
@@ -809,6 +849,13 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
           : {}),
         ...(permission !== undefined ? { permission: permission as ProfileEntry["permission"] } : {}),
         ...(sandbox !== undefined ? { sandbox: sandbox as ProfileEntry["sandbox"] } : {}),
+        ...(e["mcpEnabled"] !== undefined ? { mcpEnabled: e["mcpEnabled"] as readonly string[] } : {}),
+        ...(e["skillsDisabled"] !== undefined
+          ? { skillsDisabled: e["skillsDisabled"] as readonly string[] }
+          : {}),
+        ...(e["pluginsEnabled"] !== undefined
+          ? { pluginsEnabled: e["pluginsEnabled"] as readonly string[] }
+          : {}),
       });
     }
   }

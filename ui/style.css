@@ -1919,6 +1919,71 @@ code,
 }
 
 /* T-P3-140 批次 E：沙箱升级徽标 + 理由展示行（升级审批显著位） */
+/* T-P3-142 场景档 v2：表单统一栅格（走查反馈"大小不一"——三列等宽等高）
+   + 资源捆绑 chips */
+#profile-form.form-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+#profile-form .input,
+#profile-form .select {
+  height: 34px;
+}
+/* 自定义下拉桥接后可见面是 .select-trigger（原生 select 隐藏）——表单内
+   触发器必须撑满栅格列并与输入框等高（宽度随文字漂移 = "大小不一"根因） */
+.form-grid .select-wrap {
+  display: block;
+  width: 100%;
+}
+.form-grid .select-trigger {
+  width: 100%;
+  min-height: 34px;
+}
+.form-grid .select-value-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#profile-resource-list {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.res-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+}
+.res-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.res-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.res-chip {
+  font-size: var(--text-ui-sm);
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  color: var(--text-subtle);
+  cursor: pointer;
+  background: transparent;
+}
+.res-chip.on {
+  color: var(--text);
+  border-color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+}
+.res-empty {
+  font-size: var(--text-ui-sm);
+  color: var(--text-subtlest);
+}
+
 .card-title .chip-warn {
   color: var(--warn);
   border-color: var(--warn);
