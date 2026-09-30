@@ -1002,6 +1002,41 @@ code,
   opacity: 0.85; /* 悬停略提亮便于查看，但保持"未启用"观感 */
 }
 
+/* 决策规则管理（权限档页 v2——快速添加行 / 试配器 / lint 输出） */
+.perm-add-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0 4px;
+}
+
+.perm-add-row .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.perm-add-row .select {
+  flex: none;
+}
+
+.perm-lint {
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtlest);
+  line-height: 1.5;
+}
+
+.perm-lint-bad {
+  font-size: var(--text-ui-xs);
+  color: var(--danger);
+  line-height: 1.5;
+}
+
+.perm-lint-ok {
+  font-size: var(--text-ui-xs);
+  color: var(--success);
+  line-height: 1.5;
+}
+
 /* 上移/下移的动态反馈（用户反馈：看不出动了没有）——被移动行高亮闪烁，
    位置滑动由 providers.js 的 FLIP 过渡承担 */
 .provider-tile.tile-flash {
