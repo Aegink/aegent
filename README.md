@@ -1,160 +1,94 @@
-# aegent — 多端 Agent 自研工作区
+# aegent
 
-自研 Agent Harness（Web + IM + 桌面）的调研与内核开发工作区。
-上游开源实现只作为**参考读物**克隆在本机，不进我方版本控制。
+本地优先的多端 AI Agent 内核与桌面应用——事件溯源内核 + 多供应商接入 + 工具执行
+（沙箱/审批/容错）+ Tauri 桌面壳（Windows），全部数据（会话、用量、凭据）落在本机。
 
-## 先读这三个
+> **免责声明（重要，请务必阅读）**
+>
+> 1. 本软件按"**现状**"提供，**不附带任何明示或默示的担保**——包括但不限于对
+>    适销性、特定用途适用性与不侵权的担保。使用风险由使用者自行承担。
+> 2. 本软件是**可以驱动 AI 模型执行命令、读写文件、发起网络请求**的开发者工具。
+>    内置了沙箱档与审批机制，但任何机制都不能保证绝对安全——请在理解其
+>    权限模型之后再接入真实模型，并自行评估给它的能力边界。
+> 3. 模型输出（含代码、命令、结论）**不代表本项目的立场，也不构成专业建议**；
+>    其正确性需使用者自行核验。因信任模型输出而产生的任何后果与本项目的
+>    作者无关。
+> 4. 本项目**不收集、不上传任何遥测数据**；除使用者自行配置的 AI 服务端点外，
+>    不与任何第三方通信。**API 密钥由使用者自行保管**（桌面形态经 Windows
+>    DPAPI 加密存储），因密钥泄露造成的损失由使用者自行承担。
+> 5. 本项目与下列任何上游项目、任何 AI 厂商**均无隶属或背书关系**。
+> 6. 使用本项目即表示您已阅读并同意本声明与 [`THIRD_PARTY.md`](THIRD_PARTY.md)
+>    中的相关约定。
 
-| 文件 | 作用 |
-| --- | --- |
-| **[`docs/requirements.md`](docs/requirements.md)** | **要做什么** —— 唯一权威的需求文档（20 层 / 337 项：P0 · P1 · P2 · P3 四层） |
-| **[`docs/reference-cases.md`](docs/reference-cases.md)** | **照着谁做** —— 按功能 ID 查的首选参考索引，带可点击的源码链接 |
-| **[`AGENTS.md`](AGENTS.md)** | 怎么写 —— 仓库级开发规范（优先级最高） |
+## 功能一览
 
-## 工作方式（重要）
+- **事件溯源内核**：封闭事件词汇表 + SQLite 事件源存储 + write-behind/快照/回放，
+  会话可完整重建（跨端续接同一条事实流）。
+- **多供应商接入**：OpenAI Chat Completions / OpenAI Responses / Anthropic
+  Messages / Google Generative AI 四协议；模型级协议覆盖、思考档（reasoning
+  effort / thinking budget）真实下发、模型清单拉取与"真实发消息才算可用"的
+  连接测试；内置 2600+ 模型参数目录（models.dev 裁剪）自动预填。
+- **工具执行安全面**：权限档（allow/ask/deny + 规则）、命令审批（批量审批、
+  守卫重跑）、沙箱（Windows 受限令牌）、IMDS/SSRF 黑名单、变更预算、幂等重试。
+- **容错**：请求内重试 + 跨请求熔断（三态）+ 限流桶 + 多供应商故障转移队列
+  （环绕尝试、粘住、全败类型化错误）。
+- **桌面壳（Tauri）**：主对话流（工具卡/审批/小地图/日期分隔）、供应商与凭据、
+  用量统计（SVG 可视化）、会话历史/搜索/工作台/通知、PiP 画中画、自动更新。
+- **质量基建**：1800+ vitest 用例（含 XSS 渲染十例、协议 e2e、live 端点门控）、
+  架构检查（行数/依赖环/域边界）、文档链接校验、功能计数对账。
 
-**本项目不追求读完上游。** 上游 17 个仓约 2.5GB，`docs/review-prompt.md` 里列的空白
-再读十轮也读不完。做法是：
-
-```
-需求先定死  →  每条需求标注首选参考  →  做到哪一条，才点开哪一条对应的源码
-```
-
-- 每条需求的「参考」列是一个**可点击的链接**，直接落在 `oss/<仓>/…` 的具体行上
-- 想知道"为什么这么定"→ `docs/research/` 的对应主题文档（地图见 `docs/research/README.md`）
-- **决策已全部锁定**：Q1–Q9 见 §2，Q10–Q21（原 12 项待定）见 §3，含裁决理由
-
-## 目录结构
-
-```
-aegent/
-├── AGENTS.md                  仓库级开发规范（优先级高于本文件）
-├── README.md                  本文件
-├── THIRD_PARTY.md             第三方许可清单（引用了谁的代码、什么许可、版权头）
-├── oss/                       上游参考仓库克隆（gitignored，各自带 .git）
-│   ├── SOURCES.lock           ← 唯一被跟踪的文件：每个上游的 URL + commit SHA + 许可
-│   └── <repo>/                ...
-├── refs/claude-official/      anthropics/claude-code 公开仓（PROPRIETARY，只读声明与行为）
-├── docs/
-│   ├── requirements.md        ★★ 需求文档（要做什么）
-│   ├── reference-cases.md     ★★ 参考案例索引（照着谁做）
-│   ├── l0-events.md           L0 事件词汇表设计（正式形状 27 事件——P0 起步 14 经后续立案演进，§8 有落地记录）
-│   ├── l0-eval.md             L0 内核评估
-│   ├── plan-p0.md             ★ P0 计划（执行协议 §0 全局沿用）+ plan-p0-progress.md 执行记录
-│   ├── plan-p1.md             ★ P1 计划（批次 1-14 收官）+ plan-p1-progress.md 记录/待澄清/确认清单
-│   ├── plan-p2.md             ★ P2 计划（48 条/五批/52 卡，已展卡）+ plan-p2-progress.md
-│   ├── plan-p3.md             ★ P3 产品化计划（U 域 27 条/四批/31 卡，已展卡）+ plan-p3-progress.md
-│   ├── 20260925_P0功能全景与借鉴映射.md   段收官产出（P0）
-│   ├── 20260926_P1功能全景与借鉴映射.md   段收官产出（P1）
-│   ├── 20260926_P1剩余批次全量圈定研究.md  P1 批次 3-14 圈定 + P2 段粗规划
-│   ├── 20260926_P2研究_批次圈定建议.md     P2 八组归并研究（48/48 锚点核对）
-│   ├── vocabulary/            领域词汇表（kernel/policy/models 三件，_Avoid_ 纪律）
-│   ├── review-prompt.md       独立复核提示词（**查错不是补漏**，先有计划文档再跑）
-│   └── research/              调研产出（为什么），地图见其 README.md
-│       ├── 00-inventory.md       本机仓库盘点
-│       ├── 01-conclusion.md      结论 + 排除清单
-│       ├── 02-comparison.md      A–N × 10 仓对比总表
-│       ├── 03-conflicts.md       9 处冲突与决策
-│       ├── 04-module-map.md      P0 模块 + 接口草稿 + 不变量
-│       ├── 05-architecture-principles.md  ★ 决策记录精读（密度最高）
-│       ├── 06-claude-code-official.md     官方可参考部分
-│       ├── 07-permission.md      ★ 权限域深读（三轮合并）
-│       ├── 08-kernel-deep-read.md         最小实现 / shell 语义
-│       ├── 10-zcode.md           ★ ZCode 深读（三轮合并）
-│       ├── 11-codex.md           ★ Codex 深读（两轮合并）
-│       ├── 13-kimi-code.md       kimi-code 深读（两轮合并）
-│       ├── 14-dsh.md             DSH 代码深读
-│       ├── 15-pi-desktop.md      PI-Desktop 代码深读（LGPL，只学行为）
-│       ├── 20-testing.md         ★ 测试深读（三轮合并）
-│       ├── 30-round-log.md       第 5–9 轮原始记录（备查）
-│       └── cards/                仓库卡片
-├── tools/                     可重跑脚本（被跟踪）
-│   ├── clone-all.sh           幂等克隆全部上游（已存在则跳过）
-│   ├── snapshot.sh            刷新 oss/SOURCES.lock
-│   ├── license-detect.sh      精确识别根许可（被其他脚本 source）
-│   ├── license-audit.sh       合规扫描：许可 / 泄露迹象 / sourcemap（**全量约 50 分钟**，见下）
-│   ├── check-doc-links.sh     ★ 校验文档里所有相对链接（改文档后必跑）
-│   ├── sample-anchors.sh      ★ 抽样「参考」列做锚点核对（复核会话用）
-│   ├── count-features.sh      ★ 按层统计功能项数（改功能表后必跑）
-│   ├── inventory.sh           生成 docs/research/00-inventory.md
-│   ├── probe-repo.sh          单仓结构探针
-│   └── sweep.sh               按关注点全仓扫
-├── notes/01-workspace-gotchas.md   踩坑记录（**动手前先读**）
-├── src/                       我方内核代码
-│   ├── kernel/events.ts       L0 事件词汇表（13+1 事件封闭联合，T-1-01）
-│   ├── session/               store（append/write-behind/snapshot/revert）+ SQLite + 投影
-│   └── test-support/          假 provider（http-mock）+ 归一化 + 快照基建
-```
-
-## 核心原则：上游副本 vs 我方产物
-
-`oss/` 和 `refs/` 被 `.gitignore` 排除。原因有两条：
-
-1. **技术**：克隆自带 `.git`，若直接放在仓库里，git 会把它们当嵌入仓库
-   （gitlink），`git status` 显示异常，`git add .` 产生警告，且无法真正跟踪其内容。
-2. **法律**：上游是第三方版权作品。我方仓库只应保存"我写了什么"，
-   而不是把别人的代码复制进自己的历史。引用代码时走 `THIRD_PARTY.md` 登记。
-
-因此 **`oss/SOURCES.lock` 是唯一被跟踪的上游元数据**，它固定住
-「调研结论是基于哪个 commit 得出的」。上游随时会变，没有 SHA 的结论无法复现。
-
-## 工作流
-
-### 首次 / 重新拉取全部上游
-```bash
-bash tools/clone-all.sh      # 幂等，已存在的跳过
-bash tools/snapshot.sh       # 刷新 SOURCES.lock 并提交
-```
-
-### 升级某个上游到最新
-```bash
-git -C oss/pi fetch --depth 1 origin && git -C oss/pi reset --hard FETCH_HEAD
-bash tools/snapshot.sh
-git diff oss/SOURCES.lock    # 先看清 commit 变了什么，再决定要不要重写报告
-```
-
-### 改文档后必跑
-```bash
-bash tools/check-doc-links.sh   # 链接必须 0 失效（现有 492 个）
-bash tools/count-features.sh    # 功能数必须与需求文档 §5 表一致
-```
-
-### 准备开独立复核会话时
-
-主任务是**抽样核对「参考」列** —— 310 条锚点支撑整个 P0 实现，指错了最贵：
+## 构建与运行
 
 ```bash
-bash tools/sample-anchors.sh 35 20260925   # 分层抽样：P0 60% / P1 30% / P2 10%
+pnpm install                # 依赖（Node 22+）
+npm run build:single        # 打包 host/agent-child 单文件 + portable 资产
+# 桌面安装器（需要 Tauri 2 + Rust + 签名私钥，见 src-tauri/tauri.conf.json）
+TAURI_SIGNING_PRIVATE_KEY=<key> npx tauri build
+# 便携形态：dist/portable/aegent-desktop.exe 与同目录布局文件一起即可运行
+# 仅跑测试与类型检查
+npx vitest run && npx tsc --noEmit
 ```
 
-填回判定（✅ 对得上 / ⚠️ 行号偏 / ❌ 指错）后交给复核会话。
-完整提示词见 `docs/review-prompt.md`（**查错，不是补漏**；先有计划文档再跑）。
+Web/IM 接入（`src/host`、`src/acp`、IM 通道）与 CLI 形态见
+[`docs/requirements.md`](docs/requirements.md) 对应层。
 
-### 多轮修改的纪律
+## 许可证
 
-调研报告会反复改。规则是：
+本项目以 **GNU Affero General Public License v3.0-or-later**（AGPL-3.0）发布——
+当前对开源项目可用的**约束最强的许可**：任何形式的分发或网络服务提供，都必须
+以同一许可开放完整对应源码。详见根目录 [`LICENSE`](LICENSE) 与
+[`THIRD_PARTY.md`](THIRD_PARTY.md)（第三方 npm 依赖（marked、highlight.js）的
+许可、出处与版权头保留情况也在其中登记）。
 
-- **一个逻辑改动一个 commit**，不要一次提交攒三天的修改。
-- **每轮报告定稿打 tag**：`git tag research/v1`，需要对比时 `git diff research/v1..research/v2`。
-- **报告开头必须写 `SOURCES.lock 快照日期 + 相关仓 commit`**，否则这轮报告半年后没人能验证。
-- **结论被推翻时不要删旧报告**，在新报告里写明推翻理由并链接旧文件 —— 这是最有价值的记录。
-- **同一主题只有一份文件**：新发现合并进既有主题文档，不要再开一个按轮次编号的文件
-  （2026-09-24 的整理就是在还这笔债）。
-- 上游代码只读不改。要在其基础上试验，复制到 `notes/` 或 `src/` 并注明来源。
+## 参考项目与致谢
 
-### 提交信息约定
-```
-research: 补 D 层沙箱对比（pi/opencode/codex）
-tools:    snapshot.sh 支持直接读 LICENSE
-docs:     修正 K 层对 ACP 的描述
-```
+本项目在需求驱动下按条目研读了大量上游实现的公开源码与设计文档，
+**只借鉴行为与架构决策，未复制任何受限代码**（复制过的两个 npm 库已在
+`THIRD_PARTY.md` 登记并随分发保留其许可）。在此致谢：
 
-## 法律边界
+| 上游 | 许可 | 主要借鉴 |
+| --- | --- | --- |
+| [pi-mono](https://github.com/badlogic/pi-mono)、[opencode](https://github.com/anomalyco/opencode)、[kimi-code](https://github.com/MoonshotAI/kimi-code)、[deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)、[hermes-agent](https://github.com/NousResearch/hermes-agent)、[mini-swe-agent](https://github.com/SWE-agent/mini-swe-agent)、[PiDeck](https://github.com/ayuayue/PiDeck) | MIT | 事件词汇表、会话存储、渲染管线、工具链语义 |
+| [openai/codex](https://github.com/openai/codex)、[QwenLM/qwen-code](https://github.com/QwenLM/qwen-code)、[zai-org/zcode](https://github.com/zai-org/zcode)、[xai-org/grok-build](https://github.com/xai-org/grok-build)、[modelscope/agentscope](https://github.com/modelscope/agentscope) | Apache-2.0 | 审批/守卫、网络策略、turn 机器、多端形态 |
+| [PI-Desktop](https://github.com/vastsa/PI-Desktop) | LGPL-3.0 | 供应商「模型配置」页形态（**只学行为，未复制代码**） |
+| [models.dev](https://models.dev) | MIT（数据） | 内置模型参数目录（裁剪快照 `ui/model-catalog.json`） |
+| [anthropics/claude-code](https://github.com/anthropics/claude-code) | 专有 | 仅阅读公开文档与产品行为（`THIRD_PARTY.md` 有专门勘误） |
 
-- **禁止**任何 Claude Code / Anthropic CLI 的泄露源码、sourcemap、镜像仓、网盘包。
-  `refs/claude-official` 仅限官方公开仓（issues / docs / 官方插件示例）。
-- `refs/claude-official` 是 **PROPRIETARY**：**只能读公开行为与官方类型声明，一行代码都不能摘**。
-- 开源 ≠ 无版权。摘代码必须保留版权头并登记到 `THIRD_PARTY.md`。
-- `pi-desktop` 是 **LGPL-3.0**：**代码一行不可摘**，只学行为。
-- 无许可证、或明确是泄露镜像的仓库，一律移入排除清单，不读不复述。
-- 合规检查：`bash tools/license-audit.sh`
+各上游的 URL、commit SHA 与许可快照固定在 `oss/SOURCES.lock`
+（上游克隆不入库；`THIRD_PARTY.md` 记录逐条引用与合规分级）。
+
+## 仓库结构
+
+- `src/` 内核与各域（kernel / session / models / policy / sandbox / host / mcp / …）
+- `ui/` 桌面前端（零构建链静态资产 + `views/` 模块化）
+- `src-tauri/` Tauri 桌面壳
+- `tools/` 质量脚本（架构检查 / 许可审计 / 文档链接 / 功能计数）
+- `docs/` 需求（337 条）、四层计划与执行记录、调研深读——内部开发过程文档，
+  保留公开以完整呈现决策依据；其中历史端点地址已脱敏为 `<redacted-*>`。
+
+## 行为规范
+
+开发/协作请先读 [`AGENTS.md`](AGENTS.md)（仓库级规范）与
+[`docs/requirements.md`](docs/requirements.md)（唯一权威需求文档）。
+调研工作流的完整约定（上游克隆/快照/锚点核对/法律边界）见
+[`docs/research/README.md`](docs/research/README.md) 与 `THIRD_PARTY.md`。

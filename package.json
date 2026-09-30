@@ -5,6 +5,7 @@
   "type": "module",
   "packageManager": "pnpm@10.29.2",
   "description": "aegent 内核（P0）：事件源、权限、沙箱、上下文管理的最小闭环",
+  "license": "AGPL-3.0-or-later",
   "engines": {
     "node": ">=22"
   },
