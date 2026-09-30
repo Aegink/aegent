@@ -47,12 +47,15 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     ].join("\n");
     // 批 A 重定目标说明：原断言读 app.js/index.html 巨石；拆分后标记随
     // 代码/标记所在模块核对（断言本体一条不删）。
-    // 十九分节（……speech、plugins、about——settings.json 各段与文件位
+    // 十八分节（……speech、plugins、about——settings.json 各段与文件位
     // 一一对应；speech 为 U26/T-P3-129 语音【实验性】；plugins 为 T-P3-133
-    // 插件管理——I4/I5/I9 管理面延伸）——批 A 迁 views/settings.js
-    for (const section of ["providers", "credentials", "permission", "sandbox", "appearance", "logging", "projects", "prompts", "skills", "subagents", "instructions", "shortcuts", "mcp", "enhancement", "profiles", "transfer", "speech", "plugins", "about"]) {
+    // 插件管理——I4/I5/I9 管理面延伸）——批 A 迁 views/settings.js；
+    // credentials 分节并入供应商页（用户裁决"功能重复"——凭据管理面 =
+    // providers.js 的孤儿预存密钥区，data-section 不复存在）
+    for (const section of ["providers", "permission", "sandbox", "appearance", "logging", "projects", "prompts", "skills", "subagents", "instructions", "shortcuts", "mcp", "enhancement", "profiles", "transfer", "speech", "plugins", "about"]) {
       expect(settingsView).toContain(`data-section="${section}"`);
     }
+    expect(settingsView).not.toContain('data-section="credentials"');
     // 导航入口（侧栏齿轮——批 A 布局骨架）与凭据不回显（U2 面注入防呆）
     expect(html).toContain('id="settings-btn"');
     expect(settingsView).toContain('type="password"');

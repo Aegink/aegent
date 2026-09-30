@@ -220,7 +220,7 @@ export const SECTIONS_HTML = `
       <div class="row-control"><input id="stt-language" class="input input-num" type="text" placeholder="如 zh" autocomplete="off" /></div>
     </div>
   </div>
-  <p class="hint">端点 API key 请在「凭据」分节以 provider 名 <code>stt</code> 录入（零明文，同 U2 通道）。</p>
+  <p class="hint">端点 API key 在「供应商」页底部"预存密钥"区以 <code>stt</code> 录入（零明文，DPAPI 加密）。</p>
 </section>
 `;
 

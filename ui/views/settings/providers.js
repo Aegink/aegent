@@ -41,7 +41,8 @@ export const SECTIONS_HTML = `
   <div id="provider-default-card" class="row-list"></div>
   <div class="group-title">AI 服务 <span id="provider-count" class="badge">0</span></div>
   <div id="provider-list" class="tile-list"></div>
-  <p class="hint">默认模型 = 新会话启动装配选中的服务与模型。服务列表顺序 = 故障转移优先级（J15 队列序）；停用的服务保留在清单（开关是开回的路径）。API key 经凭据面独立存储（零明文）。</p>
+  <div id="provider-orphan-keys" class="row-list"></div>
+  <p class="hint">默认模型 = 新会话启动装配选中的服务与模型。服务列表顺序 = 故障转移优先级（J15 队列序）；停用的服务保留在清单（开关是开回的路径）。API key 经凭据面独立存储（DPAPI 加密、零明文）——下方"预存密钥"区显示尚未被任何服务引用的 key（含语音识别的 stt），可在此删除。</p>
 </section>
 `;
 
@@ -1147,15 +1148,73 @@ export function bind() {
   onSectionRefresh(refreshProvidersSection);
 }
 
-/** 列表刷新（钩子目标——命名函数保证 Set 去重，多次挂载不累积）。 */
+/** 凭据清单刷新（钩子目标——命名函数保证 Set 去重，多次挂载不累积）。 */
 function refreshProvidersSection() {
   renderProviderList();
   renderDefaultCard();
+  renderOrphanKeys();
+}
+
+// ---------------------------------------------------------------------------
+// 预存密钥区（原"凭据"页并入——未被任何服务引用的 key 在此可见可删：
+// 语音识别的 stt、手动预存、或服务已删但 key 留存的残留。在用 key 不重复
+// 显示——tile 的"未设密钥"徽标已经表达其状态）
+// ---------------------------------------------------------------------------
+
+function renderOrphanKeys() {
+  const box = document.getElementById("provider-orphan-keys");
+  if (box === null) return;
+  box.replaceChildren();
+  const providerNames = new Set(
+    (settingsCache?.providers ?? []).map((p) => p?.name).filter((n) => typeof n === "string"),
+  );
+  const orphans = credentials.filter(
+    (c) => providerNames.has(c?.name) === false && c?.name !== undefined,
+  );
+  if (orphans.length === 0) return; // 无孤儿不占版面
+  const title = document.createElement("div");
+  title.className = "group-title";
+  title.textContent = "预存密钥（未被服务引用）";
+  box.appendChild(title);
+  for (const meta of orphans) {
+    const row = rowEl();
+    const titleEl = document.createElement("div");
+    titleEl.className = "row-title";
+    titleEl.textContent = meta.name;
+    titleEl.appendChild(chipEl(meta.name === "stt" ? "语音 STT" : "未被引用"));
+    const descEl = document.createElement("div");
+    descEl.className = "row-desc";
+    descEl.textContent = `${meta.masked ?? ""}（更新于 ${meta.updatedAt}）`;
+    const delBtn = btnEl("✕", "btn btn-icon", `删除预存密钥 ${meta.name}`);
+    delBtn.addEventListener("click", () => void deleteOrphanKey(meta.name));
+    row.append(rowCopyEl(titleEl, descEl), rowControl(delBtn));
+    box.appendChild(row);
+  }
+}
+
+async function deleteOrphanKey(name) {
+  const ok = await confirmDialog(
+    name === "stt"
+      ? `删除语音识别（stt）的密钥？语音功能的下一次使用将鉴权失败。`
+      : `删除预存密钥「${name}」？之后添加同名服务需要重新填写 key。`,
+    { title: "删除预存密钥", confirmLabel: "删除", danger: true },
+  );
+  if (!ok) return;
+  const envelope = await sendSettings({ op: "credentials-delete", provider: name });
+  if (envelope.ok) {
+    toast(`凭据已删除：${name}`, "info");
+    credentials = credentials.filter((c) => c.name !== name); // 本地缓存同步（不等奖下次拉取）
+    renderOrphanKeys();
+    renderProviderList(); // "未设密钥"徽标态随之刷新
+  } else {
+    toast(`删除失败：${envelope.error?.message ?? ""}`, "warn");
+  }
 }
 
 export function fill() {
   renderProviderList();
   renderDefaultCard();
+  renderOrphanKeys();
 }
 
 export function refreshCredentials() {
@@ -1164,6 +1223,7 @@ export function refreshCredentials() {
       credentials = creds.result.credentials ?? [];
       renderProviderList();
       renderDefaultCard();
+      renderOrphanKeys();
     }
   });
 }

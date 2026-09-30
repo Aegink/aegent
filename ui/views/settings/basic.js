@@ -6,9 +6,8 @@
  * 模块、profiles applyProfile 批量写生效段在此。
  */
 
-import { sendSettings } from "../../api.js";
 import { settingsCache, applyTheme } from "../../state.js";
-import { appendLine, toast } from "../../feedback.js";
+import { toast } from "../../feedback.js";
 import {
   markDirty,
   dirtySections,
@@ -19,28 +18,11 @@ import {
   btnEl,
   emptyState,
   chipEl,
+  confirmDialog,
 } from "./core.js";
+import { refreshCredentials as refreshProviderCredentials } from "./providers.js";
 
 export const SECTIONS_HTML = `
-<section data-section="credentials">
-  <div class="section-head"><h2 class="section-title">凭据</h2></div>
-  <form id="credential-form" class="row-list">
-    <div class="row">
-      <div class="row-copy">
-        <div class="row-title">录入凭据</div>
-        <div class="row-desc">provider 名 + API key（不回显）——经 settings 信封 credentials-set 落独立存储</div>
-      </div>
-      <div class="row-control cred-inline">
-        <input id="credential-provider" class="input" type="text" placeholder="provider 名" autocomplete="off" />
-        <input id="credential-key" class="input" type="password" placeholder="API key（不回显）" autocomplete="off" />
-        <button type="submit" class="btn btn-primary">保存</button>
-        <button id="credential-delete" type="button" class="btn btn-danger">删除</button>
-      </div>
-    </div>
-  </form>
-  <div id="credential-list" class="row-list"></div>
-  <p class="hint">凭据独立存储（Windows 经 DPAPI 加密），永不写入配置文件与日志。语音（STT）的 key 也在此以 provider 名 <code>stt</code> 录入。</p>
-</section>
 <section data-section="permission">
   <div class="section-head"><h2 class="section-title">权限档</h2></div>
   <div class="row-list">
@@ -135,31 +117,6 @@ export const SECTIONS_HTML = `
   <p class="hint">建档 = 保存命名组合；切换 = 批量写回默认供应商/模型/权限/沙箱生效段（providers 清单不动；在途轮不受影响——新 turn 生效，J6 同款）。供应商列表的 ↑↓ 顺序 = 故障转移优先级（J15）。</p>
 </section>
 `;
-
-// ---------------------------------------------------------------------------
-// 凭据清单（行式——名称 + 掩码 + 更新时间）
-// ---------------------------------------------------------------------------
-
-function renderCredentialList(credentials) {
-  const list = document.getElementById("credential-list");
-  if (list === null) return;
-  list.replaceChildren();
-  if (credentials.length === 0) {
-    list.appendChild(emptyState("暂无已存凭据", "上方录入 provider 名与 key（Windows 经 DPAPI 加密）"));
-    return;
-  }
-  for (const meta of credentials) {
-    const row = rowEl();
-    const titleEl = document.createElement("div");
-    titleEl.className = "row-title";
-    titleEl.textContent = meta.name;
-    const descEl = document.createElement("div");
-    descEl.className = "row-desc";
-    descEl.textContent = `${meta.masked ?? ""}（更新于 ${meta.updatedAt}）`;
-    row.append(rowCopyEl(titleEl, descEl));
-    list.appendChild(row);
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Profiles（U19/T-P3-121）：组合档清单 + applyProfile 批量写生效段
@@ -257,34 +214,6 @@ export function applyQuickProfile(name) {
 // ---------------------------------------------------------------------------
 
 export function bind() {
-  // 凭据（U2 的 UI 面——key 经 settings 信封 credentials-set，不落配置文件）
-  document.getElementById("credential-form").addEventListener("submit", async (ev) => {
-    ev.preventDefault();
-    const provider = document.getElementById("credential-provider").value.trim();
-    const key = document.getElementById("credential-key").value;
-    if (provider === "" || key === "") return;
-    const envelope = await sendSettings({ op: "credentials-set", provider, key });
-    document.getElementById("credential-key").value = "";
-    if (envelope.ok) {
-      appendLine(`凭据已保存：${provider} ${envelope.result.masked}`, "meta");
-      const creds = await sendSettings({ op: "credentials-list" });
-      if (creds.ok) renderCredentialList(creds.result.credentials ?? []);
-    } else {
-      appendLine(`凭据保存失败：${envelope.error?.message ?? ""}`, "warn");
-    }
-  });
-
-  document.getElementById("credential-delete").addEventListener("click", async () => {
-    const provider = document.getElementById("credential-provider").value.trim();
-    if (provider === "") return;
-    const envelope = await sendSettings({ op: "credentials-delete", provider });
-    if (envelope.ok) {
-      appendLine(`凭据已删除：${provider}`, "meta");
-      const creds = await sendSettings({ op: "credentials-list" });
-      if (creds.ok) renderCredentialList(creds.result.credentials ?? []);
-    }
-  });
-
   // 即改即存：字段改动 → 缓存 + 标脏（防抖合并）
   document.getElementById("perm-timeout").addEventListener("change", (ev) => {
     const ms = Number(ev.target.value);
@@ -354,13 +283,4 @@ export function fill() {
   document.getElementById("appearance-theme").value = settingsCache?.appearance?.theme ?? "dark";
   document.getElementById("appearance-language").value = settingsCache?.appearance?.language ?? "zh-CN";
   renderProfileList();
-}
-
-/** 凭据清单刷新（壳 open 拉取 credentials-list 后调用）。 */
-export function refreshCredentials() {
-  void sendSettings({ op: "credentials-list" }).then((creds) => {
-    if (creds.ok && document.getElementById("credential-list") !== null) {
-      renderCredentialList(creds.result.credentials ?? []);
-    }
-  });
 }

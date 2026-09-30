@@ -31,7 +31,6 @@ const NAV_GROUPS = [
     title: "基础设置",
     sections: [
       ["providers", "供应商"],
-      ["credentials", "凭据"],
       ["permission", "权限档"],
       ["sandbox", "沙箱档"],
       ["appearance", "外观与语言"],
@@ -99,8 +98,13 @@ const TEMPLATE = `
  * 视图内导航，浏览器前进后退仍可跨分节。
  */
 function navigateToSection(sectionId) {
-  const section = document.querySelector(`#settings-panel [data-section="${sectionId}"]`);
-  if (section === null) return;
+  let section = document.querySelector(`#settings-panel [data-section="${sectionId}"]`);
+  if (section === null) {
+    // 深链兜底（旧书签 #settings/credentials 等——分节已并入供应商页）：回退首分节
+    sectionId = "providers";
+    section = document.querySelector(`#settings-panel [data-section="${sectionId}"]`);
+    if (section === null) return;
+  }
   for (const btn of document.querySelectorAll("#settings-panel .settings-nav .nav-item")) {
     btn.classList.toggle("active", btn.dataset.nav === sectionId);
   }
@@ -130,8 +134,7 @@ async function open() {
   applyTheme(settingsCache.appearance?.theme);
   rebuildKeymap(); // U25：键位表随 settings 就绪
   refillAllForms();
-  providers.refreshCredentials(); // U2：凭据清单（hasSecret 徽标 + 掩码回显）
-  basic.refreshCredentials(); // 凭据分节清单
+  providers.refreshCredentials(); // U2：凭据清单（hasSecret 徽标 + 掩码回显 + 孤儿预存密钥区）
   agents.refreshLists(); // U22/U23/T-P3-133：技能/子代理/插件清单（文件系统面每次打开刷新）
   system.refreshInstructionsOnce(); // U24：指令中心（打开时拉一次，保存后局部刷新）
 }
