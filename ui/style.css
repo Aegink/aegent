@@ -993,11 +993,13 @@ code,
 
 /* 未使用的条目（预存密钥——用户裁决：形态与上方服务 tile 全一致，仅灰态） */
 .provider-tile.provider-tile-muted {
-  opacity: 0.55;
+  filter: grayscale(0.85);
+  opacity: 0.62;
 }
 
 .provider-tile.provider-tile-muted:hover {
-  opacity: 0.8; /* 悬停略提亮便于查看，但保持"未启用"观感 */
+  filter: grayscale(0.4);
+  opacity: 0.85; /* 悬停略提亮便于查看，但保持"未启用"观感 */
 }
 
 /* 上移/下移的动态反馈（用户反馈：看不出动了没有）——被移动行高亮闪烁，

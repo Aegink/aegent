@@ -456,7 +456,7 @@ async function rowTest(entry) {
 // 添加/编辑服务大模态（pi-desktop ProviderSetupDialog 形态）
 // ---------------------------------------------------------------------------
 
-function openProviderDialog(entry) {
+function openProviderDialog(entry, prefillName) {
   editingProviderName = entry?.name ?? null;
   discoveredModels = null;
   advancedOpenId = null;
@@ -471,7 +471,7 @@ function openProviderDialog(entry) {
     <div class="form-grid">
       <label>名称<input id="provider-name" class="input" type="text" placeholder="服务名（如 main）" autocomplete="off" /></label>
       <label>接口地址<input id="provider-baseurl" class="input" type="text" placeholder="https://api.example.com/v1" autocomplete="off" /></label>
-      <label>API 密钥（${entry !== undefined && hasSecret(entry.name) ? "已设置——留空保留" : "不回显"}）<input id="provider-key" class="input" type="password" placeholder="sk-…" autocomplete="new-password" /></label>
+      <label>API 密钥（${entry !== undefined && hasSecret(entry.name) || (prefillName !== undefined && hasSecret(prefillName)) ? "已设置——留空保留" : "不回显"}）<input id="provider-key" class="input" type="password" placeholder="sk-…" autocomplete="new-password" /></label>
       <label>接口格式（服务缺省协议）
         <select id="provider-adapter" class="select">
           <option value="openai">OpenAI Chat Completions</option>
@@ -506,6 +506,8 @@ function openProviderDialog(entry) {
   if (entry !== undefined) {
     form.querySelector("#provider-name").value = entry.name;
     form.querySelector("#provider-baseurl").value = entry.baseUrl ?? "";
+  } else if (prefillName !== undefined) {
+    form.querySelector("#provider-name").value = prefillName; // 孤儿 key 转服务——名称预填，保存时引用同名已存密钥
   }
   form.querySelector("#provider-adapter").value = draftAdapter;
   form.querySelector("#provider-adapter").addEventListener("change", (ev) => {
@@ -1177,8 +1179,9 @@ function renderOrphanKeys() {
   title.textContent = "预存密钥（未被服务引用）";
   box.appendChild(title);
   for (const meta of orphans) {
-    // 与上方服务 tile 同构（用户裁决"未使用的也全面和上面一样，只是变灰"）——
-    // 头像座/名称/徽标/右侧删除，整体 muted 灰态表达未启用
+    // 与上方服务 tile 同构且功能对齐（用户裁决"不止外观，功能也要一样"）：
+    // 头像座/名称/徽标/描述 + 右侧「转为服务」（名称预填、key 自动引用——
+    // 补接口地址即可用）+ ⋯ 菜单（删除）；整体 muted 灰态表达未启用
     const tile = document.createElement("div");
     tile.className = "provider-tile provider-tile-muted";
     const avatar = document.createElement("span");
@@ -1191,9 +1194,18 @@ function renderOrphanKeys() {
     const descEl = document.createElement("div");
     descEl.className = "row-desc";
     descEl.textContent = `${meta.masked ?? ""}（更新于 ${meta.updatedAt}）`;
-    const delBtn = btnEl("✕", "btn btn-icon", `删除预存密钥 ${meta.name}`);
-    delBtn.addEventListener("click", () => void deleteOrphanKey(meta.name));
-    tile.append(avatar, rowCopyEl(titleEl, descEl), rowControl(delBtn));
+    const copy = rowCopyEl(titleEl, descEl);
+    const useBtn = btnEl("转为服务", "btn", `用预存密钥 ${meta.name} 创建服务（补接口地址即可用）`);
+    useBtn.addEventListener("click", () => openProviderDialog(undefined, meta.name));
+    const moreBtn = btnEl("⋯", "btn btn-icon", "更多操作");
+    moreBtn.setAttribute("aria-haspopup", "menu");
+    moreBtn.addEventListener("click", () => {
+      openMenu(moreBtn, [
+        { label: "转为服务", onClick: () => openProviderDialog(undefined, meta.name) },
+        { label: "删除预存密钥", danger: true, onClick: () => void deleteOrphanKey(meta.name) },
+      ]);
+    });
+    tile.append(avatar, copy, rowControl(useBtn, moreBtn));
     box.appendChild(tile);
   }
 }
