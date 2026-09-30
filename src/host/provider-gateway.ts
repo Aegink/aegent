@@ -26,6 +26,10 @@ const MODELS_TIMEOUT_MS = 10_000;
 const CHAT_TIMEOUT_MS = 20_000;
 const MAX_MODELS = 500;
 const ANTHROPIC_VERSION = "2023-06-01";
+// 测试请求的补全配额——不能给太小：思考模型（如 deepseek-v4.1-flash）的
+// reasoning 会吃光小配额导致 content 为空（实测 16 → 中转 502 "empty
+// response content"，512 → 正常回复；对普通模型无额外成本，只是上限）。
+const CHAT_PROBE_MAX_TOKENS = 512;
 
 export interface ProviderEndpointSpec {
   baseUrl: string;
@@ -167,16 +171,16 @@ export async function testProviderChat(
   let body: unknown;
   if (spec.adapter === "anthropic") {
     url = `${anthropicBase(base)}/messages`;
-    body = { model: modelId, max_tokens: 16, messages: [{ role: "user", content: "你好" }] };
+    body = { model: modelId, max_tokens: CHAT_PROBE_MAX_TOKENS, messages: [{ role: "user", content: "你好" }] };
   } else if (spec.adapter === "google") {
     url = `${googleBase(base)}/models/${encodeURIComponent(modelId)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-    body = { contents: [{ parts: [{ text: "你好" }] }], generationConfig: { maxOutputTokens: 16 } };
+    body = { contents: [{ parts: [{ text: "你好" }] }], generationConfig: { maxOutputTokens: CHAT_PROBE_MAX_TOKENS } };
   } else if (spec.adapter === "openai-responses") {
     url = `${base}/responses`;
-    body = { model: modelId, input: "你好", max_output_tokens: 16, stream: false };
+    body = { model: modelId, input: "你好", max_output_tokens: CHAT_PROBE_MAX_TOKENS, stream: false };
   } else {
     url = `${base}/chat/completions`;
-    body = { model: modelId, messages: [{ role: "user", content: "你好" }], max_tokens: 16, stream: false };
+    body = { model: modelId, messages: [{ role: "user", content: "你好" }], max_tokens: CHAT_PROBE_MAX_TOKENS, stream: false };
   }
   const started = Date.now();
   let res: Response;

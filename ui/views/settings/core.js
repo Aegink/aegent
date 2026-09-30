@@ -92,11 +92,12 @@ export function fireSectionRefresh() {
  * description：标题下的说明行（muted）；width："sm"(420)/"md"(520)/
  * "lg"(620)/"xl"(760)；dismissible：false = 只能经 actions 按钮关闭
  * （遮罩点击/Esc/X 全禁——大表单模态防误触丢稿，用户裁决）；onClose：
- * 非 action 关闭路径（X/Esc/遮罩）的回调（confirmDialog 的取消面）。
+ * 非 action 关闭路径（X/Esc/遮罩）的回调（confirmDialog 的取消面）；
+ * className：附加在 .dialog 上的定制类（如供应商大模态的 dialog-provider）。
  * body 内的原生 select 经 upgradeSelects 自动升级为自定义下拉。
  * 返回 { close }（程序化关闭）。
  */
-export function openDialog({ title, description, body, actions = [], width, onClose, dismissible = true }) {
+export function openDialog({ title, description, body, actions = [], width, onClose, dismissible = true, className }) {
   const overlay = document.createElement("div");
   overlay.className = "dialog-overlay";
   const widthClass =
@@ -110,7 +111,7 @@ export function openDialog({ title, description, body, actions = [], width, onCl
             ? " dialog-md"
             : "";
   const dialog = document.createElement("div");
-  dialog.className = `dialog${widthClass}`;
+  dialog.className = `dialog${widthClass}${className ? ` ${className}` : ""}`;
   dialog.setAttribute("role", "dialog");
   dialog.setAttribute("aria-modal", "true");
   const header = document.createElement("div");

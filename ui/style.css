@@ -1027,6 +1027,39 @@ code,
   color: var(--text);
 }
 
+/* 供应商添加/编辑大模态（用户裁决：任何窗口尺寸下保持正方形观感——
+   大屏拉满不再压扁。宽度与最小高度同源 min()，高=宽恒成立且不超 88vh；
+   内部 form/双栏/列表区 flex 链自由撑满，内容多时 dialog-body 滚动兜底。
+   特异性压过 components.css 的 .dialog.dialog-max——width 覆盖必须赢） */
+.dialog.dialog-max.dialog-provider {
+  width: min(80vw, 1400px, 88vh);
+  min-height: min(88vh, 80vw, 1400px);
+}
+
+.dialog.dialog-provider .dialog-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.dialog.dialog-provider .dialog-body form {
+  flex: 1;
+  min-height: 0;
+  display: flex; /* form 自身成 flex 列——setup-panes 的 flex:1 才有生效前提 */
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dialog.dialog-provider .setup-panes {
+  flex: 1;
+  min-height: 0;
+}
+
+/* 对话框内输入控件放大一档（用户反馈：输入框太小不方便输入） */
+.dialog.dialog-provider .input,
+.dialog.dialog-provider .select {
+  padding: 8px 12px;
+}
+
 /* 大模态双栏（左 = 服务模型清单，右 = 模型设置） */
 .setup-panes {
   display: grid;
@@ -1044,11 +1077,11 @@ code,
 .setup-pane {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface);
-  padding: 10px;
+  padding: 14px;
   min-height: 260px;
 }
 
@@ -1069,7 +1102,6 @@ code,
 .model-scroll {
   flex: 1;
   min-height: 140px;
-  max-height: 260px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -1079,8 +1111,8 @@ code,
 .model-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
+  gap: 10px;
+  padding: 8px 10px;
   border-radius: var(--radius-sm);
   cursor: pointer;
 }
@@ -1099,7 +1131,7 @@ code,
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg);
-  padding: 8px;
+  padding: 10px 12px;
 }
 
 .model-card-head {
@@ -1180,7 +1212,7 @@ code,
 }
 
 .preset-chip {
-  padding: 3px 10px;
+  padding: 4px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
   background: transparent;

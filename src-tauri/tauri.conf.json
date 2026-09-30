@@ -11,10 +11,10 @@
       {
         "label": "main",
         "title": "aegent",
-        "width": 1000,
-        "height": 700,
-        "minWidth": 800,
-        "minHeight": 600,
+        "width": 1440,
+        "height": 900,
+        "minWidth": 960,
+        "minHeight": 640,
         "center": true,
         "resizable": true,
         "visible": false

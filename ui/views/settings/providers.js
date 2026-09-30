@@ -487,8 +487,9 @@ function openProviderDialog(entry) {
   openDialog({
     title: entry !== undefined ? `编辑服务：${entry.name}` : "添加服务",
     description:
-      "接口地址填到根（如 https://api.example.com/v1）；拉取模型与测试连接均经 host 代理。同一服务内可按模型覆盖接口协议（OpenAI 双端点 / Anthropic / Google）。此窗口仅经「取消」或「保存服务」关闭。",
+      "接口地址填到根（如 https://api.example.com/v1）；拉取模型与测试连接均经 host 代理。「接口格式」= 拉取模型列表用的协议，也是各模型的缺省协议；模型卡里单独改「接口协议」对该模型的实际请求（含测试连接）生效（OpenAI 双端点 / Anthropic / Google）。此窗口仅经「取消」或「保存服务」关闭。",
     width: "max",
+    className: "dialog-provider",
     dismissible: false,
     body: form,
     actions: [
@@ -780,13 +781,14 @@ async function runTestConnection(form) {
   }
   testRunning = true;
   statusEl.className = "hint probe-line";
-  statusEl.textContent = `正在连接…真实发送「你好」到 ${target.id}（最长 20 秒）`;
+  const testAdapter = target.adapter ?? draftAdapter; // 模型级协议覆盖优先（与实际对话装配 spec.adapter ?? entry.adapter 同语义）
+  statusEl.textContent = `正在连接…真实发送「你好」到 ${target.id}（${ADAPTER_LABEL[testAdapter] ?? testAdapter}，最长 20 秒）`;
   try {
     const envelope = await sendSettings({
       op: "provider-test",
       provider: name !== "" ? name : (editingProviderName ?? ""),
       baseUrl,
-      adapter: draftAdapter,
+      adapter: testAdapter,
       modelId: target.id,
       ...(Object.keys(draftHeaders).length > 0 ? { headers: draftHeaders } : {}),
       ...(apiKey !== "" ? { apiKey } : {}),
