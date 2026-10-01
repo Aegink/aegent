@@ -36,6 +36,10 @@ export interface SkillsView {
     filePath: string;
     origin: string;
     body: string;
+    /** 停用标记（T-P3-145 修：清单不再按 disabled 过滤——UI 用本地
+     * settings 合并判定，开关翻转在 patch 落盘前也正确渲染——"乐观更新
+     * 被回拉覆盖"根因；过滤会吃掉"开回来"的行）。 */
+    disabled?: boolean;
   }[];
   diagnostics: { code: string; message: string; path: string }[];
   roots: string[];
@@ -48,9 +52,9 @@ export function listSkills(
   workspaceRoot: string,
 ): SkillsView {
   const disabled = settings.skills?.disabled ?? [];
-  const result = loadSkillsFromRoots(workspaceRoot, settings.skills?.roots, {
-    disabled,
-  });
+  // 不过滤 disabled——全量返回 + 行级标记（见 SkillsView.disabled 注释）
+  const result = loadSkillsFromRoots(workspaceRoot, settings.skills?.roots);
+  const disabledSet = new Set(disabled);
   return {
     skills: result.skills.map((s) => ({
       name: s.name,
@@ -61,6 +65,7 @@ export function listSkills(
       // 正文随清单回（编辑器回填——技能清单量小，逐文件读成本可忽略；
       // 读失败如实回空串不虚构——编辑保存会整体覆盖，无注入面）
       body: readSkillBody(s.filePath),
+      ...(disabledSet.has(s.name) ? { disabled: true } : {}),
     })),
     diagnostics: result.diagnostics,
     roots: result.roots,

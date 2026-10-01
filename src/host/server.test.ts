@@ -1235,12 +1235,16 @@ process.stdin.on("data", (c) => {
     expect(view.skills[0]!.tools).toEqual(["read", "grep"]);
     expect(view.skills[0]!.origin).toBe(path.join(ws, ".zcode", "skills"));
 
-    // 停用开关（settings skills.disabled patch）→ 清单过滤
+    // 停用开关（settings skills.disabled patch）→ 全量返回 + 行级标记
+    // （T-P3-145 修：不再过滤——UI 用本地 settings 合并判定跟手）
     const disable = await settingsCall({ op: "update", patch: { skills: { disabled: ["review-pr"] } } }, "k3");
     expect(disable.ok).toBe(true);
     const off = await settingsCall({ op: "skills-list" }, "k4");
-    expect((off.result as { skills: unknown[]; disabled: string[] }).skills).toEqual([]);
-    expect((off.result as { disabled: string[] }).disabled).toEqual(["review-pr"]);
+    const offView = off.result as { skills: { name: string; disabled?: boolean }[]; disabled: string[] };
+    expect(offView.disabled).toEqual(["review-pr"]);
+    expect(offView.skills).toHaveLength(1);
+    expect(offView.skills[0]!.name).toBe("review-pr");
+    expect(offView.skills[0]!.disabled).toBe(true);
 
     // 坏名 fail-closed：slug 外形状 parse 层拒绝——坏信封整拒，回执恒
     // "(unparsed)" PROTOCOL_MALFORMED（T-P3-108 同款纪律）

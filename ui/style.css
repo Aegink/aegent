@@ -3004,3 +3004,30 @@ mark.search-hit.active {
   user-select: none;
   margin-bottom: 8px;
 }
+
+/* T-P3-145 走查反馈：chips 点击感全面增强——hover 提亮 / active 品牌底 +
+ * 边框 / :active 按压缩放（模板 chips/工具 chips/所有 chip-ui 统一生效） */
+.chip-ui {
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s, color 0.15s, transform 0.08s;
+}
+button.chip-ui:hover {
+  background: color-mix(in srgb, var(--text) 8%, var(--surface));
+  color: var(--text);
+}
+button.chip-ui:active {
+  transform: scale(0.94);
+}
+button.chip-ui.active {
+  background: color-mix(in srgb, var(--brand) 26%, var(--surface));
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--brand), 0 0 0 1px color-mix(in srgb, var(--brand) 35%, transparent);
+}
+/* checkbox 行（继承主会话工具等）按压感 */
+.check-line input[type="checkbox"] {
+  transition: transform 0.08s;
+}
+.check-line:active input[type="checkbox"] {
+  transform: scale(0.88);
+}

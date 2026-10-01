@@ -837,14 +837,25 @@ function skillSeedBody(name) {
 
 async function refreshSkillsList() {
   const envelope = await sendSettings({ op: "skills-list" });
-  const list = document.getElementById("skill-list");
-  if (list === null) return; // 视图已卸载（异步回包晚于导航——静默丢弃）
-  list.replaceChildren();
+  if (document.getElementById("skill-list") === null) return; // 视图已卸载
   if (!envelope.ok) {
+    const list = document.getElementById("skill-list");
+    if (list === null) return;
+    list.replaceChildren();
     list.appendChild(emptyState("技能清单不可用", envelope.error?.message ?? ""));
     return;
   }
   skillsView = envelope.result;
+  renderSkills(); // 渲染与 fetch 拆分——本地乐观重渲走 renderSkills
+}
+
+function renderSkills() {
+  // 本地权威渲染（T-P3-145 跟手修）：disabled 判定用 settingsCache（本地
+  // 未落盘真相）——toggle 翻转立即重渲，不等服务端清单回包覆盖。
+  const list = document.getElementById("skill-list");
+  if (list === null || skillsView === null) return;
+  list.replaceChildren();
+  const localDisabled = new Set(settingsCache?.skills?.disabled ?? []);
   const visible = skillsView.skills.filter(skillMatches);
   if (visible.length === 0) {
     list.appendChild(
@@ -855,7 +866,7 @@ async function refreshSkillsList() {
   }
   for (const s of visible) {
     const row = rowEl();
-    const disabled = skillsView.disabled.includes(s.name);
+    const disabled = localDisabled.has(s.name);
     const badge = document.createElement("span");
     badge.className = "icon-badge";
     badge.appendChild(icon("sparkles"));
@@ -880,7 +891,7 @@ async function refreshSkillsList() {
       settingsCache.skills = { ...(settingsCache.skills ?? {}), ...(cur.size > 0 ? { disabled: [...cur] } : {}) };
       dirtySections.add("skills");
       markDirty("skills");
-      void refreshSkillsList();
+      renderSkills(); // 乐观重渲（本地权威——不等服务端回包）
     }, `启停技能 ${s.name}`);
     const editBtn = btnEl("编辑", "btn", "打开技能编辑器（写回 SKILL.md）");
     editBtn.addEventListener("click", () => {
@@ -907,7 +918,7 @@ async function refreshSkillsList() {
       dirtySections.add("skills");
       markDirty("skills");
       toast(`技能已删除：${s.name}`, "info");
-      void refreshSkillsList();
+      void refreshSkillsList(); // 删除是文件系统面——必须回服务端重扫
     });
     row.append(badge, copy, rowControl(toolsRow, toggle, editBtn, revealBtn, delBtn));
     list.appendChild(row);
@@ -1375,8 +1386,23 @@ function renderSubagentList() {
   if (list === null) return;
   list.replaceChildren();
   if (subagentsView === null) return;
-  const builtins = subagentsView.builtins.filter(subagentMatches);
-  const customs = subagentsView.custom.filter(subagentMatches);
+  // 本地权威合并（T-P3-145 跟手修）：enabled/覆盖/自定义清单以 settingsCache
+  // 为准——toggle/删除本地更新后立即重渲，不被服务端旧快照回拉覆盖。
+  const localDefs = settingsCache?.subagents ?? [];
+  const builtinNames = new Set(subagentsView.builtins.map((b) => b.name));
+  const builtins = subagentsView.builtins
+    .map((b) => {
+      const localDef = localDefs.find((d) => d.name === b.name);
+      return {
+        ...b,
+        ...(localDef?.tools !== undefined ? { tools: localDef.tools } : {}),
+        ...(localDef?.modelProvider !== undefined ? { modelProvider: localDef.modelProvider } : {}),
+        enabled: localDef ? localDef.enabled !== false : b.enabled,
+        overridden: localDef !== undefined,
+      };
+    })
+    .filter(subagentMatches);
+  const customs = localDefs.filter((d) => !builtinNames.has(d.name)).filter(subagentMatches);
   if (builtins.length === 0 && customs.length === 0) {
     list.appendChild(
       emptyState(
@@ -1397,13 +1423,17 @@ function renderSubagentList() {
       settingsCache.subagents = defs;
       dirtySections.add("subagents");
       markDirty("subagents");
-      void refreshSubagentsList();
+      renderSubagentList(); // 乐观重渲（本地权威——不等服务端回包）
     }, `启停内置预设 ${b.name}`);
     builtinGroup.list.appendChild(
       subagentRow(b, {
         kindLabel: b.overridden ? "（内置·已自定义覆盖）" : "（内置）",
         toggle,
-        onEdit: () => openSubagentEditor(b, true),
+        onEdit: () => {
+          // 本地覆盖在位时以内地合并后的定义进编辑器（含本地 enabled 视角）
+          const localDef = (settingsCache.subagents ?? []).find((d) => d.name === b.name);
+          openSubagentEditor(localDef ?? b, true);
+        },
         // D：pi-desktop copyBuiltin 语义——内置入口是"以内置为底稿复制一份
         // 我的定义"（保存 = 写同名覆盖记录）；已有覆盖时即"编辑覆盖记录"。
         editLabel: b.overridden ? "编辑" : "复制为我的定义",
@@ -1422,7 +1452,7 @@ function renderSubagentList() {
           settingsCache.subagents = (settingsCache.subagents ?? []).filter((d) => d.name !== c.name);
           dirtySections.add("subagents");
           markDirty("subagents");
-          void refreshSubagentsList();
+          renderSubagentList(); // 乐观重渲（本地权威）
         },
       }),
     );
