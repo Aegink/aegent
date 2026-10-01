@@ -31,6 +31,7 @@ import {
   emptyState,
   chipEl,
   switchEl,
+  refreshSelectPanel,
 } from "./core.js";
 
 export const SECTIONS_HTML = `
@@ -1218,6 +1219,7 @@ function renderSubagentProviderOptions(selected) {
     sel.appendChild(opt);
   }
   sel.value = selected ?? "";
+  refreshSelectPanel(sel); // 动态重建后同步桥接面板（T-P3-145 修）
 }
 
 /** C：模型 id 下拉（条目 models 数组优先，回退条目 model 单值）。 */
@@ -1239,6 +1241,7 @@ function renderSubagentModelOptions(providerName, selected) {
     sel.appendChild(opt);
   }
   sel.value = selected ?? "";
+  refreshSelectPanel(sel);
 }
 
 /** C：备用模型有序 chips（↑↓×——pi-desktop SubagentFallbackModels 形态）。 */
@@ -1300,6 +1303,7 @@ function renderSubagentFallbackAdd() {
   }
   sel.disabled = false;
   for (const n of candidates) sel.appendChild(new Option(n, n));
+  refreshSelectPanel(sel);
 }
 
 /** B：继承勾选 ↔ 工具 chips 区联动（勾选 = 不收窄，chips 区禁用）。 */

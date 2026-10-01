@@ -243,6 +243,64 @@ export function confirmDialog(message, { title = "确认操作", confirmLabel = 
 // setter 拦截使触发器随程序化赋值同步。键盘化选单不取（记档：点选语义）。
 // ---------------------------------------------------------------------------
 
+/**
+ * 选项清单重建后的面板同步（T-P3-145 修）：upgradeSelects 的面板项是升级
+ * 时一次性构建的——运行中 replaceChildren/动态改 options（级联、候选增减）
+ * 后必须调本函数，否则浮层显示旧清单/空清单。未桥接（直连原生）= 零操作。
+ */
+export function refreshSelectPanel(sel) {
+  const wrap = sel.closest(".select-wrap");
+  if (wrap === null || wrap === undefined) return;
+  const panel = wrap.querySelector(".select-panel");
+  if (panel === null || panel === undefined) return;
+  buildSelectPanelItems(sel, panel);
+  const valueText = wrap.querySelector(".select-value-text");
+  if (valueText !== null && valueText !== undefined) {
+    valueText.textContent = sel.selectedOptions[0]?.textContent ?? "";
+  }
+  syncPanelSelection(sel, panel);
+}
+
+/** 面板项构建（升级与刷新共用——options 全量重扫）。 */
+function buildSelectPanelItems(sel, panel) {
+  panel.replaceChildren();
+  for (const opt of sel.options) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "select-option";
+    item.dataset.value = opt.value;
+    const label = document.createElement("span");
+    label.textContent = opt.textContent;
+    item.appendChild(label);
+    if (opt.disabled) item.disabled = true;
+    item.addEventListener("click", () => {
+      sel.value = opt.value; // 实例 setter → syncSelected → change 监听照常
+      sel.dispatchEvent(new Event("change", { bubbles: false }));
+    });
+    panel.appendChild(item);
+  }
+}
+
+/** 面板选中态与触发器文本同步（change/打开面板/刷新三处共用）。 */
+function syncPanelSelection(sel, panel) {
+  const wrap = panel.closest(".select-wrap");
+  const valueText = wrap?.querySelector(".select-value-text");
+  if (valueText !== null && valueText !== undefined) {
+    valueText.textContent = sel.selectedOptions[0]?.textContent ?? "";
+  }
+  for (const item of panel.querySelectorAll(".select-option")) {
+    const isSelected = item.dataset.value === sel.value;
+    item.classList.toggle("selected", isSelected);
+    if (isSelected && !item.querySelector(".select-check")) {
+      const check = icon("check");
+      check.classList.add("select-check");
+      item.appendChild(check);
+    } else if (!isSelected) {
+      item.querySelector(".select-check")?.remove();
+    }
+  }
+}
+
 export function upgradeSelects(root) {
   for (const sel of root.querySelectorAll("select.select")) {
     if (sel.dataset.upgraded === "1") continue;
@@ -266,36 +324,8 @@ export function upgradeSelects(root) {
     const panel = document.createElement("div");
     panel.className = "select-panel";
     panel.hidden = true;
-    for (const opt of sel.options) {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = "select-option";
-      item.dataset.value = opt.value;
-      const label = document.createElement("span");
-      label.textContent = opt.textContent;
-      item.appendChild(label);
-      if (opt.disabled) item.disabled = true;
-      item.addEventListener("click", () => {
-        sel.value = opt.value; // 实例 setter → syncSelected → change 监听照常
-        sel.dispatchEvent(new Event("change", { bubbles: false }));
-        closePanel();
-      });
-      panel.appendChild(item);
-    }
-    const syncSelected = () => {
-      valueText.textContent = sel.selectedOptions[0]?.textContent ?? "";
-      for (const item of panel.querySelectorAll(".select-option")) {
-        const isSelected = item.dataset.value === sel.value;
-        item.classList.toggle("selected", isSelected);
-        if (isSelected && !item.querySelector(".select-check")) {
-          const check = icon("check");
-          check.classList.add("select-check");
-          item.appendChild(check);
-        } else if (!isSelected) {
-          item.querySelector(".select-check")?.remove();
-        }
-      }
-    };
+    buildSelectPanelItems(sel, panel);
+    const syncSelected = () => syncPanelSelection(sel, panel);
     sel.addEventListener("change", syncSelected);
 
     const onDocClick = (ev) => {
