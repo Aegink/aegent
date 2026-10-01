@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "providers": [],
+  "permission": {},
+  "sandbox": {},
+  "appearance": {
+    "theme": "dark",
+    "language": "zh-CN"
+  },
+  "logging": {},
+  "projects": [],
+  "prompts": [],
+  "mcp": [],
+  "profiles": [],
+  "onboardingDone": true
+}

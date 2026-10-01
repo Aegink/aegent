@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "providers": [
+    { "name": "alpha-test", "baseUrl": "https://a.example.com/v1", "adapter": "openai", "model": "m-alpha" },
+    { "name": "beta-test", "baseUrl": "https://b.example.com/v1", "adapter": "openai", "model": "m-beta" }
+  ],
+  "defaultProvider": "alpha-test",
+  "permission": {}, "sandbox": {},
+  "appearance": { "theme": "dark", "language": "zh-CN" },
+  "logging": {}, "projects": [], "prompts": [], "mcp": [], "profiles": []
+}

@@ -30,6 +30,7 @@ import {
   emptyState,
   chipEl,
   switchEl,
+  refreshSelectPanel,
 } from "./core.js";
 
 export const SECTIONS_HTML = `
@@ -255,6 +256,7 @@ function renderDefaultCard() {
       o.textContent = m.alias ? `${m.id}（${m.alias}）` : m.id;
       modelSel.appendChild(o);
     }
+    refreshSelectPanel(modelSel); // 级联重建后同步桥接面板（T-P3-146 修；未桥接时零操作）
   };
   if (currentProvider !== undefined && providers.some((p) => p.name === currentProvider)) {
     providerSel.value = currentProvider;

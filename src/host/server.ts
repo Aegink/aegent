@@ -267,6 +267,20 @@ export function defaultAgentChildEntry(): string {
 }
 
 export async function main(argv: readonly string[]): Promise<void> {
+  // T-P3-146 修：--help/-h 打印用法即退出（此前未识别旗标被静默忽略——
+  // 实测坑：--help 起完整服务占缺省 8787，僵尸进程顶掉壳自起 host，
+  // 壳 UI 连到旧代码 host 后新 settings op 全部静默失联）
+  if (argv.some((a) => a === "--help" || a === "-h")) {
+    process.stdout.write(
+      [
+        "aegent host —— 端间协议传输落点（WS over TCP）",
+        "用法：host.cjs [--port <n>] [--session <id>] [--ui <dir>] [--host-db <path>]",
+        "       [--workspace <dir>] [--settings <path>] [--agent-entry <path>]",
+        "       [--context-window <n>] （其余旗标透传 agent 子进程）",
+      ].join("\n") + "\n",
+    );
+    return;
+  }
   const parsed = parseHostServerArgv(argv, { uiDir: defaultUiDir() });
   // U1/T-P3-101：settings 装配（CLI 同款三入口共用面——损坏 fail-closed
   // 直达启动失败出口）。host 的 childArgs 与 CLI 同走 resolveChildLaunchArgv。

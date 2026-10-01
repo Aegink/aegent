@@ -3085,6 +3085,8 @@ button.chip-ui.active {
   color: var(--text-secondary, inherit);
 }
 .prompt-help pre {
+  max-height: 220px;
+  overflow-y: auto;
   margin: 8px 0 0;
   padding: 10px 12px;
   border-radius: 8px;

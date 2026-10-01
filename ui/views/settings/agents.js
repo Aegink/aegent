@@ -1935,7 +1935,12 @@ function openPromptImportDialog() {
     }
   };
   void (async () => {
-    const envelope = await sendSettings({ op: "prompt-import-scan" });
+    // 兜底：8s 无回包/网络异常都落到"扫描不可用"——永不停留在"扫描中…"
+    // （走查实录：壳 UI 连到僵尸旧 host 时新 op 无响应，模态永久卡初始化态）
+    const envelope = await Promise.race([
+      sendSettings({ op: "prompt-import-scan" }),
+      new Promise((resolve) => setTimeout(() => resolve({ ok: false, error: { message: "扫描超时（host 无响应——请重启应用后重试）" } }), 8_000)),
+    ]).catch((e) => ({ ok: false, error: { message: e instanceof Error ? e.message : String(e) } }));
     if (!envelope.ok) {
       holder.querySelector("#prompt-imp-list").replaceChildren(emptyState("扫描不可用", envelope.error?.message ?? ""));
       return;

@@ -437,6 +437,9 @@
   flex-direction: column;
   gap: 12px;
   overflow-y: auto;
+  /* T-P3-146 修：长内容模态（模板编辑器语法帮助等）不撑爆视口——
+     body 收敛 + footer 恒在视口内 */
+  max-height: min(62vh, 620px);
   font-size: var(--text-ui-sm);
   color: var(--text-subtle);
 }

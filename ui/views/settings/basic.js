@@ -23,6 +23,7 @@ import {
   chipEl,
   confirmDialog,
   switchEl,
+  refreshSelectPanel,
 } from "./core.js";
 import { refreshCredentials as refreshProviderCredentials } from "./providers.js";
 
@@ -1041,6 +1042,7 @@ async function refreshPluginThemeOptions() {
     sel.appendChild(o);
   }
   sel.value = settingsCache?.appearance?.pluginTheme ?? "";
+  refreshSelectPanel(sel); // 动态重建后同步桥接面板（T-P3-146 修——同 agents.js 纪律）
 }
 
 function syncScheduleRows() {
@@ -1286,6 +1288,7 @@ function renderProfileQuick() {
     opt.textContent = `${settingsCache?.activeProfile === p.name ? "★ " : ""}${p.name}`;
     sel.appendChild(opt);
   }
+  refreshSelectPanel(sel); // 动态重建后同步桥接面板（T-P3-146 修）
 }
 
 /** 侧栏快速切换入口（app.js 经动态 import 调用——设置域归属本域；toast 由
@@ -1315,6 +1318,7 @@ function renderProfileProviderOptions() {
     sel.appendChild(opt);
   }
   sel.value = current;
+  refreshSelectPanel(sel); // 动态重建后同步桥接面板（T-P3-146 修——供应商清单实时性）
 }
 
 /** 建档表单的模型下拉（随供应商级联——entryModels 同构）。 */
@@ -1333,6 +1337,7 @@ function renderProfileModelOptions(providerName) {
     opt.textContent = m.id;
     sel.appendChild(opt);
   }
+  refreshSelectPanel(sel); // 动态重建后同步桥接面板（T-P3-146 修——级联实时性）
 }
 
 // —— 资源捆绑配置面（走查反馈"插件/MCP/技能没有可配置"——三组显式 chips）：

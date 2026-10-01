@@ -361,8 +361,11 @@ export function upgradeSelects(root) {
       configurable: true,
     });
 
-    syncSelected();
+    // T-P3-146 修：append 必须先于首次 syncSelected——syncPanelSelection 经
+    // panel.closest(".select-wrap") 找触发器，panel 未入 wrap 时查不到，
+    // 初始触发器文本永远空（模态内预赋值 select 的实测坑）
     wrap.append(trigger, panel);
+    syncSelected();
   }
 }
 
