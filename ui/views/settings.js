@@ -46,7 +46,6 @@ const NAV_GROUPS = [
       ["subagents", "子智能体"],
       ["prompts", "提示词模板"],
       ["enhancement", "辅助模型"],
-      ["plugins", "插件"],
       ["speech", "语音【实验性】"],
     ],
   },

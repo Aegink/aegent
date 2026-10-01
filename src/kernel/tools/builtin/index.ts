@@ -30,6 +30,8 @@ import {
   type SessionQueryToolDeps,
 } from "./session-query.js";
 import { createSkillLoadTool } from "./skill.js";
+import { createPluginCreateTool } from "./plugin-create.js";
+import { createPluginDefineTool } from "./plugin-define.js";
 import { createTaskTool, type TaskToolDeps } from "./task.js";
 import {
   createTaskWaitTool,
@@ -68,6 +70,8 @@ export const BUILTIN_TOOL_NAMES = [
   "task",
   "session_query",
   "session_get",
+  "plugin_create",
+  "plugin_define",
 ] as const;
 
 export function registerBuiltinTools(
@@ -79,6 +83,21 @@ export function registerBuiltinTools(
     skillsRoots?: readonly string[];
     /** U22/T-P3-125：停用技能名单（settings skills.disabled 装配消费）。 */
     skillsDisabled?: readonly string[];
+    /** T-P3-148 D：插件贡献技能目录（getter——插件装载晚于注册，调用时活读）。 */
+    pluginSkillDirs?: () => readonly { readonly dir: string; readonly namePrefix: string }[];
+    /**
+     * T-P3-148 I：插件创建工具依赖（workspaceRoot——写面收敛
+     * `<workspace>/plugins/<slug>`；缺省不注册——无工作区装配无创建面）。
+     */
+    pluginCreate?: { workspaceRoot: string };
+    /**
+     * T-P3-148 X：动态插件定义依赖（toolRegistry + 句柄汇——重启即失的
+     * 进程内插件；缺省不注册——无装配面无动态定义）。
+     */
+    pluginDefine?: {
+      toolRegistry: import("../registry.js").ToolRegistry;
+      handles: { dispose(): Promise<void> }[];
+    };
     /** G2 todo 落流出口（装配注入）；缺省不注册 todo_write——没有落流
      * 出口的工具执行会违反不变量 1（状态变更无事件承载）。 */
     todoEmit?: (
@@ -173,6 +192,7 @@ export function registerBuiltinTools(
       skillsRoot: options.skillsRoot ?? process.cwd(),
       ...(options.skillsRoots !== undefined ? { skillsRoots: options.skillsRoots } : {}),
       ...(options.skillsDisabled !== undefined ? { skillsDisabled: options.skillsDisabled } : {}),
+      ...(options.pluginSkillDirs !== undefined ? { pluginSkillDirs: options.pluginSkillDirs } : {}),
     }),
     // G2 todo 面：emit 缺省时不注册（不变量 1——无落流出口的清单写入
     // 就是"直接改状态不写事件"）
@@ -220,6 +240,11 @@ export function registerBuiltinTools(
     ...(options.sessionQuery !== undefined
       ? [createSessionQueryTool(options.sessionQuery), createSessionGetTool(options.sessionQuery)]
       : []),
+    // T-P3-148 I：插件创建工具（工作区装配在位才注册——写面收敛
+    // `<workspace>/plugins/<slug>`；生成不自动装载，走插件中心审批链）
+    ...(options.pluginCreate !== undefined ? [createPluginCreateTool(options.pluginCreate)] : []),
+    // T-P3-148 X：动态插件定义（进程内、重启即失——审批走工具调用权限面）
+    ...(options.pluginDefine !== undefined ? [createPluginDefineTool(options.pluginDefine)] : []),
   ]) {
     registry.registerTool(def);
   }
@@ -255,6 +280,11 @@ export function builtinToolParamNames(): Readonly<Record<string, readonly string
       }),
     },
     sessionQuery: { dbPath: "stub" },
+    pluginCreate: { workspaceRoot: "stub" },
+    pluginDefine: {
+      toolRegistry: new ToolRegistry(),
+      handles: [],
+    },
   });
   const out: Record<string, readonly string[]> = {};
   for (const tool of registry.toChatTools()) {

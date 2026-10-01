@@ -185,6 +185,12 @@ function loadSkillsFromDir(dir: string): {
 export interface LoadSkillsOptions {
   /** 停用技能名集合（匹配 name——停用技能不进清单、不产诊断）。 */
   disabled?: readonly string[];
+  /**
+   * 插件贡献技能目录（T-P3-148 D）：目录本体直扫（非 `<root>/.zcode/skills`
+   * 形状）+ 技能名命名空间前缀（`<插件名>`——全局名 `<前缀>/<名>`，pi
+   * pluginSkillId 同构）。排布在文件系统根之后——同名时用户级先到先得。
+   */
+  extraDirs?: readonly { readonly dir: string; readonly namePrefix: string }[];
 }
 
 /**
@@ -209,6 +215,10 @@ export function loadSkills(skillsRoot: string, options?: LoadSkillsOptions): Ski
  * 诊断——单根先到先得语义的跨根推广）。roots 顺序 = settings 数组序（用户
  * 可排序）。每个技能带 origin（来源根的技能目录绝对路径——UI 卡片的来源
  * 标记面：主目录 = 工作区技能、附加根 = 外部来源技能）。
+ *
+ * T-P3-148 D：options.extraDirs = 插件贡献技能目录（目录本体直扫 + 技能名
+ * 命名空间前缀 `<插件名>/<名>`——pi pluginSkillId 同构）；排在文件系统根之后
+ * 扫描，同名时文件系统源先到先得（用户级压插件级，zcode priority 同语义）。
  */
 export function loadSkillsFromRoots(
   skillsRoot: string,
@@ -218,22 +228,28 @@ export function loadSkillsFromRoots(
   const skills: SkillSummary[] = [];
   const diagnostics: SkillDiagnostic[] = [];
   const scannedRoots: string[] = [];
-  for (const root of [skillsRoot, ...(extraRoots ?? [])]) {
-    const dir = path.join(path.resolve(root), SKILLS_DIR);
+  const scan = (dir: string, namePrefix?: string): void => {
     scannedRoots.push(dir);
     const r = loadSkillsFromDir(dir);
     for (const s of r.skills) {
-      if (skills.some((x) => x.name === s.name)) {
+      const name = namePrefix === undefined ? s.name : `${namePrefix}/${s.name}`;
+      if (skills.some((x) => x.name === name)) {
         diagnostics.push({
           code: "duplicate_name",
-          message: `技能名跨来源重复：${s.name}（来源 ${s.filePath} 弃用）`,
+          message: `技能名跨来源重复：${name}（来源 ${s.filePath} 弃用）`,
           path: s.filePath,
         });
         continue;
       }
-      skills.push({ ...s, origin: dir });
+      skills.push({ ...s, name, origin: dir });
     }
     diagnostics.push(...r.diagnostics);
+  };
+  for (const root of [skillsRoot, ...(extraRoots ?? [])]) {
+    scan(path.join(path.resolve(root), SKILLS_DIR));
+  }
+  for (const extra of options?.extraDirs ?? []) {
+    scan(path.resolve(extra.dir), extra.namePrefix);
   }
   if (options?.disabled === undefined || options.disabled.length === 0) {
     return { skills, diagnostics, roots: scannedRoots };

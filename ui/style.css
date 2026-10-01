@@ -498,6 +498,7 @@ code,
 #history-panel,
 #usage-panel,
 #workpanel,
+#plugins-panel,
 #notify-panel,
 #search-panel {
   position: relative;
@@ -3115,4 +3116,201 @@ button.chip-ui.active {
   cursor: pointer;
   text-decoration: underline;
   padding: 0 4px;
+}
+
+/* ===== T-P3-148 插件中心（views/plugins.js）：工具条 + 详情右侧 sheet +
+   审批风险三档（pi-desktop plugins.css 形态——token 全程取色） ===== */
+#plugins-panel[hidden] {
+  display: none;
+}
+
+.plugins-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.plugins-toolbar .input {
+  max-width: 240px;
+}
+
+.row-details {
+  margin-top: 4px;
+}
+
+.row-details summary {
+  cursor: pointer;
+  font-size: var(--text-ui-sm);
+  color: var(--text-subtle);
+  user-select: none;
+}
+
+.row-details .row-chips {
+  margin-top: 4px;
+}
+
+.mono-hint {
+  font-family: var(--font-mono);
+  font-size: var(--text-ui-sm);
+  word-break: break-all;
+}
+
+/* 详情 sheet：右侧滑入固定层（pi .plugins-sheet-layer 同构——scrim + 560px 板） */
+.plugin-sheet-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: flex-end;
+  background: color-mix(in srgb, black 45%, transparent);
+  animation: plugin-sheet-fade 120ms ease-out;
+}
+
+@keyframes plugin-sheet-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.plugin-sheet {
+  width: min(560px, 100%);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  animation: plugin-sheet-in 140ms ease-out;
+}
+
+@keyframes plugin-sheet-in {
+  from { transform: translateX(16px); opacity: 0.6; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.plugin-sheet-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: 20px 20px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.plugin-sheet-head .row-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.plugin-sheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.plugin-sheet-sec {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.plugin-sheet-sec .row {
+  padding: 6px 0;
+}
+
+.plugin-sheet-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* 审批风险三档（pi risk-{tier} 配色语义——token 取色） */
+.plugin-risk {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.plugin-risk-title {
+  font-size: var(--text-ui-sm);
+  font-weight: 640;
+}
+
+.plugin-risk.risk-high {
+  border-color: color-mix(in srgb, var(--destructive) 45%, var(--border));
+  background: color-mix(in srgb, var(--destructive) 8%, var(--bg));
+}
+
+.plugin-risk.risk-high .plugin-risk-title {
+  color: var(--destructive);
+}
+
+.plugin-risk.risk-medium {
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--border));
+  background: color-mix(in srgb, var(--warning) 8%, var(--bg));
+}
+
+.plugin-risk.risk-medium .plugin-risk-title {
+  color: var(--warning);
+}
+
+.plugin-risk.risk-low {
+  border-color: color-mix(in srgb, var(--success) 40%, var(--border));
+  background: color-mix(in srgb, var(--success) 6%, var(--bg));
+}
+
+.plugin-risk.risk-low .plugin-risk-title {
+  color: var(--success);
+}
+
+.plugin-risk.warn {
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--border));
+  background: color-mix(in srgb, var(--warning) 8%, var(--bg));
+  color: var(--text);
+}
+
+.plugin-view-frame iframe {
+  width: 100%;
+  height: 320px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--bg);
+}
+
+.plugin-template-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-2);
+  margin: 8px 0;
+}
+
+.plugin-template-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.plugin-template-card:hover {
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--border));
+}
+
+.plugin-template-card input {
+  margin-top: 3px;
+}
+
+.plugin-create-form {
+  margin: 8px 0;
 }

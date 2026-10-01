@@ -44,6 +44,8 @@ describe("跨组件因果链（O30）", () => {
         runSubagent: async () => ({ kind: "foreground", result: { sessionId: "stub", stopReason: "cancelled", output: "" } }),
       },
       sessionQuery: { dbPath: "stub" },
+      pluginCreate: { workspaceRoot: "stub" },
+      pluginDefine: { toolRegistry: registry, handles: [] },
     });
     // 因果断言：注册动作的产出 = 清单里每个名字在注册表里可见（而非断言
     // "清单数组等于它自己"这种终态字段复读）

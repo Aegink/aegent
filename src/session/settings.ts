@@ -153,6 +153,18 @@ export interface PluginEntry {
   allowTools?: boolean;
   /** 启停开关（缺省 true；停用保留清单）。 */
   enabled?: boolean;
+  /**
+   * 插件设置值（T-P3-148 F——manifest.contributes.settings 声明 schema 的
+   * 用户值；值闭集 string|number|boolean，详情表单的读写面。装载期经
+   * coerceSettingValues 合并 default 后注入 caps.pluginSettings 与 MCP env
+   * 的 {setting} 引用）。
+   */
+  options?: Record<string, string | number | boolean>;
+  /**
+   * 市场来源（T-P3-148 L——market install 的 host 落盘标记：uninstall/update
+   * 按此定位权威记录与缓存；手工安装的条目无此字段）。
+   */
+  marketplace?: string;
 }
 
 /** 价格表条目（U12/T-P3-111——obs/cost.ts ModelPricing 的配置面形状；表驱动计价无内置价格）。 */
@@ -1139,6 +1151,27 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
       if (e["enabled"] !== undefined && typeof e["enabled"] !== "boolean") {
         throw new SettingsError("plugins[].enabled 须为布尔值");
       }
+      // T-P3-148 F：插件设置值（contributes.settings 声明 schema 的用户值——
+      // 值闭集 string|number|boolean，zcode normalizePluginOptions 同规则；
+      // schema 一致性在装载期 coerceSettingValues 校验）
+      let options: Record<string, string | number | boolean> | undefined;
+      if (e["options"] !== undefined) {
+        const raw = e["options"];
+        if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+          throw new SettingsError("plugins[].options 须为对象");
+        }
+        options = {};
+        for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+          if (k.trim() === "") throw new SettingsError("plugins[].options 键不能为空");
+          if (typeof v !== "string" && typeof v !== "number" && typeof v !== "boolean") {
+            throw new SettingsError(`plugins[].options[${k}] 值须为 string|number|boolean`);
+          }
+          options[k] = v;
+        }
+      }
+      if (e["marketplace"] !== undefined && typeof e["marketplace"] !== "string") {
+        throw new SettingsError("plugins[].marketplace 须为字符串");
+      }
       out.plugins = [
         ...(out.plugins ?? []),
         {
@@ -1147,6 +1180,8 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
           source,
           ...(e["allowTools"] === true ? { allowTools: true } : {}),
           ...(e["enabled"] === false ? { enabled: false } : {}),
+          ...(options !== undefined ? { options } : {}),
+          ...(typeof e["marketplace"] === "string" && e["marketplace"] !== "" ? { marketplace: e["marketplace"] } : {}),
         },
       ];
     }

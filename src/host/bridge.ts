@@ -13,6 +13,7 @@ import { SqliteEventStorage } from "../session/db.js";
 // U9/U10/U12 查询面的 op 分流实现拆分至 query-gateway.ts（行数纪律拆分）
 import { handleHostQuery } from "./query-gateway.js";
 import { buildPolicyAuditEntries } from "./policy-audit-op.js";
+import { tryPluginSettingsOp } from "./settings-plugin-ops.js";
 import type { InstructionTarget } from "./protocol-settings.js";
 import { AgentHost } from "./registry.js";
 import {
@@ -311,8 +312,7 @@ export class HostBridge implements SessionRouter {
             }),
           };
         }
-        // U20/T-P3-122：配置包导入（UI 已确认——备份滚动 + 合并落盘）
-        if (call.op === "import") return gateway.importSettings(call.settings!);
+        if (call.op === "import") return gateway.importSettings(call.settings!); // U20/T-P3-122：导入（备份滚动+合并落盘）
         if (call.op === "skills-list") return gateway.skillsList();
         if (call.op === "skill-save") return gateway.skillSave(call.skill!);
         // T-P3-144：技能导入扫描/执行 + 删除/Reveal（护栏与复制在域文件）
@@ -326,14 +326,15 @@ export class HostBridge implements SessionRouter {
         if (call.op === "prompt-reveal") return gateway.promptReveal(call.path!);
         if (call.op === "prompt-import-scan") return gateway.promptImportScan();
         if (call.op === "prompt-import-apply") return gateway.promptImportApply(call.items!);
-            if (call.op === "enhancement-test") {
-          return gateway.enhancementTest(call.task as import("./settings-provider-ops.js").EnhancementTestTask);
-        }
+        if (call.op === "enhancement-test") return gateway.enhancementTest(call.task as import("./settings-provider-ops.js").EnhancementTestTask);
         if (call.op === "subagents-list") return gateway.subagentsList();
         if (call.op === "instructions-list") return gateway.instructionsList();
         if (call.op === "instruction-save") return gateway.instructionSave(call.target as InstructionTarget, call.content!);
         if (call.op === "stt-transcribe") return gateway.sttTranscribe({ base64: call.content!, mediaType: call.mediaType! });
         if (call.op === "plugins-list") return gateway.pluginsList();
+        // T-P3-148：插件/市场族 op 一行收敛（分发在 settings-plugin-ops）
+        const pluginOp = tryPluginSettingsOp(gateway, call);
+        if (pluginOp !== undefined) return pluginOp;
         if (call.op === "provider-models" || call.op === "provider-test") {
           const payload = {
             provider: call.provider!,

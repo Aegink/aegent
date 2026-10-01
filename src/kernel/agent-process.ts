@@ -337,6 +337,19 @@ export async function runAgentChildStdio(
     options.logger !== undefined ? { onInfo: (m) => options.logger?.info(m) } : undefined,
   );
 
+  // T-P3-148 X：动态插件句柄汇（plugin_define 现场定义——重启即失，
+  // 收尾随 finish 显式 dispose）
+  const dynamicPluginHandles: { dispose(): Promise<void> }[] = [];
+  // T-P3-148 插件贡献盒（B/D/E 装配面的 late-binding 载体）：插件装载在
+  // toolRegistry 之后、装配消费点（系统提示首落/skill_load/ready/MCP 连接）
+  // 全部晚于装载完成——盒先声明、装载后回填，消费点经 getter 活读。
+  const pluginContribBox: {
+    commands: import("./plugin-contributions.js").PluginCommandTemplate[];
+    skillDirs: { dir: string; namePrefix: string }[];
+    mcpServers: import("./plugin-contributions.js").PluginMcpServerEntry[];
+    loaded: boolean;
+  } = { commands: [], skillDirs: [], mcpServers: [], loaded: false };
+
   const assembly: ChildAssembly | undefined = options.assembly
     ? createChildAssembly({
         sessionId,
@@ -357,6 +370,9 @@ export async function runAgentChildStdio(
         // 注入 fake env 两者同时生效，全自动档与无沙箱路径无第二套 spawn 面）
         sandboxLocalEnv: executionEnv,
         sandboxWiring: true,
+        // T-P3-148 D：插件贡献技能目录（getter 活读——插件装载晚于装配构造，
+        // 系统提示首落时点盒已回填）
+        pluginSkillDirs: () => pluginContribBox.skillDirs,
       })
     : undefined;
 
@@ -458,6 +474,12 @@ export async function runAgentChildStdio(
             ...(options.assembly?.skillsDisabled !== undefined
               ? { skillsDisabled: options.assembly.skillsDisabled }
               : {}),
+            // T-P3-148 D：插件贡献技能目录（getter 活读——装载晚于注册）
+            pluginSkillDirs: () => pluginContribBox.skillDirs,
+            // T-P3-148 I：插件创建工具（工作区装配在位即注册——生成不自动装载）
+            pluginCreate: { workspaceRoot: options.assembly?.workspaceRoot ?? process.cwd() },
+            // T-P3-148 X：动态插件定义（进程内、重启即失——句柄挂收尾）
+            pluginDefine: { toolRegistry, handles: dynamicPluginHandles },
             // G1 plan 模式工具面（planMode 启用时装配提供同一服务实例）
             // + G4 计划落盘出口（planArtifactDir 提供时存在）
             ...(assembly.planMode ? { planMode: assembly.planMode } : {}),
@@ -510,9 +532,24 @@ export async function runAgentChildStdio(
   // 条目）。工具以 `<插件名>__<工具名>` 命名空间进注册表（工具清单在 ready
   // 一次性报全）；单插件失败 never-fail 跳过（mcpServers 同款）；收尾
   // dispose 挂 finish（连接/句柄随进程退出显式收束）。
-  const pluginDispose = await loadConfiguredPlugins(toolRegistry, options.plugins, {
+  // T-P3-148：贡献聚合回填贡献盒（B 命令→promptContext 合并 / D 技能目录
+  // →三消费口 / E MCP server→连接注册）——装配消费点全部晚于本行。
+  const pluginLoad = await loadConfiguredPlugins(toolRegistry, options.plugins, {
     ...(options.logger ? { logger: options.logger } : {}),
   });
+  pluginContribBox.commands = [...pluginLoad.contributions.commands];
+  pluginContribBox.skillDirs = [...pluginLoad.contributions.skillDirs];
+  pluginContribBox.mcpServers = [...pluginLoad.contributions.mcpServers];
+  pluginContribBox.loaded = true;
+  // T-P3-148 E：插件贡献的 MCP server 连接（settings mcp 同款 never-fail；
+  // env 的 {setting} 引用已在贡献解析面处理——解析失败的服务不出现在此）
+  for (const cfg of pluginContribBox.mcpServers) {
+    try {
+      mcpConnections.push(await connectAndRegister(toolRegistry, cfg));
+    } catch (e) {
+      console.error(`[mcp] 插件 server "${cfg.name}" 连接失败（跳过）:`, e instanceof Error ? e.message : e);
+    }
+  }
   const decideTurnBase: AgentLoopDeps["decideTurn"] = (record) =>
     record.toolCalls.length > 0 ? { action: "continue" } : { action: "end" };
   // T-P3-145 G：装配裁决包装器构造一次（有状态闭包——见 decideTurn 处注释）
@@ -670,7 +707,14 @@ export async function runAgentChildStdio(
           // 收尾关连接不炸退出面
         }
       }
-      await pluginDispose.disposeAll(); // T-P3-133：插件句柄收束
+      await pluginLoad.disposeAll(); // T-P3-133：插件句柄收束
+      for (const handle of dynamicPluginHandles) {
+        try {
+          await handle.dispose();
+        } catch {
+          // 动态插件收尾幂等面
+        }
+      }
       await sweepSessionSpill(options.spillDir ?? DEFAULT_SPILL_DIR, sessionId);
     } finally {
       exit(0);
@@ -794,6 +838,20 @@ export async function runAgentChildStdio(
       return { content };
     }
     const ctx = await options.promptContext();
+    // T-P3-148 B：插件贡献命令合并（用户/项目模板优先——重名插件命令弃用
+    // 落诊断，zcode 命令 priority 语义同构）
+    if (pluginContribBox.commands.length > 0) {
+      const baseNames = new Set(ctx.templates.map((t) => t.name));
+      const extra = pluginContribBox.commands.filter((c) => {
+        if (baseNames.has(c.name)) {
+          options.logger?.warn(`plugin-contrib: 命令与既有模板重名，弃用：${c.name}`);
+          return false;
+        }
+        baseNames.add(c.name);
+        return true;
+      });
+      if (extra.length > 0) ctx.templates = [...ctx.templates, ...extra];
+    }
     const template = lookupPromptTemplate(name, ctx.templates, ctx.disabled);
     if (template === undefined) {
       // H：MCP prompts 桥接（`server:prompt` 命名空间——live 连接的懒取回）
@@ -881,13 +939,15 @@ export async function runAgentChildStdio(
     };
   };
 
-  /** 技能名直通清单（装配面技能根的现扫描——展开时点新鲜）。 */
+  /** 技能名直通清单（装配面技能根的现扫描——展开时点新鲜；T-P3-148 D
+   * 含插件贡献目录 extraDirs——名字空间化清单与系统提示/skill_load 同源）。 */
   const knownSkillNames = (): string[] => {
     if (options.assembly === undefined) return [];
     try {
       return loadSkillsFromRoots(
         options.assembly.workspaceRoot ?? process.cwd(),
         options.assembly.skillsRoots,
+        pluginContribBox.skillDirs.length > 0 ? { extraDirs: pluginContribBox.skillDirs } : undefined,
       ).skills.map((s) => s.name);
     } catch {
       return [];
@@ -1396,6 +1456,14 @@ export async function runAgentChildStdio(
     ? await (async () => {
         try {
           const ctx = await options.promptContext!();
+          // T-P3-148 B：插件贡献命令并入 ready 目录（重名弃用——同 promptContext）
+          if (pluginContribBox.commands.length > 0) {
+            const baseNames = new Set(ctx.templates.map((t) => t.name));
+            ctx.templates = [
+              ...ctx.templates,
+              ...pluginContribBox.commands.filter((c) => !baseNames.has(c.name) && (baseNames.add(c.name), true)),
+            ];
+          }
           const classify = ctx.classify ?? (() => "extra" as const);
           const files = ctx.templates.map((t) => ({
             name: t.name,
@@ -1433,8 +1501,13 @@ export async function runAgentChildStdio(
           skills: loadSkillsFromRoots(
             options.assembly.workspaceRoot ?? process.cwd(),
             options.assembly.skillsRoots,
-            options.assembly.skillsDisabled !== undefined
-              ? { disabled: options.assembly.skillsDisabled }
+            options.assembly.skillsDisabled !== undefined || pluginContribBox.skillDirs.length > 0
+              ? {
+                  ...(options.assembly.skillsDisabled !== undefined
+                    ? { disabled: options.assembly.skillsDisabled }
+                    : {}),
+                  ...(pluginContribBox.skillDirs.length > 0 ? { extraDirs: pluginContribBox.skillDirs } : {}),
+                }
               : undefined,
           ).skills.map((s) => ({
             name: s.name,

@@ -186,6 +186,15 @@ export class ToolRegistry {
     this.defs.set(def.name, def);
   }
 
+  /**
+   * 注销一个工具（T-P3-148 X——动态插件 dispose 的登记面回收）。名字不存在
+   * = 幂等 no-op；B16 快照纪律保证在途 step 不受影响（执行策略在 step 开始
+   * 已固化）。
+   */
+  unregisterTool(name: string): void {
+    this.defs.delete(name);
+  }
+
   has(name: string): boolean {
     return this.defs.has(name);
   }

@@ -288,14 +288,6 @@ export const SECTIONS_HTML = `
     <button id="enh-polish-reset" type="button" class="btn btn-ghost">恢复默认</button>
   </div>
 </section>
-<section data-section="plugins">
-  <div class="section-head">
-    <h2 class="section-title">插件</h2>
-    <button id="plugin-add" type="button" class="btn btn-primary">安装插件</button>
-  </div>
-  <div id="plugin-list" class="row-list"></div>
-  <p class="hint">进程内插件目录约定：plugin.json（清单：name/trust/capabilities）+ index.js（入口，default 导出 AegentPlugin）。停用保留在清单；装载失败不影响启动（never-fail）。新会话生效。</p>
-</section>
 <section data-section="speech">
   <div class="section-head"><h2 class="section-title">语音【实验性】</h2></div>
   <p class="hint">语音转文字（STT）——输入区 🎤 按钮录音后转写填入输入框；真实端点联调随 U8（配置在位即可用）。</p>
@@ -2212,134 +2204,6 @@ function sttInputHandler(field) {
 }
 
 // ---------------------------------------------------------------------------
-// T-P3-133 插件管理：市场式卡片行 + 安装模态（inprocess 目录 / ws URL）
-// ---------------------------------------------------------------------------
-
-async function refreshPluginsList() {
-  const envelope = await sendSettings({ op: "plugins-list" });
-  const list = document.getElementById("plugin-list");
-  if (list === null) return;
-  list.replaceChildren();
-  if (!envelope.ok) {
-    list.appendChild(emptyState("插件清单不可用", envelope.error?.message ?? ""));
-    return;
-  }
-  const plugins = envelope.result;
-  if (plugins.length === 0) {
-    list.appendChild(emptyState("未安装插件", "点右上「安装插件」——进程内目录或进程外 ws URL（先校验）"));
-    return;
-  }
-  for (const p of plugins) {
-    const row = rowEl();
-    const badge = document.createElement("span");
-    badge.className = "icon-badge";
-    badge.appendChild(icon("plug"));
-    const titleEl = document.createElement("div");
-    titleEl.className = "row-title";
-    titleEl.textContent = p.name;
-    titleEl.appendChild(chipEl(p.transport === "ws" ? "进程外 ws" : "进程内"));
-    if (p.manifest) titleEl.appendChild(chipEl(`trust: ${p.manifest.trust}`));
-    if (!p.enabled) titleEl.appendChild(chipEl("已停用"));
-    const descEl = document.createElement("div");
-    descEl.className = "row-desc clamp-2";
-    descEl.textContent = p.error !== undefined ? `⚠ ${p.error}` : `→ ${p.source}`;
-    if (p.error !== undefined) descEl.classList.add("error-text"); // 错误行红文本
-    const copy = rowCopyEl(titleEl, descEl);
-    const capsRow = document.createElement("div");
-    capsRow.className = "row-chips";
-    if (p.error === undefined && p.manifest) {
-      for (const c of p.manifest.capabilities ?? []) capsRow.appendChild(chipEl(c));
-    }
-    const toggle = switchEl(p.enabled, (checked) => {
-      // 停用写 enabled:false、启用删键回缺省（mcp 启停同模式）
-      const defs = (settingsCache.plugins ?? []).map((d) => {
-        if (d.name !== p.name) return d;
-        if (checked) {
-          const { enabled: _omit, ...rest } = d;
-          return rest;
-        }
-        return { ...d, enabled: false };
-      });
-      settingsCache.plugins = defs;
-      dirtySections.add("plugins");
-      markDirty("plugins");
-      void refreshPluginsList();
-    }, `启停插件 ${p.name}`);
-    const delBtn = btnEl("删除", "btn btn-danger", "从装载清单移除（不删除插件目录文件）");
-    delBtn.addEventListener("click", async () => {
-      if (!(await confirmDialog(`从装载清单移除插件「${p.name}」？（不删除插件目录文件）`, { title: "移除插件", confirmLabel: "移除", danger: true }))) return;
-      settingsCache.plugins = (settingsCache.plugins ?? []).filter((d) => d.name !== p.name);
-      dirtySections.add("plugins");
-      markDirty("plugins");
-      void refreshPluginsList();
-    });
-    row.append(badge, copy, rowControl(capsRow, toggle, delBtn));
-    list.appendChild(row);
-  }
-}
-
-function openPluginInstallDialog() {
-  const holder = document.createElement("div");
-  holder.innerHTML = `
-  <form id="plugin-form">
-    <div class="form-grid">
-      <label>装载方式
-        <select id="plugin-transport" class="select">
-          <option value="inprocess">进程内（目录：plugin.json + index.js）</option>
-          <option value="ws">进程外（ws:// URL——I4 不可信隔离）</option>
-        </select>
-      </label>
-      <label>插件名<input id="plugin-name" class="input" type="text" placeholder="唯一，不含 __" autocomplete="off" /></label>
-      <label>装载源<input id="plugin-source" class="input" type="text" placeholder="目录绝对路径 或 ws://…" autocomplete="off" /></label>
-    </div>
-    <label class="check-line"><input id="plugin-allowtools" type="checkbox" /> ws 插件工具登记（不受信来源默认 deny——显式放行才登记工具）</label>
-  </form>`;
-  const form = holder.firstElementChild;
-  openDialog({
-    title: "安装插件（先校验）",
-    description: "进程内 = 本地目录（plugin.json + index.js，受信面）；ws = 进程外不可信隔离（I4，工具登记默认 deny）。",
-    width: "md",
-    body: form,
-    actions: [
-      { label: "取消", className: "btn btn-ghost" },
-      { label: "安装", className: "btn btn-primary", onClick: () => void installPluginFromDialog() },
-    ],
-  });
-}
-
-async function installPluginFromDialog() {
-  const name = document.getElementById("plugin-name").value.trim();
-  const source = document.getElementById("plugin-source").value.trim();
-  const transport = document.getElementById("plugin-transport").value;
-  const allowTools = document.getElementById("plugin-allowtools").checked;
-  if (name === "" || source === "" || name.includes("__")) {
-    toast("插件名（不含 __）与装载源必填", "warn");
-    return;
-  }
-  // 安装先校验（I9 安装期全量——plugins-list 拉取后核对重名与形状）
-  const preview = await sendSettings({ op: "plugins-list" });
-  const existing = (settingsCache.plugins ?? []).find((d) => d.name === name);
-  if (existing !== undefined && existing.enabled !== false) {
-    toast(`插件名已存在：${name}`, "warn");
-    return;
-  }
-  // 先落档（settings patch）——装载期再校验（never-fail），诊断随清单可见
-  const defs = (settingsCache.plugins ?? []).filter((d) => d.name !== name);
-  defs.push({
-    name,
-    source,
-    ...(transport !== "inprocess" ? { transport } : {}),
-    ...(allowTools ? { allowTools: true } : {}),
-  });
-  settingsCache.plugins = defs;
-  dirtySections.add("plugins");
-  markDirty("plugins");
-  toast(`插件已加入装载清单：${name}（新会话生效）`, "info");
-  void refreshPluginsList();
-  void preview;
-}
-
-// ---------------------------------------------------------------------------
 // 挂载 / 回填
 // ---------------------------------------------------------------------------
 
@@ -2766,7 +2630,6 @@ export function bind() {
   sttInputHandler("model");
   sttInputHandler("language");
 
-  document.getElementById("plugin-add").addEventListener("click", () => openPluginInstallDialog());
 }
 
 
@@ -2800,6 +2663,6 @@ export function fill() {
 export function refreshLists() {
   void refreshSkillsList(); // U22：技能清单（文件系统面——每次打开刷新）
   void refreshSubagentsList(); // U23：子代理清单（内置+自定义——每次打开刷新）
-  void refreshPluginsList(); // T-P3-133：插件清单（安装期校验诊断——每次打开刷新）
+  // T-P3-148 O：插件清单迁独立页 views/plugins.js（设置页不再承载）
   void refreshPromptsList(); // T-P3-146：模板清单（文件域——每次打开刷新 + 迁移）
 }

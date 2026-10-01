@@ -77,7 +77,7 @@ describe("loadPlugin —— 加载面校验（P1 地基复用）", () => {
         ).rejects.toBeInstanceOf(PluginSdkError);
     });
 
-    it("能力 token 属性闭集：只有 registerTool 与 subscribe（无内核句柄面）", async () => {
+    it("能力 token 属性闭集：registerTool/subscribe/pluginSettings（无内核句柄面——pluginSettings 是只读数据投影）", async () => {
         let seen: string[] = [];
         await loadPlugin(
             goodPlugin({
@@ -87,7 +87,7 @@ describe("loadPlugin —— 加载面校验（P1 地基复用）", () => {
             }),
             { availableCapabilities: CAPS },
         );
-        expect(seen).toEqual(["registerTool", "subscribe"]);
+        expect(seen).toEqual(["pluginSettings", "registerTool", "subscribe"]);
     });
 
     it("源码证伪：SDK 模块不 import 工具注册表/会话存储/沙箱（内核句柄不外泄）", () => {

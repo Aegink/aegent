@@ -1,0 +1,13 @@
+{
+  "name": "hello-view",
+  "version": "0.1.0",
+  "description": "示例插件：一个受控渲染的插件视图（万物可插件的活文档）",
+  "trust": "untrusted",
+  "capabilities": [],
+  "contributes": {
+    "views": [{ "id": "main", "title": "Hello 视图", "entry": "views/index.html" }],
+    "commands": [
+      { "name": "hi", "description": "示例命令：/hi", "template": "请用一句话向用户打个招呼，并说明你来自插件 hello-view。" }
+    ]
+  }
+}

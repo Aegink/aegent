@@ -34,7 +34,13 @@ import {
   type InstructionTarget,
 } from "./instructions-gateway.js";
 import { runSttTranscribe } from "./speech-gateway.js";
-import { listPlugins } from "./plugins-gateway.js";
+import { checkPluginDir, listPlugins } from "./plugins-gateway.js";
+import {
+  marketOpImpl,
+  pluginPackOp,
+  pluginScaffoldOp,
+  pluginViewHtmlOp,
+} from "./settings-plugin-ops.js";
 import { mcpImportScan, type McpImportScanResult } from "./mcp-import-op.js";
 import { listSkills, saveSkill, deleteSkillDir, revealSkillDir } from "./skills-gateway.js";
 import {
@@ -70,6 +76,26 @@ import {
 } from "../session/subagents-config.js";
 import type { McpToolInfo } from "../mcp/client.js";
 
+export type { SettingsGateway, McpCheckResult } from "./settings-gateway-types.js";
+import type { McpCheckResult } from "./settings-gateway-types.js";
+
+export function applySettingsPatch(current: SettingsShape, patch: Record<string, unknown>): SettingsShape {
+  const merged: Record<string, unknown> = { ...current };
+  for (const section of Object.keys(patch)) {
+    if (!(SETTINGS_PATCH_SECTIONS as readonly string[]).includes(section)) {
+      const error = new Error(`settings patch 未知段 "${section}"`);
+      (error as unknown as { code: string }).code = "SETTINGS_PATCH_SECTION_UNKNOWN";
+      throw error;
+    }
+    merged[section] = patch[section];
+  }
+  // 合并后整体验证（fail-closed——坏段拒绝且不落盘）
+  return parseSettingsShape(merged);
+}
+
+
+import type { SettingsGateway } from "./settings-gateway-types.js";
+
 export const SETTINGS_PATCH_SECTIONS = [
   "providers",
   "permission",
@@ -94,86 +120,7 @@ export const SETTINGS_PATCH_SECTIONS = [
   "plugins",
 ] as const;
 
-export interface McpCheckResult {
-  readonly ok: boolean;
-  readonly protocolVersion?: string;
-  readonly tools?: McpToolInfo[];
-  readonly error?: { code: string; message: string };
-}
 
-export function applySettingsPatch(current: SettingsShape, patch: Record<string, unknown>): SettingsShape {
-  const merged: Record<string, unknown> = { ...current };
-  for (const section of Object.keys(patch)) {
-    if (!(SETTINGS_PATCH_SECTIONS as readonly string[]).includes(section)) {
-      const error = new Error(`settings patch 未知段 "${section}"`);
-      (error as unknown as { code: string }).code = "SETTINGS_PATCH_SECTION_UNKNOWN";
-      throw error;
-    }
-    merged[section] = patch[section];
-  }
-  // 合并后整体验证（fail-closed——坏段拒绝且不落盘）
-  return parseSettingsShape(merged);
-}
-
-export interface SettingsGateway {
-  get(): Promise<SettingsShape>;
-  update(patch: Record<string, unknown>): Promise<SettingsShape>;
-  credentialsSet(provider: string, key: string): Promise<{ masked: string }>;
-  credentialsDelete(provider: string): Promise<{ deleted: boolean }>;
-  credentialsList(): Promise<{ name: string; updatedAt: string; masked?: string }[]>;
-  probeProvider(name: string): Promise<HealthCheckResult>;
-  sessionDelete(sessionId: string): Promise<{ deleted: boolean }>;
-  mcpCheck(entry: McpServerEntry): Promise<McpCheckResult>;
-  importSettings(imported: Record<string, unknown>): Promise<{ applied: true; summary: string[] }>;
-  skillsList(): Promise<{
-    skills: {
-      name: string;
-      description: string;
-      tools?: readonly string[];
-      filePath: string;
-      origin: string;
-      body: string;
-    }[];
-    diagnostics: { code: string; message: string; path: string }[];
-    roots: string[];
-    disabled: string[];
-  }>;
-  skillSave(payload: {
-    name: string;
-    description: string;
-    body: string;
-    tools?: readonly string[];
-  }): Promise<{ saved: true; path: string }>;
-  subagentsList(): Promise<{
-    builtins: (SubagentDefinition & { enabled: boolean; overridden: boolean })[];
-    custom: SubagentDefinition[];
-  }>;
-  instructionsList(): Promise<{
-    project: { path: string; exists: boolean; content: string };
-    global: { path: string; exists: boolean; content: string };
-    rules: { path: string; exists: boolean; content: string; issues: { line: number; message: string }[] };
-  }>;
-  instructionSave(target: "project-agents" | "global-agents" | "user-rules", content: string): Promise<{ saved: true; path: string }>;
-  sttTranscribe(payload: { base64: string; mediaType: string }): Promise<{ text: string; model: string }>;
-  pluginsList(): Promise<ReturnType<typeof listPlugins>>;
-  providerModels(payload: ProviderModelsPayload): Promise<{ models: { id: string }[] }>;
-  providerTest(payload: ProviderTestPayload): Promise<ProviderTestResult>;
-  sandboxDoctor(): ReturnType<typeof sandboxDoctorOp>;
-  pluginThemeCss(name: string): Promise<{ css: string; base: "light" | "dark"; displayName: string }>;
-  mcpImportScan(): Promise<McpImportScanResult>;
-  skillImportScan(): Promise<SkillImportScanResult>;
-  skillImportApply(items: SkillImportItem[]): Promise<SkillImportApplyResult>;
-  skillDelete(skillPath: string): Promise<{ deleted: true; path: string }>;
-  skillReveal(skillPath: string): Promise<{ revealed: true }>;
-  promptsList(): Promise<PromptListView>;
-  promptSave(payload: import("./protocol-settings.js").PromptSavePayload): Promise<{ saved: true; path: string }>;
-  promptDelete(filePath: string): Promise<{ deleted: true; path: string }>;
-  promptReveal(filePath: string): Promise<{ revealed: true }>;
-  promptImportScan(): Promise<PromptImportScanResult>;
-  promptImportApply(items: PromptImportItem[]): Promise<PromptImportApplyResult>;
-  /** T-P3-147 D：辅助任务真实测试（1-token 探测——NOT_CONFIGURED 诚实回退）。 */
-  enhancementTest(task: import("./settings-provider-ops.js").EnhancementTestTask): Promise<import("./settings-provider-ops.js").EnhancementTestResult>;
-}
 
 function defaultHealthProbe(): (name: string, baseUrl: string) => Promise<HealthCheckResult> {
   return (name, baseUrl) => probeProvider({ provider: name, baseUrl });
@@ -324,6 +271,46 @@ export class FileSettingsGateway implements SettingsGateway {
 
   async pluginsList(): Promise<ReturnType<typeof listPlugins>> {
     return listPlugins(await this.get());
+  }
+
+  async pluginCheck(dir: string): Promise<ReturnType<typeof checkPluginDir>> {
+    return checkPluginDir(dir);
+  }
+
+  async pluginViewHtml(call: { name: string; view: string; base: "light" | "dark" }): Promise<unknown> {
+    return pluginViewHtmlOp(this.pluginOpsDeps(), call);
+  }
+
+  async pluginPack(dir: string): Promise<unknown> {
+    return pluginPackOp(dir);
+  }
+
+  async marketOp(call: {
+    action: string;
+    source?: string;
+    marketplace?: string;
+    name?: string;
+  }): Promise<unknown> {
+    return marketOpImpl(this.pluginOpsDeps(), call);
+  }
+
+  async pluginScaffold(call: {
+    name: string;
+    template: string;
+    displayName?: string;
+    description?: string;
+  }): Promise<unknown> {
+    return pluginScaffoldOp(this.pluginOpsDeps(), call);
+  }
+
+  /** 域依赖投影（settings-plugin-ops 的入参面）。 */
+  private pluginOpsDeps() {
+    return {
+      settingsPath: this.settingsPath,
+      homeDir: this.homeDir,
+      ...(this.workspaceRoot !== undefined ? { workspaceRoot: this.workspaceRoot } : {}),
+      getSettings: () => this.get(),
+    };
   }
 
   async providerModels(payload: ProviderModelsPayload): Promise<{ models: { id: string }[] }> {

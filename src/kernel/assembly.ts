@@ -351,6 +351,9 @@ export interface ChildAssemblyOptions {
    */
   skillsDisabled?: readonly string[];
   skillsRoots?: readonly string[];
+  /** T-P3-148 D：插件贡献技能目录（getter 活读——插件装载晚于装配构造，
+   * 系统提示首落时点已回填；loadSkillsFromRoots extraDirs 直通）。 */
+  pluginSkillDirs?: () => readonly { readonly dir: string; readonly namePrefix: string }[];
   /**
    * U23/T-P3-126 子代理身份段（task subagent_type 的预设 prompt——追加进
    * 系统提示，persona 同款位置）。仅子装配使用（runner 传入）；父会话
@@ -818,7 +821,12 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
       const skillLoad = loadSkillsFromRoots(
         options.workspaceRoot,
         options.skillsRoots,
-        options.skillsDisabled !== undefined ? { disabled: options.skillsDisabled } : undefined,
+        options.skillsDisabled !== undefined || options.pluginSkillDirs !== undefined
+          ? {
+              ...(options.skillsDisabled !== undefined ? { disabled: options.skillsDisabled } : {}),
+              ...(options.pluginSkillDirs !== undefined ? { extraDirs: options.pluginSkillDirs() } : {}),
+            }
+          : undefined,
       );
       for (const d of skillLoad.diagnostics) {
         logger?.warn(`skill-lint: [${d.code}] ${d.path} —— ${d.message}`);

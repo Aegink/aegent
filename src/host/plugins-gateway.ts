@@ -13,6 +13,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
 import { validateManifest, type PluginManifest } from "../kernel/plugin-manifest.js";
+import { claudeToAegentManifest, discoverManifestPath } from "../kernel/plugin-compat.js";
 import type { SettingsShape } from "../session/settings.js";
 
 /** 宿主已实现能力清单（I9：声明未实现能力即拒绝——与装配面同一闭集）。 */
@@ -22,16 +23,26 @@ export const PLUGIN_AVAILABLE_CAPABILITIES = ["registerTool", "subscribe", "hook
 export const PLUGIN_MANIFEST_FILENAME = "plugin.json";
 export const PLUGIN_ENTRY_FILENAME = "index.js";
 
+/** 清单回包投影（管理/详情/审批/视图四面的共享形状）。 */
+export type PluginManifestView = Pick<
+  PluginManifest,
+  "name" | "trust" | "capabilities" | "theme" | "version" | "description" | "contributes"
+>;
+
 export interface PluginDiagnostics {
   readonly name: string;
   readonly transport: "inprocess" | "ws";
   readonly source: string;
   readonly enabled: boolean;
   readonly allowTools: boolean;
+  /** 市场来源标记（market install 落盘——UI 市场徽标与卸载入口的条件面）。 */
+  readonly marketplace?: string;
   /** inprocess 清单校验产出（校验通过时在位——trust 徽标数据面）。 */
-  readonly manifest?: Pick<PluginManifest, "name" | "trust" | "capabilities" | "theme">;
+  readonly manifest?: PluginManifestView;
   /** 校验失败诊断（fail 类型化——清单坏不炸面，错误行可见）。 */
   readonly error?: string;
+  /** V 兼容读入警告（claude 形状未映射字段——不拒装，如实可见）。 */
+  readonly warnings?: readonly string[];
 }
 
 /** ws URL 形状校验（协议 + 非空 host——连接失败在装配期 never-fail 跳过）。 */
@@ -51,20 +62,28 @@ function wsUrlError(source: string): string | undefined {
 /** inprocess 目录校验（清单存在 → JSON 解析 → I9 全量校验——零代码执行）。 */
 function inprocessError(
   dir: string,
-): { error?: string; manifest?: Pick<PluginManifest, "name" | "trust" | "capabilities" | "theme"> } {
-  const manifestPath = path.join(dir, PLUGIN_MANIFEST_FILENAME);
-  if (!existsSync(manifestPath)) {
-    return { error: `插件目录缺少 ${PLUGIN_MANIFEST_FILENAME}（约定：清单 + ${PLUGIN_ENTRY_FILENAME} 入口）` };
+): { error?: string; manifest?: PluginManifestView; warnings?: string[] } {
+  // V（T-P3-148）：清单位置回退链（plugin.json → .claude-plugin →
+  // .codex-plugin）+ claude 形状兼容转换（warnings 如实回传不拒装）
+  const discovered = discoverManifestPath(dir);
+  if (discovered === undefined) {
+    return { error: `插件目录缺少 plugin.json（约定：清单 + ${PLUGIN_ENTRY_FILENAME} 入口；兼容 .claude-plugin/plugin.json）` };
   }
   let raw: unknown;
   try {
-    raw = JSON.parse(readFileSync(manifestPath, "utf8"));
+    raw = JSON.parse(readFileSync(discovered.path, "utf8"));
   } catch (e) {
     return { error: `plugin.json 不是合法 JSON：${e instanceof Error ? e.message : String(e)}` };
   }
+  let warnings: string[] = [];
+  if (discovered.kind !== "aegent") {
+    const compat = claudeToAegentManifest(raw, dir, discovered.kind);
+    raw = compat.raw;
+    warnings = [...compat.warnings];
+  }
   const result = validateManifest(raw, PLUGIN_AVAILABLE_CAPABILITIES);
   if (!result.ok) {
-    return { error: `清单校验失败：${result.errors.join("；")}` };
+    return { error: `清单校验失败：${result.errors.join("；")}`, warnings };
   }
   const manifest = result.manifest;
   // T-P3-141：入口按需——声明了 capabilities/hooks 才要求 index.js（有代码
@@ -75,7 +94,44 @@ function inprocessError(
   if (needsEntry && !existsSync(path.join(dir, PLUGIN_ENTRY_FILENAME))) {
     return { error: `插件目录缺少入口 ${PLUGIN_ENTRY_FILENAME}` };
   }
-  return { manifest: { name: manifest.name, trust: manifest.trust, capabilities: manifest.capabilities, ...(manifest.theme !== undefined ? { theme: manifest.theme } : {}) } };
+  // T-P3-148 A：贡献引用文件的存在性校验（pi-desktop check 预检同款——
+  // 声明了就要存在；路径形状已在 validateManifest 收敛，此处 resolve 后
+  // 落前缀检查防 symlink/大小写异形——纵深防御）
+  const missing: string[] = [];
+  for (const cmd of manifest.contributes?.commands ?? []) {
+    if (cmd.file === undefined) continue;
+    const abs = path.resolve(dir, cmd.file);
+    if (!abs.startsWith(path.resolve(dir) + path.sep) || !existsSync(abs)) {
+      missing.push(`命令文件 ${cmd.file}`);
+    }
+  }
+  for (const skillDir of manifest.contributes?.skills ?? []) {
+    const abs = path.resolve(dir, skillDir);
+    if (!abs.startsWith(path.resolve(dir) + path.sep) || !existsSync(abs)) {
+      missing.push(`技能目录 ${skillDir}`);
+    }
+  }
+  for (const view of manifest.contributes?.views ?? []) {
+    const abs = path.resolve(dir, view.entry);
+    if (!abs.startsWith(path.resolve(dir) + path.sep) || !existsSync(abs)) {
+      missing.push(`视图入口 ${view.entry}`);
+    }
+  }
+  if (missing.length > 0) {
+    return { error: `贡献引用缺失：${missing.join("、")}` };
+  }
+  return {
+    manifest: {
+      name: manifest.name,
+      trust: manifest.trust,
+      capabilities: manifest.capabilities,
+      ...(manifest.theme !== undefined ? { theme: manifest.theme } : {}),
+      ...(manifest.version !== undefined ? { version: manifest.version } : {}),
+      ...(manifest.description !== undefined ? { description: manifest.description } : {}),
+      ...(manifest.contributes !== undefined ? { contributes: manifest.contributes } : {}),
+    },
+    ...(warnings.length > 0 ? { warnings } : {}),
+  };
 }
 
 /** 装载清单视图（settings.plugins → 逐条校验诊断——管理页数据面）。 */
@@ -90,6 +146,7 @@ export function listPlugins(settings: SettingsShape): PluginDiagnostics[] {
         source: entry.source,
         enabled: false,
         allowTools: entry.allowTools === true,
+        ...(entry.marketplace !== undefined ? { marketplace: entry.marketplace } : {}),
       };
     }
     if (transport === "ws") {
@@ -100,6 +157,7 @@ export function listPlugins(settings: SettingsShape): PluginDiagnostics[] {
         source: entry.source,
         enabled: true,
         allowTools: entry.allowTools === true,
+        ...(entry.marketplace !== undefined ? { marketplace: entry.marketplace } : {}),
         ...(error !== undefined ? { error } : {}),
       };
     }
@@ -110,17 +168,102 @@ export function listPlugins(settings: SettingsShape): PluginDiagnostics[] {
       source: entry.source,
       enabled: true,
       allowTools: entry.allowTools === true,
+      ...(entry.marketplace !== undefined ? { marketplace: entry.marketplace } : {}),
       ...(checked.error !== undefined ? { error: checked.error } : {}),
       ...(checked.manifest !== undefined ? { manifest: checked.manifest } : {}),
+      ...(checked.warnings !== undefined && checked.warnings.length > 0 ? { warnings: checked.warnings } : {}),
     };
   });
 }
 
-/** 安装期校验（UI 安装表单的"先校验后落档"面——与清单同函数复用）。 */
-export function checkPluginDir(dir: string): { ok: boolean; name?: string; trust?: string; error?: string } {
+/**
+ * 安装期校验（UI 安装表单的"先校验后落档"面——与清单同函数复用）。
+ * T-P3-148 Q：回包携带完整 manifest pick（审批对话框的真实清单预览数据面）。
+ */
+export function checkPluginDir(dir: string): {
+  ok: boolean;
+  name?: string;
+  trust?: string;
+  manifest?: PluginDiagnostics["manifest"];
+  error?: string;
+} {
   const checked = inprocessError(dir);
   if (checked.error !== undefined) return { ok: false, error: checked.error };
-  return { ok: true, name: checked.manifest!.name, trust: checked.manifest!.trust };
+  return {
+    ok: true,
+    name: checked.manifest!.name,
+    trust: checked.manifest!.trust,
+    manifest: checked.manifest,
+  };
+}
+
+/** 插件视图 HTML 的读取上限（256KB——视图不是应用载体，同 theme.css）。 */
+const PLUGIN_VIEW_HTML_MAX_BYTES = 256 * 1024;
+
+/**
+ * 插件视图 HTML 读取（T-P3-148 C——受控 iframe 渲染的数据面）：按插件名 +
+ * 视图 id 定位 enabled inprocess 条目的 contributes.views 条目 → 相对 entry
+ * 读取（resolveInside 防逃逸 + 256KB 上限）→ 宿主注入两段头部：
+ *   ①CSP meta：default-src 'none' + connect-src 'none'——srcdoc iframe 的
+ *     出网点收敛（pi egress 策略的 v1 等价物：视图自足、无宿主网络面）；
+ *   ②初始外观常量 `window.__AEGENT_VIEW__`（先于页面代码——piViewOpen 的
+ *     "URL 参数为初始态"同构）。
+ * 视图与宿主的桥 = postMessage 窄消息面（v1 只读：外观事件；无宿主句柄）。
+ */
+export function pluginViewHtml(
+  settings: SettingsShape,
+  name: string,
+  viewId: string,
+  appearance: { base: "light" | "dark"; locale: string },
+): { html: string; title: string; viewId: string } {
+  const entry = (settings.plugins ?? []).find((p) => p.name === name && p.enabled !== false);
+  if (entry === undefined || (entry.transport ?? "inprocess") !== "inprocess") {
+    throw typedError("PLUGIN_VIEW_NOT_FOUND", `插件「${name}」不存在、已停用或非目录插件`);
+  }
+  const checked = inprocessError(entry.source);
+  if (checked.error !== undefined || checked.manifest === undefined) {
+    throw typedError("PLUGIN_VIEW_NOT_FOUND", `插件「${name}」清单校验失败：${checked.error ?? ""}`);
+  }
+  const view = checked.manifest.contributes?.views?.find((v) => v.id === viewId);
+  if (view === undefined) {
+    throw typedError("PLUGIN_VIEW_NOT_FOUND", `插件「${name}」未声明视图「${viewId}」`);
+  }
+  const rootDir = path.resolve(entry.source);
+  const htmlPath = path.resolve(rootDir, view.entry);
+  if (!htmlPath.startsWith(rootDir + path.sep) && htmlPath !== rootDir) {
+    throw typedError("PLUGIN_VIEW_NOT_FOUND", `视图 entry 越出插件目录：${view.entry}`);
+  }
+  let stat;
+  try {
+    stat = statSync(htmlPath);
+  } catch {
+    throw typedError("PLUGIN_VIEW_NOT_FOUND", `视图入口不存在：${view.entry}`);
+  }
+  if (stat.size > PLUGIN_VIEW_HTML_MAX_BYTES) {
+    throw typedError("PLUGIN_VIEW_NOT_FOUND", `视图 HTML 超过 256KB 上限：${view.entry}`);
+  }
+  let html: string;
+  try {
+    html = readFileSync(htmlPath, "utf8");
+  } catch (e) {
+    throw typedError("PLUGIN_VIEW_NOT_FOUND", `视图 HTML 读取失败：${e instanceof Error ? e.message : String(e)}`);
+  }
+  const inject = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none';" />` +
+    `<script>window.__AEGENT_VIEW__=${JSON.stringify({ base: appearance.base, locale: appearance.locale, pluginName: name, viewId })};</script>`;
+  if (/<head[^>]*>/i.test(html)) {
+    html = html.replace(/<head[^>]*>/i, (m) => `${m}
+${inject}`);
+  } else {
+    html = `${inject}
+${html}`;
+  }
+  return { html, title: view.title, viewId };
+}
+
+function typedError(code: string, message: string): Error {
+  const error = new Error(message);
+  (error as unknown as { code: string }).code = code;
+  return error;
 }
 
 /** 插件主题 CSS 的读取上限（256KB——主题样式不是应用载体）。 */

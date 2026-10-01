@@ -1,0 +1,8 @@
+{
+  "name": "aegent-examples",
+  "description": "aegent 内置示例市场（本地目录源）——把「市场源」指向本目录即可浏览安装",
+  "plugins": [
+    { "name": "hello-view", "source": "./hello-view", "version": "0.1.0", "description": "示例：受控渲染的插件视图 + 示例命令 /hi", "category": "示例" },
+    { "name": "echo-tool", "source": "./echo-tool", "version": "0.1.0", "description": "示例：SDK 工具登记 + 设置贡献 + 事件订阅", "category": "示例" }
+  ]
+}

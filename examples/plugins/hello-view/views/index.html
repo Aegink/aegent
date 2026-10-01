@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>Hello 视图</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; padding: 20px; background: canvas; color: canvastext; }
+  .card { border: 1px solid color-mix(in srgb, canvastext 14%, transparent); border-radius: 12px; padding: 16px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h2>Hello 视图</h2>
+    <p>这是示例插件 hello-view 贡献的视图：宿主以受控 iframe 渲染（sandbox 无同源 + CSP 收敛出网），桥面只有外观事件。</p>
+    <p>外观基底：<code id="base">（加载中）</code></p>
+  </div>
+  <script>
+    function applyAppearance(a) {
+      if (!a || a.base === undefined) return;
+      document.documentElement.dataset.base = a.base;
+      document.getElementById("base").textContent = a.base;
+    }
+    applyAppearance(window.__AEGENT_VIEW__);
+    window.addEventListener("message", (ev) => {
+      if (ev.data && ev.data.type === "aegent:appearance") applyAppearance(ev.data);
+    });
+  </script>
+</body>
+</html>

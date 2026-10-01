@@ -52,10 +52,12 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     // 插件管理——I4/I5/I9 管理面延伸）——批 A 迁 views/settings.js；
     // credentials 分节并入供应商页（用户裁决"功能重复"——凭据管理面 =
     // providers.js 的孤儿预存密钥区，data-section 不复存在）
-    for (const section of ["providers", "permission", "sandbox", "appearance", "logging", "projects", "prompts", "skills", "subagents", "instructions", "shortcuts", "mcp", "enhancement", "profiles", "transfer", "speech", "plugins", "about"]) {
+    // T-P3-148 O：plugins 分节迁独立页 views/plugins.js（data-section 不复存在）
+    for (const section of ["providers", "permission", "sandbox", "appearance", "logging", "projects", "prompts", "skills", "subagents", "instructions", "shortcuts", "mcp", "enhancement", "profiles", "transfer", "speech", "about"]) {
       expect(settingsView).toContain(`data-section="${section}"`);
     }
     expect(settingsView).not.toContain('data-section="credentials"');
+    expect(settingsView).not.toContain('data-section="plugins"');
     // 导航入口（侧栏齿轮——批 A 布局骨架）与凭据不回显（U2 面注入防呆）
     expect(html).toContain('id="settings-btn"');
     expect(settingsView).toContain('type="password"');
@@ -214,13 +216,18 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     expect(app).toContain("MediaRecorder"); // 浏览器录音 API
     expect(app).toContain("NotAllowedError"); // 权限拒绝降级
     expect(settingsView).toContain('markDirty("stt")'); // STT 配置即改即存
-    // T-P3-133：插件管理（清单/安装表单/启停删除——I4/I5/I9 管理面延伸）
-    expect(settingsView).toContain('id="plugin-list"');
-    expect(settingsView).toContain('id="plugin-transport"');
-    expect(settingsView).toContain('id="plugin-add"');
-    expect(settingsView).toContain('op: "plugins-list"'); // 清单数据面
-    expect(settingsView).toContain("refreshPluginsList"); // 清单刷新
-    expect(settingsView).toContain('markDirty("plugins")'); // 启停/安装即改即存
+    // T-P3-148 O/P/Q：插件管理迁独立页 views/plugins.js（清单/详情 sheet/
+    // 审批三档——I4/I5/I9 管理面延伸 + contributes 贡献面）
+    const pluginsView = read("views/plugins.js");
+    expect(pluginsView).toContain('id="plugin-list"');
+    expect(pluginsView).toContain('id="plugin-transport"');
+    expect(pluginsView).toContain('id="plugin-install"');
+    expect(pluginsView).toContain('op: "plugins-list"'); // 清单数据面
+    expect(pluginsView).toContain('op: "plugin-check"'); // 安装前真实清单审批面
+    expect(pluginsView).toContain("refreshPluginsList"); // 清单刷新
+    expect(pluginsView).toContain('markDirty("plugins")'); // 启停/安装/设置即改即存
+    expect(pluginsView).toContain("plugin-sheet"); // 详情右侧 sheet（P）
+    expect(pluginsView).toContain("risk-${tier}"); // 审批风险三档构造（Q）
     // U18/T-P3-120：辅助模型分节（judge/summarizer 独立配置 + 回退链 hint）
     expect(settingsView).toContain('id="enh-judge-provider"');
     expect(settingsView).toContain('id="enh-summarizer-model"');

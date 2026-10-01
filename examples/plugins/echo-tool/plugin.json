@@ -1,0 +1,11 @@
+{
+  "name": "echo-tool",
+  "version": "0.1.0",
+  "description": "示例插件：给模型登记一个回声工具（SDK 受限能力 token 面）",
+  "trust": "untrusted",
+  "capabilities": ["registerTool", "subscribe"],
+  "contributes": {
+    "settings": [{ "name": "prefix", "type": "string", "default": "[echo] ", "description": "回声前缀" }],
+    "subscriptions": ["user/message"]
+  }
+}

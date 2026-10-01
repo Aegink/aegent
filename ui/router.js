@@ -7,6 +7,7 @@
  */
 
 const VIEW_MODULES = {
+  plugins: () => import("./views/plugins.js"),
   settings: () => import("./views/settings.js"),
   usage: () => import("./views/usage.js"),
   work: () => import("./views/work.js"),
@@ -20,6 +21,7 @@ export function parseHash(hash) {
   const raw = String(hash ?? "").replace(/^#\/?/, "");
   const [head, sub] = raw.split("/");
   if (head === "settings") return { view: "settings", section: sub || null };
+  if (head === "plugins") return { view: "plugins", tab: sub || null };
   if (head === "work") return { view: "work", tab: sub || null };
   if (head === "usage" || head === "notify" || head === "history" || head === "search") {
     return { view: head };

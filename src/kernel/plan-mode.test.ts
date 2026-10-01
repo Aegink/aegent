@@ -229,6 +229,8 @@ describe("注册面与提示词独立文件（验收⑤）", () => {
 
     const full = new ToolRegistry();
     registerBuiltinTools(full, {
+      pluginCreate: { workspaceRoot: "stub" },
+      pluginDefine: { toolRegistry: full, handles: [] },
       todoEmit: () => undefined,
       planMode: createPlanModeService(),
       // BUILTIN_TOOL_NAMES 是"可注册清单"（webfetch/question/task/session_*
@@ -245,7 +247,7 @@ describe("注册面与提示词独立文件（验收⑤）", () => {
       sessionQuery: { dbPath: "unused-plan-mode-names.sqlite" },
     });
     expect(full.names()).toEqual([...BUILTIN_TOOL_NAMES]);
-    expect(BUILTIN_TOOL_NAMES).toHaveLength(19);
+    expect(BUILTIN_TOOL_NAMES).toHaveLength(21); // T-P3-148：+plugin_create/plugin_define
 
     const withoutPlan = new ToolRegistry();
     registerBuiltinTools(withoutPlan);

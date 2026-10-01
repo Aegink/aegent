@@ -21,18 +21,26 @@
 
 import { CHAIN_POINTS, type ChainLayer, type ChainPoint } from "./chain.js";
 import type { HookRegistry, HookTrust } from "./hooks.js";
+import {
+  PLUGIN_NAME_SHAPE,
+  validateContributes,
+  type PluginContributes,
+} from "./plugin-manifest-contributes.js";
 
-/** 清单字段闭集（闭集外字段拒绝）。 */
+/** 清单字段闭集（闭集外字段拒绝；v2 新增 version/description/contributes）。 */
 export const PLUGIN_MANIFEST_FIELDS = [
   "name",
   "trust",
   "capabilities",
   "hooks",
   "theme",
+  "version",
+  "description",
+  "contributes",
 ] as const;
 
 export interface PluginManifest {
-  /** 插件名（hook 注册名的前缀，防跨插件冲突）。 */
+  /** 插件名（hook 注册名与贡献命名空间的前缀，防跨插件冲突）。 */
   readonly name: string;
   /** 信任轨（I6）：决定 hooks 进内核链还是独立观察轨。 */
   readonly trust: HookTrust;
@@ -51,6 +59,17 @@ export interface PluginManifest {
     readonly base: "light" | "dark";
     readonly css: string;
   };
+  /** 版本（T-P3-148 A——自由字符串 ≤32；比较语义随市场域 T 波实现）。 */
+  readonly version?: string;
+  /** 人读描述（详情面展示；≤512 字符）。 */
+  readonly description?: string;
+  /**
+   * 贡献声明（T-P3-148 A——万物可插件的声明面）：commands/skills/views/
+   * mcpServers/settings/subscriptions 六类；形状校验在本文件，引用文件的
+   * 存在性校验在安装期 gateway 与装载期 loader 双防线。带本键的清单按 v2
+   * 处理（name 收紧 slug 形状——贡献命名空间 `<插件名>/<名>` 的前提）。
+   */
+  readonly contributes?: PluginContributes;
 }
 
 export class PluginManifestError extends Error {
@@ -84,10 +103,17 @@ export function validateManifest(
     }
   }
 
-  // name
+  // name（v2 清单收紧 slug 形状——贡献命名空间 `<插件名>/<名>` 的前提；
+  // 旧清单无名形状校验，向后兼容零破坏）
   const name = record.name;
   if (typeof name !== "string" || name.trim() === "") {
     errors.push("name 必须是非空字符串");
+  } else if (record.contributes !== undefined) {
+    if (name.includes("__")) {
+      errors.push(`name 含命名空间分隔符 "__"：${name}`);
+    } else if (!PLUGIN_NAME_SHAPE.test(name)) {
+      errors.push(`name 须为 slug 形状（小写字母数字开头，. - _ 可内用，≤64 字节）：${name}`);
+    }
   }
 
   // trust（闭集枚举）
@@ -189,6 +215,32 @@ export function validateManifest(
     }
   }
 
+  // version / description（v2 元数据——自由字符串带上限）
+  let version: string | undefined;
+  if (record.version !== undefined) {
+    if (typeof record.version !== "string" || record.version.trim() === "" || record.version.length > 32) {
+      errors.push("version 须为非空字符串且 ≤32 字符");
+    } else {
+      version = record.version;
+    }
+  }
+  let description: string | undefined;
+  if (record.description !== undefined) {
+    if (typeof record.description !== "string" || record.description.length > 512) {
+      errors.push("description 须为字符串且 ≤512 字符");
+    } else {
+      description = record.description;
+    }
+  }
+
+  // contributes（v2 贡献声明——形状闭集校验委托 plugin-manifest-contributes）
+  let contributes: PluginContributes | undefined;
+  if (record.contributes !== undefined) {
+    const result = validateContributes(record.contributes);
+    if (!result.ok) errors.push(...result.errors);
+    else contributes = result.contributes;
+  }
+
   if (errors.length > 0) return { ok: false, errors };
   return {
     ok: true,
@@ -198,6 +250,9 @@ export function validateManifest(
       capabilities: capabilities as readonly string[],
       ...(hooks !== undefined ? { hooks } : {}),
       ...(theme !== undefined ? { theme } : {}),
+      ...(version !== undefined ? { version } : {}),
+      ...(description !== undefined ? { description } : {}),
+      ...(contributes !== undefined ? { contributes } : {}),
     },
   };
 }

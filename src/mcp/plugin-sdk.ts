@@ -67,13 +67,18 @@ export interface PluginToolEntry {
 /**
  * 受限能力 token：插件在 onActivate 时领到的唯一宿主面。属性闭集只有
  * 工具登记与事件订阅两个方法——内核句柄不外泄（验收的源码证伪与运行时
- * 断言都锚在这里）。
+ * 断言都锚在这里）。T-P3-148 F：pluginSettings = 本插件设置贡献的合并值
+ * （contributes.settings schema + settings.plugins[].options 用户值——
+ * 只读投影，写面随需要扩展）。
  */
 export interface PluginCapabilities {
     /** 登记工具（重名即类型化拒绝——同名覆盖会让不可信代码静默换掉可信工具）。 */
     readonly registerTool: (def: PluginToolDef) => void;
-    /** 订阅事件类型（⊆ EVENT_TYPES 闭集，未知类型类型化拒绝）；返回退订函数。 */
+    /** 订阅事件类型（⊆ EVENT_TYPES 闭集，未知类型类型化拒绝）；返回退订函数。
+     * T-P3-148 G：manifest 声明 contributes.subscriptions 时收紧为其子集。 */
     readonly subscribe: (types: readonly SessionEventType[]) => () => void;
+    /** 本插件的设置值（合并 default 后的只读快照——类型不符已回退缺省）。 */
+    readonly pluginSettings: Readonly<Record<string, unknown>>;
 }
 
 /** 插件收到的只读事件快照（内核 SessionEvent 的深拷贝投影）。 */
@@ -119,7 +124,14 @@ export interface PluginHandle {
  */
 export async function loadPlugin(
     plugin: AegentPlugin,
-    options: { readonly availableCapabilities: readonly string[]; readonly eventTimeoutMs?: number },
+    options: {
+        readonly availableCapabilities: readonly string[];
+        readonly eventTimeoutMs?: number;
+        /** T-P3-148 F：插件设置贡献的用户值（loader 已合并 default——此处只透传）。 */
+        readonly settingsValues?: Readonly<Record<string, unknown>>;
+        /** T-P3-148 G：订阅声明白名单（manifest.contributes.subscriptions——声明即收紧）。 */
+        readonly declaredSubscriptions?: readonly string[];
+    },
 ): Promise<PluginHandle> {
     if (plugin === null || typeof plugin !== "object") {
         throw new PluginSdkError("插件必须是对象");
@@ -158,11 +170,23 @@ export async function loadPlugin(
             if (unknown.length > 0) {
                 throw new PluginSdkError(`订阅了未知事件类型：${unknown.join(", ")}`);
             }
+            // G：声明收紧——manifest.contributes.subscriptions 在位时，订阅
+            // 类型必须 ⊆ 声明（pi bus publish/subscribe 声明制同语义）
+            const declared = options.declaredSubscriptions;
+            if (declared !== undefined) {
+                const outside = types.filter((t) => !declared.includes(t));
+                if (outside.length > 0) {
+                    throw new PluginSdkError(
+                        `订阅了未声明的事件类型：${outside.join(", ")}（contributes.subscriptions 已声明：${declared.join(", ")}）`,
+                    );
+                }
+            }
             for (const t of types) subscribed.add(t);
             return () => {
                 for (const t of types) subscribed.delete(t);
             };
         },
+        pluginSettings: options.settingsValues ?? {},
     };
 
     await plugin.onActivate(caps);

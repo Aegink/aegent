@@ -1,11 +1,8 @@
 /**
  * settings 信封域（U14）——settings 直答信封形状与严格校验（op 闭集 +
- * 载荷类型；业务规则在 gateway 层；op 合法性与报错串同源消费）。
+ * 载荷类型；业务规则在 gateway 层）。本文件不 import bounded：错误消息的
+ * 有界转写统一在 protocol.ts 的 catch 层（parse 层抛原文，转写面单点）。
  */
-
-// 本文件不 import bounded：错误消息的有界转写统一在 protocol.ts 的
-// catch 层（parse 层抛原文，转写面单点）。
-
 import { THINKING_LEVELS } from "../session/settings.js";
 import type { SkillImportItem } from "./skill-import-op.js";
 
@@ -27,6 +24,11 @@ const OPS = [
   "instruction-save",
   "stt-transcribe",
   "plugins-list",
+  "plugin-check",
+  "plugin-scaffold",
+  "plugin-view-html",
+  "plugin-pack",
+  "market",
   "provider-models",
   "provider-test",
   "policy-audit",
@@ -48,24 +50,9 @@ const OPS = [
 
 export type SettingsOp = (typeof OPS)[number];
 
-export interface SkillSavePayload {
-  readonly name: string;
-  readonly description: string;
-  readonly body: string;
-  readonly tools?: readonly string[];
-}
-
-/** 模板编辑器写回载荷（op=prompt-save——T-P3-146 C；校验在 gateway）。 */
-export interface PromptSavePayload {
-  readonly name: string;
-  readonly content: string;
-  readonly description?: string;
-  readonly argumentHint?: string;
-  readonly agent?: string;
-  readonly model?: string;
-  readonly scope?: string;
-}
-
+// 载荷接口体在 settings-gateway-types.ts——re-export 保 protocol-settings 引用路径
+export type { SkillSavePayload, PromptSavePayload } from "./settings-gateway-types.js";
+import type { SkillSavePayload, PromptSavePayload } from "./settings-gateway-types.js";
 export type SettingsCall = {
   op: SettingsOp;
   patch?: Record<string, unknown>;
@@ -83,14 +70,23 @@ export type SettingsCall = {
   env?: Record<string, string>;
   timeoutMs?: number;
   skill?: SkillSavePayload;
-  /** op=prompt-save：模板编辑器写回载荷（T-P3-146 C）。 */
-  prompt?: PromptSavePayload;
+  prompt?: PromptSavePayload; // op=prompt-save：模板写回载荷（T-P3-146 C）
   items?: SkillImportItem[];
   path?: string;
   target?: string;
   content?: string;
-  /** op=enhancement-test：辅助任务名（T-P3-147 D 闭集）。 */
-  task?: string;
+  task?: string; // op=enhancement-test：辅助任务名（T-P3-147 D 闭集）
+  // T-P3-148 载荷：dir=插件目录(check/pack) action=market 动作 template=模板
+  // source=市场源 marketplace=市场 id pluginDescription=描述 view/base=视图读取
+  dir?: string;
+  action?: string;
+  template?: string;
+  source?: string;
+  marketplace?: string;
+  pluginDescription?: string;
+  view?: string;
+  base?: string;
+  displayName?: string; // op=plugin-scaffold：人读显示名（缺省 = slug）
   mediaType?: string;
   /** op=provider-models / provider-test：端点自足载荷（T-P3-137——UI 草稿
    * 直传 baseUrl/adapter/headers；apiKey 缺省走 credentials 凭据面）。 */
@@ -100,9 +96,7 @@ export type SettingsCall = {
   apiKey?: string;
   headers?: Record<string, string>;
 };
-
 const SKILL_SLUG_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
-
 export const INSTRUCTION_TARGETS = ["project-agents", "global-agents", "user-rules"] as const;
 export type InstructionTarget = (typeof INSTRUCTION_TARGETS)[number];
 
@@ -136,6 +130,9 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     "headers",
     "reasoning",
     "task",
+    // T-P3-148 插件/市场族载荷（与 SettingsCall 字段一一对应——漏一个即整信封被拒）
+    "dir", "action", "template", "source", "marketplace",
+    "pluginDescription", "view", "base", "displayName",
   ]);
   if (unknownKey) throw new Error(`settings 信封${unknownKey}`);
   if (typeof record["requestId"] !== "string" || record["requestId"] === "") {
@@ -144,6 +141,22 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
   const op = record["op"];
   if (typeof op !== "string" || !(OPS as readonly string[]).includes(op)) {
     throw new Error(`settings 的 op 非法：${String(op)}（合法：${OPS.join("|")}）`);
+  }
+  // T-P3-148 插件/市场族 op 载荷校验（闭集收敛——行数纪律）
+  if ((op === "plugin-check" || op === "plugin-pack") && (typeof record["dir"] !== "string" || record["dir"].trim() === ""))
+    throw new Error(`settings op=${op} 需要 dir（插件目录绝对路径）非空字符串`);
+  if (op === "plugin-view-html" && (typeof record["name"] !== "string" || record["name"] === "" || typeof record["view"] !== "string" || record["view"] === ""))
+    throw new Error("settings op=plugin-view-html 需要 name + view（非空字符串）");  if (op === "market") {
+    const MARKET_ACTIONS = ["add", "remove", "list", "refresh", "plugins", "install", "uninstall", "updates"];
+    if (typeof record["action"] !== "string" || !(MARKET_ACTIONS as readonly string[]).includes(record["action"]))
+      throw new Error(`settings op=market 的 action 非法（合法：${MARKET_ACTIONS.join("|")}）`);
+  }
+  if (op === "plugin-scaffold") {
+    const TEMPLATES = ["view-basic", "agent-tool", "skill-pack", "full"];
+    if (typeof record["template"] !== "string" || !(TEMPLATES as readonly string[]).includes(record["template"]))
+      throw new Error(`settings op=plugin-scaffold 的 template 非法（合法：${TEMPLATES.join("|")}）`);
+    if (typeof record["name"] !== "string" || record["name"].trim() === "")
+      throw new Error("settings op=plugin-scaffold 需要 name（插件 slug）非空字符串");
   }
   if (op === "plugin-theme-css") {
     if (typeof record["name"] !== "string" || record["name"] === "") {
@@ -373,6 +386,8 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     ...(typeof record["apiKey"] === "string" ? { apiKey: record["apiKey"] } : {}),
     ...(typeof record["reasoning"] === "string" ? { reasoning: record["reasoning"] } : {}),
     ...(typeof record["task"] === "string" ? { task: record["task"] } : {}),
+    // T-P3-148 插件/市场族载荷（键表与白名单同源——漏拷即字段永远 undefined）
+    ...Object.fromEntries((["dir", "action", "template", "source", "marketplace", "pluginDescription", "view", "base", "displayName"] as const).filter((k) => typeof record[k] === "string").map((k) => [k, record[k]])),
   };
 }
 

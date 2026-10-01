@@ -25,6 +25,8 @@ export function createSkillLoadTool(options: {
   skillsRoots?: readonly string[];
   /** U22/T-P3-125：停用名单（settings skills.disabled——可用清单剔除）。 */
   skillsDisabled?: readonly string[];
+  /** T-P3-148 D：插件贡献技能目录（getter 活读——装载晚于注册，调用时点已回填）。 */
+  pluginSkillDirs?: () => readonly { readonly dir: string; readonly namePrefix: string }[];
 }): ToolDef {
   return {
     name: "skill_load",
@@ -51,7 +53,12 @@ export function createSkillLoadTool(options: {
       const { skills } = loadSkillsFromRoots(
         options.skillsRoot,
         options.skillsRoots,
-        options.skillsDisabled !== undefined ? { disabled: options.skillsDisabled } : undefined,
+        options.skillsDisabled !== undefined || options.pluginSkillDirs !== undefined
+          ? {
+              ...(options.skillsDisabled !== undefined ? { disabled: options.skillsDisabled } : {}),
+              ...(options.pluginSkillDirs !== undefined ? { extraDirs: options.pluginSkillDirs() } : {}),
+            }
+          : undefined,
       );
       const skill = skills.find((s) => s.name === name);
       if (!skill) {
