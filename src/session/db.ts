@@ -15,7 +15,7 @@ import type { EventStorage } from "./store.js";
 import { isValidSessionId } from "./session-id.js";
 import { MIGRATIONS, planMigrationChain } from "./migrate.js";
 
-export const CURRENT_SCHEMA_VERSION = 5;
+export const CURRENT_SCHEMA_VERSION = 6;
 
 /** 归档后从主库读该会话的 fail-closed 拒绝（Q8/T-P2-102）——归档 ≠ 删除，
  * 数据在归档档（archive.ts 的 readArchivedSession 可查），主库读路径必须
@@ -173,6 +173,14 @@ export class SqliteEventStorage implements EventStorage {
         "SELECT session_id, event_count, created_ts, updated_ts FROM session_index ORDER BY updated_ts DESC LIMIT ?",
       )
       .all(limit) as Array<{ session_id: string; event_count: number; created_ts: number; updated_ts: number }>;
+    // T-P3-147 E：生成标题优先（session_titles 表），回退首条 user 消息截断
+    const generatedTitles = new Map(
+      (
+        this.db
+          .prepare("SELECT session_id, title, source FROM session_titles")
+          .all() as Array<{ session_id: string; title: string; source: string }>
+      ).map((r) => [r.session_id, r.title]),
+    );
     const titles = this.db
       .prepare(
         "SELECT session_id, payload FROM events WHERE type = 'user/message' AND session_id IN (SELECT session_id FROM session_index) GROUP BY session_id HAVING seq = MIN(seq)",
@@ -195,9 +203,36 @@ export class SqliteEventStorage implements EventStorage {
       eventCount: row.event_count,
       createdTs: row.created_ts,
       updatedTs: row.updated_ts,
-      ...(titleOf.get(row.session_id) !== undefined ? { title: titleOf.get(row.session_id) } : {}),
+      ...((generatedTitles.get(row.session_id) ?? titleOf.get(row.session_id)) !== undefined
+        ? { title: generatedTitles.get(row.session_id) ?? titleOf.get(row.session_id) }
+        : {}),
     }));
   }
+
+  /**
+   * T-P3-147 E：会话标题的持久位（session_titles 表——v6）。生成面写入
+   * source="generated"；custom 权威级（用户改名）保留字段不被生成覆盖。
+   */
+  getTitle(sessionId: string): { title: string; source: string } | undefined {
+    const row = this.db
+      .prepare("SELECT title, source FROM session_titles WHERE session_id = ?")
+      .get(sessionId) as { title: string; source: string } | undefined;
+    return row;
+  }
+
+  setTitle(sessionId: string, title: string, source: "generated" | "custom"): void {
+    // generated 不覆盖 custom（权威级——zcode custom_title 短路同语义）
+    const existing = this.getTitle(sessionId);
+    if (existing?.source === "custom") return;
+    this.db
+      .prepare(
+        `INSERT INTO session_titles (session_id, title, source, generated_ts) VALUES (?, ?, ?, ?)
+         ON CONFLICT(session_id) DO UPDATE SET title = excluded.title, source = excluded.source, generated_ts = excluded.generated_ts
+         WHERE excluded.source = 'custom' OR session_titles.source != 'custom'`,
+      )
+      .run(sessionId, title, source, Date.now());
+  }
+
 
   /**
    * U3/T-P3-105 单会话删除（CLI/UI 的删除入口——硬删除三表事务）。
@@ -212,6 +247,7 @@ export class SqliteEventStorage implements EventStorage {
     if (exists === undefined) return false;
     const remove = this.db.transaction((sid: string) => {
       this.db.prepare("DELETE FROM events WHERE session_id = ?").run(sid);
+      this.db.prepare("DELETE FROM session_titles WHERE session_id = ?").run(sid);
       this.db.prepare("DELETE FROM session_index WHERE session_id = ?").run(sid);
       this.db.prepare("DELETE FROM archived_sessions WHERE session_id = ?").run(sid);
       this.db.prepare("DELETE FROM sessions WHERE id = ?").run(sid);

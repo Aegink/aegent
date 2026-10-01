@@ -1,8 +1,6 @@
 /**
- * settings 直答网关（U14/T-P3-103）——wire settings 信封的 host 侧实现：
- * 配置读/段级补丁写（即改即存文件面）/凭据管理。业务域方法委托各域文件
- * （skills-gateway / prompts-gateway / mcp-import-op 等——行数纪律拆分位）。
- * 快照即规格（U14）：UI 改 → update 落文件 → 重启 loadSettings 生效。
+ * settings 直答网关（U14）——settings 信封的 host 侧实现：配置读/段级补丁
+ * 写/凭据管理；业务域方法委托各域文件（行数纪律拆分位）。快照即规格（U14）。
  */
 
 import {
@@ -60,6 +58,7 @@ import {
   type SkillImportApplyResult,
   type SkillImportItem,
 } from "./skill-import-op.js";
+import { enhancementTestOp } from "./settings-provider-ops.js";
 import {
   applyImportedSettings,
   backupSettingsFile,
@@ -71,7 +70,6 @@ import {
 } from "../session/subagents-config.js";
 import type { McpToolInfo } from "../mcp/client.js";
 
-/** settings patch 白名单段（提段整体替换；version 不许 patch——迁移链单向门）。 */
 export const SETTINGS_PATCH_SECTIONS = [
   "providers",
   "permission",
@@ -96,7 +94,6 @@ export const SETTINGS_PATCH_SECTIONS = [
   "plugins",
 ] as const;
 
-/** U17/T-P3-119 连接校验回执（向导"测连接"——launch 一次握手+列工具后关闭）。 */
 export interface McpCheckResult {
   readonly ok: boolean;
   readonly protocolVersion?: string;
@@ -104,7 +101,6 @@ export interface McpCheckResult {
   readonly error?: { code: string; message: string };
 }
 
-/** 段级补丁合并（UI 发整段——providers 数组整体替换、对象段整体替换）。 */
 export function applySettingsPatch(current: SettingsShape, patch: Record<string, unknown>): SettingsShape {
   const merged: Record<string, unknown> = { ...current };
   for (const section of Object.keys(patch)) {
@@ -175,6 +171,8 @@ export interface SettingsGateway {
   promptReveal(filePath: string): Promise<{ revealed: true }>;
   promptImportScan(): Promise<PromptImportScanResult>;
   promptImportApply(items: PromptImportItem[]): Promise<PromptImportApplyResult>;
+  /** T-P3-147 D：辅助任务真实测试（1-token 探测——NOT_CONFIGURED 诚实回退）。 */
+  enhancementTest(task: import("./settings-provider-ops.js").EnhancementTestTask): Promise<import("./settings-provider-ops.js").EnhancementTestResult>;
 }
 
 function defaultHealthProbe(): (name: string, baseUrl: string) => Promise<HealthCheckResult> {
@@ -270,7 +268,6 @@ export class FileSettingsGateway implements SettingsGateway {
     return { applied: true, summary: summarizePackage(merged) };
   }
 
-  /** 类型化拒绝辅助（错误消息有界在 protocol 层）。 */
   private skillsUnavailable(): never {
     const error = new Error("host 未配置 workspace，技能管理面不可用");
     (error as unknown as { code: string }).code = "SKILLS_UNAVAILABLE";
@@ -346,29 +343,24 @@ export class FileSettingsGateway implements SettingsGateway {
     return pluginThemeCss(settings, name);
   }
 
-  /** T-P3-143：外部 MCP 配置扫描（源路径由 homeDir/workspaceRoot 派生）。 */
   async mcpImportScan(): Promise<McpImportScanResult> {
     return mcpImportScan({ homeDir: this.homeDir, ...(this.workspaceRoot !== undefined ? { workspaceRoot: this.workspaceRoot } : {}) });
   }
 
-  /** T-P3-144：技能导入扫描（源路径由 homeDir/workspaceRoot 派生）。 */
   async skillImportScan(): Promise<SkillImportScanResult> {
     return skillImportScan({ homeDir: this.homeDir, ...(this.workspaceRoot !== undefined ? { workspaceRoot: this.workspaceRoot } : {}) });
   }
 
-  /** T-P3-144：技能导入执行（落点 = workspace 技能主目录）。 */
   async skillImportApply(items: SkillImportItem[]): Promise<SkillImportApplyResult> {
     if (this.workspaceRoot === undefined) this.skillsUnavailable();
     return skillImportApply({ homeDir: this.homeDir, workspaceRoot: this.workspaceRoot! }, items);
   }
 
-  /** T-P3-144：技能删除（受控根护栏在 skills-gateway）。 */
   async skillDelete(skillPath: string): Promise<{ deleted: true; path: string }> {
     if (this.workspaceRoot === undefined) this.skillsUnavailable();
     return deleteSkillDir(await this.get(), this.workspaceRoot!, skillPath);
   }
 
-  /** T-P3-144：Reveal（打开技能所在文件夹）。 */
   async skillReveal(skillPath: string): Promise<{ revealed: true }> {
     return revealSkillDir(skillPath);
   }
@@ -396,5 +388,11 @@ export class FileSettingsGateway implements SettingsGateway {
   async promptImportApply(items: PromptImportItem[]): Promise<PromptImportApplyResult> {
     if (this.workspaceRoot === undefined) this.skillsUnavailable();
     return promptImportApply({ homeDir: this.homeDir, workspaceRoot: this.workspaceRoot! }, items);
+  }
+
+  async enhancementTest(
+    task: import("./settings-provider-ops.js").EnhancementTestTask,
+  ): Promise<import("./settings-provider-ops.js").EnhancementTestResult> {
+    return enhancementTestOp(this.credentials, await this.get(), task);
   }
 }

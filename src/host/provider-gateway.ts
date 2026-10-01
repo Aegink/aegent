@@ -169,6 +169,8 @@ export async function testProviderChat(
   modelId: string,
   apiKey: string,
   reasoning?: string,
+  /** T-P3-147 D：辅助任务测试的探测参数（缺省 = provider 级 512 探针）。 */
+  opts?: { maxTokens?: number; prompt?: string },
 ): Promise<ProviderTestResult> {
   const base = trimBase(spec.baseUrl);
   let url: string;
@@ -179,17 +181,20 @@ export async function testProviderChat(
     body = {
       model: modelId,
       // anthropic 硬规则：max_tokens 必须大于 budget_tokens——开思考时抬底
-      max_tokens: budget !== undefined ? Math.max(CHAT_PROBE_MAX_TOKENS, budget + 1024) : CHAT_PROBE_MAX_TOKENS,
+      max_tokens:
+        budget !== undefined
+          ? Math.max(opts?.maxTokens ?? CHAT_PROBE_MAX_TOKENS, budget + 1024)
+          : (opts?.maxTokens ?? CHAT_PROBE_MAX_TOKENS),
       ...(budget !== undefined ? { thinking: { type: "enabled", budget_tokens: budget } } : {}),
-      messages: [{ role: "user", content: "你好" }],
+      messages: [{ role: "user", content: opts?.prompt ?? "你好" }],
     };
   } else if (spec.adapter === "google") {
     url = `${googleBase(base)}/models/${encodeURIComponent(modelId)}:generateContent?key=${encodeURIComponent(apiKey)}`;
     const gBudget = reasoning !== undefined && reasoning !== "off" ? THINKING_BUDGET[reasoning] : undefined;
     body = {
-      contents: [{ parts: [{ text: "你好" }] }],
+      contents: [{ parts: [{ text: opts?.prompt ?? "你好" }] }],
       generationConfig: {
-        maxOutputTokens: CHAT_PROBE_MAX_TOKENS,
+        maxOutputTokens: opts?.maxTokens ?? CHAT_PROBE_MAX_TOKENS,
         ...(gBudget !== undefined ? { thinkingConfig: { thinkingBudget: gBudget } } : {}),
       },
     };
@@ -197,8 +202,8 @@ export async function testProviderChat(
     url = `${base}/responses`;
     body = {
       model: modelId,
-      input: "你好",
-      max_output_tokens: CHAT_PROBE_MAX_TOKENS,
+      input: opts?.prompt ?? "你好",
+      max_output_tokens: opts?.maxTokens ?? CHAT_PROBE_MAX_TOKENS,
       ...(reasoning !== undefined && reasoning !== "off" ? { reasoning: { effort: reasoning } } : {}),
       stream: false,
     };
@@ -206,8 +211,8 @@ export async function testProviderChat(
     url = `${base}/chat/completions`;
     body = {
       model: modelId,
-      messages: [{ role: "user", content: "你好" }],
-      max_tokens: CHAT_PROBE_MAX_TOKENS,
+      messages: [{ role: "user", content: opts?.prompt ?? "你好" }],
+      max_tokens: opts?.maxTokens ?? CHAT_PROBE_MAX_TOKENS,
       // 思考档真实消费（OpenAI 兼容 reasoning_effort 别名——off/缺省不带）
       ...(reasoning !== undefined && reasoning !== "off" ? { reasoning_effort: reasoning } : {}),
       stream: false,

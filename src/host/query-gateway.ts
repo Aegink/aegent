@@ -18,7 +18,7 @@ import type { PricingEntry } from "../session/settings.js";
 import { querySessionsDb } from "../session/query.js";
 import { reviewChangesFromEvents } from "../session/review-changes.js";
 import { listWorkspaceFiles, readWorkspaceFile } from "./files-list.js";
-import { ensureUsageView, usageBySession, usageByTurn, usageByDay, usageByModel } from "../obs/usage.js";
+import { ensureUsageView, usageBySession, usageByTurn, usageByDay, usageByModel, usageByTask } from "../obs/usage.js";
 import { costRollup } from "../obs/cost.js";
 import { compactionStats } from "../obs/compaction-stats.js";
 
@@ -159,6 +159,8 @@ export async function handleHostQuery(
       // 模型占比（甜甜圈）。byDay 单点定形取 host 路线（方案 §1.2 记档）。
       byDay: usageByDay(library.db),
       byModel: usageByModel(library.db),
+      // T-P3-147 F：副调用按任务分账（polish/title header aux 聚合）
+      byTask: usageByTask(library.db),
     };
   }
   // 本会话：内存序读取（同步）：镜像 append 的直接产物——最新、无

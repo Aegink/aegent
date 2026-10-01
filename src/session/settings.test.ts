@@ -167,12 +167,39 @@ describe("parseSettingsShape / parseSettingsFile", () => {
     });
     expect(s.enhancement?.judge).toEqual({ provider: "main", model: "gpt-mini", reasoning: "low" });
     expect(s.enhancement?.summarizer).toEqual({ provider: "main" });
-    expect(() => parseSettingsShape({ enhancement: { judge: { model: "x" } } })).toThrow(
-      /enhancement.judge.provider 缺失/,
+    // T-P3-147 B：provider 放宽可选（缺省 = 回退链语义）——显式键仍须非空串
+    expect(parseSettingsShape({ enhancement: { judge: { model: "x" } } }).enhancement?.judge).toEqual({
+      model: "x",
+    });
+    expect(() => parseSettingsShape({ enhancement: { judge: { provider: "" } } })).toThrow(
+      /enhancement.judge.provider/,
     );
     expect(() =>
       parseSettingsShape({ enhancement: { judge: { provider: "main", reasoning: "max" } } }),
     ).toThrow(/reasoning 非法/);
+    // T-P3-147 B：fallbacks 有序备选（形状校验 + 至少一项有值）
+    expect(
+      parseSettingsShape({
+        enhancement: { judge: { provider: "main", fallbacks: [{ provider: "mini" }, { model: "gpt-x" }] } },
+      }).enhancement?.judge?.fallbacks,
+    ).toEqual([{ provider: "mini" }, { model: "gpt-x" }]);
+    expect(() =>
+      parseSettingsShape({ enhancement: { judge: { provider: "main", fallbacks: [{}] } } }),
+    ).toThrow(/fallbacks/);
+    // T-P3-147 G/E/H：总闸 / 标题 / 摘要指令覆写
+    const gated = parseSettingsShape({ enhancement: { enabled: false } });
+    expect(gated.enhancement?.enabled).toBe(false);
+    const titled = parseSettingsShape({
+      enhancement: { title: { provider: "main", prompt: "起个标题" } },
+    });
+    expect(titled.enhancement?.title?.prompt).toBe("起个标题");
+    expect(
+      parseSettingsShape({ enhancement: { summaryPrompt: "自定义摘要指令" } }).enhancement?.summaryPrompt,
+    ).toBe("自定义摘要指令");
+    expect(() => parseSettingsShape({ enhancement: { enabled: "yes" } })).toThrow(/enabled 须为布尔/);
+    expect(() =>
+      parseSettingsShape({ enhancement: { title: { provider: "main", prompt: "x".repeat(2001) } } }),
+    ).toThrow(/title.prompt 超限/);
     // 未提供任务 = 段缺省（不虚构空对象）
     expect(parseSettingsShape({}).enhancement).toBeUndefined();
   });

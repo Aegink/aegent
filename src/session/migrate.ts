@@ -121,6 +121,17 @@ CREATE TABLE IF NOT EXISTS cron_tasks (
 );
 `;
 
+/** T-P3-147 E：会话标题表（title 生成的持久位；source ∈ generated|custom——
+ * custom 权威级不可被自动覆盖，zcode title_source CAS 同语义）。 */
+export const SCHEMA_V6_TITLES_DDL = `
+CREATE TABLE IF NOT EXISTS session_titles (
+    session_id    TEXT    PRIMARY KEY,
+    title         TEXT    NOT NULL,
+    source        TEXT    NOT NULL,
+    generated_ts  INTEGER NOT NULL
+);
+`;
+
 export const MIGRATIONS: readonly SchemaMigration[] = [
   { from: 0, to: 1, apply: applyBaseSchema },
   {
@@ -162,6 +173,13 @@ export const MIGRATIONS: readonly SchemaMigration[] = [
     to: 5,
     apply: (db) => {
       db.exec(SCHEMA_V5_CRON_DDL);
+    },
+  },
+  {
+    from: 5,
+    to: 6,
+    apply: (db) => {
+      db.exec(SCHEMA_V6_TITLES_DDL);
     },
   },
 ];

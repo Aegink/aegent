@@ -1,7 +1,6 @@
 /**
- * settings 信封域（U14/T-P3-103）——端 → host settings 直答信封的形状与
- * 严格校验（op 闭集 + 载荷类型；业务规则在 gateway 层；op 合法性与报错串
- * 同源消费）。
+ * settings 信封域（U14）——settings 直答信封形状与严格校验（op 闭集 +
+ * 载荷类型；业务规则在 gateway 层；op 合法性与报错串同源消费）。
  */
 
 // 本文件不 import bounded：错误消息的有界转写统一在 protocol.ts 的
@@ -10,8 +9,7 @@
 import { THINKING_LEVELS } from "../session/settings.js";
 import type { SkillImportItem } from "./skill-import-op.js";
 
-/** settings 直答 op 闭集（与 bridge 分流一一对应；parse 的合法性链与
- * 报错串同源消费——单一事实源）。 */
+/** settings 直答 op 闭集（与 bridge 分流一一对应；合法性链与报错串同源）。 */
 const OPS = [
   "get",
   "update",
@@ -45,46 +43,36 @@ const OPS = [
   "prompt-reveal",
   "prompt-import-scan",
   "prompt-import-apply",
+  "enhancement-test",
 ] as const;
 
 export type SettingsOp = (typeof OPS)[number];
 
-/** 技能编辑器写回载荷（op=skill-save；frontmatter + 正文的一次性形状）。 */
 export interface SkillSavePayload {
-  /** 技能名 = 目录名（slug：小写字母数字开头，`. - _` 可内用；防路径穿越）。 */
   readonly name: string;
   readonly description: string;
-  /** SKILL.md 正文（frontmatter 之后的部分）。 */
   readonly body: string;
-  /** 技能声明的工作工具集（可选——frontmatter `tools:` 行）。 */
   readonly tools?: readonly string[];
 }
 
 /** 模板编辑器写回载荷（op=prompt-save——T-P3-146 C；校验在 gateway）。 */
 export interface PromptSavePayload {
-  /** 模板名（相对路径 slug 命名空间，冒号保留给 MCP）。 */
   readonly name: string;
   readonly content: string;
   readonly description?: string;
   readonly argumentHint?: string;
-  /** 模板级执行语义（H：以指定子代理执行 / 命令级模型覆盖）。 */
   readonly agent?: string;
   readonly model?: string;
-  /** 保存目标（project = workspace 模板主目录〔缺省〕；user = ~/.aegent/prompts）。 */
   readonly scope?: string;
 }
 
-/** settings 信封 call 形状（HostServerOptions.onSettings 的入参类型）。 */
 export type SettingsCall = {
   op: SettingsOp;
   patch?: Record<string, unknown>;
-  /** op=import：配置包内的 settings 段（U20——形状校验在 gateway）。 */
   settings?: Record<string, unknown>;
   provider?: string;
   key?: string;
-  /** op=session-delete：目标会话 id（U3 删除入口的 wire 面）。 */
   sessionId?: string;
-  /** op=mcp-check：连接校验目标（U17——McpServerEntry 形状）。 */
   name?: string;
   command?: string;
   args?: string[];
@@ -94,19 +82,15 @@ export type SettingsCall = {
    */
   env?: Record<string, string>;
   timeoutMs?: number;
-  /** op=skill-save：技能编辑器写回载荷（U22）。 */
   skill?: SkillSavePayload;
   /** op=prompt-save：模板编辑器写回载荷（T-P3-146 C）。 */
   prompt?: PromptSavePayload;
-  /** op=skill-import-apply：导入项（T-P3-144——候选从 scan 回传）。 */
   items?: SkillImportItem[];
-  /** op=skill-delete / skill-reveal：SKILL.md 绝对路径（T-P3-144）。 */
   path?: string;
-  /** op=instruction-save：指令写回目标（U24——白名单三值之一）。 */
   target?: string;
-  /** op=instruction-save / stt-transcribe：内容或音频 base64（U24/U26）。 */
   content?: string;
-  /** op=stt-transcribe：音频 mediaType（U26——AUDIO_MEDIA_TYPES 白名单在 gateway）。 */
+  /** op=enhancement-test：辅助任务名（T-P3-147 D 闭集）。 */
+  task?: string;
   mediaType?: string;
   /** op=provider-models / provider-test：端点自足载荷（T-P3-137——UI 草稿
    * 直传 baseUrl/adapter/headers；apiKey 缺省走 credentials 凭据面）。 */
@@ -114,14 +98,11 @@ export type SettingsCall = {
   adapter?: string;
   modelId?: string;
   apiKey?: string;
-  /** op=provider-models / provider-test：自定义请求头（保留键在 gateway 剔除）。 */
   headers?: Record<string, string>;
 };
 
-/** 技能名 slug 规则（U22——目录名安全面：小写字母数字开头，禁 `..`）。 */
 const SKILL_SLUG_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
-/** U24/T-P3-127 指令写回目标白名单（host 侧路径收敛——防任意文件写）。 */
 export const INSTRUCTION_TARGETS = ["project-agents", "global-agents", "user-rules"] as const;
 export type InstructionTarget = (typeof INSTRUCTION_TARGETS)[number];
 
@@ -154,6 +135,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     "apiKey",
     "headers",
     "reasoning",
+    "task",
   ]);
   if (unknownKey) throw new Error(`settings 信封${unknownKey}`);
   if (typeof record["requestId"] !== "string" || record["requestId"] === "") {
@@ -193,7 +175,6 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
       throw new Error("settings op=session-delete 需要 sessionId 非空字符串");
     }
   }
-  // U17/T-P3-119：mcp-check 载荷（名字规则 parse 层校验；连接失败在 gateway 转回执）
   if (op === "mcp-check") {
     if (typeof record["name"] !== "string" || record["name"] === "" || record["name"].includes("__")) {
       throw new Error("settings op=mcp-check 需要 name（非空且不含 \"__\"）");
@@ -222,7 +203,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
       throw new Error("settings op=mcp-check 的 timeoutMs 须为正数");
     }
   }
-  // T-P3-144：skill-import-apply = items（形状只此；护栏在 op 层）。
+  // T-P3-144：skill-import-apply = items（护栏在 op 层）。
   if (op === "skill-import-apply") {
     if (!Array.isArray(record["items"]) || (record["items"] as unknown[]).length === 0) {
       throw new Error("settings op=skill-import-apply 需要 items 非空数组");
@@ -242,7 +223,6 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
       throw new Error(`settings op=${op} 需要 path（SKILL.md 绝对路径）非空字符串`);
     }
   }
-  // T-P3-146：prompt-save/delete/reveal/import-apply 载荷（业务校验在 gateway）。
   if (op === "prompt-save") {
     const pp = record["prompt"];
     if (pp === null || typeof pp !== "object" || Array.isArray(pp)) {
@@ -329,7 +309,6 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
       throw new Error("settings op=stt-transcribe 需要 content（音频 base64）非空字符串");
     }
   }
-  // T-P3-137：provider-models/test 自足端点载荷（test 须有 modelId）。
   if (op === "provider-models" || op === "provider-test") {
     if (typeof record["provider"] !== "string" || record["provider"] === "") {
       throw new Error(`settings op=${op} 需要 provider 非空字符串（凭据键）`);
@@ -352,6 +331,11 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     ) {
       throw new Error(`settings op=${op} 的 headers 须为对象`);
     }
+  }
+  if (op === "enhancement-test" &&
+      (typeof record["task"] !== "string" ||
+        !["judge", "summarizer", "polish", "title", "fastModel"].includes(record["task"]))) {
+    throw new Error("settings op=enhancement-test 需要 task（judge|summarizer|polish|title|fastModel）");
   }
   return {
     op: op as SettingsOp,
@@ -388,6 +372,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     ...(typeof record["modelId"] === "string" ? { modelId: record["modelId"] } : {}),
     ...(typeof record["apiKey"] === "string" ? { apiKey: record["apiKey"] } : {}),
     ...(typeof record["reasoning"] === "string" ? { reasoning: record["reasoning"] } : {}),
+    ...(typeof record["task"] === "string" ? { task: record["task"] } : {}),
   };
 }
 

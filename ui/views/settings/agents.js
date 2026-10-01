@@ -199,55 +199,93 @@ export const SECTIONS_HTML = `
   <p class="hint">模板 = 斜杠命令：有参模板（正文含 $1/$ARGUMENTS 或填了参数提示）在输入区选中后插入 "/名 " 续打参数，发送时由内核展开（发送时求值——pi/zcode/opencode 统一语义）；无参模板保持整段插入。文件落盘 <code>.zcode/prompts/</code>（项目）与 <code>~/.aegent/prompts/</code>（用户级），项目遮蔽同名用户模板；frontmatter 支持 description / argument-hint / agent（以子代理执行）/ model（命令级模型）。内置 <code>/init</code> 可被同名文件覆盖；停用开关不改文件。</p>
 </section>
 <section data-section="enhancement">
-  <div class="section-head"><h2 class="section-title">辅助模型</h2></div>
-  <p class="hint">判官/摘要等增强任务的模型独立配置（ADR 0121——"哪个模型做辅助工作、带多少推理"）；缺省回退主模型链（任务 model → 条目 model → 默认模型）。</p>
+  <div class="section-head">
+    <h2 class="section-title">辅助模型</h2>
+    <div class="section-tools">
+      <label class="check-line" title="关闭后：标题不跑、润色停用、判官落回人、摘要回退主模型"><input id="enh-enabled" type="checkbox" /> 辅助流量总开关</label>
+    </div>
+  </div>
+  <p class="hint">主对话之外的模型调用统一在此路由，回退链 = 任务显式配置 → 全局轻模型 → 主模型（新会话生效；摘要质量任务建议显式配主模型档——命名/分类类轻任务适合轻模型）。备选模型（fallbacks）为有序列表，当前在配置文件 enhancement.*.fallbacks 生效。</p>
   <div class="row-list">
     <div class="row">
       <div class="row-copy">
-        <div class="row-title">判官（C42 两阶段复核）·供应商条目</div>
-        <div class="row-desc">providers 条目名——未配置时判官落回人</div>
-      </div>
-      <div class="row-control"><input id="enh-judge-provider" class="input input-wide" type="text" placeholder="（未配置——判官落回人）" autocomplete="off" /></div>
-    </div>
-    <div class="row">
-      <div class="row-copy">
-        <div class="row-title">判官 · 模型与推理档</div>
-        <div class="row-desc">模型 id 留空 = 回退条目/默认模型</div>
+        <div class="row-title">全局轻模型（fastModel）</div>
+        <div class="row-desc">所有未显式配置任务的缺省辅助模型——轻任务的自然落点</div>
       </div>
       <div class="row-control">
-        <input id="enh-judge-model" class="input" type="text" placeholder="（回退条目/默认模型）" autocomplete="off" />
-        <select id="enh-judge-reasoning" class="select">
-          <option value="">（未设置）</option>
-          <option value="minimal">minimal</option>
-          <option value="low">low</option>
-          <option value="medium">medium</option>
-          <option value="high">high</option>
-        </select>
+        <select id="enh-fastModel-provider" class="select" aria-label="轻模型供应商"></select>
+        <select id="enh-fastModel-model" class="select" aria-label="轻模型模型"></select>
+        <button id="enh-test-fastModel" type="button" class="btn">测试</button>
       </div>
     </div>
     <div class="row">
       <div class="row-copy">
-        <div class="row-title">摘要（F5 上下文压缩）·供应商条目</div>
-        <div class="row-desc">providers 条目名——未配置时用主模型</div>
-      </div>
-      <div class="row-control"><input id="enh-summarizer-provider" class="input input-wide" type="text" placeholder="（未配置——用主模型）" autocomplete="off" /></div>
-    </div>
-    <div class="row">
-      <div class="row-copy">
-        <div class="row-title">摘要 · 模型与推理档</div>
-        <div class="row-desc">模型 id 留空 = 回退条目/默认模型</div>
+        <div class="row-title">判官（策略 ask 复核）</div>
+        <div class="row-desc">allow 假阳性免挂起、deny 确定性复核——未配置时判官落回人</div>
       </div>
       <div class="row-control">
-        <input id="enh-summarizer-model" class="input" type="text" placeholder="（回退条目/默认模型）" autocomplete="off" />
-        <select id="enh-summarizer-reasoning" class="select">
-          <option value="">（未设置）</option>
-          <option value="minimal">minimal</option>
-          <option value="low">low</option>
-          <option value="medium">medium</option>
-          <option value="high">high</option>
-        </select>
+        <select id="enh-judge-provider" class="select" aria-label="判官供应商"></select>
+        <select id="enh-judge-model" class="select" aria-label="判官模型"></select>
+        <button id="enh-test-judge" type="button" class="btn">测试</button>
       </div>
     </div>
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title">摘要（F5 上下文压缩）</div>
+        <div class="row-desc">压缩摘要走主模型质量最佳——轻模型仅加速；回退主模型链</div>
+      </div>
+      <div class="row-control">
+        <select id="enh-summarizer-provider" class="select" aria-label="摘要供应商"></select>
+        <select id="enh-summarizer-model" class="select" aria-label="摘要模型"></select>
+        <button id="enh-test-summarizer" type="button" class="btn">测试</button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title">会话标题</div>
+        <div class="row-desc">首个轮次后异步生成短标题（历史页/侧栏显示）——失败静默保留默认</div>
+      </div>
+      <div class="row-control">
+        <select id="enh-title-provider" class="select" aria-label="标题供应商"></select>
+        <select id="enh-title-model" class="select" aria-label="标题模型"></select>
+        <button id="enh-test-title" type="button" class="btn">测试</button>
+      </div>
+    </div>
+  </div>
+  <details class="prompt-help"><summary>标题指令覆写（可选）</summary>
+    <textarea id="enh-title-prompt" class="textarea" rows="3" placeholder="缺省：≤25 字符短具体名 / 跟随用户语言 / 只输出标题本身"></textarea>
+  </details>
+  <details class="prompt-help"><summary>压缩摘要指令覆写（可选——codex compact_prompt 同构）</summary>
+    <textarea id="enh-summary-prompt" class="textarea" rows="4" placeholder="缺省：内置摘要员指令（≤500 字 + title/summary 标签格式）。整段覆盖——改写请保留输出格式约束。"></textarea>
+  </details>
+  <div class="section-head" style="margin-top:16px"><h3 class="section-title">一键润色（输入区 ✨）</h3></div>
+  <div class="row-list">
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title">润色模型</div>
+        <div class="row-desc">缺省回退轻模型 → 主模型；reasoning 缺省关（改写很少受益）</div>
+      </div>
+      <div class="row-control">
+        <select id="enh-polish-provider" class="select" aria-label="润色供应商"></select>
+        <select id="enh-polish-model" class="select" aria-label="润色模型"></select>
+        <button id="enh-test-polish" type="button" class="btn">测试</button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title">用户润色模板</div>
+        <div class="row-desc">{{draft}} 占位；编辑回默认文本 = 清除覆盖（恢复内置模板）</div>
+      </div>
+      <div class="row-control">
+        <label class="check-line"><input id="enh-polish-custom" type="checkbox" /> 启用自定义</label>
+      </div>
+    </div>
+  </div>
+  <textarea id="enh-polish-template" class="textarea" rows="3" placeholder="{{draft}}（勾选「启用自定义」后生效——草稿即变量值）"></textarea>
+  <div id="enh-polish-bytes" class="skill-bytes"></div>
+  <div class="row-control" style="gap:8px">
+    <button id="enh-polish-insert" type="button" class="btn">插入 {{draft}}</button>
+    <button id="enh-polish-reset" type="button" class="btn btn-ghost">恢复默认</button>
   </div>
 </section>
 <section data-section="plugins">
@@ -1985,30 +2023,168 @@ async function applyPromptImport(holder) {
 // U18/T-P3-120 辅助模型三字段即改即存（enhancement 段整段合并——两任务互不覆盖）
 // ---------------------------------------------------------------------------
 
-function enhancementInputHandler(prefix, taskName, field) {
-  document.getElementById(`${prefix}-${field}`).addEventListener("change", () => {
-    const cur = settingsCache.enhancement?.[taskName] ?? {};
-    const provider = document.getElementById(`${prefix}-provider`).value.trim();
-    const model = document.getElementById(`${prefix}-model`).value.trim();
-    const reasoning = document.getElementById(`${prefix}-reasoning`).value;
-    const next = {};
-    if (provider !== "") next.provider = provider;
-    if (model !== "") next.model = model;
-    if (reasoning !== "") next.reasoning = reasoning;
-    settingsCache.enhancement = {
-      ...(settingsCache.enhancement ?? {}),
-      ...(Object.keys(next).length > 0 ? { [taskName]: next } : {}),
-    };
-    // 空配置 = 删除该任务条目（回退主模型链）
-    if (Object.keys(next).length === 0) {
-      const rest = { ...(settingsCache.enhancement ?? {}) };
-      delete rest[taskName];
-      settingsCache.enhancement = Object.keys(rest).length > 0 ? rest : undefined;
-    }
-    dirtySections.add("enhancement");
-    markDirty("enhancement");
+// —— T-P3-147 I：统一"任务→模型"选择件（四任务卡共用——分组 providers
+// 实列 + 级联 models + 即改即存 + 测试按钮；refreshSelectPanel 纪律同前）。
+const ENHANCEMENT_TASK_KEYS = ["fastModel", "judge", "summarizer", "polish", "title"];
+
+/** 任务当前配置（settingsCache.enhancement[task] ?? {}）。 */
+function enhancementTaskOf(taskName) {
+  return settingsCache?.enhancement?.[taskName] ?? {};
+}
+
+/** 写回任务配置（空值剥除——provider/model/reasoning 全空 = 删除任务段）。 */
+function enhancementTaskWrite(taskName, patch) {
+  const cur = { ...enhancementTaskOf(taskName), ...patch };
+  for (const k of ["provider", "model", "reasoning"]) {
+    if (cur[k] === "" || cur[k] === undefined) delete cur[k];
+  }
+  const next = { ...(settingsCache.enhancement ?? {}) };
+  if (Object.keys(cur).length === 0 && taskName !== "polish") delete next[taskName];
+  else next[taskName] = cur;
+  settingsCache.enhancement = next;
+  dirtySections.add("enhancement");
+  markDirty("enhancement");
+}
+
+/** 任务卡的 provider 下拉（占位"跟随主模型"+ enabled 条目实列）。 */
+function renderTaskProviderOptions(taskName) {
+  const sel = document.getElementById(`enh-${taskName}-provider`);
+  if (sel === null) return;
+  const current = sel.value;
+  sel.replaceChildren();
+  const ph = document.createElement("option");
+  ph.value = "";
+  ph.textContent = "（跟随主模型）";
+  sel.appendChild(ph);
+  for (const p of settingsCache?.providers ?? []) {
+    if (p.enabled === false) continue;
+    const o = document.createElement("option");
+    o.value = p.name;
+    o.textContent = p.name;
+    sel.appendChild(o);
+  }
+  sel.value = current;
+  refreshSelectPanel(sel);
+}
+
+/** 任务卡的 model 下拉（随 provider 级联——条目 models 实列 + 条目 model 兜底）。 */
+function renderTaskModelOptions(taskName) {
+  const sel = document.getElementById(`enh-${taskName}-model`);
+  if (sel === null) return;
+  const providerName = document.getElementById(`enh-${taskName}-provider`)?.value ?? "";
+  const entry = (settingsCache?.providers ?? []).find((x) => x.name === providerName);
+  sel.replaceChildren();
+  const ph = document.createElement("option");
+  ph.value = "";
+  ph.textContent = providerName === "" ? "（主模型）" : "（条目默认）";
+  sel.appendChild(ph);
+  const models = entry?.models?.length > 0
+    ? entry.models.map((m) => m.id)
+    : entry?.model !== undefined
+      ? [entry.model]
+      : [];
+  for (const id of models) {
+    const o = document.createElement("option");
+    o.value = id;
+    o.textContent = id;
+    sel.appendChild(o);
+  }
+  sel.value = enhancementTaskOf(taskName).model ?? "";
+  refreshSelectPanel(sel);
+}
+
+/** 绑定一张任务卡（provider/model 级联 + 即改即存 + 测试按钮）。 */
+function bindEnhancementTask(taskName) {
+  const providerSel = document.getElementById(`enh-${taskName}-provider`);
+  const modelSel = document.getElementById(`enh-${taskName}-model`);
+  providerSel?.addEventListener("change", () => {
+    enhancementTaskWrite(taskName, { provider: providerSel.value });
+    renderTaskModelOptions(taskName);
+  });
+  modelSel?.addEventListener("change", () => {
+    enhancementTaskWrite(taskName, { model: modelSel.value });
+  });
+  document.getElementById(`enh-test-${taskName}`)?.addEventListener("click", () => {
+    void runEnhancementTest(taskName);
   });
 }
+
+/** D：任务真实测试（1-token 探测——诚实回执：命中/未配置/总闸关闭三态）。 */
+async function runEnhancementTest(taskName) {
+  const btn = document.getElementById(`enh-test-${taskName}`);
+  if (btn !== null) {
+    btn.disabled = true;
+    btn.textContent = "…";
+  }
+  try {
+    const envelope = await sendSettings({ op: "enhancement-test", task: taskName });
+    if (!envelope.ok) {
+      toast(`测试失败：${envelope.error?.message ?? ""}`, "warn");
+      return;
+    }
+    const r = envelope.result;
+    if (r.ok === true) {
+      toast(`✓ ${r.resolved?.provider ?? ""} · ${r.resolved?.modelId ?? ""}（${String(r.latencyMs ?? "?")}ms）`, "info");
+    } else if (r.code === "NOT_CONFIGURED") {
+      toast(`未配置——运行时将回退主模型链`, "info");
+    } else {
+      toast(`✗ ${r.error ?? "测试失败"}`, "warn");
+    }
+  } catch (e) {
+    toast(`测试异常：${e instanceof Error ? e.message : String(e)}`, "warn");
+  } finally {
+    if (btn !== null) {
+      btn.disabled = false;
+      btn.textContent = "测试";
+    }
+  }
+}
+
+/** 润色模板面（customTemplate 开关 + textarea + 插入/恢复默认 + 字节计数）。 */
+const POLISH_TEMPLATE_MAX_BYTES = 8000;
+function polishTemplateText() {
+  return document.getElementById("enh-polish-template")?.value ?? "";
+}
+function syncPolishTemplateState() {
+  const custom = document.getElementById("enh-polish-custom")?.checked === true;
+  const bytes = new TextEncoder().encode(polishTemplateText()).length;
+  const bytesEl = document.getElementById("enh-polish-bytes");
+  if (bytesEl !== null) {
+    bytesEl.textContent = `${String(bytes)} / 8000 字节${custom ? "" : "（未启用——勾选「启用自定义」生效）"}`;
+    bytesEl.className = `skill-bytes${bytes > POLISH_TEMPLATE_MAX_BYTES ? " over" : ""}`;
+  }
+  const ta = document.getElementById("enh-polish-template");
+  if (ta !== null) ta.disabled = !custom;
+  // 模板持久写回（即改即存——开关/内容变化都落 settingsCache）
+  const cur = { ...(enhancementTaskOf("polish")) };
+  if (custom) {
+    cur.customTemplate = true;
+    if (polishTemplateText().trim() !== "") cur.template = polishTemplateText();
+    else delete cur.template;
+  } else {
+    delete cur.customTemplate;
+    // pi 语义：关掉保留模板以便重开——customTemplate 删除但 template 保留
+  }
+  const next = { ...(settingsCache.enhancement ?? {}) };
+  const modelFields = {
+    provider: cur.provider,
+    model: cur.model,
+    reasoning: cur.reasoning,
+    fallbacks: cur.fallbacks,
+  };
+  const hasModel = ["provider", "model", "reasoning"].some((k) => cur[k] !== undefined && cur[k] !== "");
+  const hasTemplate = cur.customTemplate === true || cur.template !== undefined;
+  if (hasModel || hasTemplate) {
+    next.polish = { ...(hasModel ? modelFields : {}), ...(hasTemplate ? { customTemplate: cur.customTemplate, template: cur.template } : {}) };
+    if (next.polish.customTemplate === undefined) delete next.polish.customTemplate;
+    if (next.polish.template === undefined) delete next.polish.template;
+  } else delete next.polish;
+  settingsCache.enhancement = next;
+  dirtySections.add("enhancement");
+  markDirty("enhancement");
+}
+
+
 
 // ---------------------------------------------------------------------------
 // U26/T-P3-129 语音设置（实验性）：STT 配置即改即存（录音链在入口
@@ -2528,12 +2704,64 @@ export function bind() {
   document.getElementById("prompt-new").addEventListener("click", () => openPromptDialog(undefined));
   document.getElementById("prompt-import").addEventListener("click", () => openPromptImportDialog());
 
-  enhancementInputHandler("enh-judge", "judge", "provider");
-  enhancementInputHandler("enh-judge", "judge", "model");
-  enhancementInputHandler("enh-judge", "judge", "reasoning");
-  enhancementInputHandler("enh-summarizer", "summarizer", "provider");
-  enhancementInputHandler("enh-summarizer", "summarizer", "model");
-  enhancementInputHandler("enh-summarizer", "summarizer", "reasoning");
+  // T-P3-147 C/I/G：辅助模型四任务卡 + fastModel + 润色模板 + 总闸
+  for (const t of ENHANCEMENT_TASK_KEYS) bindEnhancementTask(t);
+  document.getElementById("enh-enabled").addEventListener("change", (ev) => {
+    const next = { ...(settingsCache.enhancement ?? {}) };
+    if (ev.target.checked) delete next.enabled;
+    else next.enabled = false;
+    settingsCache.enhancement = next;
+    dirtySections.add("enhancement");
+    markDirty("enhancement");
+    toast(ev.target.checked ? "辅助流量已开启" : "辅助流量已关闭——标题/润色停用，判官落回人", "info");
+  });
+  // 润色模板面
+  document.getElementById("enh-polish-custom").addEventListener("change", syncPolishTemplateState);
+  document.getElementById("enh-polish-template").addEventListener("input", syncPolishTemplateState);
+  document.getElementById("enh-polish-insert").addEventListener("click", () => {
+    const ta = document.getElementById("enh-polish-template");
+    const pos = ta.selectionStart ?? ta.value.length;
+    ta.value = `${ta.value.slice(0, pos)}{{draft}}${ta.value.slice(ta.selectionEnd ?? pos)}`;
+    ta.dispatchEvent(new Event("input"));
+    ta.focus();
+  });
+  document.getElementById("enh-polish-reset").addEventListener("click", () => {
+    const ta = document.getElementById("enh-polish-template");
+    ta.value = "";
+    const next = { ...(settingsCache.enhancement ?? {}) };
+    const polish = { ...(next.polish ?? {}) };
+    delete polish.customTemplate;
+    delete polish.template;
+    if (Object.keys(polish).length === 0) delete next.polish;
+    else next.polish = polish;
+    settingsCache.enhancement = next;
+    dirtySections.add("enhancement");
+    markDirty("enhancement");
+    document.getElementById("enh-polish-custom").checked = false;
+    syncPolishTemplateState();
+    toast("已恢复内置润色模板", "info");
+  });
+  // 标题指令 / 摘要指令覆写（即改即存）
+  document.getElementById("enh-title-prompt").addEventListener("change", (ev) => {
+    const next = { ...(settingsCache.enhancement ?? {}) };
+    const title = { ...(next.title ?? {}) };
+    if (ev.target.value.trim() === "") delete title.prompt;
+    else title.prompt = ev.target.value;
+    if (Object.keys(title).length === 0) delete next.title;
+    else next.title = title;
+    settingsCache.enhancement = next;
+    dirtySections.add("enhancement");
+    markDirty("enhancement");
+  });
+  document.getElementById("enh-summary-prompt").addEventListener("change", (ev) => {
+    const next = { ...(settingsCache.enhancement ?? {}) };
+    if (ev.target.value.trim() === "") delete next.summaryPrompt;
+    else next.summaryPrompt = ev.target.value;
+    settingsCache.enhancement = next;
+    dirtySections.add("enhancement");
+    markDirty("enhancement");
+  });
+
   sttInputHandler("baseurl");
   sttInputHandler("model");
   sttInputHandler("language");
@@ -2541,15 +2769,24 @@ export function bind() {
   document.getElementById("plugin-add").addEventListener("click", () => openPluginInstallDialog());
 }
 
+
+
 export function fill() {
-  // U18/T-P3-120：辅助模型分节回填（缺省回退主模型链——空输入 = 未配置）
-  const task = (name) => settingsCache?.enhancement?.[name] ?? {};
-  document.getElementById("enh-judge-provider").value = task("judge").provider ?? "";
-  document.getElementById("enh-judge-model").value = task("judge").model ?? "";
-  document.getElementById("enh-judge-reasoning").value = task("judge").reasoning ?? "";
-  document.getElementById("enh-summarizer-provider").value = task("summarizer").provider ?? "";
-  document.getElementById("enh-summarizer-model").value = task("summarizer").model ?? "";
-  document.getElementById("enh-summarizer-reasoning").value = task("summarizer").reasoning ?? "";
+  // T-P3-147 C/I/G：辅助模型四任务卡回填（下拉选项渲染 + 级联 + 总闸 + 模板）
+  document.getElementById("enh-enabled").checked = settingsCache?.enhancement?.enabled !== false;
+  for (const t of ENHANCEMENT_TASK_KEYS) {
+    renderTaskProviderOptions(t);
+    const sel = document.getElementById(`enh-${t}-provider`);
+    sel.value = enhancementTaskOf(t).provider ?? "";
+    renderTaskModelOptions(t);
+  }
+  const polishCfg = enhancementTaskOf("polish");
+  const polishCustom = polishCfg.customTemplate === true;
+  document.getElementById("enh-polish-custom").checked = polishCustom;
+  document.getElementById("enh-polish-template").value = polishCustom ? (polishCfg.template ?? "") : "";
+  syncPolishTemplateState();
+  document.getElementById("enh-title-prompt").value = settingsCache?.enhancement?.title?.prompt ?? "";
+  document.getElementById("enh-summary-prompt").value = settingsCache?.enhancement?.summaryPrompt ?? "";
   // U26/T-P3-129：STT 分节回填（空输入 = 未配置——语音输入不可用）
   document.getElementById("stt-baseurl").value = settingsCache?.stt?.baseUrl ?? "";
   document.getElementById("stt-model").value = settingsCache?.stt?.model ?? "";

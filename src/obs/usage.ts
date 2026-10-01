@@ -195,3 +195,59 @@ export function usageByModel(db: Database): ModelUsageRow[] {
     totalTokens: raw.total_tokens,
   }));
 }
+
+// ---------------------------------------------------------------------------
+// T-P3-147 F：副调用按任务分账（request/header 的 aux 载荷聚合——polish/
+// title/enhancement-test 的 usage 归因面；compaction 走 assistant/message
+// 主链不在此列）。L1 纪律同上：只 SELECT，不建第二份轨迹存储。
+// ---------------------------------------------------------------------------
+
+export interface TaskUsageRow {
+  purpose: string;
+  provider: string;
+  modelId: string;
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+export function usageByTask(db: Database): TaskUsageRow[] {
+  const rows = db
+    .prepare(
+      `
+      SELECT json_extract(payload, '$.reason') AS purpose,
+             json_extract(payload, '$.config.provider') AS provider,
+             json_extract(payload, '$.config.modelId') AS model_id,
+             COUNT(*) AS requests,
+             SUM(COALESCE(json_extract(payload, '$.aux.usage.inputTokens'), 0)) AS input_tokens,
+             SUM(COALESCE(json_extract(payload, '$.aux.usage.outputTokens'), 0)) AS output_tokens,
+             SUM(COALESCE(json_extract(payload, '$.aux.usage.totalTokens'),
+               COALESCE(json_extract(payload, '$.aux.usage.inputTokens'), 0)
+                 + COALESCE(json_extract(payload, '$.aux.usage.outputTokens'), 0))) AS total_tokens
+      FROM events
+      WHERE type = 'request/header'
+        AND json_extract(payload, '$.aux') IS NOT NULL
+      GROUP BY purpose, provider, model_id
+      ORDER BY total_tokens DESC
+      `,
+    )
+    .all() as Array<{
+    purpose: string;
+    provider: string;
+    model_id: string;
+    requests: number;
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+  }>;
+  return rows.map((raw) => ({
+    purpose: raw.purpose,
+    provider: raw.provider,
+    modelId: raw.model_id,
+    requests: raw.requests,
+    inputTokens: raw.input_tokens,
+    outputTokens: raw.output_tokens,
+    totalTokens: raw.total_tokens,
+  }));
+}

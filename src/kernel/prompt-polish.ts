@@ -1,8 +1,9 @@
 /**
- * 一键润色旁路调用（T-P3-146 I——pi-desktop prompt-enhancement 同构面）：
- * Composer 草稿 → 一次 LLM 调用 → 更优表达。不经会话流不开轮（polish/
- * polish_result 协议对——policy/check 回执对同构）；模型取
- * enhancement.polish → summarizer → 主模型回退链（装配面解析）。
+ * 一键润色旁路调用（T-P3-146 I + T-P3-147 A 收敛——pi-desktop
+ * prompt-enhancement 同构面）：Composer 草稿 → 一次 LLM 调用 → 更优表达。
+ * 走统一副调用底座 runSideQuery（超时/重试/空输出/usage 单源）；不经会话流
+ * 不开轮（polish/polish_result 协议对——policy/check 回执对同构）；模型取
+ * enhancement.polish → fastModel → 主模型回退链（装配面解析）。
  *
  * 纪律（pi-desktop prompt-enhancement.ts 锚）：
  *   - 用户模板 `{{draft}}` 单占位；split/join 替换（replace 的 `$&` 注入面
@@ -14,6 +15,7 @@
 
 import type { ModelIdentity } from "../models/identity.js";
 import type { ModelProvider } from "../models/provider.js";
+import { runSideQuery } from "./side-query.js";
 
 /** 润色固定 system 指令（pi 七段式的压缩版；模板面只管 user 半边）。 */
 export const POLISH_SYSTEM_PROMPT = [
@@ -58,8 +60,15 @@ export interface PromptPolishDeps {
   custom?: { customTemplate?: boolean; template?: string };
 }
 
-/** 一次润色调用（streamChat 全量收集——润色输出短，不需要流式端面）。 */
-export async function runPromptPolish(deps: PromptPolishDeps): Promise<string> {
+export interface PromptPolishResult {
+  text: string;
+  /** 副调用 usage（T-P3-147 F 落账面——request/header aux 透传）。 */
+  usage?: import("./events.js").TokenUsage;
+  ms: number;
+}
+
+/** 一次润色调用（底座收敛——装饰性查询 maxRetries=1：润色失败重试无意义）。 */
+export async function runPromptPolish(deps: PromptPolishDeps): Promise<PromptPolishResult> {
   const hasCustom =
     deps.custom?.customTemplate === true &&
     typeof deps.custom.template === "string" &&
@@ -67,22 +76,21 @@ export async function runPromptPolish(deps: PromptPolishDeps): Promise<string> {
   const userContent = hasCustom
     ? applyPolishTemplate(deps.custom!.template!, deps.draft)
     : applyPolishTemplate(POLISH_DEFAULT_USER_TEMPLATE, deps.draft);
-  let text = "";
-  for await (const chunk of deps.provider.streamChat({
+  const r = await runSideQuery({
+    purpose: "polish",
+    provider: deps.provider,
     identity: deps.identity,
     messages: [
       { role: "system", content: POLISH_SYSTEM_PROMPT },
       { role: "user", content: userContent },
     ],
-  })) {
-    if (chunk.type === "text-delta") text += chunk.text;
-    else if (chunk.type === "done") break;
-  }
-  const polished = stripPolishArtifacts(text);
+    maxRetries: 1,
+  });
+  const polished = stripPolishArtifacts(r.text);
   if (polished === "") {
     const error = new Error("润色输出为空（模型未返回内容）");
     (error as unknown as { code: string }).code = "POLISH_EMPTY";
     throw error;
   }
-  return polished;
+  return { text: polished, usage: r.usage, ms: r.ms };
 }

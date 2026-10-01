@@ -498,13 +498,25 @@ export interface CheckpointEvent extends EventBase {
 }
 
 /**
- * 本次请求为何发出（DSH `RequestHeaderReason` 同款四值 + F5/T-P1-18 扩展一值）：
+ * 本次请求为何发出（DSH `RequestHeaderReason` 同款四值 + 扩展族）：
  * - "initial" 首次请求 / "resume" 续跑 / "change" 配置变更 / "series" 同轮后续 step；
  * - "compaction" 压缩摘要的副调用（F5/T-P1-18）：摘要请求不是 agent 轮的
  *   step，用四值中任何一个都是流内谎言——独立值让运维面可区分主轮与副调用。
+ * - T-P3-147 F 扩三值副调用族（polish/title/enhancement-test）：同 "compaction"
+ *   语义；**turn 落 0**（log-only 会话级元事件纪律——session/fork 同款）且
+ *   载荷带 `aux`（usage/ms——usage 页按任务分账的数据面）。投影对 request/
+ *   header 不消费（project.ts 占位事件）——副调用 header 不污染重建链。
  * 词汇载荷枚举扩展的裁决记录见 l0-events.md §8 落地记录 7 与待澄清表。
  */
-export type RequestHeaderReason = "initial" | "resume" | "change" | "series" | "compaction";
+export type RequestHeaderReason =
+  | "initial"
+  | "resume"
+  | "change"
+  | "series"
+  | "compaction"
+  | "polish"
+  | "title"
+  | "enhancement-test";
 
 /**
  * 下一次请求的完整头。它是 header 不是消息：参与"重建请求"，不参与"派生历史"
@@ -516,6 +528,13 @@ export interface RequestHeaderEvent extends EventBase {
   config: JsonRecord;
   tools?: JsonValue;
   reason: RequestHeaderReason;
+  /**
+   * 副调用结果载荷（T-P3-147 F——reason ∈ polish/title/enhancement-test 时
+   * 由调用方在完成后落一枚带 aux 的 header）：usage 供 usage 页按任务分账、
+   * ms 供延迟观测。主轮 header 不带本字段（载荷扩展先例——事件计数不变，
+   * 旧流前向兼容）。
+   */
+  aux?: { usage: TokenUsage; ms: number };
 }
 
 /**

@@ -55,6 +55,16 @@ const TEMPLATE = `
         </div>
       </section>
       <section>
+        <div class="section-head"><h2 class="section-title">辅助任务分账</h2></div>
+        <table id="task-usage-table">
+          <thead>
+            <tr><th>任务</th><th>模型</th><th>次数</th><th>总 token</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p id="task-usage-empty" class="hint">暂无副调用记录——润色/标题等辅助任务使用后在此归因显示。</p>
+      </section>
+      <section>
         <div class="section-head"><h2 class="section-title">上下文检查器</h2></div>
         <div class="ctx-meter"><div id="ctx-meter-fill"></div></div>
         <p id="ctx-text" class="hint"></p>
@@ -297,6 +307,29 @@ function renderHeatmap() {
   }
 }
 
+// —— 辅助任务分账（T-P3-147 F：request/header aux 聚合的表格渲染）——
+const TASK_LABELS = { polish: "润色", title: "会话标题", "enhancement-test": "配置测试" };
+function renderTaskUsage(rows) {
+  const tbody = document.querySelector("#task-usage-table tbody");
+  const empty = document.getElementById("task-usage-empty");
+  if (tbody === null) return;
+  tbody.replaceChildren();
+  if (empty !== null) empty.hidden = rows.length > 0;
+  for (const r of rows) {
+    const tr = document.createElement("tr");
+    const td1 = document.createElement("td");
+    td1.textContent = TASK_LABELS[r.purpose] ?? r.purpose;
+    const td2 = document.createElement("td");
+    td2.textContent = `${r.provider} · ${r.modelId}`;
+    const td3 = document.createElement("td");
+    td3.textContent = String(r.requests);
+    const td4 = document.createElement("td");
+    td4.textContent = String(r.totalTokens);
+    tr.append(td1, td2, td3, td4);
+    tbody.appendChild(tr);
+  }
+}
+
 // —— 模型甜甜圈（stroke-dasharray 分段——六色板循环，>6 归"其他"）——
 function renderDonut() {
   const svg = document.getElementById("usage-donut");
@@ -399,11 +432,12 @@ export async function render(container) {
   if (document.getElementById("ctx-text") === null) return; // 回包晚于导航——丢弃
   if (!envelope.ok) {
     // 无库等类型化拒绝：统计四区空态降级（空数据渲染器各自呈现"暂无"形态）
-    usageData = { byDay: [], byModel: [], sessions: [], costs: [], currentSession: {} };
+    usageData = { byDay: [], byModel: [], sessions: [], costs: [], currentSession: {}, byTask: [] };
     renderSummary(usageData);
     renderTrend();
     renderHeatmap();
     renderDonut();
+    renderTaskUsage([]);
     document.getElementById("ctx-text").textContent = `用量面不可用：${envelope.error?.message ?? ""}`;
     document.getElementById("compaction-text").textContent = "";
     document.getElementById("cost-hint").textContent = "";
@@ -412,11 +446,12 @@ export async function render(container) {
   const u = envelope.result;
   usageData = u;
 
-  // —— 摘要卡 + 趋势 + 热力 + 甜甜圈（批 B⑩ 统计页可视化）——
+  // —— 摘要卡 + 趋势 + 热力 + 甜甜圈 + 按任务分账（批 B⑩/T-P3-147 F）——
   renderSummary(u);
   renderTrend();
   renderHeatmap();
   renderDonut();
+  renderTaskUsage(u.byTask ?? []);
 
   // 上下文检查器：末轮 totalTokens ≈ 当前窗口占用（E17/F 族事实投影）
   const ctx = u.contextWindow ?? 0;

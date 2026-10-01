@@ -417,6 +417,11 @@ export interface ChildAssemblyOptions {
    * createLlmSummarizer（provider 副调用 + request/header{reason:"compaction"}
    * + 失败回退截断摘要）。缺省 undefined = P0 截断摘要（零行为变化）。
    */
+  /**
+   * T-P3-147 H：压缩摘要指令覆写（settings enhancement.summaryPrompt——
+   * codex compact_prompt 同构；缺省 = 内置 SUMMARY_SYSTEM_PROMPT）。
+   */
+  summaryPrompt?: string;
   summarizerModel?: {
     provider: import("../models/provider.js").ModelProvider;
     identity: ModelIdentity;
@@ -696,6 +701,9 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
             store,
             onWarn: (message) => logger?.warn(message),
             contextWindow,
+            ...(options.summaryPrompt !== undefined && options.summaryPrompt.trim() !== ""
+              ? { systemPrompt: options.summaryPrompt }
+              : {}),
           })
         : truncatingSummarizer()),
     rapidRefillGuard: guard,

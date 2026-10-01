@@ -211,12 +211,21 @@ export interface McpServerEntry {
  * providers 条目名（不裸写 baseUrl——凭据按条目名走 credentials 面）。
  */
 export interface EnhancementModelEntry {
-  /** providers 条目名（该条目的 adapter/baseUrl/凭据构造辅助模型面）。 */
-  provider: string;
+  /**
+   * providers 条目名（该条目的 adapter/baseUrl/凭据构造辅助模型面）。
+   * T-P3-147 B 放宽：可缺省——缺省 = 跳过本任务显式面，继续回退链
+   * （fastModel → fallbacks → 主模型链；parse 层不再强制必填）。
+   */
+  provider?: string;
   /** 辅助任务模型 id（缺省回退 = 条目 model → defaultModel——主模型链）。 */
   model?: string;
   /** reasoning 档位（配置面记录——适配层 reasoning 请求面扩展后消费，记档）。 */
   reasoning?: "minimal" | "low" | "medium" | "high";
+  /**
+   * 有序备选模型（T-P3-147 B——pi SubagentFallbackModels 同构）：显式面
+   * 解析失败（条目不存在/停用）时顺链下落；全部失败 = 主模型链。
+   */
+  fallbacks?: { provider?: string; model?: string }[];
 }
 
 /**
@@ -335,20 +344,47 @@ export interface SettingsShape {
   };
   /** MCP server 清单（U17——向导式添加落档；装配期连接注册，单 server 失败不炸启动）。 */
   mcp?: McpServerEntry[];
-  /** 辅助任务模型（U18——judge/summarizer 独立配置；缺省回退主模型链）。 */
+  /**
+   * 辅助任务模型（U18 + T-P3-147 全面扩容——judge/summarizer/polish/title
+   * 任务级模型路由 + 全局轻模型单点 + 总闸；缺省回退主模型链）。
+   */
   enhancement?: {
+    /**
+     * 辅助流量总闸（T-P3-147 G——claude DISABLE_NONESSENTIAL_TRAFFIC 同构）：
+     * false = 标题不跑、润色类型化拒绝、判官落回人、摘要回退主模型；
+     * 缺省 true = 全部照常。
+     */
+    enabled?: boolean;
+    /**
+     * 全局轻模型单点（T-P3-147 B——claude SMALL_FAST_MODEL / opencode
+     * small_model / qwen fastModel 语义）：任务未显式配置时的缺省辅助模型
+     * （命名/分类类轻任务的自然落点；摘要质量任务建议显式配主模型档）。
+     */
+    fastModel?: EnhancementModelEntry;
     judge?: EnhancementModelEntry;
     summarizer?: EnhancementModelEntry;
     /**
      * 一键润色（T-P3-146 I——pi-desktop prompt-enhancement 同构）：
-     * 独立模型三元组（provider/model/reasoning 均可缺省——缺省回退
-     * summarizer → 主模型链）+ 用户润色模板（{{draft}} 占位；customTemplate
-     * 关闭或缺占位符 = 内置默认模板；template 上限 8000 字符——pi 同值）。
+     * 独立模型三元组（均可缺省——缺省回退 fastModel → 主模型链）+ 用户
+     * 润色模板（{{draft}} 占位；customTemplate 关闭或缺占位符 = 内置默认
+     * 模板；template 上限 8000 字符——pi 同值）。
      */
     polish?: Partial<EnhancementModelEntry> & {
       customTemplate?: boolean;
       template?: string;
     };
+    /**
+     * 会话标题生成（T-P3-147 E——五仓标配任务）：首轮后异步生成会话标题；
+     * 字段缺省 = fastModel → 主模型；prompt 覆写可选。
+     */
+    title?: EnhancementModelEntry & {
+      prompt?: string;
+    };
+    /**
+     * 压缩摘要指令覆写（T-P3-147 H——codex compact_prompt 同构；缺省 =
+     * 内置 SUMMARY_SYSTEM_PROMPT，UI 可整段覆盖）。
+     */
+    summaryPrompt?: string;
   };
   /** Profiles 组合档（U19——命名场景快照；切换 = 批量写生效段）。 */
   profiles?: ProfileEntry[];
@@ -1190,6 +1226,8 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
     if (enhancement === null || typeof enhancement !== "object" || Array.isArray(enhancement)) {
       throw new SettingsError("enhancement 须为对象");
     }
+    // T-P3-147 B：provider 放宽可选（缺省 = 跳过显式面走回退链——fastModel/
+    // 主模型；原"缺失即抛"语义只保留给显式给了 provider 键但为非空串校验）
     const parseTask = (v: unknown, where: string): EnhancementModelEntry | undefined => {
       if (v === undefined) return undefined;
       if (v === null || typeof v !== "object" || Array.isArray(v)) {
@@ -1197,7 +1235,9 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
       }
       const t = v as Record<string, unknown>;
       const provider = assertString(t["provider"], `${where}.provider`);
-      if (provider === undefined) throw new SettingsError(`${where}.provider 缺失`);
+      if (t["provider"] !== undefined && provider === undefined) {
+        throw new SettingsError(`${where}.provider 须为非空字符串`);
+      }
       const reasoning = t["reasoning"];
       if (
         reasoning !== undefined &&
@@ -1208,18 +1248,50 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
       ) {
         throw new SettingsError(`${where}.reasoning 非法（合法：minimal|low|medium|high）`);
       }
+      // T-P3-147 B：fallbacks 有序备选（每项 {provider?, model?}——至少一项有值）
+      const rawFallbacks = t["fallbacks"];
+      let fallbacks: { provider?: string; model?: string }[] | undefined;
+      if (rawFallbacks !== undefined) {
+        if (!Array.isArray(rawFallbacks)) throw new SettingsError(`${where}.fallbacks 须为数组`);
+        fallbacks = [];
+        for (const f of rawFallbacks) {
+          if (f === null || typeof f !== "object" || Array.isArray(f)) {
+            throw new SettingsError(`${where}.fallbacks[] 须为对象`);
+          }
+          const fo = f as Record<string, unknown>;
+          const fp = assertString(fo["provider"], `${where}.fallbacks[].provider`);
+          const fm = assertString(fo["model"], `${where}.fallbacks[].model`);
+          if (fp === undefined && fm === undefined) {
+            throw new SettingsError(`${where}.fallbacks[] 需要 provider 或 model 至少一项`);
+          }
+          fallbacks.push({
+            ...(fp !== undefined ? { provider: fp } : {}),
+            ...(fm !== undefined ? { model: fm } : {}),
+          });
+        }
+        if (fallbacks.length === 0) fallbacks = undefined;
+      }
       return {
-        provider,
+        ...(provider !== undefined ? { provider } : {}),
         ...(assertString(t["model"], `${where}.model`) !== undefined
           ? { model: t["model"] as string }
           : {}),
         ...(reasoning !== undefined ? { reasoning: reasoning as EnhancementModelEntry["reasoning"] } : {}),
+        ...(fallbacks !== undefined ? { fallbacks } : {}),
       };
     };
     const rec2 = enhancement as Record<string, unknown>;
+    // T-P3-147 G：总闸（缺省 true——只有显式 false 才关）
+    let enabled: boolean | undefined;
+    if (rec2["enabled"] !== undefined) {
+      if (typeof rec2["enabled"] !== "boolean") throw new SettingsError("enhancement.enabled 须为布尔值");
+      enabled = rec2["enabled"];
+    }
+    // T-P3-147 B：fastModel 全局轻模型单点
+    const fastModel = parseTask(rec2["fastModel"], "enhancement.fastModel");
     const judge = parseTask(rec2["judge"], "enhancement.judge");
     const summarizer = parseTask(rec2["summarizer"], "enhancement.summarizer");
-    // T-P3-146 I：润色任务（provider 可缺省——缺省回退 summarizer → 主模型链）
+    // T-P3-146 I：润色任务（provider 可缺省——缺省回退 fastModel → 主模型链）
     let polish: NonNullable<SettingsShape["enhancement"]>["polish"] | undefined;
     if (rec2["polish"] !== undefined) {
       const p = rec2["polish"];
@@ -1227,7 +1299,9 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
         throw new SettingsError("enhancement.polish 须为对象");
       }
       const pr = p as Record<string, unknown>;
-      const base = pr["provider"] !== undefined ? parseTask(pr, "enhancement.polish") : undefined;
+      const base = pr["provider"] !== undefined || pr["model"] !== undefined || pr["reasoning"] !== undefined
+        ? parseTask(pr, "enhancement.polish")
+        : undefined;
       const customTemplate = pr["customTemplate"];
       if (customTemplate !== undefined && typeof customTemplate !== "boolean") {
         throw new SettingsError("enhancement.polish.customTemplate 须为布尔值");
@@ -1245,11 +1319,46 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
         ...(template !== undefined ? { template } : {}),
       };
     }
-    if (judge !== undefined || summarizer !== undefined || polish !== undefined) {
+    // T-P3-147 E：标题任务（prompt 覆写 ≤2000 字符）
+    let title: NonNullable<SettingsShape["enhancement"]>["title"] | undefined;
+    if (rec2["title"] !== undefined) {
+      const tv = rec2["title"];
+      if (tv === null || typeof tv !== "object" || Array.isArray(tv)) {
+        throw new SettingsError("enhancement.title 须为对象");
+      }
+      const tr = tv as Record<string, unknown>;
+      const base = parseTask(tr, "enhancement.title");
+      const prompt = assertString(tr["prompt"], "enhancement.title.prompt");
+      if (prompt !== undefined && Buffer.byteLength(prompt, "utf8") > 2000) {
+        throw new SettingsError("enhancement.title.prompt 超限（上限 2000 字符）");
+      }
+      title = {
+        ...(base ?? {}),
+        ...(prompt !== undefined ? { prompt } : {}),
+      };
+    }
+    // T-P3-147 H：压缩摘要指令覆写（≤8000 字符——润色模板同档）
+    const summaryPrompt = assertString(rec2["summaryPrompt"], "enhancement.summaryPrompt");
+    if (summaryPrompt !== undefined && Buffer.byteLength(summaryPrompt, "utf8") > 8000) {
+      throw new SettingsError("enhancement.summaryPrompt 超限（上限 8000 字符）");
+    }
+    if (
+      enabled !== undefined ||
+      fastModel !== undefined ||
+      judge !== undefined ||
+      summarizer !== undefined ||
+      polish !== undefined ||
+      title !== undefined ||
+      summaryPrompt !== undefined
+    ) {
       out.enhancement = {
+        ...(enabled !== undefined ? { enabled } : {}),
+        ...(fastModel !== undefined ? { fastModel } : {}),
         ...(judge !== undefined ? { judge } : {}),
         ...(summarizer !== undefined ? { summarizer } : {}),
         ...(polish !== undefined ? { polish } : {}),
+        ...(title !== undefined ? { title } : {}),
+        ...(summaryPrompt !== undefined ? { summaryPrompt } : {}),
       };
     }
   }
@@ -1493,11 +1602,36 @@ export function resolveEnhancementTarget(
   defaultModel: string | undefined,
 ): { entry: ProviderEntry; modelId: string } | undefined {
   if (task === undefined) return undefined;
+  // T-P3-147 B：provider 可缺省（缺省 = 本条目不命中，调用方继续回退链）
+  if (task.provider === undefined) return undefined;
   const entry = providers.find((p) => p.name === task.provider);
-  if (entry === undefined) return undefined;
+  if (entry === undefined || entry.enabled === false) return undefined;
   const modelId = task.model ?? entry.model ?? defaultModel;
   if (modelId === undefined) return undefined;
   return { entry, modelId };
+}
+
+/**
+ * 任务级模型候选链（T-P3-147 B——pi fallbacks / hermes fallback_chain 同构）：
+ * 任务显式面 → fallbacks 顺链，逐项解析（条目不存在/停用/无模型 = 跳过不炸）。
+ * 调用方在其后再接 fastModel → 主模型链（回退次序单一来源在消费方装配处）。
+ */
+export function resolveEnhancementChain(
+  task: EnhancementModelEntry | undefined,
+  providers: readonly ProviderEntry[],
+  defaultModel: string | undefined,
+): { entry: ProviderEntry; modelId: string }[] {
+  if (task === undefined) return [];
+  const chain: { entry: ProviderEntry; modelId: string }[] = [];
+  const primary = resolveEnhancementTarget(task, providers, defaultModel);
+  if (primary !== undefined) chain.push(primary);
+  for (const f of task.fallbacks ?? []) {
+    const hit = resolveEnhancementTarget(f, providers, defaultModel);
+    if (hit !== undefined && !chain.some((c) => c.entry.name === hit.entry.name && c.modelId === hit.modelId)) {
+      chain.push(hit);
+    }
+  }
+  return chain;
 }
 
 /**

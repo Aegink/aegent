@@ -42,6 +42,7 @@ import {
   loadUserRuleSources,
   resolveSubagentAssembly,
 } from "./agent-child-config.js";
+import { resolveEnhancementChain } from "../session/settings.js";
 import { createLogger } from "./logger.js";
 import { loadPromptTemplatesFromRoots, PROMPTS_DIR, USER_PROMPTS_DIR } from "./prompts.js";
 
@@ -143,7 +144,7 @@ async function buildModelsRegistry(
   resolveTarget: (entryName: string, modelOverride: string | undefined) => Promise<RegisteredModel | undefined>;
 } | undefined> {
   if (settings.defaultProvider === undefined || settings.providers.length === 0) return undefined;
-  const credStore = createCredentialStore();
+  const credStore = createCredentialStore(process.env["AEGENT_CREDENTIALS"] || undefined);
   const models: RegisteredModel[] = [];
   const defaultEntryModels: RegisteredModel[] = [];
   for (const entry of settings.providers) {
@@ -153,6 +154,14 @@ async function buildModelsRegistry(
     // 兼容——entry.model ?? defaultModel 兜底同既有语义）
     const specs: readonly ProviderModelSpec[] =
       entry.models ?? (entry.model !== undefined ? [{ id: entry.model }] : []);
+    const entryApiKey = await credStore.getKey(entry.name);
+    if (entryApiKey === undefined || entryApiKey === "") {
+      // T-P3-147 修（走查实录）：key 缺失的条目跳过装配而非让 child 崩——
+      // 崩 = agent 通道静默死亡（host/UI 全活但发送无回执），比单条目不可用
+      // 糟糕一个量级。warn 留痕，供应商页补 key 后重启生效。
+      console.error(`[assembly] 供应商条目 "${entry.name}" 未设置 API key——跳过装配（补 key 后重启生效）`);
+      continue;
+    }
     for (const spec of specs) {
       // 协议 → 会话装配映射（openai* → openai-compat〔responses 回退 chat
       // 端点，记档〕；anthropic → anthropic-messages；google → google-generate）
@@ -167,7 +176,7 @@ async function buildModelsRegistry(
       name: entry.name,
       settingsConfig: JSON.stringify({
         baseUrl: entry.baseUrl,
-        apiKey: await credStore.getKey(entry.name),
+        apiKey: entryApiKey,
         model: modelId,
         ...(entry.headers !== undefined ? { headers: entry.headers } : {}),
       }),
@@ -355,14 +364,26 @@ async function main(): Promise<void> {
 
   let judgeTarget: RegisteredModel | undefined; // U18：辅助模型（缺省回退主模型链）
   let summarizerTarget: RegisteredModel | undefined;
-  if (registry !== undefined && settingsFile.enhancement !== undefined) {
-    judgeTarget =
-      (await registry.resolveTarget(
-        settingsFile.enhancement.judge?.provider ?? "",
-        settingsFile.enhancement.judge?.model,
-      )) ?? undefined;
-    summarizerTarget =
-      (await registry.resolveTarget(settingsFile.enhancement.summarizer?.provider ?? "", settingsFile.enhancement.summarizer?.model)) ?? undefined;
+  // T-P3-147 B/G：任务级候选链（任务显式 → fallbacks → fastModel；总闸关 =
+  // 全部 undefined——判官落人/摘要走主模型/polish 类型化拒绝）。
+  const enhancementOff = settingsFile.enhancement?.enabled === false;
+  const chainResolve = async (
+    task: import("../session/settings.js").EnhancementModelEntry | undefined,
+  ): Promise<RegisteredModel | undefined> => {
+    if (registry === undefined || enhancementOff) return undefined;
+    const chain = [
+      ...resolveEnhancementChain(task, settingsFile.providers, settingsFile.defaultModel),
+      ...resolveEnhancementChain(settingsFile.enhancement?.fastModel, settingsFile.providers, settingsFile.defaultModel),
+    ];
+    for (const item of chain) {
+      const hit = await registry.resolveTarget(item.entry.name, item.modelId);
+      if (hit !== undefined) return hit;
+    }
+    return undefined;
+  };
+  if (settingsFile.enhancement !== undefined) {
+    judgeTarget = await chainResolve(settingsFile.enhancement.judge);
+    summarizerTarget = await chainResolve(settingsFile.enhancement.summarizer);
   }
 
   // U23+U24：子代理装配 / 用户规则 / 全局指令（拆分在 agent-child-config.ts）。
@@ -370,14 +391,11 @@ async function main(): Promise<void> {
   // T-P3-146：runner 恒建（内置五预设不依赖自定义清单——task 工具与模板
   // agent 面开箱即用；defs 缺省 undefined = 仅内置预设）。
   const subagentsSlot = subagentsOptions ?? { defs: settingsFile.subagents };
-  // T-P3-146 I：润色模型回退链——polish 显式 → summarizer → 主模型。
+  // T-P3-146 I + T-P3-147 B/G：润色模型回退链——polish 显式（含 fallbacks）
+  // → fastModel → 主模型；总闸关 = 不装配（polish 类型化拒绝）。
   let polishTarget: RegisteredModel | undefined;
-  if (registry !== undefined && settingsFile.enhancement?.polish?.provider !== undefined) {
-    polishTarget =
-      (await registry.resolveTarget(
-        settingsFile.enhancement.polish.provider,
-        settingsFile.enhancement.polish.model,
-      )) ?? undefined;
+  if (!enhancementOff && registry !== undefined) {
+    polishTarget = await chainResolve(settingsFile.enhancement?.polish);
   }
   // T-P3-137 八轮 C：规则两层装载——用户层在前、项目层在后（首匹配胜 =
   // 用户级优先于项目级）；项目文件缺失 = 空集（与用户层同语义）。
@@ -452,8 +470,10 @@ async function main(): Promise<void> {
           },
         }
       : {}),
-    // T-P3-146 I：润色旁路模型 + 模板配置装载（模板半边每次新鲜读取）
-    ...(provider && identity && (polishTarget !== undefined || summarizerTarget !== undefined || registry !== undefined)
+    // T-P3-146 I + T-P3-147 B/G：润色旁路模型 + 模板配置装载。单模型装配
+    // （--provider 显式，registry 缺席）同样装配——回退链末端 = 主模型；
+    // 总闸关（enhancementOff）= 不装配（polish 类型化拒绝）。
+    ...(provider && identity && !enhancementOff
       ? {
           polish: {
             model: polishTarget ?? summarizerTarget ?? { provider: provider!, identity: identity! },
@@ -476,6 +496,7 @@ async function main(): Promise<void> {
     ...(storage ? { storage } : {}),
     ...(provider ? { provider, identity } : {}),
     // F5：真摘要（echo 不给）；U18：enhancement summarizer 在位时用辅助模型。
+    // T-P3-147 H：summaryPrompt 指令覆写随装配透传（新会话生效）。
     ...((cli.provider === "openai" || cli.provider === "anthropic" || registry !== undefined) &&
     provider &&
     identity
@@ -484,6 +505,9 @@ async function main(): Promise<void> {
             provider: provider!,
             identity: identity!,
           },
+          ...(settingsFile.enhancement?.summaryPrompt !== undefined
+            ? { summaryPrompt: settingsFile.enhancement.summaryPrompt }
+            : {}),
         }
       : {}),
     ...(cli.provider === "openai" ||

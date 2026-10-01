@@ -79,7 +79,15 @@ async function applyRoute() {
     viewRoot.replaceChildren();
     const box = document.createElement("div");
     box.className = "render-error";
-    box.textContent = `页面加载出错：${e?.message ?? String(e)}`;
+    // T-P3-147：附带堆栈前两行——间歇渲染错误（null deref）的定位面
+    const stackTop = String(e?.stack ?? "")
+      .split("\n")
+      .slice(1, 3)
+      .map((l) => l.trim())
+      .join("  <-  ");
+    box.textContent = `页面加载出错：${e?.message ?? String(e)}\n${stackTop}`;
+    box.style.whiteSpace = "pre-wrap";
+    console.error("视图渲染失败", route.view, e);
     viewRoot.appendChild(box);
   }
 }

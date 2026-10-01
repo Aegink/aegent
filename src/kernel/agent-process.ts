@@ -1323,7 +1323,7 @@ export async function runAgentChildStdio(
             type: "polish_result",
             requestId: req.requestId,
             ok: false,
-            error: "本进程未装配润色模型（enhancement.polish 未配置且无主模型链）",
+            error: "本进程未装配润色面（辅助模型未配置或总闸已关闭——设置 → 辅助模型）",
           });
           return;
         }
@@ -1331,13 +1331,42 @@ export async function runAgentChildStdio(
         void (async () => {
           try {
             const custom = polish.templateLoader ? await polish.templateLoader() : undefined;
-            const text = await runPromptPolish({
+            const result = await runPromptPolish({
               provider: polish.model.provider,
               identity: polish.model.identity,
               draft: req.draft,
               ...(custom !== undefined ? { custom } : {}),
             });
-            send({ type: "polish_result", requestId: req.requestId, ok: true, text });
+            // T-P3-147 F：副调用归因 header（turn=0 元事件纪律——log-only，
+            // 投影不消费；usage 供 usage 页按任务分账）。失败不落（只记成功账）。
+            try {
+              store.append(sessionId, [
+                {
+                  type: "request/header",
+                  turn: 0,
+                  config: {
+                    provider: polish.model.identity.provider,
+                    modelId: polish.model.identity.modelId,
+                  },
+                  reason: "polish",
+                  ...(result.usage !== undefined
+                    ? { aux: { usage: result.usage, ms: result.ms } }
+                    : {}),
+                },
+              ]);
+              // T-P3-147 F：polish header 在轮外 append（write-behind 不经
+              // turnEnd flush 点）——立即 flush 保证 SIGTERM 场景不丢归因
+              void store.flush(sessionId).catch(() => undefined);
+            } catch {
+              // 归因落流失败不影响润色回执（观测是旁路面）
+            }
+            send({
+              type: "polish_result",
+              requestId: req.requestId,
+              ok: true,
+              text: result.text,
+              ...(result.usage !== undefined ? { usage: result.usage } : {}),
+            });
           } catch (e) {
             send({
               type: "polish_result",
@@ -1519,6 +1548,17 @@ export interface SpawnAgentOptions {
 export function spawnAgentProcess(options: SpawnAgentOptions): AgentProcess {
   const child = spawn(process.execPath, [options.entryPath, ...(options.args ?? [])], {
     stdio: ["pipe", "pipe", "inherit"],
+  });
+  // T-P3-147（走查实录）：child 静默退出时（stderr inherit 仍无输出）父侧
+  // 无从知晓——spawn 命令与退出码/信号落 stderr，运维与诊断面共用。
+  console.error(
+    `[agent] spawn: ${JSON.stringify([process.execPath, options.entryPath, ...(options.args ?? [])])}`,
+  );
+  child.on("exit", (code, signal) => {
+    console.error(`[agent] child exited: code=${String(code)} signal=${String(signal)}`);
+  });
+  child.on("error", (e) => {
+    console.error(`[agent] child spawn error: ${e.message}`);
   });
   const queue = new MessageQueue();
   let buffer = "";

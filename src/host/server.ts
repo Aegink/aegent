@@ -41,6 +41,7 @@ import { serveStatic } from "./static-files.js";
 import { parseHostServerArgv, type HostServerArgv } from "./argv.js";
 import { NotificationHub } from "./notify.js";
 import { HostRegistry } from "./registry.js";
+import { createTitleService } from "./title-service.js";
 
 
 export interface HostServerOptions {
@@ -70,6 +71,11 @@ export interface HostServerOptions {
    * notification name="n5" 广播——UI 通知中心的数据源；生产 main 创建）。
    */
   notifyHub?: NotificationHub;
+  /** T-P3-147 E：标题服务依赖（start 内组装——store 作用域在此）。 */
+  titleDeps?: {
+    settingsPath?: string;
+    credentials: import("../session/credentials.js").CredentialStore;
+  };
 }
 
 /** host 进程运行句柄（start 的产物——stop 收束全部资源）。 */
@@ -89,6 +95,15 @@ export class HostServer {
     const registry = new HostRegistry();
     const host = registry.register({ sessionId });
     const store = new SessionStore(this.options.storage ?? new InMemoryEventStorage());
+    // T-P3-147 E：会话标题服务（turn/end 触发——host 旁路；无库 = no-op）
+    const titleService = this.options.titleDeps
+      ? createTitleService({
+          settingsPath: this.options.titleDeps.settingsPath,
+          credentials: this.options.titleDeps.credentials,
+          ...(this.options.storage instanceof SqliteEventStorage ? { db: this.options.storage } : {}),
+          sessionStream: (sid) => store.load(sid),
+        })
+      : undefined;
     const agent =
       this.options.agent ??
       spawnAgentProcess({
@@ -104,6 +119,7 @@ export class HostServer {
       ...(this.options.workspaceRoot !== undefined ? { workspaceRoot: this.options.workspaceRoot } : {}),
       ...(this.options.contextWindow !== undefined ? { contextWindow: this.options.contextWindow } : {}),
       ...(this.options.notifyHub !== undefined ? { notifyHub: this.options.notifyHub } : {}),
+      ...(titleService !== undefined ? { titleService } : {}),
     });
     // U13/T-P3-112：N5 分类通知 → 全端 WS 广播（notification name="n5"——
     // UI 通知中心数据源）；unsub 在 stop 收束。
@@ -116,7 +132,8 @@ export class HostServer {
       if (event.type === "surface/attach" || event.type === "surface/detach") return;
       try {
         store.append(sessionId, [event as never]);
-      } catch {
+      } catch (e) {
+        console.error(`[mirror] append failed: ${e instanceof Error ? e.message : String(e)}`);
         // 镜像是读面加速：单事件失败不炸 host（错误经 query 读面可见为缺事件）
       }
     });
@@ -284,6 +301,9 @@ export async function main(argv: readonly string[]): Promise<void> {
   const parsed = parseHostServerArgv(argv, { uiDir: defaultUiDir() });
   // U1/T-P3-101：settings 装配（CLI 同款三入口共用面——损坏 fail-closed
   // 直达启动失败出口）。host 的 childArgs 与 CLI 同走 resolveChildLaunchArgv。
+  // T-P3-147：凭据库路径可环境化（AEGENT_CREDENTIALS——多档隔离/走查隔离）；
+  // 单一实例三处共享（credentialKey 预取 / settingsGateway / titleService）。
+  const credentials = createCredentialStore(process.env["AEGENT_CREDENTIALS"] || undefined);
   const { settings } = await loadSettings(parsed.settingsPath);
   // U2/T-P3-102：凭据装配——CLI 同款（仅文件档条目会被选中时提前 decrypt）。
   const providerFree =
@@ -291,7 +311,7 @@ export async function main(argv: readonly string[]): Promise<void> {
     (process.env["AEGENT_PROVIDER"] === undefined || process.env["AEGENT_PROVIDER"] === "");
   let credentialKey: string | undefined;
   if (providerFree && settings.defaultProvider !== undefined) {
-    credentialKey = await createCredentialStore().getKey(settings.defaultProvider);
+    credentialKey = await credentials.getKey(settings.defaultProvider);
   }
   const { args: launchArgs } = resolveChildLaunchArgv(parsed.childArgs, process.env, settings, { credentialKey });
   const storage = parsed.hostDbPath !== undefined    ? SqliteEventStorage.open({ path: parsed.hostDbPath })
@@ -307,7 +327,7 @@ export async function main(argv: readonly string[]): Promise<void> {
   })();
   const settingsGateway = new FileSettingsGateway(
     parsed.settingsPath ?? defaultSettingsPath(),
-    createCredentialStore(),
+    credentials,
     undefined,
     sqliteStorage,
     workspaceRoot,
@@ -333,6 +353,11 @@ export async function main(argv: readonly string[]): Promise<void> {
     })(),
     // U13/T-P3-112：N5 分类通知面（bridge 发布 + 全端 WS 广播）。
     notifyHub: new NotificationHub(),
+    // T-P3-147 E：标题服务依赖（凭据面共享——首条 user 消息后异步生成）
+    titleDeps: {
+      settingsPath: parsed.settingsPath,
+      credentials,
+    },
   });
   const handle = await server.start();
   process.stdout.write(

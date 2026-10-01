@@ -6,6 +6,8 @@
  */
 
 import type { CredentialStore } from "../session/credentials.js";
+import type { SettingsShape } from "../session/settings.js";
+import { resolveEnhancementChain } from "../session/settings.js";
 import { fetchProviderModels, testProviderChat, type ProviderTestResult } from "./provider-gateway.js";
 
 /** 供应商适配器闭集（与 settings providers 条目的 adapter 段同集）。 */
@@ -57,4 +59,82 @@ export async function providerTestOp(
     apiKey,
     payload.reasoning,
   );
+}
+
+// ---------------------------------------------------------------------------
+// T-P3-147 D：辅助任务真实测试（enhancement-test op——每任务「测试」按钮的
+// host 面）：任务级模型链（显式 → fallbacks → fastModel）解析首个命中项，
+// 以 1-token 探测真实发一次请求（zcode 连通性探测语义——成本≈0，配置错/
+// 凭据缺立即可见）。未配置 = ok:false + NOT_CONFIGURED（诚实回退说明）。
+// ---------------------------------------------------------------------------
+
+/** 辅助任务闭集（与 settings enhancement 段任务键一一对应；fastModel 单列）。 */
+export const ENHANCEMENT_TEST_TASKS = ["judge", "summarizer", "polish", "title", "fastModel"] as const;
+export type EnhancementTestTask = (typeof ENHANCEMENT_TEST_TASKS)[number];
+
+export interface EnhancementTestResult extends ProviderTestResult {
+  /** 实际命中的模型（链解析产物——"测的是谁"一目了然）。 */
+  resolved?: { provider: string; modelId: string };
+  /** 未配置时的回退说明（NOT_CONFIGURED——运行时将回退主模型链）。 */
+  code?: "NOT_CONFIGURED" | "GATE_CLOSED";
+}
+
+export async function enhancementTestOp(
+  credentials: CredentialStore,
+  settings: SettingsShape,
+  task: EnhancementTestTask,
+): Promise<EnhancementTestResult> {
+  if (settings.enhancement?.enabled === false) {
+    return { ok: false, code: "GATE_CLOSED", error: "辅助流量总闸已关闭——设置 → 辅助模型 → 总开关" };
+  }
+  const taskEntry =
+    task === "fastModel"
+      ? settings.enhancement?.fastModel
+      : (settings.enhancement?.[task] as import("../session/settings.js").EnhancementModelEntry | undefined);
+  const chain = [
+    ...resolveEnhancementChain(taskEntry, settings.providers, settings.defaultModel),
+    ...resolveEnhancementChain(settings.enhancement?.fastModel, settings.providers, settings.defaultModel),
+  ];
+  const hit = chain[0];
+  if (hit === undefined) {
+    return {
+      ok: false,
+      code: "NOT_CONFIGURED",
+      error: "该任务未配置显式模型——运行时将回退主模型链（配置后可在此验证可用性）",
+    };
+  }
+  const apiKey = await credentials.getKey(hit.entry.name);
+  if (apiKey === undefined) {
+    return {
+      ok: false,
+      resolved: { provider: hit.entry.name, modelId: hit.modelId },
+      error: `条目「${hit.entry.name}」未设置 API key——供应商页补密钥后重试`,
+    };
+  }
+  const adapter = (hit.entry.models?.[0]?.adapter ?? hit.entry.adapter ?? "openai") as ProviderAdapterKind;
+  const reasoning =
+    taskEntry?.reasoning ??
+    hit.entry.models?.find((m) => m.id === hit.modelId)?.reasoning;
+  if (hit.entry.baseUrl === undefined || hit.entry.baseUrl.trim() === "") {
+    return {
+      ok: false,
+      resolved: { provider: hit.entry.name, modelId: hit.modelId },
+      error: `条目「${hit.entry.name}」未配置 baseUrl——供应商页补端点后重试`,
+    };
+  }
+  const r = await testProviderChat(
+    {
+      baseUrl: hit.entry.baseUrl,
+      adapter,
+      ...(hit.entry.headers !== undefined ? { headers: hit.entry.headers } : {}),
+    },
+    hit.modelId,
+    apiKey,
+    reasoning,
+    { maxTokens: 1, prompt: "hi" },
+  );
+  return {
+    ...r,
+    resolved: { provider: hit.entry.name, modelId: hit.modelId },
+  };
 }

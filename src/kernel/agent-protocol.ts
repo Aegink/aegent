@@ -177,6 +177,18 @@ export type AgentRequest =
     }
   | { type: "dispose" };
 
+/**
+ * 副调用 usage 投影（T-P3-147 F——TokenUsage 的 wire 形状；type 别名而非
+ * interface：TS 无隐式索引签名，wire 层可序列化型证要求，SessionRef 先例）。
+ */
+export type PolishUsage = {
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly totalTokens?: number;
+  readonly cacheReadTokens?: number;
+  readonly cacheWriteTokens?: number;
+};
+
 /** 子 → 父。 */
 export type AgentMessage =
   | {
@@ -261,12 +273,16 @@ export type AgentMessage =
     }
   | {
       /** T-P3-146 I：润色回执（polish 请求的关联应答——text 为润色后草稿；
-       * 失败 = ok:false + error 消息，UI 侧 toast 不落流）。 */
+       * 失败 = ok:false + error 消息，UI 侧 toast 不落流）。usage/ms 为
+       * T-P3-147 F 观测面（usage 页按任务分账的回执透传位）。
+       */
       type: "polish_result";
       requestId: string;
       ok: boolean;
       text?: string;
       error?: string;
+      usage?: PolishUsage;
+      ms?: number;
     }
   | { type: "idle" }
   | { type: "error"; code: string; message: string };
@@ -696,6 +712,8 @@ export function decodeMessage(line: string): AgentMessage {
     ok?: unknown;
     text?: unknown;
     error?: unknown;
+    usage?: unknown;
+    ms?: unknown;
     draft?: unknown;
   };
   switch (msg.type) {
@@ -922,12 +940,24 @@ export function decodeMessage(line: string): AgentMessage {
       if (msg.error !== undefined && typeof msg.error !== "string") {
         throw new ProtocolError("PROTOCOL_MALFORMED", "polish_result 的 error 须为字符串");
       }
+      // T-P3-147 F：usage（对象）/ms（非负数）可选形状
+      if (
+        msg.usage !== undefined &&
+        (typeof msg.usage !== "object" || msg.usage === null || Array.isArray(msg.usage))
+      ) {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "polish_result 的 usage 须为对象");
+      }
+      if (msg.ms !== undefined && (typeof msg.ms !== "number" || !Number.isFinite(msg.ms) || msg.ms < 0)) {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "polish_result 的 ms 须为非负数");
+      }
       return {
         type: "polish_result",
         requestId: msg.requestId,
         ok: msg.ok,
         ...(typeof msg.text === "string" ? { text: msg.text } : {}),
         ...(typeof msg.error === "string" ? { error: msg.error } : {}),
+        ...(msg.usage !== undefined ? { usage: msg.usage as PolishUsage } : {}),
+        ...(typeof msg.ms === "number" ? { ms: msg.ms } : {}),
       };
     }
     case "error":

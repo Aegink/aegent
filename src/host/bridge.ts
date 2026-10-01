@@ -1,10 +1,8 @@
 /**
- * HostBridge（N2/T-P1-116）——端间协议与 agent 会话的编排面：agent 连接 +
- * AgentHost（租约/roster）+ 端连接（HostProtocolServer）合体。
- * 审批/提问等非会话流事实经 notification 广播；写命令租约校验（N7/N3）；
+ * HostBridge（N2/T-P1-116）——协议编排面：agent 连接 + AgentHost + 端连接
+ * 合体。审批等非流事实 notification 广播（N2）；写命令租约校验（N7/N3）；
  * roster 落流（N8）；回执匹配（A9——prompt accepted 关联，error 行归属最近
- * 未决 prompt，无回执命令发出即 resolve）。polish（T-P3-146 I）为带 requestId
- * 回执的旁路命令，pendingPolishes 关联。
+ * 未决，无回执命令即 resolve）；polish（T-P3-146 I）requestId 关联旁路面。
  */
 
 import type { AgentMessage, AgentRequest } from "../kernel/agent-protocol.js";
@@ -44,12 +42,11 @@ export interface HostBridgeOptions {
   notifyHub?: NotificationHub;
   /** U14 settings 直答网关（host 面配置读写与凭据管理，不经 agent 不落流）。 */
   settingsGateway?: import("./settings-gateway.js").SettingsGateway;
-  /** U3 会话清单库（op:"sessions" 与 session-delete 数据面；生产 main 组装）。 */
   sessionsLibrary?: SqliteEventStorage;
-  /** U10：workspace 根（op:"files" 扫描面——与子进程 --workspace 同源）。 */
   workspaceRoot?: string;
-  /** U12：上下文窗口 token 数（op:"usage" 占比分母，与子进程同源）。 */
   contextWindow?: number;
+  /** T-P3-147 E：会话标题服务（turn/end 结算后异步生成——host 旁路面）。 */
+  titleService?: import("./title-service.js").TitleService;
 }
 
 interface SurfaceRegistration {
@@ -61,23 +58,11 @@ interface SurfaceRegistration {
 export class HostBridge implements SessionRouter {
   private readonly listeners = new Set<(sessionId: string, event: SessionEvent) => void>();
   private readonly registrations = new Map<string, SurfaceRegistration>();
-  /** 在途 prompt 的回执等待（messageId → resolve）。 */
   private readonly pendingPrompts = new Map<string, (value: unknown) => void>();
-  /** 最近的在途 prompt（error 行的归属——单会话串行假设，卡内定形）。 */
   private lastPendingPromptId: string | undefined;
-  /** 在途 polish 的回执等待（requestId → resolve——T-P3-146 I 旁路调用面）。 */
   private readonly pendingPolishes = new Map<string, (value: unknown) => void>();
-  /** U10/T-P3-109：ready 消息捕获的注册表清单（工具/技能——/ 补全来源）。 */
-  private agentCapabilities: {
-    tools: string[];
-    skills: { name: string; description: string }[];
-    prompts?: {
-      name: string;
-      description?: string;
-      argumentHint?: string;
-      source: "project" | "user" | "extra" | "builtin" | "mcp";
-    }[];
-  } | undefined;
+  /** U10 ready 捕获清单（工具/技能/prompts——/ 补全来源）。 */
+  private agentCapabilities: import("./query-gateway.js").AgentCapabilities | undefined;
   private readonly unconsumed: Promise<void>;
 
   constructor(private readonly options: HostBridgeOptions) {
@@ -86,8 +71,22 @@ export class HostBridge implements SessionRouter {
       for await (const message of options.agent.messages) {
         this.handleAgentMessage(message);
       }
-    })();
-    void this.unconsumed.catch(() => {}); // 泵异常不炸 host（agent 退出即静默结束）
+    })()
+      .catch(() => {})
+      .finally(() => {
+        // T-P3-147（走查实录）：agent 通道死亡（child 装配崩溃等）后，未决
+        // prompt/polish 若不类型化拒绝将永久挂起——UI 发送全静默（ accepted
+        // 永不回）。child 死 = 后续请求必死，全部立即回执类型化失败。
+        for (const resolve of this.pendingPrompts.values()) {
+          resolve({ __bridgeError: { code: "AGENT_CHANNEL_DEAD", message: "agent 进程已退出——本请求不会被处理（查看 host 日志的装配错误）" } });
+        }
+        this.pendingPrompts.clear();
+        this.lastPendingPromptId = undefined;
+        for (const resolve of this.pendingPolishes.values()) {
+          resolve({ type: "polish_result", requestId: "", ok: false, error: "agent 进程已退出" });
+        }
+        this.pendingPolishes.clear();
+      });
   }
 
   private handleAgentMessage(message: AgentMessage): void {
@@ -113,13 +112,14 @@ export class HostBridge implements SessionRouter {
     }
     if (message.type === "event") {
       for (const listener of this.listeners) listener(sessionId, message.event);
-      // N5 分型：轮结算事实的分类发布（turn/end 是结算时点）
       if (message.event.type === "turn/end") {
         this.options.notifyHub?.publish("turn_settled", {
           sessionId,
           turn: message.event.turn,
           reason: message.event.reason,
         });
+        // T-P3-147 E：标题生成（首轮结算后异步——fire-and-forget 全守卫）
+        void this.options.titleService?.onTurnSettled(sessionId);
       }
       return;
     }
@@ -320,20 +320,19 @@ export class HostBridge implements SessionRouter {
         if (call.op === "skill-import-apply") return gateway.skillImportApply(call.items!);
         if (call.op === "skill-delete") return gateway.skillDelete(call.path!);
         if (call.op === "skill-reveal") return gateway.skillReveal(call.path!);
-        // T-P3-146：提示词模板管理面（文件域 + 旧库迁移 + 外部导入）
-        if (call.op === "prompts-list") return gateway.promptsList();
+              if (call.op === "prompts-list") return gateway.promptsList();
         if (call.op === "prompt-save") return gateway.promptSave(call.prompt!);
         if (call.op === "prompt-delete") return gateway.promptDelete(call.path!);
         if (call.op === "prompt-reveal") return gateway.promptReveal(call.path!);
         if (call.op === "prompt-import-scan") return gateway.promptImportScan();
         if (call.op === "prompt-import-apply") return gateway.promptImportApply(call.items!);
-        // U23 子代理清单 / U24 指令中心（三文件位 + 白名单写回）
+            if (call.op === "enhancement-test") {
+          return gateway.enhancementTest(call.task as import("./settings-provider-ops.js").EnhancementTestTask);
+        }
         if (call.op === "subagents-list") return gateway.subagentsList();
         if (call.op === "instructions-list") return gateway.instructionsList();
         if (call.op === "instruction-save") return gateway.instructionSave(call.target as InstructionTarget, call.content!);
-        // U26：语音转写代理（UI 录音 → P4 STT → 文本回端）
         if (call.op === "stt-transcribe") return gateway.sttTranscribe({ base64: call.content!, mediaType: call.mediaType! });
-        // T-P3-133 插件清单 / T-P3-137 供应商模型拉取与真实测试（host 代理）
         if (call.op === "plugins-list") return gateway.pluginsList();
         if (call.op === "provider-models" || call.op === "provider-test") {
           const payload = {
