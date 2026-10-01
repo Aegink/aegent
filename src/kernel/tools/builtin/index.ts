@@ -31,6 +31,12 @@ import {
 } from "./session-query.js";
 import { createSkillLoadTool } from "./skill.js";
 import { createTaskTool, type TaskToolDeps } from "./task.js";
+import {
+  createTaskWaitTool,
+  createTaskListTool,
+  createTaskStopTool,
+  type TaskLifecycleDeps,
+} from "./task-lifecycle.js";
 import { createTodoWriteTool } from "./todo.js";
 import { createToolLoadTool } from "./tool-load.js";
 import { createWebfetchTool } from "./webfetch.js";
@@ -98,6 +104,13 @@ export function registerBuiltinTools(
      * task 工具；缺省不注册（无子代理运行面的装配零新工具——P0 行为不变）。
      */
     task?: TaskToolDeps;
+    /**
+     * T-P3-145 G：task 生命周期工具依赖（后台委托注册表——与 task 同源
+     * 注入；缺省不注册 = 无后台委托面零新工具）。
+     */
+    taskWait?: TaskLifecycleDeps;
+    taskList?: TaskLifecycleDeps;
+    taskStop?: TaskLifecycleDeps;
     /** B18/T-P1-55 bash 超时三档的默认档（秒）；缺省无默认超时（pi 同款）。 */
     bash?: { defaultTimeoutSeconds?: number };
     /** B15/T-P1-58 沙箱装配（backend + 会话默认模式 + 升级审批通道）；
@@ -197,6 +210,11 @@ export function registerBuiltinTools(
     // 提供时才注册——工具可见但深度超限时执行期类型化拒绝（opencode 深度
     // 检查同款，模型可自修）；H5 的 deny 规则是第二道（fail-closed 双保险）。
     ...(options.task !== undefined ? [createTaskTool(options.task)] : []),
+    // T-P3-145 G：task_wait/list/stop（后台委托收割/查看/停止——与 task
+    // 同源注册；无 delegations 不注册）
+    ...(options.taskWait !== undefined ? [createTaskWaitTool(options.taskWait)] : []),
+    ...(options.taskList !== undefined ? [createTaskListTool(options.taskList)] : []),
+    ...(options.taskStop !== undefined ? [createTaskStopTool(options.taskStop)] : []),
     // Q2/T-P2-105 会话查询工具（dbPath 提供时才注册——无库无历史面；
     // 两工具都是只读类：SQL 检索 + 单会话读取，零落流）
     ...(options.sessionQuery !== undefined
@@ -228,9 +246,12 @@ export function builtinToolParamNames(): Readonly<Record<string, readonly string
     question: { pending: new PendingApprovals(), sessionId: "param-names", timeoutMs: 1 },
     task: {
       runSubagent: async () => ({
-        sessionId: "stub",
-        stopReason: "cancelled",
-        output: "",
+        kind: "foreground",
+        result: {
+          sessionId: "stub",
+          stopReason: "cancelled",
+          output: "",
+        },
       }),
     },
     sessionQuery: { dbPath: "stub" },

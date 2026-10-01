@@ -2985,3 +2985,22 @@ mark.search-hit.active {
   color: var(--warn);
   user-select: none;
 }
+
+/* T-P3-145 子智能体页 v2：mutating 工具高亮 / 模板 chips 行 */
+.chip-picker .chip-ui.mutating {
+  border-color: color-mix(in srgb, var(--warn) 55%, transparent);
+  color: var(--warn);
+}
+.chip-picker .chip-ui.mutating.active {
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+}
+#subagent-preset-row .row-chips {
+  margin: 6px 0 10px;
+}
+#subagent-advanced summary {
+  cursor: pointer;
+  font-size: var(--text-ui-sm);
+  color: var(--text-subtle);
+  user-select: none;
+  margin-bottom: 8px;
+}

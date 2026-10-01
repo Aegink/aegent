@@ -59,7 +59,7 @@ function makeFixture(options?: {
     approvalTimeoutMs: 5_000,
   });
   const registry = new ToolRegistry({ sessionId: "s0" });
-  registerBuiltinTools(registry, { task: { runSubagent: runner } });
+  registerBuiltinTools(registry, { task: { runSubagent: runner.run } });
   return { root, store, provider, registry, runner };
 }
 
@@ -200,7 +200,7 @@ describe("task 工具与子代理 runner（H1/H4/T-P1-42）", () => {
       maxDepth: 1,
       approvalTimeoutMs: 5_000,
     });
-    await expect(deep("p", "d")).rejects.toThrow(SubagentDepthError);
+    await expect(deep.run("p", "d")).rejects.toThrow(SubagentDepthError);
     // 无新会话创建（先于状态创建的纯拒绝——store 无该流）
     expect(store.load("x::task-1")).toHaveLength(0);
   });
@@ -363,7 +363,7 @@ describe("task 工具与子代理 runner（H1/H4/T-P1-42）", () => {
     });
 
     const controller = new AbortController();
-    const pending = runner("长任务", "慢慢做", { signal: controller.signal });
+    const pending = runner.run("长任务", "慢慢做", { signal: controller.signal });
     // 等子代理进入模型调用（挂起中）
     for (let i = 0; i < 200 && gated.requests.length === 0; i++) {
       await new Promise((r) => setTimeout(r, 5));
@@ -374,7 +374,11 @@ describe("task 工具与子代理 runner（H1/H4/T-P1-42）", () => {
     controller.abort();
     gated.letRelease(); // 放行在途流——协作式收轮（不 race 弃掉在途 promise）
 
-    const result = await pending;
+    const outcome = await pending;
+    // 前台路径返回 foreground 包裹（T-P3-145 G 联合形状）
+    expect(outcome.kind).toBe("foreground");
+    if (outcome.kind !== "foreground") throw new Error("unreachable");
+    const result = outcome.result;
     expect(result.stopReason).toBe("cancelled");
     expect(result.error).toContain("parent");
     // 子流落了 aborted 终态且已 flush（取消也要有干净的结算事实）
@@ -424,7 +428,7 @@ describe("task 工具与子代理 runner（H1/H4/T-P1-42）", () => {
     });
     // 父 registry：只注册 task（经 dispatch 走真实 ToolContext 注入面）
     const parentRegistry = new ToolRegistry({ sessionId: "s1" });
-    registerBuiltinTools(parentRegistry, { task: { runSubagent: runner } });
+    registerBuiltinTools(parentRegistry, { task: { runSubagent: runner.run } });
 
     // 父 provider：第 1 次调用派 task，第 2 次调用收尾（在取消后不可达——
     // 父轮在 tool/result 落盘后的边界收 aborted）

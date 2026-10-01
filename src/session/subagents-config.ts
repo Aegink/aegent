@@ -18,6 +18,7 @@
  */
 
 import type { ProviderEntry } from "./settings.js";
+import { THINKING_LEVELS } from "./settings.js";
 
 /** 子代理定义（内置预设与 settings subagents 段条目共用形状）。 */
 export interface SubagentDefinition {
@@ -35,6 +36,14 @@ export interface SubagentDefinition {
    */
   modelProvider?: string;
   model?: string;
+  /**
+   * 推理强度覆盖（T-P3-145——pi-desktop thinkingLevel 收敛为我方档位）：
+   * "omit" 哨兵 = 不传递；其余档位经 resolveSubagentModel 产物进
+   * reasoningEffort 请求面（T-P3-137 四轮已通）；缺省 = 与会话一致。
+   */
+  reasoning?: "omit" | (typeof THINKING_LEVELS)[number];
+  /** 单次响应输出上限 token（pi-desktop maxTokens 语义——1..200000）。 */
+  maxTokens?: number;
   /** 故障转移候选（providers 条目名序——J15 消费面；真实装配随 J15 记档）。 */
   fallbacks?: string[];
   /** 启用开关（缺省 true；停用的内置保留清单——开关是开回的路径）。 */

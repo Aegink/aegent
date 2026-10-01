@@ -45,7 +45,20 @@ export function resolveSubagentAssembly(
       const target = resolveSubagentModel(def, settings.providers, settings.defaultModel);
       if (target === undefined) continue;
       const registered = await resolveTarget(target.entry.name, def.model);
-      if (registered !== undefined) modelMap.set(def.name, registered);
+      if (registered !== undefined) {
+        // T-P3-145：子代理级 reasoning/maxTokens 覆盖模型级 spec（omit 哨兵
+        // 原样透传——适配层识别后跳过 reasoning 字段）
+        const overrides: RegisteredModel["options"] = {
+          ...(registered.options ?? {}),
+          ...(def.reasoning !== undefined ? { reasoningEffort: def.reasoning } : {}),
+          ...(def.maxTokens !== undefined ? { maxTokens: def.maxTokens } : {}),
+        };
+        modelMap.set(def.name, {
+          identity: registered.identity,
+          provider: registered.provider,
+          options: overrides,
+        });
+      }
     }
     return {
       defs,

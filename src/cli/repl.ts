@@ -42,7 +42,7 @@ export function renderEventSummary(e: SessionEvent): string | null {
     case "turn/start":
       return `── turn ${e.turn} 开始`;
     case "turn/end":
-      return `── turn ${e.turn} 结束（${e.reason.kind}）`;
+      return `── turn ${e.turn} 结束（${e.reason.kind}）${e.reason.kind === "error" ? `：${e.reason.error.code} ${e.reason.error.message ?? ""}` : ""}`;
     case "user/message":
       return e.source === "injected" ? `（注入）${oneLine(e.message.content)}` : null;
     case "assistant/message":

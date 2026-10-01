@@ -958,6 +958,26 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
       if (enabled) {
         if (prompt === undefined) throw new SettingsError("subagents[].prompt 缺失（子代理身份提示）");
         if (description === undefined) throw new SettingsError("subagents[].description 缺失");
+        // T-P3-145：指令 32KB 上限（pi-desktop MAX_SUBAGENT_BYTES 同值——prompt
+        // 进子装配系统提示，超大会炸子上下文，fail-closed）
+        if (Buffer.byteLength(prompt, "utf8") > 32 * 1024) {
+          throw new SettingsError("subagents[].prompt 超限（上限 32KB）");
+        }
+      }
+      // T-P3-145：推理强度（"omit" 哨兵 = 不传递；其余走 THINKING_LEVELS 白名单）
+      if (
+        e["reasoning"] !== undefined &&
+        e["reasoning"] !== "omit" &&
+        !(THINKING_LEVELS as readonly string[]).includes(e["reasoning"] as string)
+      ) {
+        throw new Error(`subagents[].reasoning 非法（合法：omit|${THINKING_LEVELS.join("|")}）`);
+      }
+      // T-P3-145：输出上限（单次响应 output cap——pi-desktop maxTokens 语义）
+      if (
+        e["maxTokens"] !== undefined &&
+        (typeof e["maxTokens"] !== "number" || !Number.isInteger(e["maxTokens"]) || e["maxTokens"] < 1 || e["maxTokens"] > 200_000)
+      ) {
+        throw new SettingsError("subagents[].maxTokens 须为 1..200000 的整数");
       }
       out.subagents = [
         ...(out.subagents ?? []),
@@ -968,6 +988,8 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
           ...(Array.isArray(e["tools"]) && e["tools"].length > 0 ? { tools: e["tools"] as string[] } : {}),
           ...(e["modelProvider"] !== undefined ? { modelProvider: e["modelProvider"] as string } : {}),
           ...(e["model"] !== undefined ? { model: e["model"] as string } : {}),
+          ...(e["reasoning"] !== undefined ? { reasoning: e["reasoning"] as "omit" | (typeof THINKING_LEVELS)[number] } : {}),
+          ...(e["maxTokens"] !== undefined ? { maxTokens: e["maxTokens"] as number } : {}),
           ...(Array.isArray(e["fallbacks"]) && e["fallbacks"].length > 0 ? { fallbacks: e["fallbacks"] as string[] } : {}),
           ...(e["enabled"] === false ? { enabled: false } : {}),
         } as SubagentDefinition,

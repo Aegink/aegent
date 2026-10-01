@@ -1,0 +1,1 @@
+停止一个仍在运行的后台委托（task 带 run_in_background 启动的）。参数 id 从 task_list 或 task 启动回执里取；已结束或未知 id 会返回错误。停止后委托结算为 stopped，可用 task_wait/task_list 确认收尾。

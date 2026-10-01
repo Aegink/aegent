@@ -341,7 +341,9 @@ export async function runAgentChildStdio(
     };
   })();
 
-  const runSubagent = subagentOptions
+  // T-P3-145 G：队列先于 runner 构造（后台委托结算回调把报告注入父队列）。
+  const queue = new PromptQueue("one-at-a-time", options.queueMaxSize);
+  const subagentRuntime = subagentOptions
     ? createSubagentRunner({
         parentSessionId: sessionId,
         store,
@@ -371,10 +373,24 @@ export async function runAgentChildStdio(
           ? { resolveSubagentModel: options.subagents.resolveModel }
           : {}),
         ...(assembly?.modelForTurn ? { modelForTurn: assembly.modelForTurn } : {}),
+        // T-P3-145 G：后台委托结算 → 报告注入父队列（drainQueue 在 step 边界
+        // 落 user/message——模型看到报告继续；队列满被吞——报告留注册表，
+        // task_wait 仍可收割）
+        onSettle: (d) => {
+          if (d.status === "running") return;
+          const lines =
+            d.status === "completed"
+              ? `[后台委托完成] ${d.id}（${d.agentName}）· ${d.description}\n报告：\n${d.report ?? ""}`
+              : `[后台委托结束] ${d.id}（${d.agentName}）· ${d.description}\n状态：${d.status}${d.error !== undefined ? `\n原因：${d.error}` : ""}`;
+          try {
+            queue.enqueue(`${lines}\n（子会话 ${d.childSessionId} 可回放查看完整过程）`);
+          } catch {
+            options.logger?.warn("委托报告入队失败（队列满）——task_wait 仍可收割", { id: d.id });
+          }
+        },
       })
     : undefined;
-
-  const queue = new PromptQueue("one-at-a-time", options.queueMaxSize);
+  const runSubagent = subagentRuntime?.run;
   // 工具装配（T-4-05 接线，兑现 T-4-02 偏离⑥）：注册表分发就是 toolCall 链的
   // 链底 terminal——executeTool 槽位由 registry.dispatch 充当，不存在旁路。
   // T-8-01：装配提供 PathGuard 时经它构造（写守卫唯一入口，T-6-01）。
@@ -431,6 +447,15 @@ export async function runAgentChildStdio(
       // H1/H4/T-P1-42：task 工具（subagent 选项提供时注册；runner 自带
       // 深度检查——可见但拒绝，opencode 深度语义同款）
       ...(runSubagent ? { task: { runSubagent } } : {}),
+      // T-P3-145 G：task_wait/list/stop（后台委托收割/查看/停止——与 task
+      // 同源注入；子代理 runner 缺席 = 不注册零新工具）
+      ...(subagentRuntime !== undefined
+        ? {
+            taskWait: { delegations: subagentRuntime.delegations },
+            taskList: { delegations: subagentRuntime.delegations },
+            taskStop: { delegations: subagentRuntime.delegations },
+          }
+        : {}),
     },
   );
   // U17/T-P3-119：MCP server 装配消费（settings mcp 段——agent-child 传入
@@ -455,6 +480,8 @@ export async function runAgentChildStdio(
   });
   const decideTurnBase: AgentLoopDeps["decideTurn"] = (record) =>
     record.toolCalls.length > 0 ? { action: "continue" } : { action: "end" };
+  // T-P3-145 G：装配裁决包装器构造一次（有状态闭包——见 decideTurn 处注释）
+  const assemblyDecideTurn = assembly ? assembly.wrapDecideTurn(decideTurnBase) : undefined;
   const loopDeps: AgentLoopDeps = {
     sessionId,
     store,
@@ -475,7 +502,33 @@ export async function runAgentChildStdio(
         release();
       }
     },
-    decideTurn: assembly ? assembly.wrapDecideTurn(decideTurnBase) : decideTurnBase,
+    // T-P3-145 G：收敛钩子（结果正确回流的保证）——end 裁决 ∧ 有在途后台
+    // 委托 → 等全部结算 → 报告注入队列 → continue（下个 step 边界 drainQueue
+    // 落 user/message，模型看到报告继续总结）。模型忘收割也拦得住。
+    // 注意：wrapDecideTurn 是有状态闭包（钩子绑定）——包装器必须构造一次，
+    // 不能放进本箭头函数体内按调用重建（曾致 CLI e2e 死锁）。
+    decideTurn: async (record) => {
+      const decision = await (assemblyDecideTurn !== undefined
+        ? assemblyDecideTurn(record)
+        : decideTurnBase(record));
+      if (decision.action === "end" && subagentRuntime?.delegations.hasRunning() === true) {
+        const settled = await subagentRuntime.delegations.wait({ mode: "all" });
+        for (const d of settled) {
+          if (d.status === "running") continue; // 超时兜底——running 不注入
+          const lines =
+            d.status === "completed"
+              ? `[后台委托完成] ${d.id}（${d.agentName}）· ${d.description}\n报告：\n${d.report ?? ""}`
+              : `[后台委托结束] ${d.id}（${d.agentName}）· ${d.description}\n状态：${d.status}${d.error !== undefined ? `\n原因：${d.error}` : ""}`;
+          try {
+            queue.enqueue(`${lines}\n（子会话 ${d.childSessionId} 可回放查看完整过程）`);
+          } catch {
+            options.logger?.warn("收敛注入入队失败（队列满）", { id: d.id });
+          }
+        }
+        return { action: "continue" };
+      }
+      return decision;
+    },
     queue,
     // A13/T-P1-48：入队闸门与拦截留痕（缺省 undefined = 全放行零行为变化）
     ...(options.promptGate ? { promptGate: options.promptGate } : {}),

@@ -988,7 +988,7 @@ describe("builtinToolParamNames（C40 · T-P2-201）", () => {
       networkGuard: createNetworkGuard({ policy: "deny" }),
       question: { pending: new PendingApprovals(), sessionId: "param-names", timeoutMs: 1 },
       task: {
-        runSubagent: async () => ({ sessionId: "stub", stopReason: "cancelled", output: "" }),
+        runSubagent: async () => ({ kind: "foreground", result: { sessionId: "stub", stopReason: "cancelled", output: "" } }),
       },
       sessionQuery: { dbPath: "stub" },
     });
@@ -1013,7 +1013,10 @@ describe("task 的 --backend 参数面（H6 · T-P2-309）", () => {
     const tool = createTaskTool({
       runSubagent: async (_prompt, _desc, opts) => {
         seen.push(opts?.backend);
-        return { sessionId: "s-ext", stopReason: "completed", output: "ok" };
+        return {
+          kind: "foreground",
+          result: { sessionId: "s-ext", stopReason: "completed", output: "ok" },
+        };
       },
     });
     // 缺省：opts 不带 backend 键
@@ -1038,7 +1041,10 @@ describe("task 的 subagent_type 参数面（U23 · T-P3-126）", () => {
     const tool = createTaskTool({
       runSubagent: async (_prompt, _desc, opts) => {
         seen.push(opts?.subagentType);
-        return { sessionId: "s-x", stopReason: "completed", output: "ok" };
+        return {
+          kind: "foreground",
+          result: { sessionId: "s-x", stopReason: "completed", output: "ok" },
+        };
       },
     });
     // 缺省：opts 不带 subagentType 键（通用子代理——既有行为零变化）

@@ -137,24 +137,49 @@ export const SECTIONS_HTML = `
   </div>
   <div id="subagent-list"></div>
   <div id="subagent-editor" class="card-box" hidden>
+    <div id="subagent-preset-row" hidden>
+      <div class="hint">从模板开始（点击整体填充名称/描述/工具/指令——高级字段保留你已选的值）</div>
+      <div id="subagent-presets" class="row-chips"></div>
+    </div>
     <div class="form-grid">
       <label>预设名（slug）<input id="subagent-name" class="input" type="text" placeholder="小写字母数字- _，task 调用标识" autocomplete="off" /></label>
-      <label>描述<input id="subagent-desc" class="input" type="text" placeholder="一句话说明" autocomplete="off" /></label>
+      <label>何时委派给它<input id="subagent-desc" class="input" type="text" placeholder="一句话说明——这是主代理委派前唯一能看到的内容" autocomplete="off" /></label>
     </div>
-    <textarea id="subagent-prompt" class="textarea" rows="4" placeholder="身份提示（这个子代理是谁、怎么干活——追加进子会话系统提示）"></textarea>
-    <div class="hint">工具集（可选——勾选后该预设只能用这些工具）</div>
+    <div class="hint">可用工具——「继承主会话工具」= 不收窄；不勾时至少勾选一个工具。<span class="mutating-mark">橙框</span>工具可改动文件或执行命令。</div>
+    <label class="check-line"><input id="subagent-inherit-tools" type="checkbox" checked /> 继承主会话工具（不收窄）</label>
     <div id="subagent-tools" class="chip-picker"></div>
-    <div class="form-grid form-grid-3">
-      <label>模型条目<input id="subagent-provider" class="input" type="text" placeholder="（缺省继承父会话）" autocomplete="off" /></label>
-      <label>模型 id<input id="subagent-model" class="input" type="text" placeholder="（条目/主模型回退）" autocomplete="off" /></label>
-      <label>故障转移候选<input id="subagent-fallbacks" class="input" type="text" placeholder="条目名逗号分隔（J15）" autocomplete="off" /></label>
-    </div>
+    <div class="hint">指令（写入子会话系统提示的身份段——"父会话只看你的最终消息，看不到你的过程"）<span id="subagent-bytes" class="skill-bytes" style="display:inline-block;float:right"></span></div>
+    <textarea id="subagent-prompt" class="textarea" rows="6" placeholder="## 任务&#10;<这个子代理要做什么>&#10;&#10;## 汇报要求&#10;说清楚最终答案长什么样——父会话只看你的最终消息，看不到你的步骤。&#10;&#10;## 限制&#10;<不得做什么>"></textarea>
+    <details id="subagent-advanced">
+      <summary>高级</summary>
+      <div class="form-grid form-grid-2">
+        <label>模型条目<select id="subagent-provider" class="select"></select></label>
+        <label>模型 id<select id="subagent-model" class="select"></select></label>
+      </div>
+      <div class="form-grid form-grid-2">
+        <label>推理强度<select id="subagent-reasoning" class="select">
+          <option value="">与会话一致</option>
+          <option value="omit">不传递（omit）</option>
+          <option value="minimal">minimal</option>
+          <option value="low">low</option>
+          <option value="medium">medium</option>
+          <option value="high">high</option>
+        </select></label>
+        <label>输出上限（单次响应 token）<input id="subagent-maxtokens" class="input" type="number" min="1" max="200000" step="1000" placeholder="跟随模型" autocomplete="off" /></label>
+      </div>
+      <div class="hint">备用模型（按序尝试——仅 provider 终态错误触发）</div>
+      <div id="subagent-fallbacks" class="row-chips"></div>
+      <div class="form-inline">
+        <select id="subagent-fallback-add" class="select"></select>
+        <button id="subagent-fallback-append" type="button" class="btn">添加备用模型</button>
+      </div>
+    </details>
     <div class="form-actions">
       <button id="subagent-save" type="button" class="btn btn-primary">保存预设</button>
       <button id="subagent-cancel" type="button" class="btn btn-ghost">取消</button>
     </div>
   </div>
-  <p class="hint">内置预设可在 task 工具中以 subagent_type 调用（如 explorer / code-reviewer）；停用的内置保留在清单里（开关是开回的路径）。工具集 chips = 该预设可用的工具声明面（H3/H5 降级面之上再收窄）。</p>
+  <p class="hint">内置预设可在 task 工具中以 subagent_type 调用（如 explorer / code-reviewer）；停用的内置保留在清单里（开关是开回的路径）。「复制为我的定义」= 以内置为底稿建同名覆盖记录。指令上限 32KB（超 80% 计数器变黄）。</p>
 </section>
 <section data-section="prompts">
   <div class="section-head">
@@ -1140,10 +1165,17 @@ async function openSkillImportDialog() {
 // U23/T-P3-126 子智能体管理：内置/自定义分组卡（开关/工具徽标/搜索）+ CRUD
 // ---------------------------------------------------------------------------
 
-let subagentsView = null; // subagents-list 缓存（open 时刷新）
+let subagentsView = null; // subagents-list 缓存（open 时刷新——内置预设即模板数据源）
 let editingSubagentName = null; // 非 null = 编辑既有条目（同名覆盖）
 const subagentToolsSelected = new Set();
 let subagentFilter = "";
+// T-P3-145 v2 编辑器状态：模板/骨架/继承/fallbacks 有序面
+let subagentPromptTouched = false; // 指令手写过（骨架 seed 门控——技能页同款）
+let subagentFallbackList = []; // 备用模型有序面（providers 条目名——J15 序）
+/** 指令上限（pi-desktop MAX_SUBAGENT_BYTES 同值——内核 settings parse 同步）。 */
+const SUBAGENT_PROMPT_MAX_BYTES = 32 * 1024;
+/** mutating 工具（可改动文件/执行命令——pi-desktop is-mutating 高亮）。 */
+const SUBAGENT_MUTATING_TOOLS = new Set(["bash", "edit", "write"]);
 
 function subagentMatches(d) {
   if (subagentFilter === "") return true;
@@ -1152,6 +1184,129 @@ function subagentMatches(d) {
     d.name.toLowerCase().includes(q) ||
     (d.description ?? "").toLowerCase().includes(q)
   );
+}
+
+/** 指令字节计数（>80% 黄、超限红 + 保存禁用——pi-desktop 同形态）。 */
+function updateSubagentBytes() {
+  const el = document.getElementById("subagent-bytes");
+  if (el === null) return;
+  const n = new TextEncoder().encode(document.getElementById("subagent-prompt").value).length;
+  el.textContent = n >= 1024 ? `${(n / 1024).toFixed(1)}KB / 32KB` : `${n}B / 32KB`;
+  el.classList.toggle("warn", n > SUBAGENT_PROMPT_MAX_BYTES * 0.8 && n <= SUBAGENT_PROMPT_MAX_BYTES);
+  el.classList.toggle("over", n > SUBAGENT_PROMPT_MAX_BYTES);
+  document.getElementById("subagent-save").disabled = n > SUBAGENT_PROMPT_MAX_BYTES;
+}
+
+/** A：指令骨架（pi-desktop subagentTemplate 中文版——"空编辑器教不会格式"）。 */
+function subagentSeedPrompt(name) {
+  return `## 任务\n\n<「${name}」要做什么——一句话目标>\n\n## 汇报要求\n\n说清楚最终答案长什么样——父会话只看你的最终消息，看不到你的步骤。\n\n## 限制\n\n- <不得做什么>\n`;
+}
+
+/** C：模型条目下拉（空值 = 与会话一致——回退链既有语义）。 */
+function renderSubagentProviderOptions(selected) {
+  const sel = document.getElementById("subagent-provider");
+  if (sel === null) return;
+  sel.replaceChildren();
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "与会话一致";
+  sel.appendChild(placeholder);
+  for (const p of settingsCache?.providers ?? []) {
+    const opt = document.createElement("option");
+    opt.value = p.name;
+    opt.textContent = p.name;
+    sel.appendChild(opt);
+  }
+  sel.value = selected ?? "";
+}
+
+/** C：模型 id 下拉（条目 models 数组优先，回退条目 model 单值）。 */
+function renderSubagentModelOptions(providerName, selected) {
+  const sel = document.getElementById("subagent-model");
+  if (sel === null) return;
+  sel.replaceChildren();
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "条目/主模型回退";
+  sel.appendChild(placeholder);
+  const entry = (settingsCache?.providers ?? []).find((p) => p.name === providerName);
+  const ids = (entry?.models ?? []).map((m) => m.id).filter((id) => typeof id === "string" && id !== "");
+  if (ids.length === 0 && typeof entry?.model === "string" && entry.model !== "") ids.push(entry.model);
+  for (const id of ids) {
+    const opt = document.createElement("option");
+    opt.value = id;
+    opt.textContent = id;
+    sel.appendChild(opt);
+  }
+  sel.value = selected ?? "";
+}
+
+/** C：备用模型有序 chips（↑↓×——pi-desktop SubagentFallbackModels 形态）。 */
+function renderSubagentFallbacks() {
+  const box = document.getElementById("subagent-fallbacks");
+  if (box === null) return;
+  box.replaceChildren();
+  if (subagentFallbackList.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "hint";
+    empty.textContent = "（未配置——主模型终态失败后落回主模型链）";
+    box.appendChild(empty);
+    return;
+  }
+  subagentFallbackList.forEach((name, i) => {
+    const chip = chipEl(`${i + 1}. ${name}`);
+    const up = document.createElement("button");
+    up.type = "button";
+    up.className = "chip-ui";
+    up.textContent = "↑";
+    up.disabled = i === 0;
+    up.addEventListener("click", () => {
+      [subagentFallbackList[i - 1], subagentFallbackList[i]] = [subagentFallbackList[i], subagentFallbackList[i - 1]];
+      renderSubagentFallbacks();
+    });
+    const down = document.createElement("button");
+    down.type = "button";
+    down.className = "chip-ui";
+    down.textContent = "↓";
+    down.disabled = i === subagentFallbackList.length - 1;
+    down.addEventListener("click", () => {
+      [subagentFallbackList[i + 1], subagentFallbackList[i]] = [subagentFallbackList[i], subagentFallbackList[i + 1]];
+      renderSubagentFallbacks();
+    });
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "chip-ui";
+    del.textContent = "×";
+    del.addEventListener("click", () => {
+      subagentFallbackList.splice(i, 1);
+      renderSubagentFallbacks();
+      renderSubagentFallbackAdd();
+    });
+    chip.append(up, down, del);
+    box.appendChild(chip);
+  });
+}
+
+/** C：备用模型添加下拉（候选 = providers 条目名 − 已选）。 */
+function renderSubagentFallbackAdd() {
+  const sel = document.getElementById("subagent-fallback-add");
+  if (sel === null) return;
+  sel.replaceChildren();
+  const candidates = (settingsCache?.providers ?? []).map((p) => p.name).filter((n) => !subagentFallbackList.includes(n));
+  if (candidates.length === 0) {
+    sel.disabled = true;
+    sel.appendChild(new Option("（无更多条目）", ""));
+    return;
+  }
+  sel.disabled = false;
+  for (const n of candidates) sel.appendChild(new Option(n, n));
+}
+
+/** B：继承勾选 ↔ 工具 chips 区联动（勾选 = 不收窄，chips 区禁用）。 */
+function syncSubagentInherit() {
+  const inherit = document.getElementById("subagent-inherit-tools").checked;
+  document.getElementById("subagent-tools").style.opacity = inherit ? "0.45" : "1";
+  document.getElementById("subagent-tools").style.pointerEvents = inherit ? "none" : "auto";
 }
 
 /** 分组块（组标题 + 行卡容器）。 */
@@ -1183,7 +1338,10 @@ function subagentRow(d, opts) {
   titleEl.textContent = d.name;
   const descEl = document.createElement("div");
   descEl.className = "row-desc";
+  // E：task(name) 调用标识（pi-desktop Task({name}) handle 形态——模型的
+  // subagent_type 取值即 name，行上显式可见）
   const extra =
+    `task(${d.name})` +
     opts.kindLabel +
     (d.modelProvider ? `［模型 ${d.modelProvider}${d.model ? `/${d.model}` : ""}］` : "");
   descEl.textContent = `${d.description ?? ""}${extra}`;
@@ -1196,7 +1354,7 @@ function subagentRow(d, opts) {
   }
   const control = [];
   if (opts.toggle !== undefined) control.push(opts.toggle);
-  const editBtn = btnEl("编辑", "btn");
+  const editBtn = btnEl(opts.editLabel ?? "编辑", "btn", opts.editTitle ?? "");
   editBtn.addEventListener("click", opts.onEdit);
   control.push(editBtn);
   if (opts.onDelete !== undefined) {
@@ -1242,6 +1400,10 @@ function renderSubagentList() {
         kindLabel: b.overridden ? "（内置·已自定义覆盖）" : "（内置）",
         toggle,
         onEdit: () => openSubagentEditor(b, true),
+        // D：pi-desktop copyBuiltin 语义——内置入口是"以内置为底稿复制一份
+        // 我的定义"（保存 = 写同名覆盖记录）；已有覆盖时即"编辑覆盖记录"。
+        editLabel: b.overridden ? "编辑" : "复制为我的定义",
+        editTitle: b.overridden ? "编辑该覆盖记录" : "以内置预设为底稿新建同名定义（保存后覆盖内置）",
       }),
     );
   }
@@ -1278,19 +1440,30 @@ async function refreshSubagentsList() {
 }
 
 async function openSubagentEditor(def, isBuiltin) {
-  editingSubagentName = def.name;
+  editingSubagentName = def.name || null;
+  subagentPromptTouched = (def.prompt ?? "") !== "";
+  subagentFallbackList = [...(def.fallbacks ?? [])];
   subagentToolsSelected.clear();
   const meta = (await ensureMetaCache(getSessionId())) ?? { tools: [], skills: [] };
   const box = document.getElementById("subagent-tools");
   if (box === null) return;
   box.replaceChildren();
-  for (const t of meta.tools) {
+  // 候选 = live 注册表工具 ∪ 内置预设声明的工具（T-P3-145 修：无活跃会话
+  // 时 meta.tools 为空——预设模板的工具名必须可勾，否则模板保存被
+  // "至少一个工具"校验挡死；live 面在位时并集不引入噪音）
+  const candidateTools = [
+    ...new Set([...meta.tools, ...(subagentsView?.builtins ?? []).flatMap((b) => b.tools ?? [])]),
+  ];
+  for (const t of candidateTools) {
     const chip = document.createElement("button");
     chip.type = "button";
     const selected = def.tools?.includes(t) ?? false;
     if (selected) subagentToolsSelected.add(t);
-    chip.className = selected ? "chip-ui active" : "chip-ui";
+    // B：mutating 工具高亮（bash/edit/write 可改动文件——pi-desktop is-mutating）
+    const mutating = SUBAGENT_MUTATING_TOOLS.has(t);
+    chip.className = `${selected ? "chip-ui active" : "chip-ui"}${mutating ? " mutating" : ""}`;
     chip.textContent = t;
+    if (mutating) chip.title = "可改动文件或执行命令";
     chip.addEventListener("click", () => {
       if (subagentToolsSelected.has(t)) {
         subagentToolsSelected.delete(t);
@@ -1305,9 +1478,64 @@ async function openSubagentEditor(def, isBuiltin) {
   document.getElementById("subagent-name").value = def.name ?? "";
   document.getElementById("subagent-desc").value = def.description ?? "";
   document.getElementById("subagent-prompt").value = def.prompt ?? "";
-  document.getElementById("subagent-provider").value = def.modelProvider ?? "";
-  document.getElementById("subagent-model").value = def.model ?? "";
-  document.getElementById("subagent-fallbacks").value = (def.fallbacks ?? []).join(", ");
+  // B：继承勾选（tools undefined = 继承——数据面语义不变，UI 显式化）
+  const inherit = (def.tools ?? []).length === 0;
+  document.getElementById("subagent-inherit-tools").checked = inherit;
+  syncSubagentInherit();
+  // C：高级区回填
+  renderSubagentProviderOptions(def.modelProvider);
+  renderSubagentModelOptions(def.modelProvider, def.model);
+  document.getElementById("subagent-reasoning").value = def.reasoning ?? "";
+  document.getElementById("subagent-maxtokens").value =
+    def.maxTokens !== undefined ? String(def.maxTokens) : "";
+  renderSubagentFallbacks();
+  renderSubagentFallbackAdd();
+  // A：模板 chips 仅新建时渲染（编辑时隐藏——pi-desktop PresetPicker 语义）
+  const presetRow = document.getElementById("subagent-preset-row");
+  presetRow.hidden = editingSubagentName !== null;
+  if (editingSubagentName === null) {
+    const chips = document.getElementById("subagent-presets");
+    chips.replaceChildren();
+    for (const b of subagentsView?.builtins ?? []) {
+      const chip = chipEl(b.name);
+      chip.title = `${b.description ?? ""}（点击整体填充名称/描述/工具/指令）`;
+      chip.addEventListener("click", () => {
+        // applyPreset 语义：整体覆盖 name/desc/tools/prompt，保留已选高级字段
+        document.getElementById("subagent-name").value = b.name;
+        document.getElementById("subagent-desc").value = b.description ?? "";
+        subagentToolsSelected.clear();
+        for (const t of b.tools ?? []) subagentToolsSelected.add(t);
+        for (const el of chips.querySelectorAll(".chip-ui")) {
+          el.classList.toggle("active", el.textContent === b.name);
+        }
+        document.getElementById("subagent-inherit-tools").checked = false;
+        syncSubagentInherit();
+        for (const el of box.querySelectorAll(".chip-ui")) {
+          el.classList.toggle("active", subagentToolsSelected.has(el.textContent));
+        }
+        document.getElementById("subagent-prompt").value = subagentSeedPrompt(b.name) + "\n" + (b.prompt ?? "");
+        subagentPromptTouched = true; // 模板填充视同手写——name 改动不再重播种
+        updateSubagentBytes();
+      });
+      chips.appendChild(chip);
+    }
+    const blank = chipEl("空白开始");
+    blank.addEventListener("click", () => {
+      document.getElementById("subagent-name").value = "";
+      document.getElementById("subagent-desc").value = "";
+      document.getElementById("subagent-prompt").value = "";
+      subagentToolsSelected.clear();
+      subagentPromptTouched = false;
+      for (const el of chips.querySelectorAll(".chip-ui")) el.classList.remove("active");
+      document.getElementById("subagent-inherit-tools").checked = true;
+      syncSubagentInherit();
+      for (const el of box.querySelectorAll(".chip-ui")) el.classList.remove("active");
+      updateSubagentBytes();
+    });
+    chips.appendChild(blank);
+  }
+  updateSubagentBytes();
+  document.getElementById("subagent-advanced").open = editingSubagentName !== null;
   document.getElementById("subagent-editor").hidden = false;
   document.getElementById("subagent-new").hidden = true;
   document.getElementById("subagent-editor").scrollIntoView({ block: "nearest" });
@@ -1870,6 +2098,35 @@ export function bind() {
   document.getElementById("subagent-new").addEventListener("click", () => {
     openSubagentEditor({ name: "", description: "", prompt: "" }, false);
   });
+  // A：骨架 seed——新建输入名称且指令未写 → 一次性填充（技能页同款门控）
+  document.getElementById("subagent-name").addEventListener("input", () => {
+    if (editingSubagentName !== null || subagentPromptTouched) return;
+    const name = document.getElementById("subagent-name").value.trim();
+    const promptEl = document.getElementById("subagent-prompt");
+    if (name !== "" && promptEl.value.trim() === "") {
+      promptEl.value = subagentSeedPrompt(name);
+      updateSubagentBytes();
+    }
+  });
+  document.getElementById("subagent-prompt").addEventListener("input", () => {
+    subagentPromptTouched = true;
+    updateSubagentBytes();
+  });
+  // B：继承勾选联动（勾选 = 不收窄——chips 区禁用置灰）
+  document.getElementById("subagent-inherit-tools").addEventListener("change", syncSubagentInherit);
+  // C：模型条目级联（条目变 → 模型 id 选项重挂）
+  document.getElementById("subagent-provider").addEventListener("change", (ev) => {
+    renderSubagentModelOptions(ev.target.value, "");
+  });
+  // C：备用模型添加
+  document.getElementById("subagent-fallback-append").addEventListener("click", () => {
+    const sel = document.getElementById("subagent-fallback-add");
+    const name = sel.value;
+    if (name === "" || subagentFallbackList.includes(name)) return;
+    subagentFallbackList.push(name);
+    renderSubagentFallbacks();
+    renderSubagentFallbackAdd();
+  });
   document.getElementById("subagent-cancel").addEventListener("click", () => {
     document.getElementById("subagent-editor").hidden = true;
     document.getElementById("subagent-new").hidden = false;
@@ -1881,22 +2138,38 @@ export function bind() {
     const prompt = document.getElementById("subagent-prompt").value;
     const provider = document.getElementById("subagent-provider").value.trim();
     const model = document.getElementById("subagent-model").value.trim();
-    const fallbacks = document.getElementById("subagent-fallbacks").value
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => s !== "");
+    const reasoning = document.getElementById("subagent-reasoning").value;
+    const maxTokensRaw = document.getElementById("subagent-maxtokens").value.trim();
+    const inherit = document.getElementById("subagent-inherit-tools").checked;
     if (name === "" || description === "" || prompt.trim() === "") {
-      toast("预设名、描述与身份提示必填", "warn");
+      toast("预设名、描述与指令必填", "warn");
+      return;
+    }
+    if (new TextEncoder().encode(prompt).length > SUBAGENT_PROMPT_MAX_BYTES) {
+      toast("指令超限（上限 32KB）", "warn");
+      return;
+    }
+    // B：pi-desktop 同规则——不勾继承时至少勾一个工具
+    if (!inherit && subagentToolsSelected.size === 0) {
+      toast("不继承主会话工具时至少勾选一个可用工具", "warn");
+      return;
+    }
+    const maxTokens = maxTokensRaw === "" ? undefined : Number(maxTokensRaw);
+    if (maxTokensRaw !== "" && (!Number.isInteger(maxTokens) || maxTokens < 1 || maxTokens > 200_000)) {
+      toast("输出上限须为 1..200000 的整数", "warn");
       return;
     }
     const entry = {
       name,
       description,
       prompt,
-      ...(subagentToolsSelected.size > 0 ? { tools: [...subagentToolsSelected] } : {}),
+      // B：继承 = tools 字段不写（undefined = 不收窄——既有装配语义）
+      ...(!inherit && subagentToolsSelected.size > 0 ? { tools: [...subagentToolsSelected] } : {}),
       ...(provider !== "" ? { modelProvider: provider } : {}),
       ...(model !== "" ? { model } : {}),
-      ...(fallbacks.length > 0 ? { fallbacks } : {}),
+      ...(reasoning !== "" ? { reasoning } : {}),
+      ...(maxTokens !== undefined ? { maxTokens } : {}),
+      ...(subagentFallbackList.length > 0 ? { fallbacks: [...subagentFallbackList] } : {}),
     };
     const defs = (settingsCache.subagents ?? []).filter(
       (d) => d.name !== name && d.name !== editingSubagentName,

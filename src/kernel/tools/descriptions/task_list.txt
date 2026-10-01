@@ -1,0 +1,1 @@
+列出本会话全部后台委托的状态清单（id、状态 running/completed/failed/cancelled/stopped、子代理名、耗时、子会话 id、描述）。用于决定 task_wait 等哪些、task_stop 停哪个。

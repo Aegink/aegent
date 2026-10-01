@@ -243,12 +243,16 @@ async function* streamChatAnthropic(
     headers,
     body: JSON.stringify({
       model: req.identity.modelId,
-      max_tokens: anthropicMaxTokens(settings.maxTokens ?? DEFAULT_MAX_TOKENS, req.reasoningEffort),
+      // T-P3-145：单次响应输出上限（子代理 maxTokens）优先于模型级/缺省
+      max_tokens: anthropicMaxTokens(
+        req.maxTokens ?? settings.maxTokens ?? DEFAULT_MAX_TOKENS,
+        req.reasoningEffort,
+      ),
       ...(system !== undefined ? { system } : {}),
       messages,
       ...(req.tools && req.tools.length > 0 ? { tools: req.tools.map(toAnthropicTool) } : {}),
       // T-P3-137 三轮：模型级思考档真实消费（anthropic 扩展思考——budget_tokens
-      // 档位映射；off/缺省不带。规则：max_tokens 必须大于 budget_tokens）
+      // 档位映射；off/omit/缺省不带。规则：max_tokens 必须大于 budget_tokens）
       ...(anthropicThinking(req.reasoningEffort) ?? {}),
       // 原生联网搜索（server 工具——webSearch 模型级开关真实附 web_search；
       // 与 function tools 并列，计费/支持度由端点裁决）

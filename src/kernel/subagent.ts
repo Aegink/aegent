@@ -62,6 +62,57 @@ export interface SubagentRunResult {
   readonly error?: string;
 }
 
+// ---------------------------------------------------------------------------
+// T-P3-145 G：后台委托（run_in_background——pi-desktop Task 生命周期同构收敛面）
+// ---------------------------------------------------------------------------
+
+/** 后台委托状态机（running → completed|failed|cancelled|stopped 终态一次）。 */
+export type DelegationStatus = "running" | "completed" | "failed" | "cancelled" | "stopped";
+
+/** 委托快照（task_list / task_wait 的数据面）。 */
+export interface DelegationSnapshot {
+  readonly id: string;
+  readonly childSessionId: string;
+  /** 子代理预设名（通用子代理 = "general"）。 */
+  readonly agentName: string;
+  readonly description: string;
+  readonly status: DelegationStatus;
+  readonly startedAt: number;
+  readonly settledAt?: number;
+  /** 最终报告（结算后；12K 头尾截断）。 */
+  readonly report?: string;
+  readonly error?: string;
+}
+
+/** 后台启动回执（task 工具 run_in_background 的返回形状）。 */
+export interface SubagentBackgroundStart {
+  readonly kind: "background";
+  readonly delegationId: string;
+  readonly childSessionId: string;
+}
+
+/** runSubagent 的返回：前台 = 完整结算（既有语义）；后台 = 启动收执。 */
+export type SubagentRunOutcome = { kind: "foreground"; result: SubagentRunResult } | SubagentBackgroundStart;
+
+/** 注册表面（task_wait/task_list/task_stop 与主 loop 收敛钩子共用）。 */
+export interface DelegationsApi {
+  list(): DelegationSnapshot[];
+  hasRunning(): boolean;
+  /**
+   * 等待收敛（task_wait 执行体）：ids 缺省 = 全部在途；mode "any" = 任一
+   * 终态即返 / "all"（缺省）= 目标全部终态；min_completed 为 any 的加强
+   * 条件；timeoutMs 兜底（超时返回当前快照——不杀委托）。
+   */
+  wait(opts?: {
+    ids?: readonly string[];
+    mode?: "any" | "all";
+    minCompleted?: number;
+    timeoutMs?: number;
+  }): Promise<DelegationSnapshot[]>;
+  /** 停止指定委托（cancel 子 loop → 结算 stopped）；未知 id 返回 false。 */
+  stop(id: string): boolean;
+}
+
 export interface SubagentRunnerDeps {
   /** 发起派发的会话 id（子会话 id 从它派生，lineage 可读）。 */
   readonly parentSessionId: string;
@@ -112,13 +163,20 @@ export interface SubagentRunnerDeps {
    * configured 当前值——换模后派发的子代理用新模型（继承父当前选择）。
    */
   readonly modelForTurn?: AgentLoopDeps["modelForTurn"];
+  /**
+   * T-P3-145 G：后台委托结算回调（装配方接线——报告注入父队列）。回调
+   * 抛错被吞（报告仍在注册表——task_wait 可查）；缺省 undefined = 只登记
+   * 不注入。
+   */
+  readonly onSettle?: (delegation: DelegationSnapshot) => void;
 }
 
 /**
  * 构造子代理 runner（每个持有者一个实例；counter 保证同进程内子会话 id
- * 唯一，Date.now 后缀防跨进程重启撞名）。返回的 run 是 task 工具 deps
- * 的 runSubagent——深度检查在入口（先于任何状态创建），拒绝是纯函数式
- * 的：不产生半态子会话。
+ * 唯一，Date.now 后缀防跨进程重启撞名）。返回 { run, delegations }：
+ * run 是 task 工具 deps 的 runSubagent（深度检查在入口——先于任何状态
+ * 创建，拒绝是纯函数式的：不产生半态子会话）；delegations 是后台委托
+ * 注册表面（T-P3-145 G——task_wait/list/stop 与主 loop 收敛钩子共用）。
  *
  * 第三个参数 opts.signal（T-P1-43 取消联动）：父 turn 的取消信号——
  *   - 已 abort（父取消先于派发）：不起子轮，直接 cancelled 结算
@@ -127,22 +185,114 @@ export interface SubagentRunnerDeps {
  *     "parent"——"子代理被父级取消"槽位的真用），子 loop 在 await 边界
  *     收轮 aborted，结算 cancelled（dsh activation stop 传播 /
  *     opencode ctx.abort.addEventListener 同构）。
+ *
+ * G（T-P3-145）：opts.background = true 时启动不等待——立即返回启动收执，
+ * 子 loop 在后台跑到终态（注册表结算 + onSettle 回调）。**后台委托不受
+ * opts.signal 取消联动**（后台语义——父轮取消不杀后台委托；父会话收尾
+ * 才是终止点，dispose 纪律）。
  */
-export function createSubagentRunner(
-  deps: SubagentRunnerDeps,
-): (
-  prompt: string,
-  description: string,
-  opts?: { signal?: AbortSignal; backend?: string; subagentType?: string },
-) => Promise<SubagentRunResult> {
+export function createSubagentRunner(deps: SubagentRunnerDeps): {
+  run: (
+    prompt: string,
+    description: string,
+    opts?: {
+      signal?: AbortSignal;
+      backend?: string;
+      subagentType?: string;
+      background?: boolean;
+    },
+  ) => Promise<SubagentRunOutcome>;
+  delegations: DelegationsApi;
+} {
   let counter = 0;
+  let delegationSeq = 0;
   const maxDepth = deps.maxDepth ?? 1;
+  // 并发上限（pi-desktop MAX_SUBAGENT_CONCURRENCY 同值）——满时后台启动拒绝。
+  const MAX_SUBAGENT_DELEGATIONS = 10;
+  /** 报告截断（pi-desktop MAX_SUBAGENT_REPORT_CHARS 同值——头尾保留）。 */
+  const MAX_REPORT_CHARS = 12_000;
+
+  interface DelegationEntry {
+    id: string;
+    childSessionId: string;
+    agentName: string;
+    description: string;
+    status: DelegationStatus;
+    startedAt: number;
+    settledAt?: number;
+    report?: string;
+    error?: string;
+    cancel: () => void;
+  }
+  const delegations = new Map<string, DelegationEntry>();
+  const waiters = new Set<() => void>();
+
+  const notifyWake = () => {
+    for (const w of waiters) w();
+    waiters.clear();
+  };
+
+  const snapshot = (d: DelegationEntry): DelegationSnapshot => {
+    const { cancel: _c, ...rest } = d;
+    return rest;
+  };
+
+  function boundedReport(text: string): string {
+    if (text.length <= MAX_REPORT_CHARS) return text;
+    const head = Math.floor(MAX_REPORT_CHARS / 2);
+    return `${text.slice(0, head)}\n…（报告过长，中段已截断——完整过程见子会话）…\n${text.slice(-MAX_REPORT_CHARS - head)}`;
+  }
+
+  const delegationsApi: DelegationsApi = {
+    list: () => [...delegations.values()].map(snapshot),
+    hasRunning: () => [...delegations.values()].some((d) => d.status === "running"),
+    async wait(opts) {
+      const ids = opts?.ids;
+      const mode = opts?.mode ?? "all";
+      const minCompleted = opts?.minCompleted;
+      const deadline = opts?.timeoutMs !== undefined ? Date.now() + opts.timeoutMs : undefined;
+      const targets = (id: string) => ids === undefined || ids.includes(id);
+      for (;;) {
+        const relevant = [...delegations.values()].filter((d) => targets(d.id));
+        if (ids !== undefined && relevant.length === 0) {
+          throw new Error(`task_wait：未知委托 id（${ids.join(", ")}——task_list 可查在途清单）`);
+        }
+        const settled = relevant.filter((d) => d.status !== "running");
+        const done = settled.length;
+        const anyDone = done > 0;
+        const allDone = relevant.every((d) => d.status !== "running");
+        const minMet = minCompleted === undefined || settled.filter((d) => d.status === "completed").length >= minCompleted;
+        if (relevant.length > 0 && (mode === "any" ? anyDone && (minCompleted === undefined || minMet) : allDone || (minCompleted !== undefined && minMet))) {
+          return relevant.map(snapshot);
+        }
+        if (deadline !== undefined && Date.now() >= deadline) {
+          return relevant.map(snapshot);
+        }
+        await new Promise<void>((resolve) => {
+          waiters.add(resolve);
+          // 轮询兜底（唤醒面遗漏防御——注册表结算必 notifyWake，这里是保险）
+          setTimeout(resolve, 500);
+        });
+      }
+    },
+    stop(id: string): boolean {
+      const d = delegations.get(id);
+      if (d === undefined || d.status !== "running") return false;
+      d.cancel();
+      return true;
+    },
+  };
 
   const run = async (
     prompt: string,
     description: string,
-    opts?: { signal?: AbortSignal; backend?: string; subagentType?: string },
-  ): Promise<SubagentRunResult> => {
+    opts?: {
+      signal?: AbortSignal;
+      backend?: string;
+      subagentType?: string;
+      background?: boolean;
+    },
+  ): Promise<SubagentRunOutcome> => {
     const childDepth = deps.depth + 1;
     if (!Number.isSafeInteger(childDepth) || childDepth > maxDepth) {
       throw new SubagentDepthError(childDepth, maxDepth);
@@ -155,23 +305,30 @@ export function createSubagentRunner(
         : undefined;
     if (opts?.subagentType !== undefined && preset === undefined) {
       return {
-        sessionId: "",
-        stopReason: "failed",
-        output: "",
-        error:
-          `未知或已停用的子代理预设：${opts.subagentType}` +
-          `（可用见设置页子智能体分节）`,
+        kind: "foreground",
+        result: {
+          sessionId: "",
+          stopReason: "failed",
+          output: "",
+          error:
+            `未知或已停用的子代理预设：${opts.subagentType}` +
+            `（可用见设置页子智能体分节）`,
+        },
       };
     }
     // 取消先于派发：不起子轮（无半态——深度检查与取消检查同位）
     if (opts?.signal?.aborted) {
       return {
-        sessionId: "",
-        stopReason: "cancelled",
-        output: "",
-        error: "父轮在派发前已取消——子代理未启动",
+        kind: "foreground",
+        result: {
+          sessionId: "",
+          stopReason: "cancelled",
+          output: "",
+          error: "父轮在派发前已取消——子代理未启动",
+        },
       };
     }
+    const background = opts?.background ?? false;
 
     const childSessionId =
       `${deps.parentSessionId}::task-${++counter}-${Date.now()}`;
@@ -239,11 +396,21 @@ export function createSubagentRunner(
           }
         : {}),
       task: {
-        runSubagent: createSubagentRunner({
-          ...deps,
-          parentSessionId: childSessionId,
-          depth: childDepth,
-        }),
+        // 孙代递归 runner：delegations 同步注入（孙代的 task_wait/list/stop
+        // 管孙代自己的委托——各 runner 闭包独立注册表）
+        ...(() => {
+          const childRuntime = createSubagentRunner({
+            ...deps,
+            parentSessionId: childSessionId,
+            depth: childDepth,
+          });
+          return {
+            runSubagent: childRuntime.run,
+            taskWait: { delegations: childRuntime.delegations },
+            taskList: { delegations: childRuntime.delegations },
+            taskStop: { delegations: childRuntime.delegations },
+          };
+        })(),
       },
     });
 
@@ -275,50 +442,120 @@ export function createSubagentRunner(
     // T-P1-43 取消联动：父 turn 取消 → 子 loop 取消（CancelCause "parent"）。
     // listener 随 signal 生命周期回收（per-turn controller 被 loop 替换后
     // 不可达）——turn 活动期间取消在子 loop 的 await 边界收轮。
-    if (opts?.signal) {
+    // G：后台委托不挂父 turn 信号（后台语义——父轮取消不杀后台委托）。
+    if (opts?.signal && !background) {
       const onAbort = () => subLoop.cancel({ kind: "parent" });
       opts.signal.addEventListener("abort", onAbort, { once: true });
       if (opts.signal.aborted) onAbort();
     }
 
-    let reason: TurnEndReason;
-    try {
-      // 子代理 = 一次普通 prompt 轮（opencode runTask = ops.prompt 同构）；
-      // 单轮语义——decideTurn 无工具调用即 end，无队列不续轮。
-      reason = await subLoop.runTurn(prompt);
-    } catch (err) {
-      // 工具执行崩溃等基础设施异常（trusted 轨上抛路径）：结算为 failed，
-      // 绝不让子代理异常炸掉父 step 的结算通道。
-      reason = {
-        kind: "error",
-        error: {
-          code: "SUBAGENT_CRASHED",
-          message: err instanceof Error ? err.message : String(err),
-        },
+    // G：后台委托——子流首条落 system/message 头部（回放可读"这是谁的子会话"，
+    // 零词汇表扩展——system/message 是既有类型）；注册表登记（上限 fail-closed）。
+    const delegationId = `dlg-${++delegationSeq}`;
+    const agentName = preset?.name ?? "general";
+    if (background) {
+      if (delegations.size >= MAX_SUBAGENT_DELEGATIONS) {
+        return {
+          kind: "foreground",
+          result: {
+            sessionId: "",
+            stopReason: "failed",
+            output: "",
+            error: `后台委托已达并发上限（${MAX_SUBAGENT_DELEGATIONS}）——task_list 查看在途并 task_wait/task_stop 收敛后再派`,
+          },
+        };
+      }
+      // 记档：子流头部标记不落——system/message 词汇表要求开启的 turn+step
+      // （project.ts:639），runTurn 前后都无合法窗口；子会话辨识面 = title
+      // （prompt 前 60 字）+ 父流 task 结果 meta.subagent.sessionId 回链。
+      const entry: DelegationEntry = {
+        id: delegationId,
+        childSessionId,
+        agentName,
+        description,
+        status: "running",
+        startedAt: Date.now(),
+        cancel: () => subLoop.cancel({ kind: "user" }),
       };
+      delegations.set(delegationId, entry);
     }
 
-    // 结算前子流 flush（E10 纪律：结算指向的子会话事实已落库）。
-    await deps.store.flush(childSessionId);
+    // 启动子轮（后台不 await——promise 链结算进注册表；前台照旧 await）。
+    const settlePromise = (async (): Promise<SubagentRunResult> => {
+      let reason: TurnEndReason;
+      try {
+        // 子代理 = 一次普通 prompt 轮（opencode runTask = ops.prompt 同构）；
+        // 单轮语义——decideTurn 无工具调用即 end，无队列不续轮。
+        reason = await subLoop.runTurn(prompt);
+      } catch (err) {
+        // 工具执行崩溃等基础设施异常（trusted 轨上抛路径）：结算为 failed，
+        // 绝不让子代理异常炸掉父 step 的结算通道。
+        reason = {
+          kind: "error",
+          error: {
+            code: "SUBAGENT_CRASHED",
+            message: err instanceof Error ? err.message : String(err),
+          },
+        };
+      }
 
-    const messages = project(deps.store.load(childSessionId)).messages;
-    const finalAssistant = [...messages].reverse().find((m) => m.role === "assistant");
-    const output = finalAssistant?.content ?? "";
-    const { stopReason, error } = settleFromTurnEnd(reason);
-    deps.logger?.info("subagent-settled", {
-      sessionId: childSessionId,
-      stopReason,
-      description,
-    });
+      // 结算前子流 flush（E10 纪律：结算指向的子会话事实已落库）。
+      await deps.store.flush(childSessionId);
+
+      const messages = project(deps.store.load(childSessionId)).messages;
+      const finalAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+      const output = finalAssistant?.content ?? "";
+      const { stopReason, error } = settleFromTurnEnd(reason);
+      deps.logger?.info("subagent-settled", {
+        sessionId: childSessionId,
+        stopReason,
+        description,
+      });
+      return {
+        sessionId: childSessionId,
+        stopReason,
+        output,
+        ...(error !== undefined ? { error } : {}),
+      };
+    })();
+
+    if (!background) {
+      const result = await settlePromise;
+      return { kind: "foreground", result };
+    }
+
+    // 后台结算链：注册表状态机 + onSettle 回调（报告注入父队列——装配方
+    // 接线）+ 唤醒 task_wait 等待者。promise 不上抛（后台绝不炸父 step）。
+    const entry = delegations.get(delegationId)!;
+    void settlePromise
+      .then((result) => {
+        entry.status = result.stopReason === "completed" ? "completed" : result.stopReason === "cancelled" ? "cancelled" : "failed";
+        entry.settledAt = Date.now();
+        if (result.stopReason === "completed") entry.report = boundedReport(result.output);
+        else entry.error = result.error ?? result.stopReason;
+        deps.logger?.info("delegation-settled", { delegationId, status: entry.status });
+      })
+      .catch((err) => {
+        entry.status = "failed";
+        entry.settledAt = Date.now();
+        entry.error = err instanceof Error ? err.message : String(err);
+      })
+      .finally(() => {
+        try {
+          deps.onSettle?.(snapshot(entry));
+        } catch {
+          // onSettle（队列注入）失败不致命——报告仍在注册表（task_wait 可查）
+        }
+        notifyWake();
+      });
     return {
-      sessionId: childSessionId,
-      stopReason,
-      output,
-      ...(error !== undefined ? { error } : {}),
+      kind: "background",
+      delegationId,
+      childSessionId,
     };
   };
 
-  return run;
+  return { run, delegations: delegationsApi };
 }
 
 /** TurnEndReason → 结算三值 + 可读详情（dsh runOutcome 的收敛映射）。 */

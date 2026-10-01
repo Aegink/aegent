@@ -35,16 +35,24 @@ function renderTaskOutput(result: SubagentRunResult): string {
 
 export interface TaskToolDeps {
   /**
-   * 子代理运行面（kernel/subagent.ts 的 createSubagentRunner 产物，装配
-   * 注入）。深度检查/子会话创建/降级装配/结算全在这里；第三参 signal
-   * （T-P1-43）= 本 turn 取消信号，父轮取消联动子轮取消。U23：opts 加
-   * subagentType（预设名——runner 解析身份/工具集/模型）。
+   * 子代理运行面（kernel/subagent.ts 的 runner.run，装配注入）。深度检查/
+   * 子会话创建/降级装配/结算全在这里；第三参 signal（T-P1-43）= 本 turn
+   * 取消信号，父轮取消联动子轮取消。U23：opts 加 subagentType（预设名）。
+   * T-P3-145 G：opts.background = true 时返回后台启动收执（不等待）。
    */
   readonly runSubagent: (
     prompt: string,
     description: string,
-    opts?: { signal?: AbortSignal; backend?: string; subagentType?: string },
-  ) => Promise<SubagentRunResult>;
+    opts?: {
+      signal?: AbortSignal;
+      backend?: string;
+      subagentType?: string;
+      background?: boolean;
+    },
+  ) => Promise<
+    | { kind: "foreground"; result: SubagentRunResult }
+    | { kind: "background"; delegationId: string; childSessionId: string }
+  >;
 }
 
 export function createTaskTool(deps: TaskToolDeps): ToolDef {
@@ -72,6 +80,11 @@ export function createTaskTool(deps: TaskToolDeps): ToolDef {
           type: "string",
           description:
             "子代理预设名（U23——内置探索者 explorer / 代码审查员 code-reviewer / 测试执行者 test-runner / 修复者 fixer / UI 设计师 ui-designer，或设置页自定义的预设名；缺省 = 通用子代理）",
+        },
+        run_in_background: {
+          type: "boolean",
+          description:
+            "后台运行（T-P3-145）：true = 立即返回委托 id，父会话继续其他工作，用 task_wait 收割报告 / task_list 查状态 / task_stop 停止；缺省 false = 同步等待完成（结果直接返回）",
         },
       },
       required: ["description", "prompt"],
@@ -102,17 +115,18 @@ export function createTaskTool(deps: TaskToolDeps): ToolDef {
       if (subagentType !== undefined && (typeof subagentType !== "string" || subagentType === "")) {
         return toolError("TaskError", "INVALID_ARGUMENTS", "task 的 subagent_type 须为非空字符串");
       }
-      let result: SubagentRunResult;
+      const background = args["run_in_background"] === true;
+      let outcome: Awaited<ReturnType<TaskToolDeps["runSubagent"]>>;
       try {
         // T-P1-43 取消联动：ctx.signal（本 turn 取消信号）传给 runner——
-        // 父轮取消 → 子轮取消（CancelCause "parent"），子 loop 在 await
-        // 边界收轮，结算 cancelled（dsh activation stop 传播同构）。
-        // H6：backend（可选）随 opts 透传——装配方的 runSubagent 实现按
-        // 注册表选后端（缺省 = 进程内）。
-        result = await deps.runSubagent(prompt, description, {
+        // 父轮取消 → 子轮取消（CancelCause "parent"）；后台委托不受该信号
+        // （后台语义——父轮取消不杀后台委托，父会话收尾才是终止点）。
+        // H6：backend（可选）随 opts 透传。
+        outcome = await deps.runSubagent(prompt, description, {
           ...(ctx.signal ? { signal: ctx.signal } : {}),
           ...(backend !== undefined ? { backend } : {}),
           ...(subagentType !== undefined ? { subagentType } : {}),
+          ...(background ? { background: true } : {}),
         });
       } catch (err) {
         if (err instanceof SubagentDepthError) {
@@ -129,6 +143,25 @@ export function createTaskTool(deps: TaskToolDeps): ToolDef {
           err instanceof Error ? err.message : String(err),
         );
       }
+      // T-P3-145 G：后台启动收执——立即返回委托 id（父 step 继续其他工具）。
+      if (outcome.kind === "background") {
+        return {
+          content:
+            `<task id="${outcome.childSessionId}" delegation="${outcome.delegationId}" state="started">\n` +
+            `后台委托已启动（${outcome.delegationId}）——父会话可继续其他工作。\n` +
+            `收割：task_wait（等报告）；状态：task_list；停止：task_stop。\n` +
+            `即使不主动收割，本会话结束时也会自动等全部委托完成并把报告注入。\n` +
+            `子会话完整过程：${outcome.childSessionId}`,
+          meta: {
+            subagent: {
+              sessionId: outcome.childSessionId,
+              delegationId: outcome.delegationId,
+              state: "started",
+            },
+          },
+        };
+      }
+      const result = outcome.result;
       if (result.stopReason !== "completed") {
         return {
           content:

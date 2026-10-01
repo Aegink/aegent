@@ -58,6 +58,11 @@ export interface ChatRequest {
   reasoningEffort?: string;
   /** 原生联网搜索（anthropic 形态附 web_search server 工具；openai chat 无此能力）。 */
   webSearch?: boolean;
+  /**
+   * 单次响应输出上限 token（T-P3-145——子代理 maxTokens 消费面；缺省 =
+   * 跟随模型/服务端默认。各适配层自行映射 wire 字段）。
+   */
+  maxTokens?: number;
 }
 
 /** 思考档位 → 思考预算粗档（T-P3-137 三轮——anthropic budget_tokens /

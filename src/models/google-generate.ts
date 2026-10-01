@@ -183,8 +183,10 @@ async function* streamChatGoogle(
       ...(systemInstruction !== undefined ? { systemInstruction } : {}),
       ...(req.tools && req.tools.length > 0 ? { tools: [toGoogleTools(req.tools)] } : {}),
       // T-P3-137 三轮：模型级思考档真实消费（google thinkingConfig.thinkingBudget
-      // 档位映射；off/缺省不带。google 装配暂缓记档——provider-test/直连场景可用）
+      // 档位映射；off/omit/缺省不带。google 装配暂缓记档——provider-test/直连场景可用）
       ...(googleThinking(req.reasoningEffort) ?? {}),
+      // T-P3-145：单次响应输出上限（子代理 maxTokens）
+      ...(req.maxTokens !== undefined ? { generationConfig: { maxOutputTokens: req.maxTokens } } : {}),
     }),
     signal: req.signal,
   });

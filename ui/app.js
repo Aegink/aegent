@@ -24,6 +24,7 @@ import {
   connect,
   sendRaw,
   sendRequest,
+  sendQuery,
   sendSettings,
   ensureFileCache,
   ensureMetaCache,
@@ -215,6 +216,29 @@ function buildToolCard(e) {
   return card;
 }
 
+// T-P3-145 G：task/meta 子会话回放入口（task 与 task_wait 结果卡——点击
+// 拉子会话事件快照只读回放；复用对话视图的流重建面）
+function attachSubagentView(body, meta) {
+  const sessionId = meta?.subagent?.sessionId;
+  if (typeof sessionId !== "string" || sessionId === "") return;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "btn subagent-view-btn";
+  btn.textContent = "查看子会话过程";
+  btn.addEventListener("click", async () => {
+    const view = await sendQuery({ sessionId, op: "events" });
+    if (!view.ok) {
+      appendLine(`子会话查看失败：${view.error?.message ?? ""}`, "warn");
+      return;
+    }
+    hooks.resetStreamView();
+    hooks.renderHistory(view.result.events ?? []);
+    appendLine(`── 子会话只读视图：${sessionId}（再点一次按钮刷新最新过程）──`, "warn");
+    scrollBottom();
+  });
+  body.appendChild(btn);
+}
+
 /** 任务卡状态徽标翻转（结果结算——完成/失败两态，运行中只存在于调用未闭合时）。 */
 function setToolStatus(card, isError) {
   const status = card.querySelector(".tool-status");
@@ -240,6 +264,7 @@ function settleToolCard(e) {
       resultPre.textContent = content; // 工具结果原样（不渲染 markdown）
       body.appendChild(resultPre);
     }
+    attachSubagentView(body, e.meta);
     return null; // 已并入 call 卡——不再追加节点
   }
   // 历史恢复/乱序兜底：result 单独成卡（callId 标注可追溯）
@@ -259,6 +284,7 @@ function settleToolCard(e) {
     resultPre.textContent = content;
     body.appendChild(resultPre);
   }
+  attachSubagentView(body, e.meta);
   card.append(summary, body);
   return card;
 }

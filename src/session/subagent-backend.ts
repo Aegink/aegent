@@ -77,10 +77,22 @@ export function createInProcessBackend(
 ): SubagentBackend {
   return {
     name,
-    spawn: (request) =>
-      runner(request.prompt, request.description, {
+    spawn: async (request) => {
+      const outcome = await runner.run(request.prompt, request.description, {
         ...(request.signal !== undefined ? { signal: request.signal } : {}),
-      }),
+      });
+      // H6 后端语义 = 前台同步结算（后台面走 task 工具直调 runner）——
+      // outcome 联合在此收敛为 foreground（in-process 后端不发起后台）
+      if (outcome.kind === "background") {
+        return {
+          sessionId: outcome.childSessionId,
+          stopReason: "failed" as const,
+          output: "",
+          error: "in-process 后端不支持后台启动（内部错误）",
+        };
+      }
+      return outcome.result;
+    },
   };
 }
 

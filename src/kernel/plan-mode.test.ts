@@ -239,7 +239,7 @@ describe("注册面与提示词独立文件（验收⑤）", () => {
         sessionId: "s-full",
         timeoutMs: 1_000,
       },
-      task: { runSubagent: async () => ({ sessionId: "x", stopReason: "completed", output: "" }) },
+      task: { runSubagent: async () => ({ kind: "foreground", result: { sessionId: "x", stopReason: "completed", output: "" } }) },
       // Q2/T-P2-105：会话查询工具（dbPath 提供才注册——注册面不打开库，
       // 任意非空路径即可）
       sessionQuery: { dbPath: "unused-plan-mode-names.sqlite" },

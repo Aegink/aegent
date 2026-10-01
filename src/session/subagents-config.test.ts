@@ -155,16 +155,20 @@ describe("runner 集成：预设身份段与工具集收窄（U23 消费面）",
       subagentDefs: [{ name: "fixer", enabled: false } as SubagentDefinition],
     });
     // 未知名
-    const unknown = await runner("任务", "描述", { subagentType: "ghost" });
-    expect(unknown.stopReason).toBe("failed");
-    expect(unknown.error).toContain("未知或已停用的子代理预设：ghost");
+    const unknown = await runner.run("任务", "描述", { subagentType: "ghost" });
+    expect(unknown.kind).toBe("foreground");
+    if (unknown.kind !== "foreground") throw new Error("unreachable");
+    expect(unknown.result.stopReason).toBe("failed");
+    expect(unknown.result.error).toContain("未知或已停用的子代理预设：ghost");
     // 停用名（同名覆盖记录）
-    const disabled = await runner("任务", "描述", { subagentType: "fixer" });
-    expect(disabled.stopReason).toBe("failed");
+    const disabled = await runner.run("任务", "描述", { subagentType: "fixer" });
+    if (disabled.kind !== "foreground") throw new Error("unreachable");
+    expect(disabled.result.stopReason).toBe("failed");
     // 无 subagent_type = 通用子代理（既有行为——正常起子轮并完成）
-    const generic = await runner("echo me", "通用", {});
-    expect(generic.stopReason).toBe("completed");
-    expect(generic.sessionId).toContain("s-parent::task-");
+    const generic = await runner.run("echo me", "通用", {});
+    if (generic.kind !== "foreground") throw new Error("unreachable");
+    expect(generic.result.stopReason).toBe("completed");
+    expect(generic.result.sessionId).toContain("s-parent::task-");
   });
 
   it("预设身份段进子系统提示（extraPrompt——session/message 落流）", async () => {
@@ -186,7 +190,9 @@ describe("runner 集成：预设身份段与工具集收窄（U23 消费面）",
         { name: "explorer", description: "探索者", prompt: "你是探索者子代理：只读探索", tools: ["read"] },
       ],
     });
-    const result = await runner("探索目录", "探索", { subagentType: "explorer" });
+    const outcome = await runner.run("探索目录", "探索", { subagentType: "explorer" });
+    if (outcome.kind !== "foreground") throw new Error("unreachable");
+    const result = outcome.result;
     expect(result.stopReason).toBe("completed");
     const system = store.load(`${"s-p2"}::task-1-`).length; // 子会话存在（id 前缀 s-p2::task-）
     expect(system).toBeGreaterThanOrEqual(0);
@@ -195,5 +201,37 @@ describe("runner 集成：预设身份段与工具集收窄（U23 消费面）",
     const sys = events.find((e) => e.type === "system/message");
     expect(sys).toBeDefined();
     expect(JSON.stringify(sys)).toContain("你是探索者子代理：只读探索");
+  });
+});
+
+describe("settings subagents 段 T-P3-145：reasoning/maxTokens/prompt 32KB", () => {
+  it("合法透传 + 非法 fail-closed", () => {
+    const ok = parseSettingsShape({
+      subagents: [
+        { name: "a", description: "d", prompt: "p", reasoning: "omit", maxTokens: 16_000 },
+        { name: "b", description: "d", prompt: "p", reasoning: "high" },
+      ],
+    });
+    expect(ok.subagents?.[0]?.reasoning).toBe("omit");
+    expect(ok.subagents?.[0]?.maxTokens).toBe(16_000);
+    expect(ok.subagents?.[1]?.reasoning).toBe("high");
+    expect(() =>
+      parseSettingsShape({ subagents: [{ name: "a", description: "d", prompt: "p", reasoning: "bogus" }] }),
+    ).toThrow(/reasoning 非法/);
+    expect(() =>
+      parseSettingsShape({ subagents: [{ name: "a", description: "d", prompt: "p", maxTokens: 0 }] }),
+    ).toThrow(/maxTokens 须为 1..200000/);
+    expect(() =>
+      parseSettingsShape({ subagents: [{ name: "a", description: "d", prompt: "p", maxTokens: 1.5 }] }),
+    ).toThrow(/maxTokens 须为 1..200000/);
+    // prompt 32KB 上限（启用条目）
+    expect(() =>
+      parseSettingsShape({ subagents: [{ name: "a", description: "d", prompt: "x".repeat(32 * 1024 + 1) }] }),
+    ).toThrow(/prompt 超限/);
+    // 恰好 32KB 合法
+    const edge = parseSettingsShape({
+      subagents: [{ name: "a", description: "d", prompt: "x".repeat(32 * 1024) }],
+    });
+    expect(edge.subagents?.[0]?.prompt).toHaveLength(32 * 1024);
   });
 });

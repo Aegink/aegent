@@ -49,8 +49,15 @@ export interface RegisteredModel {
 
 /** 模型级请求选项（settings providers 模型规格 → wire 透传）。 */
 export interface ModelRequestOptions {
+  /**
+   * 思考档（T-P3-137 三轮；T-P3-145 子代理覆盖同通道）——"omit" 哨兵 =
+   * 请求不带思考参数（与"缺省不设"的 undefined 语义不同：omit 是显式抹掉，
+   * 适配层识别后跳过 reasoning 字段）。
+   */
   reasoningEffort?: string;
   webSearch?: boolean;
+  /** 单次响应输出上限 token（T-P3-145 子代理 maxTokens——缺省跟随模型）。 */
+  maxTokens?: number;
 }
 
 /** 一个 turn 的捕获值：该 turn 全程使用的 provider 与身份。 */

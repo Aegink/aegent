@@ -41,7 +41,7 @@ describe("跨组件因果链（O30）", () => {
       networkGuard: createNetworkGuard({ policy: "deny" }),
       question: { pending: new PendingApprovals(), sessionId: "causal", timeoutMs: 1 },
       task: {
-        runSubagent: async () => ({ sessionId: "stub", stopReason: "cancelled", output: "" }),
+        runSubagent: async () => ({ kind: "foreground", result: { sessionId: "stub", stopReason: "cancelled", output: "" } }),
       },
       sessionQuery: { dbPath: "stub" },
     });

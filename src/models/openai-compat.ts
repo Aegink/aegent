@@ -103,10 +103,13 @@ async function* streamChatOpenAi(
         ? { tools: req.tools.map(toWireTool) }
         : {}),
       // T-P3-137 三轮：模型级思考档真实消费（OpenAI 兼容别名 reasoning_effort；
-      // off/缺省不带——严格端点对未知参数报错，off 语义即"不启用"）
-      ...(req.reasoningEffort !== undefined && req.reasoningEffort !== "off"
+      // off/omit/缺省不带——严格端点对未知参数报错，off 语义即"不启用"，
+      // omit 为 T-P3-145 子代理显式抹档哨兵）
+      ...(req.reasoningEffort !== undefined && req.reasoningEffort !== "off" && req.reasoningEffort !== "omit"
         ? { reasoning_effort: req.reasoningEffort }
         : {}),
+      // T-P3-145：单次响应输出上限（子代理 maxTokens——缺省不带随服务端默认）
+      ...(req.maxTokens !== undefined ? { max_tokens: req.maxTokens } : {}),
       stream: true,
       stream_options: { include_usage: true },
     }),
