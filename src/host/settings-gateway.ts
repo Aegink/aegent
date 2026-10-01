@@ -1,11 +1,8 @@
 /**
  * settings 直答网关（U14/T-P3-103）——wire settings 信封的 host 侧实现：
- * 配置读（get）/段级补丁写（update，即改即存的文件面）/凭据管理（U2 的
- * credentials.bin）。全部走 session 域的 settings/credentials 模块——
- * "分节与 settings 模块一一对应"的对应点，配置面不落两次。
- *
- * 快照即规格（U14 验收）：UI 改 → update 落文件 → 重启 loadSettings 生效
- * （server.test 以真临时文件断言这一条链）。
+ * 配置读/段级补丁写（即改即存文件面）/凭据管理。业务域方法委托各域文件
+ * （skills-gateway / prompts-gateway / mcp-import-op 等——行数纪律拆分位）。
+ * 快照即规格（U14）：UI 改 → update 落文件 → 重启 loadSettings 生效。
  */
 
 import {
@@ -42,6 +39,20 @@ import { runSttTranscribe } from "./speech-gateway.js";
 import { listPlugins } from "./plugins-gateway.js";
 import { mcpImportScan, type McpImportScanResult } from "./mcp-import-op.js";
 import { listSkills, saveSkill, deleteSkillDir, revealSkillDir } from "./skills-gateway.js";
+import {
+  listPrompts,
+  savePrompt,
+  deletePromptFile,
+  revealPromptDir,
+  type PromptListView,
+} from "./prompts-gateway.js";
+import {
+  promptImportScan,
+  promptImportApply,
+  type PromptImportScanResult,
+  type PromptImportApplyResult,
+  type PromptImportItem,
+} from "./prompt-import-op.js";
 import {
   skillImportScan,
   skillImportApply,
@@ -111,19 +122,13 @@ export function applySettingsPatch(current: SettingsShape, patch: Record<string,
 export interface SettingsGateway {
   get(): Promise<SettingsShape>;
   update(patch: Record<string, unknown>): Promise<SettingsShape>;
-  /** 凭据面（list/get 只回掩码——明文永不出现信封回执里）。 */
   credentialsSet(provider: string, key: string): Promise<{ masked: string }>;
   credentialsDelete(provider: string): Promise<{ deleted: boolean }>;
   credentialsList(): Promise<{ name: string; updatedAt: string; masked?: string }[]>;
-  /** 健康探测（U5/T-P3-104——J16 probeProvider 消费面；不触碰熔断器）。 */
   probeProvider(name: string): Promise<HealthCheckResult>;
-  /** U3/T-P3-105：会话删除（硬删除三表事务；库未配置时类型化拒绝）。 */
   sessionDelete(sessionId: string): Promise<{ deleted: boolean }>;
-  /** U17/T-P3-119：MCP 连接校验（真握手+列工具后关闭；失败转类型化回执）。 */
   mcpCheck(entry: McpServerEntry): Promise<McpCheckResult>;
-  /** U20/T-P3-122：配置包导入（备份滚动 + 本地态合并 + 落盘）。 */
   importSettings(imported: Record<string, unknown>): Promise<{ applied: true; summary: string[] }>;
-  /** U22：技能清单（多根扫描 + 停用过滤；无 workspaceRoot 类型化拒绝）。 */
   skillsList(): Promise<{
     skills: {
       name: string;
@@ -131,82 +136,65 @@ export interface SettingsGateway {
       tools?: readonly string[];
       filePath: string;
       origin: string;
-      /** 技能正文（frontmatter 之后——编辑器回填面；清单同屏编辑用）。 */
       body: string;
     }[];
     diagnostics: { code: string; message: string; path: string }[];
     roots: string[];
     disabled: string[];
   }>;
-  /** U22：技能编辑器写回（workspace SKILL.md；slug 与字节上限在此校验）。 */
   skillSave(payload: {
     name: string;
     description: string;
     body: string;
     tools?: readonly string[];
   }): Promise<{ saved: true; path: string }>;
-  /** U23：子代理清单（内置五预设 + 自定义——覆盖记录折叠进内置行）。 */
   subagentsList(): Promise<{
     builtins: (SubagentDefinition & { enabled: boolean; overridden: boolean })[];
     custom: SubagentDefinition[];
   }>;
-  /** U24：指令中心数据面（三文件位 + 规则位 lint issues）。 */
   instructionsList(): Promise<{
     project: { path: string; exists: boolean; content: string };
     global: { path: string; exists: boolean; content: string };
     rules: { path: string; exists: boolean; content: string; issues: { line: number; message: string }[] };
   }>;
-  /** U24：指令写回（target 白名单三位——host 侧路径收敛防任意文件写）。 */
   instructionSave(target: "project-agents" | "global-agents" | "user-rules", content: string): Promise<{ saved: true; path: string }>;
-  /** U26：语音转写代理（P4 消费端；key 按 "stt" 走 credentials——零明文）。 */
   sttTranscribe(payload: { base64: string; mediaType: string }): Promise<{ text: string; model: string }>;
-  /** T-P3-133：插件装载清单（安装期校验诊断——零代码执行）。 */
   pluginsList(): Promise<ReturnType<typeof listPlugins>>;
-  /** T-P3-137：模型清单拉取（host 代理 /models——CSP 不放外网）。 */
   providerModels(payload: ProviderModelsPayload): Promise<{ models: { id: string }[] }>;
-  /** T-P3-137：真实对话测试（发"你好"单轮——成功才算可以使用）。 */
   providerTest(payload: ProviderTestPayload): Promise<ProviderTestResult>;
-  /** T-P3-140：沙箱自检（doctor 四项 + 生效面——域文件已拆分）。 */
   sandboxDoctor(): ReturnType<typeof sandboxDoctorOp>;
-  /** T-P3-141：插件主题 CSS（UI 注入 <style>——路径收敛与上限在网关）。 */
   pluginThemeCss(name: string): Promise<{ css: string; base: "light" | "dark"; displayName: string }>;
-  /** T-P3-143：外部 MCP 配置扫描（只读——并入 settings patch 在 UI 侧）。 */
   mcpImportScan(): Promise<McpImportScanResult>;
-  /** T-P3-144：外部技能源扫描（只读——候选勾选后走 apply）。 */
   skillImportScan(): Promise<SkillImportScanResult>;
-  /** T-P3-144：技能导入执行（复制进 workspace 技能主目录——护栏在 op）。 */
   skillImportApply(items: SkillImportItem[]): Promise<SkillImportApplyResult>;
-  /** T-P3-144：技能删除（受控根护栏——防误删配置根外目录）。 */
   skillDelete(skillPath: string): Promise<{ deleted: true; path: string }>;
-  /** T-P3-144：打开技能所在文件夹（Reveal——pi-desktop 先例）。 */
   skillReveal(skillPath: string): Promise<{ revealed: true }>;
+  promptsList(): Promise<PromptListView>;
+  promptSave(payload: import("./protocol-settings.js").PromptSavePayload): Promise<{ saved: true; path: string }>;
+  promptDelete(filePath: string): Promise<{ deleted: true; path: string }>;
+  promptReveal(filePath: string): Promise<{ revealed: true }>;
+  promptImportScan(): Promise<PromptImportScanResult>;
+  promptImportApply(items: PromptImportItem[]): Promise<PromptImportApplyResult>;
 }
 
-/** 生产缺省探测依赖（真网络——tests 注入 fake）。 */
 function defaultHealthProbe(): (name: string, baseUrl: string) => Promise<HealthCheckResult> {
   return (name, baseUrl) => probeProvider({ provider: name, baseUrl });
 }
 
-/** 生产实现：settings.json 真文件 + credentials.bin 凭据库 + J16 健康探测。 */
 export class FileSettingsGateway implements SettingsGateway {
   constructor(
     private readonly settingsPath: string,
     private readonly credentials: CredentialStore,
     private readonly healthProbe: (name: string, baseUrl: string) => Promise<HealthCheckResult> = defaultHealthProbe(),
-    /** U3：会话删除的目标库（host 的 SQLite 事件库——未配置 = 删除面不可用）。 */
     private readonly sessionDb?: SqliteEventStorage,
-    /** U22：技能目录根（缺省 undefined = 技能管理面不可用）。 */
     private readonly workspaceRoot?: string,
-    /** U24：home 目录根（缺省 os.homedir()；测试注入临时目录）。 */
     private readonly homeDir: string = homedir(),
-    /** U26：STT fetch 注入面（测试 fake；缺省全局 fetch）。 */
     private readonly sttFetch: typeof fetch = fetch,
   ) {}
 
   async get(): Promise<SettingsShape> {
     return (await loadSettings(this.settingsPath)).settings;
   }
-
   async update(patch: Record<string, unknown>): Promise<SettingsShape> {
     const merged = applySettingsPatch(await this.get(), patch);
     await saveSettings(this.settingsPath, merged);
@@ -247,7 +235,6 @@ export class FileSettingsGateway implements SettingsGateway {
     }
     return this.healthProbe(name, entry.baseUrl);
   }
-
   async sessionDelete(sessionId: string): Promise<{ deleted: boolean }> {
     if (this.sessionDb === undefined) {
       const error = new Error("host 未配置 SQLite 事件库，会话删除不可用");
@@ -273,7 +260,6 @@ export class FileSettingsGateway implements SettingsGateway {
     }
   }
 
-  /** U20：配置包导入（确认在 UI 侧——本面只做最终校验与落盘）。 */
   async importSettings(
     imported: Record<string, unknown>,
   ): Promise<{ applied: true; summary: string[] }> {
@@ -284,7 +270,7 @@ export class FileSettingsGateway implements SettingsGateway {
     return { applied: true, summary: summarizePackage(merged) };
   }
 
-  /** 类型化拒绝的辅助（错误消息有界在 protocol 层——此处原文即回执）。 */
+  /** 类型化拒绝辅助（错误消息有界在 protocol 层）。 */
   private skillsUnavailable(): never {
     const error = new Error("host 未配置 workspace，技能管理面不可用");
     (error as unknown as { code: string }).code = "SKILLS_UNAVAILABLE";
@@ -343,12 +329,10 @@ export class FileSettingsGateway implements SettingsGateway {
     return listPlugins(await this.get());
   }
 
-  /** T-P3-137：模型清单拉取（实现自 settings-provider-ops——拆分记档）。 */
   async providerModels(payload: ProviderModelsPayload): Promise<{ models: { id: string }[] }> {
     return providerModelsOp(this.credentials, payload);
   }
 
-  /** T-P3-137：真实对话测试（发"你好"——成功才算可以使用）。 */
   async providerTest(payload: ProviderTestPayload): Promise<ProviderTestResult> {
     return providerTestOp(this.credentials, payload);
   }
@@ -387,5 +371,30 @@ export class FileSettingsGateway implements SettingsGateway {
   /** T-P3-144：Reveal（打开技能所在文件夹）。 */
   async skillReveal(skillPath: string): Promise<{ revealed: true }> {
     return revealSkillDir(skillPath);
+  }
+
+  async promptsList(): Promise<PromptListView> {
+    return listPrompts(await this.get(), this.workspaceRoot, this.homeDir);
+  }
+
+  async promptSave(payload: import("./protocol-settings.js").PromptSavePayload): Promise<{ saved: true; path: string }> {
+    return savePrompt(payload, { ...(this.workspaceRoot !== undefined ? { workspaceRoot: this.workspaceRoot } : {}), homeDir: this.homeDir });
+  }
+
+  async promptDelete(filePath: string): Promise<{ deleted: true; path: string }> {
+    return deletePromptFile(await this.get(), { ...(this.workspaceRoot !== undefined ? { workspaceRoot: this.workspaceRoot } : {}), homeDir: this.homeDir }, filePath);
+  }
+
+  async promptReveal(filePath: string): Promise<{ revealed: true }> {
+    return revealPromptDir(filePath);
+  }
+
+  async promptImportScan(): Promise<PromptImportScanResult> {
+    return promptImportScan({ homeDir: this.homeDir, ...(this.workspaceRoot !== undefined ? { workspaceRoot: this.workspaceRoot } : {}) });
+  }
+
+  async promptImportApply(items: PromptImportItem[]): Promise<PromptImportApplyResult> {
+    if (this.workspaceRoot === undefined) this.skillsUnavailable();
+    return promptImportApply({ homeDir: this.homeDir, workspaceRoot: this.workspaceRoot! }, items);
   }
 }

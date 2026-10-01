@@ -1,11 +1,7 @@
 /**
- * settings 信封域（U14/T-P3-103；U22/T-P3-125 拆分）——端 → host settings
- * 直答信封的形状与严格校验。独立成域文件是行数纪律的拆分位：settings op
- * 闭集持续扩张（U17 mcp-check / U20 import / U22 技能管理），集中在一处
- * 收拢类型与 parse，protocol.ts 只留回调签名、protocol-parse.ts 只留分派。
- *
- * 分层分工不变：本文件（parse 层）只管信封形状（op 闭集 + 载荷类型）；
- * 业务规则（段白名单、名称冲突、技能字节上限）在 gateway 层。
+ * settings 信封域（U14/T-P3-103）——端 → host settings 直答信封的形状与
+ * 严格校验（op 闭集 + 载荷类型；业务规则在 gateway 层；op 合法性与报错串
+ * 同源消费）。
  */
 
 // 本文件不 import bounded：错误消息的有界转写统一在 protocol.ts 的
@@ -14,57 +10,44 @@
 import { THINKING_LEVELS } from "../session/settings.js";
 import type { SkillImportItem } from "./skill-import-op.js";
 
-/** settings 直答 op 闭集（与 bridge 分流一一对应）。 */
-export type SettingsOp =
-  | "get"
-  | "update"
-  | "credentials-set"
-  | "credentials-delete"
-  | "credentials-list"
-  | "probe"
-  | "session-delete"
-  | "mcp-check"
-  | "import"
-  /** U22/T-P3-125：技能清单（多根扫描 + 停用过滤——管理页数据面）。 */
-  | "skills-list"
-  /** U22/T-P3-125：技能编辑器写回（新建/编辑——写 workspace 技能目录）。 */
-  | "skill-save"
-  /** U23/T-P3-126：子代理管理页清单（内置五预设 + 用户自定义分区）。 */
-  | "subagents-list"
-  /** U24/T-P3-127：指令中心数据面（三文件位 + 规则 lint issues）。 */
-  | "instructions-list"
-  /** U24/T-P3-127：指令文件写回（target 白名单三位）。 */
-  | "instruction-save"
-  /** U26/T-P3-129：语音转写代理（UI 录音上送——P4 消费端）。 */
-  | "stt-transcribe"
-  /** T-P3-133：插件装载清单（安装期校验诊断——管理页数据面）。 */
-  | "plugins-list"
-  /**
-   * T-P3-137：供应商模型清单拉取（host 代理 GET /models——WebView CSP
-   * 不放外网，拉取面在 host；自足载荷 = UI 草稿直传，key 缺省走凭据）。
-   */
-  | "provider-models"
-  /**
-   * T-P3-137：供应商真实对话测试（host 代理发"你好"单轮——用户裁决
-   * "成功才算可以使用"；成功回执含模型回复摘要与延迟）。
-   */
-  | "provider-test"
-  /** T-P3-137 八轮 E：审批历史（策略拒绝/审批记录——bridge 扫当前会话流）。 */
-  | "policy-audit"
-  /** T-P3-140 批次 B：沙箱自检（doctor 四项检查 + 生效面一览——无载荷）。 */
-  | "sandbox-doctor"
-  /** T-P3-141：插件主题 CSS 读取（UI 注入 <style>——pi-desktop 主题即插件）。 */
-  | "plugin-theme-css"
-  /** T-P3-143：外部 Agent MCP 配置扫描（只读——导入候选与每源报告）。 */
-  | "mcp-import-scan"
-  /** T-P3-144：外部技能源扫描（只读——候选与每源报告）。 */
-  | "skill-import-scan"
-  /** T-P3-144：技能导入执行（整目录复制进 workspace 技能主目录）。 */
-  | "skill-import-apply"
-  /** T-P3-144：技能删除（受控根护栏）。 */
-  | "skill-delete"
-  /** T-P3-144：打开技能所在文件夹（Reveal）。 */
-  | "skill-reveal";
+/** settings 直答 op 闭集（与 bridge 分流一一对应；parse 的合法性链与
+ * 报错串同源消费——单一事实源）。 */
+const OPS = [
+  "get",
+  "update",
+  "credentials-set",
+  "credentials-delete",
+  "credentials-list",
+  "probe",
+  "session-delete",
+  "mcp-check",
+  "import",
+  "skills-list",
+  "skill-save",
+  "subagents-list",
+  "instructions-list",
+  "instruction-save",
+  "stt-transcribe",
+  "plugins-list",
+  "provider-models",
+  "provider-test",
+  "policy-audit",
+  "sandbox-doctor",
+  "plugin-theme-css",
+  "mcp-import-scan",
+  "skill-import-scan",
+  "skill-import-apply",
+  "skill-delete",
+  "skill-reveal",
+  "prompts-list",
+  "prompt-save",
+  "prompt-delete",
+  "prompt-reveal",
+  "prompt-import-scan",
+  "prompt-import-apply",
+] as const;
+
+export type SettingsOp = (typeof OPS)[number];
 
 /** 技能编辑器写回载荷（op=skill-save；frontmatter + 正文的一次性形状）。 */
 export interface SkillSavePayload {
@@ -75,6 +58,20 @@ export interface SkillSavePayload {
   readonly body: string;
   /** 技能声明的工作工具集（可选——frontmatter `tools:` 行）。 */
   readonly tools?: readonly string[];
+}
+
+/** 模板编辑器写回载荷（op=prompt-save——T-P3-146 C；校验在 gateway）。 */
+export interface PromptSavePayload {
+  /** 模板名（相对路径 slug 命名空间，冒号保留给 MCP）。 */
+  readonly name: string;
+  readonly content: string;
+  readonly description?: string;
+  readonly argumentHint?: string;
+  /** 模板级执行语义（H：以指定子代理执行 / 命令级模型覆盖）。 */
+  readonly agent?: string;
+  readonly model?: string;
+  /** 保存目标（project = workspace 模板主目录〔缺省〕；user = ~/.aegent/prompts）。 */
+  readonly scope?: string;
 }
 
 /** settings 信封 call 形状（HostServerOptions.onSettings 的入参类型）。 */
@@ -99,6 +96,8 @@ export type SettingsCall = {
   timeoutMs?: number;
   /** op=skill-save：技能编辑器写回载荷（U22）。 */
   skill?: SkillSavePayload;
+  /** op=prompt-save：模板编辑器写回载荷（T-P3-146 C）。 */
+  prompt?: PromptSavePayload;
   /** op=skill-import-apply：导入项（T-P3-144——候选从 scan 回传）。 */
   items?: SkillImportItem[];
   /** op=skill-delete / skill-reveal：SKILL.md 绝对路径（T-P3-144）。 */
@@ -143,6 +142,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     "timeoutMs",
     "settings",
     "skill",
+    "prompt",
     "items",
     "path",
     "target",
@@ -160,37 +160,8 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     throw new Error("settings 需要 requestId 非空字符串");
   }
   const op = record["op"];
-  if (
-    op !== "get" &&
-    op !== "update" &&
-    op !== "credentials-set" &&
-    op !== "credentials-delete" &&
-    op !== "credentials-list" &&
-    op !== "probe" &&
-    op !== "session-delete" &&
-    op !== "mcp-check" &&
-    op !== "import" &&
-    op !== "skills-list" &&
-    op !== "skill-save" &&
-    op !== "subagents-list" &&
-    op !== "instructions-list" &&
-    op !== "instruction-save" &&
-    op !== "stt-transcribe" &&
-    op !== "plugins-list" &&
-    op !== "provider-models" &&
-    op !== "provider-test" &&
-    op !== "policy-audit" &&
-    op !== "sandbox-doctor" &&
-    op !== "plugin-theme-css" &&
-    op !== "mcp-import-scan" &&
-    op !== "skill-import-scan" &&
-    op !== "skill-import-apply" &&
-    op !== "skill-delete" &&
-    op !== "skill-reveal"
-  ) {
-    throw new Error(
-      `settings 的 op 非法：${String(op)}（合法：get|update|credentials-set|credentials-delete|credentials-list|probe|session-delete|import|skills-list|skill-save|subagents-list|instructions-list|instruction-save|stt-transcribe|plugins-list|provider-models|provider-test|policy-audit|sandbox-doctor|plugin-theme-css|mcp-import-scan|skill-import-scan|skill-import-apply|skill-delete|skill-reveal）`,
-    );
+  if (typeof op !== "string" || !(OPS as readonly string[]).includes(op)) {
+    throw new Error(`settings 的 op 非法：${String(op)}（合法：${OPS.join("|")}）`);
   }
   if (op === "plugin-theme-css") {
     if (typeof record["name"] !== "string" || record["name"] === "") {
@@ -222,8 +193,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
       throw new Error("settings op=session-delete 需要 sessionId 非空字符串");
     }
   }
-  // U17/T-P3-119：mcp-check 的载荷 = name/command/args（McpServerEntry 形状
-  // ——名字规则与 args 类型在 parse 层即校验，连接失败在 gateway 层转回执）
+  // U17/T-P3-119：mcp-check 载荷（名字规则 parse 层校验；连接失败在 gateway 转回执）
   if (op === "mcp-check") {
     if (typeof record["name"] !== "string" || record["name"] === "" || record["name"].includes("__")) {
       throw new Error("settings op=mcp-check 需要 name（非空且不含 \"__\"）");
@@ -252,9 +222,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
       throw new Error("settings op=mcp-check 的 timeoutMs 须为正数");
     }
   }
-  // T-P3-144：skill-import-apply 载荷 = items（名称/来源路径/kind 闭集——
-  // 源路径护栏与 slug 校验在 op 层，parse 只管形状）；skill-delete/reveal
-  // 的载荷 = SKILL.md 绝对路径（受控根护栏在 gateway）。
+  // T-P3-144：skill-import-apply = items（形状只此；护栏在 op 层）。
   if (op === "skill-import-apply") {
     if (!Array.isArray(record["items"]) || (record["items"] as unknown[]).length === 0) {
       throw new Error("settings op=skill-import-apply 需要 items 非空数组");
@@ -274,16 +242,51 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
       throw new Error(`settings op=${op} 需要 path（SKILL.md 绝对路径）非空字符串`);
     }
   }
-  // U20/T-P3-122：import 的载荷 = 配置包内 settings 对象（形状校验在
-  // gateway 落盘前——parse 层只管"必须是对象"）
+  // T-P3-146：prompt-save/delete/reveal/import-apply 载荷（业务校验在 gateway）。
+  if (op === "prompt-save") {
+    const pp = record["prompt"];
+    if (pp === null || typeof pp !== "object" || Array.isArray(pp)) {
+      throw new Error("settings op=prompt-save 需要 prompt 对象");
+    }
+    const p = pp as Record<string, unknown>;
+    if (typeof p["name"] !== "string" || p["name"] === "") {
+      throw new Error("settings op=prompt-save 的 prompt.name 缺失");
+    }
+    if (typeof p["content"] !== "string" || p["content"].trim() === "") {
+      throw new Error("settings op=prompt-save 的 prompt.content 须为非空字符串");
+    }
+    for (const key of ["description", "argumentHint", "agent", "model", "scope"] as const) {
+      if (p[key] !== undefined && typeof p[key] !== "string") {
+        throw new Error(`settings op=prompt-save 的 prompt.${key} 须为字符串`);
+      }
+    }
+  }
+  if (op === "prompt-delete" || op === "prompt-reveal") {
+    if (typeof record["path"] !== "string" || record["path"] === "") {
+      throw new Error(`settings op=${op} 需要 path（模板 .md 绝对路径）非空字符串`);
+    }
+  }
+  if (op === "prompt-import-apply") {
+    if (!Array.isArray(record["items"]) || (record["items"] as unknown[]).length === 0) {
+      throw new Error("settings op=prompt-import-apply 需要 items 非空数组");
+    }
+    for (const item of record["items"] as unknown[]) {
+      if (item === null || typeof item !== "object" || Array.isArray(item)) {
+        throw new Error("settings op=prompt-import-apply 的 items[] 须为对象");
+      }
+      const it = item as Record<string, unknown>;
+      if (typeof it["name"] !== "string" || it["name"] === "") throw new Error("settings op=prompt-import-apply 的 items[].name 缺失");
+      if (typeof it["sourcePath"] !== "string" || it["sourcePath"] === "") throw new Error("settings op=prompt-import-apply 的 items[].sourcePath 缺失");
+    }
+  }
+  // U20/T-P3-122：import 载荷 = 配置包内 settings 对象（parse 只管"是对象"）。
   if (op === "import") {
     const st = record["settings"];
     if (st === null || typeof st !== "object" || Array.isArray(st)) {
       throw new Error("settings op=import 需要 settings 对象（配置包内的 settings 段）");
     }
   }
-  // U22/T-P3-125：skill-save 的载荷 = skill 对象（编辑器四字段——slug 与
-  // 字节上限的业务校验在 gateway 层，parse 层只管形状）
+  // U22/T-P3-125：skill-save 载荷 = skill 对象（业务校验在 gateway 层）。
   if (op === "skill-save") {
     const sk = record["skill"];
     if (sk === null || typeof sk !== "object" || Array.isArray(sk)) {
@@ -306,8 +309,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
       throw new Error("settings op=skill-save 的 skill.tools 须为非空字符串数组");
     }
   }
-  // U24/T-P3-127：instruction-save 的载荷 = target（白名单三值）+ content
-  // （字符串——内容校验在 gateway 的规则 lint 面，save 不阻断）
+  // U24/T-P3-127：instruction-save 载荷 = target 白名单 + content。
   if (op === "instruction-save") {
     if (typeof record["target"] !== "string" || !(INSTRUCTION_TARGETS as readonly string[]).includes(record["target"])) {
       throw new Error(
@@ -318,8 +320,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
       throw new Error("settings op=instruction-save 需要 content 非空字符串");
     }
   }
-  // U26/T-P3-129：stt-transcribe 的载荷 = mediaType（白名单校验在 gateway
-  // 的 AUDIO_MEDIA_TYPES 闭集）+ base64 音频体（content 字段承载）
+  // U26/T-P3-129：stt-transcribe 载荷 = mediaType + base64 体。
   if (op === "stt-transcribe") {
     if (typeof record["mediaType"] !== "string" || record["mediaType"] === "") {
       throw new Error("settings op=stt-transcribe 需要 mediaType 非空字符串");
@@ -328,8 +329,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
       throw new Error("settings op=stt-transcribe 需要 content（音频 base64）非空字符串");
     }
   }
-  // T-P3-137：provider-models / provider-test 的自足端点载荷（baseUrl 合法
-  // http(s) 地址；adapter 二枚举；test 须有 modelId——真实发"你好"的目标）。
+  // T-P3-137：provider-models/test 自足端点载荷（test 须有 modelId）。
   if (op === "provider-models" || op === "provider-test") {
     if (typeof record["provider"] !== "string" || record["provider"] === "") {
       throw new Error(`settings op=${op} 需要 provider 非空字符串（凭据键）`);
@@ -343,7 +343,6 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     if (op === "provider-test" && (typeof record["modelId"] !== "string" || record["modelId"] === "")) {
       throw new Error("settings op=provider-test 需要 modelId（真实对话的目标模型）");
     }
-    // T-P3-137 三轮：默认思考档（可选——传入即测试请求真实消费该档）
     if (record["reasoning"] !== undefined && (typeof record["reasoning"] !== "string" || !(THINKING_LEVELS as readonly string[]).includes(record["reasoning"]))) {
       throw new Error(`settings op=${op} 的 reasoning 非法（合法：${THINKING_LEVELS.join("|")}）`);
     }
@@ -355,7 +354,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     }
   }
   return {
-    op,
+    op: op as SettingsOp,
     ...(record["patch"] !== undefined ? { patch: record["patch"] as Record<string, unknown> } : {}),
     ...(record["settings"] !== undefined && typeof record["settings"] === "object" && !Array.isArray(record["settings"])
       ? { settings: record["settings"] as Record<string, unknown> }
@@ -374,6 +373,9 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     ...(typeof record["timeoutMs"] === "number" ? { timeoutMs: record["timeoutMs"] } : {}),
     ...(record["skill"] !== undefined && typeof record["skill"] === "object" && !Array.isArray(record["skill"])
       ? { skill: record["skill"] as unknown as SkillSavePayload }
+      : {}),
+    ...(record["prompt"] !== undefined && typeof record["prompt"] === "object" && !Array.isArray(record["prompt"])
+      ? { prompt: record["prompt"] as unknown as PromptSavePayload }
       : {}),
     ...(typeof record["target"] === "string" ? { target: record["target"] } : {}),
     ...(typeof record["content"] === "string" ? { content: record["content"] } : {}),

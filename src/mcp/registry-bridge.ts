@@ -10,7 +10,7 @@
 
 import type { JsonRecord } from "../kernel/events.js";
 import type { ToolDef, ToolRegistry } from "../kernel/tools/registry.js";
-import { McpClient, createMcpStdioTransport, type McpToolInfo } from "./client.js";
+import { McpClient, createMcpStdioTransport, type McpPromptInfo, type McpToolInfo } from "./client.js";
 
 /** 一个 MCP server 的装配配置（stdio 命令 + 参数）。 */
 export interface McpServerConfig {
@@ -28,6 +28,8 @@ export interface McpServerConfig {
 export interface McpConnection {
   client: McpClient;
   registeredToolNames: string[];
+  /** T-P3-146 H：server 的 prompts 清单（桥接为模板命令——展开面 getPrompt）。 */
+  prompts: McpPromptInfo[];
 }
 
 /** server 名校验：非空且不含命名空间分隔符。 */
@@ -64,8 +66,18 @@ export async function connectAndRegister(
   const timeout = options?.requestTimeoutMs ?? config.timeoutMs;
   const capabilities =
     timeout !== undefined ? await client.initialize(timeout) : await client.initialize();
+  // T-P3-146 H：prompts 清单随连接收集（无 prompts 能力 = 空清单，never-fail）
+  let prompts: McpPromptInfo[] = [];
+  if (capabilities.prompts) {
+    try {
+      prompts =
+        timeout !== undefined ? await client.listPrompts(timeout) : await client.listPrompts();
+    } catch (e) {
+      console.error(`[mcp] server "${config.name}" prompts/list 失败（按无 prompts 继续）:`, e instanceof Error ? e.message : e);
+    }
+  }
   if (!capabilities.tools) {
-    return { client, registeredToolNames: [] };
+    return { client, registeredToolNames: [], prompts };
   }
   const tools: McpToolInfo[] =
     timeout !== undefined ? await client.listTools(timeout) : await client.listTools();
@@ -75,7 +87,7 @@ export async function connectAndRegister(
     registry.registerTool(def);
     registeredToolNames.push(def.name);
   }
-  return { client, registeredToolNames };
+  return { client, registeredToolNames, prompts };
 }
 
 /**
@@ -86,7 +98,7 @@ export async function connectAndRegister(
 export async function probeServer(
   config: McpServerConfig,
   options?: { requestTimeoutMs?: number },
-): Promise<{ protocolVersion: string; tools: McpToolInfo[] }> {
+): Promise<{ protocolVersion: string; tools: McpToolInfo[]; prompts: McpPromptInfo[] }> {
   validateServerName(config.name);
   const transport = createMcpStdioTransport(config.command, config.args ?? [], config.env);
   const client = new McpClient(
@@ -104,7 +116,17 @@ export async function probeServer(
         ? await client.listTools(timeout)
         : await client.listTools()
       : [];
-    return { protocolVersion: capabilities.protocolVersion, tools };
+    // T-P3-146 H：prompts 清单随探针回执（行级测试可见 prompt 数——失败按空）
+    let prompts: McpPromptInfo[] = [];
+    if (capabilities.prompts) {
+      try {
+        prompts =
+          timeout !== undefined ? await client.listPrompts(timeout) : await client.listPrompts();
+      } catch {
+        prompts = [];
+      }
+    }
+    return { protocolVersion: capabilities.protocolVersion, tools, prompts };
   } finally {
     client.dispose();
   }

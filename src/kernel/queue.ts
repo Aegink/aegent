@@ -44,6 +44,12 @@ export interface QueuedPrompt {
    * 被引会话的内容字节绝不进本会话的流）；无引用缺省缺字段（零变化）。
    */
   sessionRefs?: SessionRef[];
+  /**
+   * T-P3-146 A/H 展开面回填：command = 模板调用原文（transcript chip 数据源）；
+   * model = 命令级模型覆盖（frontmatter model——runTurn 的 turn 级生效）。
+   * 缺省缺字段 = 普通输入零变化。
+   */
+  meta?: { command?: string; model?: { provider: import("../models/provider.js").ModelProvider; identity: import("../models/identity.js").ModelIdentity } };
 }
 
 /** M9/T-P1-48 有限队列：超限入队类型化拒绝（fail-closed 不静默丢）。 */
@@ -82,6 +88,7 @@ export class PromptQueue {
     content: string,
     attachments?: readonly AttachmentRef[],
     sessionRefs?: readonly SessionRef[],
+    meta?: QueuedPrompt["meta"],
   ): EnqueueReceipt {
     if (this.items.length >= this.maxSize) {
       throw new QueueFullError(this.maxSize, this.mode);
@@ -92,6 +99,7 @@ export class PromptQueue {
       content,
       ...(attachments !== undefined && attachments.length > 0 ? { attachments: [...attachments] } : {}),
       ...(sessionRefs !== undefined && sessionRefs.length > 0 ? { sessionRefs: [...sessionRefs] } : {}),
+      ...(meta !== undefined ? { meta } : {}),
     });
     return { messageId };
   }

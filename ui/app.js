@@ -321,7 +321,19 @@ function renderEvent(e, options = {}) {
       // 用户输入不渲染（注入面防呆——textContent 原样，不走 markdown 管线）
       const el = document.createElement("div");
       el.className = `bubble user ${e.source === "injected" ? "dim" : ""}`.trim();
-      el.textContent = e.message?.content ?? "";
+      // T-P3-146 A：模板调用 chip（原始调用原文——content 是展开后文本，
+      // chip 展示用户所打；pi-desktop SlashExpansion 双字段同构）
+      if (e.command !== undefined) {
+        const chip = document.createElement("span");
+        chip.className = "cmd-chip";
+        chip.textContent = e.command;
+        chip.title = `模板调用原文：${e.command}`;
+        el.appendChild(chip);
+      }
+      const body = document.createElement("span");
+      body.className = "bubble-body";
+      body.textContent = e.message?.content ?? "";
+      el.appendChild(body);
       if (e.source !== "injected") setLastUserPrompt(e.message?.content ?? "");
       appendMsgTime(el, e.ts); // T-P3-141：时间戳开关（设置外观段）
       return el;
@@ -646,16 +658,40 @@ const UI_COMMANDS = [
   { label: "/help", hint: "列出可用命令" },
 ];
 
-// —— U16/T-P3-118：提示词模板的 / 补全数据面（settings get 一次缓存；
-// 设置页保存 prompts 段后 settingsCache 同步，下次补全即用新库）
+// —— U16/T-P3-118→T-P3-146：提示词模板的 / 补全数据面（op:"prompts-list"
+// 文件域清单——设置页保存后 markPromptsLoaded(false) 失效，下次补全重取）
 async function ensurePromptsCache() {
-  if (promptsCacheLoaded) return settingsCache?.prompts ?? [];
-  const envelope = await sendSettings({ op: "get" });
+  if (promptsCacheLoaded) return promptsViewCache;
+  const envelope = await sendSettings({ op: "prompts-list" });
   if (envelope.ok) {
-    setSettingsCache(envelope.result.settings);
+    promptsViewCache = envelope.result;
     markPromptsLoaded();
   }
-  return settingsCache?.prompts ?? [];
+  return promptsViewCache;
+}
+let promptsViewCache = null;
+
+// —— T-P3-146 F：模糊评分（zcode 三档——前缀 > 子串 > 子序列；description
+// 命中加权，稳定排序）。
+function fuzzyScore(label, description, query) {
+  if (query === "") return 100;
+  const l = label.toLowerCase();
+  const q = query.toLowerCase();
+  let score = 0;
+  if (l.startsWith(q)) score = 300 - Math.min(l.length - q.length, 50);
+  else if (l.includes(q)) score = 200 - Math.min(l.indexOf(q), 50);
+  else {
+    // 子序列匹配（顺序命中即可——fuzzy 最低档）
+    let i = 0;
+    for (const ch of l) {
+      if (ch === q[i]) i++;
+      if (i >= q.length) break;
+    }
+    if (i >= q.length) score = 100 - Math.min(l.length, 50);
+    else return -1;
+  }
+  if (description !== undefined && description !== null && String(description).toLowerCase().includes(q)) score += 50;
+  return score;
 }
 
 function templateVarNames(content) {
@@ -668,10 +704,11 @@ let acContext = null; // { trigger, startPos, token }
 function detectTrigger() {
   const cursor = input.selectionStart ?? 0;
   const text = input.value.slice(0, cursor);
-  // / 触发：行首或空格后的斜杠（不误触 URL 路径——token 内无空格）
-  const slash = text.match(/(^|\s)(\/[^\s]*)$/);
+  // T-P3-146 F：/ 触发收紧为草稿首字符（pi ADR 0024/zcode 同款——句中斜杠
+  // 不再误触 URL/路径；模板调用统一"/name args"整条语义）
+  const slash = text.match(/^(\/[^\s]*)$/);
   if (slash !== null) {
-    return { trigger: "/", startPos: cursor - slash[2].length, token: slash[2] };
+    return { trigger: "/", startPos: cursor - slash[1].length, token: slash[1] };
   }
   const at = text.match(/(^|\s)(@[^\s]*)$/);
   if (at !== null) {
@@ -680,16 +717,44 @@ function detectTrigger() {
   return null;
 }
 
+// —— T-P3-146 F：中文 IME 适配（pi ADR 0231——空草稿首字符"、"自动重写为
+// "/"打开命令菜单；组合输入期不干预）
+input.addEventListener("compositionend", () => {
+  if (input.value === "、" || input.value === "。") {
+    input.value = "/";
+    input.setSelectionRange(1, 1);
+    void updateAutocomplete();
+  }
+});
+
 function renderAutocomplete() {
   autocomplete.replaceChildren();
+  // T-P3-146 F：分组渲染（命令/工具/技能/模板/MCP——zcode 分段面板同款；
+  // 组头行不可选，键盘导航跳过）
+  const GROUPS = [
+    ["command", "命令"],
+    ["tool", "工具"],
+    ["skill", "技能"],
+    ["prompt", "模板"],
+    ["mcp-prompt", "MCP"],
+  ];
+  let lastGroup = null;
   for (const [i, item] of acItems.entries()) {
+    if (item.kind !== undefined && GROUPS.some(([g]) => g === item.kind) && item.kind !== lastGroup) {
+      lastGroup = item.kind;
+      const head = document.createElement("div");
+      head.className = "ac-group";
+      head.textContent = GROUPS.find(([g]) => g === item.kind)?.[1] ?? "";
+      autocomplete.appendChild(head);
+    }
     const row = document.createElement("div");
     row.className = `ac-row ${i === acIndex ? "active" : ""}`.trim();
     const label = document.createElement("span");
     label.textContent = `${item.icon} ${item.label}`;
     const hint = document.createElement("span");
     hint.className = "ac-hint";
-    hint.textContent = item.hint ?? "";
+    // argument-hint 行内展示（有参模板的面板提示——pi/zcode 同款）
+    hint.textContent = item.kind === "prompt" && item.argumentHint ? item.argumentHint : (item.hint ?? "");
     row.append(label, hint);
     row.addEventListener("mousedown", (ev) => {
       ev.preventDefault(); // 防 textarea 失焦
@@ -704,9 +769,17 @@ function applyCompletion(item) {
   if (acContext === null) return;
   const before = input.value.slice(0, acContext.startPos);
   const after = input.value.slice(input.selectionStart ?? 0);
-  // U16：模板选中 = 整段正文替换 /token（非命令非路径）；{{var}} 占位保留手改
-  const insert =
-    item.kind === "dir" ? item.label : item.kind === "prompt" ? item.content ?? "" : `${item.label} `;
+  // T-P3-146 A：选中行为分型——有参模板（argumentHint 或正文含 $ 占位）插入
+  // "/name " 等用户续打参数（发送时展开）；无参模板整段正文替换（{{var}}
+  // 占位保留手改——既有插入流不变）；MCP 模板一律 "/server:prompt "。
+  let insert;
+  if (item.kind === "dir") insert = item.label;
+  else if (item.kind === "prompt") {
+    const hasArgs = (item.hints?.length ?? 0) > 0 || (item.argumentHint ?? "") !== "";
+    insert = hasArgs ? `/${item.label} ` : (item.content ?? "");
+  } else if (item.kind === "mcp-prompt") {
+    insert = `/${item.label} `;
+  } else insert = `${item.label} `;
   input.value = `${before}${insert}${after}`;
   const pos = (before + insert).length;
   input.setSelectionRange(pos, pos);
@@ -743,22 +816,51 @@ async function updateAutocomplete() {
       ];
     }
   } else {
-    const meta = (await ensureMetaCache(sessionId())) ?? { tools: [], skills: [] };
-    const prompts = await ensurePromptsCache();
+    const meta = (await ensureMetaCache(sessionId())) ?? { tools: [], skills: [], prompts: [] };
+    const view = await ensurePromptsCache();
+    const filePrompts = (view?.prompts ?? []).filter((p) => p.disabled !== true);
+    const mcpPrompts = (meta.prompts ?? []).filter((p) => p.source === "mcp");
+    const promptPlaceholders = (t) =>
+      [...new Set([...t.matchAll(/\$(?:ARGUMENTS|[0-9]+|@|\{@:\d+(?::\d+)?\}|\{@\})/g)].map((m) => m[0]))];
     const candidates = [
       ...UI_COMMANDS.map((c) => ({ icon: "⌘", label: c.label, hint: c.hint, kind: "command" })),
       ...meta.tools.map((t) => ({ icon: "🛠", label: t, hint: "工具", kind: "tool" })),
       ...meta.skills.map((s) => ({ icon: "✨", label: s.name, hint: s.description, kind: "skill" })),
-      ...prompts.map((p) => ({
+      ...filePrompts.map((p) => ({
         icon: "📝",
         label: p.name,
         hint: p.description ?? "提示词模板",
+        argumentHint: p.argumentHint ?? "",
         kind: "prompt",
         content: p.content,
         vars: templateVarNames(p.content),
+        hints: promptPlaceholders(p.content),
       })),
-    ].filter((c) => c.label.toLowerCase().startsWith(tokenBody));
-    acItems = candidates.slice(0, 8);
+      ...mcpPrompts.map((p) => ({
+        icon: "🌐",
+        label: p.name,
+        hint: p.description ?? "MCP prompt",
+        kind: "mcp-prompt",
+      })),
+    ];
+    // T-P3-146 F：模糊三档评分 + 组内排序（组头连续性——按组序优先、组内按分）
+    const GROUP_ORDER = ["command", "tool", "skill", "prompt", "mcp-prompt"];
+    const scored = candidates
+      .map((c) => ({ c, s: fuzzyScore(c.label, c.hint, tokenBody), g: GROUP_ORDER.indexOf(c.kind) }))
+      .filter((x) => x.s >= 0 && x.g >= 0)
+      .sort((a, b) => (a.g - b.g) || (b.s - a.s));
+    acItems = scored.slice(0, 10).map((x) => x.c);
+    let best = -1;
+    let bestScore = -1;
+    for (const [i, x] of scored.slice(0, 10).entries()) {
+      if (x.s > bestScore) {
+        bestScore = x.s;
+        best = i;
+      }
+    }
+    acIndex = best;
+    renderAutocomplete();
+    return;
   }
   acIndex = acItems.length > 0 ? 0 : -1;
   renderAutocomplete();
@@ -790,10 +892,28 @@ function executeCommand(label) {
   }
 }
 
-// —— 提交：多行（Shift+Enter 换行）/ 斜杠命令拦截 / 附件随 prompt 上送
-function submitPrompt() {
+// —— 提交：多行（Shift+Enter 换行）/ 斜杠命令拦截 / 未知命令本地拦截
+// （T-P3-146 E——codex/kimi 语义：/ 开头的命令形 token 若不是已知命令，
+// 本地报错不进模型；去掉斜杠或补建模板后可发）
+async function submitPrompt() {
   const content = input.value.trim();
   if (content === "") return;
+  const slash = content.match(/^\/([a-z0-9][a-z0-9_:/-]*)$/i) ?? content.match(/^\/([a-z0-9][a-z0-9_:/-]*)[\s\n]/i);
+  if (slash !== null) {
+    const name = slash[1] ?? "";
+    const meta = (await ensureMetaCache(sessionId())) ?? { tools: [], skills: [], prompts: [] };
+    const view = await ensurePromptsCache();
+    const known =
+      UI_COMMANDS.some((c) => c.label === `/${name}`) ||
+      meta.tools.includes(name) ||
+      meta.skills.some((s) => s.name === name) ||
+      (meta.prompts ?? []).some((p) => p.name.toLowerCase() === name.toLowerCase()) ||
+      (view?.prompts ?? []).some((p) => p.name.toLowerCase() === name.toLowerCase());
+    if (!known) {
+      toast(`未知命令 /${name}——不是已知命令、模板或工具（去掉斜杠可按普通文本发送）`, "warn");
+      return;
+    }
+  }
   setLastUserPrompt(content);
   input.value = "";
   autoGrow();
@@ -951,6 +1071,79 @@ micBtn.addEventListener("click", () => {
     mediaRecorder?.stop();
   } else {
     void startRecording();
+  }
+});
+
+// —— T-P3-146 I 一键润色（pi-desktop prompt-enhancement Composer 消费端）：
+// 草稿 → polish 旁路请求 → 润色文本替换输入框；撤销恢复原文（pi 全套的
+// 轻量版——竞态保护用 in-flight 禁用 + 会话切换丢弃）。
+const polishBtn = document.getElementById("polish-btn");
+const polishUndo = document.getElementById("polish-undo");
+const polishUndoBtn = document.getElementById("polish-undo-btn");
+let polishInFlight = false;
+let polishPrevDraft = "";
+
+polishBtn.addEventListener("click", async () => {
+  const draft = input.value.trim();
+  if (draft === "") {
+    toast("输入框为空——先写草稿再润色", "warn");
+    return;
+  }
+  if (draft.startsWith("/")) {
+    toast("模板调用（/ 开头）不参与润色", "warn");
+    return;
+  }
+  if (polishInFlight) return;
+  polishInFlight = true;
+  polishBtn.disabled = true;
+  polishBtn.textContent = "⏳";
+  try {
+    // 兜底超时（polish 无 error 行关联——子进程崩溃时 Promise 会悬挂，
+    // 60s 上限保证按钮可恢复）
+    const envelope = await Promise.race([
+      sendRequest(sessionId(), {
+        type: "polish",
+        requestId: allocRequestId("p"),
+        draft,
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("润色请求超时（60s）")), 60_000)),
+    ]);
+    if (!envelope.ok) {
+      toast(`润色失败：${envelope.error?.message ?? envelope.error?.code ?? ""}`, "warn");
+      return;
+    }
+    const result = envelope.result ?? {};
+    if (result.ok !== true || typeof result.text !== "string" || result.text === "") {
+      toast(`润色失败：${result.error ?? "模型未返回内容"}`, "warn");
+      return;
+    }
+    polishPrevDraft = input.value;
+    input.value = result.text;
+    autoGrow();
+    input.focus();
+    polishUndo.hidden = false;
+    toast("已润色填入——可撤销恢复原文", "info");
+  } catch (e) {
+    toast(`润色失败：${e instanceof Error ? e.message : String(e)}`, "warn");
+  } finally {
+    polishInFlight = false;
+    polishBtn.disabled = false;
+    polishBtn.textContent = "✨";
+  }
+});
+polishUndoBtn?.addEventListener("click", () => {
+  if (polishPrevDraft === "") return;
+  input.value = polishPrevDraft;
+  polishPrevDraft = "";
+  polishUndo.hidden = true;
+  autoGrow();
+  input.focus();
+});
+input.addEventListener("input", () => {
+  // 撤销面随编辑失效（原文被改动后撤销无意义）
+  if (polishPrevDraft !== "" && polishUndo !== null && !polishUndo.hidden) {
+    polishPrevDraft = "";
+    polishUndo.hidden = true;
   }
 });
 

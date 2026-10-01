@@ -612,11 +612,18 @@ export class AgentLoop {
    * 跑一个用户轮：turn/start → user/message → N 个 step → turn/end。
    * 返回结束原因（硬退出的 error 也不抛——终态在事件流里，pi 同款
    * "error responses remain hard exits"）。
+   * T-P3-146 A/H 扩展位：command = 模板调用原文（落 user/message 的 chip
+   * 字段）；model = 命令级模型覆盖（frontmatter model——优先于 modelForTurn，
+   * 仅本 turn 生效）。
    */
   async runTurn(
     prompt: string,
     attachments?: readonly AttachmentRef[],
     sessionRefs?: readonly SessionRef[],
+    extras?: {
+      command?: string;
+      model?: { provider: ModelProvider; identity: ModelIdentity };
+    },
   ): Promise<TurnEndReason> {
     const { store, sessionId } = this.deps;
     // A3：turn 尝试开始即 busy（先于任何校验与落盘）——若本 turn 半途崩溃，
@@ -638,9 +645,12 @@ export class AgentLoop {
     this.cancelController = new AbortController();
     // J7 捕获：turn 启动即定本 turn 的模型（此后在途换模只影响后续 turn）。
     // 捕获在 turn/start 落盘前——装配侧坏状态在此爆出，不污染事件流。
-    this.turnModel = this.deps.modelForTurn
-      ? this.deps.modelForTurn(turn)
-      : { provider: this.deps.provider, identity: this.deps.identity };
+    // T-P3-146 H：命令级覆盖（frontmatter model）优先于 modelForTurn。
+    this.turnModel = extras?.model
+      ? extras.model
+      : this.deps.modelForTurn
+        ? this.deps.modelForTurn(turn)
+        : { provider: this.deps.provider, identity: this.deps.identity };
     store.append(sessionId, [
       {
         type: "turn/start",
@@ -656,6 +666,8 @@ export class AgentLoop {
         ...(attachments !== undefined && attachments.length > 0 ? { attachments: [...attachments] } : {}),
         // E9/T-P2-107：会话引用随消息落流（流存引用不存内容）；无引用零变化
         ...(sessionRefs !== undefined && sessionRefs.length > 0 ? { sessionRefs: [...sessionRefs] } : {}),
+        // T-P3-146 A：模板调用原文随消息落流（transcript chip 数据源）
+        ...(extras?.command !== undefined ? { command: extras.command } : {}),
       },
     ]);
     try {

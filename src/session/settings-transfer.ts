@@ -100,7 +100,13 @@ export function summarizePackage(s: SettingsShape): string[] {
   if (s.sandbox?.network !== undefined) lines.push(`网络档 ${s.sandbox.network}`);
   if (s.sandbox?.workspace !== undefined) lines.push(`工作区 ${s.sandbox.workspace}`);
   if (s.projects?.length) lines.push(`项目 ${s.projects.length} 个`);
-  if (s.prompts?.length) lines.push(`提示词模板 ${s.prompts.length} 个`);
+  // T-P3-146 C：prompts 双形态——数组（旧内联库）计条目数；对象（文件域配置）
+  // 有 roots 时计附加根数
+  if (Array.isArray(s.prompts) && s.prompts.length > 0) {
+    lines.push(`提示词模板 ${s.prompts.length} 个`);
+  } else if (!Array.isArray(s.prompts) && s.prompts?.roots?.length) {
+    lines.push(`提示词模板附加源 ${s.prompts.roots.length} 个`);
+  }
   if (s.mcp?.length) lines.push(`MCP server ${s.mcp.length} 个`);
   if (s.profiles?.length) lines.push(`配置档 ${s.profiles.length} 个`);
   if (s.enhancement?.judge !== undefined) lines.push("判官辅助模型已配置");

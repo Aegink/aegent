@@ -165,6 +165,16 @@ export type AgentRequest =
       comment?: string;
       doctorSummary?: string;
     }
+  | {
+      /**
+       * T-P3-146 I 一键润色（C19 policy/check → policy_verdict 回执对同构
+       * 的旁路调用面）：一次 LLM 调用把草稿润色为更优表达——不经会话流
+       * 不开轮；结果经 polish_result 回执（requestId 关联）。draft 非空串。
+       */
+      type: "polish";
+      requestId: string;
+      draft: string;
+    }
   | { type: "dispose" };
 
 /** 子 → 父。 */
@@ -175,6 +185,18 @@ export type AgentMessage =
       tools?: string[];
       /** U10/T-P3-109：I2 技能清单（name/description——补全面提示用）。 */
       skills?: { name: string; description: string }[];
+      /**
+       * T-P3-146：提示词模板目录（/ 补全与设置页只读区共用数据面）——
+       * name/description/argumentHint + source 闭集（project|user|extra|
+       * builtin|mcp）。文件模板在此是启动快照（展开面另行新鲜扫描）；
+       * mcp 条目来自 live 连接。
+       */
+      prompts?: {
+        name: string;
+        description?: string;
+        argumentHint?: string;
+        source: "project" | "user" | "extra" | "builtin" | "mcp";
+      }[];
     }
   | { type: "accepted"; messageId: string }
   | { type: "event"; event: SessionEvent }
@@ -237,6 +259,15 @@ export type AgentMessage =
       type: "resumed";
       fromTurn: number;
     }
+  | {
+      /** T-P3-146 I：润色回执（polish 请求的关联应答——text 为润色后草稿；
+       * 失败 = ok:false + error 消息，UI 侧 toast 不落流）。 */
+      type: "polish_result";
+      requestId: string;
+      ok: boolean;
+      text?: string;
+      error?: string;
+    }
   | { type: "idle" }
   | { type: "error"; code: string; message: string };
 
@@ -265,6 +296,7 @@ const REQUEST_TYPES = new Set([
   "steer",
   "config/refresh",
   "policy/check",
+  "polish",
   "dispose",
 ]);
 const CANCEL_KINDS = new Set(["user", "parent", "disposed", "hook", "legacy"]);
@@ -318,6 +350,7 @@ export function decodeRequest(line: string): AgentRequest {
     args?: unknown;
     modifiedInput?: unknown;
     source?: unknown;
+    draft?: unknown;
   };
   if (!REQUEST_TYPES.has(req.type)) {
     throw new ProtocolError("PROTOCOL_UNKNOWN_REQUEST", `未知请求类型 ${req.type}`);
@@ -608,6 +641,17 @@ export function decodeRequest(line: string): AgentRequest {
       ...(typeof req.doctorSummary === "string" ? { doctorSummary: req.doctorSummary } : {}),
     };
   }
+  if (req.type === "polish") {
+    // T-P3-146 I：润色请求形状（requestId 非空 + draft 非空字符串——空草稿
+    // 无可润色，UI 侧已拦；wire 层防御性重复校验）
+    if (typeof req.requestId !== "string" || req.requestId === "") {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "polish 需要 requestId 非空字符串");
+    }
+    if (typeof req.draft !== "string" || req.draft.trim() === "") {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "polish 需要 draft 非空字符串");
+    }
+    return { type: "polish", requestId: req.requestId, draft: req.draft };
+  }
   return { type: "dispose" };
 }
 
@@ -648,6 +692,11 @@ export function decodeMessage(line: string): AgentMessage {
     rule?: unknown;
     tools?: unknown;
     skills?: unknown;
+    prompts?: unknown;
+    ok?: unknown;
+    text?: unknown;
+    error?: unknown;
+    draft?: unknown;
   };
   switch (msg.type) {
     case "ready": {
@@ -656,6 +705,12 @@ export function decodeMessage(line: string): AgentMessage {
         type: "ready";
         tools?: string[];
         skills?: { name: string; description: string }[];
+        prompts?: {
+          name: string;
+          description?: string;
+          argumentHint?: string;
+          source: "project" | "user" | "extra" | "builtin" | "mcp";
+        }[];
       } = { type: "ready" };
       if (msg.tools !== undefined) {
         if (!Array.isArray(msg.tools) || msg.tools.some((t) => typeof t !== "string")) {
@@ -677,6 +732,30 @@ export function decodeMessage(line: string): AgentMessage {
           throw new ProtocolError("PROTOCOL_MALFORMED", "ready.skills 须为 {name,description} 数组");
         }
         out.skills = msg.skills as { name: string; description: string }[];
+      }
+      // T-P3-146：prompts 目录（形状校验同 skills——source 闭集额外把关）
+      if (msg.prompts !== undefined) {
+        if (
+          !Array.isArray(msg.prompts) ||
+          msg.prompts.some(
+            (p) =>
+              p === null ||
+              typeof p !== "object" ||
+              typeof (p as { name?: unknown }).name !== "string" ||
+              typeof (p as { source?: unknown }).source !== "string" ||
+              !["project", "user", "extra", "builtin", "mcp"].includes(
+                String((p as { source?: unknown }).source),
+              ),
+          )
+        ) {
+          throw new ProtocolError("PROTOCOL_MALFORMED", "ready.prompts 形状非法（name/source 必填，source 闭集）");
+        }
+        out.prompts = msg.prompts as {
+          name: string;
+          description?: string;
+          argumentHint?: string;
+          source: "project" | "user" | "extra" | "builtin" | "mcp";
+        }[];
       }
       return out;
     }
@@ -828,6 +907,28 @@ export function decodeMessage(line: string): AgentMessage {
         throw new ProtocolError("PROTOCOL_MALFORMED", "prompt_returned 需要字符串数组 contents");
       }
       return { type: "prompt_returned", contents: msg.contents as string[] };
+    }
+    case "polish_result": {
+      // T-P3-146 I：润色回执（ok 闭集 + text/error 按语义缺省）
+      if (typeof msg.requestId !== "string" || msg.requestId === "") {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "polish_result 需要 requestId");
+      }
+      if (msg.ok !== true && msg.ok !== false) {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "polish_result 需要 ok 布尔");
+      }
+      if (msg.text !== undefined && typeof msg.text !== "string") {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "polish_result 的 text 须为字符串");
+      }
+      if (msg.error !== undefined && typeof msg.error !== "string") {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "polish_result 的 error 须为字符串");
+      }
+      return {
+        type: "polish_result",
+        requestId: msg.requestId,
+        ok: msg.ok,
+        ...(typeof msg.text === "string" ? { text: msg.text } : {}),
+        ...(typeof msg.error === "string" ? { error: msg.error } : {}),
+      };
     }
     case "error":
       if (typeof msg.code !== "string" || typeof msg.message !== "string") {

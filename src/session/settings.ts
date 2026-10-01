@@ -165,13 +165,26 @@ export interface PricingEntry {
   cacheWritePerMTok?: number;
 }
 
-/** 提示词模板条目（U16/T-P3-118——用户自建模板库；与 I8 persona 系统预设分界：这是用户内容面）。 */
+/** 提示词模板条目（U16——settings 内联库旧形态；T-P3-146 C 迁移到文件域后仅作回读兼容）。 */
 export interface PromptEntry {
   /** 模板名（斜杠调用与库列表的标识——库内唯一）。 */
   name: string;
   /** 模板正文（`{{var}}` 占位符单一约定——变量面见 session/prompt-library.ts）。 */
   content: string;
   description?: string;
+}
+
+/**
+ * 提示词文件域管理配置（T-P3-146 C——settings prompts 段新形态）：
+ * disabled = 停用名单（展开查找与 / 补全共同消费——"启用开关"不改正文）；
+ * roots = 附加来源目录（多根扫描——skills.roots 同构，遮蔽序项目级 > 附加根
+ * > 用户级）；allowShellExpansion = `!`cmd`` 前置展开开关（缺省 false——
+ * 任意命令执行面，显式开启才生效，fail-closed）。
+ */
+export interface PromptsConfig {
+  disabled?: string[];
+  roots?: string[];
+  allowShellExpansion?: boolean;
 }
 
 /** MCP server 条目（U17/T-P3-119——向导落档；装配消费在 agent-child）。 */
@@ -287,8 +300,15 @@ export interface SettingsShape {
   activeProject?: string;
   /** 价格表（U12——成本统计的计价来源；缺省无 = 成本如实缺席不虚构）。 */
   pricing?: PricingEntry[];
-  /** 提示词模板库（U16——用户自建/编辑/删除；Composer / 补全调用）。 */
-  prompts?: PromptEntry[];
+  /**
+   * 提示词域（T-P3-146 C 文件化——双形态过渡段）：
+   *  - 旧形态 `PromptEntry[]`（U16 settings 内联库）——首次读取时由 host
+   *    一次性迁移到 `~/.aegent/prompts/*.md`（迁移标记在用户根），此后只读
+   *    不消费（保留段位为旧版本回读兼容）；
+   *  - 新形态 `PromptsConfig`（文件域管理配置——停用名单 + 附加来源根 +
+   *    shell 前置展开开关；模板本体在文件系统，见 kernel/prompts.ts）。
+   */
+  prompts?: PromptEntry[] | PromptsConfig;
   /** 技能管理（U22——停用名单 + 附加来源目录；装配消费见 kernel/skills.ts）。 */
   skills?: SkillsConfig;
   /** 子代理自定义（U23——同名覆盖内置预设；解析面见 session/subagents-config.ts）。 */
@@ -319,6 +339,16 @@ export interface SettingsShape {
   enhancement?: {
     judge?: EnhancementModelEntry;
     summarizer?: EnhancementModelEntry;
+    /**
+     * 一键润色（T-P3-146 I——pi-desktop prompt-enhancement 同构）：
+     * 独立模型三元组（provider/model/reasoning 均可缺省——缺省回退
+     * summarizer → 主模型链）+ 用户润色模板（{{draft}} 占位；customTemplate
+     * 关闭或缺占位符 = 内置默认模板；template 上限 8000 字符——pi 同值）。
+     */
+    polish?: Partial<EnhancementModelEntry> & {
+      customTemplate?: boolean;
+      template?: string;
+    };
   };
   /** Profiles 组合档（U19——命名场景快照；切换 = 批量写生效段）。 */
   profiles?: ProfileEntry[];
@@ -373,6 +403,7 @@ export function defaultSettings(): SettingsShape {
     appearance: { theme: "dark", language: "zh-CN" },
     logging: {},
     projects: [],
+    // T-P3-146 C：缺省维持旧数组形态（零配置 = 空内联库——迁移面 no-op）
     prompts: [],
     mcp: [],
     profiles: [],
@@ -869,27 +900,62 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
   out.activeProfile = assertString(rec["activeProfile"], "activeProfile");
   const prompts = rec["prompts"];
   if (prompts !== undefined) {
-    if (!Array.isArray(prompts)) throw new SettingsError("prompts 须为数组");
-    const seen = new Set<string>();
-    for (const entry of prompts) {
-      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
-        throw new SettingsError("prompts 条目必须是对象");
+    // T-P3-146 C：双形态——数组 = 旧内联库（回读兼容 + 迁移源）；对象 =
+    // 文件域管理配置（disabled/roots/allowShellExpansion）。
+    if (Array.isArray(prompts)) {
+      const seen = new Set<string>();
+      const entries: PromptEntry[] = [];
+      for (const entry of prompts) {
+        if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+          throw new SettingsError("prompts 条目必须是对象");
+        }
+        const e = entry as Record<string, unknown>;
+        const name = assertString(e["name"], "prompts[].name");
+        if (name === undefined) throw new SettingsError("prompts[].name 缺失");
+        // 库内唯一——斜杠调用的标识面重名即坏档（fail-closed）
+        if (seen.has(name)) throw new SettingsError(`prompts 模板名重复：${name}`);
+        seen.add(name);
+        const content = assertString(e["content"], "prompts[].content");
+        if (content === undefined) throw new SettingsError("prompts[].content 缺失");
+        entries.push({
+          name,
+          content,
+          ...(assertString(e["description"], "prompts[].description") !== undefined
+            ? { description: e["description"] as string }
+            : {}),
+        });
       }
-      const e = entry as Record<string, unknown>;
-      const name = assertString(e["name"], "prompts[].name");
-      if (name === undefined) throw new SettingsError("prompts[].name 缺失");
-      // 库内唯一——斜杠调用的标识面重名即坏档（fail-closed）
-      if (seen.has(name)) throw new SettingsError(`prompts 模板名重复：${name}`);
-      seen.add(name);
-      const content = assertString(e["content"], "prompts[].content");
-      if (content === undefined) throw new SettingsError("prompts[].content 缺失");
-      out.prompts!.push({
-        name,
-        content,
-        ...(assertString(e["description"], "prompts[].description") !== undefined
-          ? { description: e["description"] as string }
-          : {}),
-      });
+      out.prompts = entries;
+    } else if (prompts !== null && typeof prompts === "object") {
+      const cfg = prompts as Record<string, unknown>;
+      const next: PromptsConfig = {};
+      const disabled = cfg["disabled"];
+      if (
+        disabled !== undefined &&
+        (!Array.isArray(disabled) || disabled.some((d) => typeof d !== "string" || d.trim() === ""))
+      ) {
+        throw new SettingsError("prompts.disabled 须为非空字符串数组");
+      }
+      const roots = cfg["roots"];
+      if (
+        roots !== undefined &&
+        (!Array.isArray(roots) || roots.some((r) => typeof r !== "string" || r.trim() === ""))
+      ) {
+        throw new SettingsError("prompts.roots 须为非空字符串数组");
+      }
+      if (cfg["allowShellExpansion"] !== undefined && typeof cfg["allowShellExpansion"] !== "boolean") {
+        throw new SettingsError("prompts.allowShellExpansion 须为布尔值");
+      }
+      if (disabled !== undefined) next.disabled = disabled as string[];
+      if (roots !== undefined) next.roots = roots as string[];
+      if (cfg["allowShellExpansion"] !== undefined) {
+        next.allowShellExpansion = cfg["allowShellExpansion"] as boolean;
+      }
+      if (next.disabled !== undefined || next.roots !== undefined || next.allowShellExpansion !== undefined) {
+        out.prompts = next;
+      }
+    } else {
+      throw new SettingsError("prompts 须为数组（旧内联库）或对象（文件域配置）");
     }
   }
   if (rec["onboardingDone"] !== undefined && typeof rec["onboardingDone"] !== "boolean") {
@@ -1153,10 +1219,37 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
     const rec2 = enhancement as Record<string, unknown>;
     const judge = parseTask(rec2["judge"], "enhancement.judge");
     const summarizer = parseTask(rec2["summarizer"], "enhancement.summarizer");
-    if (judge !== undefined || summarizer !== undefined) {
+    // T-P3-146 I：润色任务（provider 可缺省——缺省回退 summarizer → 主模型链）
+    let polish: NonNullable<SettingsShape["enhancement"]>["polish"] | undefined;
+    if (rec2["polish"] !== undefined) {
+      const p = rec2["polish"];
+      if (p === null || typeof p !== "object" || Array.isArray(p)) {
+        throw new SettingsError("enhancement.polish 须为对象");
+      }
+      const pr = p as Record<string, unknown>;
+      const base = pr["provider"] !== undefined ? parseTask(pr, "enhancement.polish") : undefined;
+      const customTemplate = pr["customTemplate"];
+      if (customTemplate !== undefined && typeof customTemplate !== "boolean") {
+        throw new SettingsError("enhancement.polish.customTemplate 须为布尔值");
+      }
+      const template = assertString(pr["template"], "enhancement.polish.template");
+      if (template !== undefined && Buffer.byteLength(template, "utf8") > 8000) {
+        throw new SettingsError("enhancement.polish.template 超限（上限 8000 字符）");
+      }
+      if (template !== undefined && !template.includes("{{draft}}")) {
+        throw new SettingsError("enhancement.polish.template 缺少 {{draft}} 占位符");
+      }
+      polish = {
+        ...(base !== undefined ? base : {}),
+        ...(customTemplate !== undefined ? { customTemplate } : {}),
+        ...(template !== undefined ? { template } : {}),
+      };
+    }
+    if (judge !== undefined || summarizer !== undefined || polish !== undefined) {
       out.enhancement = {
         ...(judge !== undefined ? { judge } : {}),
         ...(summarizer !== undefined ? { summarizer } : {}),
+        ...(polish !== undefined ? { polish } : {}),
       };
     }
   }

@@ -28,10 +28,11 @@ export function setLastUserPrompt(v) {
   lastUserPrompt = v;
 }
 
-// —— U16 提示词模板补全的加载标记（settings get 一次缓存）
+// —— U16 提示词模板补全的加载标记（op:"prompts-list" 一次缓存；设置页保存
+// 模板后 markPromptsLoaded(false) 失效，下次补全重取——T-P3-146 文件域换源）
 export let promptsCacheLoaded = false;
-export function markPromptsLoaded() {
-  promptsCacheLoaded = true;
+export function markPromptsLoaded(v = true) {
+  promptsCacheLoaded = v;
 }
 
 // —— 主题应用原语（状态 → DOM：外观段变化的全端一致写入点；入口启动时

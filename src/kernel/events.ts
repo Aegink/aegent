@@ -301,6 +301,14 @@ export interface UserMessageEvent extends EventBase {
    * session/reference.ts）。字段缺省——旧流前向兼容（投影零变化）。
    */
   sessionRefs?: SessionRef[];
+  /**
+   * 提示词模板调用的原文（T-P3-146 A——"/name args" 整串；子进程展开后随
+   * user/message 落流）。transcript 据此渲染原始调用 chip（pi-desktop
+   * SlashExpansion 双字段持久化同构——content 是模型所见，command 是用户
+   * 所打，重放走 content）。字段缺省——旧流前向兼容（无 chip，投影零变化；
+   * 载荷扩展先例 attachments/sessionRefs——事件计数不变）。
+   */
+  command?: string;
 }
 
 /**

@@ -16,7 +16,7 @@
  */
 
 import { sendSettings, ensureMetaCache } from "../../api.js";
-import { settingsCache, getSessionId } from "../../state.js";
+import { settingsCache, getSessionId, markPromptsLoaded } from "../../state.js";
 import { appendLine, toast } from "../../feedback.js";
 import { icon } from "../../icons.js";
 import {
@@ -184,14 +184,19 @@ export const SECTIONS_HTML = `
 </section>
 <section data-section="prompts">
   <div class="section-head">
-    <h2 class="section-title">提示词模板</h2>
+    <h2 class="section-title">提示词模板<span id="prompt-status" class="section-count"></span></h2>
     <div class="section-tools">
       <input id="prompt-search" class="input input-search" type="text" placeholder="搜索模板…" autocomplete="off" />
+      <button id="prompt-import" type="button" class="btn">导入外部命令</button>
       <button id="prompt-new" type="button" class="btn btn-primary">新建模板</button>
     </div>
   </div>
   <div id="prompt-list" class="row-list"></div>
-  <p class="hint">模板在输入区 / 补全中列出（📝），选中即填入输入框；变量占位符保留手改。系统级人格预设（persona）不在此管理。</p>
+  <details id="prompt-mcp-wrap" class="skill-diag" hidden>
+    <summary id="prompt-mcp-summary">MCP prompts（只读）</summary>
+    <div id="prompt-mcp-list" class="row-list"></div>
+  </details>
+  <p class="hint">模板 = 斜杠命令：有参模板（正文含 $1/$ARGUMENTS 或填了参数提示）在输入区选中后插入 "/名 " 续打参数，发送时由内核展开（发送时求值——pi/zcode/opencode 统一语义）；无参模板保持整段插入。文件落盘 <code>.zcode/prompts/</code>（项目）与 <code>~/.aegent/prompts/</code>（用户级），项目遮蔽同名用户模板；frontmatter 支持 description / argument-hint / agent（以子代理执行）/ model（命令级模型）。内置 <code>/init</code> 可被同名文件覆盖；停用开关不改文件。</p>
 </section>
 <section data-section="enhancement">
   <div class="section-head"><h2 class="section-title">辅助模型</h2></div>
@@ -1576,107 +1581,399 @@ async function openSubagentEditor(def, isBuiltin) {
 }
 
 // ---------------------------------------------------------------------------
-// U16/T-P3-118 提示词模板库（settings prompts 段整段替换——upsert 同名原位
-// 替换）+ 顶部搜索 + 空状态引导；新增/编辑下沉模态（prompt-form 随模态）
+// T-P3-146 提示词模板域重做（C 文件化 + A 参数化 + B 管理面 + D 导入 + E 停用）：
+// 清单走 op:"prompts-list"（文件域 + 旧内联库一次性迁移）；停用开关 patch
+// settings prompts 段对象形态；新建/编辑 = prompt-save 落盘（slug/保留名/
+// 128KB 校验在 host，UI 侧先行同规则提示）；导入 = prompt-import-scan/apply。
 // ---------------------------------------------------------------------------
 
-let editingPromptName = null;
 let promptFilter = "";
+let promptsView = null; // op:"prompts-list" 回执（文件域清单 + 诊断 + 配置）
+
+/** 名称段规则（host validatePromptName 同规则前置——错误提前到表单）。 */
+const PROMPT_SEGMENT_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+const PROMPT_RESERVED = new Set(["cancel", "find", "search", "history", "settings", "help"]);
+
+function promptNameError(name) {
+  if (name === "") return "名称必填";
+  for (const seg of name.split("/")) {
+    if (!PROMPT_SEGMENT_RE.test(seg) || seg.includes("..")) {
+      return `名称段「${seg}」须为 slug 形状（小写字母数字开头，. - _ 可内用）`;
+    }
+  }
+  if (name.includes(":")) return "名称不可含冒号（MCP prompts 命名空间保留符）";
+  if (PROMPT_RESERVED.has(name.toLowerCase())) return `「${name}」为本地命令保留名`;
+  return undefined;
+}
+
+async function refreshPromptsList() {
+  const envelope = await sendSettings({ op: "prompts-list" });
+  const list = document.getElementById("prompt-list");
+  if (list === null) return; // 视图已卸载（异步回包晚于导航——静默丢弃）
+  if (!envelope.ok) {
+    list.replaceChildren();
+    list.appendChild(emptyState("模板清单不可用", envelope.error?.message ?? ""));
+    return;
+  }
+  promptsView = envelope.result;
+  if (envelope.result.migratedFromSettings !== undefined) {
+    toast(`已迁移旧内联库 ${String(envelope.result.migratedFromSettings)} 个模板到 ~/.aegent/prompts/`, "info");
+  }
+  renderPromptList();
+}
 
 function renderPromptList() {
   const list = document.getElementById("prompt-list");
   if (list === null) return;
   list.replaceChildren();
-  const prompts = settingsCache?.prompts ?? [];
+  const prompts = promptsView?.prompts ?? [];
+  const status = document.getElementById("prompt-status");
+  if (status !== null) status.textContent = prompts.length > 0 ? `（${String(prompts.length)} 个）` : "";
   const visible = prompts.filter((p) => {
     if (promptFilter === "") return true;
     const q = promptFilter.toLowerCase();
     return (
       p.name.toLowerCase().includes(q) ||
       (p.description ?? "").toLowerCase().includes(q) ||
+      (p.argumentHint ?? "").toLowerCase().includes(q) ||
       p.content.toLowerCase().includes(q)
     );
   });
   if (visible.length === 0) {
     list.appendChild(
       prompts.length === 0
-        ? emptyState("提示词库为空", "点右上「新建模板」建档——输入区 / 补全即可调用")
+        ? emptyState("提示词库为空", "点右上「新建模板」建档，或「导入外部命令」吃进 Claude/ZCode 等存量命令——输入区 / 补全即可调用")
         : emptyState("无匹配模板", `没有含「${promptFilter}」的模板`),
     );
-    return;
   }
+  const disabledSet = new Set((promptsView?.disabled ?? []).map((d) => d.toLowerCase()));
   for (const p of visible) {
     const row = rowEl();
+    const badge = document.createElement("span");
+    badge.className = "icon-badge";
+    badge.appendChild(icon("sparkles"));
     const titleEl = document.createElement("div");
-    titleEl.className = "row-title title-btn";
-    titleEl.textContent = p.name;
+    titleEl.className = "row-title";
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "mono";
+    nameSpan.textContent = `/${p.name}`;
+    titleEl.appendChild(nameSpan);
+    const sourceLabel = p.source === "project" ? "项目" : p.source === "user" ? "用户" : "外部来源";
+    titleEl.appendChild(chipEl(sourceLabel));
+    if (disabledSet.has(p.name.toLowerCase())) titleEl.appendChild(chipEl("已停用"));
+    if (p.agent !== undefined) titleEl.appendChild(chipEl(`agent: ${p.agent}`));
+    if (p.model !== undefined) titleEl.appendChild(chipEl(`model: ${p.model}`));
     const descEl = document.createElement("div");
     descEl.className = "row-desc clamp-2";
-    descEl.textContent = `${p.description ? `${p.description}——` : ""}${p.content}`;
-    row.append(rowCopyEl(titleEl, descEl));
-    const editBtn = btnEl("编辑", "btn", "点击编辑该模板");
-    editBtn.addEventListener("click", () => openPromptDialog(p));
-    const delBtn = btnEl("删除", "btn btn-danger");
-    delBtn.addEventListener("click", async () => {
-      if (!(await confirmDialog(`删除提示词模板「${p.name}」？/ 补全中将不再出现。`, { title: "删除模板", confirmLabel: "删除", danger: true }))) return;
-      settingsCache.prompts = (settingsCache.prompts ?? []).filter((x) => x.name !== p.name);
-      if (editingPromptName === p.name) editingPromptName = null;
+    descEl.textContent = `${p.argumentHint !== undefined ? `[参数] ${p.argumentHint}——` : ""}${p.description ? `${p.description}——` : ""}${p.content}`;
+    row.append(badge, rowCopyEl(titleEl, descEl));
+    const toggle = switchEl(!disabledSet.has(p.name.toLowerCase()), (checked) => {
+      // E：停用开关不改文件——settings prompts 段对象形态 patch（改名不迁移
+      // 语义按名匹配——与 skills.disabled 一致；文件域展开面新鲜读 settings）
+      const cur = new Set(promptsView?.disabled ?? []);
+      if (checked) cur.delete(p.name);
+      else cur.add(p.name);
+      const config = { ...(promptsView?.config ?? {}), disabled: [...cur] };
+      if (cur.size === 0) delete config.disabled;
+      settingsCache.prompts = config;
       dirtySections.add("prompts");
-      renderPromptList();
       markDirty("prompts");
+      promptsView.disabled = [...cur];
+      promptsView.config = { ...promptsView.config, disabled: [...cur] };
+      renderPromptList();
+      markPromptsLoaded(false); // / 补全缓存失效（停用即时可见）
+    }, `启停模板 ${p.name}`);
+    const editBtn = btnEl("编辑", "btn", "打开模板编辑器（写回 .md 文件）");
+    editBtn.addEventListener("click", () => openPromptDialog(p));
+    const revealBtn = btnEl("目录", "btn", "打开模板所在文件夹");
+    revealBtn.addEventListener("click", () => {
+      void sendSettings({ op: "prompt-reveal", path: p.filePath }).then((envelope) => {
+        if (!envelope.ok) toast(`打开失败：${envelope.error?.message ?? ""}`, "warn");
+      });
     });
-    row.append(rowControl(editBtn, delBtn));
+    const delBtn = btnEl("删除", "btn btn-danger", "删除模板文件（受控根护栏在 host）");
+    delBtn.addEventListener("click", async () => {
+      if (!(await confirmDialog(`删除模板「/${p.name}」？文件将删除，不可恢复。`, { title: "删除模板", confirmLabel: "删除", danger: true }))) return;
+      const envelope = await sendSettings({ op: "prompt-delete", path: p.filePath });
+      if (!envelope.ok) {
+        toast(`删除失败：${envelope.error?.message ?? ""}`, "warn");
+        return;
+      }
+      toast(`模板已删除：/${p.name}`, "info");
+      markPromptsLoaded(false);
+      void refreshPromptsList();
+    });
+    row.append(rowControl(toolsChipsRow(p), toggle, editBtn, revealBtn, delBtn));
     list.appendChild(row);
-    titleEl.title = "点击编辑该模板";
-    titleEl.addEventListener("click", () => openPromptDialog(p));
+  }
+  renderPromptDiagnostics();
+  void renderPromptMcpSection();
+}
+
+/** 模板附加 chips（占位符提示——$1/$ARGUMENTS 一目了然）。 */
+function toolsChipsRow(p) {
+  const wrap = document.createElement("div");
+  wrap.className = "row-chips";
+  const placeholders = [...new Set([...p.content.matchAll(/\$(?:ARGUMENTS|[0-9]+|@|\{@:\d+(?::\d+)?\}|\{@\})/g)].map((m) => m[0]))];
+  for (const ph of placeholders) wrap.appendChild(chipEl(ph));
+  return wrap;
+}
+
+/** 诊断折叠行（技能分节同款形态）。 */
+function renderPromptDiagnostics() {
+  const list = document.getElementById("prompt-list");
+  if (list === null) return;
+  const diagnostics = promptsView?.diagnostics ?? [];
+  if (diagnostics.length === 0) return;
+  const details = document.createElement("details");
+  details.className = "skill-diag";
+  const summary = document.createElement("summary");
+  summary.textContent = `诊断（${String(diagnostics.length)}）`;
+  details.appendChild(summary);
+  for (const d of diagnostics) {
+    const row = rowEl();
+    const t = document.createElement("div");
+    t.className = "row-desc error-text";
+    t.textContent = `[${d.code}] ${d.path}——${d.message}`;
+    row.append(t);
+    details.appendChild(row);
+  }
+  list.appendChild(details);
+}
+
+/** MCP prompts 只读区（meta 目录 source=mcp——host 不持 MCP 连接）。 */
+async function renderPromptMcpSection() {
+  const wrap = document.getElementById("prompt-mcp-wrap");
+  const listEl = document.getElementById("prompt-mcp-list");
+  if (wrap === null || listEl === null) return;
+  const meta = await ensureMetaCache(getSessionId());
+  const mcpPrompts = (meta?.prompts ?? []).filter((p) => p.source === "mcp");
+  if (mcpPrompts.length === 0) {
+    wrap.hidden = true;
+    return;
+  }
+  wrap.hidden = false;
+  const summary = document.getElementById("prompt-mcp-summary");
+  if (summary !== null) summary.textContent = `MCP prompts（只读，${String(mcpPrompts.length)} 个——来自已连接 server）`;
+  listEl.replaceChildren();
+  for (const p of mcpPrompts) {
+    const row = rowEl();
+    const titleEl = document.createElement("div");
+    titleEl.className = "row-title";
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "mono";
+    nameSpan.textContent = `/${p.name}`;
+    titleEl.appendChild(nameSpan);
+    titleEl.appendChild(chipEl("MCP"));
+    const descEl = document.createElement("div");
+    descEl.className = "row-desc";
+    descEl.textContent = p.description ?? "";
+    row.append(rowCopyEl(titleEl, descEl));
+    listEl.appendChild(row);
   }
 }
 
 function openPromptDialog(p) {
-  editingPromptName = p?.name ?? null;
   const holder = document.createElement("div");
   holder.innerHTML = `
   <form id="prompt-form">
     <div class="form-grid">
-      <label>模板名（斜杠调用标识）<input id="prompt-name" class="input" type="text" placeholder="如 review" autocomplete="off" /></label>
+      <label>模板名（斜杠调用标识）<input id="prompt-name" class="input" type="text" placeholder="如 review 或 ci/build" autocomplete="off" /></label>
+      <label>参数提示 argument-hint<input id="prompt-hint" class="input" type="text" placeholder="如 &lt;file&gt; [focus]（有参模板的标志）" autocomplete="off" /></label>
       <label>描述（可选）<input id="prompt-desc" class="input" type="text" placeholder="清单显示用" autocomplete="off" /></label>
+      <label>保存位置<select id="prompt-scope" class="select">
+        <option value="project">项目（.zcode/prompts）</option>
+        <option value="user">用户级（~/.aegent/prompts）</option>
+      </select></label>
+      <label>agent（可选——以子代理执行）<input id="prompt-agent" class="input" type="text" placeholder="如 explorer（子代理预设名）" autocomplete="off" /></label>
+      <label>model（可选——命令级模型）<input id="prompt-model" class="input" type="text" placeholder="如 provider/model-id" autocomplete="off" /></label>
     </div>
-    <textarea id="prompt-content" class="textarea" rows="5" placeholder="模板正文（{{var}} 为变量占位符）"></textarea>
-  </form>`;
+    <textarea id="prompt-content" class="textarea" rows="7" placeholder="模板正文：{{var}} 变量保留手改；$1 $2 位置参数、$ARGUMENTS 整串参数发送时替换；感叹号反引号语法前置执行（需开关）、@file 文件注入"></textarea>
+    <div id="prompt-bytes" class="skill-bytes"></div>
+  </form>
+  <details class="prompt-help"><summary>模板语法帮助</summary><pre>---
+description: 评审当前改动
+argument-hint: [scope]
+---
+
+请评审 $1 范围的代码改动，关注正确性与安全。
+
+$ARGUMENTS = 参数整串；$1 $2 = 位置参数（引号可包空格）；
+正文无占位符时参数自动追加到文末。
+frontmatter 可选：agent（子代理执行）/ model（命令级模型）。
+</pre></details>`;
   const form = holder.firstElementChild;
+  const bytesEl = form.querySelector("#prompt-bytes");
+  const contentEl = form.querySelector("#prompt-content");
+  const nameEl = form.querySelector("#prompt-name");
+  const updateBytes = () => {
+    const n = new TextEncoder().encode(contentEl.value).length;
+    bytesEl.textContent = `${String(n)} / 131072 字节`;
+    bytesEl.className = `skill-bytes${n > 131072 ? " over" : n > 104857 ? " warn" : ""}`;
+  };
+  contentEl.addEventListener("input", updateBytes);
   if (p !== undefined) {
-    form.querySelector("#prompt-name").value = p.name;
+    nameEl.value = p.name;
     form.querySelector("#prompt-desc").value = p.description ?? "";
-    form.querySelector("#prompt-content").value = p.content;
+    form.querySelector("#prompt-hint").value = p.argumentHint ?? "";
+    form.querySelector("#prompt-agent").value = p.agent ?? "";
+    form.querySelector("#prompt-model").value = p.model ?? "";
+    form.querySelector("#prompt-scope").value = p.source === "user" ? "user" : "project";
+    contentEl.value = p.content;
+  } else {
+    form.querySelector("#prompt-scope").value = "project";
   }
+  updateBytes();
   openDialog({
-    title: p !== undefined ? `编辑模板：${p.name}` : "新建提示词模板",
-    description: "模板名即输入区 / 补全的调用标识；正文 {{var}} 为变量占位符（选中后保留手改）。",
+    title: p !== undefined ? `编辑模板：/${p.name}` : "新建提示词模板",
+    description: "模板名即输入区 / 补全的调用标识；有参模板（参数提示或 $ 占位）选中后插入 /名 等参数，发送时展开。",
     width: "md",
-    body: form,
+    body: holder,
     actions: [
       { label: "取消", className: "btn btn-ghost" },
-      { label: "保存", className: "btn btn-primary", onClick: () => savePromptFromDialog() },
+      // 注意时序：openDialog 先 close 再调 onClick（form 已 detach）——
+      // 字段读取必须走闭包持有的 form 引用，不能 getElementById
+      { label: "保存", className: "btn btn-primary", onClick: () => void savePromptFromDialog(form) },
     ],
   });
 }
 
-function savePromptFromDialog() {
-  const name = document.getElementById("prompt-name").value.trim();
-  const desc = document.getElementById("prompt-desc").value.trim();
-  const content = document.getElementById("prompt-content").value;
+async function savePromptFromDialog(form) {
+  const name = form.querySelector("#prompt-name")?.value.trim().toLowerCase() ?? "";
+  const desc = form.querySelector("#prompt-desc")?.value.trim() ?? "";
+  const hint = form.querySelector("#prompt-hint")?.value.trim() ?? "";
+  const agent = form.querySelector("#prompt-agent")?.value.trim() ?? "";
+  const model = form.querySelector("#prompt-model")?.value.trim() ?? "";
+  const scope = form.querySelector("#prompt-scope")?.value ?? "project";
+  const content = form.querySelector("#prompt-content")?.value ?? "";
   if (name === "" || content.trim() === "") {
     toast("模板名与正文必填", "warn");
     return;
   }
-  const prompts = (settingsCache.prompts ?? []).filter((x) => x.name !== name);
-  prompts.push({ name, content, ...(desc !== "" ? { description: desc } : {}) });
-  settingsCache.prompts = prompts;
-  editingPromptName = null;
-  dirtySections.add("prompts");
-  renderPromptList();
-  markDirty("prompts");
-  toast("模板已保存（/ 补全可调用）", "info");
+  const nameErr = promptNameError(name);
+  if (nameErr !== undefined) {
+    toast(nameErr, "warn");
+    return;
+  }
+  // 重名即时检测（同域其他模板占用该名 = 覆盖提示）
+  const occupied = (promptsView?.prompts ?? []).find((x) => x.name === name);
+  if (occupied !== undefined && occupied.filePath !== undefined) {
+    const ok = await confirmDialog(`模板 /${name} 已存在（${occupied.filePath}）——覆盖它？`, { title: "覆盖确认", confirmLabel: "覆盖" });
+    if (!ok) return;
+  }
+  if (new TextEncoder().encode(content).length > 131072) {
+    toast("模板正文超限（上限 128KB）", "warn");
+    return;
+  }
+  const envelope = await sendSettings({
+    op: "prompt-save",
+    prompt: {
+      name,
+      content,
+      ...(desc !== "" ? { description: desc } : {}),
+      ...(hint !== "" ? { argumentHint: hint } : {}),
+      ...(agent !== "" ? { agent } : {}),
+      ...(model !== "" ? { model } : {}),
+      scope,
+    },
+  });
+  if (!envelope.ok) {
+    toast(`保存失败：${envelope.error?.message ?? ""}`, "warn");
+    return;
+  }
+  markPromptsLoaded(false);
+  toast("模板已保存（/ 补全即时可调用——展开面新鲜读取）", "info");
+  void refreshPromptsList();
+}
+
+// —— T-P3-146 D：外部命令导入模态（prompt-import-scan 扫描 → 勾选 →
+// 复制进 workspace 模板主目录；skill-import 同构——护栏在 host op）。 ——
+function openPromptImportDialog() {
+  const holder = document.createElement("div");
+  holder.innerHTML = `
+    <div class="mcp-import-head">
+      <input id="prompt-imp-filter" class="input input-search" type="text" placeholder="过滤候选…" autocomplete="off" />
+      <label class="check-line"><input id="prompt-imp-all" type="checkbox" /> 全选</label>
+    </div>
+    <div id="prompt-imp-list" class="mcp-import-list"><p class="hint">扫描中…</p></div>
+    <div id="prompt-imp-result" class="hint"></div>`;
+  openDialog({
+    title: "导入外部命令模板",
+    description: "扫描本机其他 AI 工具的自定义命令目录（Claude Code / OpenCode / ZCode / Pi / Qwen / .agents）——勾选后复制进项目模板目录，同名绝不覆盖。",
+    width: "lg",
+    body: holder,
+    actions: [
+      { label: "取消", className: "btn btn-ghost" },
+      { label: "导入选中", className: "btn btn-primary", onClick: () => void applyPromptImport(holder) },
+    ],
+  });
+  let candidates = [];
+  const renderList = () => {
+    const q = holder.querySelector("#prompt-imp-filter").value.trim().toLowerCase();
+    const listEl = holder.querySelector("#prompt-imp-list");
+    listEl.replaceChildren();
+    const visible = candidates.filter((c) => q === "" || c.name.toLowerCase().includes(q) || (c.description ?? "").toLowerCase().includes(q));
+    if (candidates.length === 0) {
+      listEl.appendChild(emptyState("未发现候选", "其他工具的命令目录为空或不存在"));
+      return;
+    }
+    for (const c of visible) {
+      const line = document.createElement("label");
+      line.className = "check-line";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.dataset.sourcePath = c.sourcePath;
+      cb.dataset.name = c.name;
+      cb.checked = q === "";
+      line.appendChild(cb);
+      const text = document.createElement("span");
+      const desc = c.description !== undefined ? `——${c.description}` : "";
+      const warn = c.warning !== undefined ? ` ⚠ ${c.warning}` : "";
+      text.textContent = `/${c.name}（${c.sourceLabel}，${String(c.bytes)}B）${desc}${warn}`;
+      line.appendChild(text);
+      listEl.appendChild(line);
+    }
+  };
+  void (async () => {
+    const envelope = await sendSettings({ op: "prompt-import-scan" });
+    if (!envelope.ok) {
+      holder.querySelector("#prompt-imp-list").replaceChildren(emptyState("扫描不可用", envelope.error?.message ?? ""));
+      return;
+    }
+    candidates = envelope.result.candidates ?? [];
+    const sources = envelope.result.sources ?? [];
+    const found = sources.filter((s) => s.exists);
+    if (found.length > 0) {
+      const resultEl = holder.querySelector("#prompt-imp-result");
+      if (resultEl !== null) resultEl.textContent = `已扫源：${found.map((s) => `${s.label} ${String(s.count ?? 0)}`).join("、")}`;
+    }
+    renderList();
+  })();
+  holder.querySelector("#prompt-imp-filter").addEventListener("input", renderList);
+  holder.querySelector("#prompt-imp-all").addEventListener("change", (ev) => {
+    for (const cb of holder.querySelectorAll("#prompt-imp-list input[type=checkbox]")) cb.checked = ev.target.checked;
+  });
+}
+
+async function applyPromptImport(holder) {
+  const items = [...holder.querySelectorAll("#prompt-imp-list input[type=checkbox]:checked")].map((cb) => ({
+    name: cb.dataset.name,
+    sourcePath: cb.dataset.sourcePath,
+  }));
+  if (items.length === 0) {
+    toast("未勾选任何候选", "warn");
+    return;
+  }
+  const envelope = await sendSettings({ op: "prompt-import-apply", items });
+  if (!envelope.ok) {
+    toast(`导入失败：${envelope.error?.message ?? ""}`, "warn");
+    return;
+  }
+  const r = envelope.result;
+  const failedText = r.failed.length > 0 ? `，失败 ${String(r.failed.length)}（${r.failed[0]?.error ?? ""}）` : "";
+  toast(`导入完成：成功 ${String(r.imported.length)}，跳过 ${String(r.skipped.length)}（同名绝不覆盖）${failedText}`, r.failed.length > 0 ? "warn" : "info");
+  markPromptsLoaded(false);
+  void refreshPromptsList();
 }
 
 // ---------------------------------------------------------------------------
@@ -2224,6 +2521,7 @@ export function bind() {
     renderPromptList();
   });
   document.getElementById("prompt-new").addEventListener("click", () => openPromptDialog(undefined));
+  document.getElementById("prompt-import").addEventListener("click", () => openPromptImportDialog());
 
   enhancementInputHandler("enh-judge", "judge", "provider");
   enhancementInputHandler("enh-judge", "judge", "model");
@@ -2261,4 +2559,5 @@ export function refreshLists() {
   void refreshSkillsList(); // U22：技能清单（文件系统面——每次打开刷新）
   void refreshSubagentsList(); // U23：子代理清单（内置+自定义——每次打开刷新）
   void refreshPluginsList(); // T-P3-133：插件清单（安装期校验诊断——每次打开刷新）
+  void refreshPromptsList(); // T-P3-146：模板清单（文件域——每次打开刷新 + 迁移）
 }

@@ -36,6 +36,13 @@ export interface HostQuery {
 export interface AgentCapabilities {
   tools: string[];
   skills: { name: string; description: string }[];
+  /** T-P3-146：提示词模板目录（文件 + 内置 + MCP——ready 快照）。 */
+  prompts?: {
+    name: string;
+    description?: string;
+    argumentHint?: string;
+    source: "project" | "user" | "extra" | "builtin" | "mcp";
+  }[];
 }
 
 /** 查询面的依赖注入（bridge 构造时快照——capabilities 是活查询）。 */
@@ -102,7 +109,12 @@ export async function handleHostQuery(
   }
   if (query.op === "meta") {
     const caps = deps.capabilities();
-    return { tools: caps?.tools ?? [], skills: caps?.skills ?? [] };
+    return {
+      tools: caps?.tools ?? [],
+      skills: caps?.skills ?? [],
+      // T-P3-146：模板目录随 meta 暴露（/ 补全与设置页 MCP 只读区共用）
+      prompts: caps?.prompts ?? [],
+    };
   }
   // U15/T-P3-117：工作面板聚合面——变更提取纯函数从流算（不建状态）。
   // 读面与 events op 同款：本会话内存序（最新无 write-behind 滞后）、

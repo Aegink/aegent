@@ -3031,3 +3031,86 @@ button.chip-ui.active {
 .check-line:active input[type="checkbox"] {
   transform: scale(0.88);
 }
+
+/* T-P3-146 提示词模板域：transcript 命令 chip / 补全分组 / 管理面细节 */
+
+.cmd-chip {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 1px 8px;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  background: var(--bg-tertiary, rgba(127, 127, 127, 0.18));
+  border: 1px solid var(--border-color, rgba(127, 127, 127, 0.35));
+  color: var(--text-secondary, inherit);
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.bubble .bubble-body {
+  white-space: pre-wrap;
+}
+
+.ac-group {
+  padding: 6px 14px 2px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text-tertiary, var(--text-secondary, inherit));
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.ac-row {
+  cursor: pointer;
+}
+
+.section-count {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--text-tertiary, var(--text-secondary, inherit));
+  margin-left: 8px;
+}
+
+.prompt-help {
+  margin-top: 8px;
+}
+.prompt-help summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-secondary, inherit);
+}
+.prompt-help pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--bg-tertiary, rgba(127, 127, 127, 0.12));
+  border: 1px solid var(--border-color, rgba(127, 127, 127, 0.3));
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+#polish-btn {
+  transition: transform 0.08s;
+}
+#polish-btn:active {
+  transform: scale(0.92);
+}
+#polish-btn:disabled {
+  opacity: 0.6;
+}
+#polish-undo button {
+  font-size: 0.8rem;
+  color: var(--accent, #7aa2f7);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0 4px;
+}

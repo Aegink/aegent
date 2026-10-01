@@ -29,9 +29,19 @@ export interface McpToolInfo {
     inputSchema?: unknown;
 }
 
+/** MCP server 的一个 prompt 描述（prompts/list 的 items——T-P3-146 H）。 */
+export interface McpPromptInfo {
+    name: string;
+    description?: string;
+    /** 参数声明（位置映射 $1..$N 的序——服务端语义）。 */
+    arguments?: { name: string; description?: string; required?: boolean }[];
+}
+
 export interface McpServerCapabilities {
     protocolVersion: string;
     tools: boolean;
+    /** T-P3-146 H：prompts 原语（prompts/list+get——桥接为模板命令的数据面）。 */
+    prompts: boolean;
 }
 
 export class McpClient {
@@ -84,10 +94,11 @@ export class McpClient {
                 clientInfo: { name: "aegent", version: "0.1.0" },
             },
             timeoutMs,
-        )) as { protocolVersion?: string; capabilities?: { tools?: unknown } };
+        )) as { protocolVersion?: string; capabilities?: { tools?: unknown; prompts?: unknown } };
         this.capabilities = {
             protocolVersion: typeof result.protocolVersion === "string" ? result.protocolVersion : MCP_PROTOCOL_VERSION,
             tools: result.capabilities?.tools !== undefined,
+            prompts: result.capabilities?.prompts !== undefined,
         };
         this.notify("notifications/initialized");
         this.ready = true;
@@ -115,9 +126,52 @@ export class McpClient {
         return tools;
     }
 
-    /** 调用工具：content 数组投影为文本（B12 投影面——text 项 join），isError 透传。 */
-    async callTool(
+    /**
+     * T-P3-146 H：列 prompts（prompts/list——cursor 分页取尽）。server 无
+     * prompts 能力 → 空清单。参数声明透传（name/description/required）。
+     */
+    async listPrompts(timeoutMs: number = MCP_REQUEST_TIMEOUT_MS): Promise<McpPromptInfo[]> {
+        if (this.capabilities !== undefined && !this.capabilities.prompts) return [];
+        const prompts: McpPromptInfo[] = [];
+        let cursor: string | undefined;
+        for (;;) {
+            const result = (await this.request(
+                "prompts/list",
+                cursor !== undefined ? { cursor } : {},
+                timeoutMs,
+            )) as { prompts?: McpPromptInfo[]; nextCursor?: string };
+            if (Array.isArray(result.prompts)) prompts.push(...result.prompts);
+            if (typeof result.nextCursor === "string" && result.nextCursor !== "") {
+                cursor = result.nextCursor;
+            } else {
+                break;
+            }
+        }
+        return prompts;
+    }
+
+    /**
+     * T-P3-146 H：取 prompt 模板正文（prompts/get）——messages 投影为文本
+     * （text 项 join，B12 投影面同构）；arguments 按服务端声明回传。
+     */
+    async getPrompt(
         name: string,
+        args: Record<string, string>,
+        timeoutMs: number = MCP_REQUEST_TIMEOUT_MS,
+    ): Promise<string> {
+        const result = (await this.request(
+            "prompts/get",
+            { name, arguments: args },
+            timeoutMs,
+        )) as { messages?: Array<{ content?: { type?: string; text?: string } }> };
+        return (result.messages ?? [])
+            .map((m) => (m.content?.type === "text" && typeof m.content.text === "string" ? m.content.text : ""))
+            .filter((t) => t !== "")
+            .join("\n\n");
+    }
+
+    /** 调用工具：content 数组投影为文本（B12 投影面——text 项 join），isError 透传。 */
+    async callTool(        name: string,
         args: Record<string, unknown>,
         timeoutMs: number = MCP_REQUEST_TIMEOUT_MS,
     ): Promise<{ content: string; isError: boolean }> {

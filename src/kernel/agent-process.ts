@@ -63,6 +63,15 @@ import { DEFAULT_SPILL_DIR } from "./tools/truncate.js";
 import { sweepSessionSpill } from "./tools/spill-gc.js";
 import { connectAndRegister } from "../mcp/registry-bridge.js";
 import { loadConfiguredPlugins } from "./plugin-loader.js";
+import { parseCommandArgs, parseSlashInvocation, substituteArgs } from "./prompt-args.js";
+import {
+  BUILTIN_PROMPT_TEMPLATES,
+  lookupPromptTemplate,
+  expandShellInjections,
+  expandFileReferences,
+  type PromptTemplateSummary,
+} from "./prompts.js";
+import { runPromptPolish } from "./prompt-polish.js";
 
 // ---------------------------------------------------------------------------
 // echo provider（P0 子进程内置：回声最后一条 user 消息；协议与进程全真）
@@ -183,6 +192,32 @@ export interface AgentChildOptions {
      * 子代理 + 独立子会话）。maxDepth 缺省 1 = 子代理不可再分。
      */
     subagent?: { maxDepth?: number };
+  };
+  /**
+   * T-P3-146 A：提示词模板上下文加载器（展开面每次调用新鲜读取——文件与
+   * settings 运行期改动即时生效，无陈旧目录）。缺省 undefined = 无模板面
+   * （`/xxx` 全部直通为普通文本——echo/最小装配行为不变）。
+   */
+  promptContext?: () => Promise<{
+    templates: PromptTemplateSummary[];
+    disabled: readonly string[];
+    allowShellExpansion: boolean;
+    workspaceRoot?: string;
+    /** 来源分类（ready 目录的 source 标注——origin 目录绝对路径 → 桶位）。 */
+    classify?: (origin: string) => "project" | "user" | "extra";
+  }>;
+  /**
+   * T-P3-146 H：命令级模型解析（frontmatter `model`——"modelId" 全表唯一
+   * 命中或 "provider/modelId" 精确命中）。未解析出 = 展开面类型化拒绝。
+   */
+  promptModelResolver?: (spec: string) => { provider: ModelProvider; identity: ModelIdentity } | undefined;
+  /**
+   * T-P3-146 I：润色旁路模型 + 模板配置装载（settings enhancement.polish
+   * 模板半边每次调用新鲜读取）。缺省 undefined = polish 请求类型化拒绝。
+   */
+  polish?: {
+    model: { provider: ModelProvider; identity: ModelIdentity };
+    templateLoader?: () => Promise<{ customTemplate?: boolean; template?: string } | undefined>;
   };
 }
 
@@ -648,6 +683,7 @@ export async function runAgentChildStdio(
     content: string,
     attachments?: AttachmentRef[],
     sessionRefs?: SessionRef[],
+    meta?: { command?: string; model?: { provider: ModelProvider; identity: ModelIdentity } },
   ): void => {
     if (inflight) return;
     // J20/T-P1-49：轮跑动期间持 admit 名额（active = 在途轮数）。
@@ -665,7 +701,7 @@ export async function runAgentChildStdio(
           Projector.fold(store.load(sessionId)).projection.turnCount + 1;
         await assembly.checkpoint.capture(turn);
       }
-      return loop.runTurn(content, attachments, sessionRefs);
+      return loop.runTurn(content, attachments, sessionRefs, meta);
     })()
       .then((reason) => {
         ended = reason;
@@ -706,7 +742,156 @@ export async function runAgentChildStdio(
       send({ type: "idle" });
       return;
     }
-    startTurn(next.content, next.attachments, next.sessionRefs);
+    startTurn(next.content, next.attachments, next.sessionRefs, next.meta);
+  };
+
+  // -----------------------------------------------------------------------
+  // T-P3-146 A：提示词模板展开链（发送时——opencode/zcode/pi 三仓统一时机）。
+  // 串行化（expandTail）保证跨 prompt 的 FIFO 入队序不因展开耗时重排；accepted
+  // 在展开成功并入队后发出（展开失败 → 类型化 error 行——bridge 回执通道
+  // 原样可达 UI）。缺 promptContext = 全直通（普通文本语义，echo/最小装配）。
+  // -----------------------------------------------------------------------
+  let expandTail: Promise<void> = Promise.resolve();
+  const enqueueExpanded = (
+    content: string,
+    refs: AttachmentRef[] | undefined,
+    srefs: SessionRef[] | undefined,
+    messageId: string,
+  ): void => {
+    expandTail = expandTail
+      .then(async () => {
+        const expanded = await expandPromptInvocation(content);
+        queue.enqueue(expanded.content, refs, srefs, expanded.meta);
+        send({ type: "accepted", messageId });
+        kick();
+      })
+      .catch((e: unknown) => {
+        const code =
+          typeof (e as { code?: unknown } | null)?.code === "string"
+            ? (e as { code: string }).code
+            : "PROMPT_EXPAND_FAILED";
+        send({
+          type: "error",
+          code,
+          message: e instanceof Error ? e.message : String(e),
+        });
+      });
+  };
+
+  const expandPromptInvocation = async (
+    content: string,
+  ): Promise<{
+    content: string;
+    meta?: { command?: string; model?: { provider: ModelProvider; identity: ModelIdentity } };
+  }> => {
+    const invocation = parseSlashInvocation(content);
+    if (invocation === null) return { content };
+    const { name, argsRaw } = invocation;
+    const commandLike = /^[a-z0-9][a-z0-9_:/-]*$/i.test(name);
+    // 工具/技能名直通（/ 补全里它们与模板同列——键入原样进模型，行为保持）
+    const passThrough = toolRegistry.names().includes(name) || knownSkillNames().includes(name);
+    if (!commandLike || passThrough || options.promptContext === undefined) {
+      return { content };
+    }
+    const ctx = await options.promptContext();
+    const template = lookupPromptTemplate(name, ctx.templates, ctx.disabled);
+    if (template === undefined) {
+      // H：MCP prompts 桥接（`server:prompt` 命名空间——live 连接的懒取回）
+      if (name.includes(":")) {
+        const sep = name.indexOf(":");
+        const serverName = name.slice(0, sep);
+        const promptName = name.slice(sep + 1);
+        const conn = mcpConnections.find((c) => c.client.name === serverName);
+        const prompt =
+          conn !== undefined ? conn.prompts.find((p) => p.name === promptName) : undefined;
+        if (conn !== undefined && prompt !== undefined) {
+          // 位置参数 → 声明序映射（opencode 同构）；尾参吞剩余（与 $N 末位一致）
+          const declared = prompt.arguments ?? [];
+          const args = parseCommandArgs(argsRaw);
+          const kv: Record<string, string> = {};
+          for (let i = 0; i < declared.length; i++) {
+            kv[declared[i]!.name] = args[i] ?? "";
+          }
+          if (declared.length > 0 && args.length > declared.length) {
+            kv[declared[declared.length - 1]!.name] = args.slice(declared.length - 1).join(" ");
+          }
+          const text = await conn.client.getPrompt(promptName, kv);
+          return { content: text, meta: { command: content.trim() } };
+        }
+      }
+      const error = new Error(
+        `未知命令 /${name}——可在 设置 → 提示词模板 新建，或去掉开头的斜杠按普通文本发送`,
+      );
+      (error as unknown as { code: string }).code = "PROMPT_COMMAND_UNKNOWN";
+      throw error;
+    }
+    let expanded = substituteArgs(template.content, argsRaw);
+    // H：shell 前置执行（开关缺省关——fail-closed）；@file 文本注入
+    if (ctx.allowShellExpansion) {
+      expanded = await expandShellInjections(expanded, {
+        ...(ctx.workspaceRoot !== undefined ? { cwd: ctx.workspaceRoot } : {}),
+      });
+    }
+    expanded = await expandFileReferences(expanded, {
+      ...(ctx.workspaceRoot !== undefined ? { workspaceRoot: ctx.workspaceRoot } : {}),
+    });
+    // H：命令级模型覆盖（frontmatter model——未注册类型化拒绝，不静默回退）
+    let model: { provider: ModelProvider; identity: ModelIdentity } | undefined;
+    if (template.model !== undefined) {
+      model = options.promptModelResolver?.(template.model);
+      if (model === undefined) {
+        const error = new Error(
+          `模板 /${name} 的 model「${template.model}」未注册（models 注册表无此模型）`,
+        );
+        (error as unknown as { code: string }).code = "PROMPT_MODEL_UNKNOWN";
+        throw error;
+      }
+    }
+    // H：agent frontmatter → 前台子代理（展开文本作为任务提示，报告并入
+    // 本条 user 消息——模型与 transcript 同见；子会话独立流，可回放）
+    if (template.agent !== undefined) {
+      if (runSubagent === undefined) {
+        const error = new Error(
+          `模板 /${name} 的 agent「${template.agent}」不可用（本进程未装配子代理面）`,
+        );
+        (error as unknown as { code: string }).code = "PROMPT_AGENT_UNAVAILABLE";
+        throw error;
+      }
+      const outcome = await runSubagent(expanded, `模板 /${name}`, {
+        subagentType: template.agent,
+      });
+      if (outcome.kind !== "foreground") {
+        const error = new Error(`模板 /${name} 的子代理以后台模式启动（非预期）`);
+        (error as unknown as { code: string }).code = "PROMPT_AGENT_UNAVAILABLE";
+        throw error;
+      }
+      const r = outcome.result;
+      if (r.stopReason !== "completed") {
+        const error = new Error(
+          `子代理 ${template.agent} 未正常收敛（${r.stopReason}）${r.error !== undefined ? `：${r.error}` : ""}`,
+        );
+        (error as unknown as { code: string }).code = "PROMPT_AGENT_FAILED";
+        throw error;
+      }
+      expanded = `${expanded}\n\n---\n【子代理 ${template.agent} 执行报告】（子会话 ${r.sessionId} 可回放）\n${r.output}`;
+    }
+    return {
+      content: expanded,
+      meta: { command: content.trim(), ...(model !== undefined ? { model } : {}) },
+    };
+  };
+
+  /** 技能名直通清单（装配面技能根的现扫描——展开时点新鲜）。 */
+  const knownSkillNames = (): string[] => {
+    if (options.assembly === undefined) return [];
+    try {
+      return loadSkillsFromRoots(
+        options.assembly.workspaceRoot ?? process.cwd(),
+        options.assembly.skillsRoots,
+      ).skills.map((s) => s.name);
+    } catch {
+      return [];
+    }
   };
 
   const handleRequest = (req: AgentRequest): void => {
@@ -767,19 +952,10 @@ export async function runAgentChildStdio(
           }
           sessionRefs = [...req.sessionRefs];
         }
-        // A9：先收执、再入队/开轮——accepted 只证明 admission。
+        // A9：先展开、再入队收执——accepted 证明 admission（T-P3-146 A：
+        // 模板展开在入队前完成，失败走类型化 error 行不收执；串行链保 FIFO）。
         // M9/T-P1-48：队列满（有限队列）类型化拒绝——收执不发、消息不入队。
-        try {
-          queue.enqueue(req.content, attachmentRefs, sessionRefs);
-        } catch (e) {
-          if (e instanceof QueueFullError) {
-            send({ type: "error", code: e.code, message: e.message });
-            return;
-          }
-          throw e;
-        }
-        send({ type: "accepted", messageId: req.messageId });
-        kick();
+        enqueueExpanded(req.content, attachmentRefs, sessionRefs, req.messageId);
         return;
       case "offload": {
         // P2/T-P1-125：卸载触发面——从当前有效视窗选最老出现，决策落流
@@ -1139,6 +1315,40 @@ export async function runAgentChildStdio(
         }
         return;
       }
+      case "polish": {
+        // T-P3-146 I：润色旁路调用（不开轮不落流——结果经 polish_result 回执；
+        // 失败 ok:false 原样回传，UI 侧 toast）。未装配 = 类型化失败回执。
+        if (options.polish === undefined) {
+          send({
+            type: "polish_result",
+            requestId: req.requestId,
+            ok: false,
+            error: "本进程未装配润色模型（enhancement.polish 未配置且无主模型链）",
+          });
+          return;
+        }
+        const polish = options.polish;
+        void (async () => {
+          try {
+            const custom = polish.templateLoader ? await polish.templateLoader() : undefined;
+            const text = await runPromptPolish({
+              provider: polish.model.provider,
+              identity: polish.model.identity,
+              draft: req.draft,
+              ...(custom !== undefined ? { custom } : {}),
+            });
+            send({ type: "polish_result", requestId: req.requestId, ok: true, text });
+          } catch (e) {
+            send({
+              type: "polish_result",
+              requestId: req.requestId,
+              ok: false,
+              error: e instanceof Error ? e.message : String(e),
+            });
+          }
+        })();
+        return;
+      }
       case "dispose":
         disposing = true;
         // J20/T-P1-49：收尾即闭闸——其后到达的 prompt/steer 被 SERVER_DRAINING
@@ -1151,6 +1361,38 @@ export async function runAgentChildStdio(
     }
   };
 
+  // T-P3-146：ready 前装配提示词模板目录（文件模板 + 内置 + MCP prompts——
+  // / 补全与设置页只读区的共用数据面；loader 缺席 = 目录缺席零变化）。
+  const readyPromptCatalog = options.promptContext
+    ? await (async () => {
+        try {
+          const ctx = await options.promptContext!();
+          const classify = ctx.classify ?? (() => "extra" as const);
+          const files = ctx.templates.map((t) => ({
+            name: t.name,
+            ...(t.description !== undefined ? { description: t.description } : {}),
+            ...(t.argumentHint !== undefined ? { argumentHint: t.argumentHint } : {}),
+            source: classify(t.origin),
+          }));
+          const builtins = BUILTIN_PROMPT_TEMPLATES.map((t) => ({
+            name: t.name,
+            description: t.description,
+            ...(t.argumentHint !== undefined ? { argumentHint: t.argumentHint } : {}),
+            source: "builtin" as const,
+          }));
+          const mcpPrompts = mcpConnections.flatMap((c) =>
+            c.prompts.map((p) => ({
+              name: `${c.client.name}:${p.name}`,
+              ...(p.description !== undefined ? { description: p.description } : {}),
+              source: "mcp" as const,
+            })),
+          );
+          return [...files, ...builtins, ...mcpPrompts];
+        } catch {
+          return undefined; // 目录装配失败 = 无目录面（never-fail，不炸启动）
+        }
+      })()
+    : undefined;
   send({
     type: "ready",
     // U10/T-P3-109：注册表工具名 + I2 技能清单（/ 补全的清单来源——
@@ -1171,6 +1413,7 @@ export async function runAgentChildStdio(
           })),
         }
       : {}),
+    ...(readyPromptCatalog !== undefined ? { prompts: readyPromptCatalog } : {}),
   });
   const rl = createInterface({ input, crlfDelay: Infinity });
   const closed = new Promise<void>((resolve) => rl.on("close", resolve));

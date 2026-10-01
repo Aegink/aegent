@@ -1,22 +1,10 @@
 /**
- * HostBridge（N2/T-P1-116）——端间协议与 agent 会话的编排面：把一个
- * agent 连接（AgentConnection 形状：spawnAgentProcess 产物或内存桥）、
- * 一个 AgentHost（租约/roster 面）与若干端连接（HostProtocolServer）合体。
- *
- * - **审批广播**：agent 协议消息 approval_requested/approval_settled/
- *   question_asked/prompt_returned 是"挂起"这类**非会话流事实**——经
- *   notification 信封广播给所有端连接（"任何通道可答"的前提是任何通道
- *   都看得见挂起——PendingApprovals 无端绑定的端面兑现）。
- * - **写命令租约校验**（N7/N3 贯穿）：prompt/steer/cancel/approve/
- *   question-answer 是写命令，必须来自已注册 surface 且当前持约——非持约
- *   → NotLeaseHolderError（response ok:false 贯穿）；匿名观察者（hello
- *   无 surfaceId）一律拒绝写命令。
- * - **roster 落流**（N8 贯穿）：surface 注册/断开 → surface/attach|detach
- *   经 store.append 落流（提供 store 时）+ notification 广播。
- * - 回执匹配（A9 纪律）：prompt 等 accepted（messageId 关联）；error 行
- *   拒绝最近未决 prompt（单会话 handleRequest 同步派发下的串行假设）；
- *   无专用回执的命令（approve/revert/…）发出即 resolve——事实经事件流
- *   可见，协议不锚定结果。
+ * HostBridge（N2/T-P1-116）——端间协议与 agent 会话的编排面：agent 连接 +
+ * AgentHost（租约/roster）+ 端连接（HostProtocolServer）合体。
+ * 审批/提问等非会话流事实经 notification 广播；写命令租约校验（N7/N3）；
+ * roster 落流（N8）；回执匹配（A9——prompt accepted 关联，error 行归属最近
+ * 未决 prompt，无回执命令发出即 resolve）。polish（T-P3-146 I）为带 requestId
+ * 回执的旁路命令，pendingPolishes 关联。
  */
 
 import type { AgentMessage, AgentRequest } from "../kernel/agent-protocol.js";
@@ -38,7 +26,7 @@ import type { DeliveryKind } from "./lease.js";
 import { NotificationHub } from "./notify.js";
 
 /** 写命令闭集（租约校验适用面——只读查询如 policy/check 不在此列）。 */
-const WRITE_COMMANDS = new Set(["prompt", "steer", "cancel", "approve", "question/answer"]);
+const WRITE_COMMANDS = new Set(["prompt", "steer", "cancel", "approve", "question/answer", "polish"]);
 
 export interface AgentChannel {
   /** 发一条请求到 agent（agent-protocol 父→子行协议的发送面）。 */
@@ -52,29 +40,15 @@ export interface HostBridgeOptions {
   agent: AgentChannel;
   /** roster 事件的落流面（提供时 surface 注册/断开 append 进会话流）。 */
   store?: SessionStore;
-  /** N5 分类通知面（提供时挂起/轮结算/端面变化按分型发布——既有
-   * notification 广播零变化，分型是附加发布面）。 */
+  /** N5 分类通知面（分型是附加发布面——既有 notification 广播零变化）。 */
   notifyHub?: NotificationHub;
-  /** U14/T-P3-103 settings 直答网关（提供时 settings 信封可用——host 面
-   * 配置读写与凭据管理，不经 agent 不落流）。 */
+  /** U14 settings 直答网关（host 面配置读写与凭据管理，不经 agent 不落流）。 */
   settingsGateway?: import("./settings-gateway.js").SettingsGateway;
-  /**
-   * U3/T-P3-105 会话清单库（SQLite 事件库本体——op:"sessions" 与
-   * session-delete 的数据面；未提供 = 清单/删除类型化不可用。与 settings
-   * 网关的 sessionDb 同一实例——生产 main 组装）。
-   */
+  /** U3 会话清单库（op:"sessions" 与 session-delete 数据面；生产 main 组装）。 */
   sessionsLibrary?: SqliteEventStorage;
-  /**
-   * U10/T-P3-109：workspace 根（op:"files" 的扫描面）——生产 main 从
-   * 最终 childArgs 的 --workspace 解析（与子进程同源）；缺省 = host 进程
-   * cwd（子进程缺省语义同款）。
-   */
+  /** U10：workspace 根（op:"files" 扫描面——与子进程 --workspace 同源）。 */
   workspaceRoot?: string;
-  /**
-   * U12/T-P3-111：上下文窗口 token 数（op:"usage" 的占比分母）——生产
-   * main 从最终 childArgs 的 --context-window 解析（缺省 200_000 与
-   * agent-child 同源）。
-   */
+  /** U12：上下文窗口 token 数（op:"usage" 占比分母，与子进程同源）。 */
   contextWindow?: number;
 }
 
@@ -91,8 +65,19 @@ export class HostBridge implements SessionRouter {
   private readonly pendingPrompts = new Map<string, (value: unknown) => void>();
   /** 最近的在途 prompt（error 行的归属——单会话串行假设，卡内定形）。 */
   private lastPendingPromptId: string | undefined;
+  /** 在途 polish 的回执等待（requestId → resolve——T-P3-146 I 旁路调用面）。 */
+  private readonly pendingPolishes = new Map<string, (value: unknown) => void>();
   /** U10/T-P3-109：ready 消息捕获的注册表清单（工具/技能——/ 补全来源）。 */
-  private agentCapabilities: { tools: string[]; skills: { name: string; description: string }[] } | undefined;
+  private agentCapabilities: {
+    tools: string[];
+    skills: { name: string; description: string }[];
+    prompts?: {
+      name: string;
+      description?: string;
+      argumentHint?: string;
+      source: "project" | "user" | "extra" | "builtin" | "mcp";
+    }[];
+  } | undefined;
   private readonly unconsumed: Promise<void>;
 
   constructor(private readonly options: HostBridgeOptions) {
@@ -113,7 +98,17 @@ export class HostBridge implements SessionRouter {
       this.agentCapabilities = {
         tools: message.tools ?? [],
         skills: message.skills ?? [],
+        ...(message.prompts !== undefined ? { prompts: message.prompts } : {}),
       };
+      return;
+    }
+    // T-P3-146 I：润色回执（requestId 关联——旁路调用面不经事件流）
+    if (message.type === "polish_result") {
+      const resolve = this.pendingPolishes.get(message.requestId);
+      if (resolve !== undefined) {
+        this.pendingPolishes.delete(message.requestId);
+        resolve(message);
+      }
       return;
     }
     if (message.type === "event") {
@@ -198,6 +193,13 @@ export class HostBridge implements SessionRouter {
         this.options.agent.send(request);
       });
     }
+    // T-P3-146 I：polish 旁路请求（写命令租约已过——回执经 polish_result）
+    if (request.type === "polish") {
+      return new Promise((resolve) => {
+        this.pendingPolishes.set(request.requestId, resolve);
+        this.options.agent.send(request);
+      });
+    }
     this.options.agent.send(request);
     // A9 纪律：无专用回执的命令发出即受理——事实经事件流可见。
     return { sent: true };
@@ -210,11 +212,7 @@ export class HostBridge implements SessionRouter {
 
   // -- 端连接面 ------------------------------------------------------------
 
-  /**
-   * 注册一个端连接：surface 注册（租约候选 + roster attach 落流）+ 协议
-   * server（hello 握手由 server 面、surface 由本层）。返回的 close 组合
-   * server 关闭与 surface 断开（断线自动释放租约——N7）。
-   */
+  /** 注册一个端连接：surface 注册 + 协议 server；close 组合两者收束（N7）。 */
   connectSurface(surfaceOptions: {
     surfaceId?: string;
     deliveryKind?: DeliveryKind;
@@ -240,8 +238,7 @@ export class HostBridge implements SessionRouter {
           throw new Error(`hello 身份 ${hello.surfaceId} 与注册面 ${surfaceId} 不符`);
         }
       },
-      // N7 run 租约协议面：acquire/release 直答（不经 agent）；单 holder
-      // 语义在 SurfaceHub（LeaseBusyError/NotLeaseHolderError 的 code 透传）。
+      // N7 run 租约协议面：acquire/release 直答（不经 agent；code 透传）。
       onLease: async (lease) => {
         if (lease.op === "acquire") {
           const acquired = this.options.host.surfaces.acquireRunLease(lease.surfaceId);
@@ -250,8 +247,7 @@ export class HostBridge implements SessionRouter {
         const released = this.options.host.surfaces.releaseRunLease(lease.surfaceId);
         return { released };
       },
-      // K5/T-P1-128 恢复视图 + U3 sessions + U9 search + U10 files/meta +
-      // U12 usage——onQuery 的 op 分流实现拆分至 query-gateway.ts（行数纪律），
+      // K5 恢复视图 + U3/U9/U10/U12 查询——实现拆分至 query-gateway.ts，
       // 本处只做依赖注入（capabilities 是活查询——ready 捕获在泵内）。
       onQuery: (query) =>
         handleHostQuery(
@@ -283,7 +279,7 @@ export class HostBridge implements SessionRouter {
           throw error;
         }
         if (call.op === "policy-audit") {
-          // 审批历史（八轮 E——扫描在 policy-audit-op 域文件；store 在 bridge 手里故此拦截）
+          // 审批历史（八轮 E——store 在 bridge 手里故此拦截）
           const sessionId = this.options.host.sessionId;
           const store = this.options.store;
           const all = store === undefined ? [] : store.load(sessionId);
@@ -301,11 +297,9 @@ export class HostBridge implements SessionRouter {
         if (call.op === "credentials-delete") {
           return { deleted: (await gateway.credentialsDelete(call.provider!)).deleted };
         }
-        if (call.op === "probe") {
-          return { health: await gateway.probeProvider(call.provider!) };
-        }
+        if (call.op === "probe") return { health: await gateway.probeProvider(call.provider!) };
         if (call.op === "session-delete") return gateway.sessionDelete(call.sessionId!);
-        // U17/T-P3-119：MCP 连接校验（向导"测连接"——launch 一次握手+列工具）
+        // U17：MCP 连接校验（向导"测连接"——launch 一次握手+列工具）
         if (call.op === "mcp-check") {
           return {
             check: await gateway.mcpCheck({
@@ -326,6 +320,13 @@ export class HostBridge implements SessionRouter {
         if (call.op === "skill-import-apply") return gateway.skillImportApply(call.items!);
         if (call.op === "skill-delete") return gateway.skillDelete(call.path!);
         if (call.op === "skill-reveal") return gateway.skillReveal(call.path!);
+        // T-P3-146：提示词模板管理面（文件域 + 旧库迁移 + 外部导入）
+        if (call.op === "prompts-list") return gateway.promptsList();
+        if (call.op === "prompt-save") return gateway.promptSave(call.prompt!);
+        if (call.op === "prompt-delete") return gateway.promptDelete(call.path!);
+        if (call.op === "prompt-reveal") return gateway.promptReveal(call.path!);
+        if (call.op === "prompt-import-scan") return gateway.promptImportScan();
+        if (call.op === "prompt-import-apply") return gateway.promptImportApply(call.items!);
         // U23 子代理清单 / U24 指令中心（三文件位 + 白名单写回）
         if (call.op === "subagents-list") return gateway.subagentsList();
         if (call.op === "instructions-list") return gateway.instructionsList();

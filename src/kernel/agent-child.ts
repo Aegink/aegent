@@ -18,6 +18,7 @@
  */
 
 import path from "node:path";
+import os from "node:os";
 
 import { runAgentChildStdio, type AgentChildOptions } from "./agent-process.js";
 import { InvalidSessionIdError, isValidSessionId } from "../session/session-id.js";
@@ -42,6 +43,7 @@ import {
   resolveSubagentAssembly,
 } from "./agent-child-config.js";
 import { createLogger } from "./logger.js";
+import { loadPromptTemplatesFromRoots, PROMPTS_DIR, USER_PROMPTS_DIR } from "./prompts.js";
 
 /** A5/T-P1-51 重试留痕 logger（openai 装配专用，模块级单例避免句柄膨胀）。 */
 const retryWarnLogger = createLogger();
@@ -365,6 +367,18 @@ async function main(): Promise<void> {
 
   // U23+U24：子代理装配 / 用户规则 / 全局指令（拆分在 agent-child-config.ts）。
   const subagentsOptions = registry ? await resolveSubagentAssembly(settingsFile, registry.resolveTarget) : undefined;
+  // T-P3-146：runner 恒建（内置五预设不依赖自定义清单——task 工具与模板
+  // agent 面开箱即用；defs 缺省 undefined = 仅内置预设）。
+  const subagentsSlot = subagentsOptions ?? { defs: settingsFile.subagents };
+  // T-P3-146 I：润色模型回退链——polish 显式 → summarizer → 主模型。
+  let polishTarget: RegisteredModel | undefined;
+  if (registry !== undefined && settingsFile.enhancement?.polish?.provider !== undefined) {
+    polishTarget =
+      (await registry.resolveTarget(
+        settingsFile.enhancement.polish.provider,
+        settingsFile.enhancement.polish.model,
+      )) ?? undefined;
+  }
   // T-P3-137 八轮 C：规则两层装载——用户层在前、项目层在后（首匹配胜 =
   // 用户级优先于项目级）；项目文件缺失 = 空集（与用户层同语义）。
   const userRules = [
@@ -385,7 +399,80 @@ async function main(): Promise<void> {
       ? { plugins: settingsFile.plugins.filter((p) => p.enabled !== false) }
       : {}),
     // U23/T-P3-126：预设清单 + 独立模型解析闭包（runner 内按次解析）
-    ...(subagentsOptions ? { subagents: subagentsOptions } : {}),
+    // T-P3-146：runner 恒建（slot 兜底 = 仅内置预设）
+    subagents: subagentsSlot,
+    // T-P3-146 A：提示词模板上下文（每次调用新鲜读取——settings 与模板
+    // 文件的运行期改动即时生效；settings 读失败按空目录继续）
+    promptContext: async () => {
+      const workspaceRoot = cli.workspace ?? process.cwd();
+      const projectRoot = path.join(path.resolve(workspaceRoot), PROMPTS_DIR);
+      const userRoot = path.join(os.homedir(), USER_PROMPTS_DIR);
+      let disabled: string[] = [];
+      let extraRoots: string[] = [];
+      let allowShellExpansion = false;
+      try {
+        const fresh = (await loadSettings(cli.settingsPath)).settings;
+        const section = fresh.prompts;
+        if (!Array.isArray(section)) {
+          disabled = section?.disabled ?? [];
+          extraRoots = section?.roots ?? [];
+          allowShellExpansion = section?.allowShellExpansion === true;
+        }
+      } catch (e) {
+        console.error("[prompts] settings 重读失败（按空配置继续）:", e instanceof Error ? e.message : e);
+      }
+      const scanned = loadPromptTemplatesFromRoots([
+        projectRoot,
+        ...extraRoots.map((r) => path.resolve(r)),
+        userRoot,
+      ]);
+      return {
+        templates: scanned.templates,
+        disabled,
+        allowShellExpansion,
+        workspaceRoot,
+        classify: (origin) => (origin === projectRoot ? "project" : origin === userRoot ? "user" : "extra"),
+      };
+    },
+    // T-P3-146 H：命令级模型解析（"provider/modelId" 精确命中 / 裸 modelId
+    // 全表唯一命中——多命中视为歧义拒绝；注册表缺席 = 无解析面）
+    ...(registry !== undefined
+      ? {
+          promptModelResolver: (spec: string): RegisteredModel | undefined => {
+            const slash = spec.indexOf("/");
+            if (slash > 0) {
+              return registry.models.find(
+                (m) =>
+                  m.identity.provider === spec.slice(0, slash) &&
+                  m.identity.modelId === spec.slice(slash + 1),
+              );
+            }
+            const hits = registry.models.filter((m) => m.identity.modelId === spec);
+            return hits.length === 1 ? hits[0] : undefined;
+          },
+        }
+      : {}),
+    // T-P3-146 I：润色旁路模型 + 模板配置装载（模板半边每次新鲜读取）
+    ...(provider && identity && (polishTarget !== undefined || summarizerTarget !== undefined || registry !== undefined)
+      ? {
+          polish: {
+            model: polishTarget ?? summarizerTarget ?? { provider: provider!, identity: identity! },
+            templateLoader: async () => {
+              try {
+                const fresh = (await loadSettings(cli.settingsPath)).settings;
+                const polish = fresh.enhancement?.polish;
+                if (polish === undefined) return undefined;
+                return {
+                  ...(polish.customTemplate !== undefined ? { customTemplate: polish.customTemplate } : {}),
+                  ...(polish.template !== undefined ? { template: polish.template } : {}),
+                };
+              } catch {
+                return undefined; // 配置读失败 = 内置默认模板
+              }
+            },
+          },
+        }
+      : {}),
     ...(storage ? { storage } : {}),
     ...(provider ? { provider, identity } : {}),
     // F5：真摘要（echo 不给）；U18：enhancement summarizer 在位时用辅助模型。
