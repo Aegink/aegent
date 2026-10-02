@@ -6,6 +6,7 @@
 
 import { createServer } from "node:http";
 import fs from "node:fs";
+import { statSync } from "node:fs";
 import path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
@@ -42,7 +43,11 @@ export function serveStatic(uiDir: string, req: IncomingMessage, res: ServerResp
     const type = CONTENT_TYPES[path.extname(file).toLowerCase()];
     res.writeHead(200, {
       "content-type": type ?? "application/octet-stream",
+      // no-cache 要求 revalidate，而 revalidate 需要 validator——无 ETag/
+      // Last-Modified 时浏览器退化为直接用缓存副本（T-P3-152 走查实测：
+      // UI 改文件后 reload 拿旧模块）。mtime validator 让 no-cache 真正生效。
       "cache-control": "no-cache",
+      "last-modified": new Date(statSync(file).mtimeMs).toUTCString(),
     });
     res.end(data);
   });

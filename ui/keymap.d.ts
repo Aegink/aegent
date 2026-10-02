@@ -9,6 +9,22 @@ export declare const DEFAULT_KEYMAP: Record<string, string>;
 /** action 的中文说明（清单展示面）。 */
 export declare const ACTION_LABELS: Record<string, string>;
 
+/** 动作注册表元数据（T-P3-152：label/group/default/fixed）。 */
+export interface ActionDef {
+  label: string;
+  group: string;
+  default: string;
+  fixed?: boolean;
+}
+
+export declare const ACTIONS: Record<string, ActionDef>;
+
+/** 动作分组序（清单渲染顺序）。 */
+export declare const ACTION_GROUPS: readonly string[];
+
+/** 作用域派生：键位带修饰键或为 Escape → 输入框焦点内可达。 */
+export declare function usableInInput(combo: string): boolean;
+
 /** 浏览器/宿主常见保留键（提示不拦截——卡内定形）。 */
 export declare const RESERVED_COMBOS: Set<string>;
 

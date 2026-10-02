@@ -98,3 +98,36 @@ describe("resolveAction（分发语义）", () => {
     expect(resolveAction(bindings, fakeKey("a"), { inInput: true })).toBeNull();
   });
 });
+
+describe("T-P3-152：动作注册表升级", () => {
+  it("元数据一致性：默认键位互不冲突、不踩保留键、分组非空", () => {
+    const entries = Object.entries(DEFAULT_KEYMAP);
+    expect(entries.length).toBeGreaterThanOrEqual(16); // 8 旧 + 8 新 + cheatsheet
+    for (const [a, combo] of entries) {
+      expect(detectConflict(combo, DEFAULT_KEYMAP, a).conflict).toBeUndefined();
+      expect(detectConflict(combo, DEFAULT_KEYMAP, a).reserved).toBeUndefined();
+    }
+  });
+
+  it("ACTION_LABELS/DEFAULT_KEYMAP 从 ACTIONS 派生且 send 不进可改绑表", async () => {
+    const { ACTIONS, ACTION_LABELS } = await import("../../ui/keymap.js");
+    expect(ACTION_LABELS.send).toContain("发送");
+    expect(DEFAULT_KEYMAP.send).toBeUndefined();
+    expect(ACTIONS.send?.fixed).toBe(true);
+    expect(Object.keys(ACTIONS)).toHaveLength(Object.keys(DEFAULT_KEYMAP).length + 1);
+  });
+
+  it("usableInInput：带修饰键/Escape 输入区内可达；纯单键输入区外", async () => {
+    const { usableInInput } = await import("../../ui/keymap.js");
+    expect(usableInInput("Ctrl+F")).toBe(true);
+    expect(usableInInput("Escape")).toBe(true);
+    expect(usableInInput("?")).toBe(false);
+    expect(usableInInput("Enter")).toBe(false);
+  });
+
+  it("? 速查呼出：非输入区单键命中 cheatsheet；输入区内不打字干扰", () => {
+    const bindings = createKeymap(null);
+    expect(resolveAction(bindings, fakeKey("?"))).toBe("cheatsheet");
+    expect(resolveAction(bindings, fakeKey("?"), { inInput: true })).toBeNull();
+  });
+});

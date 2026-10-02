@@ -1738,7 +1738,112 @@ const KEYMAP_HANDLERS = {
   work: () => openWorkpanel(),
   usage: () => openUsage(),
   notify: () => go("notify"),
+  // T-P3-152 A1：动作空间扩容（全部以本文件既有能力为准）
+  "goto-projects": () => go("projects"),
+  "goto-plugins": () => go("plugins"),
+  "focus-input": () => {
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  },
+  "clear-input": () => {
+    input.value = "";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.focus();
+  },
+  "copy-last-reply": () => void copyLastReply(),
+  "scroll-top": () => {
+    stream.scrollTop = 0;
+  },
+  "scroll-bottom": () => {
+    stream.scrollTop = stream.scrollHeight;
+  },
+  "toggle-lease": () => leaseBtn.click(),
+  cheatsheet: () => void openCheatsheet(),
 };
+
+/** T-P3-152：复制最后一条 assistant 回复（剪贴板；无回复时 toast 提示）。 */
+async function copyLastReply() {
+  const bubbles = stream.querySelectorAll(".bubble.agent");
+  const last = bubbles[bubbles.length - 1];
+  if (last === undefined) {
+    toast("暂无可复制的回复", "warn");
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(last.textContent ?? "");
+    toast("已复制最后回复", "info");
+  } catch (e) {
+    toast(`复制失败：${e instanceof Error ? e.message : String(e)}`, "warn");
+  }
+}
+
+// —— T-P3-152 C1 `?` 速查面板（GitHub 上下文分组 + Slack 搜索 + pi 实时
+// 生效键位先例）：分组表格 + 顶部搜索框 + kbd 徽标；Esc 关闭。数据源 =
+// keymap 注册表 + 当前生效绑定（改键即变）。
+
+async function openCheatsheet() {
+  const { openDialog } = await import("./views/settings/core.js");
+  const { ACTIONS, ACTION_GROUPS, createKeymap, usableInInput } = await import("./keymap.js");
+  const bindings = getKeymapBindings();
+  const body = document.createElement("div");
+  body.className = "cheatsheet-body";
+  body.innerHTML = `
+    <input id="cheatsheet-search" class="input input-wide" placeholder="搜索动作或键位…" autocomplete="off" />
+    <div id="cheatsheet-list"></div>
+  `;
+  const render = () => {
+    const q = (body.querySelector("#cheatsheet-search")?.value ?? "").trim().toLowerCase();
+    const list = body.querySelector("#cheatsheet-list");
+    list.replaceChildren();
+    for (const group of ACTION_GROUPS) {
+      const actions = Object.entries(ACTIONS).filter(
+        ([action, def]) =>
+          def.group === group &&
+          (q === "" ||
+            def.label.toLowerCase().includes(q) ||
+            (bindings[action] ?? "").toLowerCase().includes(q) ||
+            action.includes(q)),
+      );
+      if (actions.length === 0) continue;
+      const h = document.createElement("div");
+      h.className = "cheatsheet-group";
+      h.textContent = group;
+      list.appendChild(h);
+      for (const [action, def] of actions) {
+        const row = document.createElement("div");
+        row.className = "cheatsheet-row";
+        const label = document.createElement("span");
+        label.textContent = def.label;
+        const keys = document.createElement("span");
+        keys.className = "combo-caps";
+        const combo = bindings[action] ?? def.default;
+        for (const part of combo.split("+")) {
+          const kbd = document.createElement("kbd");
+          kbd.className = "kbd";
+          kbd.textContent = part;
+          keys.appendChild(kbd);
+        }
+        if (usableInInput(combo) === false && combo !== "Enter") {
+          const note = document.createElement("span");
+          note.className = "cheatsheet-note";
+          note.textContent = "输入框外";
+          keys.appendChild(note);
+        }
+        row.append(label, keys);
+        list.appendChild(row);
+      }
+    }
+    if (list.children.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "hint";
+      empty.textContent = "没有匹配的动作";
+      list.appendChild(empty);
+    }
+  };
+  render();
+  body.querySelector("#cheatsheet-search").addEventListener("input", render);
+  openDialog({ title: "键盘快捷键", description: "当前生效的键位（设置→快捷键可自定义）。", width: "md", body, actions: [{ label: "关闭", className: "btn btn-primary" }] });
+}
 
 window.addEventListener("keydown", (ev) => {
   // Esc 优先走搜索条关闭（输入态无关既有行为）；其余经注册表分发
@@ -1754,6 +1859,27 @@ window.addEventListener("keydown", (ev) => {
     handler();
   }
 });
+
+// T-P3-152 C2：侧栏按钮 title 实时键位提示（pi keyHint 先例降级版——改键后
+// 经 state.rebuildKeymap 消费面自然更新为下次读值）。
+function applyNavKeyHints() {
+  const bindings = getKeymapBindings();
+  for (const [btnId, action] of [
+    ["history-btn", "history"],
+    ["work-btn", "work"],
+    ["usage-btn", "usage"],
+    ["notify-btn", "notify"],
+    ["settings-btn", "settings"],
+    ["search-btn", "search"],
+  ]) {
+    const btn = document.getElementById(btnId);
+    const combo = bindings[action];
+    if (btn === null || combo === undefined) continue;
+    const base = (btn.getAttribute("data-i18n-title") ?? btn.title ?? "").replace(/（[^）]*键位[^）]*）$/, "").trim();
+    btn.title = `${base}（${combo}）`;
+  }
+}
+applyNavKeyHints();
 
 // ---------------------------------------------------------------------------
 // WS 生命周期：hello → query 恢复 → live 流（连接与重连在 api.js——入口注入

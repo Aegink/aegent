@@ -14,7 +14,8 @@
 
 import { sendSettings } from "../../api.js";
 import * as instructions from "./instructions.js";
-import { ACTION_LABELS, createKeymap, detectConflict, eventToCombo } from "../../keymap.js";
+import * as shortcuts from "./shortcuts.js";
+import { shortcutCaptureKeydown } from "./shortcuts.js";
 import {
   settingsCache,
   setSettingsCache,
@@ -38,6 +39,7 @@ import {
 } from "./core.js";
 
 const instructionsSection = instructions.SECTION_HTML;
+const shortcutsSection = shortcuts.SECTION_HTML;
 
 export const SECTIONS_HTML = `
 <section data-section="projects">
@@ -47,19 +49,7 @@ export const SECTIONS_HTML = `
   </div>
   <p class="hint">项目域已升级为独立页面（工作区/任务/文件树/添加三模式）——点上方按钮直达，或侧栏「项目」。</p>
 </section>
-${instructionsSection}<section data-section="shortcuts">
-  <div class="section-head">
-    <h2 class="section-title">快捷键</h2>
-    <div class="section-tools">
-      <input id="shortcut-search" class="input input-search" type="text" placeholder="搜索动作…" autocomplete="off" />
-      <button id="shortcut-reset" type="button" class="btn">恢复默认键位</button>
-    </div>
-  </div>
-  <div id="shortcut-list" class="row-list"></div>
-  <p id="shortcut-status" class="hint">点击「修改」进入捕获态——按新组合即改即存；Esc 取消捕获。</p>
-  <p class="hint">发送键（Enter）为核心交互固定不可改；会话切换/新建会话无对应面（单会话 host 模型——历史侧栏即切换入口，记档）。</p>
-</section>
-<section data-section="transfer">
+${instructionsSection}${shortcutsSection}<section data-section="transfer">
   <div class="section-head"><h2 class="section-title">导入与导出</h2></div>
   <div class="row-list">
     <div class="row">
@@ -118,134 +108,9 @@ ${instructionsSection}<section data-section="shortcuts">
 // user 档文件位）——查看/编辑/保存确认 + 规则 lint + 模板插入辅助。
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// U25/T-P3-128 快捷键分节：kbd 胶囊绑定行（搜索过滤）+ 捕获态改绑 + 冲突提示
-// ---------------------------------------------------------------------------
-
-let capturingAction = null; // 非 null = 捕获态（下一次按键即新绑定）
-let capturedCombo = null; // 捕获到的规范 combo（未保存）
-let shortcutFilter = "";
-
-/** combo → kbd 胶囊组（ShortcutBindingRow 形态——每键一枚）。 */
-function comboCaps(combo) {
-  const box = document.createElement("span");
-  box.className = "combo-caps";
-  for (const part of combo.split("+")) {
-    const k = document.createElement("kbd");
-    k.className = "kbd";
-    k.textContent = part;
-    box.appendChild(k);
-  }
-  if (combo === "") box.appendChild(document.createTextNode("（未绑定）"));
-  return box;
-}
-
-function shortcutMatches(label, action) {
-  if (shortcutFilter === "") return true;
-  const q = shortcutFilter.toLowerCase();
-  return label.toLowerCase().includes(q) || action.toLowerCase().includes(q);
-}
-
-function renderShortcutList() {
-  const list = document.getElementById("shortcut-list");
-  if (list === null) return;
-  const status = document.getElementById("shortcut-status");
-  list.replaceChildren();
-  const bindings = createKeymap(settingsCache?.shortcuts);
-  let visible = 0;
-  for (const [action, label] of Object.entries(ACTION_LABELS)) {
-    if (!shortcutMatches(label, action)) continue;
-    visible++;
-    const row = rowEl();
-    const titleEl = document.createElement("div");
-    titleEl.className = "row-title";
-    titleEl.textContent = label;
-    const descEl = document.createElement("div");
-    descEl.className = "row-desc";
-    const conflictInfo = action !== "send" ? detectConflict(bindings[action] ?? "", bindings, action) : {};
-    const notes = [];
-    if (conflictInfo.conflict !== undefined) {
-      notes.push(`⚠ 与「${ACTION_LABELS[conflictInfo.conflict]}」冲突`);
-    }
-    if (conflictInfo.reserved === true) {
-      notes.push("浏览器保留键——提示不拦截，请自测");
-    }
-    descEl.textContent = action === "send" ? "核心交互固定不可改" : notes.join("；") || "点击「修改」按新组合（Esc 取消）";
-    if (notes.length > 0) descEl.classList.add("error-text");
-    const caps = comboCaps(action === "send" ? "Enter" : bindings[action] ?? "");
-    const control = rowControl(caps);
-    if (action !== "send") {
-      const editBtn = btnEl("修改", "btn");
-      if (capturingAction === action) {
-        editBtn.textContent = capturedCombo ?? "按键…";
-        editBtn.className = "btn active-mark";
-      } else {
-        editBtn.addEventListener("click", () => {
-          capturingAction = action;
-          capturedCombo = null;
-          status.textContent = `捕获中：为「${label}」按新组合（Esc 取消）`;
-          renderShortcutList();
-        });
-      }
-      control.appendChild(editBtn);
-    }
-    row.append(rowCopyEl(titleEl, descEl), control);
-    list.appendChild(row);
-  }
-  if (visible === 0) {
-    list.appendChild(emptyState("无匹配动作", `没有名称含「${shortcutFilter}」的快捷键动作`));
-  }
-}
-
-/** 捕获态键监听（捕获阶段抢先于分发监听——render 时挂载/unmount 时移除）。 */
-export function shortcutCaptureKeydown(ev) {
-  if (capturingAction === null) return;
-  // 捕获态：Esc 空手取消；纯修饰键等待；组合转规范 combo 后即存
-  if (ev.key === "Escape") {
-    capturingAction = null;
-    capturedCombo = null;
-    const status = document.getElementById("shortcut-status");
-    if (status !== null) {
-      status.textContent = "点击「修改」进入捕获态——按新组合即改即存；Esc 取消捕获。";
-    }
-    renderShortcutList();
-    ev.preventDefault();
-    ev.stopPropagation();
-    return;
-  }
-  const combo = eventToCombo(ev);
-  if (combo === null) return;
-  ev.preventDefault();
-  ev.stopPropagation();
-  const bindings = createKeymap(settingsCache?.shortcuts);
-  const conflict = detectConflict(combo, bindings, capturingAction);
-  const statusEl = document.getElementById("shortcut-status");
-  if (conflict.conflict !== undefined) {
-    if (statusEl !== null) {
-      statusEl.textContent = `✘ ${combo} 已被「${ACTION_LABELS[conflict.conflict]}」占用——换一个组合（Esc 取消）`;
-    }
-    renderShortcutList();
-    return; // 冲突阻断保存
-  }
-  const reservedNote = conflict.reserved === true ? "（浏览器保留键——提示不拦截）" : "";
-  // 保存覆盖（部分覆盖语义——settings.shortcuts 段）
-  const overrides = { ...(settingsCache.shortcuts ?? {}) };
-  overrides[capturingAction] = combo;
-  settingsCache.shortcuts = overrides;
-  dirtySections.add("shortcuts");
-  markDirty("shortcuts");
-  if (statusEl !== null) {
-    statusEl.textContent = `✔ ${ACTION_LABELS[capturingAction]} → ${combo}${reservedNote}`;
-  }
-  capturingAction = null;
-  capturedCombo = null;
-  renderShortcutList();
-}
-
 /** 卸载收束（壳 unmount 委派——捕获态不跨视图存活）。 */
 export function unmount() {
-  capturingAction = null;
-  capturedCombo = null;
+  shortcuts.unmount();
 }
 
 // ---------------------------------------------------------------------------
@@ -328,20 +193,9 @@ export async function applyDeepLink(encodedData) {
 // ---------------------------------------------------------------------------
 
 export function bind() {
-  document.getElementById("shortcut-search").addEventListener("input", (ev) => {
-    shortcutFilter = ev.target.value.trim();
-    renderShortcutList();
-  });
-
-  document.getElementById("shortcut-reset").addEventListener("click", async () => {
-    if (!(await confirmDialog("恢复全部默认键位？所有自定义绑定将被清除。", { title: "恢复默认键位", confirmLabel: "恢复默认" }))) return;
-    settingsCache.shortcuts = {};
-    delete settingsCache.shortcuts;
-    dirtySections.add("shortcuts");
-    markDirty("shortcuts");
-    document.getElementById("shortcut-status").textContent = "已恢复默认键位。";
-    renderShortcutList();
-  });
+  // T-P3-152：快捷键域（绑定/捕获监听/录制搜索/单行重置在 shortcuts.js）
+  shortcuts.bind();
+  window.addEventListener("keydown", shortcutCaptureKeydown, true);
 
   document.getElementById("export-btn").addEventListener("click", () => {
     if (settingsCache === null) {
@@ -410,13 +264,11 @@ export function bind() {
     });
   });
 
-  // U25：捕获态键监听（render 时挂载——unmount 时移除）
-  window.addEventListener("keydown", shortcutCaptureKeydown, true);
 }
 
 export function fill() {
   document.getElementById("logging-rawdir").value = settingsCache?.logging?.rawLogDir ?? "";
-  renderShortcutList();
+  shortcuts.render();
 }
 
 /** 指令中心打开时拉一次（壳 open 委派——逻辑在 instructions 域文件）。 */

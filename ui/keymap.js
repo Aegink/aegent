@@ -1,7 +1,8 @@
 /**
- * 快捷键注册表（U25/T-P3-128——KeyboardShortcutsSection 行为锚，🔴 只学
- * 行为）：清单可查（DEFAULT_KEYMAP）、可自定义绑定（settings.shortcuts
- * 覆盖）、冲突提示（注册表内冲突 + 浏览器保留键——提示不拦截，卡内定形）。
+ * 快捷键注册表（U25/T-P3-128 · T-P3-152 升级为动作注册表——KeyboardShortcuts
+ * Section 行为锚）：清单可查、可自定义绑定（settings.shortcuts 覆盖）、冲突
+ * 实时检测（注册表内冲突 + 浏览器保留键）、分组/来源/作用域元数据（VS Code
+ * 键位编辑器四列行先例）。
  *
  * 纯逻辑模块（无 DOM 依赖——src/diagnostics/keymap.test.ts 直测）：
  *   - combo 规范化：修饰键顺序固定 Ctrl < Alt < Shift < Meta，键名取
@@ -11,38 +12,64 @@
  *     未列出的用默认（部分覆盖语义——升级加新键位时用户旧档不失效）；
  *   - 冲突检测：注册表内两 action 同 combo = 冲突（阻断保存）；浏览器
  *     保留键 = 提示（WebView 内 Ctrl 组合多数可达，保留面随宿主差异——
- *     不拦截，UI 提示用户自测）。
+ *     不拦截，UI 提示用户自测）；
+ *   - inInput 作用域（T-P3-152 派生列）：键位带修饰键或为 Escape 的动作
+ *     在输入框焦点内可达（打字安全），纯单键动作输入区外专属——由 combo
+ *     派生（usableInInput），不另设动作字段（when 全体系记档 P2）。
  *
  * 卡面映射记档：U25 原文"面板开合/发送/搜索/会话切换/新建会话"——
  * 发送键（Enter）是核心交互不进自定义面（清单展示"固定"）；会话切换/
  * 新建会话无对应 UI 面（host 单会话模型）——映射为会话历史开合（切换
- * 入口），新建会话记档 YAGNI。
+ * 入口），新建会话记档 YAGNI。T-P3-152 动作扩容（8→17）：聚焦输入框/
+ * 复制最后回复/清空输入/滚动到顶/底/项目页/插件页直达/租约切换/? 速查——
+ * 全部以 app.js KEYMAP_HANDLERS 真实能力为准。
  */
 
-/** 默认键位表（action → combo 规范串）。 */
-export const DEFAULT_KEYMAP = {
-  settings: "Ctrl+,",
-  find: "Ctrl+F",
-  search: "Ctrl+Shift+F",
-  "close-find": "Escape",
-  history: "Ctrl+H",
-  work: "Ctrl+J",
-  usage: "Ctrl+U",
-  notify: "Ctrl+B",
+/**
+ * 动作注册表（元数据：label 显示名 / group 分组 / default 默认键位 /
+ * fixed=true 核心交互不进自定义面）。分组语义（T-P3-152 A2）：
+ *   - 导航：跨页跳转与切换入口
+ *   - 视图与面板：面板/搜索条开合
+ *   - 输入与流：输入框、消息流与租约
+ */
+export const ACTIONS = {
+  // 导航
+  history: { label: "会话历史（切换入口）", group: "导航", default: "Ctrl+H" },
+  search: { label: "跨会话搜索", group: "导航", default: "Ctrl+Shift+F" },
+  "goto-projects": { label: "打开项目页", group: "导航", default: "Ctrl+Shift+P" },
+  "goto-plugins": { label: "打开插件页", group: "导航", default: "Ctrl+Shift+U" },
+  usage: { label: "用量面板开合", group: "导航", default: "Ctrl+U" },
+  notify: { label: "通知中心开合", group: "导航", default: "Ctrl+B" },
+  // 视图与面板
+  settings: { label: "设置面板开合", group: "视图与面板", default: "Ctrl+," },
+  work: { label: "工作面板开合", group: "视图与面板", default: "Ctrl+J" },
+  find: { label: "会话内搜索", group: "视图与面板", default: "Ctrl+F" },
+  "close-find": { label: "关闭搜索条", group: "视图与面板", default: "Escape" },
+  // 输入与流
+  "focus-input": { label: "聚焦输入框", group: "输入与流", default: "Ctrl+I" },
+  "clear-input": { label: "清空输入框", group: "输入与流", default: "Ctrl+Shift+Delete" },
+  "copy-last-reply": { label: "复制最后回复", group: "输入与流", default: "Ctrl+Shift+Y" },
+  "scroll-top": { label: "滚动到顶部", group: "输入与流", default: "Ctrl+Home" },
+  "scroll-bottom": { label: "滚动到底部", group: "输入与流", default: "Ctrl+End" },
+  "toggle-lease": { label: "取得/释放写租约", group: "输入与流", default: "Ctrl+Shift+L" },
+  cheatsheet: { label: "快捷键速查面板", group: "视图与面板", default: "?" },
+  send: { label: "发送（固定，不可改）", group: "输入与流", default: "Enter", fixed: true },
 };
 
-/** action 的中文说明（清单展示面）。 */
-export const ACTION_LABELS = {
-  settings: "设置面板开合",
-  find: "会话内搜索",
-  search: "跨会话搜索",
-  "close-find": "关闭搜索条",
-  history: "会话历史（切换入口）",
-  work: "工作面板开合",
-  usage: "用量面板开合",
-  notify: "通知中心开合",
-  send: "发送（固定，不可改）",
-};
+/** 默认键位表（action → combo 规范串；fixed 动作不进可改绑表）。 */
+export const DEFAULT_KEYMAP = Object.fromEntries(
+  Object.entries(ACTIONS)
+    .filter(([, def]) => def.fixed !== true)
+    .map(([action, def]) => [action, def.default]),
+);
+
+/** action 的中文说明（清单展示面——兼容旧消费面）。 */
+export const ACTION_LABELS = Object.fromEntries(
+  Object.entries(ACTIONS).map(([action, def]) => [action, def.label]),
+);
+
+/** 动作分组序（清单渲染顺序——send 固定行在组内最后）。 */
+export const ACTION_GROUPS = ["导航", "视图与面板", "输入与流"];
 
 /** 浏览器/宿主常见保留键（提示不拦截——卡内定形）。 */
 export const RESERVED_COMBOS = new Set([
@@ -59,6 +86,16 @@ export const RESERVED_COMBOS = new Set([
   "F11",
   "F12",
 ]);
+
+/**
+ * 作用域派生（T-P3-152 B3 降级版）：键位带修饰键或为 Escape → 输入框
+ * 焦点内可达（打字安全）；纯单键动作输入区外专属。when 全体系记档 P2。
+ */
+export function usableInInput(combo) {
+  const idx = combo.lastIndexOf("+");
+  if (idx === -1) return combo === "Escape"; // 纯单键——Escape 特例
+  return idx > 0; // 有修饰键前缀（排除 "+key" 畸形）
+}
 
 /** 修饰键规范化顺序（Ctrl < Alt < Shift < Meta）。 */
 const MOD_ORDER = { ctrl: 0, alt: 1, shift: 2, meta: 3 };

@@ -3980,3 +3980,72 @@ button.chip-ui.active {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * 快捷键域（T-P3-152——分组四列清单/冲突标红/录制搜索/速查面板）
+ * ------------------------------------------------------------------------- */
+
+.shortcut-group {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary, var(--text));
+  padding: 10px 0 4px;
+  border-bottom: 1px dashed var(--border, rgba(128, 128, 128, 0.18));
+}
+
+.row-conflict {
+  border-color: color-mix(in srgb, #ef5350 55%, transparent);
+  border-radius: 8px;
+}
+
+#shortcut-record.active-mark {
+  border-color: var(--accent, #7c8cff);
+  background: color-mix(in srgb, var(--accent, #7c8cff) 12%, transparent);
+}
+
+.cheatsheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 60vh;
+}
+
+#cheatsheet-list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cheatsheet-group {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary, var(--text));
+  padding: 8px 0 2px;
+}
+
+.cheatsheet-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 2px;
+  font-size: 12.5px;
+  border-bottom: 1px dashed var(--border, rgba(128, 128, 128, 0.15));
+}
+
+.cheatsheet-row:last-child {
+  border-bottom: none;
+}
+
+.cheatsheet-row .combo-caps {
+  margin-left: auto;
+  flex: none;
+}
+
+.cheatsheet-note {
+  margin-left: 6px;
+  font-size: 10.5px;
+  color: var(--text-tertiary, var(--text));
+}
