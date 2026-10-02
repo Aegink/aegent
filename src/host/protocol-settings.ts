@@ -7,7 +7,7 @@ import { THINKING_LEVELS } from "../session/settings.js";
 import type { SkillImportItem } from "./skill-import-op.js";
 import { validateDomainSettingsCall } from "./settings-call-domains.js";
 
-/** settings 直答 op 闭集（与 bridge 分流一一对应；合法性链与报错串同源）。 */
+/** settings 直答 op 闭集（与 bridge 分流一一对应；报错串同源）。 */
 const OPS = [
   "get",
   "update",
@@ -34,6 +34,8 @@ const OPS = [
   "session-attach",
   "project-branch",
   "session-rename",
+  "import-preview",
+  "import-sessions",
   "plugins-list",
   "plugin-check",
   "plugin-scaffold",
@@ -87,8 +89,7 @@ export type SettingsCall = {
   target?: string;
   content?: string;
   task?: string; // op=enhancement-test：辅助任务名（T-P3-147 D 闭集）
-  // T-P3-148 载荷：dir=插件目录(check/pack) action=market 动作 template=模板
-  // source=市场源 marketplace=市场 id pluginDescription=描述 view/base=视图读取
+  // T-P3-148 载荷：dir/action/template/source/marketplace/pluginDescription/view/base
   dir?: string;
   action?: string;
   template?: string;
@@ -104,8 +105,8 @@ export type SettingsCall = {
   url?: string;
   projectId?: string;
   overwrite?: boolean;
-  /** op=provider-models / provider-test：端点自足载荷（T-P3-137——UI 草稿
-   * 直传 baseUrl/adapter/headers；apiKey 缺省走 credentials 凭据面）。 */
+  importItems?: { source: string; externalId: string; projectPath?: string }[];
+  /** op=provider-models / provider-test：端点自足载荷（T-P3-137——UI 草稿直传；apiKey 缺省走 credentials）。 */
   baseUrl?: string;
   adapter?: string;
   modelId?: string;
@@ -115,6 +116,7 @@ export type SettingsCall = {
 const SKILL_SLUG_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 export const INSTRUCTION_TARGETS = ["project-agents", "global-agents", "user-rules"] as const;
 export type InstructionTarget = (typeof INSTRUCTION_TARGETS)[number];
+
 
 /** 解析 settings 信封（op 闭集 + 各 op 载荷形状——坏形状整信封拒绝）。 */
 export function parseSettingsEnvelope(record: Record<string, unknown>): SettingsCall {
@@ -143,6 +145,8 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     "url",
     "projectId",
     "overwrite",
+    "source",
+    "importItems",
     "baseUrl",
     "adapter",
     "modelId",
@@ -316,29 +320,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     }
   }
   // stt/tts/项目域载荷校验已上收 settings-call-domains.validateDomainSettingsCall
-  if (op === "provider-models" || op === "provider-test") {
-    if (typeof record["provider"] !== "string" || record["provider"] === "") {
-      throw new Error(`settings op=${op} 需要 provider 非空字符串（凭据键）`);
-    }
-    if (typeof record["baseUrl"] !== "string" || !/^https?:\/\//.test(record["baseUrl"])) {
-      throw new Error(`settings op=${op} 需要 baseUrl（http/https 地址）`);
-    }
-    if (record["adapter"] !== "openai" && record["adapter"] !== "openai-responses" && record["adapter"] !== "anthropic" && record["adapter"] !== "google") {
-      throw new Error(`settings op=${op} 的 adapter 非法（合法：openai|openai-responses|anthropic|google）`);
-    }
-    if (op === "provider-test" && (typeof record["modelId"] !== "string" || record["modelId"] === "")) {
-      throw new Error("settings op=provider-test 需要 modelId（真实对话的目标模型）");
-    }
-    if (record["reasoning"] !== undefined && (typeof record["reasoning"] !== "string" || !(THINKING_LEVELS as readonly string[]).includes(record["reasoning"]))) {
-      throw new Error(`settings op=${op} 的 reasoning 非法（合法：${THINKING_LEVELS.join("|")}）`);
-    }
-    if (
-      record["headers"] !== undefined &&
-      (record["headers"] === null || typeof record["headers"] !== "object" || Array.isArray(record["headers"]))
-    ) {
-      throw new Error(`settings op=${op} 的 headers 须为对象`);
-    }
-  }
+  // provider 族载荷校验已上收 settings-call-domains
   if (op === "enhancement-test" &&
       (typeof record["task"] !== "string" ||
         !["judge", "summarizer", "polish", "title", "fastModel"].includes(record["task"]))) {
@@ -375,6 +357,8 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     ...(typeof record["url"] === "string" ? { url: record["url"] } : {}),
     ...(typeof record["projectId"] === "string" ? { projectId: record["projectId"] } : {}),
     ...(record["overwrite"] === true ? { overwrite: true } : {}),
+    ...(typeof record["source"] === "string" ? { source: record["source"] } : {}),
+    ...(Array.isArray(record["importItems"]) ? { importItems: record["importItems"] as { source: string; externalId: string; projectPath?: string }[] } : {}),
     ...(record["headers"] !== undefined && typeof record["headers"] === "object" && !Array.isArray(record["headers"])
       ? { headers: record["headers"] as Record<string, string> }
       : {}),

@@ -148,6 +148,18 @@ CREATE TABLE IF NOT EXISTS session_projects (
 CREATE INDEX IF NOT EXISTS idx_session_projects_project ON session_projects (project_id);
 `;
 
+/**
+ * v7→v8：导入会话幂等注册表（T-P3-150 A6——外部会话 `source:externalId`
+ * → 我方 sessionId 的确定性映射；重复导入按 PK 幂等跳过）。
+ */
+export const SCHEMA_V8_IMPORT_REGISTRY_DDL = `
+CREATE TABLE IF NOT EXISTS import_registry (
+    external_key  TEXT    PRIMARY KEY,
+    session_id    TEXT    NOT NULL,
+    imported_ts   INTEGER NOT NULL
+);
+`;
+
 export const MIGRATIONS: readonly SchemaMigration[] = [
   { from: 0, to: 1, apply: applyBaseSchema },
   {
@@ -203,6 +215,13 @@ export const MIGRATIONS: readonly SchemaMigration[] = [
     to: 7,
     apply: (db) => {
       db.exec(SCHEMA_V7_PROJECTS_DDL);
+    },
+  },
+  {
+    from: 7,
+    to: 8,
+    apply: (db) => {
+      db.exec(SCHEMA_V8_IMPORT_REGISTRY_DDL);
     },
   },
 ];

@@ -5,6 +5,7 @@
  * parse 层只管信封形状——业务规则仍在 gateway 层。
  */
 
+import { THINKING_LEVELS } from "../session/settings.js";
 import { validatePluginSettingsCall } from "./settings-plugin-ops.js";
 
 /** 域族 op 闭集（与 OPS 同源子集——命中才进域校验）。 */
@@ -26,6 +27,10 @@ const DOMAIN_OPS = new Set([
   "session-attach",
   "session-rename",
   "project-branch",
+  "import-preview",
+  "import-sessions",
+  "provider-models",
+  "provider-test",
 ]);
 
 export function validateDomainSettingsCall(op: string, record: Record<string, unknown>): void {
@@ -75,6 +80,49 @@ export function validateDomainSettingsCall(op: string, record: Record<string, un
     }
     if (typeof record["text"] !== "string" || record["text"].trim() === "") {
       throw new Error("settings op=session-rename 需要 text（新标题）非空字符串");
+    }
+  }
+  // T-P3-150 A6：导入预览/内容导入载荷（source+externalId 对数组）。
+  if (op === "import-preview" &&
+      (typeof record["source"] !== "string" || record["source"].trim() === "" ||
+       typeof record["path"] !== "string" || record["path"].trim() === "")) {
+    throw new Error("settings op=import-preview 需要 source 与 path（外部会话 id）非空字符串");
+  }
+  if (op === "import-sessions") {
+    if (!Array.isArray(record["importItems"]) || (record["importItems"] as unknown[]).length === 0) {
+      throw new Error("settings op=import-sessions 需要 importItems 非空数组");
+    }
+    for (const item of record["importItems"] as unknown[]) {
+      if (item === null || typeof item !== "object") {
+        throw new Error("settings op=import-sessions 的 importItems[] 须为对象");
+      }
+      const it = item as Record<string, unknown>;
+      if (typeof it["source"] !== "string" || it["source"] === "") throw new Error("settings op=import-sessions 的 importItems[].source 缺失");
+      if (typeof it["externalId"] !== "string" || it["externalId"] === "") throw new Error("settings op=import-sessions 的 importItems[].externalId 缺失");
+    }
+  }
+  // provider 族（端点自足载荷——凭据键/adapter 闭集/reasoning 闭集）
+  if (op === "provider-models" || op === "provider-test") {
+    if (typeof record["provider"] !== "string" || record["provider"] === "") {
+      throw new Error(`settings op=${op} 需要 provider 非空字符串（凭据键）`);
+    }
+    if (typeof record["baseUrl"] !== "string" || !/^https?:\/\//.test(record["baseUrl"])) {
+      throw new Error(`settings op=${op} 需要 baseUrl（http/https 地址）`);
+    }
+    if (record["adapter"] !== "openai" && record["adapter"] !== "openai-responses" && record["adapter"] !== "anthropic" && record["adapter"] !== "google") {
+      throw new Error(`settings op=${op} 的 adapter 非法（合法：openai|openai-responses|anthropic|google）`);
+    }
+    if (op === "provider-test" && (typeof record["modelId"] !== "string" || record["modelId"] === "")) {
+      throw new Error("settings op=provider-test 需要 modelId（真实对话的目标模型）");
+    }
+    if (record["reasoning"] !== undefined && (typeof record["reasoning"] !== "string" || !(THINKING_LEVELS as readonly string[]).includes(record["reasoning"]))) {
+      throw new Error(`settings op=${op} 的 reasoning 非法（合法：${THINKING_LEVELS.join("|")}）`);
+    }
+    if (
+      record["headers"] !== undefined &&
+      (record["headers"] === null || typeof record["headers"] !== "object" || Array.isArray(record["headers"]))
+    ) {
+      throw new Error(`settings op=${op} 的 headers 须为对象`);
     }
   }
 }

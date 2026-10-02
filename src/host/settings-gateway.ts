@@ -45,6 +45,8 @@ import {
   projectTasksOp,
   sessionAttachOp,
   sessionRenameOp,
+  importPreviewOp,
+  importSessionsOp,
 } from "./settings-project-ops.js";
 import { checkPluginDir, listPlugins } from "./plugins-gateway.js";
 import {
@@ -274,6 +276,10 @@ export class FileSettingsGateway implements SettingsGateway {
   sessionAttach(payload: { sessionId: string; projectId: string }): Promise<{ attached: true }> { return Promise.resolve(sessionAttachOp(this.sessionDb, payload)); }
   projectBranch(path: string): Promise<{ branch?: string }> { return Promise.resolve(projectBranchOp(path)); }
   sessionRename(payload: { sessionId: string; title: string }): Promise<{ renamed: true }> { return Promise.resolve(sessionRenameOp(this.sessionDb, payload)); }
+  importPreview(source: string, externalId: string): Promise<unknown> { return Promise.resolve(importPreviewOp(source, externalId, this.homeDir)); }
+  importSessions(items: { source: string; externalId: string; projectPath?: string }[]): Promise<unknown> {
+    return this.get().then((s) => importSessionsOp(this.sessionDb, items, s.projects ?? [], this.homeDir));
+  }
 
   async pluginsList(): Promise<ReturnType<typeof listPlugins>> {
     return listPlugins(await this.get());

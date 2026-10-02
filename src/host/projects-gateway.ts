@@ -15,288 +15,146 @@ import { gitCloneSource } from "./plugins-marketplace-git.js";
 import { FsBoundaryError } from "./fs-gateway.js";
 
 // ---------------------------------------------------------------------------
-// A4 扫描导入（发现级）
+// A4 扫描导入（发现级 + 会话级——T-P3-150 多 Agent 适配：spec 驱动消费）
 // ---------------------------------------------------------------------------
 
-export type ImportSource = "claude" | "codex" | "opencode";
+import { scanJsonl, scanJsonTree, jsonlMessages, convertJsonTree } from "./import-drivers.js";
+import { scanSqlite, convertSqlite } from "./import-driver-sqlite.js";
+import type { ImportedSessionSummary, ImportedMessage, ImportSpec } from "./import-spec.js";
+import { loadImportSpecs } from "./import-sources.js";
+
+export interface ImportScanResult {
+  /** cwd 归组候选（UI 项目勾选——canonical path.resolve 键）。 */
+  candidates: ImportedProjectCandidate[];
+  /** 会话级扁平清单（A6 勾选/预览——每源上限 500 条防单源巨库撑爆回包）。 */
+  sessions: ImportedSessionSummary[];
+  sources: { source: string; label: string; scanned: number; sessionCount: number; note?: string; custom?: boolean }[];
+  customErrors: string[];
+}
 
 export interface ImportedProjectCandidate {
-  source: ImportSource;
+  source: string;
   /** 项目目录（归组键——会话记录里的 cwd）。 */
   cwd: string;
-  /** 样例标题（该组最新会话的首条用户消息截断）。 */
   title: string;
   sessionCount: number;
   lastActiveTs: number;
 }
 
-export interface ImportScanResult {
-  candidates: ImportedProjectCandidate[];
-  sources: { source: ImportSource; scanned: number; note?: string }[];
-}
+const MAX_SESSIONS_PER_SOURCE = 500;
+const MAX_TOTAL_SESSIONS = 3000;
 
-/** codex 大档案采样上限（pi-desktop CODEX_SCAN_MAX_FILES 对齐）。 */
-const CODEX_MAX_FILES = 250;
-/** 单文件头部采样字节（找 cwd/首条消息——不整读大档案）。 */
-const HEAD_SAMPLE_BYTES = 64 * 1024;
-/** 每源候选 cwd 上限（防失控目录树）。 */
-const MAX_CWDS_PER_SOURCE = 200;
-
-interface SessionSample {
-  cwd?: string;
-  title?: string;
-  updatedAt: number;
-}
-
-function headSample(file: string, bytes = HEAD_SAMPLE_BYTES): string {
-  const fd = openSync(file, "r");
-  try {
-    const buf = Buffer.alloc(bytes);
-    const read = readSync(fd, buf, 0, bytes, 0);
-    return buf.subarray(0, read).toString("utf-8");
-  } catch {
-    return "";
-  } finally {
-    closeSync(fd);
+function scanOneSpec(spec: ImportSpec, home: string): ImportedSessionSummary[] {
+  switch (spec.driver) {
+    case "jsonl-transcript":
+      return scanJsonl(spec, home);
+    case "json-tree":
+      return scanJsonTree(spec, home);
+    case "sqlite-session":
+      return scanSqlite(spec, home);
+    default:
+      return [];
   }
 }
 
-/** JSONL 逐行安全解析（坏行跳过——半写行/注入行不炸扫描）。 */
-function* jsonlLines(text: string): Generator<Record<string, unknown>> {
-  for (const line of text.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed === "" || !trimmed.startsWith("{")) continue;
-    try {
-      const parsed = JSON.parse(trimmed) as unknown;
-      if (parsed !== null && typeof parsed === "object") {
-        yield parsed as Record<string, unknown>;
-      }
-    } catch {
-      continue;
-    }
-  }
-}
-
-/** 提取用户消息文本（claude/codex 共通形状探测——message.content 字符串或数组）。 */
-function userTextOf(row: Record<string, unknown>): string | undefined {
-  if (row["type"] !== "user" && row["role"] !== "user") return undefined;
-  const message = row["message"];
-  const content =
-    typeof message === "object" && message !== null
-      ? (message as Record<string, unknown>)["content"]
-      : row["content"];
-  if (typeof content === "string") {
-    const text = content.trim();
-    // 合成前缀黑名单（pi-desktop claude.ts:62 语义——命令 caveat/system-
-    // reminder 类 `<` 开头非真实用户话语）
-    return text.startsWith("<") ? undefined : text;
-  }
-  if (Array.isArray(content)) {
-    for (const part of content) {
-      if (typeof part === "object" && part !== null && (part as Record<string, unknown>)["type"] === "text") {
-        const text = String((part as Record<string, unknown>)["text"] ?? "").trim();
-        if (text !== "" && !text.startsWith("<")) return text;
-      }
-    }
-  }
-  return undefined;
-}
-
-function truncateTitle(text: string, limit = 48): string {
-  const compact = text.replace(/\s+/g, " ").trim();
-  return compact.length > limit ? `${compact.slice(0, limit)}…` : compact;
-}
-
-/** Claude Code：~/.claude/projects/<编码目录>/*.jsonl（cwd 在每行）。 */
-function scanClaude(home: string): { samples: SessionSample[]; scanned: number; note?: string } {
-  const root = path.join(home, ".claude", "projects");
-  if (!existsSync(root)) return { samples: [], scanned: 0, note: "~/.claude/projects 不存在" };
-  const samples: SessionSample[] = [];
-  let scanned = 0;
-  for (const dir of listDirs(root)) {
-    for (const file of jsonlFiles(path.join(root, dir))) {
-      scanned += 1;
-      const sample = sampleClaudeSession(path.join(root, dir, file));
-      if (sample !== undefined) samples.push(sample);
-    }
-  }
-  return { samples, scanned };
-}
-
-function sampleClaudeSession(file: string): SessionSample | undefined {
-  let cwd: string | undefined;
-  let title: string | undefined;
-  for (const row of jsonlLines(headSample(file))) {
-    if (cwd === undefined && typeof row["cwd"] === "string") cwd = row["cwd"] as string;
-    if (title === undefined) {
-      const text = userTextOf(row);
-      if (text !== undefined) title = truncateTitle(text);
-    }
-    if (cwd !== undefined && title !== undefined) break;
-  }
-  if (cwd === undefined) return undefined;
-  return { cwd, title, updatedAt: safeMtime(file) };
-}
-
-/** Codex：~/.codex/sessions/YYYY/MM/DD/roll-*.jsonl（采样上限 + head 采样）。 */
-function scanCodex(home: string): { samples: SessionSample[]; scanned: number; note?: string } {
-  const root = path.join(home, ".codex", "sessions");
-  if (!existsSync(root)) return { samples: [], scanned: 0, note: "~/.codex/sessions 不存在" };
-  const files: string[] = [];
-  collectFiles(root, files, CODEX_MAX_FILES);
-  files.sort((a, b) => safeMtime(b) - safeMtime(a)); // 最新优先（截断丢最旧）
-  const samples: SessionSample[] = [];
-  for (const file of files) {
-    const sample = sampleCodexSession(file);
-    if (sample !== undefined) samples.push(sample);
-  }
-  const note = files.length >= CODEX_MAX_FILES ? `扫描上限 ${String(CODEX_MAX_FILES)} 文件（仅最新段）` : undefined;
-  return { samples, scanned: files.length, ...(note !== undefined ? { note } : {}) };
-}
-
-function sampleCodexSession(file: string): SessionSample | undefined {
-  let cwd: string | undefined;
-  let title: string | undefined;
-  for (const row of jsonlLines(headSample(file))) {
-    // codex session_meta / turn_context 行带 cwd；用户消息在 response_item
-    if (cwd === undefined) {
-      const payload = row["payload"];
-      if (typeof payload === "object" && payload !== null) {
-        const cwdInPayload = (payload as Record<string, unknown>)["cwd"];
-        if (typeof cwdInPayload === "string") cwd = cwdInPayload;
-      }
-    }
-    if (typeof row["cwd"] === "string" && cwd === undefined) cwd = row["cwd"] as string;
-    if (title === undefined) {
-      const payload = row["payload"];
-      if (typeof payload === "object" && payload !== null) {
-        const text = userTextOf(payload as Record<string, unknown>);
-        if (text !== undefined) title = truncateTitle(text);
-      }
-    }
-    if (cwd !== undefined && title !== undefined) break;
-  }
-  if (cwd === undefined) return undefined;
-  return { cwd, title, updatedAt: safeMtime(file) };
-}
-
-/** OpenCode：~/.local/share/opencode/storage/session/<hash>/<id>.json（XDG
- * 路径——Windows 常见缺省不存在 = 0 条诚实降级）。 */
-function scanOpencode(home: string): { samples: SessionSample[]; scanned: number; note?: string } {
-  const root = path.join(home, ".local", "share", "opencode", "storage", "session");
-  if (!existsSync(root)) return { samples: [], scanned: 0, note: "opencode 存储目录不存在（本机未安装或非 XDG 布局）" };
-  const samples: SessionSample[] = [];
-  let scanned = 0;
-  for (const dir of listDirs(root)) {
-    for (const file of jsonFiles(path.join(root, dir))) {
-      scanned += 1;
-      try {
-        const parsed = JSON.parse(readFileSync(path.join(root, dir, file), "utf-8")) as Record<string, unknown>;
-        const directory = parsed["directory"];
-        if (typeof directory !== "string" || directory === "") continue;
-        const titleRaw = parsed["title"];
-        const time = parsed["time"];
-        const updated =
-          typeof time === "object" && time !== null && typeof (time as Record<string, unknown>)["updated"] === "number"
-            ? ((time as Record<string, unknown>)["updated"] as number)
-            : safeMtime(path.join(root, dir, file));
-        samples.push({
-          cwd: directory,
-          title: typeof titleRaw === "string" && titleRaw !== "" ? truncateTitle(titleRaw) : undefined,
-          updatedAt: updated,
-        });
-      } catch {
-        continue;
-      }
-    }
-  }
-  return { samples, scanned };
-}
-
-function listDirs(root: string): string[] {
-  try {
-    return readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
-  } catch {
-    return [];
-  }
-}
-
-function jsonlFiles(dir: string): string[] {
-  try {
-    return readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
-  } catch {
-    return [];
-  }
-}
-
-function jsonFiles(dir: string): string[] {
-  try {
-    return readdirSync(dir).filter((f) => f.endsWith(".json"));
-  } catch {
-    return [];
-  }
-}
-
-function collectFiles(root: string, out: string[], cap: number): void {
-  if (out.length >= cap) return;
-  let entries;
-  try {
-    entries = readdirSync(root, { withFileTypes: true });
-  } catch {
-    return;
-  }
-  for (const entry of entries) {
-    if (out.length >= cap) return;
-    const abs = path.join(root, entry.name);
-    if (entry.isDirectory()) collectFiles(abs, out, cap);
-    else if (entry.isFile() && entry.name.endsWith(".jsonl")) out.push(abs);
-  }
-}
-
-function safeMtime(file: string): number {
-  try {
-    return statSync(file).mtimeMs;
-  } catch {
-    return 0;
-  }
-}
-
-/** 三源并发语义收敛为同步顺序扫（本地小目录——无需真并发）；cwd 归组 +
- * lastActive 降序。 */
+/** 三驱动消费的扫描编排：spec 集（内置六家+自定义）→ 逐源扫描（单源失败
+ * 不中断）→ cwd 归组候选 + 会话级清单 + 每源状态。 */
 export function scanImportableProjects(home: string = homedir()): ImportScanResult {
-  const sources: ImportScanResult["sources"] = [];
+  const { specs, customErrors } = loadImportSpecs(home);
   const byCwd = new Map<string, ImportedProjectCandidate>();
-  const run = (source: ImportSource, result: { samples: SessionSample[]; scanned: number; note?: string }) => {
-    sources.push({
-      source,
-      scanned: result.scanned,
-      ...(result.note !== undefined ? { note: result.note } : {}),
-    });
-    for (const sample of result.samples) {
-      if (sample.cwd === undefined) continue;
-      const key = path.resolve(sample.cwd);
-      const existing = byCwd.get(key);
-      if (existing === undefined) {
-        if (byCwd.size >= MAX_CWDS_PER_SOURCE) continue;
-        byCwd.set(key, {
-          source,
-          cwd: key,
-          title: sample.title ?? path.basename(key),
-          sessionCount: 1,
-          lastActiveTs: sample.updatedAt,
-        });
-        continue;
+  const sessions: ImportedSessionSummary[] = [];
+  const sources: ImportScanResult["sources"] = [];
+  for (const spec of specs) {
+    let scanned = 0;
+    let note: string | undefined;
+    try {
+      const found = scanOneSpec(spec, home);
+      scanned = found.length;
+      const capped = found.slice(0, MAX_SESSIONS_PER_SOURCE);
+      for (const summary of capped) {
+        if (sessions.length < MAX_TOTAL_SESSIONS) sessions.push(summary);
+        const key = summary.projectPath !== null ? path.resolve(summary.projectPath) : null;
+        if (key === null) continue;
+        const existing = byCwd.get(key);
+        if (existing === undefined) {
+          byCwd.set(key, {
+            source: spec.id,
+            cwd: key,
+            title: summary.title,
+            sessionCount: 1,
+            lastActiveTs: Date.parse(summary.updatedAt) || 0,
+          });
+          continue;
+        }
+        existing.sessionCount += 1;
+        const ts = Date.parse(summary.updatedAt) || 0;
+        if (ts > existing.lastActiveTs) existing.lastActiveTs = ts;
       }
-      existing.sessionCount += 1;
-      if (sample.updatedAt > existing.lastActiveTs) existing.lastActiveTs = sample.updatedAt;
-      if (sample.title !== undefined && existing.title === path.basename(existing.cwd)) existing.title = sample.title;
+      if (found.length > MAX_SESSIONS_PER_SOURCE) {
+        note = `会话数超 ${String(MAX_SESSIONS_PER_SOURCE)}，仅列最新段`;
+      }
+    } catch (e) {
+      note = `扫描失败：${e instanceof Error ? e.message : String(e)}`;
     }
-  };
-  run("claude", scanClaude(home));
-  run("codex", scanCodex(home));
-  run("opencode", scanOpencode(home));
+    sources.push({
+      source: spec.id,
+      label: spec.label,
+      scanned,
+      sessionCount: sessions.filter((s) => s.source === spec.id).length,
+      ...(note !== undefined ? { note } : {}),
+      ...(spec.custom === true ? { custom: true } : {}),
+    });
+  }
   const candidates = [...byCwd.values()].sort((a, b) => b.lastActiveTs - a.lastActiveTs);
-  return { candidates, sources };
+  return { candidates, sessions, sources, customErrors };
+}
+
+function specById(specs: ImportSpec[], source: string): ImportSpec | undefined {
+  return specs.find((s) => s.id === source);
+}
+
+/** B1 预览/A6 导入共用：单会话消息还原（按 source 找 spec——单源重扫定位
+ * summary，再按 driver convert；文件/库路径逐次复验边界）。返回 null =
+ * 找不到或驱动失败。 */
+export function convertImportedSession(
+  source: string,
+  externalId: string,
+  home: string = homedir(),
+): ImportedMessage[] | null {
+  const { specs } = loadImportSpecs(home);
+  const spec = specById(specs, source);
+  if (spec === undefined) return null;
+  const found = scanOneSpec(spec, home).find((s) => s.externalId === externalId);
+  if (found === undefined) return null;
+  if (spec.driver === "jsonl-transcript" && found.filePath !== undefined) {
+    const root = spec.root.startsWith("~") ? path.join(home, spec.root.slice(1)) : spec.root;
+    const file = path.resolve(found.filePath);
+    if (!file.startsWith(path.resolve(root))) return null;
+    try {
+      const rawText = readFileSync(file, "utf-8");
+      const lines = rawText.split("\n");
+      const entries: Record<string, unknown>[] = [];
+      for (const line of lines.slice(0, spec.maxLines ?? 20000)) {
+        const trimmed = line.trim();
+        if (trimmed === "" || !trimmed.startsWith("{")) continue;
+        try {
+          entries.push(JSON.parse(trimmed) as Record<string, unknown>);
+        } catch {
+          continue;
+        }
+      }
+      return jsonlMessages(spec, entries);
+    } catch {
+      return null;
+    }
+  }
+  if (spec.driver === "json-tree" && found.filePath !== undefined) {
+    return convertJsonTree(spec, found.filePath, home);
+  }
+  if (spec.driver === "sqlite-session" && found.dbPath !== undefined) {
+    return convertSqlite(spec, found.dbPath, externalId, home);
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

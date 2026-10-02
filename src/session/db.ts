@@ -15,7 +15,7 @@ import type { EventStorage } from "./store.js";
 import { isValidSessionId } from "./session-id.js";
 import { MIGRATIONS, planMigrationChain } from "./migrate.js";
 
-export const CURRENT_SCHEMA_VERSION = 7;
+export const CURRENT_SCHEMA_VERSION = 8;
 
 /** 归档后从主库读该会话的 fail-closed 拒绝（Q8/T-P2-102）——归档 ≠ 删除，
  * 数据在归档档（archive.ts 的 readArchivedSession 可查），主库读路径必须
@@ -249,6 +249,7 @@ export class SqliteEventStorage implements EventStorage {
       this.db.prepare("DELETE FROM events WHERE session_id = ?").run(sid);
       this.db.prepare("DELETE FROM session_titles WHERE session_id = ?").run(sid);
       this.db.prepare("DELETE FROM session_projects WHERE session_id = ?").run(sid);
+      this.db.prepare("DELETE FROM import_registry WHERE session_id = ?").run(sid);
       this.db.prepare("DELETE FROM session_index WHERE session_id = ?").run(sid);
       this.db.prepare("DELETE FROM archived_sessions WHERE session_id = ?").run(sid);
       this.db.prepare("DELETE FROM sessions WHERE id = ?").run(sid);
@@ -292,6 +293,28 @@ export class SqliteEventStorage implements EventStorage {
     return this.db
       .prepare("SELECT session_id, project_id FROM session_projects")
       .all() as Array<{ sessionId: string; projectId: string }>;
+  }
+
+  /**
+   * 导入会话幂等账（T-P3-150 A6）：externalKey = `<source>:<externalId>`——
+   * 已存在返回其 sessionId（重复导入跳过），否则登记新映射。
+   */
+  lookupImportedSession(externalKey: string): string | undefined {
+    const row = this.db
+      .prepare("SELECT session_id FROM import_registry WHERE external_key = ?")
+      .get(externalKey) as { session_id: string } | undefined;
+    return row?.session_id;
+  }
+
+  registerImportedSession(externalKey: string, sessionId: string): { sessionId: string; alreadyImported: boolean } {
+    const existing = this.db
+      .prepare("SELECT session_id FROM import_registry WHERE external_key = ?")
+      .get(externalKey) as { session_id: string } | undefined;
+    if (existing !== undefined) return { sessionId: existing.session_id, alreadyImported: true };
+    this.db
+      .prepare("INSERT OR IGNORE INTO import_registry (external_key, session_id, imported_ts) VALUES (?, ?, ?)")
+      .run(externalKey, sessionId, Date.now());
+    return { sessionId, alreadyImported: false };
   }
 
   close(): void {

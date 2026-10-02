@@ -489,11 +489,18 @@ async function openAddDialog() {
       `;
     } else {
       bodyBox.innerHTML = `
-        <p class="hint">扫描本机其他 AI 工具的会话记录（Claude Code / Codex / OpenCode），按项目目录归组——勾选后建为项目（已存在的自动跳过）。</p>
-        <div class="proj-import-list" data-field="importList"><div class="hint">点击下方「扫描」开始。</div></div>
-        <div class="row-control" style="margin-top:8px"><button type="button" class="btn" data-action="import-scan">扫描</button></div>
+        <p class="hint">扫描本机其他 AI 工具（Claude Code / Codex / OpenCode / WorkBuddy / Pi / Gemini CLI + 自定义来源）的会话记录——勾选会话导入为任务（按原始目录自动归属项目），或仅把目录建为项目。</p>
+        <div class="row-control" style="margin-top:8px"><button type="button" class="btn btn-primary" data-action="import-scan">扫描本机工具</button><span data-field="import-status" class="proj-card-meta"></span></div>
+        <div data-field="importSources" class="proj-import-sources"></div>
+        <div class="proj-import-list" data-field="importList"><div class="hint">点击上方「扫描本机工具」开始。</div></div>
+        <div class="row-control" style="margin-top:8px" data-field="import-actions" hidden>
+          <button type="button" class="btn btn-primary" data-action="import-sessions">导入为会话</button>
+          <button type="button" class="btn" data-action="import-folders">仅把目录建为项目</button>
+        </div>
       `;
       bodyBox.querySelector("[data-action=import-scan]").addEventListener("click", () => void runImportScan(bodyBox));
+      bodyBox.querySelector("[data-action=import-sessions]").addEventListener("click", () => void importCheckedSessions(bodyBox));
+      bodyBox.querySelector("[data-action=import-folders]").addEventListener("click", () => void importCheckedFolders(bodyBox));
     }
   };
   let mode = "folder";
@@ -567,73 +574,204 @@ async function openAddDialog() {
       await appendProjects([{ name: projectName, folders: [repoPath] }]);
       return;
     }
-    // import 模式：收集勾选候选建项目（幂等——同路径已存在自动跳过）
-    const rows = [...bodyBox.querySelectorAll(".proj-import-row")].filter((row) => {
-      const check = row.querySelector("input[type=checkbox]");
-      return check !== null && check.checked === true && check.disabled === false;
-    });
-    if (rows.length === 0) {
-      toast("未勾选任何候选", "warn");
+    // import 模式：对话框确认 = 会话导入（新面板的主路径——目录建项目走
+    // "仅把目录建为项目"按钮）
+    const checked = [...bodyBox.querySelectorAll(".proj-import-row input[type=checkbox]")].filter(
+      (check) => check.checked === true && check.disabled === false,
+    );
+    if (checked.length === 0) {
+      toast("未勾选任何会话", "warn");
       return;
     }
-    const existingPaths = new Set(
-      (settingsCache?.projects ?? []).map((p) => normalizePath(p.folders[0] ?? "")),
-    );
-    let added = 0;
-    let skipped = 0;
-    for (const row of rows) {
-      const cwd = row.dataset.cwd;
-      if (cwd === undefined || existingPaths.has(normalizePath(cwd))) {
-        skipped += 1;
-        continue;
-      }
-      existingPaths.add(normalizePath(cwd));
-      const name = cwd.split(/[\\/]/).filter(Boolean).pop() ?? "project";
-      await appendProjects([{ name, folders: [cwd] }], { silent: true });
-      added += 1;
-    }
-    toast(`导入 ${String(added)} 个项目（${String(skipped)} 个已存在跳过）`, "info");
+    await importCheckedSessions(bodyBox);
   });
 }
 
 async function runImportScan(bodyBox) {
   const listBox = bodyBox.querySelector("[data-field=importList]");
-  if (listBox === null) return;
-  listBox.textContent = "扫描中…（扫 ~/.claude / ~/.codex / opencode 存储目录）";
+  const statusBox = bodyBox.querySelector("[data-field=import-status]");
+  const sourcesBox = bodyBox.querySelector("[data-field=importSources]");
+  const actionsBox = bodyBox.querySelector("[data-field=import-actions]");
+  if (listBox === null || statusBox === null) return;
+  listBox.textContent = "扫描中…（并行探测各工具本地会话库，只读）";
   const envelope = await sendSettings({ op: "import-scan" });
   if (!envelope.ok) {
     listBox.textContent = `扫描失败：${envelope.error?.message ?? ""}`;
     return;
   }
-  const candidates = envelope.result.candidates ?? [];
-  const sources = envelope.result.sources ?? [];
-  if (candidates.length === 0) {
-    const notes = sources
-      .map((s) => `${s.source}:${String(s.scanned)}${s.note !== undefined ? `（${s.note}）` : ""}`)
-      .join("，");
-    listBox.innerHTML = `<div class="hint">没扫到候选项目。${escapeHtml(notes)}</div>`;
+  const { candidates = [], sessions = [], sources = [], customErrors = [] } = envelope.result;
+  // 来源徽标行（每源会话数/未检测到/自定义）
+  sourcesBox.replaceChildren(
+    ...sources.map((s) => {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.textContent =
+        s.sessionCount > 0
+          ? `${s.label} ${String(s.sessionCount)}${s.custom === true ? "（自定义）" : ""}`
+          : `${s.label} 未检测到${s.note !== undefined ? `——${s.note}` : ""}`;
+      return chip;
+    }),
+  );
+  if (customErrors.length > 0) {
+    const err = document.createElement("div");
+    err.className = "proj-tree-error";
+    err.textContent = `自定义来源被拒：${customErrors.join("；")}`;
+    sourcesBox.appendChild(err);
+  }
+  if (sessions.length === 0) {
+    listBox.innerHTML = `<div class="hint">没扫到会话——各工具都未安装或没有历史记录。</div>`;
+    actionsBox.hidden = true;
     return;
+  }
+  // 会话按 projectPath 归组（组头全选 + 会话行勾选/预览）
+  const groups = new Map();
+  for (const session of sessions) {
+    const key = session.projectPath ?? "(未定位目录)";
+    const list = groups.get(key) ?? [];
+    list.push(session);
+    groups.set(key, list);
   }
   const existingPaths = new Set(
     (settingsCache?.projects ?? []).map((p) => normalizePath(p.folders[0] ?? "")),
   );
   listBox.replaceChildren(
-    ...candidates.map((candidate) => {
-      const already = existingPaths.has(normalizePath(candidate.cwd));
-      const row = document.createElement("label");
-      row.className = "proj-import-row";
-      const check = document.createElement("input");
-      check.type = "checkbox";
-      check.checked = !already;
-      check.disabled = already;
-      const copy = document.createElement("span");
-      copy.className = "proj-import-copy";
-      copy.innerHTML = `<b>${escapeHtml(candidate.cwd)}</b><br/><span class="proj-card-meta">${candidate.source} · ${String(candidate.sessionCount)} 会话 · ${new Date(candidate.lastActiveTs).toLocaleDateString("zh-CN")}${already ? " · 已是项目" : ""}</span>`;
-      row.append(check, copy);
-      row.dataset.cwd = candidate.cwd;
-      return row;
+    ...[...groups.entries()].map(([cwd, groupSessions]) => {
+      const box = document.createElement("div");
+      box.className = "proj-import-group";
+      const head = document.createElement("label");
+      head.className = "proj-import-group-head";
+      const groupCheck = document.createElement("input");
+      groupCheck.type = "checkbox";
+      groupCheck.checked = true;
+      groupCheck.addEventListener("change", () => {
+        for (const rowCheck of box.querySelectorAll(".proj-import-row input[type=checkbox]")) {
+          rowCheck.checked = groupCheck.checked;
+        }
+      });
+      const headText = document.createElement("span");
+      const already = existingPaths.has(normalizePath(cwd));
+      headText.innerHTML = `<b>${escapeHtml(cwd)}</b> <span class="proj-card-meta">${String(groupSessions.length)} 会话${already ? " · 已是项目" : ""}</span>`;
+      head.append(groupCheck, headText);
+      box.appendChild(head);
+      for (const session of groupSessions) {
+        const row = document.createElement("label");
+        row.className = "proj-import-row";
+        row.style.paddingLeft = "20px";
+        const check = document.createElement("input");
+        check.type = "checkbox";
+        check.checked = true;
+        const copy = document.createElement("span");
+        copy.className = "proj-import-copy";
+        copy.innerHTML = `${escapeHtml(session.title)} <span class="proj-card-meta">${session.source} · ${new Date(session.updatedAt).toLocaleString("zh-CN")} · ${String(session.messageCount)} 条</span>`;
+        const previewLink = document.createElement("button");
+        previewLink.type = "button";
+        previewLink.className = "btn btn-ghost";
+        previewLink.textContent = "预览";
+        previewLink.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          void previewImportedSession(session);
+        });
+        row.append(check, copy, previewLink);
+        row.dataset.source = session.source;
+        row.dataset.externalId = session.externalId;
+        row.dataset.projectPath = session.projectPath ?? "";
+        box.appendChild(row);
+      }
+      return box;
     }),
   );
+  actionsBox.hidden = false;
+  statusBox.textContent = `共 ${String(sessions.length)} 条会话`;
+}
+
+/** 勾选会话 → op import-sessions（幂等账+事件流重建+按原始目录归属项目）。 */
+async function importCheckedSessions(bodyBox) {
+  const rows = [...bodyBox.querySelectorAll(".proj-import-row")].filter((row) => {
+    const check = row.querySelector("input[type=checkbox]");
+    return check !== null && check.checked === true;
+  });
+  if (rows.length === 0) {
+    toast("未勾选任何会话", "warn");
+    return;
+  }
+  const statusBox = bodyBox.querySelector("[data-field=import-status]");
+  if (statusBox !== null) statusBox.textContent = "导入中…（逐条转换写入会话库）";
+  const importItems = rows.map((row) => ({
+    source: row.dataset.source,
+    externalId: row.dataset.externalId,
+    ...(row.dataset.projectPath !== "" && row.dataset.projectPath !== undefined ? { projectPath: row.dataset.projectPath } : {}),
+  }));
+  const envelope = await sendSettings({ op: "import-sessions", importItems });
+  if (!envelope.ok) {
+    toast(`导入失败：${envelope.error?.message ?? ""}`, "warn");
+    return;
+  }
+  const { imported = 0, skipped = 0, failed = 0 } = envelope.result;
+  toast(`导入 ${String(imported)} 条会话（${String(skipped)} 条已存在跳过${failed > 0 ? `，${String(failed)} 条失败` : ""}）——导入的会话已按目录归属项目`, imported > 0 ? "info" : "warn");
+  // 已导行禁用（防重复勾选——幂等账在服务端兜底）
+  for (const row of rows) {
+    const check = row.querySelector("input[type=checkbox]");
+    if (check !== null) {
+      check.checked = false;
+      check.disabled = true;
+    }
+  }
+}
+
+/** 勾选会话的原始目录 → 建项目（不导内容）。 */
+async function importCheckedFolders(bodyBox) {
+  const rows = [...bodyBox.querySelectorAll(".proj-import-row")].filter((row) => {
+    const check = row.querySelector("input[type=checkbox]");
+    return check !== null && check.checked === true;
+  });
+  const cwds = new Set(rows.map((row) => row.dataset.projectPath).filter((p) => p !== undefined && p !== ""));
+  if (cwds.size === 0) {
+    toast("勾选的会话没有可定位的目录", "warn");
+    return;
+  }
+  await appendProjects(
+    [...cwds].map((cwd) => ({ name: cwd.split(/[\\/]/).filter(Boolean).pop() ?? "project", folders: [cwd] })),
+  );
+}
+
+/** B1 会话预览：convert 单会话 → 对话渲染（用户/助手/工具折叠）。 */
+async function previewImportedSession(session) {
+  const envelope = await sendSettings({ op: "import-preview", source: session.source, path: session.externalId });
+  if (!envelope.ok) {
+    toast(`预览失败：${envelope.error?.message ?? ""}`, "warn");
+    return;
+  }
+  const messages = envelope.result.messages ?? [];
+  const body = document.createElement("div");
+  body.className = "proj-import-preview";
+  for (const message of messages.slice(0, 200)) {
+    const line = document.createElement("div");
+    line.className = `proj-import-msg proj-import-msg-${message.role}`;
+    if (message.role === "tool") {
+      const details = document.createElement("details");
+      const summary = document.createElement("summary");
+      summary.textContent = `🔧 ${message.toolName ?? "tool"}${message.toolError === true ? "（错误）" : ""}`;
+      const pre = document.createElement("pre");
+      pre.className = "proj-preview-code";
+      pre.textContent = `${message.toolArgs !== undefined ? JSON.stringify(message.toolArgs, null, 1).slice(0, 500) : ""}\n→ ${String(message.toolResult ?? "").slice(0, 800)}`;
+      details.append(summary, pre);
+      line.appendChild(details);
+    } else {
+      const who = document.createElement("div");
+      who.className = "proj-import-msg-who";
+      who.textContent = message.role === "user" ? "用户" : "助手";
+      const text = document.createElement("div");
+      text.textContent = String(message.text ?? "").slice(0, 1200);
+      line.append(who, text);
+    }
+    body.appendChild(line);
+  }
+  openDialog({
+    title: `预览：${session.title}`,
+    body,
+    width: "lg",
+    actions: [{ label: "关闭", className: "btn" }],
+  });
 }
 
 async function appendProjects(entries, options = {}) {

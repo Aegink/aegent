@@ -3223,6 +3223,59 @@ mark.search-hit.active {
   word-break: break-all;
 }
 
+/* 扫描导入：来源徽标行 + 分组会话列表 + 预览 */
+.proj-import-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.proj-import-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 6px 8px;
+  margin-bottom: 8px;
+}
+
+.proj-import-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-ui-sm);
+}
+
+.proj-import-preview {
+  max-height: 60vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.proj-import-msg {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+  font-size: var(--text-ui-sm);
+}
+
+.proj-import-msg-user {
+  background: color-mix(in srgb, var(--brand) 8%, transparent);
+}
+
+.proj-import-msg-who {
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtle);
+  margin-bottom: 4px;
+}
+
+.proj-import-msg-tool details summary {
+  cursor: pointer;
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtle);
+}
+
 /* 视图渲染失败可见化（router.js catch——错误摘要直呈，不再静默白页） */
 .render-error {
   margin: 24px;
