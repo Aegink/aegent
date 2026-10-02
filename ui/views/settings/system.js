@@ -1,45 +1,26 @@
 /**
  * 数据与系统组（T-P3-135 · UI 批次 B⑦⑨——projects/instructions/shortcuts/
- * transfer/logging/about 六分节）：
+ * transfer/logging/about 六分节；T-P3-153 transfer 下沉 transfer.js 数据
+ * 中心域文件——配置包 v2/备份中心/会话数据/体检五卡组，本文件只转发）：
  * - shortcuts：kbd 键位胶囊 + 绑定行 + 顶部搜索过滤（ShortcutBindingRow
  *   形态；捕获态交互原样——冲突阻断/保留键提示语义不动）；
  * - projects：行式卡 + 建档模态（project-form 下沉——CRUD 原样）；
  * - instructions：三文件位编辑器卡（保存确认保持原生 confirm——卡面⑨
- *   "其余 confirm 保持"）；transfer：导入确认面模态化（.dialog 替代原生
- *   confirm——不可信输入逐项列出后确认的三层防线不变）；
+ *   "其余 confirm 保持"）；
  * - logging/about：行式卡。
- * 数据面逻辑原样（instructions-list/instruction-save/import/project CRUD/
+ * 数据面逻辑原样（instructions-list/instruction-save/project CRUD/
  * shortcuts 段 + 捕获态改绑全保留）。
  */
 
-import { sendSettings } from "../../api.js";
 import * as instructions from "./instructions.js";
 import * as shortcuts from "./shortcuts.js";
+import * as transfer from "./transfer.js";
 import { shortcutCaptureKeydown } from "./shortcuts.js";
-import {
-  settingsCache,
-  setSettingsCache,
-  markPromptsLoaded,
-  applyTheme,
-  rebuildKeymap,
-} from "../../state.js";
-import { appendLine, toast } from "../../feedback.js";
-import {
-  markDirty,
-  dirtySections,
-  flushSettings,
-  openDialog,
-  confirmDialog,
-  refillFormsAfterImport,
-  rowEl,
-  rowCopyEl,
-  rowControl,
-  btnEl,
-  emptyState,
-} from "./core.js";
+import { settingsCache } from "../../state.js";
 
 const instructionsSection = instructions.SECTION_HTML;
 const shortcutsSection = shortcuts.SECTION_HTML;
+const transferSection = transfer.SECTION_HTML;
 
 export const SECTIONS_HTML = `
 <section data-section="projects">
@@ -49,32 +30,7 @@ export const SECTIONS_HTML = `
   </div>
   <p class="hint">项目域已升级为独立页面（工作区/任务/文件树/添加三模式）——点上方按钮直达，或侧栏「项目」。</p>
 </section>
-${instructionsSection}${shortcutsSection}<section data-section="transfer">
-  <div class="section-head"><h2 class="section-title">导入与导出</h2></div>
-  <div class="row-list">
-    <div class="row">
-      <div class="row-copy">
-        <div class="row-title">导出配置包</div>
-        <div class="row-desc">配置包不含凭据——换机请在各供应商条目重新录入 key</div>
-      </div>
-      <div class="row-control">
-        <button id="export-btn" type="button" class="btn">导出</button>
-        <span id="export-status" class="hint"></span>
-      </div>
-    </div>
-    <div class="row">
-      <div class="row-copy">
-        <div class="row-title">导入配置包</div>
-        <div class="row-desc">导入前自动备份（settings.json.bak.0~4 滚动 5 份）；摘要确认后才覆盖</div>
-      </div>
-      <div class="row-control"><input id="import-file" type="file" accept=".json,application/json" class="input input-file" /></div>
-    </div>
-  </div>
-  <pre id="import-preview" class="card-args" hidden></pre>
-  <p id="import-summary" class="hint"></p>
-  <button id="import-apply" type="button" class="btn btn-primary" hidden>确认导入（覆盖当前配置）</button>
-</section>
-<section data-section="logging">
+${instructionsSection}${shortcutsSection}${transferSection}<section data-section="logging">
   <div class="section-head"><h2 class="section-title">日志</h2></div>
   <div class="row-list">
     <div class="row">
@@ -114,79 +70,11 @@ export function unmount() {
 }
 
 // ---------------------------------------------------------------------------
-// U20/T-P3-122 导入导出与深链分享（导出零凭据；导入必确认——模态化）
+// T-P3-153：导入导出域下沉 transfer.js（数据中心五卡组）——本文件只转发旧
+// 入口（settings.js 壳 → app.js 深链/导入链的既有消费面零破坏）。
 // ---------------------------------------------------------------------------
 
-function buildExportText() {
-  const payload = {
-    version: 1,
-    kind: "aegent-settings-export",
-    exportedAt: new Date().toISOString(),
-    settings: settingsCache,
-  };
-  const text = JSON.stringify(payload, null, 2);
-  if (text.includes('"apiKey"')) throw new Error("导出包含 apiKey 字段（拒绝导出）");
-  return text;
-}
-
-// 摘要行（与 src/session/settings-transfer.ts summarizePackage 同语义——UI 侧呈现层）
-export function summarizeImported(s) {
-  const lines = [`供应商条目 ${(s.providers ?? []).length} 个（默认 ${s.defaultProvider ?? "未设置"}）`];
-  if (s.defaultModel !== undefined) lines.push(`默认模型 ${s.defaultModel}`);
-  if (s.permission?.approvalTimeoutMs !== undefined) lines.push(`审批超时 ${s.permission.approvalTimeoutMs}ms`);
-  if (s.sandbox?.network !== undefined) lines.push(`网络档 ${s.sandbox.network}`);
-  if ((s.projects ?? []).length > 0) lines.push(`项目 ${s.projects.length} 个`);
-  if ((s.prompts ?? []).length > 0) lines.push(`提示词模板 ${s.prompts.length} 个`);
-  if ((s.mcp ?? []).length > 0) lines.push(`MCP server ${s.mcp.length} 个`);
-  if ((s.profiles ?? []).length > 0) lines.push(`配置档 ${s.profiles.length} 个`);
-  return lines;
-}
-
-export async function applyImportedSettingsObject(importedSettings) {
-  const envelope = await sendSettings({ op: "import", settings: importedSettings });
-  if (!envelope.ok) {
-    appendLine(`导入失败：${envelope.error?.code ?? ""} ${envelope.error?.message ?? ""}`, "warn");
-    return false;
-  }
-  setSettingsCache(envelope.result.settings);
-  markPromptsLoaded();
-  applyTheme(settingsCache.appearance?.theme);
-  rebuildKeymap(); // U25：导入后键位同步
-  // 设置视图未挂载时跳过表单回填（下次打开设置全量重拉——无信息丢失）；
-  // 挂载中经壳注册的回填回调全量刷新（同原 fillSettingsForm 语义）
-  if (document.getElementById("provider-list") !== null) refillFormsAfterImport();
-  return true;
-}
-
-/** 模态化导入确认（.dialog 替代原生 confirm——摘要逐项列出后确认）。 */
-function confirmImportDialog(summaryText, onConfirm) {
-  openDialog({
-    title: "确认导入",
-    description: `${summaryText}\n\n导入前自动备份当前配置（settings.json.bak.0~4 滚动 5 份）；配置包不含凭据。`,
-    width: "md",
-    actions: [
-      { label: "取消", className: "btn btn-ghost" },
-      { label: "确认导入（覆盖当前配置）", className: "btn btn-primary", onClick: onConfirm },
-    ],
-  });
-}
-
-/** 深链确认钩子的设置域实现（app.js 经动态 import 委派——宿主接线面）。 */
-export async function applyDeepLink(encodedData) {
-  try {
-    const text = decodeURIComponent(encodedData);
-    const parsed = JSON.parse(text);
-    if (parsed?.kind !== "aegent-settings-export") throw new Error("kind 不符");
-    const summary = summarizeImported(parsed.settings ?? {}).join("；");
-    confirmImportDialog(`收到深链分享配置，将导入：\n${summary}`, () => {
-      void applyImportedSettingsObject(parsed.settings).then(() => toast("配置导入完成", "info"));
-    });
-    return "accepted";
-  } catch (e) {
-    appendLine(`深链导入失败：${e.message}`, "warn");
-    return "rejected";
-  }
-}
+export { applyDeepLink, applyImportedSettingsObject, summarizeImported } from "./transfer.js";
 
 // ---------------------------------------------------------------------------
 // 挂载 / 回填 / 打开拉取
@@ -196,74 +84,8 @@ export function bind() {
   // T-P3-152：快捷键域（绑定/捕获监听/录制搜索/单行重置在 shortcuts.js）
   shortcuts.bind();
   window.addEventListener("keydown", shortcutCaptureKeydown, true);
-
-  document.getElementById("export-btn").addEventListener("click", () => {
-    if (settingsCache === null) {
-      document.getElementById("export-status").textContent = "设置未加载——先打开设置读取";
-      return;
-    }
-    try {
-      const text = buildExportText();
-      const blob = new Blob([text], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `aegent-settings-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      document.getElementById("export-status").textContent = "已导出（不含凭据）";
-    } catch (e) {
-      document.getElementById("export-status").textContent = `导出失败：${e.message}`;
-    }
-  });
-
-  document.getElementById("import-file").addEventListener("change", (ev) => {
-    const file = ev.target.files?.[0];
-    if (file === undefined) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = String(reader.result);
-      const previewEl = document.getElementById("import-preview");
-      const summaryEl = document.getElementById("import-summary");
-      const applyBtn = document.getElementById("import-apply");
-      if (previewEl === null || summaryEl === null || applyBtn === null) return;
-      try {
-        const parsed = JSON.parse(text);
-        if (parsed?.kind !== "aegent-settings-export") throw new Error("kind 不符（须为 aegent-settings-export 配置包）");
-        const summary = summarizeImported(parsed.settings ?? {});
-        previewEl.textContent = text.length > 4000 ? `${text.slice(0, 4000)}\n…（截断预览）` : text;
-        previewEl.hidden = false;
-        summaryEl.textContent = `导入将变更：${summary.join("；")}`;
-        summaryEl.dataset.ok = "1";
-        applyBtn.hidden = false;
-        applyBtn.dataset.payload = text; // 确认后才上送（确认面 = C 族防线的用户侧延伸）
-      } catch (e) {
-        previewEl.hidden = true;
-        applyBtn.hidden = true;
-        summaryEl.textContent = `✘ 导入包不可用：${e.message}`;
-      }
-    };
-    reader.readAsText(file);
-  });
-
-  document.getElementById("import-apply").addEventListener("click", (ev) => {
-    const payload = ev.target.dataset.payload;
-    if (payload === undefined) return;
-    const parsed = JSON.parse(payload);
-    const summary = summarizeImported(parsed.settings ?? {}).join("；");
-    // 导入必确认（cc-switch deeplink 三确认行为锚——不可信输入逐项列出后确认；
-    // 批 B⑨：确认面模态化——.dialog 替代原生 confirm）
-    confirmImportDialog(`导入将变更：${summary}`, async () => {
-      const ok = await applyImportedSettingsObject(parsed.settings);
-      if (ok) {
-        ev.target.hidden = true;
-        const summaryEl = document.getElementById("import-summary");
-        if (summaryEl !== null) summaryEl.textContent = "✔ 导入完成（备份已滚动）";
-        toast("配置导入完成", "info");
-      }
-    });
-  });
-
+  // T-P3-153：数据中心域（导出模态/导入确认/备份中心/会话回导/体检在 transfer.js）
+  transfer.bind();
 }
 
 export function fill() {

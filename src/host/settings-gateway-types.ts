@@ -38,6 +38,15 @@ export interface McpCheckResult {
   readonly error?: { code: string; message: string };
 }
 
+/** T-P3-153 数据中心域依赖投影（tryTransferSettingsOp 消费——settingsPath/
+ * 事件库/凭据为 gateway 私有构造面，不开公开方法逐个穿透）。 */
+export interface TransferDeps {
+  readonly settingsPath: string;
+  readonly sessionDb?: SqliteEventStorage;
+  readonly credentials: CredentialStore;
+  getSettings(): Promise<SettingsShape>;
+}
+
 export interface SettingsGateway {
   get(): Promise<SettingsShape>;
   update(patch: Record<string, unknown>): Promise<SettingsShape>;
@@ -47,7 +56,10 @@ export interface SettingsGateway {
   probeProvider(name: string): Promise<HealthCheckResult>;
   sessionDelete(sessionId: string): Promise<{ deleted: boolean }>;
   mcpCheck(entry: McpServerEntry): Promise<McpCheckResult>;
-  importSettings(imported: Record<string, unknown>): Promise<{ applied: true; summary: string[] }>;
+  /** T-P3-153：域依赖投影（数据中心族分发器消费面）。 */
+  transferDeps(): TransferDeps;
+  /** U20/T-P3-122 → T-P3-153：导入改为整包上送（kind/版本/域合并解析在 host）。 */
+  importSettings(packageRaw: Record<string, unknown>): Promise<{ applied: true; summary: string[] }>;
   skillsList(): Promise<{
     skills: {
       name: string;

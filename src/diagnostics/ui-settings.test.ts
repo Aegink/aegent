@@ -263,12 +263,15 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     expect(settingsView).toContain('id="profile-snapshot"');
     expect(settingsView).toContain("applyProfileValues"); // 切换 = 批量写生效段
     expect(settingsView).toContain("故障转移优先级"); // 排序按钮提示（↑↓ = J15 队列序）
-    // U20/T-P3-122：导入导出（确认面 + 备份 + 深链钩子）
-    expect(settingsView).toContain('id="export-btn"');
-    expect(settingsView).toContain('id="import-file"');
-    expect(settingsView).toContain('id="import-apply"');
-    expect(settingsView).toContain('op: "import"'); // 导入 wire 面
+    // U20/T-P3-122 → T-P3-153：数据中心五卡组（transfer.js 域文件）
+    expect(settingsView).toContain('id="export-open"');
+    expect(settingsView).toContain('id="import-open"');
+    expect(settingsView).toContain('op: "export-settings"'); // 选择性导出 wire 面
+    expect(settingsView).toContain('id="backup-now"'); // 备份中心
+    expect(settingsView).toContain('id="checkup-run"'); // 配置体检
+    expect(settingsView).toContain('id="session-import-open"'); // 会话 JSON 回导
     expect(app).toContain("aegentApplyDeepLink"); // 深链宿主接线钩子（入口委派设置域）
+    expect(app).toContain("chat-export-btn"); // 聊天页会话导出入口（composer ⬇）
     expect(settingsView).toContain("确认导入"); // 导入必确认（不可信输入面）
     expect(settingsView).toContain("不含凭据"); // 零明文纪律的 UI 提示
     // U12/T-P3-111：用量页（上下文检查器 + 成本统计页——J21 消费端；批 A 迁 views/usage.js）

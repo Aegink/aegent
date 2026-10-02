@@ -4049,3 +4049,109 @@ button.chip-ui.active {
   font-size: 10.5px;
   color: var(--text-tertiary, var(--text));
 }
+
+/* ---------------------------------------------------------------------------
+ * T-P3-153 数据中心（transfer 分节五卡组）：备份/体检行清单 + 导出域勾选栅格
+ * --------------------------------------------------------------------------- */
+.transfer-list {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.transfer-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+    font-size: 12.5px;
+}
+
+.transfer-row-copy {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+    color: var(--text-secondary, var(--text));
+}
+
+.checkup-badge {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.checkup-badge-ok {
+    background: color-mix(in srgb, #34c98e 18%, transparent);
+    color: #34c98e;
+}
+
+.checkup-badge-warn {
+    background: color-mix(in srgb, #e0a83c 20%, transparent);
+    color: #e0a83c;
+}
+
+.checkup-badge-fail {
+    background: color-mix(in srgb, #e05c5c 20%, transparent);
+    color: #e05c5c;
+}
+
+button.transfer-row {
+    cursor: pointer;
+}
+
+button.transfer-row:hover {
+    border-color: var(--accent);
+}
+
+.export-domain-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.export-format-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.export-domain-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.export-domain-item:hover {
+    border-color: var(--accent);
+}
+
+.export-domain-item span {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.export-domain-item strong {
+    font-size: 12.5px;
+}
+
+.export-domain-item small {
+    font-size: 11px;
+    color: var(--text-tertiary, var(--text));
+}

@@ -16,6 +16,7 @@ import { buildPolicyAuditEntries } from "./policy-audit-op.js";
 import { tryPluginSettingsOp } from "./settings-plugin-ops.js";
 import { tryProjectSettingsOp } from "./settings-project-ops.js";
 import { tryInstructionSettingsOp } from "./settings-instruction-ops.js";
+import { tryTransferSettingsOp } from "./settings-transfer-ops.js";
 import { AgentHost } from "./registry.js";
 import {
   HostProtocolServer,
@@ -298,7 +299,6 @@ export class HostBridge implements SessionRouter {
           return { deleted: (await gateway.credentialsDelete(call.provider!)).deleted };
         }
         if (call.op === "probe") return { health: await gateway.probeProvider(call.provider!) };
-        if (call.op === "session-delete") return gateway.sessionDelete(call.sessionId!);
         // U17：MCP 连接校验（向导"测连接"——launch 一次握手+列工具）
         if (call.op === "mcp-check") {
           return {
@@ -311,7 +311,7 @@ export class HostBridge implements SessionRouter {
             }),
           };
         }
-        if (call.op === "import") return gateway.importSettings(call.settings!); // U20/T-P3-122：导入（备份滚动+合并落盘）
+        const transferOp = tryTransferSettingsOp(gateway, call, { store: this.options.store, sessionId: this.options.host.sessionId, ...(this.options.sessionsLibrary !== undefined ? { sessionsLibrary: this.options.sessionsLibrary } : {}) }); if (transferOp !== undefined) return transferOp; // T-P3-153 数据中心族一行收敛（配置包/备份/会话导出/体检/会话删除——settings-transfer-ops；session-export 拦截在域文件——store 在 bridge 手里）
         if (call.op === "skills-list") return gateway.skillsList();
         if (call.op === "skill-save") return gateway.skillSave(call.skill!);
         // T-P3-144：技能导入扫描/执行 + 删除/Reveal（护栏与复制在域文件）

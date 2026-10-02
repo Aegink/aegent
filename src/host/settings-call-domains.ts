@@ -6,8 +6,18 @@
  */
 
 import { THINKING_LEVELS } from "../session/settings.js";
-import { INSTRUCTION_TARGETS } from "./protocol-settings.js";
 import { validatePluginSettingsCall } from "./settings-plugin-ops.js";
+
+// T-P3-151：指令中心 target 闭集（自 protocol-settings 移入——域词汇归域文件；
+// protocol-settings 经 re-export 保持旧引用路径）。
+export const INSTRUCTION_TARGETS = [
+  "project-agents",
+  "global-agents",
+  "user-rules",
+  "project-rules",
+  "memory",
+] as const;
+export type InstructionTarget = (typeof INSTRUCTION_TARGETS)[number];
 
 /** 域族 op 闭集（与 OPS 同源子集——命中才进域校验）。 */
 const DOMAIN_OPS = new Set([
@@ -35,6 +45,17 @@ const DOMAIN_OPS = new Set([
   "instruction-save",
   "instruction-append",
   "instruction-test-rule",
+  "enhancement-test",
+  // T-P3-153 数据中心族（配置包/备份/会话导出/体检）
+  "import",
+  "export-settings",
+  "settings-backup-list",
+  "settings-backup-create",
+  "settings-backup-restore",
+  "settings-backup-delete",
+  "session-export",
+  "session-import",
+  "settings-checkup",
 ]);
 
 export function validateDomainSettingsCall(op: string, record: Record<string, unknown>): void {
@@ -164,6 +185,48 @@ export function validateDomainSettingsCall(op: string, record: Record<string, un
       (record["ruleArgs"] === null || typeof record["ruleArgs"] !== "object" || Array.isArray(record["ruleArgs"]))
     ) {
       throw new Error("settings op=instruction-test-rule 的 ruleArgs 须为对象（缺省 {}）");
+    }
+  }
+  // T-P3-147 D：辅助任务闭集（自 protocol-settings 下放——域族校验归域文件）
+  if (op === "enhancement-test" &&
+      (typeof record["task"] !== "string" ||
+        !["judge", "summarizer", "polish", "title", "fastModel"].includes(record["task"]))) {
+    throw new Error("settings op=enhancement-test 需要 task（judge|summarizer|polish|title|fastModel）");
+  }
+  // T-P3-153 数据中心族（配置包 v2/备份中心/会话导出/体检）
+  // U20/T-P3-122 → T-P3-153：import 载荷 = 整个配置包（kind/版本/域合并解析在 host）。
+  if (op === "import") {
+    const st = record["settings"];
+    if (st === null || typeof st !== "object" || Array.isArray(st)) {
+      throw new Error("settings op=import 需要 settings 对象（配置包内的 settings 段）");
+    }
+  }
+  if (op === "export-settings") {
+    if (
+      record["domains"] !== undefined &&
+      (!Array.isArray(record["domains"]) ||
+        (record["domains"] as unknown[]).some((d) => typeof d !== "string" || d === ""))
+    ) {
+      throw new Error("settings op=export-settings 的 domains 须为非空字符串数组（缺省 = 全域整包）");
+    }
+  }
+  if (op === "settings-backup-restore" || op === "settings-backup-delete") {
+    const idx = record["index"];
+    if (typeof idx !== "number" || !Number.isInteger(idx) || idx < 0) {
+      throw new Error(`settings op=${op} 需要 index（备份序号，非负整数）`);
+    }
+  }
+  if (op === "session-export") {
+    if (typeof record["sessionId"] !== "string" || record["sessionId"] === "") {
+      throw new Error("settings op=session-export 需要 sessionId 非空字符串");
+    }
+    if (record["format"] !== "md" && record["format"] !== "html" && record["format"] !== "json") {
+      throw new Error("settings op=session-export 需要 format（合法：md|html|json）");
+    }
+  }
+  if (op === "session-import") {
+    if (typeof record["content"] !== "string" || record["content"].trim() === "") {
+      throw new Error("settings op=session-import 需要 content（会话 JSON 包文本）非空字符串");
     }
   }
 }

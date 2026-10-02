@@ -62,6 +62,15 @@ const OPS = [
   "enhancement-test",
   "instruction-append",
   "instruction-test-rule",
+  // T-P3-153 数据中心族（配置包导出/备份中心/会话导出/体检）
+  "export-settings",
+  "settings-backup-list",
+  "settings-backup-create",
+  "settings-backup-restore",
+  "settings-backup-delete",
+  "session-export",
+  "session-import",
+  "settings-checkup",
 ] as const;
 
 export type SettingsOp = (typeof OPS)[number];
@@ -115,6 +124,11 @@ export type SettingsCall = {
   projectId?: string;
   overwrite?: boolean;
   importItems?: { source: string; externalId: string; projectPath?: string }[];
+  // T-P3-153 数据中心载荷：index=备份序号 format/redact=会话导出 domains=导出域
+  index?: number;
+  format?: string;
+  redact?: boolean;
+  domains?: string[];
   /** op=provider-models / provider-test：端点自足载荷（T-P3-137——UI 草稿直传；apiKey 缺省走 credentials）。 */
   baseUrl?: string;
   adapter?: string;
@@ -123,16 +137,7 @@ export type SettingsCall = {
   headers?: Record<string, string>;
 };
 const SKILL_SLUG_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
-// T-P3-151：指令中心 target 扩两档——project-rules（项目层规则文件）与
-// memory（记忆索引 ~/.aegent/memory/MEMORY.md）。
-export const INSTRUCTION_TARGETS = [
-  "project-agents",
-  "global-agents",
-  "user-rules",
-  "project-rules",
-  "memory",
-] as const;
-export type InstructionTarget = (typeof INSTRUCTION_TARGETS)[number];
+export { INSTRUCTION_TARGETS, type InstructionTarget } from "./settings-call-domains.js";
 
 
 /** 解析 settings 信封（op 闭集 + 各 op 载荷形状——坏形状整信封拒绝）。 */
@@ -178,6 +183,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     // T-P3-148 插件/市场族载荷（与 SettingsCall 字段一一对应——漏一个即整信封被拒）
     "dir", "action", "template", "source", "marketplace",
     "pluginDescription", "view", "base", "displayName",
+    "index", "format", "redact", "domains", // T-P3-153 数据中心族（漏一个即整信封被拒）
   ]);
   if (unknownKey) throw new Error(`settings 信封${unknownKey}`);
   if (typeof record["requestId"] !== "string" || record["requestId"] === "") {
@@ -299,13 +305,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
       if (typeof it["sourcePath"] !== "string" || it["sourcePath"] === "") throw new Error("settings op=prompt-import-apply 的 items[].sourcePath 缺失");
     }
   }
-  // U20/T-P3-122：import 载荷 = 配置包内 settings 对象（parse 只管"是对象"）。
-  if (op === "import") {
-    const st = record["settings"];
-    if (st === null || typeof st !== "object" || Array.isArray(st)) {
-      throw new Error("settings op=import 需要 settings 对象（配置包内的 settings 段）");
-    }
-  }
+  // U20/T-P3-122 → T-P3-153：import 载荷校验在 settings-call-domains（数据中心族）。
   // U22/T-P3-125：skill-save 载荷 = skill 对象（业务校验在 gateway 层）。
   if (op === "skill-save") {
     const sk = record["skill"];
@@ -329,11 +329,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
       throw new Error("settings op=skill-save 的 skill.tools 须为非空字符串数组");
     }
   }
-  if (op === "enhancement-test" &&
-      (typeof record["task"] !== "string" ||
-        !["judge", "summarizer", "polish", "title", "fastModel"].includes(record["task"]))) {
-    throw new Error("settings op=enhancement-test 需要 task（judge|summarizer|polish|title|fastModel）");
-  }
+  // T-P3-147 D 辅助任务校验在 settings-call-domains（域族收敛）。
   return {
     op: op as SettingsOp,
     ...(record["patch"] !== undefined ? { patch: record["patch"] as Record<string, unknown> } : {}),
@@ -385,6 +381,12 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
       : {}),
     // T-P3-148 插件/市场族载荷（键表与白名单同源——漏拷即字段永远 undefined）
     ...Object.fromEntries((["dir", "action", "template", "source", "marketplace", "pluginDescription", "view", "base", "displayName"] as const).filter((k) => typeof record[k] === "string").map((k) => [k, record[k]])),
+    // T-P3-153 数据中心族载荷（漏拷即字段永远 undefined——反复踩的坑）
+    ...(typeof record["index"] === "number" ? { index: record["index"] } : {}),
+    ...(typeof record["format"] === "string" ? { format: record["format"] } : {}),
+    // redact 显式布尔——只拷 true 会吞 false（T-P3-153 走查实抓：脱敏关不掉）
+    ...(typeof record["redact"] === "boolean" ? { redact: record["redact"] } : {}),
+    ...(Array.isArray(record["domains"]) ? { domains: record["domains"] as string[] } : {}),
   };
 }
 

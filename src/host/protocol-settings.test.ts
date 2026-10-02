@@ -39,4 +39,17 @@ describe("settings 信封：插件/市场族 op（T-P3-148 回归）", () => {
     expect(() => parseSettingsEnvelope({ type: "settings", requestId: "s", op: "plugin-check" })).toThrow(/dir/);
     expect(() => parseSettingsEnvelope({ type: "settings", requestId: "s", op: "plugin-scaffold", name: "x", template: "nope" })).toThrow(/template 非法/);
   });
+
+  it("T-P3-153 数据中心族载荷：redact 显式布尔（false 不被吞）+ backup index + session-export format 闭集", () => {
+    const redactOff = parseSettingsEnvelope({ type: "settings", requestId: "s", op: "session-export", sessionId: "sid", format: "json", redact: false });
+    expect(redactOff.redact).toBe(false); // 返回构造漏拷 false 即脱敏关不掉（走查实抓）
+    const redactOn = parseSettingsEnvelope({ type: "settings", requestId: "s", op: "session-export", sessionId: "sid", format: "md", redact: true });
+    expect(redactOn.redact).toBe(true);
+    const backup = parseSettingsEnvelope({ type: "settings", requestId: "s", op: "settings-backup-restore", index: 2 });
+    expect(backup.index).toBe(2);
+    expect(() => parseSettingsEnvelope({ type: "settings", requestId: "s", op: "settings-backup-restore", index: -1 })).toThrow(/备份序号/);
+    expect(() => parseSettingsEnvelope({ type: "settings", requestId: "s", op: "session-export", sessionId: "sid", format: "pdf" })).toThrow(/md\|html\|json/);
+    const exp = parseSettingsEnvelope({ type: "settings", requestId: "s", op: "export-settings", domains: ["providers", "appearance"] });
+    expect(exp.domains).toEqual(["providers", "appearance"]);
+  });
 });

@@ -1223,6 +1223,12 @@ function voiceMaxSeconds() {
   return Number.isFinite(raw) && raw > 0 ? raw : RECORD_MAX_SECONDS_DEFAULT;
 }
 
+// T-P3-153 C：会话导出（composer ⬇ 钮——md/html/json 三格式+默认脱敏；
+// 对话框在 views/settings/transfer.js——设置域与历史页共用同一入口）
+document.getElementById("chat-export-btn").addEventListener("click", () => {
+  void import("./views/settings/transfer.js").then((m) => m.openSessionExportDialog(sessionId()));
+});
+
 micBtn.addEventListener("click", () => {
   if (voiceCapture.phase === "transcribing") return;
   if (voiceCapture.phase === "recording") {

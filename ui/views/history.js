@@ -19,11 +19,14 @@ const TEMPLATE = `
 <aside id="history-panel" aria-label="会话历史">
   <header class="page-head">
     <h2 class="tab-title">会话历史</h2>
-    <button id="history-close" type="button" class="btn btn-ghost">返回对话</button>
+    <div class="page-head-actions">
+      <button id="history-import" type="button" class="btn">导入会话 JSON…</button>
+      <button id="history-close" type="button" class="btn btn-ghost">返回对话</button>
+    </div>
   </header>
   <div class="page-body">
     <div id="history-list"></div>
-    <p class="hint">查看 = 只读恢复视图；续聊请在终端执行 aegent sessions resume &lt;id&gt;。</p>
+    <p class="hint">查看 = 只读恢复视图；续聊请在终端执行 aegent sessions resume &lt;id&gt;。导出的 JSON 包可在此跨机回导（幂等）。</p>
   </div>
 </aside>
 `;
@@ -123,12 +126,20 @@ function sessionRow(s, label, map, reload) {
   viewBtn.textContent = "查看";
   viewBtn.className = "btn";
   viewBtn.addEventListener("click", () => void viewSession(s));
+  // T-P3-153 C：行级会话导出（对话框与聊天页 ⬇ 共用 transfer.js 入口）
+  const exportBtn = document.createElement("button");
+  exportBtn.type = "button";
+  exportBtn.textContent = "导出";
+  exportBtn.className = "btn";
+  exportBtn.addEventListener("click", () => {
+    void import("./settings/transfer.js").then((m) => m.openSessionExportDialog(s.sessionId));
+  });
   const delBtn = document.createElement("button");
   delBtn.type = "button";
   delBtn.textContent = "删除";
   delBtn.className = "btn btn-danger";
   delBtn.addEventListener("click", () => void deleteSession(s, reload));
-  row.append(viewBtn, delBtn);
+  row.append(viewBtn, exportBtn, delBtn);
   return row;
 }
 
@@ -175,6 +186,10 @@ export async function render(container) {
   container.innerHTML = TEMPLATE;
   document.getElementById("history-close").addEventListener("click", () => {
     go("chat");
+  });
+  // T-P3-153 C：历史页回导入口（同一对话框——确认后经幂等账入历史）
+  document.getElementById("history-import").addEventListener("click", () => {
+    void import("./settings/transfer.js").then((m) => m.openSessionImportDialog());
   });
   await load();
 }

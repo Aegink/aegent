@@ -1419,15 +1419,21 @@ process.stdin.on("data", (c) => {
       return client.waitFor((e) => e.type === "response" && e.requestId === requestId, `settings(${requestId})`) as Promise<Record<string, unknown>>;
     };
 
-    // 好包：providers + prompts 导入，onboardingDone 本地态保留，备份滚动落 bak.0
+    // 好包（v2 整包——wire 面上送整个配置包，kind/版本解析在 host）：
+    // providers + prompts 导入，onboardingDone 本地态保留，备份滚动落 bak.0
     const good = await settingsCall(
       {
         op: "import",
         settings: {
-          version: 1,
-          providers: [{ name: "main", adapter: "openai", baseUrl: "https://x", model: "m" }],
-          defaultProvider: "main",
-          prompts: [{ name: "r", content: "评审" }],
+          version: 2,
+          kind: "aegent-settings-export",
+          exportedAt: "2026-10-03T00:00:00.000Z",
+          settings: {
+            version: 1,
+            providers: [{ name: "main", adapter: "openai", baseUrl: "https://x", model: "m" }],
+            defaultProvider: "main",
+            prompts: [{ name: "r", content: "评审" }],
+          },
         },
       },
       "i1",
@@ -1442,14 +1448,46 @@ process.stdin.on("data", (c) => {
     expect(existsSync(`${settingsPath}.bak.0`)).toBe(true);
     expect(JSON.parse(readFileSync(`${settingsPath}.bak.0`, "utf8")).onboardingDone).toBe(true);
 
+    // 部分包（v2 partial——仅 providers 域合并，本地其余域与本地态不动）
+    const partial = await settingsCall(
+      {
+        op: "import",
+        settings: {
+          version: 2,
+          kind: "aegent-settings-export",
+          exportedAt: "2026-10-03T00:00:01.000Z",
+          partial: true,
+          domains: ["providers"],
+          settings: {
+            providers: [{ name: "mini", adapter: "openai", baseUrl: "https://y", model: "m2" }],
+            defaultProvider: "mini",
+          },
+        },
+      },
+      "i3",
+    );
+    expect(partial.ok).toBe(true);
+    const merged = JSON.parse(readFileSync(settingsPath, "utf8"));
+    expect(merged.defaultProvider).toBe("mini"); // 所含域已覆盖
+    expect(merged.prompts).toHaveLength(1); // 未含域保留
+    expect(merged.onboardingDone).toBe(true); // 本地态恒保留
+
     // 坏包：providers 形状非法 → 拒绝且不落盘（fail-closed——原配置仍可读）
     const bad = await settingsCall(
-      { op: "import", settings: { version: 1, providers: "x" } },
+      {
+        op: "import",
+        settings: {
+          version: 2,
+          kind: "aegent-settings-export",
+          exportedAt: "2026-10-03T00:00:02.000Z",
+          settings: { version: 1, providers: "x" },
+        },
+      },
       "i2",
     );
     expect(bad.ok).toBe(false);
     const still = JSON.parse(readFileSync(settingsPath, "utf8"));
-    expect(still.defaultProvider).toBe("main"); // 坏包未覆盖
+    expect(still.defaultProvider).toBe("mini"); // 坏包未覆盖
     client.close();
   });
 

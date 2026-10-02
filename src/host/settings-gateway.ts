@@ -81,47 +81,23 @@ import {
   type SkillImportItem,
 } from "./skill-import-op.js";
 import { enhancementTestOp } from "./settings-provider-ops.js";
-import { applyImportedSettings, backupSettingsFile, summarizePackage } from "../session/settings-transfer.js";
+import { applyImportedSettings, applyPartialImport, backupSettingsFile, resolveImportedPackage, summarizePackage } from "../session/settings-transfer.js";
+import { deleteSessionOp } from "./session-export-op.js";
 import { subagentCatalog, type SubagentDefinition } from "../session/subagents-config.js";
 import type { McpToolInfo } from "../mcp/client.js";
 
 export type { SettingsGateway, McpCheckResult } from "./settings-gateway-types.js";
-import type { McpCheckResult } from "./settings-gateway-types.js";
+import type { McpCheckResult, SettingsGateway, TransferDeps } from "./settings-gateway-types.js";
 
-export function applySettingsPatch(current: SettingsShape, patch: Record<string, unknown>): SettingsShape {
-  const merged: Record<string, unknown> = { ...current };
-  for (const section of Object.keys(patch)) {
-    if (!(SETTINGS_PATCH_SECTIONS as readonly string[]).includes(section)) {
-      const error = new Error(`settings patch 未知段 "${section}"`);
-      (error as unknown as { code: string }).code = "SETTINGS_PATCH_SECTION_UNKNOWN";
-      throw error;
-    }
-    merged[section] = patch[section];
-  }
-  return parseSettingsShape(merged); // 合并后整体验证（fail-closed）
-}
-
-
-import type { SettingsGateway } from "./settings-gateway-types.js";
-
-export const SETTINGS_PATCH_SECTIONS = [
-  "providers", "permission", "sandbox", "appearance", "logging", "projects",
-  "activeProject", "pricing", "prompts", "mcp", "enhancement", "profiles",
-  "activeProfile", "onboardingDone", "defaultProvider", "defaultModel",
-  "skills", "subagents", "shortcuts", "stt", "tts", "plugins",
-] as const;
-
-
-
-function defaultHealthProbe(): (name: string, baseUrl: string) => Promise<HealthCheckResult> {
-  return (name, baseUrl) => probeProvider({ provider: name, baseUrl });
-}
+export { applySettingsPatch, SETTINGS_PATCH_SECTIONS } from "./settings-patch.js";
+import { applySettingsPatch } from "./settings-patch.js";
 
 export class FileSettingsGateway implements SettingsGateway {
   constructor(
     private readonly settingsPath: string,
     private readonly credentials: CredentialStore,
-    private readonly healthProbe: (name: string, baseUrl: string) => Promise<HealthCheckResult> = defaultHealthProbe(),
+    private readonly healthProbe: (name: string, baseUrl: string) => Promise<HealthCheckResult> =
+      (name, baseUrl) => probeProvider({ provider: name, baseUrl }),
     private readonly sessionDb?: SqliteEventStorage,
     private readonly workspaceRoot?: string,
     private readonly homeDir: string = homedir(),
@@ -167,12 +143,17 @@ export class FileSettingsGateway implements SettingsGateway {
     return this.healthProbe(name, entry.baseUrl);
   }
   async sessionDelete(sessionId: string): Promise<{ deleted: boolean }> {
-    if (this.sessionDb === undefined) {
-      const error = new Error("host 未配置 SQLite 事件库，会话删除不可用");
-      (error as unknown as { code: string }).code = "SESSION_DB_UNAVAILABLE";
-      throw error;
-    }
-    return { deleted: this.sessionDb.deleteSession(sessionId) };
+    return deleteSessionOp(this.sessionDb, sessionId); // T-P3-153 下沉会话数据域
+  }
+
+  /** T-P3-153：数据中心域依赖投影（settingsPath/事件库/凭据私有面收敛）。 */
+  transferDeps(): TransferDeps {
+    return {
+      settingsPath: this.settingsPath,
+      ...(this.sessionDb !== undefined ? { sessionDb: this.sessionDb } : {}),
+      credentials: this.credentials,
+      getSettings: () => this.get(),
+    };
   }
 
   async mcpCheck(entry: McpServerEntry): Promise<McpCheckResult> {
@@ -191,12 +172,18 @@ export class FileSettingsGateway implements SettingsGateway {
     }
   }
 
+  // U20/T-P3-122 → T-P3-153 A2/A3：导入 = 整包上送（kind 校验+版本迁移+
+  // replace/merge 分型在 resolveImportedPackage；备份滚动先于任何落盘）。
   async importSettings(
-    imported: Record<string, unknown>,
+    packageRaw: Record<string, unknown>,
   ): Promise<{ applied: true; summary: string[] }> {
     const current = await this.get();
+    const resolved = resolveImportedPackage(packageRaw);
     backupSettingsFile(this.settingsPath);
-    const merged = applyImportedSettings(current, parseSettingsShape(imported));
+    const merged =
+      resolved.mode === "replace"
+        ? applyImportedSettings(current, resolved.settings)
+        : applyPartialImport(current, resolved.partial, resolved.domains);
     await saveSettings(this.settingsPath, merged);
     return { applied: true, summary: summarizePackage(merged) };
   }
