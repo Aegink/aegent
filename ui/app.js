@@ -360,6 +360,7 @@ function renderEvent(e, options = {}) {
         appendMsgTime(bubble, e.ts);
         const speakBtn = buildSpeakButton(content);
         if (speakBtn !== null) bubble.appendChild(speakBtn);
+        bubble.appendChild(buildSaveRuleButton(content)); // T-P3-151 C1
       };
       if (options.live) {
         typeStream(bubble, e.message?.stream ?? [], content, decorate); // 流式打字节流
@@ -446,6 +447,48 @@ function buildSpeakButton(content) {
   btn.textContent = "🔊";
   btn.addEventListener("click", () => void toggleSpeak(btn, content));
   return btn;
+}
+
+// —— T-P3-151 C1 会话一键沉淀规矩（Cline /newrule 先例——"把刚才的纠正
+// 存为规则"是刚需入口；gemini #26950 append 策略——只追加不覆盖）：
+
+function buildSaveRuleButton(content) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "speak-btn";
+  btn.title = "存为规矩（追加到指令文件）";
+  btn.textContent = "📌";
+  btn.addEventListener("click", () => void openSaveRuleDialog(content));
+  return btn;
+}
+
+async function openSaveRuleDialog(content) {
+  const { confirmDialog } = await import("./views/settings/core.js");
+  const defaultText = `## 规矩（来自会话 ${new Date().toISOString().slice(0, 10)}）\n\n${content.trim()}`;
+  const draft = window.prompt("编辑要沉淀为规矩的内容（将原样追加到所选文件末尾）：", defaultText.slice(0, 4000));
+  if (draft === null || draft.trim() === "") return;
+  const target = window.prompt(
+    "追加到哪一层？输入序号：\n1 = 项目 AGENTS.md（<workspace>/AGENTS.md）\n2 = 全局 AGENTS.md（~/.aegent/AGENTS.md）\n3 = 记忆索引（~/.aegent/memory/MEMORY.md）",
+    "1",
+  );
+  if (target === null) return;
+  const targets = { "1": "project-agents", "2": "global-agents", "3": "memory" };
+  const selected = targets[target];
+  if (selected === undefined) {
+    toast("已取消（无效序号）", "warn");
+    return;
+  }
+  const ok = await confirmDialog(
+    `将以下内容追加到「${selected === "project-agents" ? "项目 AGENTS.md" : selected === "global-agents" ? "全局 AGENTS.md" : "记忆索引 MEMORY.md"}」末尾（新会话生效）：\n\n${draft.slice(0, 400)}`,
+    { title: "存为规矩", confirmLabel: "追加写入" },
+  );
+  if (!ok) return;
+  const envelope = await sendSettings({ op: "instruction-append", target: selected, kind: "text", content: draft });
+  if (!envelope.ok) {
+    toast(`写入失败：${envelope.error?.message ?? ""}`, "warn");
+    return;
+  }
+  toast("已存为规矩（新会话生效）", "info");
 }
 
 async function toggleSpeak(btn, content) {
@@ -577,6 +620,43 @@ function removeCard(requestId) {
   if (pending.children.length === 0) pending.classList.remove("active");
 }
 
+// —— T-P3-151 B4 审批反写：永久档把本次裁决沉淀为规则行（opencode 免写
+// 通配符先例——命令前缀自动推导；gemini 收件箱 diff 确认先例——写入前确认）。
+
+/** 从审批载荷推导规则行：命令类取前 2 个 token 加 ` *`，其余裸工具规则。 */
+function deriveRuleLine(payload) {
+  const tool = typeof payload.tool === "string" && payload.tool.trim() !== "" ? payload.tool.trim() : "Bash";
+  const args = payload.args !== null && typeof payload.args === "object" ? payload.args : undefined;
+  const command = typeof args?.command === "string" ? args.command.trim() : "";
+  if (command !== "") {
+    const prefix = command.split(/\s+/).slice(0, 2).join(" ");
+    return `${tool}(${prefix} *)`;
+  }
+  return tool; // 裸工具规则——放行/禁止该工具全部调用
+}
+
+async function persistApprovalRule(payload, action) {
+  const { confirmDialog } = await import("./views/settings/core.js");
+  const rule = deriveRuleLine(payload);
+  const ok = await confirmDialog(
+    `将把本次裁决沉淀为规则行，写入 ~/.aegent/rules.txt（用户层——所有工作区生效）：\n${rule} -> ${action}\n\n规则对后续所有会话生效（设置→指令中心可复核）。`,
+    { title: action === "allow" ? "永久允许并写入规则" : "永久拒绝并写入规则", confirmLabel: "写入规则" },
+  );
+  if (!ok) return;
+  const envelope = await sendSettings({
+    op: "instruction-append",
+    target: "user-rules",
+    kind: "rule",
+    content: `${rule} -> ${action}`,
+    dryRun: false,
+  });
+  if (!envelope.ok) {
+    toast(`规则写入失败：${envelope.error?.message ?? ""}（本次${action === "allow" ? "放行" : "拒绝"}不受影响）`, "warn");
+    return;
+  }
+  toast(`规则已沉淀：${envelope.result.line}`, "info");
+}
+
 function buildCard(name, payload) {
   pending.classList.add("active");
   const card = document.createElement("div");
@@ -625,10 +705,13 @@ function buildCard(name, payload) {
     // T-P3-137 八轮 B（用户裁决"不止外观，功能也要一样"——参考 opencode/
     // pi-desktop 审批三选）：allow 带 scope（once=允许一次 / session=本会话
     // 内同类调用不再问——C22 session-runtime 作用域，子进程 approvalCache 记账）
+    // T-P3-151 B4：永久档=审批之外再反写规则行到 rules.txt（指令中心可复核）
     const actions = [
       { label: "允许一次", action: "allow", scope: "once", className: "allow" },
       { label: "本会话内允许", action: "allow", scope: "session", className: "allow allow-session" },
       { label: "拒绝", action: "deny", scope: undefined, className: "deny" },
+      { label: "永久允许", action: "allow", scope: "always", className: "allow allow-always" },
+      { label: "永久拒绝", action: "deny", scope: "always", className: "deny" },
     ];
     for (const { label, action, scope, className } of actions) {
       const btn = document.createElement("button");
@@ -636,11 +719,14 @@ function buildCard(name, payload) {
       btn.textContent = label;
       btn.className = className;
       btn.addEventListener("click", async () => {
+        if (scope === "always") {
+          await persistApprovalRule(payload, action);
+        }
         await sendRequest(sessionId(), {
           type: "approve",
           requestId: payload.requestId,
           action,
-          ...(scope !== undefined ? { scope } : {}),
+          ...(scope !== undefined && scope !== "always" ? { scope } : {}),
           source: SURFACE_KIND,
         });
         removeCard(payload.requestId);

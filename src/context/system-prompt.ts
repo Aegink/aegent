@@ -137,6 +137,13 @@ export interface SystemPromptDeps {
    */
   globalAgentsPath?: string;
   /**
+   * 记忆索引文件（T-P3-151 C2——`~/.aegent/memory/MEMORY.md`）：存在时渲染
+   * 为「持久记忆」独立段（不参与 F2 小节合并——记忆的标题不覆盖 AGENTS.md
+   * 小节；gemini user_project_memory 独立标签同构）；缺省 undefined = 不加
+   * 段（零行为变化）。
+   */
+  memoryPath?: string;
+  /**
    * 技能清单（I2/T-P1-08）：装配侧经 loadSkills 扫描后传入，渲染为尾段
    * （正文按名经 skill_load 工具读取）；空/缺省 = 不加段（零行为变化）。
    */
@@ -198,6 +205,19 @@ export async function assembleSystemPrompt(deps: SystemPromptDeps): Promise<stri
   }
   const agents = mergeAgentsDocs(contents);
 
+  // C2 记忆末层（T-P3-151）：独立段不参与小节合并（记忆标题不覆盖
+  // AGENTS.md 小节——gemini user_project_memory 独立标签同构）。
+  let memorySection = "";
+  if (deps.memoryPath !== undefined && exists(deps.memoryPath)) {
+    try {
+      const memoryContent = readFile(deps.memoryPath).trim();
+      if (memoryContent !== "") memorySection = `## 持久记忆
+${memoryContent}`;
+    } catch {
+      // 读失败跳过（用户文件容错——同指令层纪律）
+    }
+  }
+
   // 4. 技能清单尾段（I2/T-P1-08）：名+描述列给模型，正文按名经 skill_load
   //    读取；空清单不加段。
   const skillsSection = renderSkillsSection(deps.skills);
@@ -211,7 +231,7 @@ export async function assembleSystemPrompt(deps: SystemPromptDeps): Promise<stri
   const outputLanguageSection =
     deps.outputLanguage !== undefined ? renderOutputLanguageSection(deps.outputLanguage) : "";
 
-  return [base, permissions, agents, planSection, delegationSection, outputLanguageSection, skillsSection]
+  return [base, permissions, agents, memorySection, planSection, delegationSection, outputLanguageSection, skillsSection]
     .filter((part) => part.trim() !== "")
     .join("\n\n");
 }

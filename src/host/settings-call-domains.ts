@@ -6,6 +6,7 @@
  */
 
 import { THINKING_LEVELS } from "../session/settings.js";
+import { INSTRUCTION_TARGETS } from "./protocol-settings.js";
 import { validatePluginSettingsCall } from "./settings-plugin-ops.js";
 
 /** 域族 op 闭集（与 OPS 同源子集——命中才进域校验）。 */
@@ -31,6 +32,9 @@ const DOMAIN_OPS = new Set([
   "import-sessions",
   "provider-models",
   "provider-test",
+  "instruction-save",
+  "instruction-append",
+  "instruction-test-rule",
 ]);
 
 export function validateDomainSettingsCall(op: string, record: Record<string, unknown>): void {
@@ -123,6 +127,43 @@ export function validateDomainSettingsCall(op: string, record: Record<string, un
       (record["headers"] === null || typeof record["headers"] !== "object" || Array.isArray(record["headers"]))
     ) {
       throw new Error(`settings op=${op} 的 headers 须为对象`);
+    }
+  }
+  // 指令域（T-P3-151——save 扩五 target；append/test-rule 新 op）
+  if (op === "instruction-save") {
+    if (typeof record["target"] !== "string" || !(INSTRUCTION_TARGETS as readonly string[]).includes(record["target"])) {
+      throw new Error(
+        `settings op=instruction-save 需要 target（合法：${INSTRUCTION_TARGETS.join("|")}）`,
+      );
+    }
+    if (typeof record["content"] !== "string" || record["content"] === "") {
+      throw new Error("settings op=instruction-save 需要 content 非空字符串");
+    }
+  }
+  if (op === "instruction-append") {
+    if (record["kind"] !== "rule" && record["kind"] !== "text") {
+      throw new Error("settings op=instruction-append 需要 kind（合法：rule|text）");
+    }
+    // rule 形态只落规则两层；text 形态可追加到任意指令位（C1 存为规矩）。
+    if (record["kind"] === "rule" && record["target"] !== "user-rules" && record["target"] !== "project-rules") {
+      throw new Error("settings op=instruction-append 的 kind=rule 需要 target（合法：user-rules|project-rules）");
+    }
+    if (typeof record["target"] !== "string" || record["target"] === "") {
+      throw new Error("settings op=instruction-append 需要 target 非空字符串");
+    }
+    if (typeof record["content"] !== "string" || record["content"].trim() === "") {
+      throw new Error("settings op=instruction-append 需要 content 非空字符串");
+    }
+  }
+  if (op === "instruction-test-rule") {
+    if (typeof record["tool"] !== "string" || record["tool"].trim() === "") {
+      throw new Error("settings op=instruction-test-rule 需要 tool 非空字符串");
+    }
+    if (
+      record["ruleArgs"] !== undefined &&
+      (record["ruleArgs"] === null || typeof record["ruleArgs"] !== "object" || Array.isArray(record["ruleArgs"]))
+    ) {
+      throw new Error("settings op=instruction-test-rule 的 ruleArgs 须为对象（缺省 {}）");
     }
   }
 }

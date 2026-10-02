@@ -4,6 +4,7 @@
  * 有界转写统一在 protocol.ts 的 catch 层（parse 层抛原文，转写面单点）。
  */
 import { THINKING_LEVELS } from "../session/settings.js";
+import type { JsonRecord } from "../kernel/events.js";
 import type { SkillImportItem } from "./skill-import-op.js";
 import { validateDomainSettingsCall } from "./settings-call-domains.js";
 
@@ -59,6 +60,8 @@ const OPS = [
   "prompt-import-scan",
   "prompt-import-apply",
   "enhancement-test",
+  "instruction-append",
+  "instruction-test-rule",
 ] as const;
 
 export type SettingsOp = (typeof OPS)[number];
@@ -101,6 +104,12 @@ export type SettingsCall = {
   displayName?: string; // op=plugin-scaffold：人读显示名（缺省 = slug）
   mediaType?: string;
   text?: string; // op=tts-synthesize：合成文本（T-P3-149 D 域）
+  // T-P3-151 指令中心载荷：kind=追加形态（rule|text）dryRun=只推导不落盘
+  // tool/ruleArgs=规则测试器的 PolicyCall 输入。
+  kind?: string;
+  dryRun?: boolean;
+  tool?: string;
+  ruleArgs?: JsonRecord;
   // T-P3-150 项目域载荷：url=仓库地址 projectId=项目 id overwrite=归属覆盖
   url?: string;
   projectId?: string;
@@ -114,7 +123,15 @@ export type SettingsCall = {
   headers?: Record<string, string>;
 };
 const SKILL_SLUG_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
-export const INSTRUCTION_TARGETS = ["project-agents", "global-agents", "user-rules"] as const;
+// T-P3-151：指令中心 target 扩两档——project-rules（项目层规则文件）与
+// memory（记忆索引 ~/.aegent/memory/MEMORY.md）。
+export const INSTRUCTION_TARGETS = [
+  "project-agents",
+  "global-agents",
+  "user-rules",
+  "project-rules",
+  "memory",
+] as const;
 export type InstructionTarget = (typeof INSTRUCTION_TARGETS)[number];
 
 
@@ -143,6 +160,10 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     "mediaType",
     "text",
     "url",
+    "kind",
+    "dryRun",
+    "tool",
+    "ruleArgs",
     "projectId",
     "overwrite",
     "source",
@@ -308,19 +329,6 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
       throw new Error("settings op=skill-save 的 skill.tools 须为非空字符串数组");
     }
   }
-  // U24/T-P3-127：instruction-save 载荷 = target 白名单 + content。
-  if (op === "instruction-save") {
-    if (typeof record["target"] !== "string" || !(INSTRUCTION_TARGETS as readonly string[]).includes(record["target"])) {
-      throw new Error(
-        `settings op=instruction-save 需要 target（合法：${INSTRUCTION_TARGETS.join("|")}）`,
-      );
-    }
-    if (typeof record["content"] !== "string" || record["content"] === "") {
-      throw new Error("settings op=instruction-save 需要 content 非空字符串");
-    }
-  }
-  // stt/tts/项目域载荷校验已上收 settings-call-domains.validateDomainSettingsCall
-  // provider 族载荷校验已上收 settings-call-domains
   if (op === "enhancement-test" &&
       (typeof record["task"] !== "string" ||
         !["judge", "summarizer", "polish", "title", "fastModel"].includes(record["task"]))) {
@@ -368,6 +376,13 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     ...(typeof record["apiKey"] === "string" ? { apiKey: record["apiKey"] } : {}),
     ...(typeof record["reasoning"] === "string" ? { reasoning: record["reasoning"] } : {}),
     ...(typeof record["task"] === "string" ? { task: record["task"] } : {}),
+    // T-P3-151 指令域载荷（kind/dryRun/tool/ruleArgs——返回构造漏拷即 undefined）
+    ...(typeof record["tool"] === "string" ? { tool: record["tool"] } : {}),
+    ...(typeof record["kind"] === "string" ? { kind: record["kind"] } : {}),
+    ...(record["dryRun"] === true ? { dryRun: true } : {}),
+    ...(record["ruleArgs"] !== undefined && typeof record["ruleArgs"] === "object" && !Array.isArray(record["ruleArgs"])
+      ? { ruleArgs: record["ruleArgs"] as import("../kernel/events.js").JsonRecord }
+      : {}),
     // T-P3-148 插件/市场族载荷（键表与白名单同源——漏拷即字段永远 undefined）
     ...Object.fromEntries((["dir", "action", "template", "source", "marketplace", "pluginDescription", "view", "base", "displayName"] as const).filter((k) => typeof record[k] === "string").map((k) => [k, record[k]])),
   };

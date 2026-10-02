@@ -187,3 +187,43 @@ describe("验收③：权限段由装配决定（T-6-02 模板 × PathGuard 描�
     },
   );
 });
+
+describe("T-P3-151 C2：记忆末层（~/.aegent/memory/MEMORY.md）", () => {
+  const mkDeps = (deps: Partial<Parameters<typeof assembleSystemPrompt>[0]> = {}) => ({
+    approvalTier: "on_request" as const,
+    describeWritableRoots: async () => "F:/repo",
+    cwd: "F:/repo",
+    existsFile: () => false,
+    readFile: () => "",
+    basePrompt: "基础。",
+    ...deps,
+  });
+
+  it("memoryPath 存在且非空 → 「## 持久记忆」独立段进装配末层（agents 之后）", async () => {
+    const prompt = await assembleSystemPrompt(mkDeps({
+      existsFile: (p) => p.endsWith("MEMORY.md") || p.endsWith("AGENTS.md"),
+      readFile: (p) => (p.endsWith("AGENTS.md") ? "## 风格\n用 Tab 缩进" : "- 偏好中文回复"),
+      memoryPath: "C:/Users/u/.aegent/memory/MEMORY.md",
+    }));
+    expect(prompt).toContain("## 持久记忆");
+    expect(prompt).toContain("偏好中文回复");
+    expect(prompt).toContain("## 风格"); // AGENTS.md 段同在
+    const agentsIdx = prompt.indexOf("## 风格");
+    const memoryIdx = prompt.indexOf("## 持久记忆");
+    expect(memoryIdx).toBeGreaterThan(agentsIdx); // 记忆在指令层之后
+  });
+
+  it("memoryPath 缺席或文件不存在 → 零记忆段（既有行为零变化）", async () => {
+    const prompt = await assembleSystemPrompt(mkDeps({}));
+    expect(prompt).not.toContain("持久记忆");
+  });
+
+  it("记忆文件为空白 → 不加空段", async () => {
+    const prompt = await assembleSystemPrompt(mkDeps({
+      existsFile: () => true,
+      readFile: () => "   \n  ",
+      memoryPath: "C:/Users/u/.aegent/memory/MEMORY.md",
+    }));
+    expect(prompt).not.toContain("## 持久记忆");
+  });
+});

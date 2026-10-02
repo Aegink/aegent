@@ -13,7 +13,8 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { parseCustomSources, validateSpecShape, type JsonlSpec, type JsonTreeSpec } from "./import-spec.js";
-import { jsonlMessages, scanJsonl, scanJsonTree } from "./import-drivers.js";
+import { jsonlMessages, scanJsonl } from "./import-drivers.js";
+import { scanJsonTree, jsonTreeMessages } from "./import-driver-jsontree.js";
 import { importedMessagesToEvents as toEvents } from "./settings-project-ops.js";
 
 const dirs: string[] = [];

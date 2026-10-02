@@ -175,7 +175,7 @@ export function parseRulePattern(raw: string): ParsedRulePattern | undefined {
   if (toolName.length === 0) return undefined;
   if (rawSpecifier.length === 0) return { raw: trimmed, toolName };
 
-  const kind = getSpecifierKind(toolName);
+  const kind = getSpecifierKind(toolName.toLowerCase());
   // legacy `:*` 后缀（qwen 同款：`git:*` → `git *`；仅 command 分型）
   const specifier =
     kind === "command" ? rawSpecifier.replace(/:(\*)/g, " $1") : rawSpecifier;
@@ -298,7 +298,10 @@ export function loadRules(
       continue;
     }
     const argPattern: string = rule.argPattern;
-    const matcher = matchers[rule.toolName];
+    // T-P3-151：registry 工具名小写注册（kernel/tools builtin 面），而
+    // rules.txt 文本面示例用大写（Bash(git status)）——查表宽容大小写，
+    // 使 C44 样例校验对大写规则同样可执行。
+    const matcher = matchers[rule.toolName] ?? matchers[rule.toolName.toLowerCase()];
     if (matcher === undefined) {
       // 未登记匹配器的工具无法校验样例——同样按矛盾拒绝。
       pushAllViolations(violations, rule, source);

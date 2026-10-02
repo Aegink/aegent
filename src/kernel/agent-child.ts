@@ -38,6 +38,7 @@ import { SANDBOX_MODES, type SandboxMode } from "../sandbox/backend.js";
 import type { RegisteredModel } from "./model-switch.js";
 import {
   globalAgentsFile,
+  memoryIndexFile,
   loadProjectRuleSources,
   loadUserRuleSources,
   resolveSubagentAssembly,
@@ -404,6 +405,7 @@ async function main(): Promise<void> {
     ...loadProjectRuleSources(cli.workspace ?? process.cwd()),
   ];
   const globalAgentsPath = globalAgentsFile();
+  const memoryIndexPath = memoryIndexFile(); // T-P3-151 C2 装配末层
   // J27/T-P1-61：retrying 事件落流观察者的 late-binding 槽（模块级声明）。
   const options: AgentChildOptions = {
     ...(cli.rawLogDir ? { rawLogDir: cli.rawLogDir } : {}),
@@ -563,6 +565,7 @@ async function main(): Promise<void> {
             // U24/T-P3-127：C22 user 档规则文件 + 全局指令（~/.aegent 两位）
             ...(userRules.length > 0 ? { rules: userRules } : {}),
             ...(globalAgentsPath !== undefined ? { globalAgentsPath } : {}),
+            ...(memoryIndexPath !== undefined ? { memoryIndexPath } : {}),
             // G1/G7 plan 模式（测试/实测开关：AEGENT_PLAN=1）——G4 计划
             // artifact 父目录 .aegent/sessions（savePlanArtifact 内部按
             // <dir>/<sessionId>/plan.md 落盘；untracked 不入 git stash，

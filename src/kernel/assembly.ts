@@ -365,6 +365,8 @@ export interface ChildAssemblyOptions {
    * 缺省 undefined = 不加全局层（既有行为零变化）。
    */
   globalAgentsPath?: string;
+  /** T-P3-151 C2 记忆索引（~/.aegent/memory/MEMORY.md——装配末层）。 */
+  memoryIndexPath?: string;
   /**
    * C12/C13 编辑前必须先读（T-P1-71）：提供 ReadGateService 时 read 记账、
    * edit/write/apply_patch 校验（未读拒/过期拒）。缺省 undefined = 不启用
@@ -836,6 +838,7 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
         describeWritableRoots: () => pathGuard.describeWritableRoots(),
         cwd: options.workspaceRoot,
         ...(options.globalAgentsPath !== undefined ? { globalAgentsPath: options.globalAgentsPath } : {}),
+        ...(options.memoryIndexPath !== undefined ? { memoryPath: options.memoryIndexPath } : {}),
         ...(skillLoad.skills.length > 0 ? { skills: skillLoad.skills } : {}),
         ...(planModeService ? { planMode: true } : {}),
         ...(options.delegation ? { delegation: true } : {}),

@@ -13,6 +13,7 @@
  */
 
 import { sendSettings } from "../../api.js";
+import * as instructions from "./instructions.js";
 import { ACTION_LABELS, createKeymap, detectConflict, eventToCombo } from "../../keymap.js";
 import {
   settingsCache,
@@ -36,6 +37,8 @@ import {
   emptyState,
 } from "./core.js";
 
+const instructionsSection = instructions.SECTION_HTML;
+
 export const SECTIONS_HTML = `
 <section data-section="projects">
   <div class="section-head">
@@ -44,36 +47,7 @@ export const SECTIONS_HTML = `
   </div>
   <p class="hint">项目域已升级为独立页面（工作区/任务/文件树/添加三模式）——点上方按钮直达，或侧栏「项目」。</p>
 </section>
-<section data-section="instructions">
-  <div class="section-head"><h2 class="section-title">指令中心</h2></div>
-  <p class="hint">层级（全局 → 项目就近覆盖）与规则文件（C22 user 档）集中编辑；保存前有确认面，新会话生效。</p>
-  <div class="card-box instr-card">
-    <div class="instr-head">项目 AGENTS.md（<span id="instr-project-path">workspace</span>）</div>
-    <textarea id="instr-project" class="textarea" rows="5" placeholder="（项目级指令——F2 收集链最近层）"></textarea>
-    <div class="form-actions">
-      <button class="instr-save btn btn-primary" data-target="project-agents" type="button">保存项目指令</button>
-      <button class="instr-tpl btn" data-target="project-agents" type="button">插入模板</button>
-    </div>
-  </div>
-  <div class="card-box instr-card">
-    <div class="instr-head">全局 AGENTS.md（~/.aegent/AGENTS.md——最远层）</div>
-    <textarea id="instr-global" class="textarea" rows="5" placeholder="（全局指令——所有 workspace 生效）"></textarea>
-    <div class="form-actions">
-      <button class="instr-save btn btn-primary" data-target="global-agents" type="button">保存全局指令</button>
-      <button class="instr-tpl btn" data-target="global-agents" type="button">插入模板</button>
-    </div>
-  </div>
-  <div class="card-box instr-card">
-    <div class="instr-head">用户级规则（~/.aegent/rules.txt——每行 \`<code>规则 -&gt; allow|deny</code>\`）</div>
-    <textarea id="instr-rules" class="textarea" rows="5" placeholder="# 注释行；如：Bash(git status) -> allow"></textarea>
-    <p id="instr-rules-lint" class="hint"></p>
-    <div class="form-actions">
-      <button class="instr-save btn btn-primary" data-target="user-rules" type="button">保存用户规则</button>
-      <button class="instr-tpl btn" data-target="user-rules" type="button">插入模板</button>
-    </div>
-  </div>
-</section>
-<section data-section="shortcuts">
+${instructionsSection}<section data-section="shortcuts">
   <div class="section-head">
     <h2 class="section-title">快捷键</h2>
     <div class="section-tools">
@@ -143,62 +117,6 @@ export const SECTIONS_HTML = `
 // U24/T-P3-127 指令中心：全局/项目 AGENTS.md + 用户规则文件（C22 project/
 // user 档文件位）——查看/编辑/保存确认 + 规则 lint + 模板插入辅助。
 // ---------------------------------------------------------------------------
-
-const INSTR_TARGETS = {
-  "project-agents": "instr-project",
-  "global-agents": "instr-global",
-  "user-rules": "instr-rules",
-};
-const INSTR_TARGET_LABEL = {
-  "project-agents": "项目 AGENTS.md",
-  "global-agents": "全局 AGENTS.md",
-  "user-rules": "用户级规则 rules.txt",
-};
-const INSTR_TEMPLATES = {
-  "project-agents": "## 代码风格\n- 缩进与命名遵循现有代码\n\n## 提交约定\n- ",
-  "global-agents": "## 通用偏好\n- 中文回复\n- 先结论后理由\n",
-  "user-rules": "# 每行：<规则> -> <allow|ask|deny>\nBash(git status) -> allow\nBash(git push) -> deny\n",
-};
-
-async function refreshInstructions() {
-  const envelope = await sendSettings({ op: "instructions-list" });
-  if (document.getElementById("instr-project") === null) return;
-  if (!envelope.ok) {
-    document.getElementById("instr-rules-lint").textContent =
-      `指令面不可用：${envelope.error?.message ?? ""}`;
-    return;
-  }
-  const v = envelope.result;
-  document.getElementById("instr-project").value = v.project.content;
-  document.getElementById("instr-global").value = v.global.content;
-  document.getElementById("instr-rules").value = v.rules.content;
-  document.getElementById("instr-project-path").textContent =
-    v.project.path.split(/[\\/]/).slice(0, -1).join("/");
-  renderRulesLint(v.rules.issues ?? []);
-}
-
-function renderRulesLint(issues) {
-  const el = document.getElementById("instr-rules-lint");
-  if (el === null) return;
-  if (issues.length === 0) {
-    el.textContent = "规则 lint：无问题（合法行全部装载）";
-    return;
-  }
-  el.textContent = `规则 lint：${issues.length} 行未装载——${issues
-    .slice(0, 5)
-    .map((i) => `第 ${i.line} 行 ${i.message}`)
-    .join("；")}${issues.length > 5 ? "…" : ""}`;
-}
-
-async function openInstructionsOnce() {
-  // 指令分节只在设置打开时拉一次（保存后局部刷新；视图重挂载 = 重新拉取
-  // ——GET 只读面，重挂载语义下以最新内容呈现）
-  if (!document.getElementById("instr-project").dataset.loaded) {
-    await refreshInstructions();
-    const el = document.getElementById("instr-project");
-    if (el !== null) el.dataset.loaded = "1";
-  }
-}
 
 // ---------------------------------------------------------------------------
 // U25/T-P3-128 快捷键分节：kbd 胶囊绑定行（搜索过滤）+ 捕获态改绑 + 冲突提示
@@ -410,32 +328,6 @@ export async function applyDeepLink(encodedData) {
 // ---------------------------------------------------------------------------
 
 export function bind() {
-  for (const btn of document.querySelectorAll(".instr-save")) {
-    btn.addEventListener("click", async () => {
-      const target = btn.dataset.target;
-      const content = document.getElementById(INSTR_TARGETS[target]).value;
-      // 保存确认面（U24 卡面要求——覆盖用户文件前显式确认；批 B 走查反馈统一为模态）
-      if (!(await confirmDialog(`确认保存到「${INSTR_TARGET_LABEL[target]}」？保存后新会话生效（覆盖写入）。`, { title: "保存指令", confirmLabel: "保存" }))) return;
-      const envelope = await sendSettings({ op: "instruction-save", target, content });
-      if (!envelope.ok) {
-        appendLine(`指令保存失败：${envelope.error?.code ?? ""} ${envelope.error?.message ?? ""}`, "warn");
-        return;
-      }
-      appendLine(`指令已保存：${envelope.result.path}`, "meta");
-      toast(`${INSTR_TARGET_LABEL[target]} 已保存（新会话生效）`, "info");
-      if (target === "user-rules") await refreshInstructions();
-    });
-  }
-
-  for (const btn of document.querySelectorAll(".instr-tpl")) {
-    btn.addEventListener("click", () => {
-      const target = btn.dataset.target;
-      const ta = document.getElementById(INSTR_TARGETS[target]);
-      ta.value = ta.value === "" ? (INSTR_TEMPLATES[target] ?? "") : `${ta.value}\n${INSTR_TEMPLATES[target] ?? ""}`;
-      ta.focus();
-    });
-  }
-
   document.getElementById("shortcut-search").addEventListener("input", (ev) => {
     shortcutFilter = ev.target.value.trim();
     renderShortcutList();
@@ -527,7 +419,7 @@ export function fill() {
   renderShortcutList();
 }
 
-/** 指令中心打开时拉一次（壳 open 委派）。 */
+/** 指令中心打开时拉一次（壳 open 委派——逻辑在 instructions 域文件）。 */
 export function refreshInstructionsOnce() {
-  void openInstructionsOnce();
+  void instructions.refresh();
 }

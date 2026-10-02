@@ -36,7 +36,11 @@ import type { LoadedRule } from "./rule-loader.js";
 export function loadedRuleMatch(): (rule: LoadedRule, call: PolicyCall) => PolicyAction | undefined {
   return (rule, call) => {
     if (rule.invalid) return undefined;
-    if (!wildcardMatch(call.tool, rule.toolName)) return undefined;
+    // T-P3-151：工具名维度大小写宽容——registry 小写注册（bash/read/...）
+    // 而 rules.txt 文本面惯用大写（Bash(git status)），此前大写规则永不
+    // 命中真实调用（fail-closed 死规则）；分型判定（parseRulePattern 同步
+    // 修复）与匹配两侧归一后，规则文本与调用名大小写解耦。
+    if (!wildcardMatch(call.tool.toLowerCase(), rule.toolName.toLowerCase())) return undefined;
     const hasSpecifier =
       rule.argPattern !== undefined || rule.toolParamMatchers !== undefined;
     if (!hasSpecifier) return rule.action;
@@ -48,7 +52,7 @@ export function loadedRuleMatch(): (rule: LoadedRule, call: PolicyCall) => Polic
     ) {
       return undefined;
     }
-    switch (getSpecifierKind(call.tool)) {
+    switch (getSpecifierKind(call.tool.toLowerCase())) {
       case "command":
         return bashRuleMatcher.matchesRule(rule.argPattern ?? "", call)
           ? rule.action

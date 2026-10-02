@@ -81,6 +81,11 @@ export function globalAgentsFile(home?: string): string {
   return path.join(home ?? homedir(), ".aegent", "AGENTS.md");
 }
 
+/** 记忆索引文件路径（T-P3-151 C2——`~/.aegent/memory/MEMORY.md` 装配末层）。 */
+export function memoryIndexFile(home?: string): string {
+  return path.join(home ?? homedir(), ".aegent", "memory", "MEMORY.md");
+}
+
 /**
  * 装配消费（agent-child main 调用）：读规则文件 → parseRulesText 解析。
  * 文件缺失 = 空规则集（可选能力）；坏行已由解析层跳过（装配只装载合法

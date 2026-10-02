@@ -18,7 +18,8 @@ import { FsBoundaryError } from "./fs-gateway.js";
 // A4 扫描导入（发现级 + 会话级——T-P3-150 多 Agent 适配：spec 驱动消费）
 // ---------------------------------------------------------------------------
 
-import { scanJsonl, scanJsonTree, jsonlMessages, convertJsonTree } from "./import-drivers.js";
+import { scanJsonl, jsonlMessages } from "./import-drivers.js";
+import { scanJsonTree, convertJsonTree } from "./import-driver-jsontree.js";
 import { scanSqlite, convertSqlite } from "./import-driver-sqlite.js";
 import type { ImportedSessionSummary, ImportedMessage, ImportSpec } from "./import-spec.js";
 import { loadImportSpecs } from "./import-sources.js";

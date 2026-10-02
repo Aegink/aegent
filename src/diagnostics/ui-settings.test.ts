@@ -170,7 +170,7 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     expect(projectsView).toContain("op: \"session-rename\""); // B2 任务重命名
     expect(projectsFiles).toContain("renderMarkdown"); // C3 md 真渲染
     expect(projectsFiles).toContain("添加到聊天"); // C7 树行右键菜单项
-    expect(settingsView).toContain('id="instr-project"'); // 项目级指令编辑面
+    expect(settingsView).toContain('id="instr-editor-text"'); // T-P3-151 指令中心编辑面（域文件 instructions.js）
     // U16/T-P3-118：提示词模板库（settings prompts 段 CRUD + / 补全调用）
     expect(settingsView).toContain('id="prompt-list"');
     expect(settingsView).toContain('id="prompt-form"');
@@ -201,16 +201,19 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     expect(settingsView).toContain("refreshSubagentsList"); // 清单刷新
     expect(settingsView).toContain('markDirty("subagents")'); // CRUD 即改即存
     expect(settingsView).toContain("subagentToolsSelected"); // 工具集多选
-    // U24/T-P3-127：指令中心（三文件位编辑/保存确认/规则 lint/模板插入）
-    expect(settingsView).toContain('id="instr-project"');
-    expect(settingsView).toContain('id="instr-rules"');
-    expect(settingsView).toContain('id="instr-rules-lint"');
-    expect(settingsView).toContain("instr-save"); // 保存按钮 class
-    expect(settingsView).toContain("instr-tpl"); // 模板插入按钮 class
+    // U24/T-P3-127 → T-P3-151 重构：指令中心（左树右编辑/装配预览/规则三列/
+    // 测试器/追加落盘/模板 chips）
+    expect(settingsView).toContain('id="instr-editor-text"'); // 编辑器
+    expect(settingsView).toContain('id="instr-tree-list"'); // 左树（层级节点）
+    expect(settingsView).toContain('id="instr-assembly"'); // A2 装配预览
+    expect(settingsView).toContain('id="instr-rules-view"'); // B1 规则三列卡
+    expect(settingsView).toContain('id="instr-tester"'); // B3 规则测试器
     expect(settingsView).toContain('op: "instructions-list"'); // 数据面
     expect(settingsView).toContain('op: "instruction-save"'); // 写回
-    expect(settingsView).toContain("INSTR_TEMPLATES"); // 模板插入辅助
-    expect(settingsView).toContain("renderRulesLint"); // 规则 lint 提示面
+    expect(settingsView).toContain('op: "instruction-append"'); // B2/C1 追加落盘
+    expect(settingsView).toContain('op: "instruction-test-rule"'); // B3 测试器数据面
+    expect(settingsView).toContain("INSTR_TEMPLATES"); // D2 模板 chips
+    expect(settingsView).toContain("generateProjectAgents"); // D1 生成项目指令
     // U25/T-P3-128：快捷键注册表（清单/捕获改绑/冲突提示）+ 设置分节
     expect(settingsView).toContain('id="shortcut-list"');
     expect(settingsView).toContain('id="shortcut-reset"');

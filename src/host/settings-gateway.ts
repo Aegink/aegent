@@ -19,6 +19,7 @@ import {
   type ProviderModelsPayload,
   type ProviderTestPayload,
 } from "./settings-provider-ops.js";
+import type { JsonRecord } from "../kernel/events.js";
 import type { CredentialStore } from "../session/credentials.js";
 import type { SqliteEventStorage } from "../session/db.js";
 import { probeServer } from "../mcp/registry-bridge.js";
@@ -33,6 +34,7 @@ import {
   saveInstruction,
   type InstructionTarget,
 } from "./instructions-gateway.js";
+import { appendInstruction, testInstructionRule } from "./settings-instruction-ops.js";
 import { runSttTranscribe } from "./speech-gateway.js";
 import { runTtsSynthesize } from "./tts-gateway.js";
 import {
@@ -79,15 +81,8 @@ import {
   type SkillImportItem,
 } from "./skill-import-op.js";
 import { enhancementTestOp } from "./settings-provider-ops.js";
-import {
-  applyImportedSettings,
-  backupSettingsFile,
-  summarizePackage,
-} from "../session/settings-transfer.js";
-import {
-  subagentCatalog,
-  type SubagentDefinition,
-} from "../session/subagents-config.js";
+import { applyImportedSettings, backupSettingsFile, summarizePackage } from "../session/settings-transfer.js";
+import { subagentCatalog, type SubagentDefinition } from "../session/subagents-config.js";
 import type { McpToolInfo } from "../mcp/client.js";
 
 export type { SettingsGateway, McpCheckResult } from "./settings-gateway-types.js";
@@ -103,8 +98,7 @@ export function applySettingsPatch(current: SettingsShape, patch: Record<string,
     }
     merged[section] = patch[section];
   }
-  // 合并后整体验证（fail-closed——坏段拒绝且不落盘）
-  return parseSettingsShape(merged);
+  return parseSettingsShape(merged); // 合并后整体验证（fail-closed）
 }
 
 
@@ -236,32 +230,36 @@ export class FileSettingsGateway implements SettingsGateway {
     return subagentCatalog(settings.subagents);
   }
 
-  async instructionsList(): Promise<ReturnType<typeof listInstructions>> {
-    return listInstructions(instructionPaths(this.workspaceRoot, this.homeDir));
+  instructionsList(): Promise<ReturnType<typeof listInstructions>> {
+    return Promise.resolve(listInstructions(instructionPaths(this.workspaceRoot, this.homeDir)));
   }
 
-  async instructionSave(
-    target: InstructionTarget,
-    content: string,
-  ): Promise<{ saved: true; path: string }> {
+  instructionSave(target: InstructionTarget, content: string): Promise<{ saved: true; path: string }> {
     if (target === "project-agents" && this.workspaceRoot === undefined) this.skillsUnavailable();
     return saveInstruction(instructionPaths(this.workspaceRoot, this.homeDir), target, content);
   }
 
-  // U26/T-P3-129 语音转写代理（配置读 settings.stt；key 按 "stt" 键名走
-  // credentials——未配置 → 类型化 STT_NOT_CONFIGURED；装配面 speech-gateway）
+  // 载荷形状 = AppendInstructionPayload（settings-instruction-ops）
+  instructionAppend(payload: { target: string; kind: "rule" | "text"; content: string; dryRun?: boolean }): Promise<unknown> {
+    if (payload.target.startsWith("project-") && this.workspaceRoot === undefined) this.skillsUnavailable();
+    return appendInstruction(instructionPaths(this.workspaceRoot, this.homeDir), payload.target as InstructionTarget, payload.kind, payload.content, payload.dryRun === true);
+  }
+
+  testInstructionRule(payload: { tool: string; ruleArgs?: JsonRecord }): Promise<unknown> {
+    return Promise.resolve(testInstructionRule(instructionPaths(this.workspaceRoot, this.homeDir), payload.tool, payload.ruleArgs));
+  }
+
+  // U26/T-P3-129 语音转写代理（key 按 "stt" 走 credentials；面 speech-gateway）
   async sttTranscribe(payload: { base64: string; mediaType: string }): Promise<{ text: string; model: string }> {
     return runSttTranscribe(await this.get(), this.credentials, payload, this.sttFetch);
   }
 
-  // T-P3-149 D 语音合成代理（配置读 settings.tts；key 走 "tts" 键名——
-  // 装配面 tts-gateway；未配置 → TTS_NOT_CONFIGURED）
+  // T-P3-149 D 语音合成代理（key 走 "tts"；面 tts-gateway；未配置 TTS_NOT_CONFIGURED）
   async ttsSynthesize(payload: { text: string }): Promise<{ audioBase64: string; mediaType: string; model: string }> {
     return runTtsSynthesize(await this.get(), this.credentials, payload, this.sttFetch);
   }
 
-  // —— T-P3-150 项目域（实现面 settings-project-ops；fs 边界 = 已添加项目根
-  // 集合 realpath 白名单，归一在 fs-gateway）——
+  // —— T-P3-150 项目域（实现面 settings-project-ops；fs 边界归一 fs-gateway）——
 
   projectRoots(): Promise<string[]> {
     return this.get().then((s) => (s.projects ?? []).flatMap((p) => p.folders));

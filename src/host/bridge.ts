@@ -15,7 +15,7 @@ import { handleHostQuery } from "./query-gateway.js";
 import { buildPolicyAuditEntries } from "./policy-audit-op.js";
 import { tryPluginSettingsOp } from "./settings-plugin-ops.js";
 import { tryProjectSettingsOp } from "./settings-project-ops.js";
-import type { InstructionTarget } from "./protocol-settings.js";
+import { tryInstructionSettingsOp } from "./settings-instruction-ops.js";
 import { AgentHost } from "./registry.js";
 import {
   HostProtocolServer,
@@ -327,8 +327,8 @@ export class HostBridge implements SessionRouter {
         if (call.op === "prompt-import-apply") return gateway.promptImportApply(call.items!);
         if (call.op === "enhancement-test") return gateway.enhancementTest(call.task as import("./settings-provider-ops.js").EnhancementTestTask);
         if (call.op === "subagents-list") return gateway.subagentsList();
-        if (call.op === "instructions-list") return gateway.instructionsList();
-        if (call.op === "instruction-save") return gateway.instructionSave(call.target as InstructionTarget, call.content!);
+        const instrOp = tryInstructionSettingsOp(gateway, call); // 指令域四 op 收敛（T-P3-151）
+        if (instrOp !== undefined) return instrOp;
         if (call.op === "stt-transcribe") return gateway.sttTranscribe({ base64: call.content!, mediaType: call.mediaType! });
         if (call.op === "tts-synthesize") return gateway.ttsSynthesize({ text: call.text! });
         // T-P3-150 项目域八 op 一行收敛（分发面在 settings-project-ops）

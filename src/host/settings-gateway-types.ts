@@ -3,6 +3,7 @@
  * 纯类型零实现；实现体与类在 settings-gateway.ts，域方法实现在各 *-ops.ts）。
  */
 
+import type { JsonRecord } from "../kernel/events.js";
 import type { SettingsShape } from "../session/settings.js";
 import type { HealthCheckResult } from "../models/health.js";
 import type { ProviderTestResult } from "./provider-gateway.js";
@@ -70,12 +71,20 @@ export interface SettingsGateway {
     builtins: (SubagentDefinition & { enabled: boolean; overridden: boolean })[];
     custom: SubagentDefinition[];
   }>;
-  instructionsList(): Promise<{
-    project: { path: string; exists: boolean; content: string };
-    global: { path: string; exists: boolean; content: string };
-    rules: { path: string; exists: boolean; content: string; issues: { line: number; message: string }[] };
-  }>;
-  instructionSave(target: "project-agents" | "global-agents" | "user-rules", content: string): Promise<{ saved: true; path: string }>;
+  instructionsList(): Promise<unknown>;
+  instructionSave(
+    target: "project-agents" | "global-agents" | "user-rules" | "project-rules" | "memory",
+    content: string,
+  ): Promise<{ saved: true; path: string }>;
+  /** T-P3-151：规则/文本追加（B2/B4/C1 共用落盘闸——dryRun 只推导不落盘）。 */
+  instructionAppend(payload: {
+    target: "user-rules" | "project-rules";
+    kind: "rule" | "text";
+    content: string;
+    dryRun?: boolean;
+  }): Promise<unknown>;
+  /** T-P3-151：规则测试器（B3——两层规则集真实求值）。 */
+  testInstructionRule(payload: { tool: string; ruleArgs?: JsonRecord }): Promise<unknown>;
   sttTranscribe(payload: { base64: string; mediaType: string }): Promise<{ text: string; model: string }>;
   /** T-P3-149 D：语音合成代理（文本上送 → 音频 base64 回端——朗读/测试共用）。 */
   ttsSynthesize(payload: { text: string }): Promise<{ audioBase64: string; mediaType: string; model: string }>;
