@@ -108,18 +108,14 @@ async function runCreate(host) {
       ? "预检通过（plugin-check）——可直接安装。"
       : `预检未过：${r.check?.error ?? ""}`;
     box.appendChild(checkLine);
-    const actions = document.createElement("div");
-    actions.className = "row-control";
-    const installBtn = document.createElement("button");
-    installBtn.type = "button";
-    installBtn.className = "btn btn-primary";
-    installBtn.textContent = "去安装（审批确认）";
-    installBtn.addEventListener("click", () => {
-      host.dispatchEvent(new CustomEvent("plugin-create:install", { detail: { name, dir: r.dir } }));
-    });
-    actions.appendChild(installBtn);
-    box.appendChild(actions);
+    // 反馈②彻底统一：生成成功即自动弹出统一安装对话框（已预填）——创建
+    // tab 内不再放安装按钮，全应用安装入口只剩一条链
+    box.appendChild(Object.assign(document.createElement("div"), {
+      className: "row-desc",
+      textContent: "已弹出统一安装对话框（右上的「安装插件」也是同一个入口）——确认后热生效。",
+    }));
     result.replaceChildren(box);
+    host.dispatchEvent(new CustomEvent("plugin-create:install", { detail: { name, dir: r.dir } }));
   } finally {
     if (runBtn !== null) {
       runBtn.disabled = false;

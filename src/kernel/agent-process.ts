@@ -63,6 +63,7 @@ import { DEFAULT_SPILL_DIR } from "./tools/truncate.js";
 import { sweepSessionSpill } from "./tools/spill-gc.js";
 import { connectAndRegister } from "../mcp/registry-bridge.js";
 import { loadConfiguredPlugins } from "./plugin-loader.js";
+import { loadSettings } from "../session/settings.js";
 import { parseCommandArgs, parseSlashInvocation, substituteArgs } from "./prompt-args.js";
 import {
   BUILTIN_PROMPT_TEMPLATES,
@@ -111,6 +112,11 @@ export interface AgentChildOptions {
    * `<插件名>__<工具名>` 命名空间进注册表；单插件失败 never-fail 跳过。
    */
   plugins?: import("../session/settings.js").PluginEntry[];
+  /**
+   * T-P3-148 热加载：settings.json 路径（plugins/reload 协议请求时现读最新
+   * 清单做 diff 重装载；缺席 = 无重载面，类型化拒绝）。
+   */
+  settingsPath?: string;
   /**
    * U23/T-P3-126：子代理预设配置（settings subagents 段——用户覆盖与
    * 自定义清单；内置五预设由 resolveSubagent 常量兜底）+ 独立模型解析
@@ -529,27 +535,74 @@ export async function runAgentChildStdio(
     }
   }
   // T-P3-133：插件装载（I4/I5 的生产装配点——settings plugins 段 enabled
-  // 条目）。工具以 `<插件名>__<工具名>` 命名空间进注册表（工具清单在 ready
-  // 一次性报全）；单插件失败 never-fail 跳过（mcpServers 同款）；收尾
-  // dispose 挂 finish（连接/句柄随进程退出显式收束）。
+  // 条目）。工具以 `<插件名>__<工具名>` 命名空间进注册表；单插件失败
+  // never-fail 跳过（mcpServers 同款）；收尾 dispose 挂 finish（连接/句柄
+  // 随进程退出显式收束）。
   // T-P3-148：贡献聚合回填贡献盒（B 命令→promptContext 合并 / D 技能目录
   // →三消费口 / E MCP server→连接注册）——装配消费点全部晚于本行。
-  const pluginLoad = await loadConfiguredPlugins(toolRegistry, options.plugins, {
+  // T-P3-148 热加载：pluginLoad 可变 + 插件 MCP 连接单独数组——
+  // plugins/reload 协议请求触发 diff 重装载（见 reloadPluginsNow）。
+  let pluginLoad = await loadConfiguredPlugins(toolRegistry, options.plugins, {
     ...(options.logger ? { logger: options.logger } : {}),
   });
-  pluginContribBox.commands = [...pluginLoad.contributions.commands];
-  pluginContribBox.skillDirs = [...pluginLoad.contributions.skillDirs];
-  pluginContribBox.mcpServers = [...pluginLoad.contributions.mcpServers];
-  pluginContribBox.loaded = true;
+  const pluginMcpConnections: import("../mcp/registry-bridge.js").McpConnection[] = [];
+  const connectPluginMcpServers = async (): Promise<void> => {
+    for (const cfg of pluginContribBox.mcpServers) {
+      try {
+        pluginMcpConnections.push(await connectAndRegister(toolRegistry, cfg));
+      } catch (e) {
+        console.error(`[mcp] 插件 server "${cfg.name}" 连接失败（跳过）:`, e instanceof Error ? e.message : e);
+      }
+    }
+  };
+  const applyPluginLoad = (): void => {
+    pluginContribBox.commands = [...pluginLoad.contributions.commands];
+    pluginContribBox.skillDirs = [...pluginLoad.contributions.skillDirs];
+    pluginContribBox.mcpServers = [...pluginLoad.contributions.mcpServers];
+    pluginContribBox.loaded = true;
+  };
+  applyPluginLoad();
   // T-P3-148 E：插件贡献的 MCP server 连接（settings mcp 同款 never-fail；
   // env 的 {setting} 引用已在贡献解析面处理——解析失败的服务不出现在此）
-  for (const cfg of pluginContribBox.mcpServers) {
-    try {
-      mcpConnections.push(await connectAndRegister(toolRegistry, cfg));
-    } catch (e) {
-      console.error(`[mcp] 插件 server "${cfg.name}" 连接失败（跳过）:`, e instanceof Error ? e.message : e);
+  await connectPluginMcpServers();
+
+  /**
+   * T-P3-148 热加载（走查反馈：插件必须实际生效）：重读 settings → diff
+   * 重装载——旧插件工具注销（B16 快照纪律保证在途 step 不受影响）+ 句柄
+   * dispose + 插件 MCP 断开 → 按最新清单重装载 → 贡献盒回填 → 重发 ready
+   * （工具/技能/命令清单一次刷新，bridge agentCapabilities 覆盖）。
+   * settingsPath 缺席（无 --settings 的最小装配）= 无重载面。
+   */
+  const reloadPluginsNow = async (): Promise<void> => {
+    if (options.settingsPath === undefined) {
+      send({ type: "error", code: "PLUGIN_RELOAD_UNAVAILABLE", message: "子进程无 settings 路径，插件热加载不可用" });
+      return;
     }
-  }
+    // 旧面收束：旧一轮注册的工具名注销（dispose 后 handle.tools 清空，
+    // 名单须在 dispose 前取——loadConfiguredPlugins 回传 registeredToolNames）
+    for (const toolName of pluginLoad.contributions.registeredToolNames) {
+      toolRegistry.unregisterTool(toolName);
+    }
+    await pluginLoad.disposeAll();
+    for (const conn of pluginMcpConnections.splice(0)) {
+      try {
+        conn.client.dispose();
+      } catch {
+        // 断连失败不阻断重装载
+      }
+    }
+    // 最新清单重装载（settings 插件独立生命周期——动态插件句柄不动）
+    const { settings: fresh } = await loadSettings(options.settingsPath);
+    const entries = (fresh.plugins ?? []).filter((p) => p.enabled !== false);
+    pluginLoad = await loadConfiguredPlugins(toolRegistry, entries, {
+      ...(options.logger ? { logger: options.logger } : {}),
+    });
+    applyPluginLoad();
+    await connectPluginMcpServers();
+    options.logger?.info(
+      `[plugins] 热重载完成：${String(entries.length)} 条目 / 工具 ${String(toolRegistry.names().filter((n) => n.includes("__")).length)} 个`,
+    );
+  };
   const decideTurnBase: AgentLoopDeps["decideTurn"] = (record) =>
     record.toolCalls.length > 0 ? { action: "continue" } : { action: "end" };
   // T-P3-145 G：装配裁决包装器构造一次（有状态闭包——见 decideTurn 处注释）
@@ -1296,6 +1349,25 @@ export async function runAgentChildStdio(
         }
         return;
       }
+      case "plugins/reload": {
+        // T-P3-148 热加载：diff 重装载插件（工具注销/重注册 + 贡献盒回填 +
+        // 插件 MCP 重连）→ 重发 ready（工具/技能/命令清单一次刷新）。在途
+        // turn 不受影响（B16 执行策略快照纪律）。异步处理——错误走 error 行。
+        void (async () => {
+          try {
+            await reloadPluginsNow();
+            await sendReady();
+            send({ type: "config_refreshed", applied: ["plugins"] });
+          } catch (e) {
+            send({
+              type: "error",
+              code: "PLUGIN_RELOAD_FAILED",
+              message: e instanceof Error ? e.message : String(e),
+            });
+          }
+        })();
+        return;
+      }
       case "policy/check": {
         // C19/T-P1-75：策略 dry-run——同链求值零执行（evaluateToolPolicy
         // 与 gate 层共用；assembly 未装配 = 无链可跑，类型化拒绝）。裁决
@@ -1452,71 +1524,79 @@ export async function runAgentChildStdio(
 
   // T-P3-146：ready 前装配提示词模板目录（文件模板 + 内置 + MCP prompts——
   // / 补全与设置页只读区的共用数据面；loader 缺席 = 目录缺席零变化）。
-  const readyPromptCatalog = options.promptContext
-    ? await (async () => {
-        try {
-          const ctx = await options.promptContext!();
-          // T-P3-148 B：插件贡献命令并入 ready 目录（重名弃用——同 promptContext）
-          if (pluginContribBox.commands.length > 0) {
-            const baseNames = new Set(ctx.templates.map((t) => t.name));
-            ctx.templates = [
-              ...ctx.templates,
-              ...pluginContribBox.commands.filter((c) => !baseNames.has(c.name) && (baseNames.add(c.name), true)),
-            ];
+  /**
+   * ready 消息构造（T-P3-148 热加载抽出——启动与 plugins/reload 共用：
+   * 工具/技能/命令清单全部现扫，重发即刷新端面补全清单）。
+   */
+  const sendReady = async (): Promise<void> => {
+    const readyPromptCatalog = options.promptContext
+      ? await (async () => {
+          try {
+            const ctx = await options.promptContext!();
+            // T-P3-148 B：插件贡献命令并入 ready 目录（重名弃用——同 promptContext）
+            if (pluginContribBox.commands.length > 0) {
+              const baseNames = new Set(ctx.templates.map((t) => t.name));
+              ctx.templates = [
+                ...ctx.templates,
+                ...pluginContribBox.commands.filter((c) => !baseNames.has(c.name) && (baseNames.add(c.name), true)),
+              ];
+            }
+            const classify = ctx.classify ?? (() => "extra" as const);
+            const files = ctx.templates.map((t) => ({
+              name: t.name,
+              ...(t.description !== undefined ? { description: t.description } : {}),
+              ...(t.argumentHint !== undefined ? { argumentHint: t.argumentHint } : {}),
+              source: classify(t.origin),
+            }));
+            const builtins = BUILTIN_PROMPT_TEMPLATES.map((t) => ({
+              name: t.name,
+              description: t.description,
+              ...(t.argumentHint !== undefined ? { argumentHint: t.argumentHint } : {}),
+              source: "builtin" as const,
+            }));
+            const allConnections = [...mcpConnections, ...pluginMcpConnections];
+            const mcpPrompts = allConnections.flatMap((c) =>
+              c.prompts.map((p) => ({
+                name: `${c.client.name}:${p.name}`,
+                ...(p.description !== undefined ? { description: p.description } : {}),
+                source: "mcp" as const,
+              })),
+            );
+            return [...files, ...builtins, ...mcpPrompts];
+          } catch {
+            return undefined; // 目录装配失败 = 无目录面（never-fail，不炸启动）
           }
-          const classify = ctx.classify ?? (() => "extra" as const);
-          const files = ctx.templates.map((t) => ({
-            name: t.name,
-            ...(t.description !== undefined ? { description: t.description } : {}),
-            ...(t.argumentHint !== undefined ? { argumentHint: t.argumentHint } : {}),
-            source: classify(t.origin),
-          }));
-          const builtins = BUILTIN_PROMPT_TEMPLATES.map((t) => ({
-            name: t.name,
-            description: t.description,
-            ...(t.argumentHint !== undefined ? { argumentHint: t.argumentHint } : {}),
-            source: "builtin" as const,
-          }));
-          const mcpPrompts = mcpConnections.flatMap((c) =>
-            c.prompts.map((p) => ({
-              name: `${c.client.name}:${p.name}`,
-              ...(p.description !== undefined ? { description: p.description } : {}),
-              source: "mcp" as const,
+        })()
+      : undefined;
+    send({
+      type: "ready",
+      // U10/T-P3-109：注册表工具名 + I2 技能清单（/ 补全的清单来源——
+      // registry 所有者是子进程；此扫描与首落系统提示的 loadSkills 重复一次，
+      // 目录级成本记档）。assembly 缺席（最小装配）= 只报工具名单。
+      tools: toolRegistry.names(),
+      ...(options.assembly
+        ? {
+            skills: loadSkillsFromRoots(
+              options.assembly.workspaceRoot ?? process.cwd(),
+              options.assembly.skillsRoots,
+              options.assembly.skillsDisabled !== undefined || pluginContribBox.skillDirs.length > 0
+                ? {
+                    ...(options.assembly.skillsDisabled !== undefined
+                      ? { disabled: options.assembly.skillsDisabled }
+                      : {}),
+                    ...(pluginContribBox.skillDirs.length > 0 ? { extraDirs: pluginContribBox.skillDirs } : {}),
+                  }
+                : undefined,
+            ).skills.map((s) => ({
+              name: s.name,
+              description: s.description,
             })),
-          );
-          return [...files, ...builtins, ...mcpPrompts];
-        } catch {
-          return undefined; // 目录装配失败 = 无目录面（never-fail，不炸启动）
-        }
-      })()
-    : undefined;
-  send({
-    type: "ready",
-    // U10/T-P3-109：注册表工具名 + I2 技能清单（/ 补全的清单来源——
-    // registry 所有者是子进程；此扫描与首落系统提示的 loadSkills 重复一次，
-    // 目录级成本记档）。assembly 缺席（最小装配）= 只报工具名单。
-    tools: toolRegistry.names(),
-    ...(options.assembly
-      ? {
-          skills: loadSkillsFromRoots(
-            options.assembly.workspaceRoot ?? process.cwd(),
-            options.assembly.skillsRoots,
-            options.assembly.skillsDisabled !== undefined || pluginContribBox.skillDirs.length > 0
-              ? {
-                  ...(options.assembly.skillsDisabled !== undefined
-                    ? { disabled: options.assembly.skillsDisabled }
-                    : {}),
-                  ...(pluginContribBox.skillDirs.length > 0 ? { extraDirs: pluginContribBox.skillDirs } : {}),
-                }
-              : undefined,
-          ).skills.map((s) => ({
-            name: s.name,
-            description: s.description,
-          })),
-        }
-      : {}),
-    ...(readyPromptCatalog !== undefined ? { prompts: readyPromptCatalog } : {}),
-  });
+          }
+        : {}),
+      ...(readyPromptCatalog !== undefined ? { prompts: readyPromptCatalog } : {}),
+    });
+  };
+  await sendReady();
   const rl = createInterface({ input, crlfDelay: Infinity });
   const closed = new Promise<void>((resolve) => rl.on("close", resolve));
   rl.on("line", (line: string) => {

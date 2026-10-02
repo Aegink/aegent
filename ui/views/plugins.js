@@ -17,7 +17,7 @@
  * 三档（hooks=高 / MCP·工具=中 / 其余=低）+ untrusted 警示。
  */
 
-import { sendSettings } from "../api.js";
+import { sendSettings, invalidateMetaCache } from "../api.js";
 import { settingsCache, setSettingsCache } from "../state.js";
 import { toast } from "../feedback.js";
 import { t } from "../i18n.js";
@@ -153,8 +153,10 @@ async function refreshPluginsList() {
   }
 }
 
-/** host 直接落盘（市场安装/卸载）后的 settingsCache 重拉——防旧快照写回。 */
+/** host 直接落盘（市场安装/卸载）后的 settingsCache 重拉——防旧快照写回；
+ * meta 缓存同步失效（热加载后 / 补全的工具/命令清单须重拉）。 */
 async function resyncSettingsCache() {
+  invalidateMetaCache();
   const envelope = await sendSettings({ op: "get" });
   if (envelope.ok) setSettingsCache(envelope.result.settings);
 }
@@ -163,6 +165,7 @@ function writePlugins(defs) {
   settingsCache.plugins = defs;
   dirtySections.add("plugins");
   markDirty("plugins");
+  invalidateMetaCache(); // 热加载改了工具/命令清单——补全数据源重拉
 }
 
 async function setEnabled(p, checked) {
@@ -416,7 +419,8 @@ function openDetail(p, focusSettings = false) {
         typeof item === "string" ? item : (item.name ?? item.id ?? item.serverName ?? "");
       const nameEl = document.createElement("div");
       nameEl.className = "row-title";
-      nameEl.textContent = section.key === "commands" || section.key === "skills" ? `${p.name}/${name}` : name;
+      // 命令=短名调用语义（/hi）；技能名已带 `<插件>/` 命名空间（扫描层拼装）
+      nameEl.textContent = section.key === "commands" ? name : section.key === "skills" ? `${p.name}/${name}` : name;
       const desc = section.descOf(item);
       const copy = document.createElement("div");
       copy.className = "row-copy";
@@ -514,7 +518,7 @@ function openDetail(p, focusSettings = false) {
         d.name === p.name ? { ...d, options: next } : d,
       );
       writePlugins(defs);
-      toast(`插件「${p.name}」设置已保存（新会话生效）`, "info");
+      toast(`插件「${p.name}」设置已保存并热生效`, "info");
       void refreshPluginsList();
     });
     sec.appendChild(saveBtn);
@@ -611,7 +615,8 @@ function openApprovalDialog({ name, check, transport, onConfirm }) {
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.id = "plugin-allowtools";
-    line.append(cb, document.createTextNode(" 登记其工具（不受信来源默认 deny——显式放行才登记；执行照常走会话审批）"));
+    cb.checked = true; // 审批即授权面：默认放行工具登记（pi-desktop 授权语义——插件必须实际生效）
+    line.append(cb, document.createTextNode(" 登记其工具（默认勾选；执行照常走会话审批——随时可停用插件）"));
     body.appendChild(line);
   }
   openDialog({
@@ -633,7 +638,7 @@ function openApprovalDialog({ name, check, transport, onConfirm }) {
   });
 }
 
-function openPluginInstallDialog() {
+function openPluginInstallDialog(prefill) {
   const holder = document.createElement("div");
   holder.innerHTML = `
   <form id="plugin-form">
@@ -649,6 +654,9 @@ function openPluginInstallDialog() {
     </div>
   </form>`;
   const form = holder.firstElementChild;
+  // 统一安装入口（用户反馈②）：右上角按钮 / 更多菜单 / 创建 tab 共用本对话框
+  if (prefill?.name !== undefined) form.querySelector("#plugin-name").value = prefill.name;
+  if (prefill?.source !== undefined) form.querySelector("#plugin-source").value = prefill.source;
   openDialog({
     title: "安装插件（先校验后审批）",
     description: "进程内 = 本地目录（plugin.json + index.js，安装前拉真实清单审批）；ws = 进程外不可信隔离（I4）。",
@@ -716,7 +724,7 @@ async function commitInstall(name, source, transport, allowTools) {
     ...(allowTools ? { allowTools: true } : {}),
   });
   writePlugins(defs);
-  toast(`插件已加入装载清单：${name}（新会话生效）`, "info");
+  toast(`插件「${name}」已安装并热生效（工具/命令立即可用）`, "info");
   switchTab("installed");
   await flushSettings(); // 先落盘再刷清单（plugins-list 读盘——防抖竞态）
   void refreshPluginsList();
@@ -742,17 +750,10 @@ export async function render(container, route) {
     searchQuery = ev.target.value;
     void refreshPluginsList();
   });
-  // 创建 tab 的"去安装"事件 → 审批链（生成不自动装载——同链审查）
+  // 创建 tab 的"前往安装"→ 统一安装对话框（预填生成结果——用户反馈②：
+  // 全应用只有一条安装链入口），不自动装载
   document.getElementById("plugin-tab-create")?.addEventListener("plugin-create:install", (ev) => {
-    const { name, dir } = ev.detail;
-    void (async () => {
-      const envelope = await sendSettings({ op: "plugin-check", dir });
-      if (!envelope.ok || envelope.result.ok !== true) {
-        toast(`校验失败：${envelope.ok ? envelope.result.error ?? "" : envelope.error?.message ?? ""}`, "error");
-        return;
-      }
-      openApprovalDialog({ name, check: envelope.result, transport: "inprocess", onConfirm: ({ allowTools }) => commitInstall(name, dir, "inprocess", allowTools === true) });
-    })();
+    openPluginInstallDialog({ name: ev.detail.name, source: ev.detail.dir });
   });
   // 市场安装成功 → 已装清单刷新
   document.getElementById("plugin-tab-market")?.addEventListener("market:installed", () => {
@@ -760,9 +761,11 @@ export async function render(container, route) {
       dirtySections.delete("plugins"); // host 落盘了 plugins 条目——弃 UI 旧快照
       await resyncSettingsCache();
       void refreshPluginsList();
+      // 市场卡片三态刷新（已安装/更新——用户反馈③）
+      if (activeTab === "market") await refreshSources(document.getElementById("plugin-tab-market"));
     })();
   });
-  bindMarket(document.getElementById("plugin-tab-market"));
+  bindMarket(document.getElementById("plugin-tab-market"), () => listCache);
   bindCreate(document.getElementById("plugin-tab-create"));
   renderTabs();
   switchTab(activeTab);

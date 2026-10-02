@@ -49,6 +49,12 @@ export class PluginSdkError extends Error {
 export interface PluginToolDef {
     /** 工具名（登记表内唯一，`<插件名>:<工具名>` 冲突面由装配决定）。 */
     readonly name: string;
+    /**
+     * 工具描述（T-P3-148 走查实录：插件工具无法写宿主 descriptions/ 目录，
+     * 走 ToolDef.descriptionText 内联通道——缺省给兜底文案，不再报
+     * MODEL_UNKNOWN_ERROR 缺描述文件）。
+     */
+    readonly description?: string;
     /** JSON Schema 形状的参数描述（原样透传，缺省空 object schema）。 */
     readonly parameters?: JsonValue;
     /** 执行体：只收参数，不收执行上下文（无内核句柄）。 */

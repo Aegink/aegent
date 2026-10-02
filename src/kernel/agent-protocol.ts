@@ -127,6 +127,13 @@ export type AgentRequest =
       patch: JsonRecord;
     }
   | {
+      /** T-P3-148 热加载：host 在 settings plugins 段落盘（安装/启停/卸载/
+       * 市场装卸）后主动通知子进程 diff 重装载插件——工具注销/重注册、
+       * 贡献盒回填、MCP 连接重连，完成后重发 ready（工具/技能/命令清单
+       * 一次刷新）。无载荷 fire-and-forget；失败走 error 行。 */
+      type: "plugins/reload";
+    }
+  | {
       /** C19/T-P1-75 策略 dry-run：跑完整判定链而不执行工具——裁决经
        * policy_verdict 回执返回（**不落事件流**：dry-run 不是状态变更，
        * 落流会在历史里留下从未发生过的裁决）。args 为剥提案前的原始
@@ -311,6 +318,7 @@ const REQUEST_TYPES = new Set([
   "feedback",
   "steer",
   "config/refresh",
+  "plugins/reload",
   "policy/check",
   "polish",
   "dispose",
@@ -597,6 +605,9 @@ export function decodeRequest(line: string): AgentRequest {
       throw new ProtocolError("PROTOCOL_MALFORMED", "config/refresh 需要 patch 对象");
     }
     return { type: "config/refresh", patch: patch as JsonRecord };
+  }
+  if (req.type === "plugins/reload") {
+    return { type: "plugins/reload" };
   }
   if (req.type === "policy/check") {
     // C19/T-P1-75：tool 非空 + args 必须是 JSON 对象（dry-run 输入形状；

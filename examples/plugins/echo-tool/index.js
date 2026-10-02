@@ -7,6 +7,7 @@ export default {
     const prefix = typeof caps.pluginSettings.prefix === "string" ? caps.pluginSettings.prefix : "[echo] ";
     caps.registerTool({
       name: "echo",
+      description: "回声：原样返回 args.text（示例工具）。",
       async execute(args) {
         const text = typeof args?.text === "string" ? args.text : "";
         return { content: prefix + text };

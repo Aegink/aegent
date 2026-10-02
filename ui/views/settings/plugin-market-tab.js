@@ -26,9 +26,11 @@ export const MARKET_HTML = `
 </div>
 `;
 
-export function bindMarket(host) {
+export function bindMarket(host, getInstalled) {
   host.querySelector("#market-add")?.addEventListener("click", () => openAddSourceDialog(host));
   host.querySelector("#market-updates")?.addEventListener("click", () => void checkUpdates(host));
+  // 已装状态提供器（主视图传 listCache——卡片三态判定面）
+  host.__getInstalled = getInstalled ?? (() => []);
   void refreshSources(host);
 }
 
@@ -126,6 +128,10 @@ async function showMarketPlugins(host, id) {
     return;
   }
   const plugins = envelope.result.plugins ?? [];
+  // 卡片三态判定（用户反馈③）：对照已装清单——同市场同名 = 已装；市场条目
+  // 版本高于已装 manifest.version = 有更新（semver-lite 前端比对）
+  const installed = (host.__getInstalled?.() ?? []).filter((p) => p.marketplace === id);
+  const installedByName = new Map(installed.map((p) => [p.name, p]));
   const head = document.createElement("div");
   head.className = "group-title";
   head.textContent = `市场插件（${String(plugins.length)}）`;
@@ -137,12 +143,30 @@ async function showMarketPlugins(host, id) {
   const list = document.createElement("div");
   list.className = "row-list";
   for (const p of plugins) {
-    list.appendChild(marketPluginRow(host, id, p));
+    list.appendChild(marketPluginRow(host, id, p, installedByName.get(p.name)));
   }
   area.appendChild(list);
 }
 
-function marketPluginRow(host, marketId, p) {
+function marketVersion(p) {
+  return p.versions?.find((v) => v.yanked !== true)?.version ?? p.version ?? p.manifestVersion;
+}
+
+function isNewerUiVersion(candidate, current) {
+  const parse = (v) => {
+    const m = String(v ?? "").match(/^(\d+)\.(\d+)\.(\d+)/);
+    return m === null ? null : [Number(m[1]), Number(m[2]), Number(m[3])];
+  };
+  const a = parse(candidate);
+  const b = parse(current);
+  if (a === null || b === null) return candidate !== current;
+  for (let i = 0; i < 3; i++) {
+    if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+  }
+  return false;
+}
+
+function marketPluginRow(host, marketId, p, installed) {
   const row = document.createElement("div");
   row.className = "row";
   const badge = document.createElement("span");
@@ -154,37 +178,52 @@ function marketPluginRow(host, marketId, p) {
   title.className = "row-title";
   title.textContent = p.name;
   title.appendChild(chipEl(p.source?.type === "git" ? "git 源" : "本地"));
+  const marketVer = marketVersion(p);
   if (p.manifestVersion !== undefined) title.appendChild(chipEl(`v${p.manifestVersion}`));
-  else if (p.version !== undefined) title.appendChild(chipEl(`v${p.version}`));
+  else if (marketVer !== undefined) title.appendChild(chipEl(`v${marketVer}`));
+  if (installed !== undefined) title.appendChild(chipEl("已安装"));
   const desc = document.createElement("div");
   desc.className = "row-desc clamp-2";
   desc.textContent = p.description ?? `${p.source?.url ?? p.source?.path ?? ""}`;
   copy.append(title, desc);
-  const installBtn = btnEl("安装", "btn btn-primary", "物化来源 → 校验清单 → 原子激活进装载清单");
-  installBtn.addEventListener("click", () => void installOne(host, marketId, p.name, installBtn));
-  row.append(badge, copy, Object.assign(document.createElement("div"), { className: "row-control" }));
-  row.lastChild.append(installBtn);
+  const control = Object.assign(document.createElement("div"), { className: "row-control" });
+  const installedVersion = installed?.manifest?.version;
+  const hasUpdate = installed !== undefined && marketVer !== undefined && isNewerUiVersion(marketVer, installedVersion);
+  if (installed === undefined) {
+    const installBtn = btnEl("安装", "btn btn-primary", "物化来源 → 校验清单 → 原子激活进装载清单（热生效）");
+    installBtn.addEventListener("click", () => void installOne(host, marketId, p.name, installBtn));
+    control.append(installBtn);
+  } else if (hasUpdate) {
+    const updateBtn = btnEl(`更新到 v${marketVer}`, "btn btn-primary", "重物化覆盖安装（保留启停与设置，热生效）");
+    updateBtn.addEventListener("click", () => void installOne(host, marketId, p.name, updateBtn, "更新"));
+    control.append(updateBtn);
+  } else {
+    const done = btnEl("已安装", "btn", "本市场插件已安装——启停/卸载在「已安装」tab");
+    done.disabled = true;
+    control.append(done);
+  }
+  row.append(badge, copy, control);
   return row;
 }
 
-async function installOne(host, marketId, name, btn) {
+async function installOne(host, marketId, name, btn, verb = "安装") {
   if (btn !== null) {
     btn.disabled = true;
-    btn.textContent = "安装中…（git 源需 clone）";
+    btn.textContent = verb === "更新" ? "更新中…（git 源需 clone）" : "安装中…（git 源需 clone）";
   }
   try {
     const envelope = await sendSettings({ op: "market", action: "install", marketplace: marketId, name });
     if (!envelope.ok) {
-      toast(`安装失败：${envelope.error?.message ?? ""}`, "error");
+      toast(`${verb}失败：${envelope.error?.message ?? ""}`, "error");
       return;
     }
     const r = envelope.result.installed;
-    toast(r.updated ? `插件已更新：${r.name} v${r.version}（新会话生效）` : `插件已安装：${r.name} v${r.version}（新会话生效）`, "info");
-    host.dispatchEvent(new CustomEvent("market:installed"));
+    toast(verb === "更新" ? `插件已更新：${r.name} v${r.version}（热生效）` : `插件已安装：${r.name} v${r.version}（热生效）`, "info");
+    host.dispatchEvent(new CustomEvent("market:installed", { detail: { marketplace: marketId } }));
   } finally {
     if (btn !== null) {
       btn.disabled = false;
-      btn.textContent = "安装";
+      btn.textContent = verb;
     }
   }
 }

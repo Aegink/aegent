@@ -75,9 +75,8 @@ export class HostBridge implements SessionRouter {
     })()
       .catch(() => {})
       .finally(() => {
-        // T-P3-147（走查实录）：agent 通道死亡（child 装配崩溃等）后，未决
-        // prompt/polish 若不类型化拒绝将永久挂起——UI 发送全静默（ accepted
-        // 永不回）。child 死 = 后续请求必死，全部立即回执类型化失败。
+        // T-P3-147（走查实录）：agent 通道死亡后未决 prompt/polish 不类型化
+        // 拒绝将永久挂起——child 死 = 后续请求必死，全部立即回执类型化失败。
         for (const resolve of this.pendingPrompts.values()) {
           resolve({ __bridgeError: { code: "AGENT_CHANNEL_DEAD", message: "agent 进程已退出——本请求不会被处理（查看 host 日志的装配错误）" } });
         }
@@ -291,7 +290,6 @@ export class HostBridge implements SessionRouter {
         if (call.op === "plugin-theme-css") return gateway.pluginThemeCss(call.name!);
         if (call.op === "mcp-import-scan") return gateway.mcpImportScan();
         if (call.op === "get") return { settings: await gateway.get() };
-        if (call.op === "update") return { settings: await gateway.update(call.patch ?? {}) };
         if (call.op === "credentials-set") {
           return { masked: (await gateway.credentialsSet(call.provider!, call.key!)).masked };
         }
@@ -333,7 +331,7 @@ export class HostBridge implements SessionRouter {
         if (call.op === "stt-transcribe") return gateway.sttTranscribe({ base64: call.content!, mediaType: call.mediaType! });
         if (call.op === "plugins-list") return gateway.pluginsList();
         // T-P3-148：插件/市场族 op 一行收敛（分发在 settings-plugin-ops）
-        const pluginOp = tryPluginSettingsOp(gateway, call);
+        const pluginOp = tryPluginSettingsOp(gateway, call, this.reloadNotifier());
         if (pluginOp !== undefined) return pluginOp;
         if (call.op === "provider-models" || call.op === "provider-test") {
           const payload = {
@@ -368,6 +366,8 @@ export class HostBridge implements SessionRouter {
     };
   }
 
+  // T-P3-148 热加载通知器（host 落盘插件后主动发；通道关闭静默——新会话兜底）。
+  private reloadNotifier = () => () => this.options.agent.send({ type: "plugins/reload" } as unknown as AgentRequest);
   /** surface 数量（通知广播面）。 */
   get surfaceCount(): number {
     return this.registrations.size;
@@ -389,11 +389,6 @@ export class HostBridge implements SessionRouter {
       for (const listener of this.listeners) listener(this.options.host.sessionId, event2);
     }
     // N5 分型：端面进退的分类发布
-    this.options.notifyHub?.publish("surface_changed", {
-      sessionId: this.options.host.sessionId,
-      type,
-      surfaceId,
-      ...(rest as Record<string, unknown>),
-    });
+    this.options.notifyHub?.publish("surface_changed", { sessionId: this.options.host.sessionId, type, surfaceId, ...(rest as Record<string, unknown>) });
   }
 }

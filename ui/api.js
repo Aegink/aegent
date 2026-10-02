@@ -70,6 +70,14 @@ export async function ensureMetaCache(sessionId) {
   return metaCache;
 }
 
+/**
+ * meta 缓存失效（T-P3-148 热加载——插件装载/卸载后工具/命令清单变化，
+ * / 补全的数据源须重拉；插件中心热生效路径调用）。
+ */
+export function invalidateMetaCache() {
+  metaCache = null;
+}
+
 /** host 地址：Web 模式 = 当前页面 origin（同一 host 进程）；桌面壳模式 =
  * WebView 从 tauri:// 协议加载（location.host 无意义）——直连本机 host
  * 缺省端口（server.ts --port 缺省 8787），可用 URL 参数 ?host= 覆盖。 */

@@ -60,6 +60,8 @@ export interface PluginLoadReport {
 
 /** 全部插件的贡献聚合（跨插件同名先到先得——装载序即优先序）。 */
 export interface AggregatedContributions {
+  /** 本轮实际注册进注册表的工具全名（`<插件名>__<工具名>`——热重载注销面）。 */
+  readonly registeredToolNames: readonly string[];
   readonly commands: readonly PluginCommandTemplate[];
   readonly skillDirs: readonly { readonly dir: string; readonly namePrefix: string }[];
   readonly skillNames: readonly string[];
@@ -75,7 +77,7 @@ function pluginToolName(pluginName: string, toolName: string): string {
 export function registerPluginTools(
   registry: ToolRegistry,
   pluginName: string,
-  tools: readonly { def: { name: string; parameters?: unknown; execute: (args: import("../kernel/events.js").JsonRecord) => unknown } }[],
+  tools: readonly { def: { name: string; description?: string; parameters?: unknown; execute: (args: import("../kernel/events.js").JsonRecord) => unknown } }[],
 ): number {
   let count = 0;
   for (const entry of tools) {
@@ -84,6 +86,9 @@ export function registerPluginTools(
       name: pluginToolName(pluginName, def.name),
       ...(def.parameters !== undefined ? { parameters: def.parameters as never } : {}),
       execute: (args) => def.execute(args) as never,
+      // 插件工具走内联描述（I3 descriptionText——插件写不了宿主描述目录；
+      // 缺省兜底文案防 MODEL_UNKNOWN_ERROR）
+      descriptionText: def.description ?? `${def.name}——插件 ${pluginName} 提供的工具。`,
     });
     count++;
   }
@@ -102,6 +107,7 @@ async function loadInprocess(
   skillNames: string[];
   mcpServers: PluginMcpServerEntry[];
   warnings: string[];
+  toolNames: string[];
 }> {
   const dir = entry.source;
   // V：清单位置回退链 + claude 形状兼容转换（与 gateway 安装面同一管线）
@@ -146,7 +152,10 @@ async function loadInprocess(
     const mod = (await import(pathToFileURL(entryPath).href)) as {
       default?: AegentPlugin;
     } & Partial<AegentPlugin>;
-    const plugin = mod.default ?? (mod as AegentPlugin);
+    // plugin.json 是权威清单（T-P3-148 走查实录：入口 manifest: undefined 曾
+    // 被 loadPlugin 校验拒绝——双份清单必然漂移，统一以文件为准注入）
+    const entryExport = mod.default ?? (mod as AegentPlugin);
+    const plugin: AegentPlugin = { ...(entryExport as object), manifest: rawManifest } as AegentPlugin;
     handle = await loadPlugin(plugin, {
       availableCapabilities: PLUGIN_RUNTIME_CAPABILITIES,
       // G：订阅声明白名单（未声明 = 旧语义）
@@ -168,6 +177,8 @@ async function loadInprocess(
   return {
     handle,
     toolCount,
+    /** 本插件注册的工具全名（热重载注销面——dispose 前收集）。 */
+    toolNames: shouldRegisterTools ? handle.tools.map((t) => `${manifest.name}__${t.def.name}`) : [],
     commands: [...contributions.commands],
     skillDirs: [...contributions.skillDirs],
     skillNames: [...contributions.skillNames],
@@ -190,9 +201,14 @@ export async function loadConfiguredPlugins(
   registry: ToolRegistry,
   entries: readonly PluginEntry[] | undefined,
   options?: { logger?: Logger },
-): Promise<{ reports: PluginLoadReport[]; contributions: AggregatedContributions; disposeAll: () => Promise<void> }> {
+): Promise<{
+  reports: PluginLoadReport[];
+  contributions: AggregatedContributions;
+  disposeAll: () => Promise<void>;
+}> {
   const reports: PluginLoadReport[] = [];
   const handles: { dispose: () => Promise<void> }[] = [];
+  const registeredToolNames: string[] = [];
   const commands: PluginCommandTemplate[] = [];
   const seenCommands = new Set<string>();
   const skillDirs: { dir: string; namePrefix: string }[] = [];
@@ -214,6 +230,7 @@ export async function loadConfiguredPlugins(
         });
         handles.push(handle);
         const toolCount = registerPluginTools(registry, entry.name, handle.tools);
+        for (const t of handle.tools) registeredToolNames.push(`${entry.name}__${t.def.name}`);
         reports.push({ name: entry.name, transport, ok: true, toolCount });
       } else {
         const loaded = await loadInprocess(entry, registry);
@@ -234,6 +251,7 @@ export async function loadConfiguredPlugins(
           }
         }
         mcpServers.push(...loaded.mcpServers);
+        registeredToolNames.push(...loaded.toolNames);
         reports.push({
           name: entry.name,
           transport,
@@ -250,7 +268,7 @@ export async function loadConfiguredPlugins(
   }
   return {
     reports,
-    contributions: { commands, skillDirs, skillNames, mcpServers },
+    contributions: { registeredToolNames, commands, skillDirs, skillNames, mcpServers },
     disposeAll: async () => {
       for (const handle of handles) {
         try {

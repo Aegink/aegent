@@ -126,13 +126,14 @@ function toolIndexJs(displayName: string): string {
  * 装载时宿主发一枚受限能力 token（caps）——插件拿不到内核句柄（D4 红线）。
  */
 export default {
-  manifest: undefined, // 宿主读 plugin.json——入口内不必重复
+  // 清单以 plugin.json 为权威（宿主装载时注入——入口不重复声明）
   async onActivate(caps) {
     // F：caps.pluginSettings = plugin.json contributes.settings 的合并值
     // （default + 用户在插件中心配置的值）。改这里后新会话生效。
     const prefix = typeof caps.pluginSettings.prefix === "string" ? caps.pluginSettings.prefix : "";
     caps.registerTool({
       name: "echo_text",
+      description: "回声：原样返回 args.text（插件工具描述随登记内联生效）。",
       async execute(args) {
         const text = typeof args?.text === "string" ? args.text : "";
         return { content: prefix + text };

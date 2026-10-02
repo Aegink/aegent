@@ -33,7 +33,7 @@ function manifest(name: string, contributes: Record<string, unknown>): PluginMan
 }
 
 describe("resolvePluginContributions", () => {
-  it("命令 template 内联形式：名字空间 + 占位符推导 + filePath 兜底 plugin.json", () => {
+  it("命令 template 内联形式：短名 + 占位符推导 + filePath 兜底 plugin.json", () => {
     const dir = makePluginDir();
     const r = resolvePluginContributions(
       manifest("demo", { commands: [{ name: "deploy", template: "部署到 $1", argumentHint: "<env>" }] }),
@@ -41,7 +41,7 @@ describe("resolvePluginContributions", () => {
       {},
     );
     expect(r.commands).toHaveLength(1);
-    expect(r.commands[0]!.name).toBe("demo/deploy");
+    expect(r.commands[0]!.name).toBe("deploy"); // 短名语义（T-P3-148 反馈④）
     expect(r.commands[0]!.content).toBe("部署到 $1");
     expect(r.commands[0]!.argumentHint).toBe("<env>");
     expect(r.commands[0]!.placeholders).toEqual(["$1"]);
@@ -63,7 +63,7 @@ describe("resolvePluginContributions", () => {
       {},
     );
     expect(r.commands).toHaveLength(1);
-    expect(r.commands[0]!.name).toBe("demo/greet");
+    expect(r.commands[0]!.name).toBe("greet");
     expect(r.commands[0]!.description).toBe("问候");
     expect(r.commands[0]!.content).toBe("你好 $1");
   });

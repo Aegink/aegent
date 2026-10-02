@@ -46,6 +46,7 @@ const NAV_GROUPS = [
       ["subagents", "子智能体"],
       ["prompts", "提示词模板"],
       ["enhancement", "辅助模型"],
+      ["plugins", "插件"],
       ["speech", "语音【实验性】"],
     ],
   },
@@ -145,7 +146,14 @@ function bindShell() {
   });
   // 二级分类导航（单分节页面切换 + hash 同步——视图内导航不触发路由重挂载）
   for (const btn of document.querySelectorAll("#settings-panel .settings-nav .nav-item")) {
-    btn.addEventListener("click", () => navigateToSection(btn.dataset.nav));
+    btn.addEventListener("click", () => {
+      // T-P3-148：插件入口在设置页——点击跳插件中心独立页（内容承载在独立视图）
+      if (btn.dataset.nav === "plugins") {
+        go("plugins");
+        return;
+      }
+      navigateToSection(btn.dataset.nav);
+    });
   }
 }
 

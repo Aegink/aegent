@@ -408,6 +408,8 @@ async function main(): Promise<void> {
   const options: AgentChildOptions = {
     ...(cli.rawLogDir ? { rawLogDir: cli.rawLogDir } : {}),
     sessionId,
+    // T-P3-148 热加载：settings 路径透传（plugins/reload 现读最新清单）
+    ...(cli.settingsPath ? { settingsPath: cli.settingsPath } : {}),
     // U17：mcp enabled 条目 → ready 前连接注册（never-fail 装配）
     ...(settingsFile.mcp?.some((s) => s.enabled !== false)
       ? { mcpServers: settingsFile.mcp.filter((s) => s.enabled !== false) }

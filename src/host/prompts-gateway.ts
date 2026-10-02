@@ -24,7 +24,16 @@ import {
   USER_PROMPTS_DIR,
   PROMPT_BODY_MAX_BYTES,
 } from "../kernel/prompts.js";
+import { validateManifest } from "../kernel/plugin-manifest.js";
+import { coerceSettingValues } from "../kernel/plugin-manifest-contributes.js";
+import { resolvePluginContributions } from "../kernel/plugin-contributions.js";
+import { readFileSync } from "node:fs";
+import { PLUGIN_AVAILABLE_CAPABILITIES } from "./plugins-gateway.js";
 import type { SettingsShape } from "../session/settings.js";
+
+function readPluginJson(dir: string): string {
+  return readFileSync(path.join(dir, "plugin.json"), "utf8");
+}
 
 /** 旧内联库迁移标记文件名（用户级模板根下）。 */
 const MIGRATION_MARKER = ".migrated-from-settings.json";
@@ -126,8 +135,53 @@ export async function listPrompts(
   const migratedFromSettings = await migrateSettingsPrompts(settings, userRoot);
   const scanned = loadPromptTemplatesFromRoots(all);
   const off = new Set(config.disabled.map((d) => d.toLowerCase()));
+  // T-P3-148 B：插件贡献命令并入清单（补全面板/未知命令拦截/展开同一数据源
+  // ——装载侧 promptContext 合并的镜像）。逐插件校验+贡献解析（现读——热
+  // 加载后下一次清单即新）；失败插件跳过（never-fail）。
+  const pluginPromptItems: {
+    name: string;
+    description?: string;
+    argumentHint?: string;
+    agent?: string;
+    model?: string;
+    content: string;
+    filePath: string;
+    origin: string;
+    source: "project" | "user" | "extra" | "builtin";
+    disabled?: boolean;
+  }[] = [];
+  for (const entry of settings.plugins ?? []) {
+    if (entry.enabled === false || (entry.transport ?? "inprocess") !== "inprocess") continue;
+    try {
+      const raw = JSON.parse(readPluginJson(entry.source));
+      const manifestResult = validateManifest(raw, PLUGIN_AVAILABLE_CAPABILITIES);
+      if (!manifestResult.ok) continue;
+      const { merged: settingsValues } = coerceSettingValues(
+        manifestResult.manifest.contributes?.settings,
+        entry.options,
+      );
+      const resolved = resolvePluginContributions(manifestResult.manifest, entry.source, settingsValues);
+      for (const cmd of resolved.commands) {
+        if (off.has(cmd.name.toLowerCase())) continue;
+        pluginPromptItems.push({
+          name: cmd.name,
+          ...(cmd.description !== undefined ? { description: cmd.description } : {}),
+          ...(cmd.argumentHint !== undefined ? { argumentHint: cmd.argumentHint } : {}),
+          ...(cmd.agent !== undefined ? { agent: cmd.agent } : {}),
+          ...(cmd.model !== undefined ? { model: cmd.model } : {}),
+          content: cmd.content,
+          filePath: cmd.filePath,
+          origin: cmd.origin,
+          source: "extra" as const,
+        });
+      }
+    } catch {
+      // 清单坏/读失败——跳过该插件（诊断在插件中心可见）
+    }
+  }
   return {
-    prompts: scanned.templates.map((t) => ({
+    prompts: [
+      ...scanned.templates.map((t) => ({
       name: t.name,
       ...(t.description !== undefined ? { description: t.description } : {}),
       ...(t.argumentHint !== undefined ? { argumentHint: t.argumentHint } : {}),
@@ -143,7 +197,9 @@ export async function listPrompts(
             ? ("user" as const)
             : ("extra" as const),
       ...(off.has(t.name.toLowerCase()) ? { disabled: true } : {}),
-    })),
+      })),
+      ...pluginPromptItems,
+    ],
     diagnostics: scanned.diagnostics,
     roots: scanned.roots,
     disabled: config.disabled,

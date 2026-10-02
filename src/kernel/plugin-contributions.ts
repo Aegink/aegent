@@ -77,8 +77,10 @@ function resolveCommand(
   out: { commands: PluginCommandTemplate[]; diagnostics: ContributionDiagnostic[] },
 ): void {
   const slug = entry.name ?? (entry.file !== undefined ? path.basename(entry.file).replace(/\.md$/, "") : "");
-  const name = `${pluginName}/${slug}`;
-  if (validatePromptName(name) !== undefined) {
+  // 斜杠调用名 = 短名（用户输入 /hi 而非 /插件名/hi——zcode/claude 语义；
+  // 跨源冲突由装载聚合的首到先得+弃用诊断处理，命名空间不进调用名）
+  const name = slug;
+  if (validatePromptName(name) !== undefined || name.includes("/")) {
     out.diagnostics.push({ code: "bad_name", message: `命令名不合模板名规则：${name}` });
     return;
   }

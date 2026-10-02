@@ -148,7 +148,11 @@ import type { SettingsCall } from "./protocol-settings.js";
  * bridge 的插件/市场族 op 分发（一行收敛面）：命中返回 Promise 结果，
  * 未命中返回 undefined（回落 gateway 既有链）。载荷按 op 闭集取值。
  */
-export function tryPluginSettingsOp(gateway: SettingsGateway, call: SettingsCall): Promise<unknown> | undefined {
+export function tryPluginSettingsOp(
+  gateway: SettingsGateway,
+  call: SettingsCall,
+  onPluginsMutated?: () => void,
+): Promise<unknown> | undefined {
   switch (call.op) {
     case "plugin-check":
       return gateway.pluginCheck(call.dir!);
@@ -164,12 +168,24 @@ export function tryPluginSettingsOp(gateway: SettingsGateway, call: SettingsCall
     case "plugin-pack":
       return gateway.pluginPack(call.dir!);
     case "market":
-      return gateway.marketOp({
-        action: call.action!,
-        ...(call.source !== undefined ? { source: call.source } : {}),
-        ...(call.name !== undefined ? { name: call.name } : {}),
-        ...(call.marketplace !== undefined ? { marketplace: call.marketplace } : {}),
-      });
+      return (async () => {
+        const result = await gateway.marketOp({
+          action: call.action!,
+          ...(call.source !== undefined ? { source: call.source } : {}),
+          ...(call.name !== undefined ? { name: call.name } : {}),
+          ...(call.marketplace !== undefined ? { marketplace: call.marketplace } : {}),
+        });
+        // T-P3-148 热加载：市场装/卸也是 host 落盘——同通道热重载子进程
+        if (call.action === "install" || call.action === "uninstall") onPluginsMutated?.();
+        return result;
+      })();
+    case "update":
+      // settings 段级更新——plugins 段落盘即热重载（安装/启停/移除共用通道）
+      return (async () => {
+        const settings = await gateway.update(call.patch ?? {});
+        if (call.patch !== undefined && "plugins" in call.patch) onPluginsMutated?.();
+        return { settings };
+      })();
     default:
       return undefined;
   }
