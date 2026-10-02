@@ -1082,6 +1082,17 @@ input.addEventListener("keydown", (ev) => {
   }
   // Shift+Enter = textarea 原生换行；输入变化经 input 监听刷新补全
 });
+// —— T-P3-150 C7 添加到聊天：项目页文件树 → mention 注入输入框（zcode
+//    CustomEvent 协议同构面——跨视图唯一通道，插入不自动发送）
+window.addEventListener("projects:add-to-chat", (ev) => {
+  const mention = ev.detail?.mention;
+  if (typeof mention !== "string" || mention === "") return;
+  const existing = input.value;
+  input.value = existing === "" ? `${mention} ` : `${existing.replace(/\s+$/, "")} ${mention} `;
+  autoGrow();
+  input.focus();
+});
+
 input.addEventListener("input", () => void updateAutocomplete());
 
 // —— U26/T-P3-129 + T-P3-149 语音输入：录音三态机（计时/电平条/上限自动

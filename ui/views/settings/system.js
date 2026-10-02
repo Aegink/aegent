@@ -34,17 +34,15 @@ import {
   rowControl,
   btnEl,
   emptyState,
-  chipEl,
 } from "./core.js";
 
 export const SECTIONS_HTML = `
 <section data-section="projects">
   <div class="section-head">
     <h2 class="section-title">项目</h2>
-    <button id="project-add" type="button" class="btn btn-primary">新建项目</button>
+    <a class="btn btn-primary" href="#projects">前往项目中心</a>
   </div>
-  <div id="project-list" class="row-list"></div>
-  <p class="hint">设为活动 = 新会话以该项目 workspace 启动（当前会话不受影响）。</p>
+  <p class="hint">项目域已升级为独立页面（工作区/任务/文件树/添加三模式）——点上方按钮直达，或侧栏「项目」。</p>
 </section>
 <section data-section="instructions">
   <div class="section-head"><h2 class="section-title">指令中心</h2></div>
@@ -138,105 +136,8 @@ export const SECTIONS_HTML = `
 `;
 
 // ---------------------------------------------------------------------------
-// U11/T-P3-110 项目页：项目档 CRUD（projects 段整体替换）+ 设为活动
-// ---------------------------------------------------------------------------
-
-function renderProjectList() {
-  const list = document.getElementById("project-list");
-  if (list === null) return;
-  list.replaceChildren();
-  const projects = settingsCache?.projects ?? [];
-  if (projects.length === 0) {
-    list.appendChild(emptyState("无项目", "点右上「新建项目」建档——设为活动后新会话以该项目 workspace 启动"));
-    return;
-  }
-  for (const p of projects) {
-    const row = rowEl();
-    const isActive = settingsCache?.activeProject === p.name;
-    const titleEl = document.createElement("div");
-    titleEl.className = "row-title";
-    titleEl.textContent = p.name;
-    if (isActive) titleEl.appendChild(chipEl("活动", true));
-    const descEl = document.createElement("div");
-    descEl.className = "row-desc mono";
-    descEl.textContent = `${p.workspace}${p.instructions ? "（含指令）" : ""}`;
-    const activateBtn = btnEl(isActive ? "★ 活动" : "设为活动", isActive ? "btn active-mark" : "btn", "新会话以该项目 workspace 启动");
-    activateBtn.addEventListener("click", () => {
-      settingsCache.activeProject = p.name;
-      dirtySections.add("activeProject");
-      renderProjectList();
-      markDirty("activeProject");
-    });
-    const editBtn = btnEl("编辑", "btn");
-    editBtn.addEventListener("click", () => openProjectDialog(p));
-    const delBtn = btnEl("删除", "btn btn-danger");
-    delBtn.addEventListener("click", async () => {
-      if (!(await confirmDialog(`删除项目「${p.name}」？项目档与指令内容将一并移除。`, { title: "删除项目", confirmLabel: "删除", danger: true }))) return;
-      settingsCache.projects = settingsCache.projects.filter((x) => x.name !== p.name);
-      if (settingsCache.activeProject === p.name) settingsCache.activeProject = undefined;
-      dirtySections.add("projects");
-      dirtySections.add("activeProject");
-      renderProjectList();
-      markDirty("projects");
-      markDirty("activeProject");
-    });
-    row.append(rowCopyEl(titleEl, descEl), rowControl(activateBtn, editBtn, delBtn));
-    list.appendChild(row);
-    titleEl.style.cursor = "pointer";
-    titleEl.title = "点击编辑该项目";
-    titleEl.addEventListener("click", () => openProjectDialog(p));
-  }
-}
-
-let editingProjectName = null;
-
-function openProjectDialog(p) {
-  editingProjectName = p?.name ?? null;
-  const holder = document.createElement("div");
-  holder.innerHTML = `
-  <form id="project-form">
-    <div class="form-grid">
-      <label>项目名<input id="project-name" class="input" type="text" placeholder="项目名" autocomplete="off" /></label>
-      <label>workspace 目录<input id="project-workspace" class="input" type="text" placeholder="workspace 目录" autocomplete="off" /></label>
-    </div>
-    <label class="dialog-field">项目级指令（可选）
-      <textarea id="project-instructions" class="textarea" rows="3" placeholder="追加进该项目会话的指令（F2 收集链）"></textarea>
-    </label>
-  </form>`;
-  const form = holder.firstElementChild;
-  if (p !== undefined) {
-    form.querySelector("#project-name").value = p.name;
-    form.querySelector("#project-workspace").value = p.workspace;
-    form.querySelector("#project-instructions").value = p.instructions ?? "";
-  }
-  openDialog({
-    title: p !== undefined ? `编辑项目：${p.name}` : "新建项目",
-    description: "设为活动后，新会话以该项目 workspace 启动（当前会话不受影响）。",
-    width: "md",
-    body: form,
-    actions: [
-      { label: "取消", className: "btn btn-ghost" },
-      { label: "保存", className: "btn btn-primary", onClick: () => saveProjectFromDialog() },
-    ],
-  });
-}
-
-function saveProjectFromDialog() {
-  const name = document.getElementById("project-name").value.trim();
-  const workspace = document.getElementById("project-workspace").value.trim();
-  const instructions = document.getElementById("project-instructions").value.trim();
-  if (name === "" || workspace === "") {
-    toast("项目名与 workspace 必填", "warn");
-    return;
-  }
-  const entry = { name, workspace, ...(instructions !== "" ? { instructions } : {}) };
-  const rest = (settingsCache.projects ?? []).filter((p2) => p2.name !== name && p2.name !== editingProjectName);
-  settingsCache.projects = [...rest, entry];
-  editingProjectName = null;
-  renderProjectList();
-  markDirty("projects");
-  toast(`项目已保存：${name}`, "info");
-}
+// T-P3-150 D1：项目 CRUD 迁独立页 views/projects.js（工作区/任务/文件树/
+// 添加三模式）——本分节只留跳转卡；项目指令仍走下方指令中心（instr-project）。
 
 // ---------------------------------------------------------------------------
 // U24/T-P3-127 指令中心：全局/项目 AGENTS.md + 用户规则文件（C22 project/
@@ -509,8 +410,6 @@ export async function applyDeepLink(encodedData) {
 // ---------------------------------------------------------------------------
 
 export function bind() {
-  document.getElementById("project-add").addEventListener("click", () => openProjectDialog(undefined));
-
   for (const btn of document.querySelectorAll(".instr-save")) {
     btn.addEventListener("click", async () => {
       const target = btn.dataset.target;
@@ -625,7 +524,6 @@ export function bind() {
 
 export function fill() {
   document.getElementById("logging-rawdir").value = settingsCache?.logging?.rawLogDir ?? "";
-  renderProjectList();
   renderShortcutList();
 }
 

@@ -42,6 +42,7 @@ import { parseHostServerArgv, type HostServerArgv } from "./argv.js";
 import { NotificationHub } from "./notify.js";
 import { HostRegistry } from "./registry.js";
 import { createTitleService } from "./title-service.js";
+import { makeProjectAttacher } from "./settings-project-ops.js";
 
 
 export interface HostServerOptions {
@@ -128,8 +129,16 @@ export class HostServer {
     });
     // 会话流镜像（host 视角的读面）：非 roster 事件同步 append——
     // SessionStore.append 同步纪律（write-behind 持久化在 storage 端）。
+    // T-P3-150 B1：首条用户话语按当时 activeProject 自动归属任务
+    // （归属面在 settings-project-ops.makeProjectAttacher——幂等+静默）。
+    const projectAttacher = makeProjectAttacher(
+      sessionId,
+      this.options.storage instanceof SqliteEventStorage ? this.options.storage : undefined,
+      this.options.settingsGateway,
+    );
     bridge.onEvent((_sid, event) => {
       if (event.type === "surface/attach" || event.type === "surface/detach") return;
+      projectAttacher(event.type);
       try {
         store.append(sessionId, [event as never]);
       } catch (e) {

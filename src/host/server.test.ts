@@ -405,20 +405,22 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
     const projUpdate = await settingsCall({
       op: "update",
       patch: {
-        projects: [{ name: "p1", workspace: path.join(tmp, "p1-ws"), instructions: "遵守 AGENTS.md" }],
+        projects: [{ name: "p1", folders: [path.join(tmp, "p1-ws")], instructions: "遵守 AGENTS.md" }],
         activeProject: "p1",
       },
     });
     expect(projUpdate.ok).toBe(true);
     const projMerged = (
       projUpdate.result as {
-        settings: { projects?: { name: string; workspace: string }[]; activeProject?: string };
+        settings: { projects?: { name: string; folders?: string[] }[]; activeProject?: string };
       }
     ).settings;
     expect(projMerged.projects?.[0]?.name).toBe("p1");
     expect(projMerged.activeProject).toBe("p1");
     const reloaded = await loadSettings(settingsPath);
-    expect(reloaded.settings.projects?.[0]?.workspace).toBe(path.join(tmp, "p1-ws"));
+    // T-P3-150 A1：旧单 workspace 形状读取面归一为 folders[0]（零迁移写回）
+    expect(reloaded.settings.projects?.[0]?.folders?.[0]).toBe(path.join(tmp, "p1-ws"));
+    expect(reloaded.settings.projects?.[0]?.id).toBe("p1");
     expect(reloaded.settings.activeProject).toBe("p1");
 
     // 凭据面：set 回掩码（明文不回信封）→ list 见掩码 → delete

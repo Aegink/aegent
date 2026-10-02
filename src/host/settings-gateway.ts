@@ -35,6 +35,17 @@ import {
 } from "./instructions-gateway.js";
 import { runSttTranscribe } from "./speech-gateway.js";
 import { runTtsSynthesize } from "./tts-gateway.js";
+import {
+  fsReadOp,
+  fsShellOp,
+  fsTreeOp,
+  importScanOp,
+  projectBranchOp,
+  projectCloneOp,
+  projectTasksOp,
+  sessionAttachOp,
+  sessionRenameOp,
+} from "./settings-project-ops.js";
 import { checkPluginDir, listPlugins } from "./plugins-gateway.js";
 import {
   marketOpImpl,
@@ -98,28 +109,10 @@ export function applySettingsPatch(current: SettingsShape, patch: Record<string,
 import type { SettingsGateway } from "./settings-gateway-types.js";
 
 export const SETTINGS_PATCH_SECTIONS = [
-  "providers",
-  "permission",
-  "sandbox",
-  "appearance",
-  "logging",
-  "projects",
-  "activeProject",
-  "pricing",
-  "prompts",
-  "mcp",
-  "enhancement",
-  "profiles",
-  "activeProfile",
-  "onboardingDone",
-  "defaultProvider",
-  "defaultModel",
-  "skills",
-  "subagents",
-  "shortcuts",
-  "stt",
-  "tts",
-  "plugins",
+  "providers", "permission", "sandbox", "appearance", "logging", "projects",
+  "activeProject", "pricing", "prompts", "mcp", "enhancement", "profiles",
+  "activeProfile", "onboardingDone", "defaultProvider", "defaultModel",
+  "skills", "subagents", "shortcuts", "stt", "tts", "plugins",
 ] as const;
 
 
@@ -168,16 +161,11 @@ export class FileSettingsGateway implements SettingsGateway {
   }
 
   async probeProvider(name: string): Promise<HealthCheckResult> {
-    const settings = await this.get();
-    const entry = settings.providers.find((p) => p.name === name);
-    if (entry === undefined) {
-      const error = new Error(`provider「${name}」不在配置中`);
-      (error as unknown as { code: string }).code = "PROVIDER_NOT_FOUND";
-      throw error;
-    }
-    if (entry.baseUrl === undefined || entry.baseUrl.trim() === "") {
-      const error = new Error(`provider「${name}」未配置 baseUrl，无法探测`);
-      (error as unknown as { code: string }).code = "PROVIDER_NO_BASE_URL";
+    const entry = (await this.get()).providers.find((p) => p.name === name);
+    if (entry === undefined || entry.baseUrl === undefined || entry.baseUrl.trim() === "") {
+      const missing = entry === undefined;
+      const error = new Error(missing ? `provider「${name}」不在配置中` : `provider「${name}」未配置 baseUrl，无法探测`);
+      (error as unknown as { code: string }).code = missing ? "PROVIDER_NOT_FOUND" : "PROVIDER_NO_BASE_URL";
       throw error;
     }
     return this.healthProbe(name, entry.baseUrl);
@@ -258,29 +246,34 @@ export class FileSettingsGateway implements SettingsGateway {
     return saveInstruction(instructionPaths(this.workspaceRoot, this.homeDir), target, content);
   }
 
-  /**
-   * U26/T-P3-129：语音转写代理（UI MediaRecorder 录音 → base64 上送 →
-   * host 调 P4 transcribeAudio → 文本回端）。STT 配置读 settings.stt，
-   * key 按 "stt" 键名从 credentials 解密（零明文——settings 段不存 key）。
-   * 未配置 → 类型化 STT_NOT_CONFIGURED。
-   */
-  async sttTranscribe(payload: {
-    base64: string;
-    mediaType: string;
-  }): Promise<{ text: string; model: string }> {
+  // U26/T-P3-129 语音转写代理（配置读 settings.stt；key 按 "stt" 键名走
+  // credentials——未配置 → 类型化 STT_NOT_CONFIGURED；装配面 speech-gateway）
+  async sttTranscribe(payload: { base64: string; mediaType: string }): Promise<{ text: string; model: string }> {
     return runSttTranscribe(await this.get(), this.credentials, payload, this.sttFetch);
   }
 
-  /**
-   * T-P3-149 D：语音合成代理（UI 朗读请求 → 文本上送 → host 调 TTS
-   * synthesizeText → 音频 base64 回端）。配置读 settings.tts，key 按 "tts"
-   * 键名从 credentials 解密。未配置 → 类型化 TTS_NOT_CONFIGURED。
-   */
-  async ttsSynthesize(payload: {
-    text: string;
-  }): Promise<{ audioBase64: string; mediaType: string; model: string }> {
+  // T-P3-149 D 语音合成代理（配置读 settings.tts；key 走 "tts" 键名——
+  // 装配面 tts-gateway；未配置 → TTS_NOT_CONFIGURED）
+  async ttsSynthesize(payload: { text: string }): Promise<{ audioBase64: string; mediaType: string; model: string }> {
     return runTtsSynthesize(await this.get(), this.credentials, payload, this.sttFetch);
   }
+
+  // —— T-P3-150 项目域（实现面 settings-project-ops；fs 边界 = 已添加项目根
+  // 集合 realpath 白名单，归一在 fs-gateway）——
+
+  projectRoots(): Promise<string[]> {
+    return this.get().then((s) => (s.projects ?? []).flatMap((p) => p.folders));
+  }
+
+  fsTree(path: string): Promise<unknown> { return this.projectRoots().then((r) => fsTreeOp(r, path)); }
+  fsRead(path: string): Promise<unknown> { return this.projectRoots().then((r) => fsReadOp(r, path)); }
+  fsShell(payload: { path: string; action: "reveal" | "open" }): Promise<{ done: true }> { return this.projectRoots().then((r) => fsShellOp(r, payload)); }
+  projectGitCloneOp(payload: { url: string; parentDir: string; name?: string }): Promise<{ path: string }> { return projectCloneOp(payload); }
+  importScan(): Promise<unknown> { return importScanOp(this.homeDir); }
+  projectTasks(projectId: string): Promise<unknown> { return Promise.resolve(projectTasksOp(this.sessionDb, projectId)); }
+  sessionAttach(payload: { sessionId: string; projectId: string }): Promise<{ attached: true }> { return Promise.resolve(sessionAttachOp(this.sessionDb, payload)); }
+  projectBranch(path: string): Promise<{ branch?: string }> { return Promise.resolve(projectBranchOp(path)); }
+  sessionRename(payload: { sessionId: string; title: string }): Promise<{ renamed: true }> { return Promise.resolve(sessionRenameOp(this.sessionDb, payload)); }
 
   async pluginsList(): Promise<ReturnType<typeof listPlugins>> {
     return listPlugins(await this.get());

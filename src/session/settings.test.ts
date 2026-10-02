@@ -326,18 +326,36 @@ describe("parseSettingsShape / parseSettingsFile", () => {
     expect(defaultSettings().logging).toEqual({});
   });
 
-  it("projects/activeProject 段（U11/T-P3-110）：项目档往返 + 形状 fail-closed", () => {
-    const s = parseSettingsShape({
+  it("projects/activeProject 段（U11/T-P3-110 + T-P3-150 A1 新模型）：id/folders 归一 + fail-closed", () => {
+    // T-P3-150 A1：旧单 workspace 形状读取面归一（workspace→folders[0]、
+    // id 缺省 = name——activeProject 旧值自然兼容，零迁移写回）
+    const legacy = parseSettingsShape({
       projects: [{ name: "aegent", workspace: "F:/aegent", instructions: "遵守 AGENTS.md" }],
       activeProject: "aegent",
     });
-    expect(s.projects).toEqual([{ name: "aegent", workspace: "F:/aegent", instructions: "遵守 AGENTS.md" }]);
-    expect(s.activeProject).toBe("aegent");
-    // 缺 name / 缺 workspace fail-closed
-    expect(() => parseSettingsShape({ projects: [{ workspace: "X" }] })).toThrow(/name 缺失/);
-    expect(() => parseSettingsShape({ projects: [{ name: "x" }] })).toThrow(/workspace 缺失/);
+    expect(legacy.projects).toEqual([
+      { id: "aegent", name: "aegent", folders: ["F:/aegent"], instructions: "遵守 AGENTS.md" },
+    ]);
+    expect(legacy.activeProject).toBe("aegent");
+    // 新形状：id + folders[]（首位 primary）+ 时间戳
+    const modern = parseSettingsShape({
+      projects: [{ id: "p-1", name: "demo", folders: ["F:/w/a", "F:/w/b"], createdAt: 1000, lastOpenedAt: 2000 }],
+    });
+    expect(modern.projects).toEqual([
+      { id: "p-1", name: "demo", folders: ["F:/w/a", "F:/w/b"], createdAt: 1000, lastOpenedAt: 2000 },
+    ]);
+    // 缺 name / 缺工作区 fail-closed
+    expect(() => parseSettingsShape({ projects: [{ folders: ["X"] }] })).toThrow(/name 缺失/);
+    expect(() => parseSettingsShape({ projects: [{ name: "x" }] })).toThrow(/folders 缺失/);
+    expect(() => parseSettingsShape({ projects: [{ name: "x", folders: [] }] })).toThrow(/至少一个目录/);
     expect(() => parseSettingsShape({ projects: {} })).toThrow(/projects 须为数组/);
     expect(() => parseSettingsShape({ projects: [{ name: "x", workspace: 1 }] })).toThrow(/非空字符串/);
+    expect(() =>
+      parseSettingsShape({ projects: [{ id: "p", name: "x", folders: ["A"], createdAt: -5 }] }),
+    ).toThrow(/createdAt/);
+    expect(() =>
+      parseSettingsShape({ projects: [{ id: "p", name: "x", folders: ["A"] }, { id: "p", name: "y", folders: ["B"] }] }),
+    ).toThrow(/id 重复/);
     // 缺省形状含空 projects 段、activeProject undefined
     expect(defaultSettings().projects).toEqual([]);
     expect(defaultSettings().activeProject).toBeUndefined();

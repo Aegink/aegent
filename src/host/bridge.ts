@@ -14,6 +14,7 @@ import { SqliteEventStorage } from "../session/db.js";
 import { handleHostQuery } from "./query-gateway.js";
 import { buildPolicyAuditEntries } from "./policy-audit-op.js";
 import { tryPluginSettingsOp } from "./settings-plugin-ops.js";
+import { tryProjectSettingsOp } from "./settings-project-ops.js";
 import type { InstructionTarget } from "./protocol-settings.js";
 import { AgentHost } from "./registry.js";
 import {
@@ -330,6 +331,9 @@ export class HostBridge implements SessionRouter {
         if (call.op === "instruction-save") return gateway.instructionSave(call.target as InstructionTarget, call.content!);
         if (call.op === "stt-transcribe") return gateway.sttTranscribe({ base64: call.content!, mediaType: call.mediaType! });
         if (call.op === "tts-synthesize") return gateway.ttsSynthesize({ text: call.text! });
+        // T-P3-150 项目域八 op 一行收敛（分发面在 settings-project-ops）
+        const projectOp = tryProjectSettingsOp(gateway, call);
+        if (projectOp !== undefined) return projectOp;
         if (call.op === "plugins-list") return gateway.pluginsList();
         // T-P3-148：插件/市场族 op 一行收敛（分发在 settings-plugin-ops）
         const pluginOp = tryPluginSettingsOp(gateway, call, this.reloadNotifier());

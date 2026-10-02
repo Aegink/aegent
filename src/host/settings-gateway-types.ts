@@ -79,6 +79,17 @@ export interface SettingsGateway {
   sttTranscribe(payload: { base64: string; mediaType: string }): Promise<{ text: string; model: string }>;
   /** T-P3-149 D：语音合成代理（文本上送 → 音频 base64 回端——朗读/测试共用）。 */
   ttsSynthesize(payload: { text: string }): Promise<{ audioBase64: string; mediaType: string; model: string }>;
+  /** T-P3-150 项目域：文件树单层列举 / 文件读取 / shell 集成（边界在 fs-gateway）。 */
+  fsTree(path: string): Promise<unknown>;
+  fsRead(path: string): Promise<unknown>;
+  fsShell(payload: { path: string; action: "reveal" | "open" }): Promise<{ done: true }>;
+  projectGitCloneOp(payload: { url: string; parentDir: string; name?: string }): Promise<{ path: string }>;
+  importScan(): Promise<unknown>;
+  projectTasks(projectId: string): Promise<unknown>;
+  sessionAttach(payload: { sessionId: string; projectId: string }): Promise<{ attached: true }>;
+  projectBranch(path: string): Promise<{ branch?: string }>;
+  /** T-P3-150 B2：任务重命名（custom 权威级——自动命名永不覆盖手动名）。 */
+  sessionRename(payload: { sessionId: string; title: string }): Promise<{ renamed: true }>;
   pluginsList(): Promise<ReturnType<typeof listPlugins>>;
   /** T-P3-148 Q：安装前清单校验（审批对话框的真实 manifest 预览）。 */
   pluginCheck(dir: string): Promise<ReturnType<typeof checkPluginDir>>;

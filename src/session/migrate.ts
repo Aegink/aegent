@@ -132,6 +132,22 @@ CREATE TABLE IF NOT EXISTS session_titles (
 );
 `;
 
+/**
+ * v6→v7：会话↔项目归属映射表（T-P3-150 B1——任务=项目内会话的地基）。
+ * 独立映射表而非 session_index 加列：归属随项目模型演进（项目 id 稳定、
+ * 可手动移动），不动既有索引读写面。写入点 = host 侧首条 user/message
+ * 镜像落库时按当时 activeProject 自动归属（pideck cwd 归属语义的
+ * settings 投影——"项目内添加任务"= 激活项目后开始对话）。
+ */
+export const SCHEMA_V7_PROJECTS_DDL = `
+CREATE TABLE IF NOT EXISTS session_projects (
+    session_id   TEXT    PRIMARY KEY,
+    project_id   TEXT    NOT NULL,
+    attached_ts  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_session_projects_project ON session_projects (project_id);
+`;
+
 export const MIGRATIONS: readonly SchemaMigration[] = [
   { from: 0, to: 1, apply: applyBaseSchema },
   {
@@ -180,6 +196,13 @@ export const MIGRATIONS: readonly SchemaMigration[] = [
     to: 6,
     apply: (db) => {
       db.exec(SCHEMA_V6_TITLES_DDL);
+    },
+  },
+  {
+    from: 6,
+    to: 7,
+    apply: (db) => {
+      db.exec(SCHEMA_V7_PROJECTS_DDL);
     },
   },
 ];

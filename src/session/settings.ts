@@ -124,13 +124,20 @@ export interface ProviderEntry {
 }
 
 /** 项目档（U11/T-P3-110——workspace + 项目级指令的组合档）。 */
+/** 项目档（T-P3-150 A1 升级——逻辑项目组：多文件夹 + primary 根 + 稳定 id；
+ * pi-desktop ProjectGroupRecord 形状投影）。 */
 export interface ProjectEntry {
-  /** 项目名（人读标识；activeProject 指它）。 */
+  /** 项目 id（稳定标识——任务归属 session_projects.project_id 指它；
+   * 旧数据缺省 = name，activeProject 旧值自然兼容）。 */
+  id: string;
+  /** 项目名（人读标识）。 */
   name: string;
-  /** workspace 根目录（新会话 --workspace 的取值）。 */
-  workspace: string;
+  /** 工作区目录集合（首位 = primary 根——文件树边界/新会话 cwd 的取值）。 */
+  folders: string[];
   /** 项目级指令（随会话的提示面；运行时注入随 U24 指令中心对齐）。 */
   instructions?: string;
+  createdAt?: number;
+  lastOpenedAt?: number;
 }
 
 /**
@@ -866,6 +873,7 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
   const projects = rec["projects"];
   if (projects !== undefined) {
     if (!Array.isArray(projects)) throw new SettingsError("projects 须为数组");
+    const seenIds = new Set<string>();
     for (const entry of projects) {
       if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
         throw new SettingsError("projects 条目必须是对象");
@@ -873,14 +881,39 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
       const e = entry as Record<string, unknown>;
       const name = assertString(e["name"], "projects[].name");
       if (name === undefined) throw new SettingsError("projects[].name 缺失");
-      const workspace = assertString(e["workspace"], "projects[].workspace");
-      if (workspace === undefined) throw new SettingsError("projects[].workspace 缺失");
+      // T-P3-150 A1：folders[]（首位=primary 根）+ 稳定 id；旧单 workspace
+      // 形状读取面归一（workspace → folders[0]、id 缺省 = name——activeProject
+      // 旧值指向 name 自然兼容，零迁移写回）
+      const rawFolders = e["folders"];
+      const legacyWorkspace = assertString(e["workspace"], "projects[].workspace");
+      let folders: string[];
+      if (Array.isArray(rawFolders)) {
+        folders = rawFolders.filter((f): f is string => typeof f === "string" && f.trim() !== "");
+      } else if (legacyWorkspace !== undefined) {
+        folders = [legacyWorkspace];
+      } else {
+        throw new SettingsError("projects[].folders 缺失（至少一个工作区目录）");
+      }
+      if (folders.length === 0) throw new SettingsError("projects[].folders 至少一个目录");
+      const id = assertString(e["id"], "projects[].id") ?? name;
+      if (seenIds.has(id)) throw new SettingsError(`projects id 重复：${id}`);
+      seenIds.add(id);
+      const createdAt = e["createdAt"];
+      const lastOpenedAt = e["lastOpenedAt"];
+      for (const [field, value] of [["createdAt", createdAt], ["lastOpenedAt", lastOpenedAt]] as const) {
+        if (value !== undefined && (typeof value !== "number" || !Number.isFinite(value) || value <= 0)) {
+          throw new SettingsError(`projects[].${field} 须为正整数时间戳`);
+        }
+      }
       out.projects!.push({
+        id,
         name,
-        workspace,
+        folders,
         ...(assertString(e["instructions"], "projects[].instructions") !== undefined
           ? { instructions: e["instructions"] as string }
           : {}),
+        ...(typeof createdAt === "number" ? { createdAt } : {}),
+        ...(typeof lastOpenedAt === "number" ? { lastOpenedAt } : {}),
       });
     }
   }

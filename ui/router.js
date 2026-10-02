@@ -8,6 +8,7 @@
 
 const VIEW_MODULES = {
   plugins: () => import("./views/plugins.js"),
+  projects: () => import("./views/projects.js"),
   settings: () => import("./views/settings.js"),
   usage: () => import("./views/usage.js"),
   work: () => import("./views/work.js"),
@@ -23,7 +24,13 @@ export function parseHash(hash) {
   if (head === "settings") return { view: "settings", section: sub || null };
   if (head === "plugins") return { view: "plugins", tab: sub || null };
   if (head === "work") return { view: "work", tab: sub || null };
-  if (head === "usage" || head === "notify" || head === "history" || head === "search") {
+  if (
+    head === "usage" ||
+    head === "notify" ||
+    head === "history" ||
+    head === "search" ||
+    head === "projects"
+  ) {
     return { view: head };
   }
   return { view: "chat" };

@@ -24,6 +24,9 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     const html = read("index.html");
     const app = read("app.js");
     const voice = read("composer-voice.js"); // T-P3-149 录音状态机模块
+    const router = read("router.js"); // T-P3-150 项目页路由注册面
+    const projectsView = read("views/projects.js"); // T-P3-150 项目中心
+    const projectsFiles = read("views/projects-files.js"); // 文件树/预览模块
     const css = read("style.css");
     const theme = read("theme.css");
     const usageView = read("views/usage.js");
@@ -156,10 +159,18 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     expect(app).toContain("ensurePromptsCache"); // / 补全的模板数据面
     expect(app).toContain('kind: "prompt"'); // 补全候选混入标记
     expect(app).toContain("templateVarNames"); // {{var}} 变量提取（UI 侧）
-    // U11/T-P3-110 项目页 CRUD（批 A 迁 views/settings.js）
-    expect(settingsView).toContain("renderProjectList"); // U11 项目页 CRUD
-    expect(settingsView).toContain('markDirty("activeProject")'); // 切换即改即存
-    expect(settingsView).toContain("project-instructions"); // 项目级指令编辑面
+    // U11 项目 CRUD → T-P3-150 迁独立页 views/projects.js（工作区/任务/文件树/
+    // 添加三模式）；settings 分节只留跳转卡 + 项目指令仍走指令中心
+    expect(settingsView).toContain("前往项目中心"); // 分节跳转卡
+    expect(html).toContain('data-route="projects"'); // 侧栏「项目」入口
+    expect(router).toContain('projects: () => import("./views/projects.js")'); // 路由注册
+    expect(projectsView).toContain('id="proj-add"'); // 三模式添加入口
+    expect(projectsView).toContain("git-clone"); // A3 Git 仓库添加
+    expect(projectsView).toContain("import-scan"); // A4 扫描导入
+    expect(projectsView).toContain("op: \"session-rename\""); // B2 任务重命名
+    expect(projectsFiles).toContain("renderMarkdown"); // C3 md 真渲染
+    expect(projectsFiles).toContain("添加到聊天"); // C7 树行右键菜单项
+    expect(settingsView).toContain('id="instr-project"'); // 项目级指令编辑面
     // U16/T-P3-118：提示词模板库（settings prompts 段 CRUD + / 补全调用）
     expect(settingsView).toContain('id="prompt-list"');
     expect(settingsView).toContain('id="prompt-form"');

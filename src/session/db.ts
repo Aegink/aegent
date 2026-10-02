@@ -15,7 +15,7 @@ import type { EventStorage } from "./store.js";
 import { isValidSessionId } from "./session-id.js";
 import { MIGRATIONS, planMigrationChain } from "./migrate.js";
 
-export const CURRENT_SCHEMA_VERSION = 6;
+export const CURRENT_SCHEMA_VERSION = 7;
 
 /** 归档后从主库读该会话的 fail-closed 拒绝（Q8/T-P2-102）——归档 ≠ 删除，
  * 数据在归档档（archive.ts 的 readArchivedSession 可查），主库读路径必须
@@ -248,12 +248,50 @@ export class SqliteEventStorage implements EventStorage {
     const remove = this.db.transaction((sid: string) => {
       this.db.prepare("DELETE FROM events WHERE session_id = ?").run(sid);
       this.db.prepare("DELETE FROM session_titles WHERE session_id = ?").run(sid);
+      this.db.prepare("DELETE FROM session_projects WHERE session_id = ?").run(sid);
       this.db.prepare("DELETE FROM session_index WHERE session_id = ?").run(sid);
       this.db.prepare("DELETE FROM archived_sessions WHERE session_id = ?").run(sid);
       this.db.prepare("DELETE FROM sessions WHERE id = ?").run(sid);
     });
     remove(sessionId);
     return true;
+  }
+
+  /**
+   * 会话↔项目归属（T-P3-150 B1——任务=项目内会话）。写入点 = host 侧首条
+   * user/message 镜像落库时按当时 activeProject 自动归属；首次归属后不
+   * 改写（归属稳定——手动移动走 setSessionProject 显式覆盖）。
+   */
+  getSessionProject(sessionId: string): string | undefined {
+    const row = this.db
+      .prepare("SELECT project_id FROM session_projects WHERE session_id = ?")
+      .get(sessionId) as { project_id: string } | undefined;
+    return row?.project_id;
+  }
+
+  setSessionProject(sessionId: string, projectId: string, options: { overwrite?: boolean } = {}): void {
+    if (options.overwrite === true) {
+      // 显式覆盖（手动移动归属）
+      this.db
+        .prepare(
+          `INSERT INTO session_projects (session_id, project_id, attached_ts) VALUES (?, ?, ?)
+           ON CONFLICT(session_id) DO UPDATE SET project_id = excluded.project_id, attached_ts = excluded.attached_ts`,
+        )
+        .run(sessionId, projectId, Date.now());
+      return;
+    }
+    // 首次归属不改写（自动归属幂等）
+    this.db
+      .prepare(
+        "INSERT OR IGNORE INTO session_projects (session_id, project_id, attached_ts) VALUES (?, ?, ?)",
+      )
+      .run(sessionId, projectId, Date.now());
+  }
+
+  listSessionProjects(): { sessionId: string; projectId: string }[] {
+    return this.db
+      .prepare("SELECT session_id, project_id FROM session_projects")
+      .all() as Array<{ sessionId: string; projectId: string }>;
   }
 
   close(): void {

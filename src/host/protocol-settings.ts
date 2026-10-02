@@ -5,7 +5,7 @@
  */
 import { THINKING_LEVELS } from "../session/settings.js";
 import type { SkillImportItem } from "./skill-import-op.js";
-import { validatePluginSettingsCall } from "./settings-plugin-ops.js";
+import { validateDomainSettingsCall } from "./settings-call-domains.js";
 
 /** settings 直答 op 闭集（与 bridge 分流一一对应；合法性链与报错串同源）。 */
 const OPS = [
@@ -25,6 +25,15 @@ const OPS = [
   "instruction-save",
   "stt-transcribe",
   "tts-synthesize",
+  "fs-tree",
+  "fs-read",
+  "fs-shell",
+  "git-clone",
+  "import-scan",
+  "project-tasks",
+  "session-attach",
+  "project-branch",
+  "session-rename",
   "plugins-list",
   "plugin-check",
   "plugin-scaffold",
@@ -91,6 +100,10 @@ export type SettingsCall = {
   displayName?: string; // op=plugin-scaffold：人读显示名（缺省 = slug）
   mediaType?: string;
   text?: string; // op=tts-synthesize：合成文本（T-P3-149 D 域）
+  // T-P3-150 项目域载荷：url=仓库地址 projectId=项目 id overwrite=归属覆盖
+  url?: string;
+  projectId?: string;
+  overwrite?: boolean;
   /** op=provider-models / provider-test：端点自足载荷（T-P3-137——UI 草稿
    * 直传 baseUrl/adapter/headers；apiKey 缺省走 credentials 凭据面）。 */
   baseUrl?: string;
@@ -127,6 +140,9 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     "content",
     "mediaType",
     "text",
+    "url",
+    "projectId",
+    "overwrite",
     "baseUrl",
     "adapter",
     "modelId",
@@ -146,10 +162,9 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
   if (typeof op !== "string" || !(OPS as readonly string[]).includes(op)) {
     throw new Error(`settings 的 op 非法：${String(op)}（合法：${OPS.join("|")}）`);
   }
-  // T-P3-148 插件/市场族 op 载荷校验（域拆分——行数纪律；形状规则同源）
-  if (op === "plugin-check" || op === "plugin-pack" || op === "plugin-view-html" || op === "market" || op === "plugin-scaffold" || op === "plugin-theme-css") {
-    validatePluginSettingsCall(op, record);
-  }
+  // 域族（插件/语音/项目）载荷校验——settings-call-domains 收敛（行数纪律；
+  // 报错串同源，信封回归用例继续覆盖）
+  validateDomainSettingsCall(op, record);
   if (op === "update") {
     if (record["patch"] === null || typeof record["patch"] !== "object" || Array.isArray(record["patch"])) {
       throw new Error("settings op=update 需要 patch 对象");
@@ -300,19 +315,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
       throw new Error("settings op=instruction-save 需要 content 非空字符串");
     }
   }
-  // U26/T-P3-129：stt-transcribe 载荷 = mediaType + base64 体。
-  if (op === "stt-transcribe") {
-    if (typeof record["mediaType"] !== "string" || record["mediaType"] === "") {
-      throw new Error("settings op=stt-transcribe 需要 mediaType 非空字符串");
-    }
-    if (typeof record["content"] !== "string" || record["content"] === "") {
-      throw new Error("settings op=stt-transcribe 需要 content（音频 base64）非空字符串");
-    }
-  }
-  // T-P3-149：tts-synthesize 载荷 = 合成文本。
-  if (op === "tts-synthesize" && (typeof record["text"] !== "string" || record["text"].trim() === "")) {
-    throw new Error("settings op=tts-synthesize 需要 text（合成文本）非空字符串");
-  }
+  // stt/tts/项目域载荷校验已上收 settings-call-domains.validateDomainSettingsCall
   if (op === "provider-models" || op === "provider-test") {
     if (typeof record["provider"] !== "string" || record["provider"] === "") {
       throw new Error(`settings op=${op} 需要 provider 非空字符串（凭据键）`);
@@ -369,6 +372,9 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     ...(typeof record["content"] === "string" ? { content: record["content"] } : {}),
     ...(typeof record["mediaType"] === "string" ? { mediaType: record["mediaType"] } : {}),
     ...(typeof record["text"] === "string" ? { text: record["text"] } : {}),
+    ...(typeof record["url"] === "string" ? { url: record["url"] } : {}),
+    ...(typeof record["projectId"] === "string" ? { projectId: record["projectId"] } : {}),
+    ...(record["overwrite"] === true ? { overwrite: true } : {}),
     ...(record["headers"] !== undefined && typeof record["headers"] === "object" && !Array.isArray(record["headers"])
       ? { headers: record["headers"] as Record<string, string> }
       : {}),
