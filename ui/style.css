@@ -2876,6 +2876,96 @@ mark.search-hit.active {
   color: var(--danger);
 }
 
+/* T-P3-149 录音三态状态条（红点+计时+电平条+取消 | 转写中 spinner 文案） */
+#voice-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtle);
+  white-space: nowrap;
+}
+
+#voice-status[hidden] {
+  display: none;
+}
+
+.voice-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: voice-pulse 1s ease-in-out infinite;
+}
+
+@keyframes voice-pulse {
+  50% { opacity: 0.25; }
+}
+
+#voice-timer {
+  font-variant-numeric: tabular-nums;
+  min-width: 38px;
+}
+
+#voice-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 16px;
+}
+
+#voice-meter i {
+  width: 3px;
+  height: 20%;
+  border-radius: 1px;
+  background: var(--brand);
+  transition: height 0.08s linear;
+}
+
+#voice-cancel {
+  padding: 2px 6px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-subtle);
+  cursor: pointer;
+}
+
+#voice-cancel:hover {
+  background: var(--surface-hover);
+  color: var(--danger);
+}
+
+#voice-status[data-phase="recording"] .voice-busy {
+  display: none;
+}
+
+#voice-status[data-phase="transcribing"] .voice-live {
+  display: none;
+}
+
+/* T-P3-149 D 消息朗读按钮（气泡终态右下角——🔊 播放/⏹ 停止） */
+.speak-btn {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-subtle);
+  font-size: var(--text-ui-xs);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.speak-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.speak-btn.speaking {
+  color: var(--brand);
+}
+
 /* 视图渲染失败可见化（router.js catch——错误摘要直呈，不再静默白页） */
 .render-error {
   margin: 24px;

@@ -329,6 +329,7 @@ export class HostBridge implements SessionRouter {
         if (call.op === "instructions-list") return gateway.instructionsList();
         if (call.op === "instruction-save") return gateway.instructionSave(call.target as InstructionTarget, call.content!);
         if (call.op === "stt-transcribe") return gateway.sttTranscribe({ base64: call.content!, mediaType: call.mediaType! });
+        if (call.op === "tts-synthesize") return gateway.ttsSynthesize({ text: call.text! });
         if (call.op === "plugins-list") return gateway.pluginsList();
         // T-P3-148：插件/市场族 op 一行收敛（分发在 settings-plugin-ops）
         const pluginOp = tryPluginSettingsOp(gateway, call, this.reloadNotifier());

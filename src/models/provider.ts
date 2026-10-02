@@ -29,6 +29,13 @@ export interface ChatImage {
   data: string;
 }
 
+/** 用户消息携带的音频块（T-P3-149 E1——OpenAI input_audio 语义；仅 wav/mp3
+ * 可直读，其余格式在投影层保持占位行降级）。 */
+export interface ChatAudio {
+  mediaType: string;
+  data: string;
+}
+
 export type ChatMessage =
   | { role: "system"; content: string }
   | {
@@ -36,6 +43,8 @@ export type ChatMessage =
       content: string;
       /** 随消息附上的图片（P1）；无附件时缺省——既有路径零变化。 */
       images?: ChatImage[];
+      /** 随消息附上的音频（T-P3-149 E1）；缺省零变化。 */
+      audios?: ChatAudio[];
     }
   | {
       role: "assistant";

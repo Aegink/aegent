@@ -32,6 +32,7 @@ import {
   chipEl,
   switchEl,
   refreshSelectPanel,
+  flushSettings,
 } from "./core.js";
 
 export const SECTIONS_HTML = `
@@ -290,19 +291,32 @@ export const SECTIONS_HTML = `
 </section>
 <section data-section="speech">
   <div class="section-head"><h2 class="section-title">语音【实验性】</h2></div>
-  <p class="hint">语音转文字（STT）——输入区 🎤 按钮录音后转写填入输入框；真实端点联调随 U8（配置在位即可用）。</p>
+  <p class="hint">两个独立服务：语音识别（输入区 🎤 录音→文字进输入框）与语音合成（消息朗读）。端点 key 分别在「供应商」页底部"预存密钥"区以 <code>stt</code> / <code>tts</code> 录入（零明文）；音频即时处理，不留存。</p>
+  <div class="row-title" style="margin:16px 0 4px">语音识别（STT——录音转文字）</div>
   <div class="row-list">
     <div class="row">
       <div class="row-copy">
+        <div class="row-title">协议通道</div>
+        <div class="row-desc">转写端点 = OpenAI /audio/transcriptions；对话端点 = chat 接口 input_audio（DashScope 类 Qwen-ASR 走此通道）</div>
+      </div>
+      <div class="row-control">
+        <select id="stt-protocol" class="select">
+          <option value="transcriptions">转写端点（whisper 系）</option>
+          <option value="chat">对话端点（input_audio）</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="row-copy">
         <div class="row-title">STT 端点根</div>
-        <div class="row-desc">OpenAI 协议转写端点（如 https://api.openai.com/v1）</div>
+        <div class="row-desc">OpenAI 协议兼容端点（如 https://api.openai.com/v1）</div>
       </div>
       <div class="row-control"><input id="stt-baseurl" class="input input-wide" type="text" placeholder="（未配置——语音输入不可用）" autocomplete="off" /></div>
     </div>
     <div class="row">
       <div class="row-copy">
         <div class="row-title">转写模型</div>
-        <div class="row-desc">如 whisper-1</div>
+        <div class="row-desc">如 whisper-1（转写端点）或 qwen3-asr-flash（对话端点）</div>
       </div>
       <div class="row-control"><input id="stt-model" class="input" type="text" placeholder="如 whisper-1" autocomplete="off" /></div>
     </div>
@@ -313,8 +327,61 @@ export const SECTIONS_HTML = `
       </div>
       <div class="row-control"><input id="stt-language" class="input input-num" type="text" placeholder="如 zh" autocomplete="off" /></div>
     </div>
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title">录音时长上限（秒）</div>
+        <div class="row-desc">到点自动停止并转写（缺省 120，上限 600）</div>
+      </div>
+      <div class="row-control"><input id="stt-maxseconds" class="input input-num" type="number" min="1" max="600" placeholder="120" autocomplete="off" /></div>
+    </div>
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title">转写后润色</div>
+        <div class="row-desc">辅助模型清理口语填充词（超时/失败自动回退原文；/·@ 开头的指令文本不参与）</div>
+      </div>
+      <div class="row-control"><label class="check-line"><input id="stt-refine" type="checkbox" /> 启用</label></div>
+    </div>
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title">静音自动停止</div>
+        <div class="row-desc">录音中连续 2 秒静音自动结束并转写（起始 3 秒保护期不计）</div>
+      </div>
+      <div class="row-control"><label class="check-line"><input id="stt-silence" type="checkbox" /> 启用</label></div>
+    </div>
   </div>
-  <p class="hint">端点 API key 在「供应商」页底部"预存密钥"区以 <code>stt</code> 录入（零明文，DPAPI 加密）。</p>
+  <div class="row-control" style="gap:8px;margin:8px 0">
+    <button id="stt-test" type="button" class="btn">测试识别</button>
+    <span id="stt-test-result" class="row-desc" style="flex:1">发送 0.5 秒静音音频走真实端点——回显转写结果或错误。</span>
+  </div>
+  <div class="row-title" style="margin:16px 0 4px">语音合成（TTS——消息朗读）</div>
+  <div class="row-list">
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title">TTS 端点根</div>
+        <div class="row-desc">OpenAI 协议 /audio/speech 端点（如 https://api.openai.com/v1）</div>
+      </div>
+      <div class="row-control"><input id="tts-baseurl" class="input input-wide" type="text" placeholder="（未配置——消息朗读不可用）" autocomplete="off" /></div>
+    </div>
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title">合成模型</div>
+        <div class="row-desc">如 tts-1 / gpt-4o-mini-tts</div>
+      </div>
+      <div class="row-control"><input id="tts-model" class="input" type="text" placeholder="如 tts-1" autocomplete="off" /></div>
+    </div>
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title">音色（可选）</div>
+        <div class="row-desc">如 alloy / nova（缺省 provider 自选）</div>
+      </div>
+      <div class="row-control"><input id="tts-voice" class="input input-num" type="text" placeholder="如 alloy" autocomplete="off" /></div>
+    </div>
+  </div>
+  <div class="row-control" style="gap:8px;margin:8px 0">
+    <button id="tts-test" type="button" class="btn">测试合成</button>
+    <span id="tts-test-result" class="row-desc" style="flex:1">合成一句测试语并直接播放——回显结果或错误。</span>
+  </div>
+  <p class="hint">录音交互：点击 🎤 开始（计时+音量条），再点停止或到上限自动停，Esc 取消；转写文本插入输入框供确认，不自动发送。</p>
 </section>
 `;
 
@@ -2188,11 +2255,22 @@ function sttInputHandler(field) {
     const baseUrl = document.getElementById("stt-baseurl").value.trim();
     const model = document.getElementById("stt-model").value.trim();
     const language = document.getElementById("stt-language").value.trim();
+    const maxSeconds = Number(document.getElementById("stt-maxseconds").value);
+    const refine = document.getElementById("stt-refine").checked;
+    const silenceStop = document.getElementById("stt-silence").checked;
+    const protocol = document.getElementById("stt-protocol").value;
     const next = {};
     if (baseUrl !== "") next.baseUrl = baseUrl;
     if (model !== "") next.model = model;
     if (language !== "") next.language = language;
-    if (Object.keys(next).length < 2) {
+    if (protocol === "chat") next.protocol = "chat"; // transcriptions = 缺省不存
+    // maxSeconds/refine 是修饰项——不参与"已配置"判定（baseUrl+model 齐备为准）
+    if (Number.isInteger(maxSeconds) && maxSeconds > 0 && maxSeconds <= 600) {
+      next.maxSeconds = maxSeconds;
+    }
+    if (refine) next.refineTranscript = true;
+    if (silenceStop) next.silenceStop = true;
+    if (baseUrl === "" || model === "") {
       settingsCache.stt = undefined;
       delete settingsCache.stt;
     } else {
@@ -2201,6 +2279,144 @@ function sttInputHandler(field) {
     dirtySections.add("stt");
     markDirty("stt");
   });
+}
+
+// T-P3-149：TTS 配置即改即存（同 stt 惯例——baseUrl+model 齐备为已配置）
+function ttsInputHandler(field) {
+  document.getElementById(`tts-${field}`).addEventListener("change", () => {
+    const baseUrl = document.getElementById("tts-baseurl").value.trim();
+    const model = document.getElementById("tts-model").value.trim();
+    const voice = document.getElementById("tts-voice").value.trim();
+    if (baseUrl === "" || model === "") {
+      settingsCache.tts = undefined;
+      delete settingsCache.tts;
+    } else {
+      const next = { baseUrl, model };
+      if (voice !== "") next.voice = voice;
+      settingsCache.tts = next;
+    }
+    dirtySections.add("tts");
+    markDirty("tts");
+  });
+}
+
+// ---------------------------------------------------------------------------
+// T-P3-149：语音服务行级测试（真调用真回执——对齐 MCP 页行级测试模式）。
+// 测试前先 flushSettings——保证 host 侧读到表单草稿的最新值。
+// ---------------------------------------------------------------------------
+
+/** 0.5s 16kHz 单声道静音 WAV（手写 44 字节头 + 9600 个零样本 PCM16）。 */
+function silentWavBase64() {
+  const samples = 8000;
+  const buffer = new ArrayBuffer(44 + samples * 2);
+  const view = new DataView(buffer);
+  const ascii = (offset, text) => {
+    for (let i = 0; i < text.length; i += 1) view.setUint8(offset + i, text.charCodeAt(i));
+  };
+  ascii(0, "RIFF");
+  view.setUint32(4, 36 + samples * 2, true);
+  ascii(8, "WAVE");
+  ascii(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, 16000, true);
+  view.setUint32(28, 32000, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  ascii(36, "data");
+  view.setUint32(40, samples * 2, true);
+  let bytes = new Uint8Array(buffer);
+  return btoa(String.fromCharCode(...bytes));
+}
+
+function voiceErrorMessage(e) {
+  const code = e?.code ?? e?.envelopeCode ?? "";
+  const map = {
+    STT_NOT_CONFIGURED: "未配置——填端点与模型",
+    TTS_NOT_CONFIGURED: "未配置——填端点与模型",
+    STT_AUTH_ERROR: "API key 无效（检查 stt 凭据）",
+    TTS_AUTH_ERROR: "API key 无效（检查 tts 凭据）",
+    STT_BAD_ENDPOINT: "路径不存在（核对端点根/协议通道）",
+    TTS_BAD_ENDPOINT: "路径不存在（核对端点根）",
+    STT_TIMEOUT: "端点 60s 未响应（超时）",
+    TTS_TIMEOUT: "端点 60s 未响应（超时）",
+    STT_ENDPOINT_BLOCKED: "端点地址被安全护栏拒绝",
+    TTS_ENDPOINT_BLOCKED: "端点地址被安全护栏拒绝",
+  };
+  const detail = e?.message ?? String(e);
+  return map[code] !== undefined ? `${map[code]}（${detail}）` : detail;
+}
+
+async function runSttTest() {
+  const result = document.getElementById("stt-test-result");
+  const btn = document.getElementById("stt-test");
+  if (settingsCache?.stt === undefined) {
+    result.textContent = "未配置——先填 STT 端点根与转写模型";
+    return;
+  }
+  btn.disabled = true;
+  result.textContent = "测试中…（真实端点往返）";
+  try {
+    await flushSettings();
+    const envelope = await sendSettings({
+      op: "stt-transcribe",
+      mediaType: "audio/wav",
+      content: silentWavBase64(),
+    });
+    if (!envelope.ok) {
+      const err = envelope.error ?? {};
+      const e = Object.assign(new Error(err.message ?? ""), { code: err.code });
+      result.textContent = `失败：${voiceErrorMessage(e)}`;
+      return;
+    }
+    result.textContent = `成功——模型 ${envelope.result.model ?? ""} 返回文本：「${String(envelope.result.text ?? "").slice(0, 60)}」（静音输入返回空文本/极短文本均属正常）`;
+  } catch (e) {
+    result.textContent = `失败：${e instanceof Error ? e.message : String(e)}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function runTtsTest() {
+  const result = document.getElementById("tts-test-result");
+  const btn = document.getElementById("tts-test");
+  if (settingsCache?.tts === undefined) {
+    result.textContent = "未配置——先填 TTS 端点根与合成模型";
+    return;
+  }
+  btn.disabled = true;
+  result.textContent = "测试中…（真实端点往返）";
+  try {
+    await flushSettings();
+    const envelope = await sendSettings({
+      op: "tts-synthesize",
+      text: "你好，这是一段语音合成测试。",
+    });
+    if (!envelope.ok) {
+      const err = envelope.error ?? {};
+      const e = Object.assign(new Error(err.message ?? ""), { code: err.code });
+      result.textContent = `失败：${voiceErrorMessage(e)}`;
+      return;
+    }
+    const bytes = envelope.result.audioBase64 ?? "";
+    const kb = Math.round((bytes.length * 3) / 4 / 1024);
+    // 真实播放（Audio 元素——播完释放 Blob URL）
+    const mediaType = envelope.result.mediaType ?? "audio/mpeg";
+    const binary = atob(bytes);
+    const audioBytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) audioBytes[i] = binary.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([audioBytes], { type: mediaType }));
+    const audio = new Audio(url);
+    audio.addEventListener("ended", () => URL.revokeObjectURL(url));
+    audio.addEventListener("error", () => URL.revokeObjectURL(url));
+    void audio.play().catch(() => URL.revokeObjectURL(url));
+    result.textContent = `成功——模型 ${envelope.result.model ?? ""} 合成 ${String(kb)}KB 音频，正在播放`;
+  } catch (e) {
+    result.textContent = `失败：${e instanceof Error ? e.message : String(e)}`;
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2629,6 +2845,15 @@ export function bind() {
   sttInputHandler("baseurl");
   sttInputHandler("model");
   sttInputHandler("language");
+  sttInputHandler("maxseconds");
+  sttInputHandler("refine");
+  sttInputHandler("silence");
+  sttInputHandler("protocol");
+  ttsInputHandler("baseurl");
+  ttsInputHandler("model");
+  ttsInputHandler("voice");
+  document.getElementById("stt-test").addEventListener("click", () => void runSttTest());
+  document.getElementById("tts-test").addEventListener("click", () => void runTtsTest());
 
 }
 
@@ -2654,6 +2879,14 @@ export function fill() {
   document.getElementById("stt-baseurl").value = settingsCache?.stt?.baseUrl ?? "";
   document.getElementById("stt-model").value = settingsCache?.stt?.model ?? "";
   document.getElementById("stt-language").value = settingsCache?.stt?.language ?? "";
+  document.getElementById("stt-maxseconds").value = settingsCache?.stt?.maxSeconds ?? "";
+  document.getElementById("stt-refine").checked = settingsCache?.stt?.refineTranscript === true;
+  document.getElementById("stt-silence").checked = settingsCache?.stt?.silenceStop === true;
+  document.getElementById("stt-protocol").value = settingsCache?.stt?.protocol === "chat" ? "chat" : "transcriptions";
+  // T-P3-149：TTS 分节回填
+  document.getElementById("tts-baseurl").value = settingsCache?.tts?.baseUrl ?? "";
+  document.getElementById("tts-model").value = settingsCache?.tts?.model ?? "";
+  document.getElementById("tts-voice").value = settingsCache?.tts?.voice ?? "";
   renderMcpList();
   renderPromptList();
   renderSkillRoots();

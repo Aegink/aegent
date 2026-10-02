@@ -7,7 +7,7 @@
  */
 
 import type { AttachmentRef } from "../attachments/types.js";
-import type { ChatImage, ChatMessage } from "../models/provider.js";
+import type { ChatAudio, ChatImage, ChatMessage } from "../models/provider.js";
 import type { SessionEvent, SessionRef } from "../kernel/events.js";
 import { coalesceEvents } from "./coalescer.js";
 
@@ -22,6 +22,12 @@ export interface BuildMessagesOptions {
    * 定位——调用方可按需忽略）。
    */
   resolveImage?: (ref: AttachmentRef, imageIndex: number) => ChatImage | null;
+  /**
+   * 附件音频解析注入（T-P3-149 E1——同 resolveImage 语义）。仅对可直读
+   * 格式（audio/wav | audio/mpeg——OpenAI input_audio 闭集）调用；返回
+   * 非空即同时进 audios 与占位行（标签语义），null/缺省 = 保持占位行降级。
+   */
+  resolveAudio?: (ref: AttachmentRef) => ChatAudio | null;
   /**
    * 会话引用解析注入（E9/T-P2-107——投影保持纯函数，被引会话的读取由调用
    * 方注入；**流存引用不存内容**：会话流里只有 {sessionId, upToSeq?}）。
@@ -76,21 +82,35 @@ export function buildChatMessages(
         // 从 images 剔除并在 content 追加占位行（模型可见容量事实 + 回取
         // 键 attachmentId）；**只进不退**——无自动恢复路径。
         let images: ChatImage[] | undefined;
+        let audios: ChatAudio[] | undefined;
         let placeholderLines = "";
         const resolve = opts.resolveImage;
         if (e.attachments?.length) {
           const offloaded = offloadedImages.get(e.seq);
           const resolved: ChatImage[] = [];
+          const resolvedAudios: ChatAudio[] = [];
           e.attachments.forEach((ref, index) => {
             if (offloaded?.has(index)) {
               placeholderLines += `
 [image offloaded: ${ref.name ?? "image"} (${ref.mediaType}, ${ref.size}B, id=${ref.attachmentId})]`;
               return;
             }
-            // P4/T-P2-406：音频附件 → 转写文本投影（文本面——音频字节不进
-            // 请求；未转写渲染占位行说明容量事实，与 image offload 同构）
+            // P4/T-P2-406 + T-P3-149 E1：音频附件——wav/mp3 且 resolver 在位
+            // 时进请求（input_audio；占位行保留作标签语义），其余格式一律
+            // 占位行降级（kimi"不可用即占位"同款——音频字节不硬塞不支持的
+            // 请求面；未转写渲染占位行说明容量事实，与 image offload 同构）
             if (ref.mediaType.startsWith("audio/")) {
               const label = ref.name ?? "voice";
+              const direct =
+                (ref.mediaType === "audio/wav" || ref.mediaType === "audio/mpeg") && opts.resolveAudio !== undefined
+                  ? opts.resolveAudio(ref)
+                  : null;
+              if (direct !== null) {
+                resolvedAudios.push(direct);
+                placeholderLines += `
+[audio attached: ${label} (${ref.mediaType}, id=${ref.attachmentId})]`;
+                return;
+              }
               placeholderLines += ref.transcription !== undefined
                 ? `
 [voice note: ${label} (${ref.mediaType}, id=${ref.attachmentId})] ${ref.transcription}`
@@ -104,6 +124,7 @@ export function buildChatMessages(
             }
           });
           if (resolved.length > 0) images = resolved;
+          if (resolvedAudios.length > 0) audios = resolvedAudios;
         }
         // E9/T-P2-107：会话引用注入（流里只有 {sessionId, upToSeq?} 指针；
         // 快照文本由 resolver 现算——引用不展开全量，有界快照见 reference.ts）
@@ -121,6 +142,7 @@ export function buildChatMessages(
               ? `${e.message.content}${refSections}${placeholderLines}`
               : e.message.content,
           ...(images ? { images } : {}),
+          ...(audios ? { audios } : {}),
         });
         break;
       }

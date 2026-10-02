@@ -17,7 +17,7 @@ import { InMemoryAttachmentStore } from "./store.js";
 import { buildChatMessages } from "../session/messages.js";
 
 const CONFIG: SttConfig = {
-    baseUrl: "https://stt.example.com/v1",
+    baseUrl: "https://127.0.0.1/v1",
     apiKey: "sk-test-secret",
     model: "whisper-1",
 };
@@ -69,7 +69,7 @@ describe("transcribeAudio（mock fetch 往返）", () => {
             fetchImpl,
         );
         expect(result).toEqual({ text: "你好世界", model: "whisper-1" });
-        expect(captured.url).toBe("https://stt.example.com/v1/audio/transcriptions");
+        expect(captured.url).toBe("https://127.0.0.1/v1/audio/transcriptions");
         const headers = captured.init?.headers as Record<string, string>;
         expect(headers["Authorization"]).toBe("Bearer sk-test-secret");
         const form = captured.init?.body as FormData;
@@ -100,7 +100,7 @@ describe("transcribeAudio（mock fetch 往返）", () => {
         ).rejects.toMatchObject({ code: "STT_UNSUPPORTED_MEDIA_TYPE" });
     });
 
-    it("HTTP 4xx/5xx → STT_HTTP_ERROR（带 status，不含响应体原文）", async () => {
+    it("HTTP 401 → STT_AUTH_ERROR（不含响应体原文）", async () => {
         const { fetchImpl } = makeFetch({ status: 401, body: { error: "bad key details..." } });
         const error = await transcribeAudio(
             CONFIG,
@@ -108,9 +108,40 @@ describe("transcribeAudio（mock fetch 往返）", () => {
             fetchImpl,
         ).catch((e: unknown) => e);
         expect(error).toBeInstanceOf(SttError);
-        expect((error as SttError).code).toBe("STT_HTTP_ERROR");
+        expect((error as SttError).code).toBe("STT_AUTH_ERROR");
         expect((error as SttError).status).toBe(401);
         expect((error as SttError).message).not.toContain("bad key details");
+    });
+
+    it("HTTP 404 → STT_BAD_ENDPOINT；500 → STT_HTTP_ERROR", async () => {
+        const notFound = makeFetch({ status: 404, body: "no route" });
+        await expect(
+            transcribeAudio(CONFIG, { bytes: new Uint8Array([1]), mediaType: "audio/wav" }, notFound.fetchImpl),
+        ).rejects.toMatchObject({ code: "STT_BAD_ENDPOINT", status: 404 });
+        const serverErr = makeFetch({ status: 500, body: "oops" });
+        await expect(
+            transcribeAudio(CONFIG, { bytes: new Uint8Array([1]), mediaType: "audio/wav" }, serverErr.fetchImpl),
+        ).rejects.toMatchObject({ code: "STT_HTTP_ERROR", status: 500 });
+    });
+
+    it("fetch 抛 TimeoutError → STT_TIMEOUT（类型化）", async () => {
+        const timeoutFetch = (async () => {
+            throw Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" });
+        }) as typeof fetch;
+        await expect(
+            transcribeAudio(CONFIG, { bytes: new Uint8Array([1]), mediaType: "audio/wav" }, timeoutFetch),
+        ).rejects.toMatchObject({ code: "STT_TIMEOUT" });
+    });
+
+    it("元数据端点 → STT_ENDPOINT_BLOCKED（SSRF 护栏 fail-closed）", async () => {
+        const { fetchImpl } = makeFetch({ status: 200, body: { text: "x" } });
+        await expect(
+            transcribeAudio(
+                { ...CONFIG, baseUrl: "https://169.254.169.254/v1" },
+                { bytes: new Uint8Array([1]), mediaType: "audio/wav" },
+                fetchImpl,
+            ),
+        ).rejects.toMatchObject({ code: "STT_ENDPOINT_BLOCKED" });
     });
 
     it("响应缺 text 字段 → STT_RESPONSE_INVALID", async () => {
@@ -118,6 +149,67 @@ describe("transcribeAudio（mock fetch 往返）", () => {
         await expect(
             transcribeAudio(CONFIG, { bytes: new Uint8Array([1]), mediaType: "audio/wav" }, fetchImpl),
         ).rejects.toMatchObject({ code: "STT_RESPONSE_INVALID" });
+    });
+});
+
+describe("transcribeAudio chat 通道（T-P3-149 C1——qwen input_audio 形状）", () => {
+    function makeJsonFetch(body: unknown, status = 200): { fetchImpl: typeof fetch; captured: { url: string; init: RequestInit | undefined } } {
+        const captured: { url: string; init: RequestInit | undefined } = { url: "", init: undefined };
+        const fetchImpl = (async (url: unknown, init?: RequestInit) => {
+            captured.url = String(url);
+            captured.init = init;
+            return new Response(JSON.stringify(body), { status });
+        }) as typeof fetch;
+        return { fetchImpl, captured };
+    }
+
+    it("chat 请求形状：/chat/completions + input_audio base64 + Bearer；content 字符串即转写", async () => {
+        const { fetchImpl, captured } = makeJsonFetch({
+            choices: [{ message: { content: "转写结果文本" } }],
+        });
+        const result = await transcribeAudio(
+            { ...CONFIG, protocol: "chat", language: "zh" },
+            { bytes: new Uint8Array([7, 8, 9]), mediaType: "audio/wav" },
+            fetchImpl,
+        );
+        expect(result).toEqual({ text: "转写结果文本", model: "whisper-1" });
+        expect(captured.url).toBe("https://127.0.0.1/v1/chat/completions");
+        const headers = captured.init?.headers as Record<string, string>;
+        expect(headers["Authorization"]).toBe("Bearer sk-test-secret");
+        expect(headers["Content-Type"]).toBe("application/json");
+        const payload = JSON.parse(String(captured.init?.body)) as {
+            model: string;
+            language?: string;
+            messages: { role: string; content: { type: string; input_audio?: { data: string; format: string } }[] }[];
+        };
+        expect(payload.model).toBe("whisper-1");
+        expect(payload.language).toBe("zh");
+        const audioPart = payload.messages[0]?.content[1]?.input_audio;
+        expect(audioPart?.format).toBe("wav");
+        expect(Buffer.from(audioPart?.data ?? "", "base64")).toEqual(Buffer.from([7, 8, 9]));
+    });
+
+    it("chat 响应 content 数组形态：text 段拼接", async () => {
+        const { fetchImpl } = makeJsonFetch({
+            choices: [{ message: { content: [{ type: "text", text: "部分一" }, { type: "text", text: "部分二" }] } }],
+        });
+        const result = await transcribeAudio(
+            { ...CONFIG, protocol: "chat" },
+            { bytes: new Uint8Array([1]), mediaType: "audio/wav" },
+            fetchImpl,
+        );
+        expect(result.text).toBe("部分一部分二");
+    });
+
+    it("chat 通道 webm 直接拒绝（STT_UNSUPPORTED_MEDIA_TYPE——须前端转 wav）", async () => {
+        const { fetchImpl } = makeJsonFetch({ choices: [] });
+        await expect(
+            transcribeAudio(
+                { ...CONFIG, protocol: "chat" },
+                { bytes: new Uint8Array([1]), mediaType: "audio/webm" },
+                fetchImpl,
+            ),
+        ).rejects.toMatchObject({ code: "STT_UNSUPPORTED_MEDIA_TYPE" });
     });
 });
 
@@ -168,6 +260,63 @@ describe("转写文本投影（buildMessages）", () => {
         ];
         const messages = buildChatMessages(events as never, { resolveImage: resolver });
         expect(String(messages[0]?.content)).toContain("id=aud-2) — 未转写]");
+    });
+
+    it("T-P3-149 E1：wav 附件 + resolveAudio → audios 进请求 + attached 占位行", () => {
+        const events = [
+            {
+                type: "user/message",
+                seq: 1,
+                ts: 1,
+                turn: 0,
+                message: { content: "听" },
+                source: "user" as const,
+                attachments: [
+                    { attachmentId: "aud-3", mediaType: "audio/wav", name: "clip", size: 100 },
+                ],
+            } as never,
+        ];
+        const messages = buildChatMessages(events as never, {
+            resolveAudio: () => ({ mediaType: "audio/wav", data: "V0FW" }),
+        });
+        expect(String(messages[0]?.content)).toContain("[audio attached: clip (audio/wav, id=aud-3)]");
+        expect((messages[0] as { audios?: unknown }).audios).toEqual([{ mediaType: "audio/wav", data: "V0FW" }]);
+    });
+
+    it("resolveAudio 缺省 / webm 附件 → 保持占位行降级（audios 不进请求）", () => {
+        const events = [
+            {
+                type: "user/message",
+                seq: 1,
+                ts: 1,
+                turn: 0,
+                message: { content: "x" },
+                source: "user" as const,
+                attachments: [
+                    { attachmentId: "aud-4", mediaType: "audio/wav", size: 100 },
+                ],
+            } as never,
+        ];
+        const withoutResolver = buildChatMessages(events as never, {});
+        expect((withoutResolver[0] as { audios?: unknown }).audios).toBeUndefined();
+        expect(String(withoutResolver[0]?.content)).toContain("— 未转写]");
+        const webmEvents = [
+            {
+                type: "user/message",
+                seq: 1,
+                ts: 1,
+                turn: 0,
+                message: { content: "x" },
+                source: "user" as const,
+                attachments: [
+                    { attachmentId: "aud-5", mediaType: "audio/webm", size: 100 },
+                ],
+            } as never,
+        ];
+        const withResolver = buildChatMessages(webmEvents as never, {
+            resolveAudio: () => ({ mediaType: "audio/webm", data: "eA" }),
+        });
+        expect((withResolver[0] as { audios?: unknown }).audios).toBeUndefined(); // webm 不直读——resolver 也不进
     });
 });
 

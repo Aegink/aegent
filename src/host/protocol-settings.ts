@@ -5,6 +5,7 @@
  */
 import { THINKING_LEVELS } from "../session/settings.js";
 import type { SkillImportItem } from "./skill-import-op.js";
+import { validatePluginSettingsCall } from "./settings-plugin-ops.js";
 
 /** settings 直答 op 闭集（与 bridge 分流一一对应；合法性链与报错串同源）。 */
 const OPS = [
@@ -23,6 +24,7 @@ const OPS = [
   "instructions-list",
   "instruction-save",
   "stt-transcribe",
+  "tts-synthesize",
   "plugins-list",
   "plugin-check",
   "plugin-scaffold",
@@ -88,6 +90,7 @@ export type SettingsCall = {
   base?: string;
   displayName?: string; // op=plugin-scaffold：人读显示名（缺省 = slug）
   mediaType?: string;
+  text?: string; // op=tts-synthesize：合成文本（T-P3-149 D 域）
   /** op=provider-models / provider-test：端点自足载荷（T-P3-137——UI 草稿
    * 直传 baseUrl/adapter/headers；apiKey 缺省走 credentials 凭据面）。 */
   baseUrl?: string;
@@ -123,6 +126,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     "target",
     "content",
     "mediaType",
+    "text",
     "baseUrl",
     "adapter",
     "modelId",
@@ -142,26 +146,9 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
   if (typeof op !== "string" || !(OPS as readonly string[]).includes(op)) {
     throw new Error(`settings 的 op 非法：${String(op)}（合法：${OPS.join("|")}）`);
   }
-  // T-P3-148 插件/市场族 op 载荷校验（闭集收敛——行数纪律）
-  if ((op === "plugin-check" || op === "plugin-pack") && (typeof record["dir"] !== "string" || record["dir"].trim() === ""))
-    throw new Error(`settings op=${op} 需要 dir（插件目录绝对路径）非空字符串`);
-  if (op === "plugin-view-html" && (typeof record["name"] !== "string" || record["name"] === "" || typeof record["view"] !== "string" || record["view"] === ""))
-    throw new Error("settings op=plugin-view-html 需要 name + view（非空字符串）");  if (op === "market") {
-    const MARKET_ACTIONS = ["add", "remove", "list", "refresh", "plugins", "install", "uninstall", "updates"];
-    if (typeof record["action"] !== "string" || !(MARKET_ACTIONS as readonly string[]).includes(record["action"]))
-      throw new Error(`settings op=market 的 action 非法（合法：${MARKET_ACTIONS.join("|")}）`);
-  }
-  if (op === "plugin-scaffold") {
-    const TEMPLATES = ["view-basic", "agent-tool", "skill-pack", "full"];
-    if (typeof record["template"] !== "string" || !(TEMPLATES as readonly string[]).includes(record["template"]))
-      throw new Error(`settings op=plugin-scaffold 的 template 非法（合法：${TEMPLATES.join("|")}）`);
-    if (typeof record["name"] !== "string" || record["name"].trim() === "")
-      throw new Error("settings op=plugin-scaffold 需要 name（插件 slug）非空字符串");
-  }
-  if (op === "plugin-theme-css") {
-    if (typeof record["name"] !== "string" || record["name"] === "") {
-      throw new Error("settings op=plugin-theme-css 需要 name（插件名）非空字符串");
-    }
+  // T-P3-148 插件/市场族 op 载荷校验（域拆分——行数纪律；形状规则同源）
+  if (op === "plugin-check" || op === "plugin-pack" || op === "plugin-view-html" || op === "market" || op === "plugin-scaffold" || op === "plugin-theme-css") {
+    validatePluginSettingsCall(op, record);
   }
   if (op === "update") {
     if (record["patch"] === null || typeof record["patch"] !== "object" || Array.isArray(record["patch"])) {
@@ -322,6 +309,10 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
       throw new Error("settings op=stt-transcribe 需要 content（音频 base64）非空字符串");
     }
   }
+  // T-P3-149：tts-synthesize 载荷 = 合成文本。
+  if (op === "tts-synthesize" && (typeof record["text"] !== "string" || record["text"].trim() === "")) {
+    throw new Error("settings op=tts-synthesize 需要 text（合成文本）非空字符串");
+  }
   if (op === "provider-models" || op === "provider-test") {
     if (typeof record["provider"] !== "string" || record["provider"] === "") {
       throw new Error(`settings op=${op} 需要 provider 非空字符串（凭据键）`);
@@ -377,6 +368,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     ...(typeof record["target"] === "string" ? { target: record["target"] } : {}),
     ...(typeof record["content"] === "string" ? { content: record["content"] } : {}),
     ...(typeof record["mediaType"] === "string" ? { mediaType: record["mediaType"] } : {}),
+    ...(typeof record["text"] === "string" ? { text: record["text"] } : {}),
     ...(record["headers"] !== undefined && typeof record["headers"] === "object" && !Array.isArray(record["headers"])
       ? { headers: record["headers"] as Record<string, string> }
       : {}),

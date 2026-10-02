@@ -34,6 +34,7 @@ import {
   type InstructionTarget,
 } from "./instructions-gateway.js";
 import { runSttTranscribe } from "./speech-gateway.js";
+import { runTtsSynthesize } from "./tts-gateway.js";
 import { checkPluginDir, listPlugins } from "./plugins-gateway.js";
 import {
   marketOpImpl,
@@ -117,6 +118,7 @@ export const SETTINGS_PATCH_SECTIONS = [
   "subagents",
   "shortcuts",
   "stt",
+  "tts",
   "plugins",
 ] as const;
 
@@ -267,6 +269,17 @@ export class FileSettingsGateway implements SettingsGateway {
     mediaType: string;
   }): Promise<{ text: string; model: string }> {
     return runSttTranscribe(await this.get(), this.credentials, payload, this.sttFetch);
+  }
+
+  /**
+   * T-P3-149 D：语音合成代理（UI 朗读请求 → 文本上送 → host 调 TTS
+   * synthesizeText → 音频 base64 回端）。配置读 settings.tts，key 按 "tts"
+   * 键名从 credentials 解密。未配置 → 类型化 TTS_NOT_CONFIGURED。
+   */
+  async ttsSynthesize(payload: {
+    text: string;
+  }): Promise<{ audioBase64: string; mediaType: string; model: string }> {
+    return runTtsSynthesize(await this.get(), this.credentials, payload, this.sttFetch);
   }
 
   async pluginsList(): Promise<ReturnType<typeof listPlugins>> {

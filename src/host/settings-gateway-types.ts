@@ -77,6 +77,8 @@ export interface SettingsGateway {
   }>;
   instructionSave(target: "project-agents" | "global-agents" | "user-rules", content: string): Promise<{ saved: true; path: string }>;
   sttTranscribe(payload: { base64: string; mediaType: string }): Promise<{ text: string; model: string }>;
+  /** T-P3-149 D：语音合成代理（文本上送 → 音频 base64 回端——朗读/测试共用）。 */
+  ttsSynthesize(payload: { text: string }): Promise<{ audioBase64: string; mediaType: string; model: string }>;
   pluginsList(): Promise<ReturnType<typeof listPlugins>>;
   /** T-P3-148 Q：安装前清单校验（审批对话框的真实 manifest 预览）。 */
   pluginCheck(dir: string): Promise<ReturnType<typeof checkPluginDir>>;

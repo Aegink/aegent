@@ -52,6 +52,13 @@ import { lineEl, appendLine, scrollBottom, oneLine, toast } from "./feedback.js"
 import { applyLocalePreference, t } from "./i18n.js";
 import { go, startRouter } from "./router.js";
 import { injectIcons } from "./icons.js";
+// U26/T-P3-149 录音三态机 + 插入冲突裁决 + chat 通道 wav 转码
+import {
+  createVoiceCapture,
+  resolveVoiceInsertion,
+  resampleToWav16k,
+  RECORD_MAX_SECONDS_DEFAULT,
+} from "./composer-voice.js";
 
 const stream = document.getElementById("stream");
 const pending = document.getElementById("pending");
@@ -113,8 +120,10 @@ function endKindText(reason) {
 }
 
 /** 流式打字：text-delta 节流追加（rAF 消费 TimedStreamChunk 时间轴——事件
- * 自带流记录即回放输入，零新增 wire 面）；终态换完整 markdown+高亮渲染。 */
-function typeStream(bubble, chunks, finalContent) {
+ * 自带流记录即回放输入，零新增 wire 面）；终态换完整 markdown+高亮渲染。
+ * onDone = 终态渲染后的装饰回调（时间戳/朗读按钮——textContent/innerHTML
+ * 覆盖会清掉先前 append 的子元素，装饰必须等终态后挂载）。 */
+function typeStream(bubble, chunks, finalContent, onDone) {
   const deltas = [];
   for (const c of chunks) {
     if (c?.chunk?.type === "text-delta") deltas.push({ t: Number(c.time) || 0, text: String(c.chunk.text ?? "") });
@@ -122,6 +131,7 @@ function typeStream(bubble, chunks, finalContent) {
   if (deltas.length === 0) {
     bubble.innerHTML = renderMarkdown(finalContent);
     scrollBottom();
+    if (onDone !== undefined) onDone();
     return;
   }
   const t0 = deltas[0].t;
@@ -143,6 +153,7 @@ function typeStream(bubble, chunks, finalContent) {
     } else {
       bubble.innerHTML = renderMarkdown(finalContent);
       scrollBottom();
+      if (onDone !== undefined) onDone();
     }
   };
   requestAnimationFrame(tick);
@@ -343,12 +354,19 @@ function renderEvent(e, options = {}) {
       bubble.className = `bubble agent ${e.interrupted ? "warn" : ""}`.trim();
       const content = e.message?.content ?? "";
       if (content === "") return lineEl("⬢ （模型转入工具调用）", "agent reasoning");
+      // 终态装饰（时间戳 + 朗读按钮）——流式期间 textContent/innerHTML 覆盖
+      // 会清掉子元素，统一在 onDone 后挂载（顺修 T-P3-141 流式时间戳丢失）
+      const decorate = () => {
+        appendMsgTime(bubble, e.ts);
+        const speakBtn = buildSpeakButton(content);
+        if (speakBtn !== null) bubble.appendChild(speakBtn);
+      };
       if (options.live) {
-        typeStream(bubble, e.message?.stream ?? [], content); // 流式打字节流
+        typeStream(bubble, e.message?.stream ?? [], content, decorate); // 流式打字节流
       } else {
         bubble.innerHTML = renderMarkdown(content); // 恢复视图直接终态
+        decorate();
       }
-      appendMsgTime(bubble, e.ts);
       return bubble;
     }
     case "tool/call":
@@ -384,6 +402,90 @@ function dayKey(ts) {
   if (typeof ts !== "number" || !Number.isFinite(ts)) return null;
   const d = new Date(ts);
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+// —— T-P3-149 D 消息朗读（agentscope/pi-desktop 语音输出消费端）：
+// 气泡终态挂 🔊 按钮 → op tts-synthesize → Blob URL 播放；单实例播放
+// （新播放抢占旧播放——agentscope stopAllPlayback 语义），音频不落盘。
+
+let speakAudio = null;
+let speakBtnActive = null;
+
+/** markdown 源 → 朗读友好纯文本（代码块/链接/标记符号不进语音）。 */
+function stripMarkdownForSpeech(md) {
+  return md
+    .replace(/```[\s\S]*?```/g, "（代码省略）")
+    .replace(/`([^`]*)`/g, "$1")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/(\*\*|__|~~)/g, "")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .trim();
+}
+
+function stopSpeaking() {
+  if (speakAudio !== null) {
+    speakAudio.pause();
+    URL.revokeObjectURL(speakAudio.src);
+    speakAudio = null;
+  }
+  if (speakBtnActive !== null) {
+    speakBtnActive.textContent = "🔊";
+    speakBtnActive.classList.remove("speaking");
+    speakBtnActive = null;
+  }
+}
+
+function buildSpeakButton(content) {
+  if (settingsCache?.tts === undefined) return null; // 未配置不渲染（入口隐藏语义）
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "speak-btn";
+  btn.title = "朗读这条回复（TTS）";
+  btn.textContent = "🔊";
+  btn.addEventListener("click", () => void toggleSpeak(btn, content));
+  return btn;
+}
+
+async function toggleSpeak(btn, content) {
+  if (speakBtnActive === btn) {
+    stopSpeaking(); // 播放中再点 = 停止
+    return;
+  }
+  stopSpeaking(); // 单实例——新播放抢占旧播放
+  // 合成文本上限 4000 字符（tts.ts TTS_TEXT_TOO_LONG 同源截断）
+  const text = stripMarkdownForSpeech(content).slice(0, 4000);
+  if (text === "") return;
+  btn.disabled = true;
+  try {
+    const envelope = await sendSettings({ op: "tts-synthesize", text });
+    if (!envelope.ok) {
+      const err = envelope.error ?? {};
+      toast(`朗读失败：${err.code ?? ""} ${err.message ?? ""}`, "warn");
+      return;
+    }
+    const binary = atob(envelope.result.audioBase64 ?? "");
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([bytes], { type: envelope.result.mediaType ?? "audio/mpeg" }));
+    const audio = new Audio(url);
+    speakAudio = audio;
+    speakBtnActive = btn;
+    btn.textContent = "⏹";
+    btn.classList.add("speaking");
+    audio.addEventListener("ended", () => {
+      if (speakAudio === audio) stopSpeaking();
+    });
+    audio.addEventListener("error", () => {
+      if (speakAudio === audio) stopSpeaking();
+    });
+    void audio.play().catch(() => stopSpeaking());
+  } catch (e) {
+    toast(`朗读失败：${e instanceof Error ? e.message : String(e)}`, "warn");
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function fmtDateLabel(ts) {
@@ -584,11 +686,13 @@ function autoGrow() {
 }
 input.addEventListener("input", autoGrow);
 
-// —— 粘贴图片（clipboard → P1 附件链 attachments；限额与
-// attachments/limits.ts 同源：10MB/件、8 件/消息、四类 image 白名单）
+// —— 粘贴图片/音频（clipboard → P1 附件链 attachments；限额与
+// attachments/limits.ts 同源：10MB/件、8 件/消息；T-P3-149 E1 起音频三类
+// 入册——原样入库，wav/mp3 可直读进 input_audio，webm/mp4 仅转写链可用）
 const MAX_ATTACHMENT_BYTES = 10_000_000;
 const MAX_ATTACHMENTS_PER_MESSAGE = 8;
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+const AUDIO_TYPES = new Set(["audio/mp4", "audio/wav", "audio/webm"]);
 const pendingAttachments = [];
 const attachmentsPreview = document.getElementById("attachments-preview");
 
@@ -597,8 +701,9 @@ function renderAttachmentsPreview() {
   for (const [i, a] of pendingAttachments.entries()) {
     const chip = document.createElement("span");
     chip.className = "attachment-chip";
+    const isAudio = AUDIO_TYPES.has(a.mediaType);
     const label = document.createElement("span");
-    label.textContent = `🖼 ${a.name ?? "image"}（${Math.ceil((a.data.length * 3) / 4 / 1024)}KB）`;
+    label.textContent = `${isAudio ? "🎵" : "🖼"} ${a.name ?? (isAudio ? "audio" : "image")}（${Math.ceil((a.data.length * 3) / 4 / 1024)}KB）`;
     const del = document.createElement("button");
     del.type = "button";
     del.textContent = "×";
@@ -612,8 +717,9 @@ function renderAttachmentsPreview() {
 }
 
 function addAttachment(file) {
-  if (!IMAGE_TYPES.has(file.type)) {
-    appendLine(`不支持的附件类型：${file.type}（白名单：png/jpeg/gif/webp）`, "warn");
+  const isAudio = AUDIO_TYPES.has(file.type);
+  if (!IMAGE_TYPES.has(file.type) && !isAudio) {
+    appendLine(`不支持的附件类型：${file.type}（白名单：png/jpeg/gif/webp + wav/mp4/webm 音频）`, "warn");
     return;
   }
   if (pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE) {
@@ -624,11 +730,14 @@ function addAttachment(file) {
     appendLine(`附件超过单件上限（${Math.ceil(MAX_ATTACHMENT_BYTES / 1e6)}MB）`, "warn");
     return;
   }
+  if (isAudio && file.type !== "audio/wav") {
+    appendLine(`音频附件 ${file.type} 不支持模型直读（仅录音转写链可用）；wav 格式可直接发给音频模型`, "warn");
+  }
   const reader = new FileReader();
   reader.addEventListener("load", () => {
     const result = String(reader.result ?? "");
     const base64 = result.includes(",") ? result.slice(result.indexOf(",") + 1) : result;
-    pendingAttachments.push({ mediaType: file.type, data: base64, name: file.name || "pasted-image" });
+    pendingAttachments.push({ mediaType: file.type, data: base64, name: file.name || (isAudio ? "audio" : "pasted-image") });
     renderAttachmentsPreview();
   });
   reader.readAsDataURL(file);
@@ -638,8 +747,8 @@ input.addEventListener("paste", (ev) => {
   for (const item of ev.clipboardData?.items ?? []) {
     if (item.kind === "file") {
       const file = item.getAsFile();
-      if (file !== null && IMAGE_TYPES.has(file.type)) {
-        ev.preventDefault(); // 图片不进文本——入附件链
+      if (file !== null && (IMAGE_TYPES.has(file.type) || AUDIO_TYPES.has(file.type))) {
+        ev.preventDefault(); // 图片/音频不进文本——入附件链
         addAttachment(file);
       }
     }
@@ -975,12 +1084,15 @@ input.addEventListener("keydown", (ev) => {
 });
 input.addEventListener("input", () => void updateAutocomplete());
 
-// —— U26/T-P3-129 语音输入（实验性）：麦克风录音 → STT（设置分节在
-//    views/settings.js——此处是 Composer 消费端：权限拒绝降级 + 未配置引导）
+// —— U26/T-P3-129 + T-P3-149 语音输入：录音三态机（计时/电平条/上限自动
+//    停/Esc 取消/失败冷却）下沉 composer-voice.js（qwen-code VoiceButton /
+//    dsh VoiceInput / pideck VoiceTranscriptionControls 三仓同构面）；此处是
+//    Composer 消费端：转写请求 + 选区映射落位 + 可选转写润色
 const micBtn = document.getElementById("mic-btn");
-let mediaRecorder = null;
-let audioChunks = [];
-let recording = false;
+const voiceStatus = document.getElementById("voice-status");
+const voiceTimer = document.getElementById("voice-timer");
+const voiceMeter = document.getElementById("voice-meter");
+const voiceCancel = document.getElementById("voice-cancel");
 
 function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
@@ -994,85 +1106,128 @@ function blobToBase64(blob) {
   });
 }
 
-async function startRecording() {
+// 录音开始瞬间的输入框快照——resolveVoiceInsertion 冲突裁决基准
+let voiceSnapshot = null;
+
+const voiceCapture = createVoiceCapture({
+  micBtn,
+  statusEl: voiceStatus,
+  timerEl: voiceTimer,
+  meterEl: voiceMeter,
+  cancelBtn: voiceCancel,
+  onPhase: (phase) => {
+    micBtn.disabled = phase === "transcribing";
+  },
+  onStop: (blob, mediaType) => void transcribeRecording(blob, mediaType),
+});
+
+function voiceMaxSeconds() {
+  const raw = Number(settingsCache?.stt?.maxSeconds);
+  return Number.isFinite(raw) && raw > 0 ? raw : RECORD_MAX_SECONDS_DEFAULT;
+}
+
+micBtn.addEventListener("click", () => {
+  if (voiceCapture.phase === "transcribing") return;
+  if (voiceCapture.phase === "recording") {
+    voiceCapture.stop();
+    return;
+  }
   if (settingsCache?.stt?.baseUrl === undefined || settingsCache?.stt?.model === undefined) {
     toast("语音输入未配置——请先在设置「语音」分节填 STT 端点与模型", "warn");
     return;
   }
-  if (navigator.mediaDevices === undefined) {
-    toast("当前环境不支持录音（需 HTTPS 或桌面壳）", "warn");
-    return;
-  }
-  let stream;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch (e) {
-    // 权限拒绝降级（NotAllowedError 为主——不区分细分原因，提示一致）
-    toast(`麦克风不可用：${e.name === "NotAllowedError" ? "权限被拒绝——请在浏览器设置允许后重试" : e.message}`, "warn");
-    return;
-  }
-  audioChunks = [];
-  // 卡内定形：浏览器 MediaRecorder 缺省产出 audio/webm（Chrome 系）——
-  // P4 AUDIO_MEDIA_TYPES 白名单含 audio/webm，格式解码交给 provider。
-  mediaRecorder = new MediaRecorder(stream);
-  mediaRecorder.addEventListener("dataavailable", (ev) => {
-    if (ev.data.size > 0) audioChunks.push(ev.data);
+  voiceSnapshot = {
+    draft: input.value,
+    from: input.selectionStart ?? input.value.length,
+    to: input.selectionEnd ?? input.value.length,
+  };
+  voiceCapture.start(voiceMaxSeconds(), settingsCache?.stt?.silenceStop === true).catch((e) => {
+    toast(voiceStartErrorMessage(e), "warn");
   });
-  mediaRecorder.addEventListener("stop", () => {
-    for (const track of stream.getTracks()) track.stop(); // 释放麦克风
-    void finishRecording();
-  });
-  mediaRecorder.start();
-  recording = true;
-  micBtn.classList.add("recording");
-  micBtn.textContent = "⏹";
-  toast("录音中…再次点击结束", "info");
+});
+
+function voiceStartErrorMessage(e) {
+  if (e?.code === "VOICE_PERMISSION") return "麦克风权限被拒绝——请在浏览器/系统设置允许后重试";
+  if (e?.code === "VOICE_COOLDOWN") return e.message;
+  return `麦克风不可用：${e instanceof Error ? e.message : String(e)}`;
 }
 
-async function finishRecording() {
-  recording = false;
-  micBtn.classList.remove("recording");
-  micBtn.textContent = "🎤";
-  if (audioChunks.length === 0) {
-    toast("没有录到音频", "warn");
-    return;
-  }
-  const blob = new Blob(audioChunks, { type: mediaRecorder?.mimeType ?? "audio/webm" });
-  const mediaType = blob.type.split(";")[0] ?? "audio/webm";
-  micBtn.disabled = true;
-  micBtn.textContent = "⏳";
+async function transcribeRecording(blob, mediaType) {
   try {
-    const base64 = await blobToBase64(blob);
+    // chat 协议通道只收 wav/mp3（OpenAI input_audio 闭集）——webm 系先转 16k wav
+    let payload = { mediaType, content: await blobToBase64(blob) };
+    if (settingsCache?.stt?.protocol === "chat" && !["audio/wav", "audio/mp3", "audio/mpeg"].includes(mediaType)) {
+      const wav = await resampleToWav16k(blob);
+      payload = { mediaType: "audio/wav", content: await blobToBase64(wav) };
+    }
     const envelope = await sendSettings({
       op: "stt-transcribe",
-      mediaType,
-      content: base64,
+      ...payload,
     });
     if (!envelope.ok) {
       appendLine(`语音转写失败：${envelope.error?.code ?? ""} ${envelope.error?.message ?? ""}`, "warn");
+      voiceCapture.noteFailure();
       return;
     }
     const text = envelope.result.text ?? "";
-    // 转写文本填入输入框（不自动发送——用户确认后回车）
-    input.value = input.value === "" ? text : `${input.value} ${text}`;
-    autoGrow();
-    input.focus();
+    await insertTranscription(text);
+    voiceCapture.finish();
     toast("已转写填入输入框", "info");
   } catch (e) {
     appendLine(`语音转写失败：${e instanceof Error ? e.message : String(e)}`, "warn");
-  } finally {
-    micBtn.disabled = false;
-    micBtn.textContent = "🎤";
+    voiceCapture.noteFailure();
   }
 }
 
-micBtn.addEventListener("click", () => {
-  if (recording) {
-    mediaRecorder?.stop();
-  } else {
-    void startRecording();
+// 转写文本落位：优先选区映射插入（编辑冲突即回退末尾追加——绝不覆盖用
+// 户新输入）；开启「转写后润色」时先经辅助模型清理口语（qwen voice-refine
+// 语义：超时/失败/防注入守卫一票回退原文，永不阻塞落位）
+async function insertTranscription(text) {
+  let finalText = text;
+  if (settingsCache?.stt?.refineTranscript === true && !/^[/@]/.test(text)) {
+    const refined = await refineTranscript(text);
+    if (refined !== null) finalText = refined;
   }
-});
+  const resolved = resolveVoiceInsertion({
+    snapshotDraft: voiceSnapshot?.draft ?? "",
+    from: voiceSnapshot?.from ?? 0,
+    to: voiceSnapshot?.to ?? 0,
+    currentDraft: input.value,
+    text: finalText,
+  });
+  if (resolved !== null) {
+    input.value = resolved.value;
+    input.setSelectionRange(resolved.caret, resolved.caret);
+  } else {
+    input.value = input.value === "" ? finalText : `${input.value} ${finalText}`;
+    input.setSelectionRange(input.value.length, input.value.length);
+    toast("输入框已变化——转写文本已追加到末尾", "info");
+  }
+  autoGrow();
+  input.focus();
+}
+
+async function refineTranscript(text) {
+  try {
+    const envelope = await Promise.race([
+      sendRequest(sessionId(), {
+        type: "polish",
+        requestId: allocRequestId("vr"),
+        draft: text,
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("润色超时")), 3000)),
+    ]);
+    if (!envelope.ok) return null;
+    const result = envelope.result ?? {};
+    if (result.ok !== true || typeof result.text !== "string") return null;
+    const refined = result.text.trim();
+    // 防注入守卫（qwen voice-refine.ts:77-86）：/·@ 开头或膨胀 >2× 或空 = 弃用
+    if (refined === "" || /^[/@]/.test(refined) || refined.length > text.length * 2) return null;
+    return refined;
+  } catch {
+    return null; // 润色永不失败——超时/异常一律回退原文
+  }
+}
 
 // —— T-P3-146 I 一键润色（pi-desktop prompt-enhancement Composer 消费端）：
 // 草稿 → polish 旁路请求 → 润色文本替换输入框；撤销恢复原文（pi 全套的
@@ -1315,6 +1470,7 @@ minimap.addEventListener("click", (ev) => {
 
 /** 流视图整体重置（只读查看入口共用——搜索命中摘帽 + 小地图重建）。 */
 function resetStreamView() {
+  stopSpeaking(); // 朗读随流销毁收束（Blob URL revoke + 按钮复位）
   clearHits();
   minimapReset();
   lastStreamDay = null; // 日期分隔随流重建归零

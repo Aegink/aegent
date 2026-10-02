@@ -100,7 +100,16 @@
               <div id="attachments-preview"></div>
               <textarea id="prompt-input" rows="1" placeholder="输入指令回车执行…（Shift+Enter 换行；@ 补全文件、/ 补全命令）" autocomplete="off"></textarea>
               <div class="composer-actions">
-                <button id="mic-btn" type="button" title="语音输入【实验性】（点击开始/再点结束）">🎤</button>
+                <div id="voice-status" hidden aria-live="polite">
+                  <span class="voice-busy">⏳ 转写中…</span>
+                  <span class="voice-live">
+                    <span class="voice-dot" aria-hidden="true"></span>
+                    <span id="voice-timer">00:00</span>
+                    <span id="voice-meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+                    <button id="voice-cancel" type="button" title="取消录音（Esc）">✕</button>
+                  </span>
+                </div>
+                <button id="mic-btn" type="button" title="语音输入【实验性】（点击开始/再点结束；Esc 取消）">🎤</button>
                 <button id="polish-btn" type="button" title="一键润色（辅助模型把草稿改写得更清晰）">✨</button>
                 <span id="polish-undo" hidden><button type="button" id="polish-undo-btn">撤销润色</button></span>
                 <span class="composer-hint">Shift+Enter 换行</span>

@@ -23,6 +23,7 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     const read = (name: string) => readFileSync(path.join(uiDir, ...name.split("/")), "utf8");
     const html = read("index.html");
     const app = read("app.js");
+    const voice = read("composer-voice.js"); // T-P3-149 录音状态机模块
     const css = read("style.css");
     const theme = read("theme.css");
     const usageView = read("views/usage.js");
@@ -206,15 +207,24 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     expect(settingsView).toContain("capturingAction"); // 捕获态
     expect(state).toContain("rebuildKeymap"); // 键位表随 settings 同步（批 A 下沉 state.js）
     expect(settingsView).toContain('markDirty("shortcuts")'); // 改绑即改即存
-    // U26/T-P3-129：语音【实验性】（STT 配置分节 + Composer 麦克风 +
-    // 录音转写链 + 权限拒绝降级）
+    // U26/T-P3-129 + T-P3-149：语音【实验性】（STT 配置分节 + Composer 麦克风 +
+    // 录音转写链 + 权限拒绝降级 + 三态状态机/插入冲突保护）
     expect(settingsView).toContain('id="stt-baseurl"');
     expect(settingsView).toContain('id="stt-model"');
+    expect(settingsView).toContain('id="stt-maxseconds"'); // 录音时长上限（批 1）
+    expect(settingsView).toContain('id="stt-refine"'); // 转写后润色开关（批 1）
+    expect(settingsView).toContain('id="stt-protocol"'); // 协议通道下拉（T-P3-149 C1）
+    expect(settingsView).toContain('id="tts-baseurl"'); // TTS 卡（T-P3-149 D 域）
+    expect(settingsView).toContain('id="stt-test"'); // 行级测试按钮（真调用真回执）
+    expect(settingsView).toContain('id="tts-test"');
     expect(settingsView).toContain("语音【实验性】");
     expect(html).toContain('id="mic-btn"'); // Composer 麦克风按钮
+    expect(html).toContain('id="voice-status"'); // 录音三态状态条（批 1）
     expect(app).toContain('op: "stt-transcribe"'); // 转写代理数据面
-    expect(app).toContain("MediaRecorder"); // 浏览器录音 API
-    expect(app).toContain("NotAllowedError"); // 权限拒绝降级
+    expect(app).toContain("composer-voice.js"); // 录音状态机下沉模块
+    expect(voice).toContain("MediaRecorder"); // 浏览器录音 API（模块内）
+    expect(voice).toContain("resolveVoiceInsertion"); // 插入冲突保护（pideck 移植）
+    expect(voice).toContain("NotAllowedError"); // 权限拒绝降级（模块内）
     expect(settingsView).toContain('markDirty("stt")'); // STT 配置即改即存
     // T-P3-148 O/P/Q：插件管理迁独立页 views/plugins.js（清单/详情 sheet/
     // 审批三档——I4/I5/I9 管理面延伸 + contributes 贡献面）

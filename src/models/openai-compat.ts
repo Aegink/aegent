@@ -261,15 +261,23 @@ function toWireMessage(m: ChatMessage): unknown {
       return { role: m.role, content: m.content };
     case "user":
       // P1/T-P1-124：图片附件 → OpenAI 多模态 content 数组（text 块在前，
-      // image_url data URL 块随后）；无 images 零变化（纯字符串 content）。
-      if (m.images?.length) {
+      // image_url data URL 块随后）；T-P3-149 E1：音频附件 → input_audio
+      // 块（wav/mp3——mediaType 映射 format）；无附件零变化（纯字符串）。
+      if (m.images?.length || m.audios?.length) {
         return {
           role: "user",
           content: [
             { type: "text", text: m.content },
-            ...m.images.map((img) => ({
+            ...(m.images ?? []).map((img) => ({
               type: "image_url",
               image_url: { url: `data:${img.mediaType};base64,${img.data}` },
+            })),
+            ...(m.audios ?? []).map((audio) => ({
+              type: "input_audio",
+              input_audio: {
+                data: audio.data,
+                format: audio.mediaType === "audio/mpeg" ? "mp3" : "wav",
+              },
             })),
           ],
         };

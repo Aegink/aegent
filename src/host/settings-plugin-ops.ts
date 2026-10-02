@@ -190,3 +190,32 @@ export function tryPluginSettingsOp(
       return undefined;
   }
 }
+
+/**
+ * 插件/市场族 settings op 载荷形状校验（T-P3-148——从 protocol-settings
+ * 域拆分的行数纪律位；报错串与原实现逐字一致，protocol-settings.test 的
+ * 信封回归用例继续覆盖）。
+ */
+export function validatePluginSettingsCall(
+  op: string,
+  record: Record<string, unknown>,
+): void {
+  if ((op === "plugin-check" || op === "plugin-pack") && (typeof record["dir"] !== "string" || record["dir"].trim() === ""))
+    throw new Error(`settings op=${op} 需要 dir（插件目录绝对路径）非空字符串`);
+  if (op === "plugin-view-html" && (typeof record["name"] !== "string" || record["name"] === "" || typeof record["view"] !== "string" || record["view"] === ""))
+    throw new Error("settings op=plugin-view-html 需要 name + view（非空字符串）");
+  if (op === "market") {
+    const MARKET_ACTIONS = ["add", "remove", "list", "refresh", "plugins", "install", "uninstall", "updates"];
+    if (typeof record["action"] !== "string" || !(MARKET_ACTIONS as readonly string[]).includes(record["action"]))
+      throw new Error(`settings op=market 的 action 非法（合法：${MARKET_ACTIONS.join("|")}）`);
+  }
+  if (op === "plugin-scaffold") {
+    const TEMPLATES = ["view-basic", "agent-tool", "skill-pack", "full"];
+    if (typeof record["template"] !== "string" || !(TEMPLATES as readonly string[]).includes(record["template"]))
+      throw new Error(`settings op=plugin-scaffold 的 template 非法（合法：${TEMPLATES.join("|")}）`);
+    if (typeof record["name"] !== "string" || record["name"].trim() === "")
+      throw new Error("settings op=plugin-scaffold 需要 name（插件 slug）非空字符串");
+  }
+  if (op === "plugin-theme-css" && (typeof record["name"] !== "string" || record["name"] === ""))
+    throw new Error("settings op=plugin-theme-css 需要 name（插件名）非空字符串");
+}

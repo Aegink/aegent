@@ -197,6 +197,33 @@ describe("openai-compat 流式适配 —— J1/J2", () => {
     });
   });
 
+  it("T-P3-149 E1：user audios → input_audio 块（format 由 mediaType 映射）", async () => {
+    mock.mountSseSequence([{ events: [wireChunk({ content: "ok" })] }]);
+    await collect(
+      makeProvider(),
+      makeReq([
+        {
+          role: "user",
+          content: "听音频",
+          audios: [
+            { mediaType: "audio/wav", data: "V0FW" },
+            { mediaType: "audio/mpeg", data: "TVBH" },
+          ],
+        },
+      ]),
+    );
+    const recorded = mock.requestAt(0, "音频映射测试恰发一次模型调用");
+    const body = JSON.parse(recorded.body) as { messages: { [key: string]: unknown }[] };
+    expect(body.messages[0]).toEqual({
+      role: "user",
+      content: [
+        { type: "text", text: "听音频" },
+        { type: "input_audio", input_audio: { data: "V0FW", format: "wav" } },
+        { type: "input_audio", input_audio: { data: "TVBH", format: "mp3" } },
+      ],
+    });
+  });
+
   it("非 2xx 在响应头阶段抛 ProviderHttpError，status 与 Retry-After 透传", async () => {
     mock.mountSequence([
       {

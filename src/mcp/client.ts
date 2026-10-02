@@ -170,7 +170,9 @@ export class McpClient {
             .join("\n\n");
     }
 
-    /** 调用工具：content 数组投影为文本（B12 投影面——text 项 join），isError 透传。 */
+    /** 调用工具：content 数组投影为文本（B12 投影面——text 项 join），isError 透传。
+     * T-P3-149 E2：audio/image 等非文本块不静默丢弃——投影为类型化说明行
+     * （诚实降级：模型知道曾有音频/图片及容量事实，字节不进请求面）。 */
     async callTool(        name: string,
         args: Record<string, unknown>,
         timeoutMs: number = MCP_REQUEST_TIMEOUT_MS,
@@ -179,11 +181,17 @@ export class McpClient {
             "tools/call",
             { name, arguments: args },
             timeoutMs,
-        )) as { content?: Array<{ type?: string; text?: string }>; isError?: boolean };
-        const text = (result.content ?? [])
-            .filter((c) => c.type === "text" && typeof c.text === "string")
-            .map((c) => c.text)
-            .join("\n");
+        )) as { content?: Array<{ type?: string; text?: string; mimeType?: string; data?: string }>; isError?: boolean };
+        const parts = (result.content ?? []).map((c) => {
+            if (c.type === "text" && typeof c.text === "string") return c.text;
+            if (c.type === "audio" || c.type === "image") {
+                const kind = c.type === "audio" ? "音频" : "图片";
+                const size = typeof c.data === "string" ? Math.ceil((c.data.length * 3) / 4 / 1024) : 0;
+                return `[${kind}输出：${c.mimeType ?? "未知格式"}，约 ${size}KB——${kind}内容不进文本请求面]`;
+            }
+            return "";
+        });
+        const text = parts.filter((t) => t !== "").join("\n");
         return { content: text, isError: result.isError === true };
     }
 

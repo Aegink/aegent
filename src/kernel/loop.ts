@@ -1500,6 +1500,13 @@ export class AgentLoop {
               const att = store.read(ref.attachmentId);
               return att ? { mediaType: att.mediaType, data: att.data } : null;
             },
+            // T-P3-149 E1：音频 resolver（同 store 面——wav/mp3 进 input_audio）
+            resolveAudio: (ref) => {
+              const att = store.read(ref.attachmentId);
+              return att && (att.mediaType === "audio/wav" || att.mediaType === "audio/mpeg")
+                ? { mediaType: att.mediaType, data: att.data }
+                : null;
+            },
           }
         : {}),
       // E9/T-P2-107：会话引用 resolver——被引会话从 store 内存序读取

@@ -343,7 +343,9 @@ export interface SettingsShape {
    */
   plugins?: PluginEntry[];
   /**
-   * 语音转文字（U26/T-P3-129 实验性——OpenAI 协议端点复用，P4 消费端）。
+   * 语音转文字（U26/T-P3-129 实验性——OpenAI 协议端点复用，P4 消费端；
+   * T-P3-149 扩 maxSeconds/refineTranscript/protocol——录音上限/转写润色/
+   * 协议通道）。
    * key 零明文：凭据在 credentials 库以 provider 名 "stt" 录入（U2 面复用）。
    */
   stt?: {
@@ -353,6 +355,31 @@ export interface SettingsShape {
     model: string;
     /** 语言提示（BCP-47 可选，如 zh）。 */
     language?: string;
+    /** 录音时长上限秒数（缺省 120——dsh maxDurationSeconds 同款语义）。 */
+    maxSeconds?: number;
+    /** 转写后辅助模型润色（qwen voice-refine 语义——缺省关）。 */
+    refineTranscript?: boolean;
+    /** 静音自动停止（G3 VAD——连续 2s 低于阈值即停，缺省关）。 */
+    silenceStop?: boolean;
+    /**
+     * 转写协议通道（T-P3-149 C1——缺省 "transcriptions"）：
+     * transcriptions = POST {baseUrl}/audio/transcriptions multipart；
+     * chat = POST {baseUrl}/chat/completions 带 input_audio base64 消息
+     * （qwen voice-transcriber 通道——DashScope 类端点唯一入口）。
+     */
+    protocol?: "transcriptions" | "chat";
+  };
+  /**
+   * 语音合成（T-P3-149 D 域——OpenAI 协议 /audio/speech 端点复用）。
+   * key 零明文：凭据在 credentials 库以 provider 名 "tts" 录入。
+   */
+  tts?: {
+    /** OpenAI 协议兼容端点根（如 https://api.openai.com/v1）。 */
+    baseUrl: string;
+    /** 合成模型名（如 tts-1——provider 侧语义）。 */
+    model: string;
+    /** 音色（可选，如 alloy——provider 侧语义）。 */
+    voice?: string;
   };
   /** MCP server 清单（U17——向导式添加落档；装配期连接注册，单 server 失败不炸启动）。 */
   mcp?: McpServerEntry[];
@@ -1196,12 +1223,51 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
     if (baseUrl === undefined) throw new SettingsError("stt.baseUrl 缺失（OpenAI 协议端点根）");
     const model = assertString(s["model"], "stt.model");
     if (model === undefined) throw new SettingsError("stt.model 缺失（转写模型名）");
+    // maxSeconds：undefined/空缺省；非法（非正整数或超 600）fail-closed throw
+    // （对齐 mcp timeoutMs 惯例；上界 600 = 10 分钟）
+    let maxSeconds: number | undefined;
+    const rawMax = s["maxSeconds"];
+    if (rawMax !== undefined && rawMax !== null && rawMax !== "") {
+      const n = Number(rawMax);
+      if (!Number.isInteger(n) || n <= 0 || n > 600) {
+        throw new SettingsError("stt.maxSeconds 须为 1~600 的整数秒");
+      }
+      maxSeconds = n;
+    }
+    let protocol: "transcriptions" | "chat" | undefined;
+    const rawProtocol = s["protocol"];
+    if (rawProtocol !== undefined && rawProtocol !== null && rawProtocol !== "") {
+      if (rawProtocol !== "transcriptions" && rawProtocol !== "chat") {
+        throw new SettingsError('stt.protocol 只接受 "transcriptions" | "chat"');
+      }
+      protocol = rawProtocol;
+    }
     out.stt = {
       baseUrl,
       model,
       ...(assertString(s["language"], "stt.language") !== undefined
         ? { language: s["language"] as string }
         : {}),
+      ...(maxSeconds !== undefined ? { maxSeconds } : {}),
+      ...(s["refineTranscript"] === true ? { refineTranscript: true } : {}),
+      ...(s["silenceStop"] === true ? { silenceStop: true } : {}),
+      ...(protocol !== undefined ? { protocol } : {}),
+    };
+  }
+  const tts = rec["tts"];
+  if (tts !== undefined) {
+    if (tts === null || typeof tts !== "object" || Array.isArray(tts)) {
+      throw new SettingsError("tts 须为对象");
+    }
+    const s = tts as Record<string, unknown>;
+    const baseUrl = assertString(s["baseUrl"], "tts.baseUrl");
+    if (baseUrl === undefined) throw new SettingsError("tts.baseUrl 缺失（OpenAI 协议端点根）");
+    const model = assertString(s["model"], "tts.model");
+    if (model === undefined) throw new SettingsError("tts.model 缺失（合成模型名）");
+    out.tts = {
+      baseUrl,
+      model,
+      ...(assertString(s["voice"], "tts.voice") !== undefined ? { voice: s["voice"] as string } : {}),
     };
   }
   const mcp = rec["mcp"];

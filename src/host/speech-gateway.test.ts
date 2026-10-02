@@ -42,7 +42,7 @@ function fakeFetch(response: unknown, ok = true, status = 200) {
 }
 
 function sttSettings(overrides: Partial<NonNullable<SettingsShape["stt"]>> = {}): SettingsShape {
-  return { ...defaultSettings(), stt: { baseUrl: "https://stt.example/v1", model: "whisper-1", ...overrides } };
+  return { ...defaultSettings(), stt: { baseUrl: "https://127.0.0.1/v1", model: "whisper-1", ...overrides } };
 }
 
 describe("runSttTranscribe（U26/T-P3-129 语音转写代理）", () => {
@@ -65,7 +65,7 @@ describe("runSttTranscribe（U26/T-P3-129 语音转写代理）", () => {
     );
     expect(result).toEqual({ text: "你好世界", model: "whisper-1" });
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.url).toBe("https://stt.example/v1/audio/transcriptions");
+    expect(calls[0]!.url).toBe("https://127.0.0.1/v1/audio/transcriptions");
     expect((calls[0]!.init?.headers as Record<string, string>).Authorization).toBe("Bearer sk-test-123");
     expect(credentials.queried).toContain("stt"); // key 按 "stt" 键名走 credentials
   });
@@ -82,16 +82,64 @@ describe("runSttTranscribe（U26/T-P3-129 语音转写代理）", () => {
     const bytes = base64ToBytes(Buffer.from("audio-bytes").toString("base64"));
     expect(Buffer.from(bytes).toString("utf8")).toBe("audio-bytes");
   });
+
+  it("录音载荷超 10MB → STT_INPUT_TOO_LARGE（零 fetch——T-P3-149 C3 前置检查）", async () => {
+    const { impl, calls } = fakeFetch({ text: "x" });
+    const big = Buffer.alloc(10 * 1024 * 1024 + 2, 7);
+    await expect(
+      runSttTranscribe(
+        sttSettings(),
+        fakeCredentials(undefined),
+        { base64: big.toString("base64"), mediaType: "audio/wav" },
+        impl,
+      ),
+    ).rejects.toMatchObject({ code: "STT_INPUT_TOO_LARGE" });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("protocol 透传（chat → transcribeAudio 收 chat 形状 URL）", async () => {
+    const calls: { url: string; body?: unknown }[] = [];
+    const impl = (async (url: unknown, init?: RequestInit) => {
+      calls.push({ url: String(url), body: init?.body });
+      return new Response(JSON.stringify({ choices: [{ message: { content: "chat 转写" } }] }), { status: 200 });
+    }) as typeof fetch;
+    const result = await runSttTranscribe(
+      sttSettings({ protocol: "chat" }),
+      fakeCredentials(undefined),
+      { base64: Buffer.from("hello").toString("base64"), mediaType: "audio/wav" },
+      impl,
+    );
+    expect(result.text).toBe("chat 转写");
+    expect(calls[0]?.url).toBe("https://127.0.0.1/v1/chat/completions");
+  });
 });
 
 describe("settings stt 段（parseSettingsShape——U26 配置面）", () => {
   it("往返一致 + baseUrl/model 必填 fail-closed + language 可选", () => {
-    const s = parseSettingsShape({ stt: { baseUrl: "https://stt.example/v1", model: "whisper-1", language: "zh" } });
-    expect(s.stt).toEqual({ baseUrl: "https://stt.example/v1", model: "whisper-1", language: "zh" });
+    const s = parseSettingsShape({ stt: { baseUrl: "https://127.0.0.1/v1", model: "whisper-1", language: "zh" } });
+    expect(s.stt).toEqual({ baseUrl: "https://127.0.0.1/v1", model: "whisper-1", language: "zh" });
     expect(parseSettingsShape(JSON.parse(JSON.stringify(s))).stt).toEqual(s.stt);
     expect(() => parseSettingsShape({ stt: { model: "m" } })).toThrow(/baseUrl 缺失/);
     expect(() => parseSettingsShape({ stt: { baseUrl: "https://x" } })).toThrow(/model 缺失/);
     expect(() => parseSettingsShape({ stt: "x" })).toThrow(/stt 须为对象/);
     expect(defaultSettings().stt).toBeUndefined();
+  });
+
+  it("T-P3-149 新字段：maxSeconds/refineTranscript/protocol parse（越界/非法值 fail-closed）", () => {
+    const s = parseSettingsShape({
+      stt: { baseUrl: "https://127.0.0.1/v1", model: "m", maxSeconds: 300, refineTranscript: true, protocol: "chat" },
+    });
+    expect(s.stt).toEqual({
+      baseUrl: "https://127.0.0.1/v1",
+      model: "m",
+      maxSeconds: 300,
+      refineTranscript: true,
+      protocol: "chat",
+    });
+    expect(parseSettingsShape({ stt: { baseUrl: "https://x/v1", model: "m" } }).stt?.maxSeconds).toBeUndefined();
+    expect(() => parseSettingsShape({ stt: { baseUrl: "https://x/v1", model: "m", maxSeconds: 0 } })).toThrow(/maxSeconds/);
+    expect(() => parseSettingsShape({ stt: { baseUrl: "https://x/v1", model: "m", maxSeconds: 601 } })).toThrow(/maxSeconds/);
+    expect(() => parseSettingsShape({ stt: { baseUrl: "https://x/v1", model: "m", maxSeconds: 1.5 } })).toThrow(/maxSeconds/);
+    expect(() => parseSettingsShape({ stt: { baseUrl: "https://x/v1", model: "m", protocol: "grpc" } })).toThrow(/protocol/);
   });
 });
