@@ -58,6 +58,14 @@ export function scanJsonl(spec: JsonlSpec, home: string = homedir()): ImportedSe
     } catch {
       continue;
     }
+    // unwrap 视图（idFrom/projectFrom 的取值相对内层；idFromEntry 的类别
+    // 过滤相对外层信封——两阶段语义对齐该插件）
+    const unwrapView = (rawEntry: Record<string, unknown>): Record<string, unknown> => {
+      const unwrapPath0 = spec.entry?.unwrapPath;
+      if (unwrapPath0 === undefined) return rawEntry;
+      const inner = getPath(rawEntry, unwrapPath0);
+      return inner !== null && typeof inner === "object" ? (inner as Record<string, unknown>) : rawEntry;
+    };
     const messages = jsonlMessages(spec, entries);
     if (messages.length === 0) continue;
     const sessionSpec = spec.session ?? {};
@@ -73,8 +81,16 @@ export function scanJsonl(spec: JsonlSpec, home: string = homedir()): ImportedSe
         }
         return "";
       };
-      if (want !== undefined) picked = pickFrom(entries.filter((e) => want.in.includes(String(getPath(e, want.path)))));
-      if (picked === "") picked = pickFrom(entries);
+      if (want !== undefined) {
+        // 类别过滤在外层信封、取值在 unwrap 内层（两阶段——按索引对齐）
+        picked = pickFrom(
+          entries
+            .map((e, i) => ({ raw: e, view: unwrapView(e) }))
+            .filter(({ raw }) => want.in.includes(String(getPath(raw, want.path))))
+            .map(({ view }) => view),
+        );
+      }
+      if (picked === "") picked = pickFrom(entries.map(unwrapView));
       if (picked !== "") externalId = picked;
     }
     const firstUser = messages.find((m) => m.role === "user" && m.text !== undefined && m.text !== "")?.text ?? "";
@@ -88,7 +104,7 @@ export function scanJsonl(spec: JsonlSpec, home: string = homedir()): ImportedSe
       // 行无 cwd；与 pi-desktop claude.ts"取首条带 cwd 的行"同语义）
       let raw = "";
       for (const entry of entries) {
-        raw = String(getPath(entry, sessionSpec.projectFrom) ?? "");
+        raw = String(getPath(unwrapView(entry), sessionSpec.projectFrom) ?? "");
         if (raw !== "") break;
       }
       projectPath = raw !== "" ? raw : (sessionSpec.fallbackProject ?? null);
@@ -148,10 +164,12 @@ export function jsonlMessages(spec: JsonlSpec, entries: Record<string, unknown>[
     if (blockCall !== undefined && role === (blockCall.roles?.[0] ?? "assistant")) {
       const blocks = getPath(entry, blockCall.path);
       if (Array.isArray(blocks)) {
+        let sawCall = false;
         for (const block of blocks) {
           if (block === null || typeof block !== "object") continue;
           const b = block as Record<string, unknown>;
           if (String(b[blockCall.typeField]) !== blockCall.type) continue;
+          sawCall = true;
           const id = String(b[blockCall.idPath] ?? "");
           let args: unknown = b[blockCall.argsPath];
           if (blockCall.argsJson === true && typeof args === "string") {
@@ -163,7 +181,13 @@ export function jsonlMessages(spec: JsonlSpec, entries: Record<string, unknown>[
           }
           pendingCalls.set(id, { name: String(b[blockCall.namePath] ?? ""), args });
         }
-        continue;
+        if (sawCall) {
+          // 同条目先出现的 text 块仍是一条助手消息（混合内容不丢文本）
+          const text = extractText(entrySpec.content, entry);
+          if (text !== "") messages.push({ role: "assistant", text, createdAt: toIso(getPath(entry, entrySpec.tsPath ?? "")) });
+          continue;
+        }
+        // 无 tool_use 块的纯文本条目——落回下方文本路径
       }
     }
     if (blockResult !== undefined) {

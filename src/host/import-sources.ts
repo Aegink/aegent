@@ -56,25 +56,27 @@ const CODEX: ImportSpec = {
   recursive: true,
   maxFiles: 250,
   session: {
-    idFrom: "payload.id",
+    // id/cwd 相对 unwrap 后的 payload 内层；idFromEntry 的 type 在外层信封
+    idFrom: "id",
     idFromEntry: { path: "type", in: ["session_meta"] },
     titleFrom: "firstUser",
-    projectFrom: "payload.cwd",
+    projectFrom: "cwd",
   },
   entry: {
-    rolePath: "payload.type",
+    unwrapPath: "payload",
+    rolePath: "type",
     roleMap: { user_message: "user", agent_message: "assistant" },
-    content: "payload.message",
+    content: "message",
     tsPath: "timestamp",
     drop: { startsWith: ["<", "# AGENTS.md"], roles: ["user"] },
     toolCall: {
       call: {
-        typePath: "payload.type", types: ["function_call"], idPath: "payload.call_id",
-        namePath: "payload.name", argsPath: "payload.arguments", argsJson: true,
+        typePath: "type", types: ["function_call"], idPath: "call_id",
+        namePath: "name", argsPath: "arguments", argsJson: true,
       },
       result: {
-        typePath: "payload.type", types: ["function_call_output"], idPath: "payload.call_id",
-        resultPath: "payload.output", statusPath: "",
+        typePath: "type", types: ["function_call_output"], idPath: "call_id",
+        resultPath: "output", statusPath: "",
       },
     },
   },
