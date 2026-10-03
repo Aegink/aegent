@@ -35,3 +35,10 @@
 - **F 多根项目——验证即达成**：数据模型本就是 roots 数组（projects.js T-P3-150 A1）+编辑对话框多行目录+卡片"N 个目录"meta——无需新代码，实测记档即可。
 - **J 会话树 / V 轻隔离 / N 图片能力 / X 收尾——待下轮**：J=面板"会话树"Tab（fork-tree 数据源流内 session/fork 事件过滤渲染）；V=内核写路径约束（subagent.ts PathGuard 专属子目录——L 级内核改造单独立批）；N=host 模型 capabilities 元数据面缺失【诚实降级：附件图片 tooltip 提示+轮次错误可见，P2 补 host 能力面】；X=焦点管理/Esc 归还/i18n 词条收尾。
 - 下轮：M chip 查看+J 树+N 记档落对照清单+X 收尾+对照清单新增主界面行+交接 handoff。
+
+## 终局（2026-10-03 晚——四批全量完成）
+
+- 全部 A~X 方案落地：布局批 aeeb3b0 / 功能批 54e2665 / 面板批 8e0e3d5 / 打磨批 eb023db+cfc7d4e / 交接 c8bfb92——已推 origin/main（e802c7f..c8bfb92）。
+- 收尾验证：全量 2068 测试绿 / 架构 0 error / tsc 0 / 对照清单第二部分新增「主界面重构」行（待用户打勾）/handoff_2026-10-03_19-00.md 就位。
+- V 轻隔离实测注意：任务派发子会话 id 含 "::"（Windows 文件名非法）——隔离目录名已净化（replaceAll ":","_"）。
+- 遗留（P2 记档）：N 的 host 模型 capabilities 元数据面；V 的 per-child git worktree；node-pty portable 61MB 瘦身；桌面壳真机走查（终端 PTY 交互/浏览器 WebView2 bounds 跟随/焦点链）。
