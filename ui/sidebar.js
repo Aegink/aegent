@@ -15,7 +15,7 @@
 import { sendQuery, sendSettings, invalidateMetaCache } from "./api.js";
 import { settingsCache, setSettingsCache, getSessionId, hooks, applyAppearance } from "./state.js";
 import { toast, appendLine } from "./feedback.js";
-import { openMenu, confirmDialog, openDialog, markDirty, dirtySections, flushSettings, onSectionRefresh } from "./views/settings/core.js";
+import { openMenu, confirmDialog, openDialog, markDirty, dirtySections, flushSettings, onSectionRefresh, upgradeSelects } from "./views/settings/core.js";
 import { renderFileTree, copyText } from "./views/projects-files.js";
 import { openFilePane } from "./pane.js";
 import { icon } from "./icons.js";
@@ -801,7 +801,7 @@ export async function newTaskFlow() {
     return;
   }
   const select = document.createElement("select");
-  select.className = "input";
+  select.className = "select"; // 挂 upgradeSelects 桥接（P-041——原生 select 视觉退役）
   for (const project of projects) {
     const opt = document.createElement("option");
     opt.value = project.id;
@@ -819,6 +819,7 @@ export async function newTaskFlow() {
         { label: "设为活动", className: "btn btn-primary", onClick: () => resolve(select.value) },
       ],
     });
+    upgradeSelects(document.body); // P-041：模态内 select 桥接自绘下拉（openDialog 同步挂载 body——扫描幂等）
   }).then(async (picked) => {
     const project = projects.find((p) => p.id === picked);
     if (project !== undefined) await createTask(project);

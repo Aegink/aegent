@@ -1749,7 +1749,13 @@ input.addEventListener("input", () => {
     polishPrevDraft = "";
     polishUndo.hidden = true;
   }
+  updateSendBtnState();
 });
+/** 发送钮空态禁用（P-023——空输入可点但静默 return=用户困惑）。 */
+function updateSendBtnState() {
+  if (sendBtn !== null) sendBtn.disabled = input.value.trim() === "";
+}
+updateSendBtnState();
 
 // ---------------------------------------------------------------------------
 // 面板函数（函数名保留——调用点兼容；实现 = 路由跳转，数据拉取在视图模块）

@@ -739,7 +739,7 @@ code,
 /* 右侧面板宿主（方案 C）：Tab 条 + 内容体 + 左缘拖宽条——与「查看文件」
    同一位置（需求五.2）；--pane-width 由 pane.js 拖拽写入 */
 #pane-root {
-  width: var(--pane-width, 420px);
+  width: var(--pane-width);
   min-width: 280px;
   flex-shrink: 0;
   display: flex;
@@ -869,7 +869,7 @@ code,
 /* 底部终端抽屉（方案 P 容器——面板批接入内容体；开合经 hidden 切换 +
    高度动画） */
 #terminal-drawer {
-  height: var(--terminal-h, 30vh);
+  height: var(--terminal-h);
   flex-shrink: 0;
   border-top: 1px solid var(--border);
   background: var(--bg-sidebar);
@@ -1109,8 +1109,7 @@ code,
 /* focus 态：border-brand + ring-1 ring-brand/30 + 底色微亮 */
 #composer .composer-box:focus-within {
   border-color: var(--brand);
-  background: color-mix(in srgb, var(--brand) 4%, var(--surface));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand) 30%, transparent);
+  background: color-mix(in srgb, var(--brand) 4%, var(--surface)); /* 聚焦=边框换色+背景微亮，无 glow */
 }
 
 #prompt-input {
@@ -1153,19 +1152,25 @@ code,
 }
 
 #send-btn {
-  padding: 6px 18px;
+  height: 28px;
+  padding: 0 16px;
   border: none;
   border-radius: var(--radius-md);
-  background: var(--brand);
-  color: var(--inverse);
+  background: var(--primary); /* 主操作=primary 黑白反色（P-051 统一主按钮层级） */
+  color: var(--primary-foreground);
   font-family: inherit;
   font-size: var(--text-ui-sm);
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition: background 0.15s;
 }
 
 #send-btn:hover {
-  opacity: 0.8;
+  background: color-mix(in srgb, var(--primary) 80%, transparent);
+}
+
+#send-btn:disabled {
+  opacity: var(--disabled-opacity);
+  cursor: not-allowed;
 }
 
 /* U14/T-P3-103 设置中心：批 A 起为侧栏底部的设置入口（页面化路由——
@@ -1498,8 +1503,8 @@ code,
 }
 
 .active-mark {
-  border-color: var(--success) !important;
-  color: var(--success) !important;
+  border-color: var(--brand) !important; /* P-042：捕获/激活态用强调色（绿=成功语义不复用） */
+  color: var(--brand) !important;
 }
 
 .btn-icon {
@@ -3078,7 +3083,7 @@ mark.search-hit.active {
   height: 8px;
   border-radius: var(--radius-full);
   margin-right: 6px;
-  background: var(--legend-color, var(--brand));
+  background: var(--legend-color));
 }
 
 /* SVG 趋势线（手绘——网格虚线 + 单档 hover 竖线；方案 A 交互简化记档） */
@@ -4009,7 +4014,7 @@ mark.search-hit.active {
   cursor: pointer;
 }
 .mcp-mode-seg .seg-btn.active {
-  background: var(--panel-strong, var(--bg-card));
+  background: var(--panel-strong));
   color: var(--text);
   font-weight: 600;
 }
@@ -4135,9 +4140,9 @@ button.chip-ui.active {
   border-radius: 6px;
   font-family: var(--font-mono);
   font-size: 0.82em;
-  background: var(--bg-tertiary, rgba(127, 127, 127, 0.18));
-  border: 1px solid var(--border-color, rgba(127, 127, 127, 0.35));
-  color: var(--text-secondary, inherit);
+  background: var(--bg-tertiary));
+  border: 1px solid var(--border-color));
+  color: var(--text-secondary);
   max-width: 280px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4154,7 +4159,7 @@ button.chip-ui.active {
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.05em;
-  color: var(--text-tertiary, var(--text-secondary, inherit));
+  color: var(--text-tertiary));
   text-transform: uppercase;
   user-select: none;
 }
@@ -4166,7 +4171,7 @@ button.chip-ui.active {
 .section-count {
   font-size: 0.8rem;
   font-weight: 400;
-  color: var(--text-tertiary, var(--text-secondary, inherit));
+  color: var(--text-tertiary));
   margin-left: 8px;
 }
 
@@ -4176,7 +4181,7 @@ button.chip-ui.active {
 .prompt-help summary {
   cursor: pointer;
   font-size: 0.85rem;
-  color: var(--text-secondary, inherit);
+  color: var(--text-secondary);
 }
 .prompt-help pre {
   max-height: 220px;
@@ -4184,8 +4189,8 @@ button.chip-ui.active {
   margin: 8px 0 0;
   padding: 10px 12px;
   border-radius: 8px;
-  background: var(--bg-tertiary, rgba(127, 127, 127, 0.12));
-  border: 1px solid var(--border-color, rgba(127, 127, 127, 0.3));
+  background: var(--bg-tertiary));
+  border: 1px solid var(--border-color));
   font-family: var(--font-mono);
   font-size: 0.8rem;
   overflow-x: auto;
@@ -4325,7 +4330,7 @@ button.chip-ui.active {
 /* 审批风险三档（pi risk-{tier} 配色语义——token 取色） */
 .plugin-risk {
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg, 12px);
+  border-radius: var(--radius-lg);
   padding: 10px 12px;
   display: flex;
   flex-direction: column;
@@ -4375,7 +4380,7 @@ button.chip-ui.active {
   width: 100%;
   height: 320px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg, 12px);
+  border-radius: var(--radius-lg);
   background: var(--bg);
 }
 
@@ -4391,7 +4396,7 @@ button.chip-ui.active {
   align-items: flex-start;
   gap: 8px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg, 12px);
+  border-radius: var(--radius-lg);
   padding: 10px 12px;
   cursor: pointer;
 }
@@ -4443,12 +4448,12 @@ button.chip-ui.active {
   align-items: center;
   gap: 6px;
   padding: 2px 0;
-  color: var(--text-secondary, var(--text));
+  color: var(--text-secondary));
 }
 
 .instr-assembly-chars {
   margin-left: auto;
-  color: var(--text-tertiary, var(--text));
+  color: var(--text-tertiary));
   font-size: 11px;
 }
 
@@ -4480,7 +4485,7 @@ button.chip-ui.active {
   align-items: center;
   gap: 6px;
   padding: 7px 9px;
-  border: 1px solid var(--border, rgba(128, 128, 128, 0.3));
+  border: 1px solid var(--border));
   border-radius: 8px;
   background: transparent;
   color: var(--text);
@@ -4525,7 +4530,7 @@ button.chip-ui.active {
 
 .chip-btn {
   cursor: pointer;
-  border: 1px solid var(--border, rgba(128, 128, 128, 0.3));
+  border: 1px solid var(--border));
   background: transparent;
   color: var(--text);
   border-radius: 999px;
@@ -4538,7 +4543,7 @@ button.chip-ui.active {
 }
 
 .textarea.mono {
-  font-family: var(--mono, monospace);
+  font-family: var(--mono);
   font-size: 12.5px;
   line-height: 1.5;
 }
@@ -4567,7 +4572,7 @@ button.chip-ui.active {
 }
 
 .rules-col {
-  border: 1px solid var(--border, rgba(128, 128, 128, 0.3));
+  border: 1px solid var(--border));
   border-radius: 8px;
   padding: 6px 8px;
   display: flex;
@@ -4592,7 +4597,7 @@ button.chip-ui.active {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-tertiary, var(--text));
+  color: var(--text-tertiary));
 }
 
 .rule-row {
@@ -4601,7 +4606,7 @@ button.chip-ui.active {
   gap: 8px;
   padding: 3px 0;
   font-size: 12px;
-  border-bottom: 1px dashed var(--border, rgba(128, 128, 128, 0.18));
+  border-bottom: 1px dashed var(--border));
 }
 
 .rule-row:last-child {
@@ -4609,7 +4614,7 @@ button.chip-ui.active {
 }
 
 .rule-raw {
-  font-family: var(--mono, monospace);
+  font-family: var(--mono);
   font-size: 12px;
   word-break: break-all;
 }
@@ -4617,7 +4622,7 @@ button.chip-ui.active {
 .rule-meta {
   margin-left: auto;
   flex: none;
-  color: var(--text-tertiary, var(--text));
+  color: var(--text-tertiary));
   font-size: 11px;
 }
 
@@ -4627,7 +4632,7 @@ button.chip-ui.active {
 }
 
 .rules-lint {
-  border-top: 1px dashed var(--border, rgba(128, 128, 128, 0.3));
+  border-top: 1px dashed var(--border));
   padding-top: 6px;
   display: flex;
   flex-direction: column;
@@ -4682,9 +4687,9 @@ button.chip-ui.active {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-tertiary, var(--text));
+  color: var(--text-tertiary));
   padding: 10px 0 4px;
-  border-bottom: 1px dashed var(--border, rgba(128, 128, 128, 0.18));
+  border-bottom: 1px dashed var(--border));
 }
 
 .row-conflict {
@@ -4715,7 +4720,7 @@ button.chip-ui.active {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-tertiary, var(--text));
+  color: var(--text-tertiary));
   padding: 8px 0 2px;
 }
 
@@ -4725,7 +4730,7 @@ button.chip-ui.active {
   gap: 10px;
   padding: 4px 2px;
   font-size: 12.5px;
-  border-bottom: 1px dashed var(--border, rgba(128, 128, 128, 0.15));
+  border-bottom: 1px dashed var(--border));
 }
 
 .cheatsheet-row:last-child {
@@ -4740,7 +4745,7 @@ button.chip-ui.active {
 .cheatsheet-note {
   margin-left: 6px;
   font-size: 10.5px;
-  color: var(--text-tertiary, var(--text));
+  color: var(--text-tertiary));
 }
 
 /* ---------------------------------------------------------------------------
@@ -4776,7 +4781,7 @@ button.chip-ui.active {
     flex: 1;
     min-width: 0;
     text-align: left;
-    color: var(--text-secondary, var(--text));
+    color: var(--text-secondary));
 }
 
 .checkup-badge {
@@ -4853,7 +4858,7 @@ button.transfer-row:hover {
 
 .export-domain-item small {
     font-size: 11px;
-    color: var(--text-tertiary, var(--text));
+    color: var(--text-tertiary));
 }
 
 /* ---------------------------------------------------------------------------
@@ -4996,7 +5001,7 @@ button.transfer-row:hover {
 }
 
 .queue-btn-danger:hover {
-  background: rgba(229, 72, 77, 0.12);
+  background: color-mix(in srgb, var(--destructive) 12%, transparent);
 }
 
 /* L：输入 Tab 栏（附件+/权限/上下文%/模型——需求四常驻可见） */
@@ -5016,13 +5021,13 @@ button.transfer-row:hover {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 26px;
+  height: 28px; /* P-022：26→28px 对齐控件档 */
   padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
   background: var(--bg-sidebar);
   color: var(--text-subtle);
-  font-size: var(--text-ui-xs);
+  font-size: var(--text-ui-sm); /* P-022：10→12px（权限档=安全控件，字号下限 12） */
   font-family: inherit;
   cursor: pointer;
   white-space: nowrap;
@@ -5125,7 +5130,7 @@ button.transfer-row:hover {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg-sidebar);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-2); /* 阴影 token 归一（批 1 A3 清零补漏——rgba 形态） */
   padding: 10px 12px;
   z-index: 60;
 }

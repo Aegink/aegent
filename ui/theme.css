@@ -25,6 +25,7 @@
   --success: #22c55e; /* green-500 */
   --warning: #eab308; /* yellow-500 */
   --destructive: #ef4444; /* red-500 */
+  --destructive-foreground: #ffffff; /* 危险底上的前景（zcode styles.css:562/708 双主题同值） */
   --inverse: #ffffff; /* 白圆钮/反色文字面 */
 
   /* —— 统计页六色板（不复用终端 ANSI 色——避免高饱和堆叠） —— */
