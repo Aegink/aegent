@@ -27,3 +27,11 @@
 - **Spike Q 编译通过**：src-tauri Cargo.toml 加 tauri features=["unstable"]；src-tauri/src/browser.rs（browser_create/show/hide/navigate/destroy→close/eval——child Webview 挂 Window.add_child（非 WebviewWindow）；WebviewUrl 在 tauri:: 顶层；set_bounds 吃 Position/Size enum（into()）；state guard 须先绑定再 lock）。cargo check 0 error。**真机验证待 tauri dev**。
 - 面板批实施中：ui/pane-browser.js 已写（pane.js 加 onBlur/onActivate 钩子）；待做：host terminal-ops（node-pty+terminal-data notification 下行）/git-ops（status/diff/stage/commit/log——child_process git）/assistant-log op；UI terminal.js（xterm vendor 化）/git/review/assistant 四面板；测试断言+走查+提交。
 - 测试拆分：ui-settings.test.ts 触 400 行纪律→T-P3-156 断言拆 src/diagnostics/ui-mainui.test.ts（两 describe）。
+
+## 打磨批进度（2026-10-03 晚）
+
+- **M 大文本粘贴→附件——已实施**：paste 链加大文本分支（>8KB 或 >400 行任一→File text/plain 入附件链）+addAttachment 白名单加 text/plain 通道+chip 命名 pasted-<HHMMSS>.txt。**待补**：chip 点击弹窗查看原文（attachments-preview chip 无点击面——下轮加 data-pasted 标记+模态）。
+- **O 命令弹窗美化——已实施**：CSS 层（分组头/激活态 inset 光条/描述第二行/键位 kbd 标）。
+- **F 多根项目——验证即达成**：数据模型本就是 roots 数组（projects.js T-P3-150 A1）+编辑对话框多行目录+卡片"N 个目录"meta——无需新代码，实测记档即可。
+- **J 会话树 / V 轻隔离 / N 图片能力 / X 收尾——待下轮**：J=面板"会话树"Tab（fork-tree 数据源流内 session/fork 事件过滤渲染）；V=内核写路径约束（subagent.ts PathGuard 专属子目录——L 级内核改造单独立批）；N=host 模型 capabilities 元数据面缺失【诚实降级：附件图片 tooltip 提示+轮次错误可见，P2 补 host 能力面】；X=焦点管理/Esc 归还/i18n 词条收尾。
+- 下轮：M chip 查看+J 树+N 记档落对照清单+X 收尾+对照清单新增主界面行+交接 handoff。

@@ -5492,3 +5492,42 @@ button.transfer-row:hover {
   line-height: 1.7;
   text-align: center;
 }
+
+/* ===== T-P3-156 打磨批（O）：/ 命令弹窗美化——分组头/描述行/键位提示 ===== */
+#autocomplete .ac-head {
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+  padding: 6px 10px 2px;
+  border-bottom: 1px dashed var(--border);
+}
+
+#autocomplete .ac-row {
+  padding: 5px 10px;
+  border-radius: var(--radius-md);
+  transition: background 80ms ease;
+}
+
+#autocomplete .ac-row.active,
+#autocomplete .ac-row:hover {
+  background: var(--surface-hover);
+  box-shadow: inset 2px 0 0 var(--brand);
+}
+
+#autocomplete .ac-row .ac-desc {
+  display: block;
+  font-size: 11px;
+  color: var(--text-subtle);
+  margin-top: 1px;
+}
+
+#autocomplete .ac-row .ac-key {
+  float: right;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0 4px;
+}

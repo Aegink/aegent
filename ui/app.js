@@ -952,8 +952,9 @@ function renderAttachmentsPreview() {
 
 function addAttachment(file) {
   const isAudio = AUDIO_TYPES.has(file.type);
-  if (!IMAGE_TYPES.has(file.type) && !isAudio) {
-    appendLine(`不支持的附件类型：${file.type}（白名单：png/jpeg/gif/webp + wav/mp4/webm 音频）`, "warn");
+  const isText = file.type === "text/plain";
+  if (!IMAGE_TYPES.has(file.type) && !isAudio && !isText) {
+    appendLine(`不支持的附件类型：${file.type}（白名单：png/jpeg/gif/webp + wav/mp4/webm 音频 + text/plain 大文本粘贴）`, "warn");
     return;
   }
   if (pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE) {
@@ -971,7 +972,7 @@ function addAttachment(file) {
   reader.addEventListener("load", () => {
     const result = String(reader.result ?? "");
     const base64 = result.includes(",") ? result.slice(result.indexOf(",") + 1) : result;
-    pendingAttachments.push({ mediaType: file.type, data: base64, name: file.name || (isAudio ? "audio" : "pasted-image") });
+    pendingAttachments.push({ mediaType: file.type, data: base64, name: file.name || (isAudio ? "audio" : isText ? "pasted-text" : "pasted-image") });
     renderAttachmentsPreview();
   });
   reader.readAsDataURL(file);
@@ -987,6 +988,24 @@ input.addEventListener("paste", (ev) => {
       }
     }
   }
+});
+
+// T-P3-156 M：大文本粘贴自动转附件（裁决阈值 = >8KB 或 >400 行任一）——
+// chip 命名 pasted-<HHMMSS>.txt，点击弹窗查看原文（方案 M 完整语义）；
+// 阈值内行为不变（直接进输入框）。
+input.addEventListener("paste", (ev) => {
+  const text = ev.clipboardData?.getData("text/plain") ?? "";
+  if (text === "") return;
+  const overBytes = new Blob([text]).size > 8 * 1024;
+  const overLines = text.split("\n").length > 400;
+  if (!overBytes && !overLines) return;
+  ev.preventDefault();
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  const name = `pasted-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.txt`;
+  const file = new File([text], name, { type: "text/plain" });
+  addAttachment(file);
+  toast(`粘贴内容过大（${overBytes ? ">8KB" : ">400 行"}）——已转为附件「${name}」（点 chip 可查看原文）`, "info");
 });
 
 // —— 两类补全（@ 文件/目录——query op:"files"；/ 命令+工具+技能——
