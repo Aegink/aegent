@@ -320,12 +320,12 @@ function initResize() {
   });
 }
 
-/** 开合规则：需求一.4 要求右上角「切换面板」**固定显示**——仅在面板展开
- * 时隐藏（关闭由面板 close 承担，zcode 同款）；收起态恒显（无 Tab 时点击
- * 给引导提示，不消失）。 */
+/** 开合规则（用户反馈 2 修正）：右上角「切换面板」**恒显**——点击在
+ * 展开/收起间切换（收起=整面板隐藏，Tab 保活；再点恢复）；激活态样式
+ * 随开合。zcode 的"展开时隐藏钮"形态被用户判为不可发现，弃用。 */
 function syncToggleBtn() {
-  if (toggleBtn === null) return;
-  toggleBtn.hidden = paneIsOpen();
+  if (toggleBtn === null || root === null) return;
+  toggleBtn.classList.toggle("active", !root.hidden);
 }
 
 // ---------------------------------------------------------------------------

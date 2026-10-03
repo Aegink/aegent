@@ -67,8 +67,8 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     expect(settingsView).toContain('type="password"');
 
     // settings 信封直答（get/update + credentials-*）与即改即存（防抖合并）
-    expect(app).toContain('op: "get"'); // 入口 maybeOnboard/引导完成写回
-    expect(app).toContain('op: "update"'); // 入口 ob-done
+    expect(read("sidebar.js")).toContain('op: "get"'); // 侧栏首拉（maybeOnboard 删除后 app.js 无 get——反馈 1 随行重定）
+    expect(settingsView).toContain('op: "update"'); // settings 即改即存（core.js flushSettings——onboardingDone 写回移除后消费在设置域）
     expect(settingsView).toContain("credentials-set");
     expect(settingsView).toContain("credentials-delete");
     expect(settingsView).toContain("markDirty");
@@ -297,13 +297,13 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     expect(sidebar).toContain("confirmDialog"); // 硬删除确认（会话删除——T-P3-156 迁侧栏）
     expect(read("views/notify.js")).toContain('id="notify-panel"'); // 通知中心（批 A 迁 views/notify.js）
     expect(html).toContain('id="toast-area"');
-    expect(html).toContain('id="onboarding"');
+    expect(html).not.toContain('id="onboarding"'); // 反馈 1：引导窗口移除（2026-10-03 用户裁决）
     expect(html).toContain('id="recovery-banner"');
     expect(html).toContain('id="update-banner"');
     expect(html).toContain('id="release-notes"');
     expect(app).toContain('name === "n5"'); // N5 分型消费
     expect(app).toContain("consumeN5");
-    expect(app).toContain("onboardingDone"); // 首跑标记（settings）
+    expect(app).not.toContain("maybeOnboard"); // 反馈 1：首跑引导逻辑移除
     expect(app).toContain("showRecoveryIfInterrupted"); // M3 可视化
     expect(app).toContain("aegentShowUpdate"); // U7 接线点（T-P3-114）
     // U15/T-P3-117：工作面板四 Tab（文件树/变更评审/子代理监控/协作——批 A 迁 views/work.js）

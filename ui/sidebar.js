@@ -756,6 +756,13 @@ async function hideFileTree() {
   filesProjectId = null;
   const filesBox = document.getElementById("sb-files");
   if (filesBox !== null) filesBox.hidden = true;
+  // 恢复两分段可见性（showFileTree 切走时把它们 hidden 了——漏恢复即
+  // "返回后侧栏空白"（用户反馈 1 根因）；refreshSidebar 的 paintProjects
+  // 只管内容渲染不管容器 hidden 态）
+  const projBox = document.getElementById("sb-projects");
+  const histBox = document.getElementById("sb-history");
+  if (projBox !== null) projBox.hidden = false;
+  if (histBox !== null) histBox.hidden = false;
   await refreshSidebar();
 }
 

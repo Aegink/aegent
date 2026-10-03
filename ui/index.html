@@ -118,6 +118,14 @@
                 <div id="attachments-preview"></div>
                 <textarea id="prompt-input" rows="1" placeholder="输入指令回车执行…（Shift+Enter 换行；@ 补全文件、/ 补全命令）" autocomplete="off"></textarea>
                 <div class="composer-actions">
+                  <div class="composer-tabs" id="composer-tabs">
+                <input id="attach-file-input" type="file" multiple hidden />
+                <button id="attach-add-btn" class="composer-tab" type="button" title="添加附件（任何文件；图片需当前模型可识别）">📎 附件</button>
+                <button id="perm-pill" class="composer-tab" type="button" title="权限档（当前会话即时生效——config/refresh）">🔒 权限</button>
+                <button id="ctx-pill" class="composer-tab" type="button" title="上下文用量（点击看明细）">☰ 0%</button>
+                <button id="model-pill" class="composer-tab" type="button" title="切换供应商与模型（model/switch）">✦ 模型</button>
+              </div>
+                  <div class="composer-actions-right">
                   <div id="voice-status" hidden aria-live="polite">
                     <span class="voice-busy">⏳ 转写中…</span>
                     <span class="voice-live">
@@ -133,17 +141,11 @@
                   <span id="polish-undo" hidden><button type="button" id="polish-undo-btn">撤销润色</button></span>
                   <span class="composer-hint">Shift+Enter 换行</span>
                   <button id="send-btn" type="button">发送</button>
+                  </div>
                 </div>
               </div>
               <!-- T-P3-156 L：输入 Tab 栏（需求四——附件+/权限档/上下文%/模型
                    常驻可见；选择走 op 与 config/refresh、model/switch 既有面） -->
-              <div class="composer-tabs" id="composer-tabs">
-                <input id="attach-file-input" type="file" multiple hidden />
-                <button id="attach-add-btn" class="composer-tab" type="button" title="添加附件（任何文件；图片需当前模型可识别）">📎 附件</button>
-                <button id="perm-pill" class="composer-tab" type="button" title="权限档（当前会话即时生效——config/refresh）">🔒 权限</button>
-                <button id="ctx-pill" class="composer-tab" type="button" title="上下文用量（点击看明细）">☰ 0%</button>
-                <button id="model-pill" class="composer-tab" type="button" title="切换供应商与模型（model/switch）">✦ 模型</button>
-              </div>
             </footer>
           </div>
           <!-- 路由容器：views/*.js 页面模块挂载点（settings/notify/search；工作台
@@ -170,19 +172,6 @@
       <span id="update-text"></span>
       <button id="update-details" type="button">查看发布说明</button>
       <button id="update-dismiss" type="button">稍后</button>
-    </div>
-    <div id="onboarding" hidden>
-      <div class="ob-card">
-        <h2>欢迎使用 aegent</h2>
-        <p class="hint">四步上手（不挡路——可随时在设置里回看）：</p>
-        <ul id="ob-list">
-          <li>📁 <b>左侧栏添加项目</b>——本机文件夹 / Git 仓库 / 扫描其他工具记录</li>
-          <li>⌨ <b>输入区</b>——@ 补全文件、/ 补全命令，Shift+Enter 换行，可粘贴图片</li>
-          <li>🔍 <b>检索</b>——Ctrl+F 会话内搜索，Ctrl+Shift+F 跨会话搜索</li>
-          <li>📊 <b>用量</b>——输入条看实时上下文，完整统计在设置中心</li>
-        </ul>
-        <button id="ob-done" type="button">开始使用</button>
-      </div>
     </div>
     <div id="release-notes" hidden>
       <div class="ob-card">

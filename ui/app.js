@@ -67,6 +67,7 @@ import {
 import { initProgressDock, notifyToolCall, notifyEventLine } from "./progress-dock.js";
 // T-P3-156 面板批（P/Q/R/S/T）：终端抽屉 + 浏览器/Git/审查/辅助对话四面板
 import { initTerminalPane, toggleTerminal } from "./terminal.js";
+import { fileIcon as fileIconOf } from "./views/projects-files.js";
 import "./pane-browser.js";
 import "./pane-git.js";
 import "./pane-review.js";
@@ -227,6 +228,49 @@ function denialEl(denial) {
 // 同构：会话内切任务/重放后展开态记忆保持，callId 为键）
 const toolOpenState = new Map();
 
+// T-P3-156 反馈 4：工具呈现映射（zcode 对标——动作词+文件类型图标+目录+
+// diff 行数徽标；kind = file（读 args.path 出文件名/目录）/ shell（args.command
+// mono 呈现）/ plain（默认 args 摘要））
+const TOOL_PRESENTATION = {
+  read: { icon: "📄", verb: "读取", kind: "file" },
+  write: { icon: "✏️", verb: "写入", kind: "file" },
+  edit: { icon: "📝", verb: "编辑", kind: "file" },
+  apply_patch: { icon: "🩹", verb: "补丁", kind: "plain" },
+  bash: { icon: "▶", verb: "终端", kind: "shell" },
+  pwsh: { icon: "▶", verb: "终端", kind: "shell" },
+  glob: { icon: "📁", verb: "查找文件", kind: "plain" },
+  grep: { icon: "🔍", verb: "搜索", kind: "plain" },
+  skill_load: { icon: "⚡", verb: "加载技能", kind: "plain" },
+  todo_write: { icon: "☑️", verb: "更新待办", kind: "plain" },
+  tool_load: { icon: "🧩", verb: "加载工具", kind: "plain" },
+  webfetch: { icon: "🌐", verb: "抓取网页", kind: "plain" },
+  question: { icon: "❓", verb: "提问", kind: "plain" },
+  task: { icon: "🤖", verb: "子代理", kind: "plain" },
+  session_query: { icon: "🔎", verb: "会话查询", kind: "plain" },
+  session_get: { icon: "🔎", verb: "会话读取", kind: "plain" },
+  lsp: { icon: "🔧", verb: "LSP", kind: "plain" },
+  plan_enter: { icon: "🗺", verb: "进入规划", kind: "plain" },
+  plan_exit: { icon: "🗺", verb: "退出规划", kind: "plain" },
+  plugin_create: { icon: "🧩", verb: "创建插件", kind: "plain" },
+  plugin_define: { icon: "🧩", verb: "定义插件", kind: "plain" },
+};
+
+/** 写入/编辑的行数徽标（zcode +N 对标）：write=新增行数；edit=+/−行数对。 */
+function diffBadgeOf(toolName, args) {
+  if (args === null) return null;
+  if (toolName === "write" && typeof args.content === "string") {
+    const n = args.content.split("\n").length;
+    return { add: n, del: 0 };
+  }
+  if (toolName === "edit") {
+    const oldLines = typeof args.oldText === "string" ? args.oldText.split("\n").length : 0;
+    const newLines = typeof args.newText === "string" ? args.newText.split("\n").length : 0;
+    if (oldLines === 0 && newLines === 0) return null;
+    return { add: newLines, del: oldLines };
+  }
+  return null;
+}
+
 function buildToolCard(e) {
   const card = document.createElement("details");
   card.className = "tool-card";
@@ -238,17 +282,53 @@ function buildToolCard(e) {
   });
   const summary = document.createElement("summary");
   const args = safeParseArgs(e.arguments);
-  // 批 C 任务卡片化：icon + 工具名 + 参数一行 + 状态徽标（结果结算后翻转）
+  const pres = TOOL_PRESENTATION[e.name] ?? { icon: "⚙", verb: e.name, kind: "plain" };
+  // 动作词（主色强调——zcode 动词开头语义）
   const name = document.createElement("span");
   name.className = "tool-name";
-  name.textContent = `⚙ ${e.name}`;
-  const argsSpan = document.createElement("span");
-  argsSpan.className = "tool-args";
-  argsSpan.textContent = oneLine(args !== null ? JSON.stringify(args) : e.arguments, 160);
+  name.textContent = e.name; // 纯名（G 聚合的 READONLY 匹配与 minimap 依赖）
+  const verb = document.createElement("span");
+  verb.className = "tool-verb";
+  verb.textContent = `${pres.icon} ${pres.verb}`;
+  summary.append(verb, name);
+  // 文件类：文件类型图标+文件名+目录（zcode 截图语义——「写入 [js] pane-browser.js ui/ +173」）
+  const filePath = args !== null && typeof args.path === "string" ? args.path : "";
+  if (pres.kind === "file" && filePath !== "") {
+    const parts = filePath.split(/[\/]/);
+    const fileName = parts.at(-1) ?? filePath;
+    const dir = parts.slice(0, -1).join("/");
+    const fileIcon = document.createElement("span");
+    fileIcon.className = "tool-file-icon";
+    fileIcon.textContent = fileIconOf(fileName);
+    const fileNameSpan = document.createElement("span");
+    fileNameSpan.className = "tool-file-name";
+    fileNameSpan.textContent = fileName;
+    summary.append(fileIcon, fileNameSpan);
+    if (dir !== "") {
+      const dirSpan = document.createElement("span");
+      dirSpan.className = "tool-file-dir";
+      dirSpan.textContent = dir;
+      summary.appendChild(dirSpan);
+    }
+    const badge = diffBadgeOf(e.name, args);
+    if (badge !== null) {
+      const diff = document.createElement("span");
+      diff.className = "tool-diff-badge";
+      diff.innerHTML = `${badge.add > 0 ? `<b class="add">+${String(badge.add)}</b>` : ""}${badge.del > 0 ? ` <b class="del">−${String(badge.del)}</b>` : ""}`;
+      summary.appendChild(diff);
+    }
+  } else {
+    const argsSpan = document.createElement("span");
+    argsSpan.className = "tool-args";
+    const shellCmd = pres.kind === "shell" && args !== null && typeof args.command === "string";
+    argsSpan.textContent = shellCmd ? `$ ${oneLine(args.command, 140)}` : oneLine(args !== null ? JSON.stringify(args) : e.arguments, 160);
+    if (shellCmd) argsSpan.classList.add("mono");
+    summary.append(argsSpan);
+  }
   const status = document.createElement("span");
   status.className = "tool-status running";
   status.textContent = "运行中";
-  summary.append(name, argsSpan, status);
+  summary.appendChild(status);
   const body = document.createElement("div");
   body.className = "tool-body";
   const argsPre = document.createElement("pre");
@@ -297,11 +377,11 @@ function attachSubagentView(body, meta) {
 /** 任务卡状态徽标翻转（结果结算——完成/失败两态，运行中只存在于调用未闭合时）。
  * G：失败原因悬浮——错误摘要挂 summary.title（折叠态 hover 即见原因，
  * zcode showFailureStatus 的 tooltip 语义；展开卡内仍有完整错误原文）。 */
-function setToolStatus(card, isError, errorDigest) {
+function setToolStatus(card, isError, errorDigest, resultDigest) {
   const status = card.querySelector(".tool-status");
   if (status !== null) {
     status.className = `tool-status ${isError ? "fail" : "done"}`;
-    status.textContent = isError ? "✗ 失败" : "✓ 完成";
+    status.textContent = isError ? "✗ 失败" : resultDigest !== undefined && resultDigest !== "" ? `✓ ${resultDigest}` : "✓ 完成";
   }
   const summary = card.querySelector("summary");
   if (summary !== null) {
@@ -315,7 +395,14 @@ function settleToolCard(e) {
   const existing = stream.querySelector(`details[data-call-id="${CSS.escape(e.callId)}"]`);
   if (existing !== null) {
     existing.classList.toggle("error", isError);
-    setToolStatus(existing, isError, isError ? oneLine(content, 120) : undefined);
+    // 反馈 3：结果摘要（✓ N 行——zcode「查询 · 2 搜索」语义；文本结果按行计量）
+    const resultLines = content === "" ? 0 : content.split("\n").length;
+    setToolStatus(
+      existing,
+      isError,
+      isError ? oneLine(content, 120) : undefined,
+      !isError && resultLines > 0 ? `${String(resultLines)} 行` : undefined,
+    );
     const body = existing.querySelector(".tool-body");
     const denial = isError ? parseDenial(content) : null;
     if (denial !== null) {
@@ -370,21 +457,29 @@ function attachRetry(el, error) {
   el.appendChild(btn);
 }
 
+// 反馈 3：思考时长回填游标（live 流——下一个事件到达时结算「持续了 N 秒」）
+let lastThinking = null;
+
 /** 事件 → DOM 节点（U4 分层版）；null = 不展示或已并入既有卡。 */
 function renderEvent(e, options = {}) {
   switch (e.type) {
     case "turn/start":
       // T-P3-156：运行态广播（侧栏状态点 + 进度弹窗事件源）——仅 live 流
-      // （历史恢复重放不发，renderHistory 不带 live 标志）
+      // （历史恢复重放不发，renderHistory 不带 live 标志）。
+      // 反馈 4：turn 边界行不再渲染（zcode 对标——聊天流只见内容不见回合噪声）
       if (options.live === true) {
         window.__agentBusy = true;
         notifyTurnStarted(e.turn);
         window.dispatchEvent(new CustomEvent("agent:busy"));
       }
-      return lineEl(`── turn ${e.turn} 开始`, "meta");
+      return null;
     case "turn/end": {
-      const el = lineEl(`── turn ${e.turn} 结束（${endKindText(e.reason)}）`, "meta");
-      if (e.reason?.kind === "error") attachRetry(el, e.reason.error); // 错误重试交互
+      // 反馈 4：正常结束不渲染；仅失败保留一行（错误原因+重试入口）
+      if (e.reason?.kind !== "error") {
+        return null; // 正常结束静默（idle 通知承担续跑/进度复位）
+      }
+      const el = lineEl(`✗ 轮以错误结束（${endKindText(e.reason)}）`, "meta error-line");
+      attachRetry(el, e.reason.error); // 错误重试交互
       return el;
     }
     case "user/message": {
@@ -412,7 +507,13 @@ function renderEvent(e, options = {}) {
       const bubble = document.createElement("div");
       bubble.className = `bubble agent ${e.interrupted ? "warn" : ""}`.trim();
       const content = e.message?.content ?? "";
-      if (content === "") return lineEl("⬢ （模型转入工具调用）", "agent reasoning");
+      if (content === "") {
+        // 反馈 3：思考行带时长（下一事件到达时回填「持续了 N 秒」——zcode
+        // thinking 块时长语义；历史恢复无后续时差则只显示标记）
+        const el = lineEl("🧠 思考", "agent thinking");
+        lastThinking = { el, ts: Number(e.ts) || Date.now() };
+        return el;
+      }
       // 终态装饰（时间戳 + 朗读按钮）——流式期间 textContent/innerHTML 覆盖
       // 会清掉子元素，统一在 onDone 后挂载（顺修 T-P3-141 流式时间戳丢失）
       const decorate = () => {
@@ -443,9 +544,8 @@ function renderEvent(e, options = {}) {
     case "image/offload":
       return lineEl(`◇ 图片卸载：${(e.targets ?? []).length} 组`, "meta");
     case "surface/attach":
-      return lineEl(`＋ surface ${e.surfaceId} 接入`, "roster");
     case "surface/detach":
-      return lineEl(`－ surface ${e.surfaceId} 离开`, "roster");
+      return null; // 反馈 4：端面连接事实不进聊天流（通知中心 surface_changed 仍可查）
     default:
       return null; // wire 细节类静默（request/header 等——repl 同款纪律）
   }
@@ -691,6 +791,18 @@ function maybeCollapseReadonly() {
 }
 
 function renderEventEnvelope(envelope) {
+  // 反馈 3：思考时长结算（上一事件是 thinking 且非同一 ts——秒差回填）
+  if (lastThinking !== null) {
+    const ts = Number(envelope.event?.ts);
+    if (Number.isFinite(ts) && ts > lastThinking.ts) {
+      const sec = Math.round((ts - lastThinking.ts) / 1000);
+      const dur = document.createElement("span");
+      dur.className = "think-dur";
+      dur.textContent = ` · 持续了 ${String(sec)} 秒`;
+      lastThinking.el.appendChild(dur);
+    }
+    lastThinking = null;
+  }
   const node = renderEvent(envelope.event, { live: true });
   if (node !== null) {
     appendStreamNode(node, envelope.event);
@@ -1843,8 +1955,8 @@ for (const btn of document.querySelectorAll("#chat-empty [data-empty-action]")) 
 
 // ---------------------------------------------------------------------------
 // U13/T-P3-112 五件套（横幅与弹窗面在骨架 index.html）：Toast（feedback.js）
-// + 通知中心消费（N5 分型——清单渲染在 views/notify.js）+ 首次引导清单
-//（settings 首跑标记）+ 启动恢复横幅（M3 诊断 + 一键续跑）+ 更新横幅与
+// + 通知中心消费（N5 分型——清单渲染在 views/notify.js）+ 启动恢复横幅
+//（M3 诊断 + 一键续跑）+ 更新横幅与
 // 发布说明弹窗（U7 消费端——真实更新源 T-P3-114 接线）。
 // ---------------------------------------------------------------------------
 
@@ -1875,24 +1987,6 @@ function n5ToastText(n) {
       return oneLine(JSON.stringify(d), 80);
   }
 }
-
-// —— 首次引导（settings 首跑标记——完成即写 onboardingDone）
-async function maybeOnboard() {
-  const envelope = await sendSettings({ op: "get" });
-  if (!envelope.ok) return;
-  setSettingsCache(envelope.result.settings);
-  // T-P3-141：i18n 先于外观应用（data-i18n 扫描需语言就绪）——applyTheme
-  // 现在是全量外观应用（模式/皮肤/强调色/字号/字体/开关/背景/插件主题）
-  applyLocalePreference(settingsCache.appearance?.language);
-  applyTheme(settingsCache.appearance?.theme); // 启动即应用已存外观（批 A 缺口修复的延续）
-  if (settingsCache.onboardingDone === true) return;
-  document.getElementById("onboarding").hidden = false;
-}
-document.getElementById("ob-done").addEventListener("click", async () => {
-  settingsCache.onboardingDone = true;
-  document.getElementById("onboarding").hidden = true;
-  await sendSettings({ op: "update", patch: { onboardingDone: true } });
-});
 
 // —— 启动恢复横幅（M3 可视化）：恢复视图流尾存在未闭合轮 → 诊断 + 一键续跑
 function showRecoveryIfInterrupted(events) {
@@ -2158,7 +2252,6 @@ function handleEnvelope(envelope) {
         inflight.set(requestId, null);
         sendRaw({ type: "query", requestId, sessionId: getSessionId(), op: "events" });
       }
-      void maybeOnboard(); // U13：首跑引导（settings onboardingDone 标记）
       break;
     case "response": {
       if (envelope.requestId === "(lease)") {

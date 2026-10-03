@@ -812,8 +812,17 @@ code,
 }
 
 .pane-body > * {
-  flex: 1;
+  flex: none;
   min-height: 0;
+}
+
+/* 头行（面包屑/工具条）不参与拉伸——修复文件预览上方大空白（用户反馈 2）：
+   .pane-body 直子元素默认 flex:none，内容体各自声明 flex:1 */
+.pane-body > .proj-preview-body,
+.pane-body > .subagent-pane-stream,
+.pane-body > .review-pane-body,
+.pane-body > .browser-host {
+  flex: 1;
 }
 
 /* 面板左缘拖宽条（pane.js 注入——双击重置默认宽） */
@@ -1063,7 +1072,16 @@ code,
 .composer-actions {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-2);
+  padding: 4px 10px 8px;
+}
+
+.composer-actions-right {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
 }
 
 .composer-hint {
@@ -4918,7 +4936,7 @@ button.transfer-row:hover {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 0 20px 10px;
+  flex-wrap: wrap;
 }
 
 .composer-tab {
@@ -5558,4 +5576,148 @@ button.transfer-row:hover {
   font-size: var(--text-ui-xs);
   color: var(--text-subtle);
   padding: 2px 0;
+}
+
+/* ===== T-P3-156 反馈轮：对话流 zcode 化 ===== */
+
+/* 动作词（工具卡开头——主色强调） */
+.tool-verb {
+  color: var(--brand);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+/* 文件类型图标+文件名+目录（写入/编辑/读取卡） */
+.tool-file-icon {
+  flex-shrink: 0;
+  font-size: 13px;
+}
+
+.tool-file-name {
+  font-family: var(--font-mono);
+  font-size: var(--text-ui-sm);
+  color: var(--text);
+}
+
+.tool-file-dir {
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* diff 行数徽标（+N 绿 / −N 红——zcode 截图语义） */
+.tool-diff-badge {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-ui-xs);
+}
+
+.tool-diff-badge .add {
+  color: #3fb950;
+  font-weight: 600;
+}
+
+.tool-diff-badge .del {
+  color: var(--danger, #e5484d);
+  font-weight: 600;
+}
+
+/* 终端命令行 mono 呈现 */
+.tool-args.mono {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+/* 思考标记行（空文本 assistant 段——zcode 🧠 思考对标） */
+.agent.thinking {
+  color: #a371f7;
+  font-style: italic;
+  opacity: 0.85;
+}
+
+/* 错误结束行（仅失败轮保留——重试入口） */
+.meta.error-line {
+  color: var(--danger, #e5484d);
+}
+
+/* 工具名弱化为次级（动作词是主标识——名作辅助检索） */
+.tool-card summary .tool-name {
+  color: var(--text-subtle);
+  font-size: var(--text-ui-xs);
+  font-family: var(--font-mono);
+}
+
+/* ===== T-P3-156 反馈轮 2：对话流深度 zcode 化 ===== */
+
+/* a) assistant 裸排版（zcode 文本无气泡底——左侧轨迹条保留辨识） */
+.bubble.agent {
+  background: transparent;
+  border: none;
+  border-left: 3px solid var(--traj-assistant);
+  max-width: 100%;
+  padding-left: 12px;
+  margin: 18px 0 14px;
+}
+
+/* b) 工具卡单行紧凑无边框（zcode 工具行——hover 才显底；展开才有边界） */
+.tool-card {
+  background: transparent;
+  border: none;
+  border-left: none;
+  border-radius: var(--radius-md);
+  margin: 4px 0;
+  max-width: 100%;
+}
+
+.tool-card > summary {
+  min-height: 30px;
+  padding: 4px 10px;
+  border-radius: var(--radius-md);
+  gap: 8px;
+  transition: background 100ms ease;
+}
+
+.tool-card > summary:hover {
+  background: var(--surface-hover);
+}
+
+.tool-card[open] {
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  margin: 8px 0;
+}
+
+.tool-card[open] > summary {
+  border-bottom: 1px dashed var(--border);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+/* 运行态：spinner 字符旋转（zcode 运行中动效对标） */
+.tool-status.running {
+  color: var(--text-subtle);
+}
+
+/* c) 思考行带时长（🧠 思考 · 持续了 N 秒） */
+.agent.thinking {
+  margin: 14px 0 8px;
+  padding-left: 12px;
+}
+
+.agent.thinking .think-dur {
+  color: var(--text-subtle);
+  font-style: normal;
+  font-size: var(--text-ui-xs);
+}
+
+/* d) 消息间距（zcode 大间距——内容呼吸感） */
+#stream {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#stream > .bubble.user {
+  margin: 16px 0 6px;
 }
