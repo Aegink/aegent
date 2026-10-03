@@ -47,7 +47,7 @@ const NAV_GROUPS = [
       ["prompts", "提示词模板"],
       ["enhancement", "辅助模型"],
       ["plugins", "插件"],
-      ["speech", "语音【实验性】"],
+      ["speech", "语音（实验性）"],
     ],
   },
   {

@@ -52,7 +52,7 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     // 批 A 重定目标说明：原断言读 app.js/index.html 巨石；拆分后标记随
     // 代码/标记所在模块核对（断言本体一条不删）。
     // 十八分节（……speech、plugins、about——settings.json 各段与文件位
-    // 一一对应；speech 为 U26/T-P3-129 语音【实验性】；plugins 为 T-P3-133
+    // 一一对应；speech 为 U26/T-P3-129 语音（实验性）；plugins 为 T-P3-133
     // 插件管理——I4/I5/I9 管理面延伸）——批 A 迁 views/settings.js；
     // credentials 分节并入供应商页（用户裁决"功能重复"——凭据管理面 =
     // providers.js 的孤儿预存密钥区，data-section 不复存在）
@@ -224,7 +224,7 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     expect(settingsView).toContain("capturingAction"); // 捕获态
     expect(state).toContain("rebuildKeymap"); // 键位表随 settings 同步（批 A 下沉 state.js）
     expect(settingsView).toContain('markDirty("shortcuts")'); // 改绑即改即存
-    // U26/T-P3-129 + T-P3-149：语音【实验性】（STT 配置分节 + Composer 麦克风 +
+    // U26/T-P3-129 + T-P3-149：语音（实验性）（STT 配置分节 + Composer 麦克风 +
     // 录音转写链 + 权限拒绝降级 + 三态状态机/插入冲突保护）
     expect(settingsView).toContain('id="stt-baseurl"');
     expect(settingsView).toContain('id="stt-model"');
@@ -234,7 +234,7 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     expect(settingsView).toContain('id="tts-baseurl"'); // TTS 卡（T-P3-149 D 域）
     expect(settingsView).toContain('id="stt-test"'); // 行级测试按钮（真调用真回执）
     expect(settingsView).toContain('id="tts-test"');
-    expect(settingsView).toContain("语音【实验性】");
+    expect(settingsView).toContain("语音（实验性）");
     expect(html).toContain('id="mic-btn"'); // Composer 麦克风按钮
     expect(html).toContain('id="voice-status"'); // 录音三态状态条（批 1）
     expect(app).toContain('op: "stt-transcribe"'); // 转写代理数据面

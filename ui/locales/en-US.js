@@ -42,7 +42,7 @@ export const MESSAGES = {
   "提示词模板": "Prompt Templates",
   "辅助模型": "Auxiliary Models",
   "插件": "Plugins",
-  "语音【实验性】": "Voice (experimental)",
+  "语音（实验性）": "Voice (experimental)",
   "数据与系统": "Data & System",
   "项目": "Projects",
   "指令中心": "Instructions",

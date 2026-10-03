@@ -32,7 +32,7 @@ export function appendLine(text, cls = "") {
     return recent.el;
   }
   const el = lineEl(text, cls);
-  // 警告/错误行：聚合计数位 + ✕ 关闭钮（可清理——zcode 错误行可行动语义）
+  // 警告/错误行：聚合计数位 + 关闭钮（可清理——zcode 错误行可行动语义）
   if (cls.includes("warn") || cls.includes("error")) {
     const meta = { el, count: 1, badge: document.createElement("span"), timer: 0 };
     meta.badge.className = "line-dedup-count";

@@ -3654,7 +3654,7 @@ mark.search-hit.active {
   height: 20%;
   border-radius: 1px;
   background: var(--brand);
-  transition: height 0.08s linear;
+  transition: height 0.1s linear;
 }
 
 #voice-cancel {
@@ -4145,7 +4145,7 @@ mark.search-hit.active {
  * 边框 / :active 按压缩放（模板 chips/工具 chips/所有 chip-ui 统一生效） */
 .chip-ui {
   cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s, color 0.15s, transform 0.08s;
+  transition: background 0.15s, box-shadow 0.15s, color 0.15s, transform 0.1s;
 }
 button.chip-ui:hover {
   background: color-mix(in srgb, var(--text) 8%, var(--surface));
@@ -4162,7 +4162,7 @@ button.chip-ui.active {
 }
 /* checkbox 行（继承主会话工具等）按压感 */
 .check-line input[type="checkbox"] {
-  transition: transform 0.08s;
+  transition: transform 0.1s;
 }
 .check-line:active input[type="checkbox"] {
   transform: scale(0.88);
@@ -4235,7 +4235,7 @@ button.chip-ui.active {
 }
 
 #polish-btn {
-  transition: transform 0.08s;
+  transition: transform 0.1s;
 }
 #polish-btn:active {
   transform: scale(0.92);
@@ -5641,7 +5641,7 @@ button.transfer-row:hover {
 #autocomplete .ac-row {
   padding: 5px 10px;
   border-radius: var(--radius-md);
-  transition: background 80ms ease;
+  transition: background 100ms ease;
 }
 
 #autocomplete .ac-row.active,
