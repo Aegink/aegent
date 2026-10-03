@@ -7,17 +7,18 @@
 import { sendQuery } from "./api.js";
 import { getSessionId } from "./state.js";
 import { registerPane } from "./pane.js";
+import { icon } from "./icons.js";
 
 registerPane("review", {
-  title: () => "🔍 审查",
-  icon: "🔍",
+  title: () => "审查",
+  icon: "search",
   render: (body) => {
     body.replaceChildren();
     const head = document.createElement("div");
     head.className = "review-pane-head";
     const title = document.createElement("span");
     title.className = "subagent-pane-title";
-    title.textContent = "🔍 变更评审（本会话产出的文件变更与委派）";
+    title.append(icon("search", { cls: "icon-sm" }), document.createTextNode(" 变更评审（本会话产出的文件变更与委派）"));
     const refresh = document.createElement("button");
     refresh.type = "button";
     refresh.className = "btn btn-ghost";

@@ -18,6 +18,7 @@ import { toast, appendLine } from "./feedback.js";
 import { openMenu, confirmDialog, openDialog, markDirty, dirtySections, flushSettings, onSectionRefresh } from "./views/settings/core.js";
 import { renderFileTree, copyText } from "./views/projects-files.js";
 import { openFilePane } from "./pane.js";
+import { icon } from "./icons.js";
 
 // ---------------------------------------------------------------------------
 // 本地偏好（置顶 / 手动顺序 / 展开——localStorage 持久化）
@@ -129,10 +130,14 @@ export function refreshTopbar() {
   if (box === null) return;
   const project = (settingsCache?.projects ?? []).find((p) => p.id === settingsCache?.activeProject);
   const current = sessionsCache.find((s) => s.sessionId === getSessionId());
-  const parts = [];
-  if (project !== undefined) parts.push(`📁 ${project.name}`);
-  if (current !== undefined && (current.title ?? "") !== "") parts.push(current.title);
-  box.textContent = parts.join(" · ");
+  box.replaceChildren();
+  if (project !== undefined) {
+    box.append(icon("folder", { cls: "icon-sm" }), document.createTextNode(` ${project.name}`));
+  }
+  if (current !== undefined && (current.title ?? "") !== "") {
+    if (project !== undefined) box.appendChild(document.createTextNode(" · "));
+    box.appendChild(document.createTextNode(current.title));
+  }
   box.title = box.textContent;
 }
 
@@ -200,21 +205,24 @@ function projectRow(project) {
   const head = document.createElement("div");
   head.className = "sb-project-head";
   const caret = document.createElement("span");
-  caret.className = "sb-caret";
-  caret.textContent = "▸";
-  const icon = document.createElement("span");
-  icon.className = "sb-icon";
-  icon.textContent = expanded ? "📂" : "📁";
+  caret.className = `sb-caret${expanded ? " open" : ""}`;
+  caret.replaceChildren(icon("chevronDown", { cls: "icon-sm" }));
+  const dirIcon = expanded ? icon("folderOpen", { cls: "icon-sm" }) : icon("folder", { cls: "icon-sm" });
+  const iconWrap = document.createElement("span");
+  iconWrap.className = "sb-icon";
+  iconWrap.replaceChildren(dirIcon);
   const name = document.createElement("span");
   name.className = "sb-label";
   name.textContent = project.name;
   name.title = project.folders[0] ?? "";
-  head.append(caret, icon, name);
+  head.append(caret, iconWrap, name);
   if (isActive(project)) {
     head.appendChild(chipEl("活动", "sb-chip-active"));
   }
   if (pinned.has(project.id)) {
-    head.appendChild(chipEl("📌", "sb-chip-pin"));
+    const pinChip = chipEl("", "sb-chip-pin");
+    pinChip.replaceChildren(icon("pin", { cls: "icon-sm" }));
+    head.appendChild(pinChip);
   }
   if (project.missing === true) {
     head.appendChild(chipEl("missing", "sb-chip-missing"));
@@ -295,7 +303,10 @@ function projectRow(project) {
     row.appendChild(taskBox);
     const fileEntry = document.createElement("div");
     fileEntry.className = "sb-task-row sb-files-entry";
-    fileEntry.innerHTML = `<span class="sb-task-dot"></span><span class="sb-label">📂 查看文件（左侧栏文件树）</span>`;
+    const filesLabel = document.createElement("span");
+    filesLabel.className = "sb-label";
+    filesLabel.append(icon("folderOpen", { cls: "icon-sm" }), document.createTextNode(" 查看文件（左侧栏文件树）"));
+    fileEntry.append(Object.assign(document.createElement("span"), { className: "sb-task-dot" }), filesLabel);
     fileEntry.addEventListener("click", () => void showFileTree(project.id));
     row.appendChild(fileEntry);
     void loadTasks(taskBox, project);
@@ -741,7 +752,7 @@ async function showFileTree(projectId) {
   back.addEventListener("click", () => void hideFileTree());
   const label = document.createElement("span");
   label.className = "sb-label sb-files-title";
-  label.textContent = `📁 ${project.name}`;
+  label.append(icon("folder", { cls: "icon-sm" }), document.createTextNode(` ${project.name}`));
   label.title = project.folders[0] ?? "";
   head.append(back, label);
 
@@ -1246,7 +1257,10 @@ async function previewImportedSession(session) {
     if (message.role === "tool") {
       const details = document.createElement("details");
       const summary = document.createElement("summary");
-      summary.textContent = `🔧 ${message.toolName ?? "tool"}${message.toolError === true ? "（错误）" : ""}`;
+      summary.append(
+        icon("wrench", { cls: "icon-sm" }),
+        document.createTextNode(` ${message.toolName ?? "tool"}${message.toolError === true ? "（错误）" : ""}`),
+      );
       const pre = document.createElement("pre");
       pre.className = "proj-preview-code";
       pre.textContent = `${message.toolArgs !== undefined ? JSON.stringify(message.toolArgs, null, 1).slice(0, 500) : ""}\n→ ${String(message.toolResult ?? "").slice(0, 800)}`;

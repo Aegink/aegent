@@ -2,7 +2,7 @@
  * aegent 画中画面板（K9/T-P2-409）——"用户看得见 agent 在操作什么"：
  * 订阅同一 host 事件流，过滤 computer_* 工具调用/结果（S4 操作审计的
  * 消费端），渲染操作截图（tool/result meta.data 的 base64 PNG）+ 动作
- * 标注（tool/call 参数摘要）。锚点 zcode·cuaPipSession（🔴 只学行为：
+ * 标注（tool/call 参数摘要）。锚点 zcode·cuaPipSession（只学行为：
  * PiP 会话窗口 + 操作回显——桌面服务集成不取，我方静态资产 + conf 声明
  * 的第二窗口）。
  *
@@ -71,7 +71,7 @@ function handleEvent(event) {
     inflight.delete(String(event.callId));
     const meta = event.meta ?? {};
     const shot = typeof meta.data === "string" ? meta.data : null;
-    renderEntry(`${summary} ✓`, event.isError ? "失败" : "完成", shot);
+    renderEntry(summary, event.isError ? "失败" : "完成", shot);
   }
 }
 

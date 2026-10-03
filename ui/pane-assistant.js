@@ -10,17 +10,24 @@ import { getSessionId, settingsCache } from "./state.js";
 import { toast } from "./feedback.js";
 import { renderMarkdown } from "./render.js";
 import { registerPane } from "./pane.js";
+import { icon } from "./icons.js";
 
 let history = []; // {ts, role, text}
 
 registerPane("assistant", {
-  title: () => "💬 辅助对话",
-  icon: "💬",
+  title: () => "辅助对话",
+  icon: "messageCircle",
   render: (body) => {
     body.replaceChildren();
     const head = document.createElement("div");
     head.className = "assistant-head";
-    head.innerHTML = `<span class="subagent-pane-title">💬 辅助对话</span><span class="assistant-hint">辅助模型快问快答——不进主会话流、不占上下文</span>`;
+    const headTitle = document.createElement("span");
+    headTitle.className = "subagent-pane-title";
+    headTitle.append(icon("messageCircle", { cls: "icon-sm" }), document.createTextNode(" 辅助对话"));
+    const headHint = document.createElement("span");
+    headHint.className = "assistant-hint";
+    headHint.textContent = "辅助模型快问快答——不进主会话流、不占上下文";
+    head.append(headTitle, headHint);
     const stream = document.createElement("div");
     stream.className = "assistant-stream";
     const inputRow = document.createElement("div");

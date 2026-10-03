@@ -77,7 +77,7 @@ import { openBrowserPane } from "./pane-browser.js";
 
 installGlobalErrorReporters(); // T-P3-154 A3：全局错误捕获（模块加载即挂——视图崩溃也捕）
 import { go, startRouter } from "./router.js";
-import { injectIcons } from "./icons.js";
+import { icon, injectIcons } from "./icons.js";
 // U26/T-P3-149 录音三态机 + 插入冲突裁决 + chat 通道 wav 转码
 import {
   createVoiceCapture,
@@ -230,29 +230,30 @@ const toolOpenState = new Map();
 
 // T-P3-156 反馈 4：工具呈现映射（zcode 对标——动作词+文件类型图标+目录+
 // diff 行数徽标；kind = file（读 args.path 出文件名/目录）/ shell（args.command
-// mono 呈现）/ plain（默认 args 摘要））
+// mono 呈现）/ plain（默认 args 摘要）。T-P3-157 批 3：icon 位改 icons.js
+// 语义名（emoji 全退——单色线性形随文字色，动作词色由 .tool-verb 承担）
 const TOOL_PRESENTATION = {
-  read: { icon: "📄", verb: "读取", kind: "file" },
-  write: { icon: "✏️", verb: "写入", kind: "file" },
-  edit: { icon: "📝", verb: "编辑", kind: "file" },
-  apply_patch: { icon: "🩹", verb: "补丁", kind: "plain" },
-  bash: { icon: "▶", verb: "终端", kind: "shell" },
-  pwsh: { icon: "▶", verb: "终端", kind: "shell" },
-  glob: { icon: "📁", verb: "查找文件", kind: "plain" },
-  grep: { icon: "🔍", verb: "搜索", kind: "plain" },
-  skill_load: { icon: "⚡", verb: "加载技能", kind: "plain" },
-  todo_write: { icon: "☑️", verb: "更新待办", kind: "plain" },
-  tool_load: { icon: "🧩", verb: "加载工具", kind: "plain" },
-  webfetch: { icon: "🌐", verb: "抓取网页", kind: "plain" },
-  question: { icon: "❓", verb: "提问", kind: "plain" },
-  task: { icon: "🤖", verb: "子代理", kind: "plain" },
-  session_query: { icon: "🔎", verb: "会话查询", kind: "plain" },
-  session_get: { icon: "🔎", verb: "会话读取", kind: "plain" },
-  lsp: { icon: "🔧", verb: "LSP", kind: "plain" },
-  plan_enter: { icon: "🗺", verb: "进入规划", kind: "plain" },
-  plan_exit: { icon: "🗺", verb: "退出规划", kind: "plain" },
-  plugin_create: { icon: "🧩", verb: "创建插件", kind: "plain" },
-  plugin_define: { icon: "🧩", verb: "定义插件", kind: "plain" },
+  read: { icon: "file", verb: "读取", kind: "file" },
+  write: { icon: "edit", verb: "写入", kind: "file" },
+  edit: { icon: "filePen", verb: "编辑", kind: "file" },
+  apply_patch: { icon: "bandage", verb: "补丁", kind: "plain" },
+  bash: { icon: "terminal", verb: "终端", kind: "shell" },
+  pwsh: { icon: "terminal", verb: "终端", kind: "shell" },
+  glob: { icon: "folder", verb: "查找文件", kind: "plain" },
+  grep: { icon: "search", verb: "搜索", kind: "plain" },
+  skill_load: { icon: "zap", verb: "加载技能", kind: "plain" },
+  todo_write: { icon: "listChecks", verb: "更新待办", kind: "plain" },
+  tool_load: { icon: "puzzle", verb: "加载工具", kind: "plain" },
+  webfetch: { icon: "globe", verb: "抓取网页", kind: "plain" },
+  question: { icon: "circleHelp", verb: "提问", kind: "plain" },
+  task: { icon: "bot", verb: "子代理", kind: "plain" },
+  session_query: { icon: "searchCode", verb: "会话查询", kind: "plain" },
+  session_get: { icon: "searchCode", verb: "会话读取", kind: "plain" },
+  lsp: { icon: "wrench", verb: "LSP", kind: "plain" },
+  plan_enter: { icon: "map", verb: "进入规划", kind: "plain" },
+  plan_exit: { icon: "map", verb: "退出规划", kind: "plain" },
+  plugin_create: { icon: "puzzle", verb: "创建插件", kind: "plain" },
+  plugin_define: { icon: "puzzle", verb: "定义插件", kind: "plain" },
 };
 
 /** 写入/编辑的行数徽标（zcode +N 对标）：write=新增行数；edit=+/−行数对。 */
@@ -282,14 +283,14 @@ function buildToolCard(e) {
   });
   const summary = document.createElement("summary");
   const args = safeParseArgs(e.arguments);
-  const pres = TOOL_PRESENTATION[e.name] ?? { icon: "⚙", verb: e.name, kind: "plain" };
-  // 动作词（主色强调——zcode 动词开头语义）
+  const pres = TOOL_PRESENTATION[e.name] ?? { icon: "wrench", verb: e.name, kind: "plain" };
+  // 动作词（主色强调——zcode 动词开头语义；图标 = icons.js 单色线性形）
   const name = document.createElement("span");
   name.className = "tool-name";
   name.textContent = e.name; // 纯名（G 聚合的 READONLY 匹配与 minimap 依赖）
   const verb = document.createElement("span");
   verb.className = "tool-verb";
-  verb.textContent = `${pres.icon} ${pres.verb}`;
+  verb.append(icon(pres.icon, { cls: "icon-sm" }), document.createTextNode(pres.verb));
   summary.append(verb, name);
   // 文件类：文件类型图标+文件名+目录（zcode 截图语义——「写入 [js] pane-browser.js ui/ +173」）
   const filePath = args !== null && typeof args.path === "string" ? args.path : "";
@@ -297,13 +298,10 @@ function buildToolCard(e) {
     const parts = filePath.split(/[\/]/);
     const fileName = parts.at(-1) ?? filePath;
     const dir = parts.slice(0, -1).join("/");
-    const fileIcon = document.createElement("span");
-    fileIcon.className = "tool-file-icon";
-    fileIcon.textContent = fileIconOf(fileName);
     const fileNameSpan = document.createElement("span");
     fileNameSpan.className = "tool-file-name";
     fileNameSpan.textContent = fileName;
-    summary.append(fileIcon, fileNameSpan);
+    summary.append(fileIconOf(fileName), fileNameSpan);
     if (dir !== "") {
       const dirSpan = document.createElement("span");
       dirSpan.className = "tool-file-dir";
@@ -381,7 +379,10 @@ function setToolStatus(card, isError, errorDigest, resultDigest) {
   const status = card.querySelector(".tool-status");
   if (status !== null) {
     status.className = `tool-status ${isError ? "fail" : "done"}`;
-    status.textContent = isError ? "✗ 失败" : resultDigest !== undefined && resultDigest !== "" ? `✓ ${resultDigest}` : "✓ 完成";
+    status.replaceChildren(
+      icon(isError ? "xCircle" : "checkCircle", { cls: "icon-sm" }),
+      document.createTextNode(isError ? " 失败" : resultDigest !== undefined && resultDigest !== "" ? ` ${resultDigest}` : " 完成"),
+    );
   }
   const summary = card.querySelector("summary");
   if (summary !== null) {
@@ -395,7 +396,7 @@ function settleToolCard(e) {
   const existing = stream.querySelector(`details[data-call-id="${CSS.escape(e.callId)}"]`);
   if (existing !== null) {
     existing.classList.toggle("error", isError);
-    // 反馈 3：结果摘要（✓ N 行——zcode「查询 · 2 搜索」语义；文本结果按行计量）
+    // 反馈 3：结果摘要（完成行数——zcode「查询 · 2 搜索」语义；文本结果按行计量）
     const resultLines = content === "" ? 0 : content.split("\n").length;
     setToolStatus(
       existing,
@@ -421,7 +422,10 @@ function settleToolCard(e) {
   card.className = `tool-card result-only ${isError ? "error" : ""}`.trim();
   card.dataset.callId = e.callId;
   const summary = document.createElement("summary");
-  summary.textContent = `${isError ? "✗" : "←"} ${oneLine(content, 160)}`;
+  summary.append(
+    icon(isError ? "xCircle" : "checkCircle", { cls: "icon-sm" }),
+    document.createTextNode(` ${oneLine(content, 160)}`),
+  );
   if (isError) summary.title = `失败原因：${oneLine(content, 200)}`;
   const body = document.createElement("div");
   body.className = "tool-body";
@@ -478,7 +482,8 @@ function renderEvent(e, options = {}) {
       if (e.reason?.kind !== "error") {
         return null; // 正常结束静默（idle 通知承担续跑/进度复位）
       }
-      const el = lineEl(`✗ 轮以错误结束（${endKindText(e.reason)}）`, "meta error-line");
+      const el = lineEl(` 轮以错误结束（${endKindText(e.reason)}）`, "meta error-line");
+      el.prepend(icon("xCircle", { cls: "icon-sm icon-err" }));
       attachRetry(el, e.reason.error); // 错误重试交互
       return el;
     }
@@ -510,7 +515,8 @@ function renderEvent(e, options = {}) {
       if (content === "") {
         // 反馈 3：思考行带时长（下一事件到达时回填「持续了 N 秒」——zcode
         // thinking 块时长语义；历史恢复无后续时差则只显示标记）
-        const el = lineEl("🧠 思考", "agent thinking");
+        const el = lineEl(" 思考", "agent thinking");
+        el.prepend(icon("brain", { cls: "icon-sm" }));
         lastThinking = { el, ts: Number(e.ts) || Date.now() };
         return el;
       }
@@ -534,7 +540,7 @@ function renderEvent(e, options = {}) {
       // T-P3-156 U：进度弹窗的当前工具行（仅 live 流）
       if (options.live === true) {
         notifyToolCall(e.name ?? "tool", oneLine(JSON.stringify(e.args ?? {}), 60));
-        notifyEventLine(`⚙ 调用工具 ${e.name ?? "tool"}`);
+        notifyEventLine(`调用工具 ${e.name ?? "tool"}`);
       }
       return buildToolCard(e);
     case "tool/result":
@@ -570,7 +576,7 @@ function dayKey(ts) {
 }
 
 // —— T-P3-149 D 消息朗读（agentscope/pi-desktop 语音输出消费端）：
-// 气泡终态挂 🔊 按钮 → op tts-synthesize → Blob URL 播放；单实例播放
+// 气泡终态挂朗读按钮 → op tts-synthesize → Blob URL 播放；单实例播放
 // （新播放抢占旧播放——agentscope stopAllPlayback 语义），音频不落盘。
 
 let speakAudio = null;
@@ -596,7 +602,7 @@ function stopSpeaking() {
     speakAudio = null;
   }
   if (speakBtnActive !== null) {
-    speakBtnActive.textContent = "🔊";
+    speakBtnActive.replaceChildren(icon("volume2", { cls: "icon-sm" }));
     speakBtnActive.classList.remove("speaking");
     speakBtnActive = null;
   }
@@ -608,7 +614,7 @@ function buildSpeakButton(content) {
   btn.type = "button";
   btn.className = "speak-btn";
   btn.title = "朗读这条回复（TTS）";
-  btn.textContent = "🔊";
+  btn.replaceChildren(icon("volume2", { cls: "icon-sm" }));
   btn.addEventListener("click", () => void toggleSpeak(btn, content));
   return btn;
 }
@@ -621,7 +627,7 @@ function buildSaveRuleButton(content) {
   btn.type = "button";
   btn.className = "speak-btn";
   btn.title = "存为规矩（追加到指令文件）";
-  btn.textContent = "📌";
+  btn.replaceChildren(icon("pin", { cls: "icon-sm" }));
   btn.addEventListener("click", () => void openSaveRuleDialog(content));
   return btn;
 }
@@ -679,7 +685,7 @@ async function toggleSpeak(btn, content) {
     const audio = new Audio(url);
     speakAudio = audio;
     speakBtnActive = btn;
-    btn.textContent = "⏹";
+    btn.replaceChildren(icon("circleStop", { cls: "icon-sm" }));
     btn.classList.add("speaking");
     audio.addEventListener("ended", () => {
       if (speakAudio === audio) stopSpeaking();
@@ -761,7 +767,7 @@ function maybeCollapseReadonly() {
   for (let i = startIdx; i < endIdx; i++) {
     const node = nodes[i];
     if (node.classList?.contains("tool-card") === true) {
-      const name = node.querySelector(".tool-name")?.textContent.replace("⚙ ", "") ?? "";
+      const name = node.querySelector(".tool-name")?.textContent ?? "";
       const done = node.querySelector(".tool-status.done") !== null;
       const failed = node.classList.contains("error") || node.querySelector(".tool-status.fail") !== null;
       const isSubagent = node.querySelector(".subagent-view-btn") !== null; // task 卡不聚合
@@ -780,7 +786,13 @@ function maybeCollapseReadonly() {
   const wrapper = document.createElement("details");
   wrapper.className = "tool-card readonly-collapsed";
   const summary = document.createElement("summary");
-  summary.innerHTML = `<span class="tool-name">⚙ 已探索 ${String(run.length)} 项</span><span class="tool-status done">✓ 完成</span>`;
+  const runName = document.createElement("span");
+  runName.className = "tool-name";
+  runName.append(icon("searchCode", { cls: "icon-sm" }), document.createTextNode(` 已探索 ${String(run.length)} 项`));
+  const runStatus = document.createElement("span");
+  runStatus.className = "tool-status done";
+  runStatus.append(icon("checkCircle", { cls: "icon-sm" }), document.createTextNode(" 完成"));
+  summary.append(runName, runStatus);
   wrapper.appendChild(summary);
   const body = document.createElement("div");
   body.className = "tool-body readonly-run-body";
@@ -1050,14 +1062,16 @@ function renderAttachmentsPreview() {
     chip.className = "attachment-chip";
     const isAudio = AUDIO_TYPES.has(a.mediaType);
     const isText = a.mediaType === "text/plain";
-    const icon = isAudio ? "🎵" : isText ? "📝" : "🖼";
     const label = document.createElement("span");
     if (!isAudio && !isText) {
       // N：图片能力提示（降级版——host 模型元数据无 image capabilities 面，
       // P2 接线后此处换 isImageCapable 判定+警示标）
       label.title = "图片需当前模型可识别（多模态）——若发送后报不支持图片错误，请切换模型或改用文件路径引用";
     }
-    label.textContent = `${icon} ${a.name ?? (isAudio ? "audio" : isText ? "pasted-text" : "image")}（${Math.ceil((a.data.length * 3) / 4 / 1024)}KB）`;
+    const chipIcon = icon(isAudio ? "music" : isText ? "file" : "image", { cls: "icon-sm" });
+    if (!isText) chipIcon.style.color = isAudio ? "#7C3AED" : "#DB2777"; // 类型 accent（zcode ICON_COLOR_MAP）
+    chip.append(chipIcon);
+    label.textContent = ` ${a.name ?? (isAudio ? "audio" : isText ? "pasted-text" : "image")}（${Math.ceil((a.data.length * 3) / 4 / 1024)}KB）`;
     // T-P3-156 M：文本 chip 点击查看原文（解码 base64 模态呈现——粘贴
     // 大文本转附件后原文不丢可达）
     if (isText) {
@@ -1269,7 +1283,12 @@ function renderAutocomplete() {
     const row = document.createElement("div");
     row.className = `ac-row ${i === acIndex ? "active" : ""}`.trim();
     const label = document.createElement("span");
-    label.textContent = `${item.icon} ${item.label}`;
+    label.className = "ac-label";
+    if (item.icon === null || item.icon === undefined) {
+      label.textContent = item.label;
+    } else {
+      label.append(icon(item.icon, { cls: "icon-sm" }), document.createTextNode(` ${item.label}`));
+    }
     const hint = document.createElement("span");
     hint.className = "ac-hint";
     // argument-hint 行内展示（有参模板的面板提示——pi/zcode 同款）
@@ -1326,12 +1345,12 @@ async function updateAutocomplete() {
     const hits = files.entries
       .filter((e) => e.path.toLowerCase().includes(tokenBody))
       .slice(0, 8)
-      .map((e) => ({ icon: e.dir ? "📁" : "📄", label: e.path, hint: "workspace", kind: e.dir ? "dir" : "file" }));
+      .map((e) => ({ icon: e.dir ? "folder" : "file", label: e.path, hint: "workspace", kind: e.dir ? "dir" : "file" }));
     acItems = hits;
     if (files.truncated === true) {
       acItems = [
         ...hits,
-        { icon: "…", label: "", hint: "清单已截断（可继续输入缩小）", kind: "info" },
+        { icon: null, label: "……", hint: "清单已截断（可继续输入缩小）", kind: "info" },
       ];
     }
   } else {
@@ -1342,11 +1361,11 @@ async function updateAutocomplete() {
     const promptPlaceholders = (t) =>
       [...new Set([...t.matchAll(/\$(?:ARGUMENTS|[0-9]+|@|\{@:\d+(?::\d+)?\}|\{@\})/g)].map((m) => m[0]))];
     const candidates = [
-      ...UI_COMMANDS.map((c) => ({ icon: "⌘", label: c.label, hint: c.hint, kind: "command" })),
-      ...meta.tools.map((t) => ({ icon: "🛠", label: t, hint: "工具", kind: "tool" })),
-      ...meta.skills.map((s) => ({ icon: "✨", label: s.name, hint: s.description, kind: "skill" })),
+      ...UI_COMMANDS.map((c) => ({ icon: "command", label: c.label, hint: c.hint, kind: "command" })),
+      ...meta.tools.map((t) => ({ icon: "wrench", label: t, hint: "工具", kind: "tool" })),
+      ...meta.skills.map((s) => ({ icon: "sparkles", label: s.name, hint: s.description, kind: "skill" })),
       ...filePrompts.map((p) => ({
-        icon: "📝",
+        icon: "filePen",
         label: p.name,
         hint: p.description ?? "提示词模板",
         argumentHint: p.argumentHint ?? "",
@@ -1356,7 +1375,7 @@ async function updateAutocomplete() {
         hints: promptPlaceholders(p.content),
       })),
       ...mcpPrompts.map((p) => ({
-        icon: "🌐",
+        icon: "globe",
         label: p.name,
         hint: p.description ?? "MCP prompt",
         kind: "mcp-prompt",
@@ -1404,7 +1423,7 @@ function executeCommand(label) {
       openSettings();
       break;
     case "/help":
-      appendLine(`可用命令：${UI_COMMANDS.map((c) => c.label).join("、")}（另有 🛠 工具 / ✨ 技能名称提及——选中即入输入框）`, "meta");
+      appendLine(`可用命令：${UI_COMMANDS.map((c) => c.label).join("、")}（另有工具 / 技能名称提及——选中即入输入框）`, "meta");
       break;
     default:
       break;
@@ -1550,7 +1569,7 @@ function voiceMaxSeconds() {
   return Number.isFinite(raw) && raw > 0 ? raw : RECORD_MAX_SECONDS_DEFAULT;
 }
 
-// T-P3-153 C：会话导出（composer ⬇ 钮——md/html/json 三格式+默认脱敏；
+// T-P3-153 C：会话导出（composer 导出钮——md/html/json 三格式+默认脱敏；
 // 对话框在 views/settings/transfer.js——设置域与历史页共用同一入口）
 document.getElementById("chat-export-btn").addEventListener("click", () => {
   void import("./views/settings/transfer.js").then((m) => m.openSessionExportDialog(sessionId()));
@@ -1681,7 +1700,7 @@ polishBtn.addEventListener("click", async () => {
   if (polishInFlight) return;
   polishInFlight = true;
   polishBtn.disabled = true;
-  polishBtn.textContent = "⏳";
+  polishBtn.replaceChildren(icon("loader", { cls: "icon-sm icon-spin" }));
   try {
     // 兜底超时（polish 无 error 行关联——子进程崩溃时 Promise 会悬挂，
     // 60s 上限保证按钮可恢复）
@@ -1713,7 +1732,7 @@ polishBtn.addEventListener("click", async () => {
   } finally {
     polishInFlight = false;
     polishBtn.disabled = false;
-    polishBtn.textContent = "✨";
+    polishBtn.replaceChildren(icon("sparkles", { cls: "icon-sm" }));
   }
 });
 polishUndoBtn?.addEventListener("click", () => {
@@ -2433,11 +2452,11 @@ async function renderSubagentPaneBody(body, sid) {
   head.className = "subagent-pane-head";
   const title = document.createElement("span");
   title.className = "subagent-pane-title";
-  title.textContent = `🤖 子代理 ${sid.slice(0, 12)}…（只读同构视图）`;
+  title.append(icon("bot", { cls: "icon-sm" }), document.createTextNode(` 子代理 ${sid.slice(0, 12)}…（只读同构视图）`));
   const refresh = document.createElement("button");
   refresh.type = "button";
   refresh.className = "btn btn-ghost";
-  refresh.textContent = "↻ 刷新";
+  refresh.replaceChildren(icon("retry", { cls: "icon-sm" }), document.createTextNode(" 刷新"));
   refresh.title = "重拉子会话事件快照";
   const auto = document.createElement("label");
   auto.className = "subagent-auto";
@@ -2484,8 +2503,8 @@ async function renderSubagentPaneBody(body, sid) {
 }
 
 registerPane("subagent", {
-  title: (tab) => `🤖 子代理 ${String(tab.payload.sessionId).slice(0, 8)}`,
-  icon: "🤖",
+  title: (tab) => `子代理 ${String(tab.payload.sessionId).slice(0, 8)}`,
+  icon: "bot",
   render: (body, tab) => renderSubagentPaneBody(body, String(tab.payload.sessionId)),
 });
 

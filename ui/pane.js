@@ -17,6 +17,7 @@
  */
 
 import { sendSettings } from "./api.js";
+import { icon } from "./icons.js";
 import { toast } from "./feedback.js";
 import { openMenu, onSectionRefresh } from "./views/settings/core.js";
 import { renderFilePreview } from "./views/projects-files.js";
@@ -37,7 +38,7 @@ const renderers = new Map();
  * 预览/源码双模式 + 双路径复制 + 在资源管理器打开（onBack 缺省=面板无返回）。 */
 renderers.set("file", {
   title: (tab) => fileNameOf(tab.payload.filePath),
-  icon: "📄",
+  icon: "file",
   render: (body, tab) =>
     renderFilePreview(body, {
       filePath: tab.payload.filePath,
@@ -69,7 +70,7 @@ export function openPane(type, payload = {}, options = {}) {
     id: `pane-${String(++seq)}`,
     type,
     title: options.title ?? (typeof def.title === "function" ? def.title({ payload }) : def.title),
-    icon: def.icon ?? "▣",
+    icon: def.icon ?? "file",
     payload,
   };
   state.tabs.push(tab);
@@ -228,11 +229,11 @@ function paint() {
  * 未注册类型不出现（web 端无浏览器内核面）。 */
 function addMenuButton() {
   const CATALOG = [
-    { type: "review", label: "🔍 审查" },
-    { type: "browser", label: "🌐 浏览器" },
-    { type: "assistant", label: "💬 辅助对话" },
-    { type: "git", label: "⑂ Git 管理" },
-    { type: "tree", label: "🌳 会话树" },
+    { type: "review", label: "审查", icon: "search" },
+    { type: "browser", label: "浏览器", icon: "globe" },
+    { type: "assistant", label: "辅助对话", icon: "messageCircle" },
+    { type: "git", label: "Git 管理", icon: "gitBranch" },
+    { type: "tree", label: "会话树", icon: "gitFork" },
   ];
   const btn = document.createElement("button");
   btn.type = "button";
@@ -242,6 +243,7 @@ function addMenuButton() {
   btn.addEventListener("click", () => {
     openMenu(btn, CATALOG.filter((item) => renderers.has(item.type)).map((item) => ({
       label: item.label,
+      icon: item.icon,
       onClick: () => openPane(item.type, {}),
     })));
   });
@@ -254,11 +256,15 @@ function tabButton(tab) {
   btn.title = tab.title;
   const label = document.createElement("span");
   label.className = "pane-tab-label";
-  label.textContent = `${tab.icon} ${tab.title}`;
+  const titleText = document.createElement("span");
+  titleText.className = "pane-tab-title";
+  titleText.textContent = tab.title;
+  label.append(icon(tab.icon, { cls: "icon-sm" }), titleText);
   const close = document.createElement("button");
   close.type = "button";
   close.className = "pane-tab-close";
-  close.textContent = "✕";
+  close.title = "关闭（中键同效）";
+  close.replaceChildren(icon("close", { cls: "icon-sm" }));
   close.title = "关闭（中键同效）";
   close.addEventListener("click", (ev) => {
     ev.stopPropagation();

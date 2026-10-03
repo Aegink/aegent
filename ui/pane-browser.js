@@ -15,6 +15,7 @@
 
 import { IS_DESKTOP } from "./api.js";
 import { registerPane } from "./pane.js";
+import { icon } from "./icons.js";
 
 let seq = 0;
 let activeTabId = null; // 当前渲染实例的壳侧 label（browser-<n>）
@@ -62,7 +63,7 @@ function normalizeUrl(raw) {
 
 registerPane("browser", {
   title: (tab) => tab.payload.title ?? "浏览器",
-  icon: "🌐",
+  icon: "globe",
   onBlur: (tab) => {
     if (IS_DESKTOP && activeTabId !== null) {
       void tauriInvoke("browser_hide", { label: activeTabId }).catch(() => {});

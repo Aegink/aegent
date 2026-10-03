@@ -607,6 +607,7 @@ input[type="checkbox"] {
 .menu-item {
   display: flex;
   align-items: center;
+  gap: 6px;
   width: 100%;
   padding: 7px 10px;
   border: none;

@@ -14,6 +14,7 @@
  */
 
 import { sendSettings } from "../../api.js";
+import { icon } from "../../icons.js";
 import { appendLine, toast } from "../../feedback.js";
 import { openDialog, confirmDialog } from "./core.js";
 
@@ -128,7 +129,7 @@ function renderTree() {
   hostName.textContent = "宿主内置防护";
   const lock = document.createElement("span");
   lock.className = "chip";
-  lock.textContent = "🔒 只读";
+  lock.append(icon("lock", { cls: "icon-sm" }), document.createTextNode(" 只读"));
   host.append(hostName, lock);
   host.title = "policy 链宿主面（危险命令/保护路径等）——不可覆盖";
   host.addEventListener("click", () => {
@@ -315,7 +316,7 @@ function renderRules() {
     row.className = "rule-row";
     const name = document.createElement("code");
     name.className = "rule-raw";
-    name.textContent = `🔒 ${p.name}`;
+    name.append(icon("lock", { cls: "icon-sm" }), document.createTextNode(` ${p.name}`));
     const desc = document.createElement("span");
     desc.className = "rule-meta";
     desc.textContent = p.description;
@@ -354,7 +355,7 @@ async function runTester() {
   const out = el("instr-test-result");
   out.replaceChildren();
   if (!envelope.ok) {
-    out.textContent = `✘ ${envelope.error?.message ?? "测试失败"}`;
+    out.textContent = `校验失败：${envelope.error?.message ?? ""}`;
     out.className = "card-args error-text";
     return;
   }
@@ -453,7 +454,7 @@ async function submitRuleDialog(root) {
   if (rawInput === null || actionSel === null || layerSel === null) return;
   const raw = rawInput.value.trim();
   if (raw === "") {
-    preview.textContent = "✘ 规则行不能为空";
+    preview.textContent = "规则行不能为空";
     return;
   }
   const target = layerSel.value;
@@ -462,11 +463,11 @@ async function submitRuleDialog(root) {
   // dryRun 预览（host 归一+重复检测），确认后落盘
   const dry = await sendSettings({ op: "instruction-append", target, kind, content, dryRun: true });
   if (!dry.ok) {
-    preview.textContent = `✘ ${dry.error?.message ?? "校验失败"}`;
+    preview.textContent = `校验失败：${dry.error?.message ?? ""}`;
     return;
   }
   if (dry.result.duplicate === true) {
-    preview.textContent = "✘ 目标层已有等价规则行（同规则同动作）——改判请先删旧行";
+    preview.textContent = "目标层已有等价规则行（同规则同动作）——改判请先删旧行";
     return;
   }
   const ok = await confirmDialog(
@@ -539,7 +540,7 @@ function renderHostPane() {
     const row = document.createElement("div");
     row.className = "rule-row";
     row.innerHTML = `<code class="rule-raw"></code><span class="rule-meta"></span>`;
-    row.querySelector("code").textContent = `🔒 ${p.name}`;
+    row.querySelector("code").append(icon("lock", { cls: "icon-sm" }), document.createTextNode(` ${p.name}`));
     row.querySelector(".rule-meta").textContent = p.description;
     box.appendChild(row);
   }

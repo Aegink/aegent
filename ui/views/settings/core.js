@@ -202,7 +202,11 @@ export function openMenu(anchor, items) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = item.danger === true ? "menu-item menu-item-danger" : "menu-item";
-    btn.textContent = item.label;
+    if (item.icon !== undefined) {
+      btn.append(icon(item.icon, { cls: "icon-sm" }), document.createTextNode(` ${item.label}`));
+    } else {
+      btn.textContent = item.label;
+    }
     btn.addEventListener("click", () => {
       close();
       void item.onClick?.();

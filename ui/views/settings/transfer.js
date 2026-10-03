@@ -12,6 +12,7 @@
 import { sendSettings } from "../../api.js";
 import { settingsCache, setSettingsCache, markPromptsLoaded, applyTheme, rebuildKeymap } from "../../state.js";
 import { appendLine, toast } from "../../feedback.js";
+import { icon } from "../../icons.js";
 import { flushSettings, openDialog, refillFormsAfterImport } from "./core.js";
 
 // —— 导出域标签（host TRANSFER_DOMAINS 的展示层映射——顺序即勾选序；id 闭集同源）——
@@ -54,7 +55,7 @@ export const SECTION_HTML = `
     <div class="row">
       <div class="row-copy">
         <div class="row-title">会话数据</div>
-        <div class="row-desc">聊天页 ⬇ 按钮或历史页「导出」出 md/html/json；本机导出的 JSON 包可在历史页回导为新会话</div>
+        <div class="row-desc">聊天页「导出」按钮或历史页「导出」出 md/html/json；本机导出的 JSON 包可在历史页回导为新会话</div>
       </div>
       <div class="row-control"><button id="session-import-open" type="button" class="btn">回导会话 JSON…</button></div>
     </div>
@@ -108,13 +109,13 @@ function riskLines(pkg) {
   const settings = pkg?.settings ?? {};
   for (const p of settings.providers ?? []) {
     if (typeof p?.baseUrl === "string" && PRIVATE_ENDPOINT_RE.test(p.baseUrl)) {
-      warns.push(`⚠ 供应商「${p.name}」为内网/本机端点（${p.baseUrl}）——仅在本机网络可用`);
+      warns.push(`供应商「${p.name}」为内网/本机端点（${p.baseUrl}）——仅在本机网络可用`);
     }
   }
   for (const m of settings.mcp ?? []) {
     for (const key of Object.keys(m?.env ?? {})) {
       if (SENSITIVE_ENV_RE.test(key)) {
-        warns.push(`⚠ MCP「${m.name}」环境变量 ${key} 疑似敏感值——确认来源可信`);
+        warns.push(`MCP「${m.name}」环境变量 ${key} 疑似敏感值——确认来源可信`);
       }
     }
   }
@@ -237,11 +238,11 @@ function openImportDialog() {
       try {
         parsed = JSON.parse(text);
       } catch (e) {
-        toast(`✘ 导入包不可用：${e.message}`, "warn");
+        toast(`导入包不可用：${e.message}`, "warn");
         return;
       }
       if (parsed?.kind !== "aegent-settings-export") {
-        toast("✘ 导入包 kind 不符（须为 aegent-settings-export 配置包）", "warn");
+        toast("导入包 kind 不符（须为 aegent-settings-export 配置包）", "warn");
         return;
       }
       const summary = summarizeImported(parsed.settings ?? {}).join("；");
@@ -377,7 +378,7 @@ async function deleteBackup(index) {
 // C 域：会话导出 / 回导
 // ---------------------------------------------------------------------------
 
-/** 会话导出模态（聊天页 ⬇ 与历史页「导出」共用入口）。 */
+/** 会话导出模态（聊天页「导出」与历史页「导出」共用入口）。 */
 export function openSessionExportDialog(sessionId) {
   if (sessionId === undefined || sessionId === null || sessionId === "") {
     toast("当前无活动会话——先发起对话或从历史页选择", "warn");
@@ -465,11 +466,11 @@ export function openSessionImportDialog() {
       try {
         pkg = JSON.parse(text);
       } catch (e) {
-        toast(`✘ 会话包不可用：${e.message}`, "warn");
+        toast(`会话包不可用：${e.message}`, "warn");
         return;
       }
       if (pkg?.kind !== "aegent-session-export") {
-        toast("✘ 会话包 kind 不符（须为 aegent-session-export）", "warn");
+        toast("会话包 kind 不符（须为 aegent-session-export）", "warn");
         return;
       }
       const title = pkg.session?.title ?? "导入的会话";
@@ -513,7 +514,8 @@ async function runCheckup() {
     toast(`体检失败：${envelope.error?.message ?? ""}`, "warn");
     return;
   }
-  const badgeText = { ok: "✔", warn: "⚠", fail: "✘" };
+  // 体检徽标（T-P3-157 批 3：字形映射 → 图标语义名，消费方 icon() 节点化）
+  const badgeIcon = { ok: "checkCircle", warn: "alert", fail: "xCircle" };
   for (const row of envelope.result.rows ?? []) {
     const rowEl = document.createElement(row.section !== undefined ? "button" : "div");
     rowEl.className = `transfer-row checkup-${row.level}`;
@@ -526,7 +528,8 @@ async function runCheckup() {
     }
     const badge = document.createElement("span");
     badge.className = `checkup-badge checkup-badge-${row.level}`;
-    badge.textContent = badgeText[row.level] ?? "?";
+    badge.className = `transfer-badge ${row.level === "ok" ? "icon-ok" : row.level === "warn" ? "icon-warn" : "icon-err"}`;
+    badge.replaceChildren(icon(badgeIcon[row.level] ?? "circleHelp", { cls: "icon-sm" }));
     const copy = document.createElement("span");
     copy.className = "transfer-row-copy";
     copy.textContent = `${row.item}：${row.detail}`;

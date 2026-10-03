@@ -9,6 +9,7 @@
 import { sendSettings, IS_DESKTOP } from "./api.js";
 import { settingsCache } from "./state.js";
 import { toast } from "./feedback.js";
+import { icon } from "./icons.js";
 
 const HEIGHT_KEY = "aegent.terminalHeight";
 const DEFAULT_HEIGHT_VH = 30;
@@ -104,7 +105,7 @@ function mountXterm() {
   const closeBtn = document.createElement("button");
   closeBtn.type = "button";
   closeBtn.className = "btn btn-ghost terminal-close";
-  closeBtn.textContent = "✕ 关闭";
+  closeBtn.replaceChildren(icon("close", { cls: "icon-sm" }), document.createTextNode(" 关闭"));
   closeBtn.addEventListener("click", () => toggleTerminal(false));
   bar.append(label, closeBtn);
   const host = document.createElement("div");

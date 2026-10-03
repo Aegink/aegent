@@ -7,6 +7,7 @@
  */
 
 import { sendQuery, ensureFileCache } from "../api.js";
+import { icon, injectIcons } from "../icons.js";
 import { getSessionId, subscribeTurnSettled } from "../state.js";
 
 const TEMPLATE = `
@@ -16,11 +17,11 @@ const TEMPLATE = `
     <button id="work-close" type="button" class="btn btn-ghost">返回对话</button>
   </header>
   <nav id="work-tabs">
-    <button type="button" data-worktab="files" class="work-tab active">📁 文件</button>
-    <button type="button" data-worktab="review" class="work-tab">🔍 变更评审</button>
-    <button type="button" data-worktab="subagent" class="work-tab">🤖 子代理</button>
+    <button type="button" data-worktab="files" class="work-tab active"><span data-icon="folder" data-icon-size="14"></span> 文件</button>
+    <button type="button" data-worktab="review" class="work-tab"><span data-icon="search" data-icon-size="14"></span> 变更评审</button>
+    <button type="button" data-worktab="subagent" class="work-tab"><span data-icon="bot" data-icon-size="14"></span> 子代理</button>
     <!-- U27/T-P3-131 协作 Tab：会话间往来事实（流投影——session/collab） -->
-    <button type="button" data-worktab="collab" class="work-tab">🔗 协作</button>
+    <button type="button" data-worktab="collab" class="work-tab"><span data-icon="link2" data-icon-size="14"></span> 协作</button>
   </nav>
   <div class="page-body">
     <section data-worktab-body="files">
@@ -114,20 +115,38 @@ function renderReviewReport(report) {
     list.appendChild(li);
   }
 
+  /** 状态单元格（T-P3-157 批 3：状态字形 → icons.js 节点+词）。 */
+  const statusCell = (status, runningWord) => {
+    const spec = { completed: ["checkCircle", "完成", "icon-ok"], failed: ["xCircle", "失败", "icon-err"], cancelled: ["ban", "取消", "icon-warn"], running: ["loader", runningWord, "icon-spin"] }[status];
+    const span = document.createElement("span");
+    span.className = "ac-label";
+    if (spec === undefined) {
+      span.textContent = status === "queued" ? "排队中" : (runningWord ?? "—");
+      return span;
+    }
+    span.append(icon(spec[0], { cls: `icon-sm ${spec[2]}`.trim() }), document.createTextNode(` ${spec[1]}`));
+    return span;
+  };
+
   const body = document.querySelector("#work-delegation-table tbody");
   body.replaceChildren();
   for (const d of report.delegations ?? []) {
     const tr = document.createElement("tr");
-    const statusText =
-      d.status === "completed" ? "✔ 完成" : d.status === "failed" ? "✘ 失败" : d.status === "cancelled" ? "⊘ 取消" : "⏳ 进行中";
-    for (const text of [
+    for (const [i, text] of [
       d.description || "（无描述）",
       d.subagentSessionId ?? "—",
-      d.errorCode ? `${statusText}（${d.errorCode}）` : statusText,
+      null, // 状态列——节点组合（见下）
       d.durationMs !== undefined ? `${(d.durationMs / 1000).toFixed(1)}s` : "—",
-    ]) {
+    ].entries()) {
       const td = document.createElement("td");
-      td.textContent = text;
+      if (i === 2) {
+        const badge = statusCell(d.status, "进行中");
+        const code = d.errorCode ? `（${d.errorCode}）` : "";
+        badge.appendChild(document.createTextNode(code));
+        td.appendChild(badge);
+      } else {
+        td.textContent = text;
+      }
       tr.appendChild(td);
     }
     body.appendChild(tr);
@@ -149,12 +168,14 @@ function renderReviewReport(report) {
   for (const c of report.collaborations ?? []) {
     const tr = document.createElement("tr");
     const dir = c.direction === "outgoing" ? "→ 派出" : "← 收到";
-    const statusText =
-      c.status === "completed" ? "✔ 完成" : c.status === "failed" ? "✘ 失败" : c.status === "cancelled" ? "⊘ 取消" : c.status === "running" ? "⏳ 进行中" : "… 排队";
     const outcome = c.result ?? c.error ?? "—";
-    for (const text of [dir, c.peerSessionId, c.kind, statusText, outcome]) {
+    for (const [i, text] of [dir, c.peerSessionId, c.kind, null, outcome].entries()) {
       const td = document.createElement("td");
-      td.textContent = text;
+      if (i === 3) {
+        td.appendChild(statusCell(c.status, "进行中"));
+      } else {
+        td.textContent = text;
+      }
       tr.appendChild(td);
     }
     collabBody.appendChild(tr);
@@ -185,11 +206,11 @@ function renderFileTree(entries, truncated) {
     const depth = e.path.split("/").length - (e.dir ? 2 : 1);
     row.style.paddingLeft = `${Math.max(0, depth) * 14 + 4}px`;
     if (e.dir) {
-      row.textContent = `📁 ${e.path.split("/").filter(Boolean).pop() ?? e.path}/`;
       row.classList.add("tree-dir");
+      row.append(icon("folder", { cls: "icon-sm" }), document.createTextNode(` ${e.path.split("/").filter(Boolean).pop() ?? e.path}/`));
     } else {
-      row.textContent = `📄 ${e.path.split("/").pop()}`;
       row.classList.add("tree-file");
+      row.append(icon("file", { cls: "icon-sm" }), document.createTextNode(` ${e.path.split("/").pop()}`));
       row.addEventListener("click", () => void previewWorkspaceFile(e.path));
     }
     tree.appendChild(row);
@@ -224,6 +245,7 @@ async function previewWorkspaceFile(relPath) {
 
 export async function render(container, route) {
   container.innerHTML = TEMPLATE;
+  injectIcons(container); // tab 静态 data-icon 占位注入（T-P3-157 批 3）
   document.getElementById("work-close").addEventListener("click", () => {
     location.hash = "#chat";
   });

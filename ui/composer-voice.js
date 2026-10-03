@@ -3,9 +3,9 @@
  * "单按钮两态无反馈"升为三态机（qwen-code VoiceButton / dsh VoiceInput /
  * pideck VoiceTranscriptionControls 三仓同构）：
  *
- *   idle ──start──▶ recording ──stop──▶ transcribing ──▶ idle
- *                     │  ▲ 上限自动停        │
- *                     └──┴──── cancel ◀──────┘（转写中不可取消，只可失败回退）
+ *   idle --start--> recording --stop--> transcribing --> idle
+ *                     |  上限自动停          |
+ *                     +--+---- cancel <------+（转写中不可取消，只可失败回退）
  *
  * 录音中：红点 + mm:ss 计时 + 7 根 RMS 电平条（dsh audio.ts:92-98 同款采样）+
  * 时长上限自动停（dsh maxDurationSeconds 语义，默认 120s）；失败后 2s 冷却
@@ -16,6 +16,8 @@
  * 绝不覆盖用户新输入。
  * mime 探测链：pideck useVoiceTranscription:12,145-146 同款降级序。
  */
+
+import { icon } from "./icons.js";
 
 /** 时长上限缺省值（dsh maxDurationSeconds 默认 120s 对齐）。 */
 export const RECORD_MAX_SECONDS_DEFAULT = 120;
@@ -149,7 +151,7 @@ function formatClock(ms) {
 
 /**
  * 录音捕获器。deps：
- *   micBtn     🎤 按钮（recording 态切 ⏹，其余恢复）
+ *   micBtn     麦克风按钮（recording 态切停止图标，其余恢复）
  *   statusEl   状态容器 #voice-status（hidden 切换；含 .voice-dot 计时 电平条 取消钮）
  *   timerEl    #voice-timer
  *   meterEl    #voice-meter（内含 METER_BARS 个 <i>）
@@ -198,7 +200,7 @@ export function createVoiceCapture(deps) {
     phase = next;
     statusEl.hidden = next === "idle";
     micBtn.classList.toggle("recording", next === "recording");
-    micBtn.textContent = next === "recording" ? "⏹" : "🎤";
+    micBtn.replaceChildren(icon(next === "recording" ? "circleStop" : "mic", { cls: "icon-sm" }));
     statusEl.dataset.phase = next;
     onPhase(next);
   }

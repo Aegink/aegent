@@ -8,6 +8,7 @@
  */
 
 import { sendSettings } from "../../api.js";
+import { icon } from "../../icons.js";
 import { toast } from "../../feedback.js";
 import { t } from "../../i18n.js";
 import { openDialog, btnEl, emptyState, chipEl } from "./core.js";
@@ -81,7 +82,7 @@ function sourceRow(host, m) {
   if (m.lastRefreshFailure !== undefined) {
     const fail = document.createElement("div");
     fail.className = "row-desc error-text";
-    fail.textContent = `⚠ 刷新失败：${m.lastRefreshFailure.message}`;
+    fail.textContent = `刷新失败：${m.lastRefreshFailure.message}`;
     copy.appendChild(fail);
   }
   const selectBtn = btnEl("浏览", "btn", "查看此市场的插件");

@@ -11,6 +11,7 @@ import { sendSettings } from "./api.js";
 import { settingsCache } from "./state.js";
 import { toast } from "./feedback.js";
 import { registerPane } from "./pane.js";
+import { icon } from "./icons.js";
 import { fileIcon } from "./views/projects-files.js";
 
 /** 活动项目根（git 面板的工作区——无活动项目时禁用态）。 */
@@ -23,8 +24,8 @@ function activeRoot() {
 let snapshot = null;
 
 registerPane("git", {
-  title: () => "⑂ Git",
-  icon: "⑂",
+  title: () => "Git",
+  icon: "gitBranch",
   render: (body) => {
     body.replaceChildren();
     const root = activeRoot();
@@ -37,7 +38,7 @@ registerPane("git", {
     const refreshBtn = document.createElement("button");
     refreshBtn.type = "button";
     refreshBtn.className = "btn btn-ghost";
-    refreshBtn.textContent = "↻ 刷新";
+    refreshBtn.replaceChildren(icon("retry", { cls: "icon-sm" }), document.createTextNode(" 刷新"));
     head.append(refreshBtn);
 
     const statusBox = document.createElement("div");
@@ -54,7 +55,15 @@ registerPane("git", {
     const paintStatus = () => {
       if (snapshot === null) return;
       statusBox.replaceChildren();
-      statusBox.innerHTML = `<div class="git-branch">⑂ ${escapeHtml(snapshot.branch)} <span class="git-ahead-behind">↑${escapeHtml(snapshot.ahead)} ↓${escapeHtml(snapshot.behind)}</span> · ${String(snapshot.changes.length)} 个变更</div>`;
+      const branchRow = document.createElement("div");
+      branchRow.className = "git-branch";
+      branchRow.append(
+        icon("gitBranch", { cls: "icon-sm" }),
+        Object.assign(document.createElement("span"), { textContent: ` ${snapshot.branch} ` }),
+        Object.assign(document.createElement("span"), { className: "git-ahead-behind", textContent: `↑${snapshot.ahead} ↓${snapshot.behind}` }),
+        document.createTextNode(` · ${String(snapshot.changes.length)} 个变更`),
+      );
+      statusBox.replaceChildren(branchRow);
       const groups = [
         ["已暂存", snapshot.changes.filter((c) => c.staged)],
         ["未暂存", snapshot.changes.filter((c) => !c.staged)],
@@ -140,7 +149,10 @@ registerPane("git", {
       const toggle = document.createElement("details");
       toggle.className = "git-change-details";
       const summary = document.createElement("summary");
-      summary.innerHTML = `${fileIcon(change.file)} <span class="git-change-file">${escapeHtml(change.file)}</span>`;
+      const fileSpan = document.createElement("span");
+      fileSpan.className = "git-change-file";
+      fileSpan.textContent = change.file;
+      summary.append(fileIcon(change.file), fileSpan);
       const actions = document.createElement("span");
       actions.className = "git-change-actions";
       const stageBtn = document.createElement("button");

@@ -7,6 +7,7 @@
 
 import { notifications, subscribeNotify, updateNotifyBadge } from "../state.js";
 import { oneLine, fmtTime, KIND_ICONS } from "../feedback.js";
+import { icon as iconEl } from "../icons.js";
 
 const TEMPLATE = `
 <aside id="notify-panel" aria-label="通知中心">
@@ -38,9 +39,9 @@ export function renderNotifyList() {
   for (const n of [...notifications].reverse()) {
     const li = document.createElement("li");
     li.className = "notify-row";
-    const icon = document.createElement("span");
-    icon.className = "notify-icon";
-    icon.textContent = KIND_ICONS[n.kind] ?? "🔔";
+    const iconWrap = document.createElement("span");
+    iconWrap.className = "notify-icon";
+    iconWrap.replaceChildren(iconEl(KIND_ICONS[n.kind] ?? "bell", { cls: "icon-sm" }));
     const copy = document.createElement("div");
     copy.className = "row-copy";
     const kind = document.createElement("div");
@@ -53,7 +54,7 @@ export function renderNotifyList() {
     const time = document.createElement("span");
     time.className = "notify-time";
     time.textContent = fmtTime(n.at);
-    li.append(icon, copy, time);
+    li.append(iconWrap, copy, time);
     list.appendChild(li);
   }
   updateNotifyBadge();

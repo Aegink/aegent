@@ -22,6 +22,7 @@ import {
   usableInInput,
 } from "../../keymap.js";
 import { settingsCache } from "../../state.js";
+import { icon } from "../../icons.js";
 import { markDirty, dirtySections } from "./core.js";
 
 let capturingAction = null; // 非 null = 捕获态（下一次按键成为待确认组合）
@@ -127,7 +128,7 @@ function renderShortcutList() {
       descEl.className = "row-desc";
       const notes = [];
       if (conflictInfo.conflict !== undefined) {
-        notes.push(`⚠ 与「${ACTION_LABELS[conflictInfo.conflict]}」冲突`);
+        notes.push(`与「${ACTION_LABELS[conflictInfo.conflict]}」冲突`);
         row.classList.add("row-conflict");
       }
       if (conflictInfo.reserved === true) {
@@ -254,7 +255,7 @@ export function shortcutCaptureKeydown(ev) {
     const status = el("shortcut-status");
     const reservedNote = capturedReserved ? "（浏览器保留键——提示不拦截）" : "";
     if (status !== null) {
-      status.textContent = `✔ ${ACTION_LABELS[capturingAction]} → ${capturedCombo}${reservedNote}`;
+      status.textContent = `${ACTION_LABELS[capturingAction]} → ${capturedCombo}${reservedNote}`;
     }
     capturingAction = null;
     capturedCombo = null;
@@ -273,7 +274,7 @@ export function shortcutCaptureKeydown(ev) {
     capturedCombo = null;
     capturedReserved = false;
     if (status !== null) {
-      status.textContent = `✘ ${combo} 已被「${ACTION_LABELS[conflict.conflict]}」占用——换一个组合（Esc 取消）`;
+      status.textContent = `${combo} 已被「${ACTION_LABELS[conflict.conflict]}」占用——换一个组合（Esc 取消）`;
     }
     renderShortcutList();
     return;
@@ -351,7 +352,7 @@ export const SECTION_HTML = `
     <h2 class="section-title">快捷键</h2>
     <div class="section-tools">
       <input id="shortcut-search" class="input input-search" type="text" placeholder="搜索动作…" autocomplete="off" />
-      <button id="shortcut-record" type="button" class="btn" title="录制搜索——按下组合查找占用的动作">⌨ 录制搜索</button>
+      <button id="shortcut-record" type="button" class="btn" title="录制搜索——按下组合查找占用的动作"><span data-icon="keyboard" data-icon-size="14"></span> 录制搜索</button>
       <button id="shortcut-reset" type="button" class="btn">恢复默认键位</button>
     </div>
   </div>

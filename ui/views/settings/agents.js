@@ -9,7 +9,7 @@
  * - skills/subagents/prompts：分组卡片 + 空状态虚线框引导 + 工具数徽标 +
  *   顶部搜索框；
  * - plugins：市场式卡片行（图标座 + 名称/来源 tag + 描述 + 右侧操作组 +
- *   错误行红文本——InstalledPluginsPanel 形态🔴只学行为；安装表单下沉模态）；
+ *   错误行红文本——InstalledPluginsPanel 形态（只学行为）；安装表单下沉模态）；
  * - enhancement/speech：行式卡。
  * 数据面逻辑原样（op:skills-list/skill-save/subagents-list/plugins-list/
  * mcp-check/mcp-import-scan 增删改与即改即存链全保留）。
@@ -259,7 +259,7 @@ export const SECTIONS_HTML = `
   <details class="prompt-help"><summary>压缩摘要指令覆写（可选——codex compact_prompt 同构）</summary>
     <textarea id="enh-summary-prompt" class="textarea" rows="4" placeholder="缺省：内置摘要员指令（≤500 字 + title/summary 标签格式）。整段覆盖——改写请保留输出格式约束。"></textarea>
   </details>
-  <div class="section-head" style="margin-top:16px"><h3 class="section-title">一键润色（输入区 ✨）</h3></div>
+  <div class="section-head" style="margin-top:16px"><h3 class="section-title">一键润色（输入区润色按钮）</h3></div>
   <div class="row-list">
     <div class="row">
       <div class="row-copy">
@@ -291,7 +291,7 @@ export const SECTIONS_HTML = `
 </section>
 <section data-section="speech">
   <div class="section-head"><h2 class="section-title">语音【实验性】</h2></div>
-  <p class="hint">两个独立服务：语音识别（输入区 🎤 录音→文字进输入框）与语音合成（消息朗读）。端点 key 分别在「供应商」页底部"预存密钥"区以 <code>stt</code> / <code>tts</code> 录入（零明文）；音频即时处理，不留存。</p>
+  <p class="hint">两个独立服务：语音识别（输入区麦克风按钮，录音→文字进输入框）与语音合成（消息朗读）。端点 key 分别在「供应商」页底部"预存密钥"区以 <code>stt</code> / <code>tts</code> 录入（零明文）；音频即时处理，不留存。</p>
   <div class="row-title" style="margin:16px 0 4px">语音识别（STT——录音转文字）</div>
   <div class="row-list">
     <div class="row">
@@ -381,7 +381,7 @@ export const SECTIONS_HTML = `
     <button id="tts-test" type="button" class="btn">测试合成</button>
     <span id="tts-test-result" class="row-desc" style="flex:1">合成一句测试语并直接播放——回显结果或错误。</span>
   </div>
-  <p class="hint">录音交互：点击 🎤 开始（计时+音量条），再点停止或到上限自动停，Esc 取消；转写文本插入输入框供确认，不自动发送。</p>
+  <p class="hint">录音交互：点击麦克风按钮开始（计时+音量条），再点停止或到上限自动停，Esc 取消；转写文本插入输入框供确认，不自动发送。</p>
 </section>
 `;
 
@@ -560,9 +560,9 @@ function renderMcpList() {
         if (envelope.ok === false) {
           toast(`测试不可用：${outcome.message}`, "warn");
         } else if (outcome.ok) {
-          toast(`✔ ${s.name}：${outcome.tools.length} 个工具（协议 ${outcome.protocolVersion}）`, "info");
+          toast(`${s.name}：${outcome.tools.length} 个工具（协议 ${outcome.protocolVersion}）`, "info");
         } else {
-          toast(`✘ ${s.name}：${outcome.message}`, "warn");
+          toast(`${s.name}：${outcome.message}`, "warn");
         }
         renderMcpList();
       });
@@ -2025,7 +2025,7 @@ function openPromptImportDialog() {
       line.appendChild(cb);
       const text = document.createElement("span");
       const desc = c.description !== undefined ? `——${c.description}` : "";
-      const warn = c.warning !== undefined ? ` ⚠ ${c.warning}` : "";
+      const warn = c.warning !== undefined ? `（警告：${c.warning}）` : "";
       text.textContent = `/${c.name}（${c.sourceLabel}，${String(c.bytes)}B）${desc}${warn}`;
       line.appendChild(text);
       listEl.appendChild(line);
@@ -2183,11 +2183,11 @@ async function runEnhancementTest(taskName) {
     }
     const r = envelope.result;
     if (r.ok === true) {
-      toast(`✓ ${r.resolved?.provider ?? ""} · ${r.resolved?.modelId ?? ""}（${String(r.latencyMs ?? "?")}ms）`, "info");
+      toast(`${r.resolved?.provider ?? ""} · ${r.resolved?.modelId ?? ""}（${String(r.latencyMs ?? "?")}ms）`, "info");
     } else if (r.code === "NOT_CONFIGURED") {
       toast(`未配置——运行时将回退主模型链`, "info");
     } else {
-      toast(`✗ ${r.error ?? "测试失败"}`, "warn");
+      toast(`${r.error ?? "测试失败"}`, "warn");
     }
   } catch (e) {
     toast(`测试异常：${e instanceof Error ? e.message : String(e)}`, "warn");
@@ -2541,12 +2541,12 @@ export function bind() {
       if (outcome.ok) {
         mcpTestOk = true;
         document.getElementById("mcp-save").disabled = false;
-        resultEl.textContent = `✔ 连接成功（协议 ${outcome.protocolVersion}，${outcome.tools.length} 个工具）`;
+        resultEl.textContent = `连接成功（协议 ${outcome.protocolVersion}，${outcome.tools.length} 个工具）`;
         toolsBox.replaceChildren(...outcome.tools.slice(0, 24).map((t) => chipEl(t.name)));
         toolsBox.hidden = outcome.tools.length === 0;
         toolsBox.title = outcome.tools.length > 24 ? "仅显示前 24 个工具名" : "";
       } else {
-        resultEl.textContent = `✘ 连接失败：${outcome.message}`;
+        resultEl.textContent = `连接失败：${outcome.message}`;
       }
       renderMcpList(); // 状态点随检测结果刷新
     });

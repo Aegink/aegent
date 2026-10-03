@@ -10,6 +10,7 @@ import { sendSettings } from "../../api.js";
 import { settingsCache, applyTheme, applyAppearance, getSessionId } from "../../state.js";
 import { sendRequest } from "../../api.js";
 import { toast } from "../../feedback.js";
+import { icon } from "../../icons.js";
 import { t, applyLocalePreference } from "../../i18n.js";
 import {
   markDirty,
@@ -388,7 +389,8 @@ function renderPolicyRules() {
     const descEl = document.createElement("div");
     descEl.className = "row-desc";
     descEl.textContent = `第 ${r.line} 行`;
-    const delBtn = btnEl("✕", "btn btn-icon", `删除规则 ${r.rule}`);
+    const delBtn = btnEl("", "btn btn-icon", `删除规则 ${r.rule}`);
+    delBtn.replaceChildren(icon("close", { cls: "icon-sm" }));
     delBtn.addEventListener("click", () => {
       // 按行号移除原文行（保留其它行原样——含注释与空行）
       const kept = permRulesContent.split(/\r?\n/).filter((_, i) => i + 1 !== r.line);
@@ -404,7 +406,7 @@ function renderPolicyRules() {
     for (const issue of issues) {
       const p = document.createElement("div");
       p.className = "perm-lint-bad";
-      p.textContent = `⚠ 第 ${issue.line} 行：${issue.message}`;
+      p.textContent = `第 ${issue.line} 行：${issue.message}`;
       lint.appendChild(p);
     }
   }
@@ -740,7 +742,7 @@ async function copyText(text) {
   }
 }
 
-const DOCTOR_STATUS_ICON = { ok: "✔", warn: "▲", error: "✘" };
+const DOCTOR_STATUS_ICON = { ok: "checkCircle", warn: "alert", error: "xCircle" }; // icons.js 语义名（T-P3-157 批 3）
 
 async function refreshSandboxDoctor() {
   const box = document.getElementById("sandbox-doctor");
@@ -774,7 +776,10 @@ async function refreshSandboxDoctor() {
     const row = rowEl();
     const titleEl = document.createElement("div");
     titleEl.className = "row-title";
-    titleEl.textContent = `${DOCTOR_STATUS_ICON[check.status] ?? "?"} ${check.title}`;
+    titleEl.replaceChildren(
+      icon(DOCTOR_STATUS_ICON[check.status] ?? "circleHelp", { cls: `icon-sm ${check.status === "ok" ? "icon-ok" : check.status === "error" ? "icon-err" : "icon-warn"}` }),
+      document.createTextNode(` ${check.title}`),
+    );
     const descEl = document.createElement("div");
     descEl.className = "row-desc";
     descEl.textContent = check.details.join("；");
@@ -1232,7 +1237,7 @@ function renderProfileList() {
     if (p.skillsDisabled !== undefined) bits.push(`技能停 ${String(p.skillsDisabled.length)}`);
     if (p.pluginsEnabled !== undefined) bits.push(`插件 ${String(p.pluginsEnabled.length)}`);
     descEl.textContent = bits.join(" · ");
-    const applyBtn = btnEl(isActive ? "★ 当前" : "切换", isActive ? "btn active-mark" : "btn");
+    const applyBtn = btnEl(isActive ? "当前" : "切换", isActive ? "btn active-mark" : "btn");
     applyBtn.addEventListener("click", () => {
       applyProfileValues(p);
     });
@@ -1285,7 +1290,7 @@ function renderProfileQuick() {
   for (const p of profiles) {
     const opt = document.createElement("option");
     opt.value = p.name;
-    opt.textContent = `${settingsCache?.activeProfile === p.name ? "★ " : ""}${p.name}`;
+    opt.textContent = `${settingsCache?.activeProfile === p.name ? `${p.name}（当前）` : p.name}`;
     sel.appendChild(opt);
   }
   refreshSelectPanel(sel); // 动态重建后同步桥接面板（T-P3-146 修）

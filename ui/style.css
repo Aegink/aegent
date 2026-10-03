@@ -283,19 +283,27 @@ code,
 }
 
 .sb-caret {
-  display: inline-block;
-  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: transform 140ms ease;
   width: 10px;
   flex-shrink: 0;
-  text-align: center;
+  transform: rotate(-90deg); /* 收起=chevron 朝右（T-P3-157：▸ 字形换 chevronDown 图标） */
+}
+
+.sb-caret svg {
+  width: 12px;
+  height: 12px;
 }
 
 .sb-caret.open {
-  transform: rotate(90deg);
+  transform: rotate(0deg);
 }
 
 .sb-icon {
+  display: inline-flex;
+  align-items: center;
   flex-shrink: 0;
   font-size: 13px;
 }
@@ -783,8 +791,20 @@ code,
 }
 
 .pane-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pane-tab-label svg {
+  flex-shrink: 0;
+}
+
+.pane-tab-title {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pane-tab-close {
@@ -4745,6 +4765,13 @@ button.chip-ui.active {
     font-size: 12.5px;
 }
 
+/* 体检徽标（T-P3-157 批 3：字形 → 图标节点后的对齐位） */
+.transfer-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 .transfer-row-copy {
     flex: 1;
     min-width: 0;
@@ -5633,6 +5660,19 @@ button.transfer-row:hover {
   color: var(--brand);
   font-weight: 600;
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 补全行/附件 chip/行内图标基线对齐（icons.js 单色 svg 消费面） */
+.ac-label,
+.attachment-chip,
+.file-type-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
 }
 
 /* 文件类型图标+文件名+目录（写入/编辑/读取卡） */

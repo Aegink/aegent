@@ -10,6 +10,7 @@ import { sendQuery } from "./api.js";
 import { getSessionId, hooks } from "./state.js";
 import { appendLine } from "./feedback.js";
 import { registerPane } from "./pane.js";
+import { icon } from "./icons.js";
 
 const MAX_DEPTH = 5;
 
@@ -26,15 +27,15 @@ async function fetchForkMarks(sessionId) {
 }
 
 registerPane("tree", {
-  title: () => "🌳 会话树",
-  icon: "🌳",
+  title: () => "会话树",
+  icon: "gitFork",
   render: (body) => {
     body.replaceChildren();
     const head = document.createElement("div");
     head.className = "review-pane-head";
     const title = document.createElement("span");
     title.className = "subagent-pane-title";
-    title.textContent = "🌳 会话树（fork 血统——点击节点只读回看）";
+    title.append(icon("gitFork", { cls: "icon-sm" }), document.createTextNode(" 会话树（fork 分支历史——点击节点只读回看）"));
     const refresh = document.createElement("button");
     refresh.type = "button";
     refresh.className = "btn btn-ghost";
@@ -73,10 +74,10 @@ registerPane("tree", {
         row.style.paddingLeft = `${8 + depth * 18}px`;
         const caret = document.createElement("span");
         caret.className = "sb-caret open";
-        caret.textContent = "▸";
+        caret.replaceChildren(icon("chevronDown", { cls: "icon-sm" }));
         const label = document.createElement("span");
         label.className = "sb-label";
-        label.textContent = `${depth === 0 ? "🌿" : "⑂"} ${node.sessionId.slice(0, 12)}…（${String(node.count)} 条事件）`;
+        label.append(icon("gitFork", { cls: "icon-sm" }), document.createTextNode(` ${node.sessionId.slice(0, 12)}…（${String(node.count)} 条事件）`));
         label.title = node.sessionId;
         row.append(caret, label);
         if (node.sessionId !== rootId) {

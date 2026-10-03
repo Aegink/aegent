@@ -1,7 +1,7 @@
 /**
  * 插件中心视图（T-P3-148 O/P/Q——从 settings 分节升为独立一级页面；
  * 形态母版：pi-desktop PluginsPage 双 tab + InstalledPluginsPanel 分组固定序
- * + PluginDetailSheet 右侧滑入 + PluginDialogs 权限审查分组配色，🔴只学行为；
+ * + PluginDetailSheet 右侧滑入 + PluginDialogs 权限审查分组配色，只学行为；
  * 市场/创建 tab 的母版与 op 对齐 zcode PluginStorePage / plugin-creator）。
  *
  * 页面结构：页头（标题 + ⋯ 收纳低频动作）+ tab 工具条（已安装/市场/创建）
@@ -198,7 +198,7 @@ function pluginRow(p) {
   const descEl = document.createElement("div");
   descEl.className = "row-desc clamp-2";
   descEl.textContent =
-    p.error !== undefined ? `⚠ ${p.error}` : p.manifest?.description ?? `→ ${p.source}`;
+    p.error !== undefined ? p.error : p.manifest?.description ?? `→ ${p.source}`;
   if (p.error !== undefined) descEl.classList.add("error-text");
   const copy = rowCopyEl(titleEl, descEl);
   // 可折叠贡献物（<details>——pi PluginRowDetails 防行高爆炸同款）
@@ -383,7 +383,7 @@ function openDetail(p, focusSettings = false) {
   status.className = `row-desc${p.error !== undefined ? " error-text" : ""}`;
   status.textContent =
     p.error !== undefined
-      ? `⚠ 装载诊断：${p.error}`
+      ? `装载诊断：${p.error}`
       : p.enabled
         ? "已启用（新会话生效的改动以清单为准）"
         : "已停用（清单保留——开关是开回的路径）";

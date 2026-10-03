@@ -447,9 +447,9 @@ async function rowTest(entry) {
     first.verified = true;
     dirtySections.add("providers");
     markDirty("providers");
-    toast(`✔ ${entry.name} · ${first.id}（${adapterLabel}）回复：「${result.reply ?? ""}」（${result.latencyMs ?? "?"}ms）`, "info");
+    toast(`${entry.name} · ${first.id}（${adapterLabel}）回复：「${result.reply ?? ""}」（${result.latencyMs ?? "?"}ms）`, "info");
   } else {
-    toast(`✘ 测试失败：${result.error ?? "未知错误"}`, "warn");
+    toast(`测试失败：${result.error ?? "未知错误"}`, "warn");
   }
   renderProviderList();
 }
@@ -602,11 +602,11 @@ async function fetchModels(form) {
     });
     if (form.isConnected === false) return;
     if (!envelope.ok) {
-      statusEl.textContent = `✘ 获取失败：${envelope.error?.message ?? ""}`;
+      statusEl.textContent = `获取失败：${envelope.error?.message ?? ""}`;
       statusEl.classList.add("probe-bad");
     } else {
       discoveredModels = (envelope.result.models ?? []).map((m) => m.id);
-      statusEl.textContent = `✔ 已连接 · 发现 ${discoveredModels.length} 个模型（勾选加入服务）`;
+      statusEl.textContent = `已连接 · 发现 ${discoveredModels.length} 个模型（勾选加入服务）`;
       statusEl.classList.add("probe-ok");
       if (discoveredModels.length === 0) {
         toast("端点返回空清单——确认地址与协议是否正确", "warn");
@@ -686,20 +686,21 @@ function draftModelCard(m) {
   // 头行 meta 短格式（pi-desktop 同款 "1M · 375k"——前缀词与思考档不进
   // 头行，长 meta 会把模型名压成省略号、× 挤下换行——用户走查实测抓漏）
   const meta = [];
-  if (m.verified === true) meta.push("✓");
+  if (m.verified === true) meta.push("已实测");
   if (m.contextWindow !== undefined) meta.push(fmtTokens(m.contextWindow));
   if (m.maxOutputTokens !== undefined) meta.push(fmtTokens(m.maxOutputTokens));
   const metaEl = document.createElement("span");
   metaEl.className = "model-meta";
   metaEl.textContent = meta.join(" · ");
-  if (m.verified === true) metaEl.title = "✓ 已实测——测试连接成功（真实发送过消息）";
+  if (m.verified === true) metaEl.title = "已实测——测试连接成功（真实发送过消息）";
   head.appendChild(metaEl);
   const advBtn = btnEl(advancedOpenId === m.id ? "收起" : "高级", "btn btn-icon", "模型高级设置（别名/上下文/最大输出/思考等级）");
   advBtn.addEventListener("click", () => {
     advancedOpenId = advancedOpenId === m.id ? null : m.id;
     renderDraftModels();
   });
-  const delBtn = btnEl("✕", "btn btn-icon", "从服务移除该模型");
+  const delBtn = btnEl("", "btn btn-icon", "从服务移除该模型");
+  delBtn.replaceChildren(icon("close", { cls: "icon-sm" }));
   delBtn.addEventListener("click", () => {
     draftModels = draftModels.filter((x) => x.id !== m.id);
     renderDraftModels();
@@ -969,12 +970,12 @@ async function runTestConnection(form) {
     const result = envelope.ok ? envelope.result : { ok: false, error: envelope.error?.message ?? "" };
     if (result.ok === true) {
       target.verified = true;
-      statusEl.textContent = `✔ 已连接 · ${target.id}（${ADAPTER_LABEL[testAdapter] ?? testAdapter}）回复：「${result.reply ?? ""}」（${result.latencyMs ?? "?"}ms）——可以使用`;
+      statusEl.textContent = `已连接 · ${target.id}（${ADAPTER_LABEL[testAdapter] ?? testAdapter}）回复：「${result.reply ?? ""}」（${result.latencyMs ?? "?"}ms）——可以使用`;
       statusEl.classList.add("probe-ok");
       appendLine(`供应商测试成功：${name || editingProviderName} / ${target.id}`, "meta");
     } else {
       target.verified = false;
-      statusEl.textContent = `✘ 测试失败：${result.error ?? "未知错误"}`;
+      statusEl.textContent = `测试失败：${result.error ?? "未知错误"}`;
       statusEl.classList.add("probe-bad");
     }
   } finally {
@@ -993,7 +994,7 @@ function openHeadersDialog() {
       <span class="pane-title">请求头</span>
       <div class="section-tools">
         <select id="provider-header-preset" class="select">
-          <option value="">添加常用请求头 ▾</option>
+          <option value="">添加常用请求头…</option>
           ${COMMON_HEADERS.map(([k, v]) => `<option value="${k}\u0000${v}">${k}</option>`).join("")}
         </select>
         <button id="provider-header-import" type="button" class="btn btn-icon">导入 JSON</button>
@@ -1032,7 +1033,8 @@ function openHeadersDialog() {
       valInput.addEventListener("change", () => {
         draftHeaders[k] = valInput.value;
       });
-      const delBtn = btnEl("✕", "btn btn-icon", "删除该请求头");
+      const delBtn = btnEl("", "btn btn-icon", "删除该请求头");
+      delBtn.replaceChildren(icon("close", { cls: "icon-sm" }));
       delBtn.addEventListener("click", () => {
         delete draftHeaders[k];
         renderRows();

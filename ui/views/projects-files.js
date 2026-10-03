@@ -11,12 +11,12 @@
  */
 
 import { sendSettings } from "../api.js";
+import { icon } from "../icons.js";
 import { toast } from "../feedback.js";
 import { renderMarkdown } from "../render.js";
 import { openMenu } from "./settings/core.js";
 
-/** 图片扩展名（与 host IMAGE_EXT_BY_MEDIA 同集——UI 预判图标用）。 */
-const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]);
+/** Markdown 扩展名（预览态判定——md 走真渲染管线）。 */
 const MARKDOWN_EXTS = new Set([".md", ".markdown"]);
 
 /** 相对项目根的 posix 路径（zcode getWorkspaceFileRelativePath 语义：`\`→`/`
@@ -110,13 +110,12 @@ export async function renderFileTree(container, deps) {
     row.className = "proj-tree-row";
     row.dataset.path = entry.path;
     row.style.paddingLeft = `${8 + depth * 14}px`;
-    const icon = document.createElement("span");
-    icon.className = "proj-tree-icon";
-    icon.textContent = entry.dir ? "📁" : fileIcon(entry.name);
+    const iconSpan = entry.dir ? icon("folderOpen", { cls: "icon-sm" }) : fileIcon(entry.name);
+    iconSpan.classList.add("proj-tree-icon");
     const label = document.createElement("span");
     label.className = "proj-tree-label";
     label.textContent = entry.name;
-    row.append(icon, label);
+    row.append(iconSpan, label);
     row.title = entry.path;
     row.addEventListener("click", () => {
       if (entry.dir) {
@@ -213,7 +212,7 @@ export async function renderFilePreview(container, deps) {
   reveal.type = "button";
   reveal.className = "btn btn-ghost";
   reveal.title = "在资源管理器中显示（系统文件管理器定位该文件）";
-  reveal.textContent = "📁";
+  reveal.replaceChildren(icon("folderOpen", { cls: "icon-sm" }));
   reveal.addEventListener("click", async () => {
     const envelope = await sendSettings({ op: "fs-shell", path: filePath, action: "reveal" });
     if (!envelope.ok) toast(`打开失败：${envelope.error?.message ?? ""}`, "warn");
@@ -290,15 +289,36 @@ export async function renderFilePreview(container, deps) {
 
 export function fileIcon(name) {
   const ext = extOf(name);
-  if (IMAGE_EXTS.has(ext)) return "🖼";
-  if (MARKDOWN_EXTS.has(ext)) return "📝";
-  if (ext === ".json" || ext === ".toml" || ext === ".yaml" || ext === ".yml") return "⚙";
-  if (ext === ".js" || ext === ".mjs" || ext === ".cjs" || ext === ".ts" || ext === ".tsx") return "🟨";
-  if (ext === ".py") return "🐍";
-  if (ext === ".rs") return "🦀";
-  if (ext === ".html" || ext === ".css") return "🌐";
-  return "📄";
+  const hit = FILE_TYPE_STYLES.find(([e]) => e === ext);
+  const span = document.createElement("span");
+  span.className = "file-type-icon";
+  const node = icon(hit === undefined ? "file" : hit[1], { cls: "icon-sm" });
+  if (hit !== undefined && hit[2] !== undefined) node.style.color = hit[2]; // 类型 accent（zcode ICON_COLOR_MAP 裁剪）
+  span.appendChild(node);
+  return span;
 }
+
+/** 文件类型图标映射（案 B——统一线性符号+按类型着色，T-P3-157 P-003）：
+ *  [扩展名, icons.js 语义名, accent 色]。色值抄 zcode material-icons
+ *  ICON_COLOR_MAP（fileDisplayHelpers.ts:5-40）——「看色识类型」保留，
+ *  多色品牌 SVG 不引入（与我方单色 currentColor 体系冲突）。 */
+const FILE_TYPE_STYLES = [
+  [".png", "image", "#DB2777"], [".jpg", "image", "#DB2777"], [".jpeg", "image", "#DB2777"],
+  [".gif", "image", "#DB2777"], [".webp", "image", "#DB2777"], [".svg", "image", "#DB2777"],
+  [".ico", "image", "#DB2777"], [".bmp", "image", "#DB2777"],
+  [".md", "filePen", "#2563EB"], [".markdown", "filePen", "#2563EB"],
+  [".json", "fileCog", "#0F766E"], [".jsonl", "fileCog", "#0F766E"],
+  [".toml", "fileCog", "#B45309"], [".yaml", "fileCog", "#B91C1C"], [".yml", "fileCog", "#B91C1C"],
+  [".js", "fileCode", "#CA8A04"], [".mjs", "fileCode", "#CA8A04"], [".cjs", "fileCode", "#CA8A04"],
+  [".ts", "fileCode", "#2563EB"], [".tsx", "fileCode", "#0891B2"], [".jsx", "fileCode", "#0891B2"],
+  [".py", "fileCode", "#2563EB"], [".rs", "fileCode", "#9A3412"], [".go", "fileCode", "#0EA5E9"],
+  [".java", "fileCode", "#64748B"], [".c", "fileCode", "#64748B"], [".h", "fileCode", "#64748B"],
+  [".cpp", "fileCode", "#64748B"], [".hpp", "fileCode", "#64748B"],
+  [".html", "fileCode", "#E44D26"], [".htm", "fileCode", "#E44D26"], [".css", "fileCode", "#1572B6"],
+  [".sh", "terminal", "#4B5563"], [".bash", "terminal", "#4B5563"], [".zsh", "terminal", "#4B5563"],
+  [".ps1", "terminal", "#4B5563"],
+  [".txt", "file", "#64748B"], [".log", "file", "#64748B"],
+];
 
 function extOf(name) {
   const idx = name.lastIndexOf(".");

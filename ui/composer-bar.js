@@ -2,30 +2,31 @@
  * 输入 Tab 栏 + 排队"等待中"条（T-P3-156 方案 K/L——需求四）。
  *
  * L（需求四：附件/权限/用量/模型常驻可见）：
- * - 📎 附件：隐藏 file input（multiple）→ 既有 addAttachment 链（10MB/件、
+ * - 附件 pill：隐藏 file input（multiple）→ 既有 addAttachment 链（10MB/件、
  *   8 件/消息限额不变）；图片能力提示（方案 N）在打磨批接线。
- * - 🔒 权限档 pill：五档菜单（PERMISSION_MODE_UI 与 kernel/session-config
+ * - 权限档 pill：五档菜单（PERMISSION_MODE_UI 与 kernel/session-config
  *   同源复制——basic.js 导出）→ applyPermissionMode（settings 持久化 +
  *   config/refresh 会话内即时生效，回执 toast 在 app.js 的 W 消费）。
- * - ☰ 上下文 % pill：数据源 = query op:"usage"（hello 后与每轮结算后由
+ * - 上下文 % pill（gauge 图标）：数据源 = query op:"usage"（hello 后与每轮结算后由
  *   app.js 拉取并推入 refreshContextUsage）——≥80% 橙、≥95% 红（qwen
  *   ContextUsageDisplay 阈值语义）；点击弹本会话用量明细。
- * - ✦ 模型 pill：菜单 = settings.providers × models（本地已配置面）→
+ * - 模型 pill：菜单 = settings.providers × models（本地已配置面）→
  *   model/switch（写命令持约；回执经事件流 renderEvent 呈现）。
  *
  * K（需求四：等待中 + 立即发送）：
  * - 内核忙时发送的 prompt 自动入队（agent-process admission：忙 → queue.ts
  *   enqueue 返 accepted）——UI 侧排队条只是**投影**：发送时 agent 忙则记
  *   本地 queued 摘要；idle（队列已排空）/prompt_returned（中止退回）时清空。
- * - ⏹ 停止 = cancel{cause:{kind:"user"}}（写命令持约）——中止后剩余排队经
+ * - 停止 = cancel{cause:{kind:"user"}}（写命令持约）——中止后剩余排队经
  *   prompt_returned 回填输入框（app.js W 消费）。
- * - ⏩ 立即发送 = steer{expectedTurn, content}（输入框当前内容注入在途轮
+ * - 立即发送 = steer{expectedTurn, content}（输入框当前内容注入在途轮
  *   ——不打断，内核 turn 边界插入；排队消息仍在轮末自动发送）。
  */
 
 import { sendQuery, sendRequest } from "./api.js";
 import { getSessionId, settingsCache } from "./state.js";
 import { toast } from "./feedback.js";
+import { icon } from "./icons.js";
 import { openMenu } from "./views/settings/core.js";
 
 let input = null;
@@ -146,7 +147,10 @@ function paintQueueBar() {
     const list = document.createElement("span");
     list.className = "queue-list";
     list.title = queued.join("\n");
-    list.textContent = `⏳ 等待中 ${queued.length} 条：${queued[0]}${queued.length > 1 ? ` …` : ""}`;
+    list.replaceChildren(
+      icon("loader", { cls: "icon-sm icon-spin" }),
+      document.createTextNode(` 等待中 ${queued.length} 条：${queued[0]}${queued.length > 1 ? ` …` : ""}`),
+    );
     queueBar.appendChild(list);
     const hint = document.createElement("span");
     hint.className = "queue-hint";
@@ -156,14 +160,14 @@ function paintQueueBar() {
   }
 
   if (busy) {
-    // ⏩ 立即发送：输入框当前内容 steer 注入在途轮（不打断——codex steer 语义）
+    // 立即发送：输入框当前内容 steer 注入在途轮（不打断——codex steer 语义）
     const sendNow = document.createElement("button");
     sendNow.type = "button";
     sendNow.className = "queue-btn queue-btn-primary";
     sendNow.textContent = "立即发送";
     sendNow.title = "把输入框当前内容立即注入当前轮（AI 在下一步间隙即可看到——不打断执行）";
     sendNow.addEventListener("click", () => void steerNow());
-    // ⏹ 停止：cancel（中止后剩余排队经 prompt_returned 回填输入框）
+    // 停止：cancel（中止后剩余排队经 prompt_returned 回填输入框）
     const stop = document.createElement("button");
     stop.type = "button";
     stop.className = "queue-btn queue-btn-danger";
@@ -214,7 +218,8 @@ async function openPermissionMenu() {
   const basic = await import("./views/settings/basic.js");
   const current = settingsCache?.permission?.mode ?? "ask";
   openMenu(permPill, basic.PERMISSION_MODE_UI.map((mode) => ({
-    label: `${mode.name === current ? "● " : ""}${mode.label}——${mode.desc}`,
+    label: `${mode.label}——${mode.desc}`,
+    icon: mode.name === current ? "check" : undefined, // 当前档=勾选标（zcode「选中=打勾」语义）
     onClick: () => void basic.applyPermissionMode(mode.name),
   })));
 }
@@ -223,7 +228,7 @@ function paintPermPill() {
   if (permPill === null) return;
   const current = settingsCache?.permission?.mode ?? "ask";
   const labels = { ask: "每次询问", "accept-edits": "自动批编辑", "read-only": "只读", auto: "全自动", unattended: "无人值守" };
-  permPill.textContent = `🔒 ${labels[current] ?? current}`;
+  permPill.replaceChildren(icon("lock", { cls: "icon-sm" }), document.createTextNode(` ${labels[current] ?? current}`));
 }
 
 /** settings 保存/切档回执后由 app.js 调（pill 文案随档位刷新）。 */
@@ -276,7 +281,7 @@ async function switchModel(provider, modelId) {
   const providerId = provider.id ?? provider.name ?? provider.baseUrl;
   try {
     await sendRequest(sid, { type: "model/switch", identity: { provider: providerId, modelId } });
-    modelPill.textContent = `✦ ${modelId}`;
+    modelPill.replaceChildren(icon("sparkles", { cls: "icon-sm" }), document.createTextNode(` ${modelId}`));
     toast(`模型已切换：${providerId} / ${modelId}（下一轮起生效）`, "info");
   } catch (e) {
     toast(`切换失败：${e?.message ?? ""}（需要写租约）`, "warn");
@@ -287,14 +292,14 @@ function paintModelPill() {
   if (modelPill === null) return;
   const currentModel = settingsCache?.model?.identity?.modelId;
   if (currentModel !== undefined && currentModel !== "") {
-    modelPill.textContent = `✦ ${currentModel}`;
+    modelPill.replaceChildren(icon("sparkles", { cls: "icon-sm" }), document.createTextNode(` ${currentModel}`));
     return;
   }
   const first = settingsCache?.providers?.[0];
   const firstModel = first?.models?.[0];
   if (first !== undefined && firstModel !== undefined) {
     const label = modelLabel(firstModel);
-    modelPill.textContent = `✦ ${label}`;
+    modelPill.replaceChildren(icon("sparkles", { cls: "icon-sm" }), document.createTextNode(` ${label}`));
     modelPill.title = `当前缺省：${first.name ?? first.id ?? ""} / ${label}（点击切换本次会话模型）`;
   }
 }
@@ -320,7 +325,7 @@ function paintCtxPill() {
   if (ctxPill === null) return;
   const { contextTokens, contextWindow } = usageInfo;
   const pct = contextWindow > 0 ? Math.min(100, Math.round((contextTokens / contextWindow) * 100)) : 0;
-  ctxPill.textContent = `☰ ${String(pct)}%`;
+  ctxPill.replaceChildren(icon("gauge", { cls: "icon-sm" }), document.createTextNode(` ${String(pct)}%`));
   ctxPill.classList.toggle("ctx-warn", pct >= 80 && pct < 95);
   ctxPill.classList.toggle("ctx-hot", pct >= 95);
 }

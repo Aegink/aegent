@@ -4,11 +4,11 @@
  *
  * 形态（zcode ConversationStatusPanel mini/panel 双态裁剪 + pi-desktop
  * ActivityGroup live ticker 的信息密度）：
- * - 收起 pill（运行时出现）：● 运行中 mm:ss · 当前工具摘要 —— 每秒 tick
+ * - 收起 pill（运行时出现）：运行中 mm:ss（圆点）· 当前工具摘要 —— 每秒 tick
  *   （tabular-nums，BackgroundTaskElapsedLabel 的本地时钟基线语义）；
  * - 点击展开面板：当前任务（活动项目 · 会话标题）+ 当前工具 + 最近事件
  *   迷你列表（环形缓冲 6 条）+ 审批挂起提示；
- * - 终态驻留：idle → 「✓ 完成 · 用时 mm:ss」8s 后收起（点击可提前收起）；
+ * - 终态驻留：idle → 「完成 · 用时 mm:ss」8s 后收起（点击可提前收起）；
  * - 审批挂起：pill 转橙 + 面板首行「等待你的审批」。
  *
  * 事件源：agent:busy / agent:idle / agent:awaiting(-clear) CustomEvent
@@ -76,7 +76,7 @@ export function notifyIdle() {
     tickTimer = null;
   }
   if (wasRunning) {
-    pushEvent("✓ 本轮任务完成");
+    pushEvent("本轮任务完成");
     paintAll();
     if (doneTimer !== null) clearTimeout(doneTimer);
     doneTimer = setTimeout(() => {
@@ -93,7 +93,7 @@ export function notifyIdle() {
 
 /** tool/call → 当前工具摘要 + 事件缓冲（args 只留首行防泄敏/防长）。 */
 export function notifyToolCall(toolName, argsPreview) {
-  pushEvent(`⚙ ${toolName}${argsPreview !== "" ? `：${argsPreview}` : ""}`);
+  pushEvent(`调用工具 ${toolName}${argsPreview !== "" ? `：${argsPreview}` : ""}`);
   dock.dataset.tool = toolName ?? "";
   paintAll();
 }
@@ -144,7 +144,9 @@ function paintPill() {
     // 终态驻留窗口（idle 后 8s 内）
     dock.hidden = false;
     dock.className = "progress-pill done";
-    dock.innerHTML = `<span class="progress-dot done"></span>✓ 完成 · 用时 ${elapsedLabel()}`;
+    const doneDot = document.createElement("span");
+    doneDot.className = "progress-dot done";
+    dock.replaceChildren(doneDot, document.createTextNode(`完成 · 用时 ${elapsedLabel()}`));
     return;
   }
   dock.hidden = true;
