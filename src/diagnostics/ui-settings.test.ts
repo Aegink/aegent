@@ -331,7 +331,11 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     // 主题 token 层（批 A 迁 theme.css——全站唯一取色处；亮色覆盖在位）
     expect(theme).toContain('body[data-theme="light"]');
     expect(theme).toContain("--bg:");
-    expect(theme).toContain("--accent:"); // 旧名兼容别名（style.css 消费面）
+    // T-P3-157 批 1：旧名兼容别名退役（消费面全量换主名）——新 token 在位断言
+    expect(theme).toContain("--focus-ring:");
+    expect(theme).toContain("--bg-menu-hover:");
+    expect(theme).toContain("--disabled-opacity:");
+    expect(theme).not.toMatch(/--(ok|warn|danger|accent|panel|dim):/); // 别名已删
     expect(css).toContain('@import "./theme.css"'); // token 层接入点
   });
 });

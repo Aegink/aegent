@@ -71,7 +71,8 @@
   --font-ui: "Segoe UI", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", monospace;
 
-  /* —— 间距栅格（4px）与圆角三档（卡片 12px）+ 阴影两级 —— */
+  /* —— 间距栅格（4px）与圆角分级链（T-P3-157 §6.4 对齐 zcode：
+        sm4 小控件 / md6 按钮输入菜单项 / lg8 菜单壳卡内嵌 / card12 卡 / xl16 模态白名单） —— */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -79,9 +80,9 @@
   --space-5: 20px;
   --space-6: 24px;
   --space-8: 32px;
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
   --radius-xl: 16px; /* 模态外壳（ZCode rounded-2xl 同档） */
   --radius-card: 12px;
   --radius-full: 999px;
@@ -89,18 +90,16 @@
   --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.35);
   --scrim: rgba(0, 0, 0, 0.45); /* 对话框/引导遮罩 */
   --scrim-strong: rgba(0, 0, 0, 0.6); /* 模态遮罩（ZCode bg-black/60 同档） */
+  --bg-menu-hover: rgba(255, 255, 255, 0.08); /* 菜单项 hover（ZCode --color-menu-hover 暗档语义） */
+  --focus-ring: var(--brand); /* focus-visible 焦点环色（T-P3-157 §7 焦点协议） */
+  --disabled-opacity: 0.5; /* 控件禁用统一档（ZCode button.tsx disabled:opacity-50 同值） */
 
   /* —— 布局骨架尺寸（方案 §2.4） —— */
   --sidebar-width: 260px;
   --sidebar-rail: 56px;
 
-  /* —— 旧名兼容别名（style.css 既有消费面——批 B 逐段换新名后移除） —— */
-  --panel: var(--bg-card);
-  --dim: var(--text-subtle);
-  --accent: var(--brand);
-  --ok: var(--success);
-  --warn: var(--warning);
-  --danger: var(--destructive);
+  /* 旧名兼容别名已于 T-P3-157 批 1 退役（消费面全量换主名——单一事实源）。
+     语义色主名：--success / --warning / --destructive / --brand / --bg-card / --text-subtle。 */
 }
 
 /* 亮色主题：同一批 token 换值（对齐 ZCode 亮色块） */
@@ -122,6 +121,7 @@ body[data-theme="light"] {
   --inverse: #ffffff;
   --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.08);
   --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --bg-menu-hover: rgba(0, 0, 0, 0.05);
 }
 
 /* ==========================================================================
