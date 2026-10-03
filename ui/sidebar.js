@@ -416,11 +416,81 @@ function taskRow(task) {
     openMenu(row, [
       { label: "重命名", onClick: () => void renameTask(task) },
       { label: "查看（只读恢复视图）", onClick: () => void viewTaskSession(task) },
+      { label: "分支会话（fork 历史快照）", onClick: () => void forkTaskSession(task) },
       { label: "打开会话路径", onClick: () => void openSessionPath(task) },
       { label: "删除任务", danger: true, onClick: () => void deleteTask(task) },
     ]);
   });
   return row;
+}
+
+/**
+ * 分支会话（T-P3-156 方案 I——需求三.4）：session/fork（E5 内核——
+ * store.fork 复制历史+lineage 事件，forked 回执经 W 消费刷侧栏）。
+ * 切点语义：after = 复制全部历史到新会话（默认）；atSeq = 从指定序号前
+ * 分叉（高级）。内核只从 idle 会话分叉——运行中当前会话入口会类型化拒绝
+ * （toast 如实呈现）。
+ */
+async function forkTaskSession(task) {
+  const modeSelect = document.createElement("select");
+  modeSelect.className = "input";
+  for (const [value, label] of [
+    ["after", "复制全部历史（最新状态后分叉）"],
+    ["at", "从指定轮前分叉（填事件序号 atSeq）"],
+  ]) {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = label;
+    modeSelect.appendChild(opt);
+  }
+  const seqInput = document.createElement("input");
+  seqInput.className = "input";
+  seqInput.type = "text";
+  seqInput.placeholder = "atSeq（事件序号，切点前的历史不进新会话）";
+  seqInput.hidden = true;
+  modeSelect.addEventListener("change", () => {
+    seqInput.hidden = modeSelect.value !== "at";
+  });
+  const body = document.createElement("div");
+  body.append(modeSelect, seqInput);
+  await new Promise((resolve) => {
+    openDialog({
+      title: `分支会话：「${task.title !== "" ? task.title : task.sessionId}」`,
+      description: "fork 会复制所选历史为新会话（原会话不动）；forked 回执后新会话出现在「最近会话」。",
+      body,
+      onClose: () => resolve(null),
+      actions: [
+        { label: "取消", className: "btn btn-ghost", onClick: () => resolve(null) },
+        { label: "创建分支", className: "btn btn-primary", onClick: () => resolve(true) },
+      ],
+    });
+  }).then(async (picked) => {
+    if (picked !== true) return;
+    const request = { type: "session/fork", targetId: task.sessionId };
+    if (modeSelect.value === "at") {
+      const atSeq = Number(seqInput.value.trim());
+      if (!Number.isInteger(atSeq) || atSeq <= 0) {
+        toast("atSeq 需为正整数（可在日志/事件里看序号）", "warn");
+        return;
+      }
+      request.position = "before";
+      request.atSeq = atSeq;
+    } else {
+      request.position = "after";
+    }
+    try {
+      const sid = getSessionId();
+      if (sid === "") {
+        toast("会话未就绪（fork 请求经当前 host 会话路由）", "warn");
+        return;
+      }
+      const { sendRequest } = await import("./api.js");
+      await sendRequest(sid, request);
+      // forked 回执（notification）在 app.js W 分支：toast + 刷侧栏
+    } catch (e) {
+      toast(`fork 失败：${e?.message ?? ""}`, "warn");
+    }
+  });
 }
 
 /** 任务点击 = 只读恢复视图（history.js viewSession 语义——先回对话再拉快照）。 */
@@ -566,11 +636,17 @@ function sessionRow(session, map) {
     ev.preventDefault();
     openMenu(row, [
       { label: "查看（只读恢复视图）", onClick: () => void row.dispatchEvent(new Event("click")) },
+      { label: "分支会话（fork 历史快照）", onClick: () => void forkSession(session) },
       { label: "复制会话 ID", onClick: () => void copyText(session.sessionId, "已复制会话 ID") },
       { label: "删除会话", danger: true, onClick: () => void deleteSession(session) },
     ]);
   });
   return row;
+}
+
+/** 会话级 fork（同 forkTaskSession——入口在「最近会话」分段）。 */
+async function forkSession(session) {
+  await forkTaskSession({ sessionId: session.sessionId, title: session.title ?? "" });
 }
 
 /** 只读恢复（history.js 同款——resetStream 后 renderHistory）。 */

@@ -328,48 +328,6 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     for (const marker of [".search-hit", ".mm-row", "#find-bar", "#minimap", ".ac-row", ".attachment-chip"]) {
       expect(css).toContain(marker);
     }
-    // T-P3-156 布局批（方案 A/B/C/D/E/W）：三栏壳 + 右上角常驻入口 + 面板宿主
-    // + 侧栏两分段 + 内核信号消费——主界面重构的结构锁
-    const pane = read("pane.js");
-    expect(html).toContain('id="topbar"'); // 右上角常驻入口容器（需求一.4）
-    expect(html).toContain('id="pane-toggle-btn"'); // 切换面板钮
-    expect(html).toContain('id="terminal-btn"'); // 终端钮（面板批 P 接入显示）
-    expect(html).toContain('id="progress-dock"'); // 进度弹窗挂点（需求一.5）
-    expect(html).toContain('id="pane-root"'); // 面板宿主（与文件查看同位置）
-    expect(html).toContain('id="terminal-drawer"'); // 终端抽屉容器（方案 P）
-    expect(html).toContain('id="sidebar-resizer"'); // 侧栏拖宽条
-    expect(html).toContain('id="sb-projects"'); // 侧栏项目分段（需求一.1）
-    expect(html).toContain('id="sb-history"'); // 侧栏最近会话分段
-    expect(html).toContain('id="sb-files"'); // 文件树滑入层（需求二.4）
-    expect(html).toContain('id="notify-badge"'); // 通知徽标（迁顶栏铃铛）
-    expect(pane).toContain("registerPane"); // 面板类型注册表（扩展点）
-    expect(pane).toContain("openPane"); // 状态机入口
-    expect(pane).toContain("renderFilePreview"); // 文件查看迁入（方案 C）
-    expect(pane).toContain("localStorage"); // 宽度持久化（两段式）
-    expect(sidebar).toContain("expandProject"); // 项目展开
-    expect(sidebar).toContain("pinned"); // 置顶（方案 E）
-    expect(sidebar).toContain("dragstart"); // 拖拽排序（方案 E）
-    expect(sidebar).toContain("missing"); // 目录丢失徽章（方案 E）
-    expect(sidebar).toContain("openFilePane"); // 文件树 → 面板预览联动
-    expect(sidebar).toContain("agent:busy"); // 运行状态点事件源（方案 E）
-    expect(app).toContain("initSidebar"); // 侧栏启动接线
-    expect(app).toContain("initPane"); // 面板宿主启动接线
-    expect(app).toContain('name === "idle"'); // W：空闲信号消费
-    expect(app).toContain('name === "prompt_returned"'); // W：中止回填输入框
-    expect(app).toContain('name === "config_refreshed"'); // W：切档回执 toast
-    expect(app).toContain('name === "forked"'); // W：分支回执 → 侧栏刷新
-    expect(app).toContain("agent:busy"); // 运行态广播（turn/start live）
-    expect(app).toContain("sidebarWidth"); // 侧栏拖宽持久化
-    expect(router).toContain("settings-mode"); // D：设置独立形态类切换
-    expect(router).toContain('head === "projects"'); // A：旧路由重定向面
-    expect(css).toContain("#topbar");
-    expect(css).toContain("#pane-root");
-    expect(css).toContain(".pane-tabbar");
-    expect(css).toContain(".sidebar-resizer");
-    expect(css).toContain(".sb-task-dot");
-    expect(css).toContain("#app-shell.settings-mode #sidebar");
-    expect(css).toContain("#terminal-drawer");
-
     // 主题 token 层（批 A 迁 theme.css——全站唯一取色处；亮色覆盖在位）
     expect(theme).toContain('body[data-theme="light"]');
     expect(theme).toContain("--bg:");

@@ -110,6 +110,9 @@
             <footer id="composer">
               <!-- U10/T-P3-109：补全下拉（@ 文件/目录、/ 命令+工具+技能） -->
               <div id="autocomplete" hidden></div>
+              <!-- T-P3-156 K：排队"等待中"条（内核忙时发送自动入队——queue.ts；
+                   停止 = cancel；立即发送 = steer 注入在途轮） -->
+              <div id="queue-bar" hidden></div>
               <div class="composer-box">
                 <div id="attachments-preview"></div>
                 <textarea id="prompt-input" rows="1" placeholder="输入指令回车执行…（Shift+Enter 换行；@ 补全文件、/ 补全命令）" autocomplete="off"></textarea>
@@ -130,6 +133,15 @@
                   <span class="composer-hint">Shift+Enter 换行</span>
                   <button id="send-btn" type="button">发送</button>
                 </div>
+              </div>
+              <!-- T-P3-156 L：输入 Tab 栏（需求四——附件+/权限档/上下文%/模型
+                   常驻可见；选择走 op 与 config/refresh、model/switch 既有面） -->
+              <div class="composer-tabs" id="composer-tabs">
+                <input id="attach-file-input" type="file" multiple hidden />
+                <button id="attach-add-btn" class="composer-tab" type="button" title="添加附件（任何文件；图片需当前模型可识别）">📎 附件</button>
+                <button id="perm-pill" class="composer-tab" type="button" title="权限档（当前会话即时生效——config/refresh）">🔒 权限</button>
+                <button id="ctx-pill" class="composer-tab" type="button" title="上下文用量（点击看明细）">☰ 0%</button>
+                <button id="model-pill" class="composer-tab" type="button" title="切换供应商与模型（model/switch）">✦ 模型</button>
               </div>
             </footer>
           </div>

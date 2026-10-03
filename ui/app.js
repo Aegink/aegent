@@ -53,7 +53,18 @@ import { applyLocalePreference, t } from "./i18n.js";
 import { installGlobalErrorReporters } from "./log-report.js";
 // T-P3-156 布局批（方案 A/B/C/E/W）：侧栏两分段 + 切换面板宿主
 import { initSidebar, refreshSidebar, newTaskFlow } from "./sidebar.js";
-import { initPane, togglePane } from "./pane.js";
+import { initPane, togglePane, registerPane, openPane } from "./pane.js";
+// T-P3-156 功能批（方案 K/L/U）：输入 Tab 栏 + 排队条 + 右上角进度弹窗
+import {
+  initComposerBar,
+  notifyTurnStarted,
+  notifyIdle as notifyComposerIdle,
+  notifyPromptReturned,
+  notifyQueued,
+  notifyPermissionChanged,
+  refreshContextUsage,
+} from "./composer-bar.js";
+import { initProgressDock, notifyToolCall, notifyEventLine } from "./progress-dock.js";
 
 installGlobalErrorReporters(); // T-P3-154 A3：全局错误捕获（模块加载即挂——视图崩溃也捕）
 import { go, startRouter } from "./router.js";
@@ -204,10 +215,19 @@ function denialEl(denial) {
   return wrap;
 }
 
+// T-P3-156 G：工具卡展开态持久化（模块级 Map——zcode toolLayoutOpenState
+// 同构：会话内切任务/重放后展开态记忆保持，callId 为键）
+const toolOpenState = new Map();
+
 function buildToolCard(e) {
   const card = document.createElement("details");
   card.className = "tool-card";
   card.dataset.callId = e.callId;
+  // G：展开态恢复 + toggle 记忆（用户手动展开/收起优先于自动策略）
+  if (toolOpenState.get(e.callId) === true) card.open = true;
+  card.addEventListener("toggle", () => {
+    toolOpenState.set(e.callId, card.open);
+  });
   const summary = document.createElement("summary");
   const args = safeParseArgs(e.arguments);
   // 批 C 任务卡片化：icon + 工具名 + 参数一行 + 状态徽标（结果结算后翻转）
@@ -234,7 +254,8 @@ function buildToolCard(e) {
 }
 
 // T-P3-145 G：task/meta 子会话回放入口（task 与 task_wait 结果卡——点击
-// 拉子会话事件快照只读回放；复用对话视图的流重建面）
+// 拉子会话事件快照只读回放）；T-P3-156 H：新增「在面板打开」——切换面板
+// 内以独立 Tab 呈现子代理会话（渲染与主会话同构，多实例并存）
 function attachSubagentView(body, meta) {
   const sessionId = meta?.subagent?.sessionId;
   if (typeof sessionId !== "string" || sessionId === "") return;
@@ -253,15 +274,31 @@ function attachSubagentView(body, meta) {
     appendLine(`── 子会话只读视图：${sessionId}（再点一次按钮刷新最新过程）──`, "warn");
     scrollBottom();
   });
-  body.appendChild(btn);
+  // H：面板形态（同构工作区——只读快照 + 运行中轮询刷新，pane.js 宿主）
+  const paneBtn = document.createElement("button");
+  paneBtn.type = "button";
+  paneBtn.className = "btn subagent-view-btn";
+  paneBtn.textContent = "在面板打开";
+  paneBtn.title = "右侧切换面板内查看该子代理的完整过程（与主会话同构的多实例视图）";
+  paneBtn.addEventListener("click", () => {
+    void import("./pane.js").then((m) => m.openPane("subagent", { sessionId }));
+  });
+  body.append(btn, paneBtn);
 }
 
-/** 任务卡状态徽标翻转（结果结算——完成/失败两态，运行中只存在于调用未闭合时）。 */
-function setToolStatus(card, isError) {
+/** 任务卡状态徽标翻转（结果结算——完成/失败两态，运行中只存在于调用未闭合时）。
+ * G：失败原因悬浮——错误摘要挂 summary.title（折叠态 hover 即见原因，
+ * zcode showFailureStatus 的 tooltip 语义；展开卡内仍有完整错误原文）。 */
+function setToolStatus(card, isError, errorDigest) {
   const status = card.querySelector(".tool-status");
-  if (status === null) return;
-  status.className = `tool-status ${isError ? "fail" : "done"}`;
-  status.textContent = isError ? "✗ 失败" : "✓ 完成";
+  if (status !== null) {
+    status.className = `tool-status ${isError ? "fail" : "done"}`;
+    status.textContent = isError ? "✗ 失败" : "✓ 完成";
+  }
+  const summary = card.querySelector("summary");
+  if (summary !== null) {
+    summary.title = isError && errorDigest !== undefined && errorDigest !== "" ? `失败原因：${errorDigest}` : "";
+  }
 }
 
 function settleToolCard(e) {
@@ -270,7 +307,7 @@ function settleToolCard(e) {
   const existing = stream.querySelector(`details[data-call-id="${CSS.escape(e.callId)}"]`);
   if (existing !== null) {
     existing.classList.toggle("error", isError);
-    setToolStatus(existing, isError);
+    setToolStatus(existing, isError, isError ? oneLine(content, 120) : undefined);
     const body = existing.querySelector(".tool-body");
     const denial = isError ? parseDenial(content) : null;
     if (denial !== null) {
@@ -290,6 +327,7 @@ function settleToolCard(e) {
   card.dataset.callId = e.callId;
   const summary = document.createElement("summary");
   summary.textContent = `${isError ? "✗" : "←"} ${oneLine(content, 160)}`;
+  if (isError) summary.title = `失败原因：${oneLine(content, 200)}`;
   const body = document.createElement("div");
   body.className = "tool-body";
   const denial = isError ? parseDenial(content) : null;
@@ -330,7 +368,11 @@ function renderEvent(e, options = {}) {
     case "turn/start":
       // T-P3-156：运行态广播（侧栏状态点 + 进度弹窗事件源）——仅 live 流
       // （历史恢复重放不发，renderHistory 不带 live 标志）
-      if (options.live === true) window.dispatchEvent(new CustomEvent("agent:busy"));
+      if (options.live === true) {
+        window.__agentBusy = true;
+        notifyTurnStarted(e.turn);
+        window.dispatchEvent(new CustomEvent("agent:busy"));
+      }
       return lineEl(`── turn ${e.turn} 开始`, "meta");
     case "turn/end": {
       const el = lineEl(`── turn ${e.turn} 结束（${endKindText(e.reason)}）`, "meta");
@@ -380,6 +422,11 @@ function renderEvent(e, options = {}) {
       return bubble;
     }
     case "tool/call":
+      // T-P3-156 U：进度弹窗的当前工具行（仅 live 流）
+      if (options.live === true) {
+        notifyToolCall(e.name ?? "tool", oneLine(JSON.stringify(e.args ?? {}), 60));
+        notifyEventLine(`⚙ 调用工具 ${e.name ?? "tool"}`);
+      }
       return buildToolCard(e);
     case "tool/result":
       return settleToolCard(e);
@@ -569,10 +616,77 @@ function appendStreamNode(node, e) {
   stream.appendChild(node);
 }
 
+// —— T-P3-156 G：只读工具聚合（codex Exploring 卡语义）——turn 结束后把
+// 该轮内**连续**只读卡（read/grep/glob/ls 类）包进一张「已探索 N 项」聚合
+// 卡（点击展开原卡列表——DOM move 保留展开态/结果，不重建节点）。
+const READONLY_TOOL_NAMES = new Set([
+  "read", "read_file", "readfile", "grep", "glob", "ls", "list", "search",
+  "files-list", "code-search", "web-search", "webfetch", "fetch",
+]);
+
+function isCollapsedReadonlyRun(node) {
+  // 聚合卡自身也按只读延续计——连续运行允许跨聚合（read→聚合→read）
+  return node.classList?.contains("readonly-collapsed");
+}
+
+function maybeCollapseReadonly() {
+  const MIN_RUN = 3;
+  // 从流尾向前找最近的 turn/end meta 行 → 上一 turn/start 行 = 本轮区间
+  const nodes = [...stream.children];
+  let endIdx = -1;
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    if (nodes[i].textContent?.startsWith("── turn") && nodes[i].textContent.includes("结束")) {
+      endIdx = i;
+      break;
+    }
+  }
+  if (endIdx < 0) return;
+  let startIdx = 0;
+  for (let i = endIdx - 1; i >= 0; i--) {
+    if (nodes[i].textContent?.includes("开始")) {
+      startIdx = i + 1;
+      break;
+    }
+  }
+  // 区间内收集连续只读卡（跳过用户气泡/meta 行；聚合卡延续连续性）
+  const run = [];
+  for (let i = startIdx; i < endIdx; i++) {
+    const node = nodes[i];
+    if (node.classList?.contains("tool-card") === true) {
+      const name = node.querySelector(".tool-name")?.textContent.replace("⚙ ", "") ?? "";
+      const done = node.querySelector(".tool-status.done") !== null;
+      const failed = node.classList.contains("error") || node.querySelector(".tool-status.fail") !== null;
+      const isSubagent = node.querySelector(".subagent-view-btn") !== null; // task 卡不聚合
+      if (done && !failed && !isSubagent && (READONLY_TOOL_NAMES.has(name.toLowerCase()) || isCollapsedReadonlyRun(node))) {
+        run.push(node);
+        continue;
+      }
+      if (run.length < MIN_RUN) run.length = 0; // 断续不聚（保序重置）
+      else break;
+      continue;
+    }
+    if (node.classList?.contains("bubble") === true || node.classList?.contains("meta-line") === true) continue;
+    break; // 其它结构（pending/composer 浮层等）截断
+  }
+  if (run.length < MIN_RUN) return;
+  const wrapper = document.createElement("details");
+  wrapper.className = "tool-card readonly-collapsed";
+  const summary = document.createElement("summary");
+  summary.innerHTML = `<span class="tool-name">⚙ 已探索 ${String(run.length)} 项</span><span class="tool-status done">✓ 完成</span>`;
+  wrapper.appendChild(summary);
+  const body = document.createElement("div");
+  body.className = "tool-body readonly-run-body";
+  for (const card of run) body.appendChild(card); // DOM move——节点状态全保留
+  wrapper.appendChild(body);
+  run[0].before(wrapper);
+  maybeCollapseReadonly(); // 递归——区间内更早的连续段继续聚合
+}
+
 function renderEventEnvelope(envelope) {
   const node = renderEvent(envelope.event, { live: true });
   if (node !== null) {
     appendStreamNode(node, envelope.event);
+    if (envelope.event.type === "turn/end") maybeCollapseReadonly(); // G：只读聚合
     scrollBottom();
     syncChatEmpty(); // 首个可见事件到达 = 欢迎卡让位
   }
@@ -584,6 +698,7 @@ function renderHistory(events) {
   for (const e of events) {
     const node = renderEvent(e);
     if (node !== null) appendStreamNode(node, e);
+    if (e.type === "turn/end") maybeCollapseReadonly(); // G：重放路径同聚合
     minimapRegister(node, e);
   }
   if (events.length > 0) appendLine(`── 已恢复 ${events.length} 条历史事件 ──`, "meta");
@@ -1127,6 +1242,9 @@ async function submitPrompt() {
   autoGrow();
   const attachments = pendingAttachments.splice(0, pendingAttachments.length);
   renderAttachmentsPreview();
+  // T-P3-156 K：内核忙时 prompt 自动入队（queue.ts enqueue 返 accepted）——
+  // UI 侧记录排队投影（等待中条）；idle/prompt_returned 时清零
+  if (window.__agentBusy === true) notifyQueued(content);
   void sendRequest(sessionId(), {
     type: "prompt",
     messageId: allocRequestId("m"),
@@ -1935,6 +2053,7 @@ function handleEnvelope(envelope) {
       leaseBtn.hidden = false;
       setSessionId(envelope.sessionId ?? null);
       void refreshSidebar(); // T-P3-156：连接就绪 → 侧栏两分段首拉（WS 建立前不发 settings）
+      void refreshContextUsage(); // T-P3-156 L：输入条上下文 % 首拉
       if (getSessionId() !== "") {
         const requestId = allocRequestId("q");
         inflight.set(requestId, null);
@@ -1988,6 +2107,9 @@ function handleEnvelope(envelope) {
       } else if (envelope.name === "idle") {
         // T-P3-156 W：内核空闲信号（agent-process 收尾宣告——队列空+无在途轮）。
         // 权威空闲面：排队续跑中不误报（kick 后有下条时内核不发 idle）。
+        window.__agentBusy = false;
+        notifyComposerIdle();
+        void refreshContextUsage(); // 轮末拉一次上下文用量（输入条 % 刷新）
         window.dispatchEvent(new CustomEvent("agent:idle"));
       } else if (envelope.name === "prompt_returned") {
         // T-P3-156 W：中止退回——未消费输入回填输入框（qwen ↑popAllMessages
@@ -2000,10 +2122,12 @@ function handleEnvelope(envelope) {
           input.dispatchEvent(new Event("input")); // 触发自适应高度
           toast(`已中止——${String(contents.length)} 条未消费输入已退回输入框`, "warn");
         }
+        notifyPromptReturned(); // K：排队投影清零（退回的已在输入框）
       } else if (envelope.name === "config_refreshed") {
         // T-P3-156 W：会话内切档回执（settings/basic.js 与输入条权限 pill 共用）
         const applied = Array.isArray(envelope.payload?.applied) ? envelope.payload.applied : [];
         toast(applied.length > 0 ? `已生效：${applied.join("、")}` : "配置已刷新", "info");
+        notifyPermissionChanged(); // L：权限 pill 文案随档位刷新
         window.dispatchEvent(new CustomEvent("agent:config-refreshed", { detail: { applied } }));
       } else if (envelope.name === "forked") {
         // T-P3-156 W：分支会话回执（方案 I 联动点——侧栏任务列表刷新）
@@ -2086,6 +2210,84 @@ try {
 
 // T-P3-156：侧栏「新建任务」流程（项目选择/添加 → 设为活动工作区）
 document.getElementById("sb-new-task").addEventListener("click", () => void newTaskFlow());
+
+// T-P3-156 K/L：输入 Tab 栏 + 排队条（权限/上下文%/模型/附件；addAttachment
+// 复用既有粘贴附件链——限额/预览/revoke 全一致）。try/catch 可见化：启动期
+// 错误在 WS 就绪前上不了日志（log-report flush 失败静默）——首屏横幅兜底
+try {
+  initComposerBar({ input, addAttachment });
+  // T-P3-156 U：右上角进度小弹窗（pill+hover 展开+终态驻留）
+  initProgressDock();
+} catch (e) {
+  console.error("输入区/进度弹窗初始化失败", e);
+  appendLine(`输入区初始化失败：${e?.message ?? String(e)}`, "warn");
+}
+
+// T-P3-156 H：子代理同构工作区面板（切换面板内独立 Tab——渲染复用主会话
+// renderEvent 管线；快照+手动/自动刷新；多实例=每子代理一个 Tab）
+let subagentPollTimer = null;
+
+async function renderSubagentPaneBody(body, sid) {
+  body.replaceChildren();
+  const head = document.createElement("div");
+  head.className = "subagent-pane-head";
+  const title = document.createElement("span");
+  title.className = "subagent-pane-title";
+  title.textContent = `🤖 子代理 ${sid.slice(0, 12)}…（只读同构视图）`;
+  const refresh = document.createElement("button");
+  refresh.type = "button";
+  refresh.className = "btn btn-ghost";
+  refresh.textContent = "↻ 刷新";
+  refresh.title = "重拉子会话事件快照";
+  const auto = document.createElement("label");
+  auto.className = "subagent-auto";
+  auto.title = "每 5 秒自动重拉快照（子代理运行期间用）";
+  const autoCheck = document.createElement("input");
+  autoCheck.type = "checkbox";
+  autoCheck.checked = subagentPollTimer !== null;
+  autoCheck.addEventListener("change", () => {
+    if (subagentPollTimer !== null) {
+      clearInterval(subagentPollTimer);
+      subagentPollTimer = null;
+    }
+    if (autoCheck.checked) {
+      subagentPollTimer = setInterval(() => {
+        if (document.querySelector(".pane-tab.active")?.textContent.includes("子代理")) {
+          void renderSubagentPaneBody(document.querySelector("#pane-root .pane-body"), sid);
+        }
+      }, 5000);
+    }
+  });
+  auto.append(autoCheck, document.createTextNode("自动"));
+  head.append(title, auto, refresh);
+  const stream = document.createElement("div");
+  stream.className = "subagent-pane-stream";
+  body.append(head, stream);
+  const paint = async () => {
+    const view = await sendQuery({ sessionId: sid, op: "events" });
+    if (!view.ok) {
+      stream.textContent = `子会话读取失败：${view.error?.message ?? ""}`;
+      return;
+    }
+    stream.replaceChildren();
+    for (const ev of view.result.events ?? []) {
+      const node = renderEvent(ev);
+      if (node !== null) stream.appendChild(node);
+    }
+    const note = document.createElement("div");
+    note.className = "subagent-pane-note";
+    note.textContent = `── 共 ${String((view.result.events ?? []).length)} 条事件 · 只读（续聊请 CLI resume）──`;
+    stream.appendChild(note);
+  };
+  refresh.addEventListener("click", () => void paint());
+  await paint();
+}
+
+registerPane("subagent", {
+  title: (tab) => `🤖 子代理 ${String(tab.payload.sessionId).slice(0, 8)}`,
+  icon: "🤖",
+  render: (body, tab) => renderSubagentPaneBody(body, String(tab.payload.sessionId)),
+});
 
 // T-P3-156 C：切换面板宿主初始化（右上角「切换面板」钮 ↔ #pane-root 开合）
 initPane(document.getElementById("pane-root"), document.getElementById("pane-toggle-btn"));

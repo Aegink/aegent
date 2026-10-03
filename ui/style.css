@@ -4836,3 +4836,300 @@ button.transfer-row:hover {
     gap: 12px;
     margin: 8px 0 4px;
 }
+
+/* ===== T-P3-156 功能批（方案 K/L/U）：排队条 + 输入 Tab 栏 + 进度弹窗 ===== */
+
+/* K：排队"等待中"条（内核忙时发送自动入队的 UI 投影） */
+#queue-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 12px;
+  margin: 0 16px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-sidebar);
+  font-size: var(--text-ui-sm);
+  color: var(--text-subtle);
+  flex-wrap: wrap;
+}
+
+#queue-bar[hidden] {
+  display: none;
+}
+
+.queue-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.queue-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: #3fb950;
+  animation: sb-pulse 1.4s ease-in-out infinite;
+}
+
+.queue-list {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40%;
+}
+
+.queue-hint {
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtle);
+}
+
+.queue-btn {
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-ui-sm);
+  font-family: inherit;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.queue-btn:hover {
+  background: var(--surface-hover);
+}
+
+.queue-btn-danger {
+  margin-left: 0;
+  color: var(--danger, #e5484d);
+  border-color: var(--danger, #e5484d);
+}
+
+.queue-btn-danger:hover {
+  background: rgba(229, 72, 77, 0.12);
+}
+
+/* L：输入 Tab 栏（附件+/权限/上下文%/模型——需求四常驻可见） */
+.composer-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 20px 10px;
+}
+
+.composer-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--bg-sidebar);
+  color: var(--text-subtle);
+  font-size: var(--text-ui-xs);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.composer-tab:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.composer-tab.ctx-warn {
+  color: #e6b800;
+  border-color: #e6b800;
+}
+
+.composer-tab.ctx-hot {
+  color: var(--danger, #e5484d);
+  border-color: var(--danger, #e5484d);
+}
+
+.usage-detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: var(--text-ui-sm);
+}
+
+.usage-detail-row:last-child {
+  border-bottom: none;
+}
+
+/* U：右上角进度弹窗（pill + 展开面板） */
+#progress-dock {
+  position: relative;
+}
+
+.progress-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--bg-sidebar);
+  color: var(--text);
+  font-size: var(--text-ui-sm);
+  cursor: pointer;
+  max-width: 340px;
+}
+
+.progress-pill.done {
+  color: var(--text-subtle);
+}
+
+.progress-pill.awaiting {
+  border-color: #e6b800;
+  color: #e6b800;
+}
+
+.progress-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: #3fb950;
+  animation: sb-pulse 1.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.progress-dot.done {
+  background: var(--text-subtle);
+  animation: none;
+}
+
+.progress-dot.awaiting {
+  background: #e6b800;
+}
+
+.progress-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-subtle);
+}
+
+.progress-tool {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress-panel {
+  position: absolute;
+  top: 36px;
+  right: 0;
+  width: 340px;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-sidebar);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+  padding: 10px 12px;
+  z-index: 60;
+}
+
+.progress-panel[hidden] {
+  display: none;
+}
+
+.progress-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-ui-sm);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+
+.progress-panel-tool {
+  font-size: var(--text-ui-sm);
+  color: var(--text);
+  padding: 2px 0 6px;
+}
+
+.progress-panel-event {
+  display: flex;
+  gap: 8px;
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtle);
+  padding: 2px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress-event-time {
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  color: var(--text-subtle);
+}
+
+/* T-P3-156 G：只读聚合卡（已探索 N 项——codex Exploring 同构） */
+.tool-card.readonly-collapsed > .tool-body.readonly-run-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tool-card.readonly-collapsed > .tool-body.readonly-run-body > .tool-card {
+  margin: 0;
+  box-shadow: none;
+}
+
+/* T-P3-156 H：子代理同构面板（切换面板内 Tab） */
+.subagent-pane-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg-sidebar);
+  z-index: 1;
+}
+
+.subagent-pane-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-ui-sm);
+}
+
+.subagent-auto {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtle);
+  white-space: nowrap;
+}
+
+.subagent-pane-stream {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.subagent-pane-note {
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtle);
+  text-align: center;
+  padding: 8px 0;
+}

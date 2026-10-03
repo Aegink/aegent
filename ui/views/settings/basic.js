@@ -477,7 +477,7 @@ function testRuleMatch(input) {
 // PERMISSION_MODES_DIRECTORY 同源——前端零构建链复制，改动需两侧同步）。
 // ---------------------------------------------------------------------------
 
-const PERMISSION_MODE_UI = [
+export const PERMISSION_MODE_UI = [
   { name: "ask", label: "每次询问", desc: "裁决为询问的操作都挂起等你批（默认，最安全）" },
   { name: "accept-edits", label: "自动批编辑", desc: "编辑/写入/补丁类工具自动放行，其余照问（人在旁边快速迭代）" },
   { name: "read-only", label: "只读", desc: "写类调用直接拒绝——探索代码库、规划实现用" },
@@ -514,7 +514,7 @@ function renderPermissionModes() {
   }
 }
 
-async function applyPermissionMode(name) {
+export async function applyPermissionMode(name) {
   // 全局默认持久化（新会话起效）+ 当前会话热切换（config/refresh 即时生效）
   settingsCache.permission = { ...(settingsCache.permission ?? {}), mode: name };
   markDirty("permission");
