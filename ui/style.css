@@ -51,7 +51,15 @@ code,
 #app-shell.rail #sidebar .nav-group-title,
 #app-shell.rail .foot-status span,
 #app-shell.rail #profile-quick,
-#app-shell.rail .foot-version {
+#app-shell.rail .foot-version,
+#app-shell.rail .sb-action-primary .nav-label,
+#app-shell.rail .sb-section-title,
+#app-shell.rail .sb-section-action,
+#app-shell.rail .sb-task-meta,
+#app-shell.rail .sb-tasks,
+#app-shell.rail .sb-hover-actions,
+#app-shell.rail .sb-empty-guide,
+#app-shell.rail .sb-files-head .sb-files-title {
   display: none;
 }
 
@@ -136,6 +144,404 @@ code,
   font-size: var(--text-ui-xs);
   line-height: 18px;
   text-align: center;
+}
+
+/* ===== T-P3-156 布局批（方案 A/E）：侧栏两分段（项目 / 最近会话）============
+   ——需求一.1「左侧边栏仅保留项目列表」；文件树 = 滑入层（互斥） */
+
+.sidebar-actions {
+  display: flex;
+  gap: var(--space-2);
+  padding: 0 var(--space-3) var(--space-2);
+}
+
+.sb-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-subtle);
+  font-size: var(--text-ui-sm);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.sb-action:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.sb-action-primary {
+  flex: 1;
+  justify-content: flex-start;
+  padding: 0 var(--space-3);
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--inverse);
+}
+
+.sb-action-primary:hover {
+  opacity: 0.9;
+  background: var(--brand);
+  color: var(--inverse);
+}
+
+.sb-action svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.sidebar-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: var(--radius-md);
+}
+
+/* 定位闪烁（Ctrl+H / Ctrl+Shift+P 的分段定位反馈） */
+.sidebar-section.sb-flash {
+  animation: sb-flash-anim 1.1s ease;
+}
+
+@keyframes sb-flash-anim {
+  0%, 60% { box-shadow: 0 0 0 1.5px var(--brand); }
+  100% { box-shadow: 0 0 0 1.5px transparent; }
+}
+
+.sb-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px var(--space-2) 4px;
+}
+
+.sb-section-title {
+  font-size: var(--text-ui-xs);
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: var(--text-subtle);
+  text-transform: uppercase;
+}
+
+.sb-section-action {
+  border: none;
+  background: transparent;
+  color: var(--text-subtle);
+  font-size: var(--text-ui-xs);
+  font-family: inherit;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.sb-section-action:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+/* — 项目行 — */
+
+.sb-project {
+  border-radius: var(--radius-md);
+}
+
+.sb-project.drag-over {
+  box-shadow: 0 -2px 0 0 var(--brand);
+}
+
+.sb-project-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-md);
+  color: var(--text-subtle);
+  cursor: pointer;
+  position: relative;
+}
+
+.sb-project-head:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.sb-caret {
+  display: inline-block;
+  font-size: 10px;
+  transition: transform 140ms ease;
+  width: 10px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.sb-caret.open {
+  transform: rotate(90deg);
+}
+
+.sb-icon {
+  flex-shrink: 0;
+  font-size: 13px;
+}
+
+.sb-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-ui-sm);
+}
+
+.sb-chip {
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 16px;
+  padding: 0 5px;
+  border-radius: var(--radius-full);
+}
+
+.sb-chip-active {
+  background: var(--brand);
+  color: var(--inverse);
+}
+
+.sb-chip-pin {
+  padding: 0 3px;
+}
+
+.sb-chip-missing {
+  background: var(--danger, #e5484d);
+  color: var(--inverse);
+}
+
+.sb-chip-running {
+  color: #e6b800;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.sb-project.running > .sb-project-head {
+  color: var(--text);
+}
+
+/* hover 浮层按钮（pideck 行尾浮层——absolute 不占布局，标题让位） */
+.sb-hover-actions {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: none;
+  gap: 2px;
+  padding-left: 20px;
+  background: linear-gradient(to right, transparent, var(--bg-sidebar) 30%);
+}
+
+.sb-project-head:hover .sb-hover-actions {
+  display: inline-flex;
+}
+
+.sb-hover-btn {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-subtle);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sb-hover-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+/* — 任务行 / 会话行 — */
+
+.sb-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px 0 4px var(--space-4);
+}
+
+.sb-task-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-md);
+  color: var(--text-subtle);
+  cursor: pointer;
+}
+
+.sb-task-row:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.sb-task-row.current {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.sb-task-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.sb-task-dot.busy {
+  background: #3fb950;
+  animation: sb-pulse 1.4s ease-in-out infinite;
+}
+
+.sb-task-dot.awaiting {
+  background: #e6b800;
+}
+
+.sb-task-dot.unread {
+  background: var(--brand);
+}
+
+@keyframes sb-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.sb-task-meta {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-subtle);
+  flex-shrink: 0;
+}
+
+.sb-tasks-empty {
+  padding: 4px var(--space-2) 6px;
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtle);
+}
+
+.sb-files-entry {
+  color: var(--text-subtle);
+  font-size: var(--text-ui-sm);
+}
+
+.sb-more-btn {
+  margin: 2px var(--space-2) 0;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-subtle);
+  font-size: var(--text-ui-xs);
+  font-family: inherit;
+  padding: 4px;
+  cursor: pointer;
+}
+
+.sb-more-btn:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+/* — 文件树滑入层（与两分段互斥——hidden 切换） — */
+
+.sb-files-layer {
+  flex: 1;
+  min-height: 0;
+}
+
+.sb-files-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px var(--space-2) 6px;
+}
+
+.sb-back-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-subtle);
+  font-size: var(--text-ui-sm);
+  font-family: inherit;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.sb-back-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.sb-files-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.sb-files-tree {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* — 空态引导卡（pideck 虚线卡同构） — */
+
+.sb-empty-guide {
+  margin: 4px var(--space-2);
+  padding: 14px 10px;
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius-lg);
+  background: transparent;
+  cursor: pointer;
+  text-align: center;
+  font-family: inherit;
+}
+
+.sb-empty-guide:hover {
+  border-color: var(--brand);
+  background: var(--surface-hover);
+}
+
+.sb-empty-title {
+  font-size: var(--text-ui-sm);
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.sb-empty-desc {
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtle);
+  line-height: 1.5;
 }
 
 .sidebar-foot {
@@ -241,6 +647,214 @@ code,
 #view-root > * {
   flex: 1;
   min-height: 0;
+}
+
+/* ===== T-P3-156 布局批（方案 A/B/C）：顶栏 + 三列主区 + 面板宿主 + 终端抽屉
+   ——需求一.1/一.2/一.4/五.1/五.2 的容器样式 ================================ */
+
+/* 顶栏：左=会话上下文（活动项目·任务名），右=进度弹窗挂点+通知+终端+切换面板 */
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: 44px;
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sidebar);
+  flex-shrink: 0;
+}
+
+.topbar-context {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-ui-sm);
+  color: var(--text-subtle);
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.topbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-subtle);
+  font-size: var(--text-ui-sm);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.topbar-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.topbar-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* 侧栏拖宽分隔条（两段式：拖拽写 CSS 变量 / 松手持久化——app.js） */
+.sidebar-resizer {
+  width: 4px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.sidebar-resizer:hover,
+.sidebar-resizer.dragging {
+  background: var(--brand);
+  opacity: 0.6;
+}
+
+/* 主区三列：会话作业区（chat-view/view-root 二选一占位）+ 右侧面板宿主 */
+#main-columns {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+/* 右侧面板宿主（方案 C）：Tab 条 + 内容体 + 左缘拖宽条——与「查看文件」
+   同一位置（需求五.2）；--pane-width 由 pane.js 拖拽写入 */
+#pane-root {
+  width: var(--pane-width, 420px);
+  min-width: 280px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--bg-sidebar);
+  overflow: hidden;
+}
+
+#pane-root[hidden] {
+  display: none;
+}
+
+.pane-tabbar {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px 6px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  flex-shrink: 0;
+  min-height: 34px;
+}
+
+.pane-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 10px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  color: var(--text-subtle);
+  font-size: var(--text-ui-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.pane-tab:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.pane-tab.active {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.pane-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pane-tab-close {
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 2px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  line-height: 1;
+}
+
+.pane-tab-close:hover {
+  background: var(--surface-hover);
+  color: var(--danger, #e5484d);
+}
+
+.pane-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.pane-body > * {
+  flex: 1;
+  min-height: 0;
+}
+
+/* 面板左缘拖宽条（pane.js 注入——双击重置默认宽） */
+.pane-resizer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  z-index: 2;
+}
+
+.pane-resizer:hover,
+.pane-resizer.dragging {
+  background: var(--brand);
+  opacity: 0.6;
+}
+
+#pane-root {
+  position: relative;
+}
+
+/* 底部终端抽屉（方案 P 容器——面板批接入内容体；开合经 hidden 切换 +
+   高度动画） */
+#terminal-drawer {
+  height: var(--terminal-h, 30vh);
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg-sidebar);
+  overflow: hidden;
+}
+
+#terminal-drawer[hidden] {
+  display: none;
+}
+
+/* D 方案：设置独立形态——项目侧栏与拖宽条隐藏，设置页占满主区（需求一.3） */
+#app-shell.settings-mode #sidebar,
+#app-shell.settings-mode .sidebar-resizer {
+  display: none;
 }
 
 #stream {

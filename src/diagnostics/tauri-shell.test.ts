@@ -135,9 +135,17 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     for (const id of ["app-shell", "sidebar", "sidebar-toggle", "main", "view-root", "chat-view", "stream", "composer", "pending"]) {
       expect(html).toContain(`id="${id}"`);
     }
-    // 侧栏导航组（图标 + 文案 + data-route）与底部状态区（租约/surface/连接/快速器）
-    for (const route of ["chat", "history", "search", "work", "usage", "notify", "settings"]) {
+    // 侧栏导航组与底部状态区——T-P3-156 布局批：侧栏仅项目列表（两分段），
+    // data-route 收敛到 搜索/通知（顶栏铃铛）/设置 三入口；对话恒在主区无
+    // 路由钮（需求一.1/一.2）；三栏壳新件随行断言
+    for (const route of ["search", "notify", "settings"]) {
       expect(html).toContain(`data-route="${route}"`);
+    }
+    expect(html).not.toContain('data-route="chat"');
+    expect(html).not.toContain('data-route="projects"'); // 项目→侧栏分段（方案 A）
+    expect(html).not.toContain('data-route="history"'); // 历史→侧栏分段（方案 A）
+    for (const id of ["topbar", "pane-root", "terminal-drawer", "sb-projects", "sb-history", "sb-files", "sidebar-resizer"]) {
+      expect(html).toContain(`id="${id}"`); // 右上角入口 + 面板宿主 + 终端抽屉容器 + 两分段
     }
     expect(html).toContain('id="conn-status"');
     expect(html).toContain('id="surface-id"');
@@ -157,7 +165,8 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(router.parseHash("#chat")).toEqual({ view: "chat" });
     expect(router.parseHash("#usage")).toEqual({ view: "usage" });
     expect(router.parseHash("#notify")).toEqual({ view: "notify" });
-    expect(router.parseHash("#history")).toEqual({ view: "history" });
+    expect(router.parseHash("#history")).toEqual({ view: "chat" }); // T-P3-156：历史迁侧栏（重定向面）
+    expect(router.parseHash("#projects")).toEqual({ view: "chat" }); // T-P3-156：项目迁侧栏
     expect(router.parseHash("#search")).toEqual({ view: "search" });
     expect(router.parseHash("#settings")).toEqual({ view: "settings", section: null });
     expect(router.parseHash("#settings/mcp")).toEqual({ view: "settings", section: "mcp" });

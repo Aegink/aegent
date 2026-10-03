@@ -10,40 +10,35 @@
     <link rel="stylesheet" href="/components.css" />
   </head>
   <body>
-    <!-- 批 A 布局骨架（方案 §2.4）：左侧栏（导航组 + 底部状态区）+ 主内容
-         路由容器。设置/用量/工作台/通知/历史/搜索迁出为 ui/views/*.js 页面
-         模块（hash 路由——router.js），对话页为本骨架的默认视图。 -->
+    <!-- T-P3-156 布局批骨架（方案 A/B/C）：三栏壳 = 项目侧栏（两分段：项目 /
+         最近会话）+ 主列（顶栏 + 会话作业区 / 路由容器 + 右侧面板宿主 + 底部
+         终端抽屉位）。需求映射：侧栏仅项目列表（一.1）、右侧大块=会话作业区
+         （一.2）、右上角终端/切换面板常驻入口（一.4）、设置页无项目侧栏（一.3，
+         router 加 settings-mode 类）。原 8 项导航去向：对话→主区恒在 / 历史→
+         侧栏「最近会话」分段 / 项目→侧栏本体 / 搜索→侧栏顶动作行（Ctrl+Shift+F
+         深链保留） / 工作台→面板宿主各 Tab（功能批/面板批迁入） / 插件·用量→
+         设置页分节 / 通知→右上角铃铛 / 设置→独立页。 -->
     <div id="app-shell">
-      <aside id="sidebar" aria-label="主导航">
+      <aside id="sidebar" aria-label="项目与会话">
         <header class="sidebar-head">
           <span class="sidebar-brand">aegent</span>
           <button id="sidebar-toggle" type="button" data-i18n-title="折叠/展开侧栏" title="折叠/展开侧栏">«</button>
         </header>
-        <nav class="sidebar-nav">
-          <button id="chat-btn" class="nav-item active" type="button" data-route="chat" data-i18n-title="对话" title="对话">
-            <span data-icon="chat"></span><span class="nav-label" data-i18n="对话">对话</span>
+        <!-- 顶部动作行（pideck NewTaskButtonGroup 同位）：新建任务 + 跨会话搜索 -->
+        <div class="sidebar-actions">
+          <button id="sb-new-task" class="sb-action sb-action-primary" type="button" title="新建任务（选择项目并设为活动工作区）">
+            <span data-icon="chat"></span><span class="nav-label">新建任务</span>
           </button>
-          <button id="history-btn" class="nav-item" type="button" data-route="history" data-i18n-title="会话历史" title="会话历史">
-            <span data-icon="history"></span><span class="nav-label" data-i18n="历史">历史</span>
+          <button id="sb-search" class="sb-action" type="button" data-route="search" data-i18n-title="跨会话搜索（Ctrl+Shift+F）" title="跨会话搜索（Ctrl+Shift+F）">
+            <span data-icon="search"></span>
           </button>
-          <button id="projects-btn" class="nav-item" type="button" data-route="projects" data-i18n-title="项目（工作区/任务/文件）" title="项目（工作区/任务/文件）">
-            <span data-icon="folder"></span><span class="nav-label" data-i18n="项目">项目</span>
-          </button>
-          <button id="search-btn" class="nav-item" type="button" data-route="search" data-i18n-title="跨会话搜索（Ctrl+Shift+F）" title="跨会话搜索（Ctrl+Shift+F）">
-            <span data-icon="search"></span><span class="nav-label" data-i18n="搜索">搜索</span>
-          </button>
-          <button id="work-btn" class="nav-item" type="button" data-route="work" data-i18n-title="工作面板（文件/变更/子代理/协作）" title="工作面板（文件/变更/子代理/协作）">
-            <span data-icon="work"></span><span class="nav-label" data-i18n="工作台">工作台</span>
-          </button>
-          <button id="plugins-btn" class="nav-item" type="button" data-route="plugins" data-i18n-title="插件中心" title="插件中心">
-            <span data-icon="plug"></span><span class="nav-label" data-i18n="插件">插件</span>
-          </button>
-          <button id="usage-btn" class="nav-item" type="button" data-route="usage" data-i18n-title="用量与上下文" title="用量与上下文">
-            <span data-icon="usage"></span><span class="nav-label" data-i18n="用量">用量</span>
-          </button>
-          <button id="notify-btn" class="nav-item" type="button" data-route="notify" data-i18n-title="通知中心" title="通知中心">
-            <span data-icon="bell"></span><span class="nav-label" data-i18n="通知">通知</span><span id="notify-badge" class="nav-badge" hidden></span>
-          </button>
+        </div>
+        <!-- 两分段容器：项目 / 最近会话（ui/sidebar.js 渲染；文件树 = 侧栏
+             滑入层——与两分段互斥，zcode WorkspaceSidebar 同款 translate 动画） -->
+        <nav class="sidebar-body" id="sidebar-body">
+          <div id="sb-projects" class="sidebar-section" aria-label="项目"></div>
+          <div id="sb-history" class="sidebar-section" aria-label="最近会话"></div>
+          <div id="sb-files" class="sidebar-section sb-files-layer" aria-label="文件树" hidden></div>
         </nav>
         <div class="sidebar-foot">
           <select id="profile-quick" data-i18n-title="场景快速切换（Profiles）" title="场景快速切换（Profiles）" hidden></select>
@@ -54,76 +49,99 @@
           </div>
           <div class="foot-actions">
             <button id="lease-btn" type="button" data-i18n="取得写租约" hidden>取得写租约</button>
-            <button id="settings-btn" class="nav-item" type="button" data-route="settings" data-i18n-title="设置中心" title="设置中心">
+            <button id="settings-btn" class="nav-item" type="button" data-route="settings" data-i18n-title="设置中心（Ctrl+,）" title="设置中心（Ctrl+,）">
               <span data-icon="settings"></span><span class="nav-label" data-i18n="设置">设置</span>
             </button>
           </div>
           <span class="foot-version">aegent v0.1.0</span>
         </div>
       </aside>
+      <div class="sidebar-resizer" id="sidebar-resizer" title="拖拽调整侧栏宽度"></div>
       <div id="main">
-        <!-- 对话页（默认路由）：聊天流 + 首屏空状态 + 待决审批 + 输入区 + 检索浮层。
-             批 C：聊天流与空状态共居滚动区（chat-empty 为流空时的居中欢迎卡）； -->
-        <div id="chat-view">
-          <div id="chat-scroll-area">
-            <main id="stream" aria-live="polite"></main>
-            <!-- 批 C 首屏空状态：流空时展示——欢迎卡 + 能力快捷入口
-                （data-empty-action = 路由名 / input 聚焦输入框） -->
-            <div id="chat-empty" aria-label="欢迎">
-              <div class="welcome-card">
-                <div class="welcome-mark">⬢</div>
-                <h2 class="welcome-title">开始与 aegent 对话</h2>
-                <p class="welcome-desc">让模型读写文件、跑命令、派子代理——写租约在手，改动随时在「工作台」评审。</p>
-                <div class="welcome-actions">
-                  <button type="button" class="btn btn-primary" data-empty-action="input">✦ 开始输入</button>
-                  <button type="button" class="btn" data-empty-action="settings">⚙ 配置供应商</button>
-                  <button type="button" class="btn" data-empty-action="history">🕘 会话历史</button>
-                  <button type="button" class="btn" data-empty-action="search">🔍 跨会话搜索</button>
+        <!-- 顶栏：左 = 会话上下文（活动项目/任务名）；右 = 进度弹窗挂点 +
+             通知 + 终端 + 切换面板（需求一.4/一.5——终端钮随面板批 P 接入显示） -->
+        <header id="topbar">
+          <div id="topbar-context" class="topbar-context" aria-label="当前工作区"></div>
+          <div class="topbar-actions">
+            <div id="progress-dock" aria-label="任务进度"></div>
+            <button id="notify-top-btn" class="topbar-btn" type="button" data-route="notify" data-i18n-title="通知中心（Ctrl+B）" title="通知中心（Ctrl+B）">
+              <span data-icon="bell"></span><span id="notify-badge" class="nav-badge" hidden></span>
+            </button>
+            <button id="terminal-btn" class="topbar-btn" type="button" data-i18n-title="终端" title="终端" hidden>
+              <span data-icon="work"></span><span class="topbar-btn-label">终端</span>
+            </button>
+            <button id="pane-toggle-btn" class="topbar-btn" type="button" data-i18n-title="切换面板" title="切换面板">
+              <span data-icon="work"></span><span class="topbar-btn-label">切换面板</span>
+            </button>
+          </div>
+        </header>
+        <div id="main-columns">
+          <!-- 对话页（默认且恒在的会话作业区）：聊天流 + 首屏空状态 + 待决审批 +
+               输入区 + 检索浮层。批 C：聊天流与空状态共居滚动区。 -->
+          <div id="chat-view">
+            <div id="chat-scroll-area">
+              <main id="stream" aria-live="polite"></main>
+              <!-- 批 C 首屏空状态：流空时展示——欢迎卡 + 能力快捷入口 -->
+              <div id="chat-empty" aria-label="欢迎">
+                <div class="welcome-card">
+                  <div class="welcome-mark">⬢</div>
+                  <h2 class="welcome-title">开始与 aegent 对话</h2>
+                  <p class="welcome-desc">让模型读写文件、跑命令、派子代理——改动随时在右侧「审查」面板评审，进度看右上角。</p>
+                  <div class="welcome-actions">
+                    <button type="button" class="btn btn-primary" data-empty-action="input">✦ 开始输入</button>
+                    <button type="button" class="btn" data-empty-action="settings">⚙ 配置供应商</button>
+                    <button type="button" class="btn" data-empty-action="search">🔍 跨会话搜索</button>
+                    <button type="button" class="btn" data-empty-action="usage">📊 用量统计</button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-          <!-- U9/T-P3-108 会话内搜索条：渲染层文本检索——命中高亮 + 上下跳转 -->
-          <div id="find-bar" hidden>
-            <input id="find-input" type="text" placeholder="会话内搜索…" autocomplete="off" />
-            <span id="find-count"></span>
-            <button id="find-prev" type="button" title="上一处（Shift+Enter）">↑</button>
-            <button id="find-next" type="button" title="下一处（Enter）">↓</button>
-            <button id="find-close" type="button" title="关闭（Esc）">✕</button>
-          </div>
-          <!-- U9/T-P3-108 小地图：消息类型着色条 + 点击跳轮（纯 DOM） -->
-          <div id="minimap" aria-label="会话结构导航"></div>
-          <section id="pending" aria-label="待决审批"></section>
-          <footer id="composer">
-            <!-- U10/T-P3-109：补全下拉（@ 文件/目录、/ 命令+工具+技能）；批 C
-                 起输入面收进 rounded-2xl 容器（ChatPromptEditor 形态——容器
-                 focus 焦点环，🎤 与发送钮入容器底行） -->
-            <div id="autocomplete" hidden></div>
-            <div class="composer-box">
-              <div id="attachments-preview"></div>
-              <textarea id="prompt-input" rows="1" placeholder="输入指令回车执行…（Shift+Enter 换行；@ 补全文件、/ 补全命令）" autocomplete="off"></textarea>
-              <div class="composer-actions">
-                <div id="voice-status" hidden aria-live="polite">
-                  <span class="voice-busy">⏳ 转写中…</span>
-                  <span class="voice-live">
-                    <span class="voice-dot" aria-hidden="true"></span>
-                    <span id="voice-timer">00:00</span>
-                    <span id="voice-meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
-                    <button id="voice-cancel" type="button" title="取消录音（Esc）">✕</button>
-                  </span>
-                </div>
-                <button id="chat-export-btn" type="button" title="导出当前会话（md/html/json，默认脱敏密钥）">⬇</button>
-                <button id="mic-btn" type="button" title="语音输入【实验性】（点击开始/再点结束；Esc 取消）">🎤</button>
-                <button id="polish-btn" type="button" title="一键润色（辅助模型把草稿改写得更清晰）">✨</button>
-                <span id="polish-undo" hidden><button type="button" id="polish-undo-btn">撤销润色</button></span>
-                <span class="composer-hint">Shift+Enter 换行</span>
-                <button id="send-btn" type="button">发送</button>
-              </div>
+            <!-- U9/T-P3-108 会话内搜索条：渲染层文本检索——命中高亮 + 上下跳转 -->
+            <div id="find-bar" hidden>
+              <input id="find-input" type="text" placeholder="会话内搜索…" autocomplete="off" />
+              <span id="find-count"></span>
+              <button id="find-prev" type="button" title="上一处（Shift+Enter）">↑</button>
+              <button id="find-next" type="button" title="下一处（Enter）">↓</button>
+              <button id="find-close" type="button" title="关闭（Esc）">✕</button>
             </div>
-          </footer>
+            <!-- U9/T-P3-108 小地图：消息类型着色条 + 点击跳轮（纯 DOM） -->
+            <div id="minimap" aria-label="会话结构导航"></div>
+            <section id="pending" aria-label="待决审批"></section>
+            <footer id="composer">
+              <!-- U10/T-P3-109：补全下拉（@ 文件/目录、/ 命令+工具+技能） -->
+              <div id="autocomplete" hidden></div>
+              <div class="composer-box">
+                <div id="attachments-preview"></div>
+                <textarea id="prompt-input" rows="1" placeholder="输入指令回车执行…（Shift+Enter 换行；@ 补全文件、/ 补全命令）" autocomplete="off"></textarea>
+                <div class="composer-actions">
+                  <div id="voice-status" hidden aria-live="polite">
+                    <span class="voice-busy">⏳ 转写中…</span>
+                    <span class="voice-live">
+                      <span class="voice-dot" aria-hidden="true"></span>
+                      <span id="voice-timer">00:00</span>
+                      <span id="voice-meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+                      <button id="voice-cancel" type="button" title="取消录音（Esc）">✕</button>
+                    </span>
+                  </div>
+                  <button id="chat-export-btn" type="button" title="导出当前会话（md/html/json，默认脱敏密钥）">⬇</button>
+                  <button id="mic-btn" type="button" title="语音输入【实验性】（点击开始/再点结束；Esc 取消）">🎤</button>
+                  <button id="polish-btn" type="button" title="一键润色（辅助模型把草稿改写得更清晰）">✨</button>
+                  <span id="polish-undo" hidden><button type="button" id="polish-undo-btn">撤销润色</button></span>
+                  <span class="composer-hint">Shift+Enter 换行</span>
+                  <button id="send-btn" type="button">发送</button>
+                </div>
+              </div>
+            </footer>
+          </div>
+          <!-- 路由容器：views/*.js 页面模块挂载点（settings/notify/search；工作台
+               等旧 route 保留深链兼容，随功能批/面板批迁入面板后重定向） -->
+          <div id="view-root" hidden></div>
+          <!-- 右侧面板宿主（方案 C）：与「查看文件」同一位置 Tab 化——内置
+               文件/审查/浏览器/辅助对话/Git/子代理 + 插件贡献（ui/pane.js） -->
+          <aside id="pane-root" hidden aria-label="切换面板"></aside>
         </div>
-        <!-- 路由容器：views/*.js 页面模块挂载点（settings/usage/work/notify/history/search） -->
-        <div id="view-root" hidden></div>
+        <!-- 底部终端抽屉（方案 P 容器——面板批接入 xterm.js 内容体） -->
+        <footer id="terminal-drawer" hidden></footer>
       </div>
     </div>
 
@@ -145,10 +163,10 @@
         <h2>欢迎使用 aegent</h2>
         <p class="hint">四步上手（不挡路——可随时在设置里回看）：</p>
         <ul id="ob-list">
-          <li>⚙ <b>设置中心</b>——供应商/凭据/沙箱档即改即存（左侧栏 ⚙ 设置）</li>
+          <li>📁 <b>左侧栏添加项目</b>——本机文件夹 / Git 仓库 / 扫描其他工具记录</li>
           <li>⌨ <b>输入区</b>——@ 补全文件、/ 补全命令，Shift+Enter 换行，可粘贴图片</li>
-          <li>🔍 <b>检索</b>——Ctrl+F 会话内搜索，侧栏 🔍 跨会话搜索</li>
-          <li>📊 <b>用量</b>——上下文余量与成本随时可查（左侧栏 用量）</li>
+          <li>🔍 <b>检索</b>——Ctrl+F 会话内搜索，Ctrl+Shift+F 跨会话搜索</li>
+          <li>📊 <b>用量</b>——输入条看实时上下文，完整统计在设置中心</li>
         </ul>
         <button id="ob-done" type="button">开始使用</button>
       </div>

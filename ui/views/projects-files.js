@@ -176,10 +176,12 @@ export async function renderFileTree(container, deps) {
   await loadDir(primary, -1);
 }
 
-/** 文件预览（右栏）：md 预览/源码切换（zcode 语义——md 默认预览）+ 图片 +
- * 二进制提示 + 面包屑 + 复制路径组。deps：{container, filePath, project, onBack}。 */
+/** 文件预览（右栏/面板 Tab 通用）：md 预览/源码切换（zcode 语义——md 默认
+ * 预览）+ 图片 + 二进制提示 + 面包屑 + 复制路径组 + 在资源管理器打开。
+ * deps：{container, filePath, project, onBack?}——onBack 缺省时无返回钮
+ * （面板宿主形态，T-P3-156 C）。 */
 export async function renderFilePreview(container, deps) {
-  const { filePath, project, onBack } = deps;
+  const { filePath, project } = deps;
   const primary = project.folders[0] ?? "";
   const head = document.createElement("div");
   head.className = "proj-preview-head";
@@ -187,7 +189,10 @@ export async function renderFilePreview(container, deps) {
   back.type = "button";
   back.className = "btn btn-ghost";
   back.textContent = "← 返回项目";
-  back.addEventListener("click", onBack);
+  if (typeof deps.onBack === "function") {
+    back.addEventListener("click", deps.onBack);
+    head.appendChild(back);
+  }
   const crumb = document.createElement("div");
   crumb.className = "proj-preview-crumb";
   crumb.textContent = relativePathTo(primary, filePath);
@@ -204,8 +209,18 @@ export async function renderFilePreview(container, deps) {
   copyAbs.className = "btn btn-ghost";
   copyAbs.textContent = "复制绝对路径";
   copyAbs.addEventListener("click", () => void copyText(filePath, "已复制绝对路径"));
-  actions.append(copyRel, copyAbs);
-  head.append(back, crumb, actions);
+  const reveal = document.createElement("button");
+  reveal.type = "button";
+  reveal.className = "btn btn-ghost";
+  reveal.title = "在资源管理器中显示（系统文件管理器定位该文件）";
+  reveal.textContent = "📁";
+  reveal.addEventListener("click", async () => {
+    const envelope = await sendSettings({ op: "fs-shell", path: filePath, action: "reveal" });
+    if (!envelope.ok) toast(`打开失败：${envelope.error?.message ?? ""}`, "warn");
+  });
+  actions.append(copyRel, copyAbs, reveal);
+  // back 的挂载在上方 onBack 条件内（面板宿主形态无返回钮——T-P3-156 C）
+  head.append(crumb, actions);
 
   const body = document.createElement("div");
   body.className = "proj-preview-body";

@@ -1,19 +1,23 @@
 /**
- * aegent ui hash 路由（T-P3-134 · UI 批次 A③）——页面化主内容的导航机制：
- * #chat（默认）/#settings[/section]/#usage/#work[/tab]/#notify/#history/#search。
- * 深链可直达（首路由解析 + hashchange）；重复 go 当前视图 = 回对话（侧栏
- * 按钮的开关语义——原 hidden 切换行为的路由等价面）。视图经原生动态
- * import() 懒加载；视图契约 = render(container, params) + 可选 unmount()。
+ * aegent ui hash 路由（T-P3-134 · UI 批次 A③；T-P3-156 布局批改造）。
+ *
+ * T-P3-156 主界面重构后的一级路由：#chat（默认且恒在）/#settings[/section]
+ * /#plugins/#usage/#notify/#search/#work（深链兼容）。旧路由重定向（方案 A
+ * 8 项导航去向）：#projects/#history → 对话（项目列表/最近会话已迁侧栏两
+ * 分段）。#plugins/#usage 保留独立 route——两页为 T-P3-148/T-P3-136 刚验收
+ * 的完整页面形态，入口改经欢迎页/快捷键（Ctrl+U）/设置页跳转（插件），
+ * 侧栏不再承载（记录于对照清单映射微调）。
+ *
+ * D 方案：settings 视图激活时主壳加 settings-mode 类——项目侧栏隐藏，
+ * 设置页为独立形态（需求一.3）。
  */
 
 const VIEW_MODULES = {
-  plugins: () => import("./views/plugins.js"),
-  projects: () => import("./views/projects.js"),
   settings: () => import("./views/settings.js"),
+  plugins: () => import("./views/plugins.js"),
   usage: () => import("./views/usage.js"),
   work: () => import("./views/work.js"),
   notify: () => import("./views/notify.js"),
-  history: () => import("./views/history.js"),
   search: () => import("./views/search.js"),
 };
 
@@ -22,17 +26,12 @@ export function parseHash(hash) {
   const raw = String(hash ?? "").replace(/^#\/?/, "");
   const [head, sub] = raw.split("/");
   if (head === "settings") return { view: "settings", section: sub || null };
-  if (head === "plugins") return { view: "plugins", tab: sub || null };
-  if (head === "work") return { view: "work", tab: sub || null };
-  if (
-    head === "usage" ||
-    head === "notify" ||
-    head === "history" ||
-    head === "search" ||
-    head === "projects"
-  ) {
+  if (head === "work") return { view: "work", tab: sub ?? null };
+  if (head === "plugins" || head === "usage" || head === "notify" || head === "search") {
     return { view: head };
   }
+  // —— T-P3-156 重定向面：项目/历史已迁侧栏两分段（sidebar.js）——
+  if (head === "projects" || head === "history") return { view: "chat" };
   return { view: "chat" };
 }
 
@@ -44,11 +43,12 @@ let currentModule = null;
 /** 导航：同视图重复 go = 回对话（开关语义）；chat = 空 hash。 */
 export function go(view) {
   const active = parseHash(location.hash).view;
-  if (view !== "chat" && active === view) {
+  const target = typeof view === "string" ? parseHash(`#${view}`).view : view?.view ?? "chat";
+  if (target !== "chat" && active === target) {
     location.hash = "#chat";
     return;
   }
-  location.hash = view === "chat" ? "#chat" : `#${view}`;
+  location.hash = target === "chat" ? "#chat" : `#${typeof view === "string" ? view : target}`;
 }
 
 async function applyRoute() {
@@ -56,6 +56,9 @@ async function applyRoute() {
   const key = `${route.view}:${route.section ?? route.tab ?? ""}`;
   if (key === currentKey) return;
   currentKey = key;
+
+  // D 方案：设置独立形态（无项目侧栏）——settings-mode 类随路由切换
+  document.getElementById("app-shell")?.classList.toggle("settings-mode", route.view === "settings");
 
   // 卸载旧视图（toast 计时器/审批倒计时随视图卸载收束的纪律入口）
   if (currentModule !== null && typeof currentModule.unmount === "function") {

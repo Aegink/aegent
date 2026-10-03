@@ -89,13 +89,16 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     expect(settingsView).toContain("history.replaceState");
     expect(css).toContain(".tab-body section.section-active");
 
-    // U3/T-P3-105：会话历史页（清单/只读查看/删除确认/resume 提示——批 A 迁 views/history.js）
-    expect(historyView).toContain('id="history-panel"');
-    expect(historyView).toContain('id="history-list"');
-    expect(historyView).toContain('op: "sessions"');
-    expect(historyView).toContain('op: "session-delete"');
-    expect(historyView).toContain("window.confirm"); // 硬删除确认对话框
-    expect(historyView).toContain("aegent sessions resume"); // 续聊入口提示
+    // U3/T-P3-105：会话历史页（清单/只读查看/删除确认/resume 提示）——
+    // T-P3-156 布局批（方案 A）重定目标：功能迁 ui/sidebar.js「最近会话」
+    // 分段（views/history.js 保留深链壳），断言本体随行
+    const sidebar = read("sidebar.js");
+    expect(sidebar).toContain('getElementById("sb-history")'); // 分段容器（骨架 id）
+    expect(sidebar).toContain('op: "sessions"'); // 清单数据面
+    expect(sidebar).toContain('op: "session-delete"'); // 删除面
+    expect(sidebar).toContain("confirmDialog"); // 硬删除确认对话框（settings/core 共享件）
+    expect(sidebar).toContain("aegent sessions resume"); // 续聊入口提示
+    expect(sidebar).toContain("aegent.readSessions"); // 未读标记（本端）
 
     // U4/T-P3-107 · 渲染分层资产：vendor 本地化 + THIRD_PARTY 登记 + 分层标记（XSS 防呆面在位）
     for (const name of [
@@ -159,15 +162,15 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     expect(app).toContain("ensurePromptsCache"); // / 补全的模板数据面
     expect(app).toContain('kind: "prompt"'); // 补全候选混入标记
     expect(app).toContain("templateVarNames"); // {{var}} 变量提取（UI 侧）
-    // U11 项目 CRUD → T-P3-150 迁独立页 views/projects.js（工作区/任务/文件树/
-    // 添加三模式）；settings 分节只留跳转卡 + 项目指令仍走指令中心
+    // U11 项目 CRUD → T-P3-150 迁独立页 → T-P3-156（方案 A）迁侧栏两分段
+    // ui/sidebar.js（工作区/任务/文件树/添加三模式）；settings 分节只留
+    // 跳转卡 + 项目指令仍走指令中心
     expect(settingsView).toContain("前往项目中心"); // 分节跳转卡
-    expect(html).toContain('data-route="projects"'); // 侧栏「项目」入口
-    expect(router).toContain('projects: () => import("./views/projects.js")'); // 路由注册
-    expect(projectsView).toContain('id="proj-add"'); // 三模式添加入口
-    expect(projectsView).toContain("git-clone"); // A3 Git 仓库添加
-    expect(projectsView).toContain("import-scan"); // A4 扫描导入
-    expect(projectsView).toContain("op: \"session-rename\""); // B2 任务重命名
+    expect(html).toContain('id="sb-new-task"'); // 侧栏「新建任务」入口（方案 A）
+    expect(sidebar).toContain("git-clone"); // A3 Git 仓库添加
+    expect(sidebar).toContain("import-scan"); // A4 扫描导入
+    expect(sidebar).toContain('op: "session-rename"'); // B2 任务重命名
+    expect(sidebar).toContain("openAddDialog"); // 三模式添加入口（对话框）
     expect(projectsFiles).toContain("renderMarkdown"); // C3 md 真渲染
     expect(projectsFiles).toContain("添加到聊天"); // C7 树行右键菜单项
     expect(settingsView).toContain('id="instr-editor-text"'); // T-P3-151 指令中心编辑面（域文件 instructions.js）
@@ -291,7 +294,7 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     expect(usageView).toContain("byDay"); // 每日聚合消费（§1.2 数据缺口收口）
     expect(usageView).toContain("Intl.NumberFormat"); // Intl compact 数字格式
     // U13/T-P3-112 五件套：通知中心/Toast/引导/恢复横幅/更新横幅（消费端钩子）
-    expect(historyView).toContain("window.confirm"); // 硬删除确认（会话删除）
+    expect(sidebar).toContain("confirmDialog"); // 硬删除确认（会话删除——T-P3-156 迁侧栏）
     expect(read("views/notify.js")).toContain('id="notify-panel"'); // 通知中心（批 A 迁 views/notify.js）
     expect(html).toContain('id="toast-area"');
     expect(html).toContain('id="onboarding"');
@@ -304,8 +307,10 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     expect(app).toContain("showRecoveryIfInterrupted"); // M3 可视化
     expect(app).toContain("aegentShowUpdate"); // U7 接线点（T-P3-114）
     // U15/T-P3-117：工作面板四 Tab（文件树/变更评审/子代理监控/协作——批 A 迁 views/work.js）
+    // T-P3-156 布局批：侧栏 work 按钮移除（文件树→侧栏滑入层，变更评审/子代理
+    // 随功能批/面板批迁面板宿主），#work 保留深链（keymap Ctrl+J / goto 路由）
     expect(workView).toContain('id="workpanel"');
-    expect(html).toContain('id="work-btn"'); // 侧栏导航入口
+    expect(app).toContain('go("work")'); // 深链入口（KEYMAP_HANDLERS.work）
     expect(workView).toContain('data-worktab="files"');
     expect(workView).toContain('data-worktab="review"');
     expect(workView).toContain('data-worktab="subagent"');
@@ -323,6 +328,48 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     for (const marker of [".search-hit", ".mm-row", "#find-bar", "#minimap", ".ac-row", ".attachment-chip"]) {
       expect(css).toContain(marker);
     }
+    // T-P3-156 布局批（方案 A/B/C/D/E/W）：三栏壳 + 右上角常驻入口 + 面板宿主
+    // + 侧栏两分段 + 内核信号消费——主界面重构的结构锁
+    const pane = read("pane.js");
+    expect(html).toContain('id="topbar"'); // 右上角常驻入口容器（需求一.4）
+    expect(html).toContain('id="pane-toggle-btn"'); // 切换面板钮
+    expect(html).toContain('id="terminal-btn"'); // 终端钮（面板批 P 接入显示）
+    expect(html).toContain('id="progress-dock"'); // 进度弹窗挂点（需求一.5）
+    expect(html).toContain('id="pane-root"'); // 面板宿主（与文件查看同位置）
+    expect(html).toContain('id="terminal-drawer"'); // 终端抽屉容器（方案 P）
+    expect(html).toContain('id="sidebar-resizer"'); // 侧栏拖宽条
+    expect(html).toContain('id="sb-projects"'); // 侧栏项目分段（需求一.1）
+    expect(html).toContain('id="sb-history"'); // 侧栏最近会话分段
+    expect(html).toContain('id="sb-files"'); // 文件树滑入层（需求二.4）
+    expect(html).toContain('id="notify-badge"'); // 通知徽标（迁顶栏铃铛）
+    expect(pane).toContain("registerPane"); // 面板类型注册表（扩展点）
+    expect(pane).toContain("openPane"); // 状态机入口
+    expect(pane).toContain("renderFilePreview"); // 文件查看迁入（方案 C）
+    expect(pane).toContain("localStorage"); // 宽度持久化（两段式）
+    expect(sidebar).toContain("expandProject"); // 项目展开
+    expect(sidebar).toContain("pinned"); // 置顶（方案 E）
+    expect(sidebar).toContain("dragstart"); // 拖拽排序（方案 E）
+    expect(sidebar).toContain("missing"); // 目录丢失徽章（方案 E）
+    expect(sidebar).toContain("openFilePane"); // 文件树 → 面板预览联动
+    expect(sidebar).toContain("agent:busy"); // 运行状态点事件源（方案 E）
+    expect(app).toContain("initSidebar"); // 侧栏启动接线
+    expect(app).toContain("initPane"); // 面板宿主启动接线
+    expect(app).toContain('name === "idle"'); // W：空闲信号消费
+    expect(app).toContain('name === "prompt_returned"'); // W：中止回填输入框
+    expect(app).toContain('name === "config_refreshed"'); // W：切档回执 toast
+    expect(app).toContain('name === "forked"'); // W：分支回执 → 侧栏刷新
+    expect(app).toContain("agent:busy"); // 运行态广播（turn/start live）
+    expect(app).toContain("sidebarWidth"); // 侧栏拖宽持久化
+    expect(router).toContain("settings-mode"); // D：设置独立形态类切换
+    expect(router).toContain('head === "projects"'); // A：旧路由重定向面
+    expect(css).toContain("#topbar");
+    expect(css).toContain("#pane-root");
+    expect(css).toContain(".pane-tabbar");
+    expect(css).toContain(".sidebar-resizer");
+    expect(css).toContain(".sb-task-dot");
+    expect(css).toContain("#app-shell.settings-mode #sidebar");
+    expect(css).toContain("#terminal-drawer");
+
     // 主题 token 层（批 A 迁 theme.css——全站唯一取色处；亮色覆盖在位）
     expect(theme).toContain('body[data-theme="light"]');
     expect(theme).toContain("--bg:");

@@ -34,15 +34,17 @@
  */
 export const ACTIONS = {
   // 导航
-  history: { label: "会话历史（切换入口）", group: "导航", default: "Ctrl+H" },
+  history: { label: "定位最近会话（侧栏）", group: "导航", default: "Ctrl+H" },
   search: { label: "跨会话搜索", group: "导航", default: "Ctrl+Shift+F" },
-  "goto-projects": { label: "打开项目页", group: "导航", default: "Ctrl+Shift+P" },
+  "goto-projects": { label: "定位项目列表（侧栏）", group: "导航", default: "Ctrl+Shift+P" },
   "goto-plugins": { label: "打开插件页", group: "导航", default: "Ctrl+Shift+U" },
   usage: { label: "用量面板开合", group: "导航", default: "Ctrl+U" },
   notify: { label: "通知中心开合", group: "导航", default: "Ctrl+B" },
+  "new-task": { label: "新建任务", group: "导航", default: "Ctrl+Shift+N" },
   // 视图与面板
   settings: { label: "设置面板开合", group: "视图与面板", default: "Ctrl+," },
-  work: { label: "工作面板开合", group: "视图与面板", default: "Ctrl+J" },
+  work: { label: "工作面板开合（深链）", group: "视图与面板", default: "Ctrl+J" },
+  pane: { label: "切换面板开合", group: "视图与面板", default: "Ctrl+Alt+P" },
   find: { label: "会话内搜索", group: "视图与面板", default: "Ctrl+F" },
   "close-find": { label: "关闭搜索条", group: "视图与面板", default: "Escape" },
   // 输入与流

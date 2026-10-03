@@ -51,6 +51,9 @@ import {
 import { lineEl, appendLine, scrollBottom, oneLine, toast } from "./feedback.js";
 import { applyLocalePreference, t } from "./i18n.js";
 import { installGlobalErrorReporters } from "./log-report.js";
+// T-P3-156 布局批（方案 A/B/C/E/W）：侧栏两分段 + 切换面板宿主
+import { initSidebar, refreshSidebar, newTaskFlow } from "./sidebar.js";
+import { initPane, togglePane } from "./pane.js";
 
 installGlobalErrorReporters(); // T-P3-154 A3：全局错误捕获（模块加载即挂——视图崩溃也捕）
 import { go, startRouter } from "./router.js";
@@ -325,6 +328,9 @@ function attachRetry(el, error) {
 function renderEvent(e, options = {}) {
   switch (e.type) {
     case "turn/start":
+      // T-P3-156：运行态广播（侧栏状态点 + 进度弹窗事件源）——仅 live 流
+      // （历史恢复重放不发，renderHistory 不带 live 标志）
+      if (options.live === true) window.dispatchEvent(new CustomEvent("agent:busy"));
       return lineEl(`── turn ${e.turn} 开始`, "meta");
     case "turn/end": {
       const el = lineEl(`── turn ${e.turn} 结束（${endKindText(e.reason)}）`, "meta");
@@ -620,7 +626,11 @@ function safeParseArgs(raw) {
 function removeCard(requestId) {
   const card = pending.querySelector(`[data-request-id="${CSS.escape(requestId)}"]`);
   if (card !== null) card.remove();
-  if (pending.children.length === 0) pending.classList.remove("active");
+  if (pending.children.length === 0) {
+    pending.classList.remove("active");
+    // T-P3-156：待决清空 → 侧栏状态点复位（审批橙点）
+    window.dispatchEvent(new CustomEvent("agent:awaiting-clear"));
+  }
 }
 
 // —— T-P3-151 B4 审批反写：永久档把本次裁决沉淀为规则行（opencode 免写
@@ -1420,12 +1430,32 @@ function openUsage() {
   go("usage");
 }
 
+/** T-P3-156：历史页退役为侧栏「最近会话」分段——Ctrl+H = 回对话 + 侧栏
+ * 定位到最近会话分段（滚动 + 高亮闪一次）。 */
 function openHistory() {
-  go("history");
+  go("chat");
+  focusSidebarSection("sb-history");
+}
+
+/** T-P3-156：项目页退役为侧栏项目分段——Ctrl+Shift+P 同款定位语义。 */
+function openProjects() {
+  go("chat");
+  focusSidebarSection("sb-projects");
 }
 
 function openWorkpanel() {
   go("work");
+}
+
+function focusSidebarSection(id) {
+  const el = document.getElementById(id);
+  if (el === null) return;
+  el.scrollIntoView({ block: "start", behavior: "smooth" });
+  el.classList.remove("sb-flash");
+  // 强制重排后再加类——连续触发也重放闪烁动画
+  void el.offsetWidth;
+  el.classList.add("sb-flash");
+  setTimeout(() => el.classList.remove("sb-flash"), 1200);
 }
 
 // ---------------------------------------------------------------------------
@@ -1748,8 +1778,11 @@ const KEYMAP_HANDLERS = {
   usage: () => openUsage(),
   notify: () => go("notify"),
   // T-P3-152 A1：动作空间扩容（全部以本文件既有能力为准）
-  "goto-projects": () => go("projects"),
+  "goto-projects": () => openProjects(),
   "goto-plugins": () => go("plugins"),
+  // T-P3-156：新布局动作（切换面板开合 / 新建任务流程 / 定位项目分段）
+  pane: () => togglePane(),
+  "new-task": () => void import("./sidebar.js").then((m) => m.newTaskFlow()),
   "focus-input": () => {
     input.focus();
     input.setSelectionRange(input.value.length, input.value.length);
@@ -1874,12 +1907,11 @@ window.addEventListener("keydown", (ev) => {
 function applyNavKeyHints() {
   const bindings = getKeymapBindings();
   for (const [btnId, action] of [
-    ["history-btn", "history"],
-    ["work-btn", "work"],
-    ["usage-btn", "usage"],
-    ["notify-btn", "notify"],
+    ["sb-search", "search"],
+    ["sb-new-task", "new-task"],
+    ["pane-toggle-btn", "pane"],
+    ["notify-top-btn", "notify"],
     ["settings-btn", "settings"],
-    ["search-btn", "search"],
   ]) {
     const btn = document.getElementById(btnId);
     const combo = bindings[action];
@@ -1902,6 +1934,7 @@ function handleEnvelope(envelope) {
       //（快照先行）；流续播随 event 信封自然衔接。
       leaseBtn.hidden = false;
       setSessionId(envelope.sessionId ?? null);
+      void refreshSidebar(); // T-P3-156：连接就绪 → 侧栏两分段首拉（WS 建立前不发 settings）
       if (getSessionId() !== "") {
         const requestId = allocRequestId("q");
         inflight.set(requestId, null);
@@ -1947,9 +1980,37 @@ function handleEnvelope(envelope) {
       } else if (envelope.name === "approval_requested" || envelope.name === "question_asked") {
         if (getSessionId() === "") setSessionId(envelope.sessionId);
         buildCard(envelope.name, envelope.payload ?? {});
+        // T-P3-156：待决审批 → 侧栏状态点（橙色）
+        window.dispatchEvent(new CustomEvent("agent:awaiting"));
       } else if (envelope.name === "approval_settled") {
         removeCard(envelope.payload?.requestId);
         appendLine(`审批已结算：${envelope.payload?.allowed ? "允许" : "拒绝"}`, "meta");
+      } else if (envelope.name === "idle") {
+        // T-P3-156 W：内核空闲信号（agent-process 收尾宣告——队列空+无在途轮）。
+        // 权威空闲面：排队续跑中不误报（kick 后有下条时内核不发 idle）。
+        window.dispatchEvent(new CustomEvent("agent:idle"));
+      } else if (envelope.name === "prompt_returned") {
+        // T-P3-156 W：中止退回——未消费输入回填输入框（qwen ↑popAllMessages
+        // 同语义；contents = 队列剩余的未消费原文）
+        const contents = Array.isArray(envelope.payload?.contents) ? envelope.payload.contents : [];
+        if (contents.length > 0) {
+          const existing = input.value.trim();
+          const restored = contents.join("\n\n");
+          input.value = existing === "" ? restored : `${restored}\n\n${existing}`;
+          input.dispatchEvent(new Event("input")); // 触发自适应高度
+          toast(`已中止——${String(contents.length)} 条未消费输入已退回输入框`, "warn");
+        }
+      } else if (envelope.name === "config_refreshed") {
+        // T-P3-156 W：会话内切档回执（settings/basic.js 与输入条权限 pill 共用）
+        const applied = Array.isArray(envelope.payload?.applied) ? envelope.payload.applied : [];
+        toast(applied.length > 0 ? `已生效：${applied.join("、")}` : "配置已刷新", "info");
+        window.dispatchEvent(new CustomEvent("agent:config-refreshed", { detail: { applied } }));
+      } else if (envelope.name === "forked") {
+        // T-P3-156 W：分支会话回执（方案 I 联动点——侧栏任务列表刷新）
+        const detail = envelope.payload ?? {};
+        toast(`已创建分支会话 ${String(detail.sessionId ?? "").slice(0, 12)}…`, "info");
+        window.dispatchEvent(new CustomEvent("agent:forked", { detail }));
+        void refreshSidebar();
       }
       break;
     case "hello_error":
@@ -1966,13 +2027,70 @@ function handleEnvelope(envelope) {
 
 injectIcons(document);
 
-// 侧栏导航：[data-route] 按钮 → hash 路由（对话/历史/搜索/工作台/用量/通知/设置）
-for (const btn of document.querySelectorAll("#sidebar [data-route]")) {
+// 侧栏与顶栏导航：[data-route] 按钮 → hash 路由（T-P3-156 骨架——侧栏仅
+// 搜索/设置两入口，通知/终端/切换面板在顶栏；对话恒在主区无路由钮）
+for (const btn of document.querySelectorAll("#sidebar [data-route], #topbar [data-route]")) {
   btn.addEventListener("click", () => go(btn.dataset.route));
 }
 document.getElementById("sidebar-toggle").addEventListener("click", () => {
-  document.getElementById("app-shell").classList.toggle("rail");
+  const shell = document.getElementById("app-shell");
+  shell.classList.toggle("rail");
+  try {
+    localStorage.setItem("aegent.sidebarRail", shell.classList.contains("rail") ? "1" : "0");
+  } catch {
+    // 存储不可用——折叠态会话内有效
+  }
 });
+try {
+  if (localStorage.getItem("aegent.sidebarRail") === "1") {
+    document.getElementById("app-shell").classList.add("rail");
+  }
+} catch {
+  // 同上
+}
+
+// T-P3-156 A：侧栏拖宽（两段式——拖拽写 CSS 变量，松手才持久化；
+// zcode WorkspaceShellLayout.tsx:539-557 同构；rail 折叠态禁用）
+(() => {
+  const bar = document.getElementById("sidebar-resizer");
+  if (bar === null) return;
+  const MIN = 220;
+  const MAX_RATIO = 0.5;
+  const saved = Number(localStorage.getItem("aegent.sidebarWidth"));
+  if (Number.isFinite(saved) && saved >= MIN) {
+    document.documentElement.style.setProperty("--sidebar-width", `${saved}px`);
+  }
+  bar.addEventListener("mousedown", (ev) => {
+    ev.preventDefault();
+    if (document.getElementById("app-shell").classList.contains("rail")) return;
+    bar.classList.add("dragging");
+    const onMove = (move) => {
+      const width = Math.min(window.innerWidth * MAX_RATIO, Math.max(MIN, move.clientX));
+      document.documentElement.style.setProperty("--sidebar-width", `${width}px`);
+    };
+    const onUp = () => {
+      bar.classList.remove("dragging");
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      const current = document.documentElement.style.getPropertyValue("--sidebar-width");
+      try {
+        localStorage.setItem("aegent.sidebarWidth", current.trim());
+      } catch {
+        // 存储不可用——宽度会话内有效
+      }
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+})();
+
+// T-P3-156：侧栏「新建任务」流程（项目选择/添加 → 设为活动工作区）
+document.getElementById("sb-new-task").addEventListener("click", () => void newTaskFlow());
+
+// T-P3-156 C：切换面板宿主初始化（右上角「切换面板」钮 ↔ #pane-root 开合）
+initPane(document.getElementById("pane-root"), document.getElementById("pane-toggle-btn"));
+// T-P3-156 A/E：侧栏两分段（项目 / 最近会话）启动渲染
+initSidebar();
 
 /** 侧栏激活态与路由同步（hashchange 驱动——深链/前进后退同样生效）。 */
 function syncNav() {
