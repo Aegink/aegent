@@ -31,6 +31,7 @@ import {
 import { createCredentialStore } from "../session/credentials.js";
 import { parseProviderConfig } from "../models/config.js";
 import { createOpenAiCompatProvider } from "../models/openai-compat.js";
+import type { AuthResolver } from "../models/auth.js";
 import { createGoogleGenerateProvider } from "../models/google-generate.js";
 import { createAnthropicMessagesProvider } from "../models/anthropic-messages.js";
 import { withRetry, type RetryObservation } from "../models/retry.js";
@@ -182,12 +183,23 @@ async function buildModelsRegistry(
         ...(entry.headers !== undefined ? { headers: entry.headers } : {}),
       }),
     });
+    // T-P3-158 反馈 1：J13 authResolver 每请求现取条目密钥——凭据更新对
+    // 真实对话即时生效（此前启动装配烘焙死值，测试连接（host 侧实时读）
+    // 与对话取材不同步 → "测试 OK 对话 unauthorized"）。key 缺失时
+    // undefined = 落回构造期值（零行为回归）。
+    const authResolver: AuthResolver = {
+      resolve: async () => {
+        const fresh = await credStore.getKey(entry.name);
+        // 空 material = 落回构造期 settings 值（AuthMaterial 字段全可选）
+        return fresh !== undefined && fresh !== "" ? { apiKey: fresh } : {};
+      },
+    };
     const provider =
       adapter === "anthropic"
-        ? createAnthropicMessagesProvider(config)
+        ? createAnthropicMessagesProvider(config, { authResolver })
         : adapter === "google"
           ? createGoogleGenerateProvider(config)
-          : createOpenAiCompatProvider(config);
+          : createOpenAiCompatProvider(config, { authResolver });
     const registered: RegisteredModel = {
       identity,
       provider: withRetry(provider, {
@@ -248,12 +260,20 @@ async function buildModelsRegistry(
         ...(entry.headers !== undefined ? { headers: entry.headers } : {}),
       }),
     });
+    // 同主注册表——每请求现取密钥（T-P3-158 反馈 1）
+    const targetAuthResolver: AuthResolver = {
+      resolve: async () => {
+        const fresh = await credStore.getKey(entry.name);
+        // 空 material = 落回构造期 settings 值（AuthMaterial 字段全可选）
+        return fresh !== undefined && fresh !== "" ? { apiKey: fresh } : {};
+      },
+    };
     const provider =
       identity.provider === "anthropic"
-        ? createAnthropicMessagesProvider(config)
+        ? createAnthropicMessagesProvider(config, { authResolver: targetAuthResolver })
         : identity.provider === "google"
           ? createGoogleGenerateProvider(config)
-          : createOpenAiCompatProvider(config);
+          : createOpenAiCompatProvider(config, { authResolver: targetAuthResolver });
     return {
       identity,
       provider: withRetry(provider, {

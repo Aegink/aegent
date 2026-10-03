@@ -100,7 +100,7 @@
   padding: 4px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--bg);
+  background: var(--bg-card); /* zcode input bg=卡片档（T-P3-158 反馈 5——暗色下不再比容器更黑） */
   color: var(--text);
   font-family: inherit;
   font-size: var(--text-ui-sm);

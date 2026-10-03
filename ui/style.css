@@ -454,10 +454,6 @@ code,
   color: var(--text-subtle);
 }
 
-.sb-files-entry {
-  color: var(--text-subtle);
-  font-size: var(--text-ui-sm);
-}
 
 .sb-more-btn {
   margin: 2px var(--space-2) 0;
@@ -5062,7 +5058,7 @@ button.transfer-row:hover {
   padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
-  background: var(--bg-sidebar);
+  background: var(--bg-card); /* T-P3-158 反馈 5——暗色下 pill 不再比容器更黑 */
   color: var(--text-subtle);
   font-size: var(--text-ui-sm); /* P-022：10→12px（权限档=安全控件，字号下限 12） */
   font-family: inherit;
@@ -5112,7 +5108,7 @@ button.transfer-row:hover {
   padding: 0 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
-  background: var(--bg-sidebar);
+  background: var(--bg-card); /* 同反馈 5——pill 面用卡片档 */
   color: var(--text);
   font-size: var(--text-ui-sm);
   cursor: pointer;

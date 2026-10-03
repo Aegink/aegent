@@ -12,13 +12,19 @@
  * 该项目为活动 + 重启指引；任务点击 = 只读恢复视图（续聊走 CLI resume）。
  */
 
-import { sendQuery, sendSettings, invalidateMetaCache } from "./api.js";
+import { sendQuery, sendSettings, invalidateMetaCache, IS_DESKTOP } from "./api.js";
+
+/** 桌面壳 Tauri command 直调（pane-browser.js 同款——不引壳运行时）。 */
+function tauriInvoke(cmd, args) {
+  return window.__TAURI_INTERNALS__.invoke(cmd, args);
+}
+
 import { settingsCache, setSettingsCache, getSessionId, hooks, applyAppearance } from "./state.js";
 import { toast, appendLine } from "./feedback.js";
 import { openMenu, confirmDialog, openDialog, markDirty, dirtySections, flushSettings, onSectionRefresh, upgradeSelects } from "./views/settings/core.js";
 import { renderFileTree, copyText } from "./views/projects-files.js";
 import { openFilePane } from "./pane.js";
-import { icon } from "./icons.js";
+import { icon, injectIcons } from "./icons.js";
 
 // ---------------------------------------------------------------------------
 // 本地偏好（置顶 / 手动顺序 / 展开——localStorage 持久化）
@@ -243,6 +249,15 @@ function projectRow(project) {
     ev.stopPropagation();
     void createTask(project);
   });
+  const filesBtn = document.createElement("button");
+  filesBtn.type = "button";
+  filesBtn.className = "sb-hover-btn";
+  filesBtn.replaceChildren(icon("folderOpen", { cls: "icon-sm" }));
+  filesBtn.title = "查看文件（文件树）";
+  filesBtn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    void showFileTree(project.id);
+  });
   const moreBtn = document.createElement("button");
   moreBtn.type = "button";
   moreBtn.className = "sb-hover-btn";
@@ -252,7 +267,7 @@ function projectRow(project) {
     ev.stopPropagation();
     openMenu(moreBtn, projectMenuItems(project));
   });
-  hover.append(addBtn, moreBtn);
+  hover.append(addBtn, filesBtn, moreBtn);
   head.appendChild(hover);
 
   // 主行单击 = 折叠切换 + 选中项目（pideck:134-138 同款双职责）
@@ -294,21 +309,13 @@ function projectRow(project) {
 
   row.appendChild(head);
 
-  // — 展开区：任务列表 + 查看文件入口 —
+  // — 展开区：任务列表（查看文件入口收敛到行尾悬浮钮/⋯菜单——T-P3-158 反馈 3） —
   if (expanded) {
     caret.classList.add("open");
     const taskBox = document.createElement("div");
     taskBox.className = "sb-tasks";
     taskBox.textContent = "任务加载中…";
     row.appendChild(taskBox);
-    const fileEntry = document.createElement("div");
-    fileEntry.className = "sb-task-row sb-files-entry";
-    const filesLabel = document.createElement("span");
-    filesLabel.className = "sb-label";
-    filesLabel.append(icon("folderOpen", { cls: "icon-sm" }), document.createTextNode(" 查看文件（左侧栏文件树）"));
-    fileEntry.append(Object.assign(document.createElement("span"), { className: "sb-task-dot" }), filesLabel);
-    fileEntry.addEventListener("click", () => void showFileTree(project.id));
-    row.appendChild(fileEntry);
     void loadTasks(taskBox, project);
   }
   return row;
@@ -785,11 +792,13 @@ async function hideFileTree() {
 // ---------------------------------------------------------------------------
 
 /** 新建任务：无项目时引导添加；有项目时选择 + 设活动 + 重启指引。 */
-async function createTask(project) {
-  const ok = await confirmDialog(
-    `新建任务「${project.name}」：将把该项目设为活动工作区。当前 host 是单会话架构——重启后（桌面壳重开或终端重跑 aegent）新会话即以 ${project.folders[0] ?? ""} 启动，第一句话会自动命名任务。`,
-  );
-  if (ok !== true) return;
+async function createTask(project, { confirm = true } = {}) {
+  if (confirm) {
+    const ok = await confirmDialog(
+      `把「${project.name}」设为活动项目？当前对话保持不动；下次打开 aegent 时会以 ${project.folders[0] ?? ""} 开启新对话（即新任务）。`,
+    );
+    if (ok !== true) return;
+  }
   await setActiveProject(project);
 }
 
@@ -811,7 +820,7 @@ export async function newTaskFlow() {
   await new Promise((resolve) => {
     openDialog({
       title: "新建任务",
-      description: "选择项目并设为活动工作区——重启后新会话即该项目的任务。",
+      description: "选择一个项目设为活动——当前对话不变；下次打开 aegent 时以它开启新对话。",
       body: select,
       onClose: () => resolve(null),
       actions: [
@@ -822,7 +831,7 @@ export async function newTaskFlow() {
     upgradeSelects(document.body); // P-041：模态内 select 桥接自绘下拉（openDialog 同步挂载 body——扫描幂等）
   }).then(async (picked) => {
     const project = projects.find((p) => p.id === picked);
-    if (project !== undefined) await createTask(project);
+    if (project !== undefined) await createTask(project, { confirm: false }); // 已在弹窗选过——不再二次确认
   });
 }
 
@@ -834,7 +843,7 @@ async function setActiveProject(project) {
   markDirty("projects");
   markDirty("activeProject");
   await flushSettings();
-  toast(`已设「${project.name}」为活动项目——重启后新会话以它启动`, "info");
+  toast(`已设「${project.name}」为活动项目——下次打开 aegent 以它开启新对话`, "info");
   await refreshSidebar();
 }
 
@@ -984,11 +993,30 @@ async function openAddDialog() {
   const paint = (mode) => {
     if (mode === "folder") {
       bodyBox.innerHTML = `
-        <p class="hint">每行一个本机目录（绝对路径）——多目录会合并为一个项目（第一个为主目录）。</p>
+        <p class="hint">每行一个本机目录——多目录会合并为一个项目（第一个为主目录）。</p>
         <textarea class="textarea" data-field="folders" rows="4" placeholder="F:\\work\\my-app"></textarea>
+        ${IS_DESKTOP
+          ? `<div class="row-control" style="margin-top:8px"><button type="button" class="btn" data-action="pick-folder"><span data-icon="folderOpen" data-icon-size="14"></span> 选择文件夹…</button></div>`
+          : `<p class="hint">桌面版支持系统文件夹选择器；网页版请粘贴路径。</p>`}
         <p class="hint" style="margin-top:8px">项目名（缺省 = 主目录名）</p>
         <input class="input" data-field="name" type="text" placeholder="自动推导" autocomplete="off" />
       `;
+      const pickBtn = bodyBox.querySelector("[data-action=pick-folder]");
+      if (pickBtn !== null) {
+        pickBtn.addEventListener("click", async () => {
+          try {
+            const picked = await tauriInvoke("pick_folder");
+            if (picked === null || picked === undefined || picked === "") return;
+            const box = bodyBox.querySelector("[data-field=folders]");
+            const lines = box.value.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== "");
+            if (!lines.includes(picked)) lines.push(picked); // 多目录合并语义——重复选择去重
+            box.value = lines.join("\n");
+          } catch (e) {
+            toast(`选择文件夹失败：${e?.message ?? e}`, "warn");
+          }
+        });
+      }
+      injectIcons(bodyBox);
     } else if (mode === "git") {
       bodyBox.innerHTML = `
         <p class="hint">仓库地址（https / git@）——clone 到父目录后即成为项目。</p>

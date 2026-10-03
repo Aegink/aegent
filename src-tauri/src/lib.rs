@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 use tauri::Manager;
 
 mod browser; // T-P3-156 Q：浏览器面板 webview 管理（真实内核）
+mod picker; // T-P3-158 反馈 2：系统文件夹选择器（rfd 直挂，不加插件）
 
 /// host 子进程句柄（退出收束用——RunEvent::Exit 时 kill）。
 struct HostProcess(Mutex<Option<Child>>);
@@ -33,6 +34,11 @@ fn spawn_host(dir: &std::path::Path) -> std::io::Result<Child> {
     let node = dir.join(if cfg!(windows) { "node.exe" } else { "node" });
     let log_dir = dir.join("logs");
     let _ = std::fs::create_dir_all(&log_dir);
+    // T-P3-158 反馈 1 附带：便携数据目录的事件库（此前无 --host-db →
+    // 会话清单/用量面 SESSIONS_UNAVAILABLE + 聊天流刷错误行）
+    let data_dir = dir.join("data");
+    let _ = std::fs::create_dir_all(&data_dir);
+    let host_db = data_dir.join("sessions.db");
     let log = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -47,6 +53,8 @@ fn spawn_host(dir: &std::path::Path) -> std::io::Result<Child> {
             dir.join("ui").to_str().expect("ui 路径非 UTF-8"),
             "--agent-entry",
             dir.join("agent-child.cjs").to_str().expect("entry 路径非 UTF-8"),
+            "--host-db",
+            host_db.to_str().expect("db 路径非 UTF-8"),
         ])
         .current_dir(dir)
         .stdout(Stdio::from(log))
@@ -98,6 +106,7 @@ pub fn run() {
             browser::browser_navigate,
             browser::browser_destroy,
             browser::browser_eval,
+            picker::pick_folder,
         ])
         .setup(|app| {
             browser::manage_registry(app.handle());

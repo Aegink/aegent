@@ -20,6 +20,9 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["unstable"] }
 # U7/T-P3-114：updater 单插件入册（九插件群不取的解禁例外——签名校验链）
 tauri-plugin-updater = "2"
+# T-P3-158 反馈 2：系统文件夹选择器（自定义 pick_folder command——不加
+# dialog 插件，"九插件群不取"纪律；rfd 是 dialog 插件的同款底层）
+rfd = "0.15"
 serde_json = "1"
 
 [profile.release]

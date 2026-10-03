@@ -33,10 +33,10 @@ function listFiles(dir: string): string[] {
 }
 
 describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
-  it("Rust 面最小：.rs 恰 4 文件（main/lib/build/browser——T-P3-156 Q 浏览器面板 webview 管理）且 lib+main 无业务（无第三方 use）", () => {
+  it("Rust 面最小：.rs 恰 5 文件（main/lib/build/browser/picker——T-P3-158 反馈 2 文件夹选择器）且 lib+main 无业务（无第三方 use）", () => {
     const rsFiles = listFiles(TAURI_DIR).filter((f) => f.endsWith(".rs"));
     const names = rsFiles.map((f) => path.basename(f)).sort();
-    expect(names).toEqual(["browser.rs", "build.rs", "lib.rs", "main.rs"]); // T-P3-156 Q 起 +browser.rs
+    expect(names).toEqual(["browser.rs", "build.rs", "lib.rs", "main.rs", "picker.rs"]); // T-P3-156 Q +browser.rs；T-P3-158 +picker.rs
     const lib = readFileSync(path.join(TAURI_DIR, "src", "lib.rs"), "utf8");
     expect(lib).toContain("tauri::Builder::default()");
     expect(lib).toContain("tauri::generate_context!()");
@@ -49,15 +49,16 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(main).toContain('windows_subsystem = "windows"');
   });
 
-  it("Cargo.toml 依赖闭集：tauri + updater 单插件（U7 解禁例外）+ serde_json（generate_context 面）", () => {
+  it("Cargo.toml 依赖闭集：tauri + updater 单插件（U7 解禁例外）+ serde_json + rfd（T-P3-158 反馈 2 选文件夹——自定义 command 不加插件）", () => {
     const cargo = readFileSync(path.join(TAURI_DIR, "Cargo.toml"), "utf8");
     const depsSection = cargo.split("[dependencies]")[1]?.split("\n[") ?? [];
     const deps = (depsSection[0] ?? "")
       .split("\n")
       .filter((l) => l.includes("=") && !l.trim().startsWith("#"));
-    expect(deps.length).toBe(3);
+    expect(deps.length).toBe(4);
     expect(cargo).toContain('tauri = { version = "2"');
     expect(cargo).toContain("tauri-plugin-updater");
+    expect(cargo).toContain('rfd = "0.15"'); // T-P3-158：pick_folder 底层（dialog 插件同款底层，插件纪律不破）
     expect(cargo).toContain('serde_json = "1"');
     expect(cargo).toContain("tauri-build");
     // 行数纪律：Cargo.toml 保持最小面（updater 注释两行使上限放宽）
