@@ -22,7 +22,7 @@ const TEMPLATE = `
     </form>
     <p id="search-meta" class="hint"></p>
     <ul id="search-results"></ul>
-    <p class="hint">查看 = 只读恢复视图；续聊请在终端执行 aegent sessions resume &lt;id&gt;。</p>
+    <p class="hint">命中结果可点开只读回看；要继续那个会话，从终端运行 aegent sessions resume。</p>
   </div>
 </aside>
 `;

@@ -1406,6 +1406,42 @@ code,
   padding: 0 40px 40px;
 }
 
+/* 说明折叠（P-039——开发者向长说明收进 details） */
+details.hint-more > summary {
+  cursor: pointer;
+  color: var(--text-subtle);
+  font-size: var(--text-ui-sm);
+  user-select: none;
+}
+
+details.hint-more > summary:hover {
+  color: var(--text);
+}
+
+details.hint-more > summary::marker {
+  color: var(--text-subtlest);
+}
+
+/* 错误行可清理（P-009——聚合计数 + ✕ 关闭） */
+.line-close {
+  float: right;
+  display: inline-flex;
+  padding: 0 2px;
+  border: none;
+  background: transparent;
+  color: var(--text-subtlest);
+  cursor: pointer;
+}
+
+.line-close:hover {
+  color: var(--text);
+}
+
+.line-dedup-count {
+  color: var(--text-subtlest);
+  font-size: var(--text-ui-xs);
+}
+
 /* 分节（section）：单分节页面形态（T-P3-135 走查反馈修正——用户裁决"每
    个 tab 单独一个页面"：DOM 19 分节全挂载，显示层只呈现 .section-active；
    导航切换在视图内完成，hash 经 replaceState 同步不重挂载）。
@@ -1415,6 +1451,7 @@ code,
   display: none;
   flex-direction: column;
   gap: 16px;
+  scroll-margin-top: 64px; /* P-043：sticky 页头高度补偿——scrollIntoView 不再裁半行 */
 }
 
 #settings-panel .tab-body section.section-active {

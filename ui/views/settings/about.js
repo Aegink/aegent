@@ -11,7 +11,7 @@
  */
 
 import { sendSettings } from "../../api.js";
-import { toast } from "../../feedback.js";
+import { toast, fmtDateTime } from "../../feedback.js";
 
 export const SECTION_HTML = `
 <section data-section="about">
@@ -137,7 +137,7 @@ async function loadInfo() {
     title.insertBefore(badge, title.firstChild);
     const desc = document.createElement("div");
     desc.className = "row-desc";
-    desc.textContent = `构建 ${build.gitCommit} · ${build.buildTime} · 本地优先的 agent 工作台（事件即真相）`;
+    desc.textContent = `构建 ${build.gitCommit} · ${fmtDateTime(build.buildTime)} · 本地优先的 agent 工作台（事件即真相）`;
     const copy = document.createElement("div");
     copy.className = "row-copy";
     copy.append(title, desc);
@@ -199,7 +199,7 @@ async function checkUpdate(manual) {
   }
   const last = localStorage.getItem("aegent.update.lastCheck");
   if (desc !== null && last !== null) {
-    desc.textContent += ` · 上次检查 ${new Date(last).toLocaleString()}`;
+    desc.textContent += ` · 上次检查 ${fmtDateTime(new Date(last))}`;
   }
 }
 

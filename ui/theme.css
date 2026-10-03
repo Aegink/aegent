@@ -114,7 +114,7 @@ body[data-theme="light"] {
   --border: rgba(0, 0, 0, 0.1);
   --border-hover: rgba(0, 0, 0, 0.3);
   --text: #404040; /* neutral-700 */
-  --text-subtle: rgba(64, 64, 64, 0.65);
+  --text-subtle: #525252; /* neutral-600——亮色 AA 对比度（P-011，≈7:1） */
   --text-subtlest: rgba(64, 64, 64, 0.4);
   --brand: #38bdf8; /* sky-400 */
   --primary: #171717;

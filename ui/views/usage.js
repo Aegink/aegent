@@ -62,7 +62,7 @@ const TEMPLATE = `
           </thead>
           <tbody></tbody>
         </table>
-        <p id="task-usage-empty" class="hint">暂无副调用记录——润色/标题等辅助任务使用后在此归因显示。</p>
+        <p id="task-usage-empty" class="hint">暂无记录——标题生成、回复润色等辅助功能被使用后，用量会归因显示在这里。</p>
       </section>
       <section>
         <div class="section-head"><h2 class="section-title">上下文检查器</h2></div>

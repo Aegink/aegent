@@ -79,7 +79,7 @@ registerPane("browser", {
       // web 端降级（host 页面在普通浏览器里没有壳的 child webview 能力）
       const box = document.createElement("div");
       box.className = "empty-state";
-      box.innerHTML = `<div class="empty-title">浏览器面板需要桌面壳</div><div class="empty-desc">Web 端没有真实内核承载——请用 aegent 桌面版；或<a href="${String(tab.payload.url ?? "https://www.bing.com")}" target="_blank" rel="noreferrer">在系统浏览器打开</a>。</div>`;
+      box.innerHTML = `<div class="empty-title">浏览器面板需要桌面壳</div><div class="empty-desc">此面板需桌面版支持（内嵌网页内核）；或<a href="${String(tab.payload.url ?? "https://www.bing.com")}" target="_blank" rel="noreferrer" style="white-space:nowrap">在系统浏览器打开</a>。</div>`;
       body.appendChild(box);
       return;
     }

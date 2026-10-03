@@ -49,7 +49,7 @@
             <span id="lease-status"></span>
           </div>
           <div class="foot-actions">
-            <button id="lease-btn" type="button" data-i18n="取得写租约" hidden>取得写租约</button>
+            <button id="lease-btn" type="button" data-i18n="取得写租约" title="获得向工作区写入的权限（同一时间只有一个界面持有）" hidden>取得写租约</button>
             <button id="work-btn" class="nav-item" type="button" data-route="work" data-i18n-title="工作台（文件/变更评审/子代理/协作）" title="工作台（文件/变更评审/子代理/协作）">
               <span data-icon="work"></span><span class="nav-label" data-i18n="工作台">工作台</span>
             </button>
@@ -60,7 +60,7 @@
           <span class="foot-version">aegent v0.1.0</span>
         </div>
       </aside>
-      <div class="sidebar-resizer" id="sidebar-resizer" title="拖拽调整侧栏宽度"></div>
+      <div class="sidebar-resizer" id="sidebar-resizer" title="拖拽调整侧栏宽度（双击重置）"></div>
       <div id="main">
         <!-- 顶栏：左 = 会话上下文（活动项目/任务名）；右 = 进度弹窗挂点 +
              通知 + 终端 + 切换面板（需求一.4/一.5——终端钮随面板批 P 接入显示） -->
@@ -90,7 +90,7 @@
                 <div class="welcome-card">
                   <div class="welcome-mark" data-icon="hexagon" data-icon-size="28"></div>
                   <h2 class="welcome-title">开始与 aegent 对话</h2>
-                  <p class="welcome-desc">让模型读写文件、跑命令、派子代理——改动随时在右侧「审查」面板评审，进度看右上角。</p>
+                  <p class="welcome-desc">把一个项目交给 aegent：它会读写文件、跑命令，并给出可逐条评审的改动——右侧面板随时打开查看。</p>
                   <div class="welcome-actions">
                     <button type="button" class="btn btn-primary" data-empty-action="input"><span data-icon="sparkles" data-icon-size="14"></span> 开始输入</button>
                     <button type="button" class="btn" data-empty-action="settings"><span data-icon="settings" data-icon-size="14"></span> 配置供应商</button>

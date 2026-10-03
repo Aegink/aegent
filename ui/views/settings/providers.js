@@ -13,7 +13,7 @@
 
 import { sendRequest, sendSettings } from "../../api.js";
 import { settingsCache, getSessionId } from "../../state.js";
-import { appendLine, toast } from "../../feedback.js";
+import { appendLine, toast, fmtDateTime } from "../../feedback.js";
 import { icon } from "../../icons.js";
 import {
   markDirty,
@@ -43,7 +43,10 @@ export const SECTIONS_HTML = `
   <div class="group-title">AI 服务 <span id="provider-count" class="badge">0</span></div>
   <div id="provider-list" class="tile-list"></div>
   <div id="provider-orphan-keys" class="row-list"></div>
-  <p class="hint">默认模型 = 新会话启动装配选中的服务与模型。服务列表顺序 = 故障转移优先级（J15 队列序）；停用的服务保留在清单（开关是开回的路径）。API key 经凭据面独立存储（DPAPI 加密、零明文）——下方"预存密钥"区显示尚未被任何服务引用的 key（含语音识别的 stt），可在此删除。</p>
+  <details class="hint-more">
+    <summary>实现说明（开发者向）</summary>
+    <p class="hint">默认模型 = 新会话启动装配选中的服务与模型。服务列表顺序 = 故障转移优先级；停用的服务保留在清单（开关是开回的路径）。API key 经凭据面独立存储（系统级加密、零明文）——下方"预存密钥"区显示尚未被任何服务引用的 key（含语音识别的 stt），可在此删除。</p>
+  </details>
 </section>
 `;
 
@@ -196,6 +199,17 @@ function hostFromBaseUrl(baseUrl) {
   }
 }
 
+/** host 掩码（P-037——服务卡默认不暴露完整 IP:端口，悬停 title 揭示）：
+ *  首段可见 + 其余打码，端口保留（端口不构成地址泄露面）。 */
+function maskHost(host) {
+  const colon = host.indexOf(":");
+  const addr = colon >= 0 ? host.slice(0, colon) : host;
+  const port = colon >= 0 ? host.slice(colon) : "";
+  const dot = addr.indexOf(".");
+  if (dot < 0) return `•••${port}`;
+  return `${addr.slice(0, dot)}.•••${port}`;
+}
+
 function fmtTokens(n) {
   return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M` : `${Math.round(n / 1024)}k`;
 }
@@ -329,7 +343,9 @@ function renderProviderList() {
     if (!hasSecret(entry.name)) titleEl.appendChild(chipEl("未设密钥"));
     const descEl = document.createElement("div");
     descEl.className = "row-desc";
-    descEl.textContent = `${hostFromBaseUrl(entry.baseUrl)} · ${entryModels(entry).length} 个模型`;
+    const fullHost = hostFromBaseUrl(entry.baseUrl);
+    descEl.textContent = `${maskHost(fullHost)} · ${entryModels(entry).length} 个模型`;
+    descEl.title = `${fullHost}（完整地址）`;
     const copy = rowCopyEl(titleEl, descEl);
     // 启停（enabled 缺省 true——停用写 false、启用删键回缺省）
     const toggle = switchEl(enabled, (checked) => {
@@ -1197,7 +1213,7 @@ function renderOrphanKeys() {
     titleEl.appendChild(chipEl(meta.name === "stt" ? "语音 STT" : "未被引用"));
     const descEl = document.createElement("div");
     descEl.className = "row-desc";
-    descEl.textContent = `${meta.masked ?? ""}（更新于 ${meta.updatedAt}）`;
+    descEl.textContent = `${meta.masked ?? ""}（更新于 ${fmtDateTime(meta.updatedAt)}）`;
     const copy = rowCopyEl(titleEl, descEl);
     const useBtn = btnEl("转为服务", "btn", `用预存密钥 ${meta.name} 创建服务（补接口地址即可用）`);
     useBtn.addEventListener("click", () => openProviderDialog(undefined, meta.name));

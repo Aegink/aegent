@@ -30,7 +30,7 @@ registerPane("git", {
     body.replaceChildren();
     const root = activeRoot();
     if (root === null) {
-      body.innerHTML = `<div class="empty-state"><div class="empty-title">未选择项目</div><div class="empty-desc">Git 面板以活动项目为工作区——左侧栏先设活动项目。</div></div>`;
+      body.innerHTML = `<div class="empty-state"><div class="empty-title">当前没有活动项目</div><div class="empty-desc">Git 面板以活动项目为工作区——在左侧栏右键项目行，选「设为活动」。</div></div>`;
       return;
     }
     const head = document.createElement("div");

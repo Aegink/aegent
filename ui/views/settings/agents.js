@@ -290,7 +290,7 @@ export const SECTIONS_HTML = `
   </div>
 </section>
 <section data-section="speech">
-  <div class="section-head"><h2 class="section-title">语音【实验性】</h2></div>
+  <div class="section-head"><h2 class="section-title">语音 <span class="badge">实验性</span></h2></div>
   <p class="hint">两个独立服务：语音识别（输入区麦克风按钮，录音→文字进输入框）与语音合成（消息朗读）。端点 key 分别在「供应商」页底部"预存密钥"区以 <code>stt</code> / <code>tts</code> 录入（零明文）；音频即时处理，不留存。</p>
   <div class="row-title" style="margin:16px 0 4px">语音识别（STT——录音转文字）</div>
   <div class="row-list">

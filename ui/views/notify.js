@@ -20,7 +20,7 @@ const TEMPLATE = `
   </header>
   <div class="page-body">
     <ul id="notify-list"></ul>
-    <p class="hint">审批/提问以卡片弹出（不进清单）；此处为轮结算/后台任务/端面变化的分型通知。</p>
+    <p class="hint">审批与提问会以卡片在对话中出现；这里汇总后台任务与系统事件。</p>
   </div>
 </aside>
 `;
