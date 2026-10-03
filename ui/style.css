@@ -1344,14 +1344,16 @@ code,
 
 /* 分节（section）：单分节页面形态（T-P3-135 走查反馈修正——用户裁决"每
    个 tab 单独一个页面"：DOM 19 分节全挂载，显示层只呈现 .section-active；
-   导航切换在视图内完成，hash 经 replaceState 同步不重挂载） */
-.tab-body section {
+   导航切换在视图内完成，hash 经 replaceState 同步不重挂载）。
+   作用域收窄到 #settings-panel（T-P3-157 P-047）：usage 页同为 .tab-body
+   但无分节导航、设计为整页滚动——全局隐藏规则曾令其 8 分节全部不可见。 */
+#settings-panel .tab-body section {
   display: none;
   flex-direction: column;
   gap: 16px;
 }
 
-.tab-body section.section-active {
+#settings-panel .tab-body section.section-active {
   display: flex;
 }
 
@@ -4936,7 +4938,12 @@ button.transfer-row:hover {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  flex-wrap: wrap;
+  /* P-024（T-P3-157）：窄视口（960）下 wrap 会让 pill 竖排堆叠且按钮内文字
+     逐字断行成竖排——改单行 + 横向滚动（min-width:0 允许在 flex 父级收缩）。 */
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  min-width: 0;
+  scrollbar-width: thin;
 }
 
 .composer-tab {
@@ -4952,6 +4959,8 @@ button.transfer-row:hover {
   font-size: var(--text-ui-xs);
   font-family: inherit;
   cursor: pointer;
+  white-space: nowrap;
+  flex: none;
 }
 
 .composer-tab:hover {

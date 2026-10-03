@@ -11,6 +11,9 @@ import { createKeymap } from "./keymap.js";
 export let settingsCache = null;
 export function setSettingsCache(v) {
   settingsCache = v;
+  // 首拉/更新后广播（T-P3-157）：composer pill 等在 init 时缓存尚空、画的是
+  // 占位文案——订阅此事件即可在缓存就绪后重绘真实值。
+  window.dispatchEvent(new CustomEvent("settings:cache-updated"));
 }
 
 // —— 会话 id（host 侧生成——hello/query 回执元数据回填；"" = 未连接）

@@ -30,9 +30,9 @@ export const SECTIONS_HTML = `
 <section data-section="projects">
   <div class="section-head">
     <h2 class="section-title">项目</h2>
-    <a class="btn btn-primary" href="#projects">前往项目中心</a>
+    <a class="btn btn-primary" href="#work">打开工作台</a>
   </div>
-  <p class="hint">项目域已升级为独立页面（工作区/任务/文件树/添加三模式）——点上方按钮直达，或侧栏「项目」。</p>
+  <p class="hint">项目列表在左侧栏（右键项目行可添加任务/设为活动）；工作台聚合文件、变更评审、子代理与协作。#projects 旧链接已并入对话页。</p>
 </section>
 ${instructionsSection}${shortcutsSection}${transferSection}${loggingSection}
 ${aboutSection}

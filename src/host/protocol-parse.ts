@@ -83,6 +83,24 @@ export function rejectUnknownKeys(value: Record<string, unknown>, allowed: reado
   return null;
 }
 
+/**
+ * parse 失败时尽力回捞 requestId：信封形状错但 requestId 本身可读（非空
+ * 字符串）时，错误回执仍可关联到端的在途请求——否则 UI 侧 inflight 永远
+ * 等不到 resolve，表现为该请求"永久挂起"（T-P3-157 P-031 卡死根因之一）。
+ */
+export function salvageRequestId(line: string): string {
+  try {
+    const parsed: unknown = JSON.parse(line);
+    if (parsed !== null && typeof parsed === "object") {
+      const id = (parsed as Record<string, unknown>)["requestId"];
+      if (typeof id === "string" && id !== "") return id;
+    }
+  } catch {
+    // 非 JSON 行——无从捞取，退回占位
+  }
+  return "(unparsed)";
+}
+
 /** 解析并严格校验一条端 → host 信封（坏信封抛 Error——调用方转 error 行）。 */
 export function parseClientEnvelope(line: string): ClientEnvelope {
   if (line.length > MAX_LINE_BYTES) {

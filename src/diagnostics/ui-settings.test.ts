@@ -165,7 +165,7 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     // U11 项目 CRUD → T-P3-150 迁独立页 → T-P3-156（方案 A）迁侧栏两分段
     // ui/sidebar.js（工作区/任务/文件树/添加三模式）；settings 分节只留
     // 跳转卡 + 项目指令仍走指令中心
-    expect(settingsView).toContain("前往项目中心"); // 分节跳转卡
+    expect(settingsView).toContain("打开工作台"); // 分节跳转卡（T-P3-157 P-044：#projects 死链改 #work）
     expect(html).toContain('id="sb-new-task"'); // 侧栏「新建任务」入口（方案 A）
     expect(sidebar).toContain("git-clone"); // A3 Git 仓库添加
     expect(sidebar).toContain("import-scan"); // A4 扫描导入

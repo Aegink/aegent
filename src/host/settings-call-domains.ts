@@ -66,6 +66,17 @@ const DOMAIN_OPS = new Set([
   "about-info",
   "check-update",
   "open-path",
+  // T-P3-156 面板域族（Git 管理/终端/辅助对话历史——T-P3-157 补注册）
+  "git-status",
+  "git-diff",
+  "git-stage",
+  "git-commit",
+  "git-log",
+  "assistant-log-append",
+  "assistant-log-read",
+  "terminal-create",
+  "terminal-input",
+  "terminal-resize",
 ]);
 
 export function validateDomainSettingsCall(op: string, record: Record<string, unknown>): void {
@@ -290,5 +301,51 @@ export function validateDomainSettingsCall(op: string, record: Record<string, un
   // T-P3-155：open-path 需要 path 非空（about-info/check-update 无载荷）
   if (op === "open-path" && (typeof record["path"] !== "string" || record["path"].trim() === "")) {
     throw new Error("settings op=open-path 需要 path 非空字符串");
+  }
+  // T-P3-156/157 面板域族（cwd=活动项目根，host 侧再过项目根白名单边界）
+  if (
+    (op === "git-status" || op === "git-diff" || op === "git-stage" || op === "git-commit" || op === "git-log" || op === "terminal-create") &&
+    (typeof record["cwd"] !== "string" || record["cwd"].trim() === "")
+  ) {
+    throw new Error(`settings op=${op} 需要 cwd（活动项目根）非空字符串`);
+  }
+  if (op === "git-diff" && (typeof record["file"] !== "string" || record["file"] === "")) {
+    throw new Error("settings op=git-diff 需要 file（目标文件）非空字符串");
+  }
+  if (op === "git-stage" &&
+      (!Array.isArray(record["files"]) ||
+        (record["files"] as unknown[]).length === 0 ||
+        (record["files"] as unknown[]).some((f) => typeof f !== "string" || f === ""))) {
+    throw new Error("settings op=git-stage 需要 files 非空字符串数组");
+  }
+  if (op === "git-commit" && (typeof record["message"] !== "string" || record["message"].trim() === "")) {
+    throw new Error("settings op=git-commit 需要 message（提交信息）非空字符串");
+  }
+  if (op === "assistant-log-append") {
+    if (record["role"] !== "user" && record["role"] !== "assistant") {
+      throw new Error("settings op=assistant-log-append 需要 role（合法：user|assistant）");
+    }
+    if (typeof record["text"] !== "string") {
+      throw new Error("settings op=assistant-log-append 需要 text 字符串");
+    }
+  }
+  if (op === "assistant-log-read" &&
+      record["limit"] !== undefined &&
+      (typeof record["limit"] !== "number" || !Number.isInteger(record["limit"]) || record["limit"] <= 0 || record["limit"] > 500)) {
+    throw new Error("settings op=assistant-log-read 的 limit 须为 1~500 整数（缺省 = host 默认条数）");
+  }
+  if ((op === "terminal-create" || op === "terminal-input" || op === "terminal-resize") &&
+      (typeof record["id"] !== "string" || record["id"] === "")) {
+    throw new Error(`settings op=${op} 需要 id（终端实例 id）非空字符串`);
+  }
+  if (op === "terminal-input" && typeof record["data"] !== "string") {
+    throw new Error("settings op=terminal-input 需要 data 字符串（键入内容）");
+  }
+  if (op === "terminal-resize") {
+    const { cols, rows } = record as { cols?: unknown; rows?: unknown };
+    if (typeof cols !== "number" || !Number.isInteger(cols) || cols <= 0 || cols > 500 ||
+        typeof rows !== "number" || !Number.isInteger(rows) || rows <= 0 || rows > 300) {
+      throw new Error("settings op=terminal-resize 需要 cols（1~500）/rows（1~300）正整数");
+    }
   }
 }

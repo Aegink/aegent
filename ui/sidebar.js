@@ -13,7 +13,7 @@
  */
 
 import { sendQuery, sendSettings, invalidateMetaCache } from "./api.js";
-import { settingsCache, setSettingsCache, getSessionId, hooks } from "./state.js";
+import { settingsCache, setSettingsCache, getSessionId, hooks, applyAppearance } from "./state.js";
 import { toast, appendLine } from "./feedback.js";
 import { openMenu, confirmDialog, openDialog, markDirty, dirtySections, flushSettings, onSectionRefresh } from "./views/settings/core.js";
 import { renderFileTree, copyText } from "./views/projects-files.js";
@@ -110,7 +110,10 @@ export async function refreshSidebar() {
   if (settingsCache === null) {
     invalidateMetaCache();
     const envelope = await sendSettings({ op: "get" });
-    if (envelope.ok) setSettingsCache(envelope.result.settings);
+    if (envelope.ok) {
+      setSettingsCache(envelope.result.settings);
+      applyAppearance(); // T-P3-157：启动首拉后应用外观（此前仅设置保存路径生效——重启必回暗色）
+    }
   }
   if (filesProjectId !== null) {
     await showFileTree(filesProjectId); // 文件树态：整体重建（代次守卫在树内）

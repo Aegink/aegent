@@ -169,7 +169,8 @@ body[data-appearance="catppuccin"][data-theme="light"] {
   --primary-foreground: #eff1f5;
 }
 
-/* —— 皮肤：Tokyonight（仅暗色——亮色档回退默认亮色块） —— */
+/* —— 皮肤：Tokyonight（暗=tokyonight / 亮=Tokyo Night Day——T-P3-157 P-001：
+      此前仅暗色块且位于亮色块之后同特异性覆盖，选亮色静默失效） —— */
 body[data-appearance="tokyonight"] {
   color-scheme: dark;
   --bg: #1a1b26;
@@ -188,8 +189,26 @@ body[data-appearance="tokyonight"] {
   --traj-tool-call: #e0af68;
   --traj-tool-result: #7dcfff;
 }
+body[data-appearance="tokyonight"][data-theme="light"] {
+  color-scheme: light;
+  --bg: #e1e2e7;
+  --bg-sidebar: #d5d8e1;
+  --bg-card: #ffffff;
+  --surface: rgba(54, 59, 88, 0.05);
+  --surface-hover: rgba(54, 59, 88, 0.1);
+  --border: rgba(54, 59, 88, 0.14);
+  --text: #3760bf;
+  --text-subtle: rgba(55, 96, 191, 0.72);
+  --text-subtlest: rgba(55, 96, 191, 0.45);
+  --brand: #2e7de9;
+  --traj-user: #2e7de9;
+  --traj-assistant: #587539;
+  --traj-reasoning: #9857bd;
+  --traj-tool-call: #8c6c3e;
+  --traj-tool-result: #00719c;
+}
 
-/* —— 皮肤：Nord（仅暗色） —— */
+/* —— 皮肤：Nord（暗=polar night / 亮=snow storm——亮色变体同 P-001 补齐） —— */
 body[data-appearance="nord"] {
   color-scheme: dark;
   --bg: #2e3440;
@@ -207,6 +226,24 @@ body[data-appearance="nord"] {
   --traj-reasoning: #b48ead;
   --traj-tool-call: #ebcb8b;
   --traj-tool-result: #8fbcbb;
+}
+body[data-appearance="nord"][data-theme="light"] {
+  color-scheme: light;
+  --bg: #eceff4;
+  --bg-sidebar: #e5e9f0;
+  --bg-card: #ffffff;
+  --surface: rgba(46, 52, 64, 0.05);
+  --surface-hover: rgba(46, 52, 64, 0.1);
+  --border: rgba(46, 52, 64, 0.14);
+  --text: #3b4252;
+  --text-subtle: rgba(59, 66, 82, 0.72);
+  --text-subtlest: rgba(59, 66, 82, 0.45);
+  --brand: #5e81ac;
+  --traj-user: #5e81ac;
+  --traj-assistant: #6f8f3f;
+  --traj-reasoning: #9d6b8f;
+  --traj-tool-call: #a57706;
+  --traj-tool-result: #4c89a8;
 }
 
 /* —— 皮肤：Solarized（暗=solarized-dark / 亮=solarized-light） —— */

@@ -33,6 +33,7 @@ import type { SessionEvent } from "../kernel/events.js";
 import {
   bounded,
   parseClientEnvelope,
+  salvageRequestId,
   type ClientEnvelope,
   type ProtocolErrorShape,
 } from "./protocol-parse.js";
@@ -161,7 +162,7 @@ export class HostProtocolServer {
       this.options.onProtocolError?.(error instanceof Error ? error : new Error(message));
       this.write({
         type: "response",
-        requestId: "(unparsed)",
+        requestId: salvageRequestId(line),
         ok: false,
         error: { code: "PROTOCOL_MALFORMED", message: bounded(message) },
       });

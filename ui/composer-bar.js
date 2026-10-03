@@ -73,6 +73,12 @@ export function initComposerBar(deps) {
   // notifyTurnStarted/notifyIdle 是主路径，事件监听防状态漏同步）
   window.addEventListener("agent:busy", () => paintQueueBar());
   window.addEventListener("agent:idle", () => paintQueueBar());
+  // settings 缓存就绪/更新后重绘 pill（init 时缓存尚空——首拉在 sidebar 首刷）
+  window.addEventListener("settings:cache-updated", () => {
+    paintPermPill();
+    paintModelPill();
+    paintCtxPill();
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -229,15 +235,28 @@ export function notifyPermissionChanged() {
 // L：模型·供应商 pill（model/switch——写命令持约）
 // ---------------------------------------------------------------------------
 
+/** models[] 条目是 ProviderModelSpec 对象（settings.ts:75——id 必带/alias 可选），
+ *  兼容旧 string 形态；直插模板串会渲染 "[object Object]"（P-020）。 */
+function modelLabel(model) {
+  if (typeof model === "string") return model;
+  return model?.alias ?? model?.id ?? model?.name ?? "";
+}
+
+/** wire 的 model/switch.identity.modelId 要字符串 id——对象形态取 id。 */
+function modelIdOf(model) {
+  if (typeof model === "string") return model;
+  return model?.id ?? model?.name ?? "";
+}
+
 async function openModelMenu() {
   const providers = settingsCache?.providers ?? [];
   const items = [];
   for (const provider of providers) {
     for (const model of provider.models ?? []) {
-      const label = `${provider.name ?? provider.id ?? provider.baseUrl} · ${model}`;
+      const label = `${provider.name ?? provider.id ?? provider.baseUrl} · ${modelLabel(model)}`;
       items.push({
         label,
-        onClick: () => void switchModel(provider, model),
+        onClick: () => void switchModel(provider, modelIdOf(model)),
       });
     }
   }
@@ -274,8 +293,9 @@ function paintModelPill() {
   const first = settingsCache?.providers?.[0];
   const firstModel = first?.models?.[0];
   if (first !== undefined && firstModel !== undefined) {
-    modelPill.textContent = `✦ ${firstModel}`;
-    modelPill.title = `当前缺省：${first.name ?? first.id ?? ""} / ${firstModel}（点击切换本次会话模型）`;
+    const label = modelLabel(firstModel);
+    modelPill.textContent = `✦ ${label}`;
+    modelPill.title = `当前缺省：${first.name ?? first.id ?? ""} / ${label}（点击切换本次会话模型）`;
   }
 }
 

@@ -80,6 +80,18 @@ const OPS = [
   "about-info",
   "check-update",
   "open-path",
+  // T-P3-156 面板域族（Git 管理/终端/辅助对话历史——分发在 settings-panel-ops；
+  // T-P3-157 P-030/P-031 根因：op 注册与载荷键漏进本闭集，整信封 parse 层被拒）
+  "git-status",
+  "git-diff",
+  "git-stage",
+  "git-commit",
+  "git-log",
+  "assistant-log-append",
+  "assistant-log-read",
+  "terminal-create",
+  "terminal-input",
+  "terminal-resize",
 ] as const;
 
 export type SettingsOp = (typeof OPS)[number];
@@ -139,6 +151,11 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     "pluginDescription", "view", "base", "displayName",
     "index", "format", "redact", "domains", // T-P3-153 数据中心族（漏一个即整信封被拒）
     "entries", "log", // T-P3-154 日志中心族（漏一个即整信封被拒）
+    // T-P3-156 面板域族载荷（cwd/limit/file/staged/files/unstage/message/amend/
+    // role/id/data/cols/rows——漏键即整信封被拒且回执 requestId "(unparsed)"，
+    // UI 侧表现为请求永久挂起——T-P3-157 P-030/P-031 实抓根因）
+    "cwd", "limit", "file", "staged", "files", "unstage", "message", "amend",
+    "role", "id", "data", "cols", "rows",
   ]);
   if (unknownKey) throw new Error(`settings 信封${unknownKey}`);
   if (typeof record["requestId"] !== "string" || record["requestId"] === "") {
@@ -317,6 +334,20 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     // T-P3-154 日志中心族载荷（漏拷即字段永远 undefined）
     ...(Array.isArray(record["entries"]) ? { entries: record["entries"] as import("./protocol-settings.js").SettingsCall["entries"] } : {}),
     ...(record["log"] !== undefined && typeof record["log"] === "object" && !Array.isArray(record["log"]) ? { log: record["log"] as import("./protocol-settings.js").SettingsCall["log"] } : {}),
+    // T-P3-156 面板域族载荷（键表与白名单同源——漏拷即 dispatch 侧永远 undefined）
+    ...(typeof record["cwd"] === "string" ? { cwd: record["cwd"] } : {}),
+    ...(typeof record["limit"] === "number" ? { limit: record["limit"] } : {}),
+    ...(typeof record["file"] === "string" ? { file: record["file"] } : {}),
+    ...(typeof record["staged"] === "boolean" ? { staged: record["staged"] } : {}),
+    ...(Array.isArray(record["files"]) ? { files: record["files"] as string[] } : {}),
+    ...(typeof record["unstage"] === "boolean" ? { unstage: record["unstage"] } : {}),
+    ...(typeof record["message"] === "string" ? { message: record["message"] } : {}),
+    ...(typeof record["amend"] === "boolean" ? { amend: record["amend"] } : {}),
+    ...(typeof record["role"] === "string" ? { role: record["role"] } : {}),
+    ...(typeof record["id"] === "string" ? { id: record["id"] } : {}),
+    ...(typeof record["data"] === "string" ? { data: record["data"] } : {}),
+    ...(typeof record["cols"] === "number" ? { cols: record["cols"] } : {}),
+    ...(typeof record["rows"] === "number" ? { rows: record["rows"] } : {}),
   };
 }
 

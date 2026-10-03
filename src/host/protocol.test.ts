@@ -129,6 +129,15 @@ describe("K8/T-P1-115 端间协议层", () => {
     expect(out[3]).toEqual({ type: "hello", version: PROTOCOL_VERSION }); // 连接存活
   });
 
+  it("parse 失败回执回捞 requestId（信封坏但 requestId 可读——UI 在途请求收到拒绝而非永久挂起，T-P3-157 P-031）", async () => {
+    const router = fakeRouter();
+    const { server, out } = serverWith(router);
+    server.handleLine(JSON.stringify({ type: "settings", requestId: "s-77", op: "git-log", bogus: 1 }));
+    server.handleLine("not-json{{{");
+    expect(out[0]).toMatchObject({ type: "response", requestId: "s-77", ok: false, error: { code: "PROTOCOL_MALFORMED" } });
+    expect(out[1]).toMatchObject({ type: "response", requestId: "(unparsed)", ok: false });
+  });
+
   it("超长行拒绝（MAX_LINE_BYTES 复用）", () => {
     const router = fakeRouter();
     const { server, out } = serverWith(router);

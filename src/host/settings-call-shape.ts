@@ -68,4 +68,19 @@ export type SettingsCall = {
   modelId?: string;
   apiKey?: string;
   headers?: Record<string, string>;
+  // T-P3-156 面板域载荷（R/P/T：git 族/终端族/辅助对话历史——cwd 为活动项目根，
+  // host 侧再过项目根白名单边界；字段语义随 dispatch一一对应）
+  cwd?: string;
+  limit?: number; // op=assistant-log-read：历史回放条数上限
+  file?: string; // op=git-diff：目标文件
+  staged?: boolean; // op=git-diff：取已暂存侧差异
+  files?: string[]; // op=git-stage：批量暂存文件
+  unstage?: boolean; // op=git-stage：true = 取消暂存
+  message?: string; // op=git-commit：提交信息
+  amend?: boolean; // op=git-commit：修补上次提交
+  role?: string; // op=assistant-log-append：发言侧（user|assistant，闭集在 domains 校验）
+  id?: string; // op=terminal-input/terminal-resize：终端实例 id
+  data?: string; // op=terminal-input：键入数据
+  cols?: number; // op=terminal-resize：列数
+  rows?: number; // op=terminal-resize：行数
 };

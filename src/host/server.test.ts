@@ -223,13 +223,13 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
     expect(otherResponse.ok).toBe(true);
     expect((otherResponse.result as { events: unknown[] }).events).toEqual([]);
 
-    // 坏 afterSeq（负数）→ 协议校验拒绝（坏行回执 requestId 统一 "(unparsed)"）
+    // 坏 afterSeq（负数）→ 协议校验拒绝（T-P3-157：坏信封回执回捞 requestId——在途请求可关联不再挂起）
     client.raw({ type: "query", requestId: "q-4", sessionId: "s-h1", op: "events", afterSeq: -1 });
     const badResponse = await client.waitFor(
       (e) => e.type === "response" && (e.error as { code?: string } | undefined)?.code === "PROTOCOL_MALFORMED",
       "坏游标回执",
     );
-    expect(badResponse.requestId).toBe("(unparsed)");
+    expect(badResponse.requestId).toBe("q-4");
     client.close();
     await agent.kill();
   });
@@ -486,9 +486,9 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
     expect(dupPrompt.ok).toBe(false);
 
     client.raw({ type: "settings", requestId: "s-bad-op", op: "frobnicate" });
-    // op 闭集校验在 parse 层——坏行回 PROTOCOL_MALFORMED（requestId "(unparsed)"）
+    // op 闭集校验在 parse 层——坏行回 PROTOCOL_MALFORMED（T-P3-157：回捞 requestId）
     const badOp = await client.waitFor(
-      (e) => e.type === "response" && e.requestId === "(unparsed)",
+      (e) => e.type === "response" && e.requestId === "s-bad-op",
       "坏 op 回执",
     );
     expect(badOp.ok).toBe(false);
@@ -688,11 +688,11 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
     expect(searchResult.rows.some((r) => r.sessionId === "s-old1")).toBe(true);
     expect(searchResult.rows.every((r) => r.excerpt.includes("历史会话"))).toBe(true);
     expect(searchResult.rows.every((r) => r.event === undefined)).toBe(true); // 事件整值不出检索面
-    // 坏条件协议层拒绝（parse 层——坏信封回执 requestId 恒 "(unparsed)"）
+    // 坏条件协议层拒绝（parse 层——T-P3-157：坏信封回执回捞 requestId 关联在途请求）
     const sendBad = (requestId: string, call: Record<string, unknown>) => {
       client.raw({ type: "query", requestId, ...call });
       return client.waitFor(
-        (e) => e.type === "response" && e.requestId === "(unparsed)",
+        (e) => e.type === "response" && e.requestId === requestId && e.ok === false,
         `坏信封回执(${requestId})`,
       ) as Promise<Record<string, unknown>>;
     };
@@ -1248,15 +1248,15 @@ process.stdin.on("data", (c) => {
     expect(offView.skills[0]!.name).toBe("review-pr");
     expect(offView.skills[0]!.disabled).toBe(true);
 
-    // 坏名 fail-closed：slug 外形状 parse 层拒绝——坏信封整拒，回执恒
-    // "(unparsed)" PROTOCOL_MALFORMED（T-P3-108 同款纪律）
+    // 坏名 fail-closed：slug 外形状 parse 层拒绝——坏信封整拒 PROTOCOL_MALFORMED
+    // （T-P3-108 同款纪律；T-P3-157：回执回捞 requestId 关联在途请求）
     client.raw({
       type: "settings",
       requestId: "k5",
       op: "skill-save",
       skill: { name: "../escape", description: "x", body: "y" },
     });
-    const unparsed1 = await client.waitFor((e) => e.type === "response" && e.requestId === "(unparsed)", "坏名回执1");
+    const unparsed1 = await client.waitFor((e) => e.type === "response" && e.requestId === "k5", "坏名回执1");
     expect((unparsed1.error as { code: string }).code).toBe("PROTOCOL_MALFORMED");
     client.raw({
       type: "settings",
@@ -1264,7 +1264,7 @@ process.stdin.on("data", (c) => {
       op: "skill-save",
       skill: { name: "Bad Name", description: "x", body: "y" },
     });
-    await client.waitFor((e) => e.type === "response" && e.requestId === "(unparsed)", "坏名回执2");
+    await client.waitFor((e) => e.type === "response" && e.requestId === "k6", "坏名回执2");
     // 坏信封拒后技能面仍可用（k2 的清单已被停用 patch 清空——保存一个好名验证链活）
     const alive = await settingsCall(
       { op: "skill-save", skill: { name: "still-alive", description: "坏信封后", body: "ok" } },
@@ -1332,9 +1332,9 @@ process.stdin.on("data", (c) => {
     expect(v2.rules.exists).toBe(true);
     expect((v2.rules.issues as { line: number }[]).map((i) => i.line)).toEqual([2]);
 
-    // 非法 target → parse 层拒绝（坏信封 (unparsed) 回执）
+    // 非法 target → parse 层拒绝（T-P3-157：坏信封回执回捞 requestId）
     client.raw({ type: "settings", requestId: "n4", op: "instruction-save", target: "../escape", content: "x" });
-    const unparsed = await client.waitFor((e) => e.type === "response" && e.requestId === "(unparsed)", "非法 target 回执");
+    const unparsed = await client.waitFor((e) => e.type === "response" && e.requestId === "n4", "非法 target 回执");
     expect((unparsed.error as { code: string }).code).toBe("PROTOCOL_MALFORMED");
     client.close();
   });
