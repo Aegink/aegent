@@ -911,6 +911,45 @@ code,
   line-height: 1;
 }
 
+/* —— 图标通用工具类（T-P3-157 批 2——icons.js 机制配套；尺寸三档 +
+     语义色三档 + 旋转态。no-anim/reduced-motion 由 theme.css 全局归零覆盖） —— */
+.icon-sm {
+  width: 14px;
+  height: 14px;
+}
+
+.icon-md {
+  width: 16px;
+  height: 16px;
+}
+
+.icon-lg {
+  width: 18px;
+  height: 18px;
+}
+
+.icon-ok {
+  color: var(--success);
+}
+
+.icon-err {
+  color: var(--destructive);
+}
+
+.icon-warn {
+  color: var(--warning);
+}
+
+@keyframes icon-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.icon-spin {
+  animation: icon-spin 1s linear infinite;
+}
+
 .welcome-title {
   margin: 0;
   font-size: var(--text-ui-lg);

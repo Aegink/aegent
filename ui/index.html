@@ -88,14 +88,14 @@
               <!-- 批 C 首屏空状态：流空时展示——欢迎卡 + 能力快捷入口 -->
               <div id="chat-empty" aria-label="欢迎">
                 <div class="welcome-card">
-                  <div class="welcome-mark">⬢</div>
+                  <div class="welcome-mark" data-icon="hexagon" data-icon-size="28"></div>
                   <h2 class="welcome-title">开始与 aegent 对话</h2>
                   <p class="welcome-desc">让模型读写文件、跑命令、派子代理——改动随时在右侧「审查」面板评审，进度看右上角。</p>
                   <div class="welcome-actions">
-                    <button type="button" class="btn btn-primary" data-empty-action="input">✦ 开始输入</button>
-                    <button type="button" class="btn" data-empty-action="settings">⚙ 配置供应商</button>
-                    <button type="button" class="btn" data-empty-action="search">🔍 跨会话搜索</button>
-                    <button type="button" class="btn" data-empty-action="usage">📊 用量统计</button>
+                    <button type="button" class="btn btn-primary" data-empty-action="input"><span data-icon="sparkles" data-icon-size="14"></span> 开始输入</button>
+                    <button type="button" class="btn" data-empty-action="settings"><span data-icon="settings" data-icon-size="14"></span> 配置供应商</button>
+                    <button type="button" class="btn" data-empty-action="search"><span data-icon="search" data-icon-size="14"></span> 跨会话搜索</button>
+                    <button type="button" class="btn" data-empty-action="usage"><span data-icon="usage" data-icon-size="14"></span> 用量统计</button>
                   </div>
                 </div>
               </div>
@@ -104,9 +104,9 @@
             <div id="find-bar" hidden>
               <input id="find-input" type="text" placeholder="会话内搜索…" autocomplete="off" />
               <span id="find-count"></span>
-              <button id="find-prev" type="button" title="上一处（Shift+Enter）">↑</button>
-              <button id="find-next" type="button" title="下一处（Enter）">↓</button>
-              <button id="find-close" type="button" title="关闭（Esc）">✕</button>
+              <button id="find-prev" type="button" title="上一处（Shift+Enter）"><span data-icon="chevronUp" data-icon-size="14"></span></button>
+              <button id="find-next" type="button" title="下一处（Enter）"><span data-icon="chevronDown" data-icon-size="14"></span></button>
+              <button id="find-close" type="button" title="关闭（Esc）"><span data-icon="close" data-icon-size="14"></span></button>
             </div>
             <!-- U9/T-P3-108 小地图：消息类型着色条 + 点击跳轮（纯 DOM） -->
             <div id="minimap" aria-label="会话结构导航"></div>
@@ -123,24 +123,24 @@
                 <div class="composer-actions">
                   <div class="composer-tabs" id="composer-tabs">
                 <input id="attach-file-input" type="file" multiple hidden />
-                <button id="attach-add-btn" class="composer-tab" type="button" title="添加附件（任何文件；图片需当前模型可识别）">📎 附件</button>
-                <button id="perm-pill" class="composer-tab" type="button" title="权限档（当前会话即时生效——config/refresh）">🔒 权限</button>
-                <button id="ctx-pill" class="composer-tab" type="button" title="上下文用量（点击看明细）">☰ 0%</button>
-                <button id="model-pill" class="composer-tab" type="button" title="切换供应商与模型（model/switch）">✦ 模型</button>
+                <button id="attach-add-btn" class="composer-tab" type="button" title="添加附件（任何文件；图片需当前模型可识别）"><span data-icon="paperclip" data-icon-size="14"></span> 附件</button>
+                <button id="perm-pill" class="composer-tab" type="button" title="权限档（当前会话即时生效——config/refresh）"><span data-icon="lock" data-icon-size="14"></span> 权限</button>
+                <button id="ctx-pill" class="composer-tab" type="button" title="上下文用量（点击看明细）"><span data-icon="gauge" data-icon-size="14"></span> 0%</button>
+                <button id="model-pill" class="composer-tab" type="button" title="切换供应商与模型（model/switch）"><span data-icon="sparkles" data-icon-size="14"></span> 模型</button>
               </div>
                   <div class="composer-actions-right">
                   <div id="voice-status" hidden aria-live="polite">
-                    <span class="voice-busy">⏳ 转写中…</span>
+                    <span class="voice-busy"><span data-icon="loader" data-icon-size="14" data-icon-class="icon-spin"></span> 转写中…</span>
                     <span class="voice-live">
                       <span class="voice-dot" aria-hidden="true"></span>
                       <span id="voice-timer">00:00</span>
                       <span id="voice-meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
-                      <button id="voice-cancel" type="button" title="取消录音（Esc）">✕</button>
+                      <button id="voice-cancel" type="button" title="取消录音（Esc）"><span data-icon="close" data-icon-size="14"></span></button>
                     </span>
                   </div>
-                  <button id="chat-export-btn" type="button" title="导出当前会话（md/html/json，默认脱敏密钥）">⬇</button>
-                  <button id="mic-btn" type="button" title="语音输入【实验性】（点击开始/再点结束；Esc 取消）">🎤</button>
-                  <button id="polish-btn" type="button" title="一键润色（辅助模型把草稿改写得更清晰）">✨</button>
+                  <button id="chat-export-btn" type="button" title="导出当前会话（md/html/json，默认脱敏密钥）"><span data-icon="download" data-icon-size="14"></span></button>
+                  <button id="mic-btn" type="button" title="语音输入【实验性】（点击开始/再点结束；Esc 取消）"><span data-icon="mic" data-icon-size="14"></span></button>
+                  <button id="polish-btn" type="button" title="一键润色（辅助模型把草稿改写得更清晰）"><span data-icon="sparkles" data-icon-size="14"></span></button>
                   <span id="polish-undo" hidden><button type="button" id="polish-undo-btn">撤销润色</button></span>
                   <span class="composer-hint">Shift+Enter 换行</span>
                   <button id="send-btn" type="button">发送</button>
@@ -168,7 +168,7 @@
     <div id="toast-area" aria-live="polite"></div>
     <div id="recovery-banner" hidden>
       <span id="recovery-text"></span>
-      <button id="recovery-retry" type="button">↻ 重试上一条</button>
+      <button id="recovery-retry" type="button"><span data-icon="retry" data-icon-size="14"></span> 重试上一条</button>
       <button id="recovery-dismiss" type="button">知道了</button>
     </div>
     <div id="update-banner" hidden>
