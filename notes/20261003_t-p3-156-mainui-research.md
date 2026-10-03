@@ -42,3 +42,13 @@
 - 收尾验证：全量 2068 测试绿 / 架构 0 error / tsc 0 / 对照清单第二部分新增「主界面重构」行（待用户打勾）/handoff_2026-10-03_19-00.md 就位。
 - V 轻隔离实测注意：任务派发子会话 id 含 "::"（Windows 文件名非法）——隔离目录名已净化（replaceAll ":","_"）。
 - 遗留（P2 记档）：N 的 host 模型 capabilities 元数据面；V 的 per-child git worktree；node-pty portable 61MB 瘦身；桌面壳真机走查（终端 PTY 交互/浏览器 WebView2 bounds 跟随/焦点链）。
+
+## 反馈轮（2026-10-03 夜——用户截图 6 条反馈全修，d13acf1 已推）
+
+1. 引导窗口移除（onboarding HTML+maybeOnboard 逻辑+断言重定——app.js 的 op:get/update 断言随行改 sidebar.js/settingsView）。
+2. 文件树返回空白**根因**：showFileTree 把 sb-projects/sb-history hidden=true，hideFileTree 只恢复了 filesBox——漏恢复两分段（refreshSidebar 的 paintProjects 只渲染内容不管容器 hidden）。
+3. 四 pill 移入 composer-box 内底部行（左 tabs/右动作 space-between——zcode 形态）。
+4. 对话流 zcode 化：TOOL_PRESENTATION 映射（动作词主色+fileIcon 文件类型图标+目录灰+write/edit 的 +N/−N 徽标+bash mono `$ cmd`）/turn 边界与 surface 噪声静默（错误轮保留重试行）/思考行 🧠+live 时长回填（renderEventEnvelope 游标结算）/结果摘要 ✓ N 行/assistant 裸排版+工具卡单行无边框 hover 显底/消息间距。
+5. 同类错误排查：.pane-body>* flex:1 拉伸头行是共性根因——改 none+白名单内容体 flex:1；全文件扫字面换行未闭合字符串（node 字节级替换——**bash 双引号会吃 \n，用 String.fromCharCode(92) 构造**）。
+6. 便携版重打包 212.4MB（node-pty 61.4MB 全平台 prebuilds——瘦身仍记 P2）+portable pty spawn 实测过。
+- 遗留给真机：工具卡视觉（动作词/文件图标/行数徽标）需真模型轮次验证（echo mock 无工具调用）。
