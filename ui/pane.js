@@ -232,6 +232,7 @@ function addMenuButton() {
     { type: "browser", label: "🌐 浏览器" },
     { type: "assistant", label: "💬 辅助对话" },
     { type: "git", label: "⑂ Git 管理" },
+    { type: "tree", label: "🌳 会话树" },
   ];
   const btn = document.createElement("button");
   btn.type = "button";

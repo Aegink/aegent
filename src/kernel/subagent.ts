@@ -1,3 +1,5 @@
+import { mkdirSync } from "node:fs";
+import path from "node:path";
 /**
  * 子代理运行面（H1/H4，T-P1-42）——"内核起子循环"的装配层封装。
  *
@@ -341,10 +343,24 @@ export function createSubagentRunner(deps: SubagentRunnerDeps): {
     // U23：预设工具集 = C25 activation 的 session 层白名单（声明面收窄——
     // H3/H5 降级面之上的预设声明）；预设身份段 = extraPrompt（系统提示追加）。
     const canDelegateFurther = childDepth < maxDepth;
+    // T-P3-156 V（轻隔离——裁决 5b）：子代理写路径约束到专属子目录
+    // `.aegent/isolated/<childId>/`——PathGuard 写边界=子目录，子代理的全部
+    // 写落隔离区（"子代理/分支/主会话不相互写同一文件"的核心诉求）；
+    // 读不受限（主工作区文件可读）；产出落回主工作区由父级决定（结果经
+    // 后台委托报告回传后父 AI 复制——写权在父）。per-child git worktree
+    // 记 P2（报告 §4-V 备选 a）。
+    // 目录名净化：会话 id 可含 "::"（任务派发命名）——Windows 文件名禁
+    // 冒号，隔离目录用替换形态（回看语义不受影响，映射稳定）。
+    const isolatedDirName = childSessionId.replaceAll(":", "_");
+    const isolatedRoot = path.join(deps.workspaceRoot, ".aegent", "isolated", isolatedDirName);
+    mkdirSync(isolatedRoot, { recursive: true });
+    const isolationPrompt = [
+      `【工作区隔离】你的写操作被约束在隔离区 ${isolatedRoot}（相对主工作区的 .aegent/isolated/${childSessionId}/）——不要尝试写隔离区外的路径（会被拒绝）。读主工作区任意文件不受限。产出文件全部放隔离区内，父会话会在结果回传后决定是否落回主工作区。`,
+    ];
     const subAssembly: ChildAssembly = createChildAssembly({
       sessionId: childSessionId,
       store: deps.store,
-      workspaceRoot: deps.workspaceRoot,
+      workspaceRoot: isolatedRoot,
       contextWindow: deps.contextWindow,
       approvalTimeoutMs: deps.approvalTimeoutMs,
       rules: deriveSubagentRules(deps.parentRules, {
@@ -355,7 +371,9 @@ export function createSubagentRunner(deps: SubagentRunnerDeps): {
       ...(preset?.tools !== undefined && preset.tools.length > 0
         ? { activation: { session: { enabled: preset.tools } } }
         : {}),
-      ...(preset?.prompt !== undefined ? { extraPrompt: preset.prompt } : {}),
+      ...(preset?.prompt !== undefined || isolationPrompt.length > 0
+        ? { extraPrompt: [...isolationPrompt, ...(preset?.prompt !== undefined ? [preset.prompt] : [])].join("\n\n") }
+        : {}),
       ...(deps.logger ? { logger: deps.logger } : {}),
     });
 

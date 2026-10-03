@@ -5531,3 +5531,31 @@ button.transfer-row:hover {
   border-radius: var(--radius-sm);
   padding: 0 4px;
 }
+
+/* J：会话树面板 */
+.tree-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  border-radius: var(--radius-md);
+  color: var(--text-subtle);
+  cursor: pointer;
+  padding-right: 8px;
+}
+
+.tree-node:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.tree-node.current {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.tree-branch {
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtle);
+  padding: 2px 0;
+}

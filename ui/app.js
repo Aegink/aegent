@@ -71,6 +71,7 @@ import "./pane-browser.js";
 import "./pane-git.js";
 import "./pane-review.js";
 import "./pane-assistant.js";
+import "./pane-tree.js";
 import { openBrowserPane } from "./pane-browser.js";
 
 installGlobalErrorReporters(); // T-P3-154 A3：全局错误捕获（模块加载即挂——视图崩溃也捕）
@@ -936,8 +937,52 @@ function renderAttachmentsPreview() {
     const chip = document.createElement("span");
     chip.className = "attachment-chip";
     const isAudio = AUDIO_TYPES.has(a.mediaType);
+    const isText = a.mediaType === "text/plain";
+    const icon = isAudio ? "🎵" : isText ? "📝" : "🖼";
     const label = document.createElement("span");
-    label.textContent = `${isAudio ? "🎵" : "🖼"} ${a.name ?? (isAudio ? "audio" : "image")}（${Math.ceil((a.data.length * 3) / 4 / 1024)}KB）`;
+    if (!isAudio && !isText) {
+      // N：图片能力提示（降级版——host 模型元数据无 image capabilities 面，
+      // P2 接线后此处换 isImageCapable 判定+警示标）
+      label.title = "图片需当前模型可识别（多模态）——若发送后报不支持图片错误，请切换模型或改用文件路径引用";
+    }
+    label.textContent = `${icon} ${a.name ?? (isAudio ? "audio" : isText ? "pasted-text" : "image")}（${Math.ceil((a.data.length * 3) / 4 / 1024)}KB）`;
+    // T-P3-156 M：文本 chip 点击查看原文（解码 base64 模态呈现——粘贴
+    // 大文本转附件后原文不丢可达）
+    if (isText) {
+      label.style.cursor = "pointer";
+      label.title = "点击查看原文";
+      label.addEventListener("click", () => {
+        void (async () => {
+          const text = atob(a.data ?? "");
+          const pre = document.createElement("pre");
+          pre.className = "card-args";
+          pre.style.maxHeight = "50vh";
+          pre.style.overflow = "auto";
+          pre.textContent = text;
+          const { openDialog } = await import("./views/settings/core.js");
+          openDialog({
+            title: `附件原文：${a.name ?? "pasted-text"}`,
+            body: pre,
+            width: "lg",
+            actions: [{ label: "恢复为文本", className: "btn btn-primary", onClick: () => true }],
+          }).then((picked) => {
+            if (picked === true) {
+              // 恢复：文本回输入框+chip 移除（M 完整语义——转附件可逆）
+              const existing = input.value.trim();
+              input.value = existing === "" ? text : `${text}
+
+${existing}`;
+              input.dispatchEvent(new Event("input"));
+              const idx = pendingAttachments.indexOf(a);
+              if (idx >= 0) {
+                pendingAttachments.splice(idx, 1);
+                renderAttachmentsPreview();
+              }
+            }
+          });
+        })();
+      });
+    }
     const del = document.createElement("button");
     del.type = "button";
     del.textContent = "×";
@@ -1928,6 +1973,19 @@ const KEYMAP_HANDLERS = {
     if (!findBar.hidden) {
       findBar.hidden = true;
       clearHits();
+      return;
+    }
+    // T-P3-156 X：Esc 归还焦点链——搜索条未开时收起展开的终端/面板（输入
+    // 框聚焦时不抢——composer 的 Esc 留给 IME/撤润色既有语义）
+    const inComposer = document.activeElement === input;
+    if (!inComposer) {
+      const drawer = document.getElementById("terminal-drawer");
+      const paneRoot = document.getElementById("pane-root");
+      if (drawer !== null && !drawer.hidden) {
+        void import("./terminal.js").then((m) => m.toggleTerminal(false));
+        return;
+      }
+      if (paneRoot !== null && !paneRoot.hidden) togglePane(false);
     }
   },
   history: () => openHistory(),
@@ -1939,6 +1997,7 @@ const KEYMAP_HANDLERS = {
   "goto-plugins": () => go("plugins"),
   // T-P3-156：新布局动作（切换面板开合 / 新建任务流程 / 定位项目分段）
   pane: () => togglePane(),
+  terminal: () => void import("./terminal.js").then((m) => m.toggleTerminal()),
   "new-task": () => void import("./sidebar.js").then((m) => m.newTaskFlow()),
   "focus-input": () => {
     input.focus();
@@ -2067,6 +2126,7 @@ function applyNavKeyHints() {
     ["sb-search", "search"],
     ["sb-new-task", "new-task"],
     ["pane-toggle-btn", "pane"],
+    ["terminal-btn", "terminal"],
     ["notify-top-btn", "notify"],
     ["settings-btn", "settings"],
   ]) {

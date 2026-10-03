@@ -45,6 +45,7 @@ export const ACTIONS = {
   settings: { label: "设置面板开合", group: "视图与面板", default: "Ctrl+," },
   work: { label: "工作面板开合（深链）", group: "视图与面板", default: "Ctrl+J" },
   pane: { label: "切换面板开合", group: "视图与面板", default: "Ctrl+Alt+P" },
+  terminal: { label: "终端开合", group: "视图与面板", default: "Ctrl+`" },
   find: { label: "会话内搜索", group: "视图与面板", default: "Ctrl+F" },
   "close-find": { label: "关闭搜索条", group: "视图与面板", default: "Escape" },
   // 输入与流
