@@ -76,6 +76,10 @@ const OPS = [
   "log-query",
   "log-open-dir",
   "log-export",
+  // T-P3-155 关于中心族
+  "about-info",
+  "check-update",
+  "open-path",
 ] as const;
 
 export type SettingsOp = (typeof OPS)[number];

@@ -44,6 +44,7 @@ export interface TransferDeps {
   readonly settingsPath: string;
   readonly sessionDb?: SqliteEventStorage;
   readonly credentials: CredentialStore;
+  readonly workspaceRoot?: string;
   getSettings(): Promise<SettingsShape>;
 }
 

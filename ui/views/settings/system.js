@@ -16,6 +16,7 @@ import * as instructions from "./instructions.js";
 import * as shortcuts from "./shortcuts.js";
 import * as transfer from "./transfer.js";
 import * as logging from "./logging.js";
+import * as about from "./about.js";
 import { shortcutCaptureKeydown } from "./shortcuts.js";
 import { settingsCache } from "../../state.js";
 
@@ -23,6 +24,7 @@ const instructionsSection = instructions.SECTION_HTML;
 const shortcutsSection = shortcuts.SECTION_HTML;
 const transferSection = transfer.SECTION_HTML;
 const loggingSection = logging.SECTION_HTML;
+const aboutSection = about.SECTION_HTML;
 
 export const SECTIONS_HTML = `
 <section data-section="projects">
@@ -33,17 +35,7 @@ export const SECTIONS_HTML = `
   <p class="hint">项目域已升级为独立页面（工作区/任务/文件树/添加三模式）——点上方按钮直达，或侧栏「项目」。</p>
 </section>
 ${instructionsSection}${shortcutsSection}${transferSection}${loggingSection}
-<section data-section="about">
-  <div class="section-head"><h2 class="section-title">关于</h2></div>
-  <div class="row-list">
-    <div class="row">
-      <div class="row-copy">
-        <div class="row-title">aegent <span class="badge">v0.1.0</span></div>
-        <div class="row-desc">本地优先的 agent 工作台（事件即真相；配置即本页）</div>
-      </div>
-    </div>
-  </div>
-</section>
+${aboutSection}
 `;
 
 // ---------------------------------------------------------------------------
@@ -79,11 +71,14 @@ export function bind() {
   transfer.bind();
   // T-P3-154：日志中心域（查看器/级别热更/诊断包在 logging.js）
   logging.bind();
+  // T-P3-155：关于中心域（版本/环境路径/更新检查/入口在 about.js）
+  about.bind();
 }
 
 export function fill() {
   shortcuts.render();
   logging.fill(); // T-P3-154：日志中心表单回填（rawDir/级别/保留天数）
+  about.fill();
 }
 
 /** 指令中心打开时拉一次（壳 open 委派——逻辑在 instructions 域文件）。 */

@@ -155,6 +155,7 @@ export class FileSettingsGateway implements SettingsGateway {
       settingsPath: this.settingsPath,
       ...(this.sessionDb !== undefined ? { sessionDb: this.sessionDb } : {}),
       credentials: this.credentials,
+      ...(this.workspaceRoot !== undefined ? { workspaceRoot: this.workspaceRoot } : {}),
       getSettings: () => this.get(),
     };
   }

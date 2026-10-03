@@ -17,6 +17,7 @@ import { cleanExpiredLogs, createLogger, LOG_LEVELS, type LogLevel, type Logger 
 import { LogLineCache, queryLogs, type LogQueryFilter } from "./log-query.js";
 import type { SettingsCall } from "./protocol-settings.js";
 import type { SettingsGateway } from "./settings-gateway-types.js";
+import { tryAboutSettingsOp } from "./about-ops.js";
 
 /** 日志目录缺省位（B4——<dataDir>/logs，settings.logging.logDir 可改）。 */
 export function defaultLogDir(home: string = homedir()): string {
@@ -63,6 +64,11 @@ export function channelLogger(
   });
   channels.set(channel, { logger, logDir, retentionDays });
   return logger;
+}
+
+/** 当前日志目录（host 通道池投影——about/诊断面共用）。 */
+export function currentLogDir(): string {
+  return channels.get("host")?.logDir ?? defaultLogDir();
 }
 
 /** settings.logging 变更热更（gateway.update 落盘后调——E1 级别/目录/保留期）。 */
@@ -230,7 +236,7 @@ export function tryLoggingSettingsOp(gateway: SettingsGateway, call: SettingsCal
     call.op !== "log-open-dir" &&
     call.op !== "log-export"
   ) {
-    return undefined;
+    return tryAboutSettingsOp(gateway, call); // T-P3-155：非日志族 → 关于中心族兜底
   }
   const settingsSync = (): { logDir: string; level: LogLevel; retentionDays: number } => {
     void gateway;
@@ -253,7 +259,7 @@ export function tryLoggingSettingsOp(gateway: SettingsGateway, call: SettingsCal
     case "log-export":
       return logExportOp(state.logDir, { retentionDays: state.retentionDays, level: state.level });
     default:
-      return undefined;
+      return tryAboutSettingsOp(gateway, call); // T-P3-155 关于中心族 fallback（链尾）
   }
 }
 

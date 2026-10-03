@@ -109,6 +109,10 @@ cpSync(path.join(repoRoot, "src/session/schema.sql"), path.join(outDir, "schema.
 // 缺失"——走查实测发现）。
 cpSync(path.join(repoRoot, "src/sandbox/dpapi/dpapi.ps1"), path.join(outDir, "dpapi.ps1"));
 
+// T-P3-155 A1：构建信息随包（bundle 后 import.meta.url 指向 portable 根——
+// readBuildInfo 的查找链第一位即此处）
+cpSync(path.join(repoRoot, "dist/build-info.json"), path.join(outDir, "build-info.json"));
+
 // T-P3-140 批次 A：沙箱 helper 进发行链——受限令牌后端的强制面随包分发
 //（bundle 后 import.meta.url 指向 portable 根的 host/agent-child .cjs，
 // resolveSandboxHelperPath 的"伴随位"解析即命中此处）。缺席不阻断打包

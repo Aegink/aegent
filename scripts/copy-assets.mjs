@@ -6,7 +6,8 @@
  * md）在此追加清单。
  */
 
-import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { execSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -54,4 +55,23 @@ for (const { src, out, label, file } of assets) {
     (f) => typeof f === "string" && !f.endsWith(path.sep),
   );
   console.log(`copy-assets: ${label} ${String(files.length)} 项 → dist`);
+}
+
+// T-P3-155 A1：构建信息注入（qwen generate-git-commit-info 模式）——版本
+// 自 package.json 单源 + git short SHA + 构建时间；host about-info op 读取。
+{
+  const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
+  let commit = "unknown";
+  try {
+    commit = execSync("git rev-parse --short HEAD", { cwd: root, encoding: "utf8" }).trim();
+  } catch {
+    // 非 git 环境（打包机）——unknown 占位
+  }
+  const buildInfo = {
+    version: pkg.version,
+    gitCommit: commit,
+    buildTime: new Date().toISOString(),
+  };
+  writeFileSync(path.join(root, "dist", "build-info.json"), JSON.stringify(buildInfo, null, 2), "utf8");
+  console.log(`copy-assets: build-info.json（v${buildInfo.version} @ ${commit}）→ dist`);
 }

@@ -62,6 +62,10 @@ const DOMAIN_OPS = new Set([
   "log-query",
   "log-open-dir",
   "log-export",
+  // T-P3-155 关于中心族
+  "about-info",
+  "check-update",
+  "open-path",
 ]);
 
 export function validateDomainSettingsCall(op: string, record: Record<string, unknown>): void {
@@ -282,5 +286,9 @@ export function validateDomainSettingsCall(op: string, record: Record<string, un
   if (op === "log-query" &&
       (record["log"] === undefined || record["log"] === null || typeof record["log"] !== "object" || Array.isArray(record["log"]))) {
     throw new Error("settings op=log-query 需要 log 对象（查询载荷）");
+  }
+  // T-P3-155：open-path 需要 path 非空（about-info/check-update 无载荷）
+  if (op === "open-path" && (typeof record["path"] !== "string" || record["path"].trim() === "")) {
+    throw new Error("settings op=open-path 需要 path 非空字符串");
   }
 }
