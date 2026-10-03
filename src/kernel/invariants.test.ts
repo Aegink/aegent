@@ -151,7 +151,7 @@ describe("装配接线（T-P1-30：显式启用检查既有流，缺省零行为
     const { store, root } = makeStore();
     try {
       store.append("s-inv", goodStream());
-      const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+      const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), setLevel: () => undefined, getLevel: () => "info" as const };
       expect(() =>
         createChildAssembly({
           sessionId: "s-inv",
@@ -172,7 +172,7 @@ describe("装配接线（T-P1-30：显式启用检查既有流，缺省零行为
     const { store, root } = makeStore();
     try {
       store.append("s-inv2", goodStream());
-      const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+      const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), setLevel: () => undefined, getLevel: () => "info" as const };
       expect(() =>
         createChildAssembly({
           sessionId: "s-inv2",

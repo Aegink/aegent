@@ -46,6 +46,7 @@ const DOMAIN_OPS = new Set([
   "instruction-append",
   "instruction-test-rule",
   "enhancement-test",
+  "mcp-check",
   // T-P3-153 数据中心族（配置包/备份/会话导出/体检）
   "import",
   "export-settings",
@@ -56,6 +57,11 @@ const DOMAIN_OPS = new Set([
   "session-export",
   "session-import",
   "settings-checkup",
+  // T-P3-154 日志中心族
+  "log-report",
+  "log-query",
+  "log-open-dir",
+  "log-export",
 ]);
 
 export function validateDomainSettingsCall(op: string, record: Record<string, unknown>): void {
@@ -228,5 +234,53 @@ export function validateDomainSettingsCall(op: string, record: Record<string, un
     if (typeof record["content"] !== "string" || record["content"].trim() === "") {
       throw new Error("settings op=session-import 需要 content（会话 JSON 包文本）非空字符串");
     }
+  }
+
+  // U17/T-P3-119：mcp-check（自 protocol-settings 下放——域族校验归域文件）
+  if (op === "mcp-check") {
+    if (typeof record["name"] !== "string" || record["name"] === "" || record["name"].includes("__")) {
+      throw new Error('settings op=mcp-check 需要 name（非空且不含 "__"）');
+    }
+    if (typeof record["command"] !== "string" || record["command"] === "") {
+      throw new Error("settings op=mcp-check 需要 command 非空字符串");
+    }
+    if (
+      record["args"] !== undefined &&
+      (!Array.isArray(record["args"]) || record["args"].some((a) => typeof a !== "string"))
+    ) {
+      throw new Error("settings op=mcp-check 的 args 须为字符串数组");
+    }
+    // T-P3-143：env/timeoutMs（行级测试带条目级覆盖——形状同 mcp[] 校验）
+    if (
+      record["env"] !== undefined &&
+      (record["env"] === null || typeof record["env"] !== "object" || Array.isArray(record["env"]) ||
+        Object.values(record["env"] as Record<string, unknown>).some((v) => typeof v !== "string"))
+    ) {
+      throw new Error("settings op=mcp-check 的 env 须为对象（键值均为字符串）");
+    }
+    if (
+      record["timeoutMs"] !== undefined &&
+      (typeof record["timeoutMs"] !== "number" || !Number.isFinite(record["timeoutMs"]) || record["timeoutMs"] <= 0)
+    ) {
+      throw new Error("settings op=mcp-check 的 timeoutMs 须为正数");
+    }
+  }
+  // T-P3-154 日志中心族（log-report 批上限/log-query 载荷闭集）
+  if (op === "log-report") {
+    if (!Array.isArray(record["entries"]) || (record["entries"] as unknown[]).length === 0) {
+      throw new Error("settings op=log-report 需要 entries 非空数组");
+    }
+    if ((record["entries"] as unknown[]).length > 50) {
+      throw new Error("settings op=log-report 的 entries 上限 50 条（UI 侧节流批量）");
+    }
+    for (const item of record["entries"] as unknown[]) {
+      if (item === null || typeof item !== "object" || Array.isArray(item)) {
+        throw new Error("settings op=log-report 的 entries[] 须为对象");
+      }
+    }
+  }
+  if (op === "log-query" &&
+      (record["log"] === undefined || record["log"] === null || typeof record["log"] !== "object" || Array.isArray(record["log"]))) {
+    throw new Error("settings op=log-query 需要 log 对象（查询载荷）");
   }
 }

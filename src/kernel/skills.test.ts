@@ -284,6 +284,8 @@ describe("装配接线：contextLayer 首落 system/message 带技能清单", ()
         info: () => {},
         warn: (m: string) => warnings.push(m),
         error: () => {},
+        setLevel: () => undefined,
+        getLevel: () => "info",
       },
     });
     // 手动跑 modelRequest 链（contextLayer 是链上最后一层）——系统提示

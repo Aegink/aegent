@@ -4,11 +4,11 @@
  * sk-[A-Za-z0-9]{20,} 证伪（验收③）。
  */
 
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import path from "node:path";
+import path, { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { USER_CONTENT_FIELDS, createLogger, redactSecrets } from "./logger.js";
+import { USER_CONTENT_FIELDS, cleanExpiredLogs, createLogger, redactSecrets } from "./logger.js";
 
 const tmpDirs: string[] = [];
 afterEach(() => {
@@ -113,5 +113,50 @@ describe("D9 · 落盘形状", () => {
     expect(second.ts).toBe("2026-09-25T08:00:00.000Z");
     expect(second.level).toBe("warn");
     expect(second.data).toEqual({ code: "E1" });
+  });
+});
+// T-P3-154 日志中心：通道/分类/级别过滤/保留清理
+// ---------------------------------------------------------------------------
+
+describe("T-P3-154 · 通道与分类", () => {
+  it("channel=host 落 host-日期.log 且行带 channel/category；缺省 aegent 行不带字段", () => {
+    const dir = tempLogDir();
+    const host = createLogger({ logDir: dir, channel: "host", category: "gateway", clock: () => new Date("2026-10-03T02:00:00Z") });
+    host.warn("镜像失败", { code: "E1" });
+    const agent = createLogger({ logDir: dir, clock: () => new Date("2026-10-03T02:00:00Z") });
+    agent.info("内核行");
+    expect(readdirSync(dir).sort()).toEqual(["aegent-20261003.log", "host-20261003.log"]); // 缺省通道名 aegent（零破坏）
+    const hostLine = JSON.parse(readFileSync(join(dir, "host-20261003.log"), "utf8"));
+    expect(hostLine.channel).toBe("host");
+    expect(hostLine.category).toBe("gateway");
+    const agentLine = JSON.parse(readFileSync(join(dir, "aegent-20261003.log"), "utf8")); // 缺省通道文件名 aegent-*
+    expect(agentLine.channel).toBeUndefined(); // 缺省通道不落字段——旧行兼容
+  });
+  it("级别过滤：info 起步时 debug 行丢弃；setLevel 热更生效", () => {
+    const sinkLines: string[] = [];
+    const logger = createLogger({
+      sink: { write: (l) => sinkLines.push(l) },
+      level: "info",
+      clock: () => new Date("2026-10-03T02:00:00Z"),
+    });
+    logger.debug("丢弃");
+    logger.info("保留");
+    expect(sinkLines).toHaveLength(1);
+    logger.setLevel("debug");
+    logger.debug("现在保留");
+    expect(sinkLines).toHaveLength(2);
+    expect(logger.getLevel()).toBe("debug");
+  });
+  it("保留清理：过期按日文件被删（retentionDays）且 0=永久", () => {
+    const dir = tempLogDir();
+    writeFileSync(join(dir, "host-20260901.log"), "x\n", "utf8");
+    writeFileSync(join(dir, "ui-20260902.log"), "x\n", "utf8");
+    writeFileSync(join(dir, "raw-20260901.jsonl"), "x\n", "utf8");
+    writeFileSync(join(dir, "host-20261001.log"), "x\n", "utf8"); // 保留期内
+    writeFileSync(join(dir, "unrelated.txt"), "x", "utf8"); // 非按日形状——不碰
+    const removed = cleanExpiredLogs(dir, 14, () => new Date("2026-10-03T02:00:00Z"));
+    expect(removed).toBe(3);
+    expect(readdirSync(dir).sort()).toEqual(["host-20261001.log", "unrelated.txt"]);
+    expect(cleanExpiredLogs(dir, 0, () => new Date("2026-10-03T02:00:00Z"))).toBe(0); // 永久=跳过
   });
 });

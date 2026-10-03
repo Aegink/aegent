@@ -83,6 +83,7 @@ import {
 import { enhancementTestOp } from "./settings-provider-ops.js";
 import { applyImportedSettings, applyPartialImport, backupSettingsFile, resolveImportedPackage, summarizePackage } from "../session/settings-transfer.js";
 import { deleteSessionOp } from "./session-export-op.js";
+import { reconfigureLogging, channelLogger, defaultLogDir } from "./logging-ops.js";
 import { subagentCatalog, type SubagentDefinition } from "../session/subagents-config.js";
 import type { McpToolInfo } from "../mcp/client.js";
 
@@ -110,6 +111,8 @@ export class FileSettingsGateway implements SettingsGateway {
   async update(patch: Record<string, unknown>): Promise<SettingsShape> {
     const merged = applySettingsPatch(await this.get(), patch);
     await saveSettings(this.settingsPath, merged);
+    // T-P3-154 E1：logging 段变更热更日志中心（级别/目录/保留期）
+    if (patch["logging"] !== undefined) reconfigureLogging(merged.logging, this.homeDir);
     return merged;
   }
 

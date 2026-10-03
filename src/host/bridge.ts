@@ -311,7 +311,7 @@ export class HostBridge implements SessionRouter {
             }),
           };
         }
-        const transferOp = tryTransferSettingsOp(gateway, call, { store: this.options.store, sessionId: this.options.host.sessionId, ...(this.options.sessionsLibrary !== undefined ? { sessionsLibrary: this.options.sessionsLibrary } : {}) }); if (transferOp !== undefined) return transferOp; // T-P3-153 数据中心族一行收敛（配置包/备份/会话导出/体检/会话删除——settings-transfer-ops；session-export 拦截在域文件——store 在 bridge 手里）
+        const transferOp = tryTransferSettingsOp(gateway, call, { store: this.options.store, sessionId: this.options.host.sessionId, ...(this.options.sessionsLibrary !== undefined ? { sessionsLibrary: this.options.sessionsLibrary } : {}) }); if (transferOp !== undefined) return transferOp; // T-P3-153/154：数据中心族+日志中心族一行收敛（logging fallback 在域文件内） // T-P3-153 数据中心族一行收敛（配置包/备份/会话导出/体检/会话删除——settings-transfer-ops；session-export 拦截在域文件——store 在 bridge 手里）
         if (call.op === "skills-list") return gateway.skillsList();
         if (call.op === "skill-save") return gateway.skillSave(call.skill!);
         // T-P3-144：技能导入扫描/执行 + 删除/Reveal（护栏与复制在域文件）

@@ -19,7 +19,7 @@ const MAX_BYTES = 50 * 1024 * 1024;
 const SKIP_DIRS = new Set([".git", "node_modules", "dist", "__pycache__"]);
 const SKIP_FILE_RE = /^(?:\.env|.*\.pem|.*\.key|.*\.npmrc|Thumbs\.db|\.DS_Store)$/;
 
-interface PackedFile {
+export interface PackedFile {
   readonly name: string;
   readonly data: Buffer;
 }

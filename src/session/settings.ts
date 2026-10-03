@@ -25,6 +25,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { locateJsonError } from "../models/config.js";
+import { LOG_LEVELS } from "../kernel/logger.js";
 import { SANDBOX_MODES, type SandboxMode } from "../sandbox/backend.js";
 import { isValidSubagentSlug, type SubagentDefinition } from "./subagents-config.js";
 
@@ -322,7 +323,16 @@ export interface SettingsShape {
     outputLanguage?: "auto" | "zh-CN" | "en";
   };
   /** 日志（U14/T-P3-132 #28 补落——E14 原始分片日志目录的持久化位；空 = 缺省不写）。 */
-  logging?: { rawLogDir?: string };
+  /**
+   * 日志中心（T-P3-154——rawLogDir 旧键保留；level/retentionDays/logDir 为
+   * 日志中心三键：级别热更缺省 info、保留天数 0=永久、目录缺省 <dataDir>/logs）。
+   */
+  logging?: {
+    rawLogDir?: string;
+    level?: import("../kernel/logger.js").LogLevel;
+    retentionDays?: number;
+    logDir?: string;
+  };
   /** 项目档（U11——多项目列表；activeProject 生效语义 = 新会话启动）。 */
   projects?: ProjectEntry[];
   activeProject?: string;
@@ -864,11 +874,24 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
     if (logging === null || typeof logging !== "object") {
       throw new SettingsError("logging 须为对象");
     }
+    const logLevel = (logging as Record<string, unknown>)["level"];
+    // T-P3-154：日志中心三键——level（热更级别，缺省 info 常驻）/retentionDays
+    // （保留天数，0=永久）/logDir（缺省 <dataDir>/logs）；rawLogDir 旧键兼容。
+    if (logLevel !== undefined && !(LOG_LEVELS as readonly string[]).includes(logLevel as string)) {
+      throw new SettingsError(`logging.level 非法：${String(logLevel)}（合法：${LOG_LEVELS.join("|")}）`);
+    }
+    const retentionDays = (logging as Record<string, unknown>)["retentionDays"];
+    if (retentionDays !== undefined && (typeof retentionDays !== "number" || !Number.isInteger(retentionDays) || retentionDays < 0)) {
+      throw new SettingsError("logging.retentionDays 须为非负整数（0=永久保留）");
+    }
+    const rawLogDir = assertString((logging as Record<string, unknown>)["rawLogDir"], "logging.rawLogDir");
+    const logDir = assertString((logging as Record<string, unknown>)["logDir"], "logging.logDir");
     out.logging = {
-      ...(assertString((logging as Record<string, unknown>)["rawLogDir"], "logging.rawLogDir") !== undefined
-        ? { rawLogDir: (logging as Record<string, unknown>)["rawLogDir"] as string }
-        : {}),
-    };
+      ...(rawLogDir !== undefined ? { rawLogDir } : {}),
+      ...(logLevel !== undefined ? { level: logLevel as import("../kernel/logger.js").LogLevel } : {}),
+      ...(retentionDays !== undefined ? { retentionDays } : {}),
+      ...(logDir !== undefined ? { logDir } : {}),
+    } as typeof out.logging;
   }
   const projects = rec["projects"];
   if (projects !== undefined) {

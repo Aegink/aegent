@@ -16,6 +16,7 @@
  */
 
 import type { SqliteEventStorage } from "../session/db.js";
+import { channelLogger } from "./logging-ops.js";
 import {
   adapterForAssembly,
   loadSettings,
@@ -74,10 +75,7 @@ export function createTitleService(deps: TitleServiceDeps): TitleService {
         inFlight.add(sessionId);
         await generateAndStore(sessionId, firstUser, settings);
       } catch (e) {
-        console.warn(
-          `[title] 会话标题生成失败（静默——装饰面）:`,
-          e instanceof Error ? e.message : e,
-        );
+        channelLogger("host").warn(`[title] 会话标题生成失败（静默——装饰面）: ${e instanceof Error ? e.message : String(e)}`, { category: "session" });
       } finally {
         inFlight.delete(sessionId);
       }

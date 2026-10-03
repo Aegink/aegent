@@ -1696,28 +1696,54 @@ export interface SpawnAgentOptions {
   entryPath: string;
   /** 透传给子进程的参数（T-8-01：CLI 装配选项）。 */
   args?: readonly string[];
+  /** stderr 行回调（T-P3-154 A4——host 注入 sink 归管进 agent-*.log 管道；
+   * 缺省 inherit 父进程 stderr，行为不变）。 */
+  stderrSink?: (line: string) => void;
 }
 
 export function spawnAgentProcess(options: SpawnAgentOptions): AgentProcess {
   const child = spawn(process.execPath, [options.entryPath, ...(options.args ?? [])], {
-    stdio: ["pipe", "pipe", "inherit"],
+    stdio: ["pipe", "pipe", options.stderrSink ? "pipe" : "inherit"],
   });
   // T-P3-147（走查实录）：child 静默退出时（stderr inherit 仍无输出）父侧
   // 无从知晓——spawn 命令与退出码/信号落 stderr，运维与诊断面共用。
-  console.error(
+  // T-P3-154 A4：注入 stderrSink 时归管进日志管道（host 侧 agent-*.log）。
+  const diag = (line: string): void => {
+    if (options.stderrSink !== undefined) options.stderrSink(line);
+    else console.error(line);
+  };
+  diag(
     `[agent] spawn: ${JSON.stringify([process.execPath, options.entryPath, ...(options.args ?? [])])}`,
   );
   child.on("exit", (code, signal) => {
-    console.error(`[agent] child exited: code=${String(code)} signal=${String(signal)}`);
+    diag(`[agent] child exited: code=${String(code)} signal=${String(signal)}`);
   });
   child.on("error", (e) => {
-    console.error(`[agent] child spawn error: ${e.message}`);
+    diag(`[agent] child spawn error: ${e.message}`);
   });
+  if (options.stderrSink !== undefined && child.stderr !== null) {
+    // 行缓冲转发（跨 chunk 行不裂——pi-desktop flushChild 同款纪律）
+    let errBuf = "";
+    child.stderr.setEncoding("utf-8");
+    child.stderr.on("data", (chunk: string) => {
+      errBuf += chunk;
+      for (;;) {
+        const nl = errBuf.indexOf("\n");
+        if (nl < 0) break;
+        const line = errBuf.slice(0, nl).trimEnd();
+        errBuf = errBuf.slice(nl + 1);
+        if (line.trim() !== "") options.stderrSink?.(line);
+      }
+    });
+    child.stderr.on("end", () => {
+      if (errBuf.trim() !== "") options.stderrSink?.(errBuf.trimEnd());
+    });
+  }
   const queue = new MessageQueue();
   let buffer = "";
 
-  child.stdout.setEncoding("utf-8");
-  child.stdout.on("data", (chunk: string) => {
+  child.stdout!.setEncoding("utf-8");
+  child.stdout!.on("data", (chunk: string) => {
     buffer += chunk;
     for (;;) {
       const nl = buffer.indexOf("\n");
@@ -1732,16 +1758,16 @@ export function spawnAgentProcess(options: SpawnAgentOptions): AgentProcess {
       }
     }
   });
-  child.stdout.on("close", () => queue.finish());
+  child.stdout!.on("close", () => queue.finish());
   child.on("close", () => queue.finish());
   // 子进程退出后父进程仍可能补发请求（收尾竞态）——stdin 对端已关触发
   // EPIPE 是生命周期正常终态而非异常；不挂监听会成为 uncaught exception
   // 带崩宿主（live 真实子进程 + vitest worker 收尾竞速，2026-09-29 记档修复）。
-  child.stdin.on("error", () => {});
+  child.stdin!.on("error", () => {});
 
   return {
     send(request: AgentRequest): void {
-      child.stdin.write(`${JSON.stringify(request)}\n`);
+      child.stdin!.write(`${JSON.stringify(request)}\n`);
     },
     messages: {
       [Symbol.asyncIterator]() {

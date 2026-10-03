@@ -71,6 +71,11 @@ const OPS = [
   "session-export",
   "session-import",
   "settings-checkup",
+  // T-P3-154 日志中心族
+  "log-report",
+  "log-query",
+  "log-open-dir",
+  "log-export",
 ] as const;
 
 export type SettingsOp = (typeof OPS)[number];
@@ -129,6 +134,8 @@ export type SettingsCall = {
   format?: string;
   redact?: boolean;
   domains?: string[];
+  entries?: { ts?: string; level?: string; message?: string; stack?: string; source?: string }[]; // op=log-report：UI 错误批（T-P3-154）
+  log?: import("./log-query.js").LogQueryFilter; // op=log-query 查询载荷（闭集在 log-query）
   /** op=provider-models / provider-test：端点自足载荷（T-P3-137——UI 草稿直传；apiKey 缺省走 credentials）。 */
   baseUrl?: string;
   adapter?: string;
@@ -184,6 +191,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     "dir", "action", "template", "source", "marketplace",
     "pluginDescription", "view", "base", "displayName",
     "index", "format", "redact", "domains", // T-P3-153 数据中心族（漏一个即整信封被拒）
+    "entries", "log", // T-P3-154 日志中心族（漏一个即整信封被拒）
   ]);
   if (unknownKey) throw new Error(`settings 信封${unknownKey}`);
   if (typeof record["requestId"] !== "string" || record["requestId"] === "") {
@@ -219,34 +227,6 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
   if (op === "session-delete") {
     if (typeof record["sessionId"] !== "string" || record["sessionId"] === "") {
       throw new Error("settings op=session-delete 需要 sessionId 非空字符串");
-    }
-  }
-  if (op === "mcp-check") {
-    if (typeof record["name"] !== "string" || record["name"] === "" || record["name"].includes("__")) {
-      throw new Error("settings op=mcp-check 需要 name（非空且不含 \"__\"）");
-    }
-    if (typeof record["command"] !== "string" || record["command"] === "") {
-      throw new Error("settings op=mcp-check 需要 command 非空字符串");
-    }
-    if (
-      record["args"] !== undefined &&
-      (!Array.isArray(record["args"]) || record["args"].some((a) => typeof a !== "string"))
-    ) {
-      throw new Error("settings op=mcp-check 的 args 须为字符串数组");
-    }
-    // T-P3-143：env/timeoutMs（行级测试带条目级覆盖——形状同 mcp[] 校验）
-    if (
-      record["env"] !== undefined &&
-      (record["env"] === null || typeof record["env"] !== "object" || Array.isArray(record["env"]) ||
-        Object.values(record["env"] as Record<string, unknown>).some((v) => typeof v !== "string"))
-    ) {
-      throw new Error("settings op=mcp-check 的 env 须为对象（键值均为字符串）");
-    }
-    if (
-      record["timeoutMs"] !== undefined &&
-      (typeof record["timeoutMs"] !== "number" || !Number.isFinite(record["timeoutMs"]) || record["timeoutMs"] <= 0)
-    ) {
-      throw new Error("settings op=mcp-check 的 timeoutMs 须为正数");
     }
   }
   // T-P3-144：skill-import-apply = items（护栏在 op 层）。
@@ -387,6 +367,9 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     // redact 显式布尔——只拷 true 会吞 false（T-P3-153 走查实抓：脱敏关不掉）
     ...(typeof record["redact"] === "boolean" ? { redact: record["redact"] } : {}),
     ...(Array.isArray(record["domains"]) ? { domains: record["domains"] as string[] } : {}),
+    // T-P3-154 日志中心族载荷（漏拷即字段永远 undefined）
+    ...(Array.isArray(record["entries"]) ? { entries: record["entries"] as import("./protocol-settings.js").SettingsCall["entries"] } : {}),
+    ...(record["log"] !== undefined && typeof record["log"] === "object" && !Array.isArray(record["log"]) ? { log: record["log"] as import("./protocol-settings.js").SettingsCall["log"] } : {}),
   };
 }
 

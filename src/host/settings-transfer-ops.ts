@@ -19,6 +19,7 @@ import {
 import { sessionExportFromEvents, sessionImportOp } from "./session-export-op.js";
 import { settingsCheckupOp } from "./settings-checkup-op.js";
 import { exportSettingsPackage } from "../session/settings-transfer.js";
+import { tryLoggingSettingsOp } from "./logging-ops.js";
 
 /** bridge 侧会话域依赖（session-export 拦截用——store 在 bridge 手里）。 */
 export interface SessionBridgeDeps {
@@ -33,19 +34,13 @@ export function tryTransferSettingsOp(
   call: SettingsCall,
   session?: SessionBridgeDeps,
 ): unknown {
-  if (
-    call.op !== "import" &&
-    call.op !== "session-delete" &&
-    call.op !== "export-settings" &&
-    call.op !== "settings-backup-list" &&
-    call.op !== "settings-backup-create" &&
-    call.op !== "settings-backup-restore" &&
-    call.op !== "settings-backup-delete" &&
-    call.op !== "session-export" &&
-    call.op !== "session-import" &&
-    call.op !== "settings-checkup"
-  ) {
-    return undefined;
+  const TRANSFER_OPS = new Set([
+    "import", "session-delete", "export-settings",
+    "settings-backup-list", "settings-backup-create", "settings-backup-restore", "settings-backup-delete",
+    "session-export", "session-import", "settings-checkup",
+  ]);
+  if (!TRANSFER_OPS.has(call.op)) {
+    return tryLoggingSettingsOp(gateway, call); // T-P3-154：非 transfer 族 → 日志中心族兜底
   }
   const deps: TransferDeps = gateway.transferDeps();
   switch (call.op) {
@@ -91,6 +86,6 @@ export function tryTransferSettingsOp(
         getSettings: deps.getSettings,
       });
     default:
-      return undefined;
+      return tryLoggingSettingsOp(gateway, call); // T-P3-154 日志中心族 fallback（bridge 零增量串联）
   }
 }

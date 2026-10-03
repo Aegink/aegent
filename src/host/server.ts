@@ -31,6 +31,7 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 
 import { spawnAgentProcess } from "../kernel/agent-process.js";
+import { agentStderrSink, channelLogger, reconfigureLogging } from "./logging-ops.js";
 import { createSessionId, isValidSessionId } from "../session/session-id.js";
 import { SqliteEventStorage } from "../session/db.js";
 import { InMemoryEventStorage, SessionStore, type EventStorage } from "../session/store.js";import { loadSettings, resolveChildLaunchArgv, defaultSettingsPath } from "../session/settings.js";
@@ -110,6 +111,7 @@ export class HostServer {
       spawnAgentProcess({
         entryPath: this.options.agentEntryPath ?? "",
         args: ["--session", sessionId, ...(this.options.childArgs ?? [])],
+        stderrSink: agentStderrSink(),
       });
     const bridge = new HostBridge({
       host,
@@ -139,10 +141,11 @@ export class HostServer {
     bridge.onEvent((_sid, event) => {
       if (event.type === "surface/attach" || event.type === "surface/detach") return;
       projectAttacher(event.type);
+      if (event.type === "turn/start" || event.type === "turn/end") channelLogger("host").info(`turn 边界：${event.type}`, { category: "session" }); // T-P3-154：不含消息正文（D9）
       try {
         store.append(sessionId, [event as never]);
       } catch (e) {
-        console.error(`[mirror] append failed: ${e instanceof Error ? e.message : String(e)}`);
+        channelLogger("host").error(`[mirror] append failed: ${e instanceof Error ? e.message : String(e)}`, { category: "session" });
         // 镜像是读面加速：单事件失败不炸 host（错误经 query 读面可见为缺事件）
       }
     });
@@ -314,6 +317,7 @@ export async function main(argv: readonly string[]): Promise<void> {
   // 单一实例三处共享（credentialKey 预取 / settingsGateway / titleService）。
   const credentials = createCredentialStore(process.env["AEGENT_CREDENTIALS"] || undefined);
   const { settings } = await loadSettings(parsed.settingsPath);
+  reconfigureLogging(settings.logging); // T-P3-154：启动即初始化日志中心
   // U2/T-P3-102：凭据装配——CLI 同款（仅文件档条目会被选中时提前 decrypt）。
   const providerFree =
     !parsed.childArgs.includes("--provider") &&

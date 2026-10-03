@@ -50,6 +50,9 @@ import {
 } from "./state.js";
 import { lineEl, appendLine, scrollBottom, oneLine, toast } from "./feedback.js";
 import { applyLocalePreference, t } from "./i18n.js";
+import { installGlobalErrorReporters } from "./log-report.js";
+
+installGlobalErrorReporters(); // T-P3-154 A3：全局错误捕获（模块加载即挂——视图崩溃也捕）
 import { go, startRouter } from "./router.js";
 import { injectIcons } from "./icons.js";
 // U26/T-P3-149 录音三态机 + 插入冲突裁决 + chat 通道 wav 转码

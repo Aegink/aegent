@@ -87,7 +87,8 @@
         "obs",
         "policy",
         "session",
-        "sandbox"
+        "sandbox",
+        "diagnostics"
       ],
       "publicEntrypoints": [],
       "owner": "wangh"

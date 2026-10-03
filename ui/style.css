@@ -4155,3 +4155,70 @@ button.transfer-row:hover {
     font-size: 11px;
     color: var(--text-tertiary, var(--text));
 }
+
+/* ---------------------------------------------------------------------------
+ * T-P3-154 日志中心：过滤行/行徽标/详情展开/分页
+ * --------------------------------------------------------------------------- */
+.log-filter-row {
+    display: flex;
+    gap: 8px;
+    margin: 10px 0;
+    flex-wrap: wrap;
+}
+
+.log-filter-row .select {
+    min-width: 130px;
+}
+
+.log-filter-row .input {
+    flex: 1;
+    min-width: 160px;
+}
+
+.log-badge-deb {
+    background: color-mix(in srgb, #8a8f98 20%, transparent);
+    color: #8a8f98;
+}
+
+.log-badge-inf {
+    background: color-mix(in srgb, #4a90d9 18%, transparent);
+    color: #4a90d9;
+}
+
+.log-badge-wrn {
+    background: color-mix(in srgb, #e0a83c 20%, transparent);
+    color: #e0a83c;
+}
+
+.log-badge-err {
+    background: color-mix(in srgb, #e05c5c 20%, transparent);
+    color: #e05c5c;
+}
+
+.log-line {
+    cursor: pointer;
+}
+
+.log-line:hover {
+    border-color: var(--accent);
+}
+
+.log-detail {
+    flex-basis: 100%;
+    margin: 4px 0 0;
+    padding: 8px;
+    background: color-mix(in srgb, var(--text) 6%, transparent);
+    border-radius: 6px;
+    font-size: 11px;
+    overflow: auto;
+    max-height: 220px;
+    white-space: pre-wrap;
+}
+
+.log-pager {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin: 8px 0 4px;
+}
