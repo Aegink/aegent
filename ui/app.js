@@ -65,6 +65,13 @@ import {
   refreshContextUsage,
 } from "./composer-bar.js";
 import { initProgressDock, notifyToolCall, notifyEventLine } from "./progress-dock.js";
+// T-P3-156 面板批（P/Q/R/S/T）：终端抽屉 + 浏览器/Git/审查/辅助对话四面板
+import { initTerminalPane, toggleTerminal } from "./terminal.js";
+import "./pane-browser.js";
+import "./pane-git.js";
+import "./pane-review.js";
+import "./pane-assistant.js";
+import { openBrowserPane } from "./pane-browser.js";
 
 installGlobalErrorReporters(); // T-P3-154 A3：全局错误捕获（模块加载即挂——视图崩溃也捕）
 import { go, startRouter } from "./router.js";
@@ -706,6 +713,19 @@ function renderHistory(events) {
   showRecoveryIfInterrupted(events); // U13：M3 启动恢复可视化（流尾未闭合轮）
   syncChatEmpty(); // 批 C：首屏空状态（历史为空 = 欢迎卡）
 }
+
+// T-P3-156 Q：聊天流链接点击 → 浏览器面板打开（agent 产出 URL 的意图
+// 路由——zcode useAppPanels handleOpenBrowserUrl 同构；Ctrl/Cmd 点击仍走
+// 系统行为由浏览器默认接管）
+stream.addEventListener("click", (ev) => {
+  const anchor = ev.target instanceof Element ? ev.target.closest("a[href]") : null;
+  if (anchor === null) return;
+  const href = anchor.getAttribute("href") ?? "";
+  if (!/^https?:\/\//i.test(href)) return;
+  if (ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
+  ev.preventDefault();
+  void openBrowserPane(href, href.replace(/^https?:\/\//, "").slice(0, 30));
+});
 
 // 代码块复制按钮（U4：事件委托——动态内容免逐个绑）
 stream.addEventListener("click", (ev) => {
@@ -2129,6 +2149,12 @@ function handleEnvelope(envelope) {
         toast(applied.length > 0 ? `已生效：${applied.join("、")}` : "配置已刷新", "info");
         notifyPermissionChanged(); // L：权限 pill 文案随档位刷新
         window.dispatchEvent(new CustomEvent("agent:config-refreshed", { detail: { applied } }));
+      } else if (envelope.name === "terminal-data") {
+        // T-P3-156 P：PTY 输出下行 → 终端抽屉（CustomEvent 解耦——terminal.js
+        // 模块与 handleEnvelope 无静态依赖环）
+        window.dispatchEvent(new CustomEvent("terminal:data", { detail: envelope.payload ?? {} }));
+      } else if (envelope.name === "terminal-exit") {
+        window.dispatchEvent(new CustomEvent("terminal:exit", { detail: envelope.payload ?? {} }));
       } else if (envelope.name === "forked") {
         // T-P3-156 W：分支会话回执（方案 I 联动点——侧栏任务列表刷新）
         const detail = envelope.payload ?? {};
@@ -2218,6 +2244,8 @@ try {
   initComposerBar({ input, addAttachment });
   // T-P3-156 U：右上角进度小弹窗（pill+hover 展开+终态驻留）
   initProgressDock();
+  // T-P3-156 P：底部终端抽屉（xterm+node-pty——按钮按 IS_DESKTOP 显隐）
+  initTerminalPane();
 } catch (e) {
   console.error("输入区/进度弹窗初始化失败", e);
   appendLine(`输入区初始化失败：${e?.message ?? String(e)}`, "warn");

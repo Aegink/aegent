@@ -86,5 +86,17 @@ describe("T-P3-156 · 主界面重构（布局批 A~W + 功能批 K~I）", () =>
     expect(app).toContain("在面板打开"); // H：工具卡面板入口
     expect(read("sidebar.js")).toContain("forkTaskSession"); // I：分支会话表单
     expect(read("sidebar.js")).toContain('"session/fork"'); // I：fork wire 面
+    // 面板批（P/Q/R/S/T）
+    expect(read("terminal.js")).toContain("node-pty"); // P：终端（host node-pty 面）
+    expect(read("terminal.js")).toContain("terminal-create"); // P：PTY op 面
+    expect(read("index.html")).toContain('id="terminal-drawer"'); // P：抽屉容器（已在布局批断言，此处锁渲染面）
+    expect(read("pane-browser.js")).toContain("browser_create"); // Q：真实内核 command 面
+    expect(read("pane-git.js")).toContain("git-status"); // R：Git 管理数据面
+    expect(read("pane-review.js")).toContain('op: "review"'); // S：审查数据面
+    expect(read("pane-assistant.js")).toContain("assistant-log-append"); // T：历史落盘
+    expect(read("pane.js")).toContain("addMenuButton"); // 面板「+」内置清单入口
+    const srcTauri = readFileSync(path.resolve(import.meta.dirname, "..", "..", "src-tauri", "src", "browser.rs"), "utf8");
+    expect(srcTauri).toContain("browser_create"); // Q：壳侧 child webview
+    expect(readFileSync(path.resolve(import.meta.dirname, "..", "..", "src-tauri", "Cargo.toml"), "utf8")).toContain('"unstable"'); // multiwebview feature
   });
 });

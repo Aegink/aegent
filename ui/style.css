@@ -5133,3 +5133,362 @@ button.transfer-row:hover {
   text-align: center;
   padding: 8px 0;
 }
+
+/* ===== T-P3-156 面板批（P/Q/R/S/T）：终端抽屉 + 四内置面板 ===== */
+
+/* 顶栏终端钮激活态 */
+.topbar-btn.active {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--brand);
+}
+
+/* P：底部终端抽屉 */
+.terminal-grip {
+  height: 4px;
+  cursor: row-resize;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.terminal-grip:hover {
+  background: var(--brand);
+  opacity: 0.6;
+}
+
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+
+.terminal-label {
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtle);
+  letter-spacing: 0.4px;
+}
+
+.terminal-close {
+  padding: 0 8px;
+  height: 22px;
+}
+
+.terminal-host {
+  height: calc(100% - 27px);
+  padding: 0 6px;
+}
+
+.terminal-host .xterm {
+  height: 100%;
+}
+
+/* Q：浏览器面板 */
+.browser-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+
+.browser-nav {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-subtle);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.browser-nav:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.browser-url {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+}
+
+.browser-go {
+  flex-shrink: 0;
+  padding: 0 10px;
+  height: 26px;
+}
+
+.browser-host {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  background: var(--bg);
+}
+
+.browser-host-hint {
+  padding: 20px;
+  color: var(--text-subtle);
+  font-size: var(--text-ui-sm);
+}
+
+/* R：Git 管理面板 */
+.git-head {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.git-status-box {
+  padding: 6px 10px;
+}
+
+.git-branch {
+  font-size: var(--text-ui-sm);
+  font-weight: 500;
+}
+
+.git-ahead-behind {
+  color: var(--text-subtle);
+  font-weight: 400;
+}
+
+.git-commit-box {
+  display: flex;
+  gap: 6px;
+  padding: 4px 10px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.git-commit-box .input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+}
+
+.git-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 10px;
+}
+
+.git-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtle);
+  padding: 4px 0;
+}
+
+.git-mini-btn {
+  height: 20px;
+  padding: 0 8px;
+  font-size: var(--text-ui-xs);
+}
+
+.git-change-row {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: 4px;
+  overflow: hidden;
+}
+
+.git-change-details summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: var(--text-ui-sm);
+  list-style: none;
+}
+
+.git-change-details summary:hover {
+  background: var(--surface-hover);
+}
+
+.git-change-file {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-change-actions {
+  flex-shrink: 0;
+}
+
+.git-diff-pre {
+  max-height: 260px;
+  overflow: auto;
+  margin: 0;
+  padding: 8px;
+  border-top: 1px dashed var(--border);
+  font-size: 11px;
+  background: var(--surface);
+}
+
+.git-log-box {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 4px 10px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.git-log-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: var(--text-ui-xs);
+  padding: 2px 0;
+  min-width: 0;
+}
+
+.git-log-row code {
+  color: var(--brand);
+  flex-shrink: 0;
+}
+
+.git-log-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-log-meta {
+  margin-left: auto;
+  color: var(--text-subtle);
+  flex-shrink: 0;
+}
+
+.git-empty {
+  padding: 10px;
+  color: var(--text-subtle);
+  font-size: var(--text-ui-sm);
+}
+
+/* S：审查面板 / T：辅助对话 */
+.review-pane-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg-sidebar);
+  z-index: 1;
+}
+
+.review-pane-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.assistant-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.assistant-hint {
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assistant-stream {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.assistant-bubble {
+  max-width: 92%;
+  padding: 6px 10px;
+  border-radius: var(--radius-lg);
+  font-size: var(--text-ui-sm);
+  line-height: 1.55;
+}
+
+.assistant-user {
+  align-self: flex-end;
+  background: var(--brand);
+  color: var(--inverse);
+}
+
+.assistant-assistant {
+  align-self: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.assistant-pending {
+  color: var(--text-subtle);
+  font-style: italic;
+}
+
+.assistant-empty {
+  color: var(--text-subtle);
+  font-size: var(--text-ui-sm);
+  text-align: center;
+  padding: 16px;
+}
+
+.assistant-input-row {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.assistant-input {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+}
+
+.pane-add-btn {
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-subtle);
+  cursor: pointer;
+  align-self: center;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+
+.pane-add-btn:hover {
+  color: var(--text);
+  border-color: var(--brand);
+}
+
+.pane-empty-hint {
+  padding: 24px 16px;
+  color: var(--text-subtle);
+  font-size: var(--text-ui-sm);
+  line-height: 1.7;
+  text-align: center;
+}

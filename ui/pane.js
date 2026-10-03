@@ -18,12 +18,14 @@
 
 import { sendSettings } from "./api.js";
 import { toast } from "./feedback.js";
+import { openMenu, onSectionRefresh } from "./views/settings/core.js";
 import { renderFilePreview } from "./views/projects-files.js";
 
 const PANE_WIDTH_KEY = "aegent.paneWidth";
 const DEFAULT_PANE_WIDTH = 420;
 
 let state = { tabs: [], activeId: null };
+let previousActiveId = null;
 let seq = 0;
 let root = null; // #pane-root
 let toggleBtn = null; // #pane-toggle-btn
@@ -85,12 +87,15 @@ export function activatePane(id) {
 export function closePane(id) {
   const idx = state.tabs.findIndex((t) => t.id === id);
   if (idx < 0) return;
+  const wasActive = state.activeId === id;
+  const closing = state.tabs.find((t) => t.id === id);
   state.tabs.splice(idx, 1);
-  if (state.activeId === id) {
+  if (wasActive) {
     // 关闭激活 tab → 落到相邻 tab（zcode syncSubagentSessionSidePaneTabs
     // 的落点语义）；空了就收起面板
     const next = state.tabs[idx] ?? state.tabs[idx - 1];
     state.activeId = next?.id ?? null;
+    if (state.activeId === null) renderers.get(closing.type)?.onBlur?.(closing); // 全关：资源清理钩子
   }
   paint();
 }
@@ -107,14 +112,11 @@ export function prunePanes(predicate) {
 
 export function togglePane(force) {
   const show = force ?? root.hidden;
-  if (show) {
-    if (state.tabs.length === 0) {
-      toast("面板为空——从文件树点文件，或等任务产出后打开审查/子代理", "info");
-      return;
-    }
-    if (state.activeId === null) state.activeId = state.tabs.at(-1).id;
+  if (show && state.activeId === null && state.tabs.length > 0) {
+    state.activeId = state.tabs.at(-1).id;
   }
   root.hidden = !show;
+  paint(); // 空面板也渲染（+ 菜单与引导空态——切面板钮的空态展开）
   syncToggleBtn();
 }
 
@@ -148,14 +150,36 @@ export function initPane(paneRoot, toggleButton) {
   syncToggleBtn();
   toggleBtn.addEventListener("click", () => togglePane());
   initResize();
+  // settings 保存后重渲染激活 Tab（活动项目切换 → Git/浏览器面板的工作区
+  // 随动；fireSectionRefresh 由 flushSettings 统一广播——sidebar 切活动/
+  // 设置页改配置共用同一联动面）
+  onSectionRefresh(() => {
+    if (root !== null && !root.hidden) paint();
+  });
 }
 
 function paint() {
   if (root === null) return;
+  const previous = state.tabs.find((t) => t.id === previousActiveId);
   root.replaceChildren();
   if (state.tabs.length === 0) {
-    root.hidden = true;
+    // 空宿主：保留「+」菜单（切换面板钮展开时可见内置面板清单）——
+    // hidden 态仍整面板收起（togglePane 控制）
+    if (root.hidden) {
+      syncToggleBtn();
+      previousActiveId = null;
+      return;
+    }
+    const emptyBar = document.createElement("div");
+    emptyBar.className = "pane-tabbar";
+    emptyBar.appendChild(addMenuButton());
+    root.appendChild(emptyBar);
+    const hint = document.createElement("div");
+    hint.className = "pane-empty-hint";
+    hint.textContent = "从「+」打开面板（审查 / 浏览器 / 辅助对话 / Git）；文件树点文件也会在这里预览。";
+    root.appendChild(hint);
     syncToggleBtn();
+    previousActiveId = null;
     return;
   }
   root.hidden = false;
@@ -165,11 +189,18 @@ function paint() {
   for (const tab of state.tabs) {
     tabbar.appendChild(tabButton(tab));
   }
+  tabbar.appendChild(addMenuButton()); // 「+」内置面板清单（需求五.2——内置：审查/浏览器/辅助对话/Git）
   root.appendChild(tabbar);
 
   const active = state.tabs.find((t) => t.id === state.activeId);
   if (active === undefined) return;
   syncToggleBtn(); // 开合态随 paint 单点同步（open/close/toggle 全走此路）
+  // 激活/失焦钩子（浏览器面板的对齐/隐藏等壳侧资源随焦点切换——T-P3-156 Q）
+  if (previousActiveId !== null && previousActiveId !== active.id) {
+    const prevDef = state.tabs.find((t) => t.id === previousActiveId);
+    if (prevDef !== undefined) renderers.get(prevDef.type)?.onBlur?.(prevDef);
+  }
+  previousActiveId = active.id;
   const body = document.createElement("div");
   body.className = "pane-body";
   const def = renderers.get(active.type);
@@ -191,6 +222,29 @@ function paint() {
     }
   }
   root.appendChild(body);
+}
+
+/** 内置面板清单（+ 菜单）——browser 由 pane-browser.js 注册（桌面壳）；
+ * 未注册类型不出现（web 端无浏览器内核面）。 */
+function addMenuButton() {
+  const CATALOG = [
+    { type: "review", label: "🔍 审查" },
+    { type: "browser", label: "🌐 浏览器" },
+    { type: "assistant", label: "💬 辅助对话" },
+    { type: "git", label: "⑂ Git 管理" },
+  ];
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "pane-add-btn";
+  btn.title = "打开面板（审查/浏览器/辅助对话/Git）";
+  btn.textContent = "+";
+  btn.addEventListener("click", () => {
+    openMenu(btn, CATALOG.filter((item) => renderers.has(item.type)).map((item) => ({
+      label: item.label,
+      onClick: () => openPane(item.type, {}),
+    })));
+  });
+  return btn;
 }
 
 function tabButton(tab) {

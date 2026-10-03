@@ -106,6 +106,16 @@ export interface SettingsGateway {
   fsRead(path: string): Promise<unknown>;
   fsShell(payload: { path: string; action: "reveal" | "open" }): Promise<{ done: true }>;
   projectGitCloneOp(payload: { url: string; parentDir: string; name?: string }): Promise<{ path: string }>;
+  gitStatusOp(roots: string[], cwd: string): Promise<unknown>;
+  gitDiffOp(roots: string[], cwd: string, file: string, staged: boolean): Promise<unknown>;
+  gitStageOp(roots: string[], cwd: string, files: string[], unstage: boolean): Promise<unknown>;
+  gitCommitOp(roots: string[], cwd: string, message: string, amend: boolean): Promise<unknown>;
+  gitLogOp(roots: string[], cwd: string): Promise<unknown>;
+  assistantLogAppendOp(entry: { role: "user" | "assistant"; text: string }): Promise<{ appended: true }>;
+  assistantLogReadOp(limit?: number): Promise<unknown>;
+  terminalCreateOp(roots: string[], payload: { id: string; cwd: string }): unknown;
+  terminalInputOp(payload: { id: string; data: string }): { written: true };
+  terminalResizeOp(payload: { id: string; cols: number; rows: number }): { resized: true };
   importScan(): Promise<unknown>;
   projectTasks(projectId: string): Promise<unknown>;
   sessionAttach(payload: { sessionId: string; projectId: string }): Promise<{ attached: true }>;

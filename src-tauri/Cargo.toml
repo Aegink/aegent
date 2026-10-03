@@ -15,7 +15,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# T-P3-156 Q：浏览器面板需要主窗内 child Webview（真实内核）——multiwebview
+# 属 unstable 面（tauri 官方标 unstable 的 multi-webview API）
+tauri = { version = "2", features = ["unstable"] }
 # U7/T-P3-114：updater 单插件入册（九插件群不取的解禁例外——签名校验链）
 tauri-plugin-updater = "2"
 serde_json = "1"

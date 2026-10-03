@@ -379,3 +379,12 @@ export class HostProtocolServer {
 export type { AgentMessage };
 export { parseClientEnvelope, type ClientEnvelope } from "./protocol-parse.js";
 
+
+/** AgentChannel（自 bridge.ts 搬入——行数纪律位）：agent 请求发送面与
+ * 消息流（runAgentChildStdio 内存桥 / spawnAgentProcess.messages 消费端）。 */
+export interface AgentChannel {
+  /** 发一条请求到 agent（agent-protocol 父→子行协议的发送面）。 */
+  send(request: import("../kernel/agent-protocol.js").AgentRequest): void;
+  /** agent → 父的消息流（runAgentChildStdio 内存桥 / spawnAgentProcess.messages）。 */
+  messages: AsyncIterable<import("../kernel/agent-protocol.js").AgentMessage>;
+}

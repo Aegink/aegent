@@ -62,6 +62,7 @@ const bundle = (entry, outfile) => {
       "--target=node22",
       "--legal-comments=eof",
       "--external:better-sqlite3",
+      "--external:node-pty", // T-P3-156 P：终端面板原生模块（ConPTY）——bundle 外置随包
       // import.meta.url shim（CJS 无 import.meta——bin 守卫与模块缺省路径依赖它）
       "--banner:js=const __import_meta_url = require('node:url').pathToFileURL(__filename).href;",
       "--define:import.meta.url=__import_meta_url",
@@ -82,8 +83,18 @@ const nodeExeDst = path.join(outDir, process.platform === "win32" ? "node.exe" :
 cpSync(process.execPath, nodeExeDst);
 
 const nativeDst = path.join(outDir, "node_modules", "better-sqlite3");
+const nodePtyDst = path.join(outDir, "node_modules", "node-pty");
 rmSync(path.join(outDir, "node_modules"), { recursive: true, force: true });
+// Windows：pnpm 的 node_modules 项是 symlink（.pnpm 解引用）——非管理员无
+// Symlink 权限时 cpSync 建 symlink 即 EPERM；dereference 直接拷目标内容。
+// node-pty 1.1.0 原生面在 prebuilds/<平台>/（prebuildify）——不过滤整包拷
+// （"prebuilds" 含 "build" 子串，路径级排除会误杀；多拷的 C++ 源码 ~几 MB）。
+cpSync(path.join(repoRoot, "node_modules", "node-pty"), nodePtyDst, {
+  recursive: true,
+  dereference: true,
+});
 cpSync(path.join(repoRoot, "node_modules", "better-sqlite3"), nativeDst, {
+  dereference: true,
   recursive: true,
   dereference: true, // pnpm 符号链接解引用
 });
@@ -138,9 +149,10 @@ console.log(`runtime node.exe      : ${mb(du(nodeExeDst))}`);
 console.log(`runtime host.cjs      : ${mb(du(path.join(outDir, "host.cjs")))}`);
 console.log(`runtime agent-child.cjs: ${mb(du(path.join(outDir, "agent-child.cjs")))}`);
 console.log(`runtime better-sqlite3: ${mb(du(nativeDst))}`);
+console.log(`runtime node-pty: ${mb(du(nodePtyDst))}`);
 console.log(
   `runtime 小计          : ${mb(
-    du(nodeExeDst) + du(path.join(outDir, "host.cjs")) + du(path.join(outDir, "agent-child.cjs")) + du(nativeDst),
+    du(nodeExeDst) + du(path.join(outDir, "host.cjs")) + du(path.join(outDir, "agent-child.cjs")) + du(nativeDst) + du(nodePtyDst),
   )}`,
 );
 console.log(`dist/portable 合计    : ${mb(du(outDir))}`);

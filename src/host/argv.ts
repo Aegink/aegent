@@ -63,3 +63,10 @@ export function parseHostServerArgv(
     childArgs,
   };
 }
+
+/** U12/T-P3-111 上下文窗口解析（自 server.ts 搬入——行数纪律位）：
+ * launchArgs 里的 --context-window > 200_000 缺省（与子进程同源）。 */
+export function resolveContextWindow(launchArgs: readonly string[]): number {
+  const i = launchArgs.indexOf("--context-window");
+  return i >= 0 && i + 1 < launchArgs.length ? Number(launchArgs[i + 1]) || 200_000 : 200_000;
+}

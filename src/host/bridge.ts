@@ -16,6 +16,7 @@ import { buildPolicyAuditEntries } from "./policy-audit-op.js";
 import { tryPluginSettingsOp } from "./settings-plugin-ops.js";
 import { tryProjectSettingsOp } from "./settings-project-ops.js";
 import { tryInstructionSettingsOp } from "./settings-instruction-ops.js";
+import { tryPanelSettingsOp } from "./settings-panel-ops.js";
 import { tryTransferSettingsOp } from "./settings-transfer-ops.js";
 import { AgentHost } from "./registry.js";
 import {
@@ -23,18 +24,14 @@ import {
   type HostProtocolServerOptions,
   type SessionRouter,
 } from "./protocol.js";
+// AgentChannel 实体搬 protocol.ts（行数纪律）——此处 re-export 兼容既有消费面
+export type { AgentChannel } from "./protocol.js";
+import type { AgentChannel } from "./protocol.js";
 import type { DeliveryKind } from "./lease.js";
 import { NotificationHub } from "./notify.js";
-
 /** 写命令闭集（租约校验适用面——只读查询如 policy/check 不在此列）。 */
 const WRITE_COMMANDS = new Set(["prompt", "steer", "cancel", "approve", "question/answer", "polish"]);
 
-export interface AgentChannel {
-  /** 发一条请求到 agent（agent-protocol 父→子行协议的发送面）。 */
-  send(request: AgentRequest): void;
-  /** agent → 父的消息流（runAgentChildStdio 内存桥 / spawnAgentProcess.messages）。 */
-  messages: AsyncIterable<AgentMessage>;
-}
 
 export interface HostBridgeOptions {
   host: AgentHost;
@@ -334,6 +331,9 @@ export class HostBridge implements SessionRouter {
         // T-P3-150 项目域八 op 一行收敛（分发面在 settings-project-ops）
         const projectOp = tryProjectSettingsOp(gateway, call);
         if (projectOp !== undefined) return projectOp;
+        // T-P3-156 面板域（R/P/T：git 族/终端族/辅助对话历史）
+        const panelOp = tryPanelSettingsOp(gateway, call);
+        if (panelOp !== undefined) return panelOp;
         if (call.op === "plugins-list") return gateway.pluginsList();
         // T-P3-148：插件/市场族 op 一行收敛（分发在 settings-plugin-ops）
         const pluginOp = tryPluginSettingsOp(gateway, call, this.reloadNotifier());

@@ -16,6 +16,8 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::Manager;
 
+mod browser; // T-P3-156 Q：浏览器面板 webview 管理（真实内核）
+
 /// host 子进程句柄（退出收束用——RunEvent::Exit 时 kill）。
 struct HostProcess(Mutex<Option<Child>>);
 
@@ -88,7 +90,17 @@ pub fn run() {
         // U7/T-P3-114：updater 单插件入册（九插件群不取的解禁例外——签名
         // 校验链；endpoints 指向 localhost 演示面，pubkey 在 tauri.conf.json）
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // T-P3-156 Q：浏览器面板 command 面（真实内核 child webview）
+        .invoke_handler(tauri::generate_handler![
+            browser::browser_create,
+            browser::browser_show,
+            browser::browser_hide,
+            browser::browser_navigate,
+            browser::browser_destroy,
+            browser::browser_eval,
+        ])
         .setup(|app| {
+            browser::manage_registry(app.handle());
             // U6 修复（2026-09-29 用户走查发现）：主窗 visible:false（避免
             // WebView 加载前白屏闪烁）——host 就绪探测完成后必须显式 show
             // 并聚焦（"探测失败照常显示"——诊断面在 UI 连接状态）。此前

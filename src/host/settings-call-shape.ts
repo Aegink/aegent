@@ -1,0 +1,71 @@
+/**
+ * settings 信封载荷类型（自 protocol-settings.ts 拆出——行数纪律位；
+ * T-P3-156 面板批触顶搬迁，字段语义注释随行）。parse 层只管信封形状——
+ * 业务规则仍在 gateway 层。
+ */
+
+import type { SettingsOp } from "./protocol-settings.js";
+import type { JsonRecord } from "../kernel/events.js";
+import type { SkillImportItem } from "./skill-import-op.js";
+import type { PromptSavePayload, SkillSavePayload } from "./settings-gateway-types.js";
+
+export type SettingsCall = {
+  op: SettingsOp;
+  patch?: Record<string, unknown>;
+  settings?: Record<string, unknown>;
+  provider?: string;
+  key?: string;
+  sessionId?: string;
+  name?: string;
+  command?: string;
+  args?: string[];
+  /**
+   * op=mcp-check：server 环境变量覆盖与单请求超时（T-P3-143——行级测试
+   * 与向导共用载荷，形状与 mcp[] 条目一致）。
+   */
+  env?: Record<string, string>;
+  timeoutMs?: number;
+  skill?: SkillSavePayload;
+  prompt?: PromptSavePayload; // op=prompt-save：模板写回载荷（T-P3-146 C）
+  items?: SkillImportItem[];
+  path?: string;
+  target?: string;
+  content?: string;
+  task?: string; // op=enhancement-test：辅助任务名（T-P3-147 D 闭集）
+  // T-P3-148 载荷：dir/action/template/source/marketplace/pluginDescription/view/base
+  dir?: string;
+  action?: string;
+  template?: string;
+  source?: string;
+  marketplace?: string;
+  pluginDescription?: string;
+  view?: string;
+  base?: string;
+  displayName?: string; // op=plugin-scaffold：人读显示名（缺省 = slug）
+  mediaType?: string;
+  text?: string; // op=tts-synthesize：合成文本（T-P3-149 D 域）
+  // T-P3-151 指令中心载荷：kind=追加形态（rule|text）dryRun=只推导不落盘
+  // tool/ruleArgs=规则测试器的 PolicyCall 输入。
+  kind?: string;
+  dryRun?: boolean;
+  tool?: string;
+  ruleArgs?: JsonRecord;
+  // T-P3-150 项目域载荷：url=仓库地址 projectId=项目 id overwrite=归属覆盖
+  url?: string;
+  projectId?: string;
+  overwrite?: boolean;
+  importItems?: { source: string; externalId: string; projectPath?: string }[];
+  // T-P3-153 数据中心载荷：index=备份序号 format/redact=会话导出 domains=导出域
+  index?: number;
+  format?: string;
+  redact?: boolean;
+  domains?: string[];
+  entries?: { ts?: string; level?: string; message?: string; stack?: string; source?: string }[]; // op=log-report：UI 错误批（T-P3-154）
+  log?: import("./log-query.js").LogQueryFilter; // op=log-query 查询载荷（闭集在 log-query）
+  /** op=provider-models / provider-test：端点自足载荷（T-P3-137——UI 草稿直传；apiKey 缺省走 credentials）。 */
+  baseUrl?: string;
+  adapter?: string;
+  modelId?: string;
+  apiKey?: string;
+  headers?: Record<string, string>;
+};

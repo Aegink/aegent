@@ -36,20 +36,18 @@ import {
 } from "./instructions-gateway.js";
 import { appendInstruction, testInstructionRule } from "./settings-instruction-ops.js";
 import { runSttTranscribe } from "./speech-gateway.js";
-import { runTtsSynthesize } from "./tts-gateway.js";
 import {
-  fsReadOp,
-  fsShellOp,
-  fsTreeOp,
-  importScanOp,
-  projectBranchOp,
-  projectCloneOp,
-  projectTasksOp,
-  sessionAttachOp,
-  sessionRenameOp,
-  importPreviewOp,
-  importSessionsOp,
-} from "./settings-project-ops.js";
+  assistantLogAppendOp,
+  assistantLogReadOp,
+  gitCommitOp,
+  gitDiffOp,
+  gitLogOp,
+  gitStageOp,
+  gitStatusOp,
+} from "./panel-ops.js";
+import { terminalCreateOp, terminalInputOp, terminalResizeOp } from "./terminal-ops.js";
+import { runTtsSynthesize } from "./tts-gateway.js";
+import { fsReadOp, fsShellOp, fsTreeOp, importPreviewOp, importScanOp, importSessionsOp, projectBranchOp, projectCloneOp, projectTasksOp, sessionAttachOp, sessionRenameOp } from "./settings-project-ops.js";
 import { checkPluginDir, listPlugins } from "./plugins-gateway.js";
 import {
   marketOpImpl,
@@ -260,6 +258,17 @@ export class FileSettingsGateway implements SettingsGateway {
   fsRead(path: string): Promise<unknown> { return this.projectRoots().then((r) => fsReadOp(r, path)); }
   fsShell(payload: { path: string; action: "reveal" | "open" }): Promise<{ done: true }> { return this.projectRoots().then((r) => fsShellOp(r, payload)); }
   projectGitCloneOp(payload: { url: string; parentDir: string; name?: string }): Promise<{ path: string }> { return projectCloneOp(payload); }
+  // T-P3-156 面板域（R/P/T）——panel-ops/terminal-ops 委派（roots 实时取）
+  gitStatusOp(roots: string[], cwd: string): Promise<unknown> { return gitStatusOp(roots, cwd); }
+  gitDiffOp(roots: string[], cwd: string, file: string, staged: boolean): Promise<unknown> { return gitDiffOp(roots, cwd, file, staged); }
+  gitStageOp(roots: string[], cwd: string, files: string[], unstage: boolean): Promise<unknown> { return gitStageOp(roots, cwd, files, unstage); }
+  gitCommitOp(roots: string[], cwd: string, message: string, amend: boolean): Promise<unknown> { return gitCommitOp(roots, cwd, message, amend); }
+  gitLogOp(roots: string[], cwd: string): Promise<unknown> { return gitLogOp(roots, cwd); }
+  assistantLogAppendOp(entry: { role: "user" | "assistant"; text: string }): Promise<{ appended: true }> { return assistantLogAppendOp(entry); }
+  assistantLogReadOp(limit?: number): Promise<unknown> { return assistantLogReadOp(limit); }
+  terminalCreateOp(roots: string[], payload: { id: string; cwd: string }): unknown { return terminalCreateOp(roots, payload); }
+  terminalInputOp(payload: { id: string; data: string }): { written: true } { return terminalInputOp(payload); }
+  terminalResizeOp(payload: { id: string; cols: number; rows: number }): { resized: true } { return terminalResizeOp(payload); }
   importScan(): Promise<unknown> { return importScanOp(this.homeDir); }
   projectTasks(projectId: string): Promise<unknown> { return Promise.resolve(projectTasksOp(this.sessionDb, projectId)); }
   sessionAttach(payload: { sessionId: string; projectId: string }): Promise<{ attached: true }> { return Promise.resolve(sessionAttachOp(this.sessionDb, payload)); }

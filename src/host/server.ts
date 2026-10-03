@@ -34,13 +34,15 @@ import { spawnAgentProcess } from "../kernel/agent-process.js";
 import { agentStderrSink, channelLogger, reconfigureLogging } from "./logging-ops.js";
 import { createSessionId, isValidSessionId } from "../session/session-id.js";
 import { SqliteEventStorage } from "../session/db.js";
-import { InMemoryEventStorage, SessionStore, type EventStorage } from "../session/store.js";import { loadSettings, resolveChildLaunchArgv, defaultSettingsPath } from "../session/settings.js";
+import { InMemoryEventStorage, SessionStore, type EventStorage } from "../session/store.js";
+import { loadSettings, resolveChildLaunchArgv, defaultSettingsPath } from "../session/settings.js";
 import { createCredentialStore } from "../session/credentials.js";
 import { FileSettingsGateway } from "./settings-gateway.js";
 import { HostBridge, type AgentChannel } from "./bridge.js";
 import { serveStatic } from "./static-files.js";
-import { parseHostServerArgv, type HostServerArgv } from "./argv.js";
+import { parseHostServerArgv, resolveContextWindow, type HostServerArgv } from "./argv.js";
 import { NotificationHub } from "./notify.js";
+import { disposeAllTerminals, reapIdleTerminals, setTerminalNotifier } from "./terminal-ops.js";
 import { HostRegistry } from "./registry.js";
 import { createTitleService } from "./title-service.js";
 import { makeProjectAttacher } from "./settings-project-ops.js";
@@ -124,8 +126,14 @@ export class HostServer {
       ...(this.options.notifyHub !== undefined ? { notifyHub: this.options.notifyHub } : {}),
       ...(titleService !== undefined ? { titleService } : {}),
     });
-    // U13/T-P3-112：N5 分类通知 → 全端 WS 广播（notification name="n5"——
-    // UI 通知中心数据源）；unsub 在 stop 收束。
+    // U13/T-P3-112：N5 分类 → 全端广播（name="n5"，UI 通知中心数据源）；unsub 在 stop 收束
+    // T-P3-156 P：终端下行面（terminal-data/exit 经 bridge 广播；PTY 池+回收在 terminal-ops）
+    setTerminalNotifier((name, payload) => bridge.notifyAll(name, payload));
+    const terminalReap = setInterval(reapIdleTerminals, 5 * 60_000);
+    const terminalStop = () => {
+      clearInterval(terminalReap);
+      disposeAllTerminals();
+    };
     const hubUnsub = this.options.notifyHub?.subscribe((n) => {
       bridge.notifyAll("n5", n);
     });
@@ -357,20 +365,12 @@ export async function main(argv: readonly string[]): Promise<void> {
     // U10/T-P3-109：workspace 根与子进程同源——最终 launchArgs 的
     // --workspace（含 settings 档注入）> 进程 cwd（子进程缺省语义同款）。
     workspaceRoot,
-    // U12/T-P3-111：上下文窗口与子进程同源（--context-window > 200_000 缺省）。
-    contextWindow: (() => {
-      const i = launchArgs.indexOf("--context-window");
-      return i >= 0 && i + 1 < launchArgs.length
-        ? Number(launchArgs[i + 1]) || 200_000
-        : 200_000;
-    })(),
+    // U12/T-P3-111：上下文窗口与子进程同源（解析面搬 argv.ts——行数纪律）
+    contextWindow: resolveContextWindow(launchArgs),
     // U13/T-P3-112：N5 分类通知面（bridge 发布 + 全端 WS 广播）。
     notifyHub: new NotificationHub(),
-    // T-P3-147 E：标题服务依赖（凭据面共享——首条 user 消息后异步生成）
-    titleDeps: {
-      settingsPath: parsed.settingsPath,
-      credentials,
-    },
+    titleDeps: { settingsPath: parsed.settingsPath, credentials }, // T-P3-147 E：标题服务（凭据面共享）
+
   });
   const handle = await server.start();
   process.stdout.write(
