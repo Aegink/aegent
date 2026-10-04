@@ -20,7 +20,6 @@ import { icon } from "./icons.js";
 let seq = 0;
 let activeTabId = null; // 当前渲染实例的壳侧 label（browser-<n>）
 let observer = null;
-let followTimer = null; // 主窗移动跟随轮询（300ms——等值短路零流量）
 
 function tauriInvoke(cmd, args) {
   return window.__TAURI_INTERNALS__.invoke(cmd, args);
@@ -29,8 +28,11 @@ function tauriInvoke(cmd, args) {
 /** 面板偏移上报（T-P3-168：相对视口的物理偏移——子窗屏幕位置由 Rust 在
  *  主窗 Moved/Resized 事件里直算，拖动/拖宽零延迟跟随；UI 只在尺寸变化
  *  时上报 offset，等值短路零流量）。单实例即可，paint 重挂时换绑。 */
+let resizeReport = null; // 当前绑定的 report（window resize 换绑/清理用）
+
 function bindBoundsSync(hostEl, tabId) {
   if (observer !== null) observer.disconnect();
+  if (resizeReport !== null) window.removeEventListener("resize", resizeReport);
   let last = "";
   const report = () => {
     if (!hostEl.isConnected) return;
@@ -40,7 +42,8 @@ function bindBoundsSync(hostEl, tabId) {
     const payload = `${Math.round(rect.left * dpr)},${Math.round(rect.top * dpr)},${Math.round(rect.width * dpr)},${Math.round(rect.height * dpr)}`;
     if (payload === last) return; // 等值短路
     last = payload;
-    void tauriInvoke("browser_set_offset", {
+    void tauriInvoke("browser_show", {
+      label: tabId,
       x: Math.round(rect.left * dpr),
       y: Math.round(rect.top * dpr),
       width: Math.round(rect.width * dpr),
@@ -49,7 +52,11 @@ function bindBoundsSync(hostEl, tabId) {
   };
   observer = new ResizeObserver(report);
   observer.observe(hostEl);
-  report(); // 初次上报
+  // T-P3-169 实测：外拉主窗时面板 host「尺寸不变、只有位置移」——RO 不触发
+  // （内拉因面板被压缩尺寸变才跟随）。补主窗视口 resize 监听双通道。
+  resizeReport = report;
+  window.addEventListener("resize", report);
+  report(); // 初次对齐
 }
 
 function normalizeUrl(raw) {
@@ -79,9 +86,9 @@ registerPane("browser", {
       observer.disconnect();
       observer = null;
     }
-    if (followTimer !== null) {
-      clearInterval(followTimer);
-      followTimer = null;
+    if (resizeReport !== null) {
+      window.removeEventListener("resize", resizeReport);
+      resizeReport = null;
     }
   },
   render: (body, tab) => {
