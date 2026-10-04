@@ -672,6 +672,9 @@ async function forkSession(session) {
 
 /** 只读恢复（history.js 同款——resetStream 后 renderHistory）。 */
 async function restoreSessionView(sessionId) {
+  // T-P3-161：只读视图标记——非当前会话的查看态禁用「编辑/重发」等写操作
+  //（编辑回溯作用于当前连接会话，跨会话错位防护）
+  window.__viewOnlySession = sessionId === getSessionId() ? null : sessionId;
   const view = await sendQuery({ sessionId, op: "events" });
   if (!view.ok) {
     toast(`查看失败：${view.error?.message ?? ""}`, "warn");

@@ -48,6 +48,8 @@ const queued = [];
 let currentTurn = 0;
 /** 上下文用量缓存（op:usage 推入）。 */
 let usageInfo = { contextTokens: 0, contextWindow: 0 };
+/** 会话思考档覆盖（thinking/set 回执记忆——内存态与内核同生命周期）。 */
+let currentThinking;
 
 export function initComposerBar(deps) {
   input = deps.input;
@@ -357,11 +359,62 @@ async function openModelMenu() {
           });
           body.appendChild(row);
         }
+        // T-P3-161 需求 2：思考度档位（thinking/set——pi-desktop 模型面板
+        // 同构；omit=请求不带思考参数，off=关，minimal~max=预算档）
+        const THINKING = [
+          ["omit", "不传"], ["off", "off"], ["minimal", "minimal"], ["low", "low"],
+          ["medium", "medium"], ["high", "high"], ["xhigh", "xhigh"], ["max", "max"],
+        ];
+        const seg = document.createElement("div");
+        seg.className = "thinking-seg";
+        const segHead = document.createElement("div");
+        segHead.className = "model-picker-group";
+        segHead.textContent = "思考度";
+        seg.appendChild(segHead);
+        const segRow = document.createElement("div");
+        segRow.className = "thinking-row";
+        for (const [value, label] of THINKING) {
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = `thinking-chip${currentThinking === value ? " current" : ""}`;
+          chip.textContent = label;
+          chip.title = value === "omit" ? "请求不带思考参数（跟服务端默认）" : `思考档 ${value}`;
+          chip.addEventListener("click", () => {
+            close();
+            void setThinking(value);
+          });
+          segRow.appendChild(chip);
+        }
+        seg.appendChild(segRow);
+        body.appendChild(seg);
       };
       paintProviders();
       panel.append(body);
     },
   });
+}
+
+/** 会话思考档切换（thinking/set 写命令持约——回执经 thinking_set 通知）。 */
+async function setThinking(level) {
+  const sid = getSessionId();
+  if (sid === "") {
+    toast("会话未就绪", "warn");
+    return;
+  }
+  try {
+    await sendRequest(sid, { type: "thinking/set", level });
+    // 回执面（thinking_set 通知）会再刷新一次——这里乐观先行
+    currentThinking = level;
+    paintModelPill();
+  } catch (e) {
+    toast(`思考档设置失败：${e?.message ?? ""}`, "warn");
+  }
+}
+
+/** thinking_set 回执（app.js notification 分支转发）——档位记忆 + pill 重绘。 */
+export function notifyThinkingSet(level) {
+  currentThinking = level;
+  paintModelPill();
 }
 
 async function switchModel(provider, modelId) {
@@ -382,17 +435,20 @@ async function switchModel(provider, modelId) {
 
 function paintModelPill() {
   if (modelPill === null) return;
+  const thinkingLabel = currentThinking !== undefined
+    ? (currentThinking === "omit" ? " · 不传" : ` · ${currentThinking}`)
+    : "";
   const currentModel = settingsCache?.model?.identity?.modelId;
   if (currentModel !== undefined && currentModel !== "") {
-    modelPill.replaceChildren(icon("sparkles", { cls: "icon-sm" }), document.createTextNode(` ${currentModel}`));
+    modelPill.replaceChildren(icon("sparkles", { cls: "icon-sm" }), document.createTextNode(` ${currentModel}${thinkingLabel}`));
     return;
   }
   const first = settingsCache?.providers?.[0];
   const firstModel = first?.models?.[0];
   if (first !== undefined && firstModel !== undefined) {
     const label = modelLabel(firstModel);
-    modelPill.replaceChildren(icon("sparkles", { cls: "icon-sm" }), document.createTextNode(` ${label}`));
-    modelPill.title = `当前缺省：${first.name ?? first.id ?? ""} / ${label}（点击切换本次会话模型）`;
+    modelPill.replaceChildren(icon("sparkles", { cls: "icon-sm" }), document.createTextNode(` ${label}${thinkingLabel}`));
+    modelPill.title = `当前缺省：${first.name ?? first.id ?? ""} / ${label}${thinkingLabel}（点击切换本次会话模型与思考度）`;
   }
 }
 

@@ -194,6 +194,8 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
     expect(response.ok).toBe(true);
     const events = (response.result as { events: Array<{ seq: number; type: string }> }).events;
     expect(events.map((e) => e.type)).toEqual([
+      // T-P3-161：镜像全量保真（含 roster）——seq 与 child 流对齐
+      //（回溯定位依赖绝对 seq——镜像滤事件会整体错位）
       "turn/start",
       "user/message",
       "step/start",
@@ -201,6 +203,7 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
       "assistant/message",
       "turn/end",
       "surface/attach", // 连接时的 roster 落流（emitRoster——host 面事实）
+      "surface/attach",
     ]);
 
     // afterSeq 游标：只回 seq 更大的部分
@@ -213,6 +216,7 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
       "request/header",
       "assistant/message",
       "turn/end",
+      "surface/attach",
       "surface/attach",
     ]);
 

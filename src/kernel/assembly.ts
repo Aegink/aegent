@@ -556,6 +556,13 @@ export interface ChildAssembly {
   /** 协议 revert 请求的处理（E4 对话态；越界错误上抛）。 */
   handleRevert(targetSeq: number): void;
   /**
+   * T-P3-161：会话思考档覆盖（thinking/set 命令面——"omit"=显式不传思考
+   * 参数；undefined=未覆盖跟模型默认档）。内存态：与 model/switch 的换模
+   * 生命周期同款，落流归档记档（词汇表扩展另立）。
+   */
+  setThinkingOverride(level: string): void;
+  thinkingOverrideForTurn(): string | undefined;
+  /**
    * 协议 model/switch 请求的处理（J6 换模立即受理；未注册模型抛
    * ModelNotRegisteredError 上抛给协议层回类型化 error 行）。
    * 未启用换模（无注册表）时 undefined。
@@ -587,6 +594,9 @@ export interface ChildAssembly {
 
 export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembly {
   const { sessionId, store, logger } = options;
+  // T-P3-161：会话思考档覆盖（thinking/set 写入；turn 捕获时读——turn 内
+  // 一致语义与 J7 捕获同款）
+  let sessionThinkingOverride: string | undefined;
   // I8：personaId 装配期即校验（fail-closed——initialIdentity 同款纪律：
   // 坏配置在启动时大声失败，不等到首个 modelRequest 才炸）。
   if (options.personaId !== undefined) resolvePersona(options.personaId);
@@ -1285,6 +1295,10 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
     handleRevert: (targetSeq) => {
       revertService.revert(sessionId, targetSeq);
     },
+    setThinkingOverride: (level) => {
+      sessionThinkingOverride = level;
+    },
+    thinkingOverrideForTurn: () => sessionThinkingOverride,
     ...(handleModelSwitch !== undefined && modelForTurn !== undefined
       ? { handleModelSwitch, modelForTurn, ...(onTurnError !== undefined ? { onTurnError } : {}) }
       : {}),

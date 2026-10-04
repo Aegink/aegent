@@ -68,6 +68,19 @@ export type AgentRequest =
   | { type: "cancel"; cause: CancelCause }
   | { type: "revert"; targetSeq: number }
   | {
+      /** T-P3-161：按 promptId 定位回溯（回溯到该 user/message 之前）——
+       *  UI 端 seq 有 live/镜像双轨漂移，promptId 是漂移免疫的关联键。 */
+      type: "revert";
+      promptId: string;
+    }
+  | {
+      /** T-P3-161：会话思考档覆盖（档位或 "omit" 哨兵=显式不传思考参数）。
+       * 闭集校验在 agent-process（复用 session/settings 的 THINKING_LEVELS
+       * ——协议层只做形状）。 */
+      type: "thinking/set";
+      level: string;
+    }
+  | {
       type: "approve";
       requestId: string;
       action: "allow" | "deny";
@@ -242,6 +255,7 @@ export type AgentMessage =
       timeoutMs: number;
     }
   | { type: "reverted"; targetSeq: number; codeRestored: boolean }
+  | { type: "thinking_set"; level: string }
   | { type: "reverted"; targetSeq: number; codeRestored: boolean }
   | {
       /** A8/T-P1-52：取消后未消费输入退回（"退回输入框"）——轮以 aborted
@@ -463,7 +477,26 @@ export function decodeRequest(line: string): AgentRequest {
     }
     return { type: "cancel", cause: cause as unknown as CancelCause };
   }
-  if (req.type === "revert") {
+    if (req.type === "thinking/set") {
+      // T-P3-161：思考档覆盖——协议层只校验非空字符串（闭集在 process 侧
+      // 复用 THINKING_LEVELS 校验，协议不引 settings 依赖；req 是宽形状
+      // Record——字段级收窄后消费）。
+      const raw = req as { level?: unknown };
+      if (typeof raw.level !== "string" || raw.level === "") {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "thinking/set 需要 level 字符串");
+      }
+      return { type: "thinking/set", level: raw.level };
+    }
+  if (req.type === "revert" && req.targetSeq === undefined) {
+    // T-P3-161：promptId 定位形态（形状校验；语义在 process 侧查流定位；
+    // req 是宽形状 Record——字段级收窄后消费）
+    const raw = req as { promptId?: unknown };
+    if (typeof raw.promptId !== "string" || raw.promptId === "") {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "revert 需要 promptId 字符串");
+    }
+    return { type: "revert", promptId: raw.promptId };
+  }
+if (req.type === "revert") {
     if (typeof req.targetSeq !== "number" || !Number.isInteger(req.targetSeq) || req.targetSeq < 0) {
       throw new ProtocolError("PROTOCOL_MALFORMED", "revert 需要非负整数 targetSeq");
     }

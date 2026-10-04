@@ -147,7 +147,6 @@ export class HostServer {
       this.options.settingsGateway,
     );
     bridge.onEvent((_sid, event) => {
-      if (event.type === "surface/attach" || event.type === "surface/detach") return;
       projectAttacher(event.type);
       if (event.type === "turn/start" || event.type === "turn/end") channelLogger("host").info(`turn 边界：${event.type}`, { category: "session" }); // T-P3-154：不含消息正文（D9）
       try {

@@ -70,6 +70,7 @@ import {
   notifyPermissionChanged,
   refreshContextUsage,
   stopCurrentTurn,
+  notifyThinkingSet,
 } from "./composer-bar.js";
 import { initProgressDock, notifyToolCall, notifyEventLine, notifyTodos } from "./progress-dock.js";
 // T-P3-156 面板批（P/Q/R/S/T）：终端抽屉 + 浏览器/Git/审查/辅助对话四面板
@@ -537,6 +538,100 @@ function reasoningTextOf(e) {
   return text.trim();
 }
 
+/** 用户消息原地编辑（T-P3-161 需求 1——pi-desktop 编辑器形态）：气泡内容
+ *  变 textarea 当场改；↑ = revert 到该消息之前（对话态截断——append-only
+ *  流旧过程全留档）+ reverted 回执后以新文本走正常 prompt 链。 */
+let pendingRewind = null; // { text }——reverted 回执后重发的编辑内容
+let revertedWaiter = null; // reverted 回执等待者（回溯重发双确认——防竞态重发）
+
+function startUserEdit(bubble, original, promptId) {
+  if (window.__agentBusy === true) {
+    toast("执行中不能编辑历史消息——先停止当前轮", "warn");
+    return;
+  }
+  if (bubble.querySelector(".user-edit-box") !== null) return;
+  const body = bubble.querySelector(".bubble-body");
+  if (body === null) return;
+  const box = document.createElement("div");
+  box.className = "user-edit-box";
+  const ta = document.createElement("textarea");
+  ta.className = "input user-edit-input";
+  ta.rows = Math.min(8, Math.max(2, original.split("\n").length));
+  ta.value = original;
+  const row = document.createElement("div");
+  row.className = "user-edit-actions";
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "btn btn-ghost user-edit-btn";
+  cancel.title = "放弃修改";
+  cancel.setAttribute("aria-label", "放弃修改");
+  cancel.append(icon("close", { cls: "icon-sm" }));
+  cancel.addEventListener("click", () => {
+    body.textContent = original;
+    bubble.classList.remove("editing");
+  });
+  const send = document.createElement("button");
+  send.type = "button";
+  send.className = "btn btn-primary user-edit-btn";
+  send.title = "按修改后的内容回溯重发（旧过程留档可查）";
+  send.setAttribute("aria-label", "回溯重发");
+  send.append(icon("send", { cls: "icon-sm" }));
+  send.addEventListener("click", () => {
+    const next = ta.value.trim();
+    if (next === "") return;
+    if (next === original) {
+      toast("内容没有变化——直接发新消息即可", "info");
+      return;
+    }
+    void rewindAndResend(promptId, next, bubble, original);
+  });
+  ta.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" && !ev.shiftKey) {
+      ev.preventDefault();
+      send.click();
+    }
+    if (ev.key === "Escape") cancel.click();
+  });
+  row.append(cancel, send);
+  box.append(ta, row);
+  body.replaceChildren(box);
+  bubble.classList.add("editing");
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+}
+
+/** 回溯重发：revert 到该 user/message 之前（promptId 定位——UI 端 seq 有
+ *  live/镜像双轨漂移，promptId 是 child 流权威关联键）→ reverted 回执 →
+ *  以编辑后文本走正常 prompt 链（租约/排队/投影全复用）。 */
+async function rewindAndResend(promptId, newText, bubble, original) {
+  const body = bubble.querySelector(".bubble-body");
+  try {
+    const envelope = await sendRequest(sessionId(), { type: "revert", promptId });
+    if (!envelope.ok && envelope.error !== undefined) {
+      toast(`回溯失败：${envelope.error.message ?? envelope.error.code ?? ""}`, "warn");
+      return;
+    }
+  } catch (e) {
+    toast(`回溯失败：${e?.message ?? ""}`, "warn");
+    return;
+  }
+  if (body !== null) body.textContent = original; // 立即恢复显示（历史重放接手）
+  bubble.classList.remove("editing");
+  // 双确认防竞态：reverted 回执（内核事实）+ 历史重放完成都到齐才重发，
+  // 任一先到都只是置位——不会出现重放把刚发的消息再冲掉的乱序
+  pendingRewind = { text: newText };
+  const revertedSettled = await Promise.race([
+    new Promise((resolve) => { revertedWaiter = resolve; }),
+    new Promise((resolve) => setTimeout(resolve, 3000)),
+  ]);
+  void revertedSettled;
+  const view = await sendQuery({ sessionId: getSessionId(), op: "events" });
+  hooks.resetStreamView();
+  hooks.renderHistory(view.result?.events ?? []);
+  pendingRewind = null;
+  void submitPrompt(newText);
+}
+
 /** 元事实可展开卡（T-P3-160 需求 3——压缩/卸载/错误结束等原本的纯文本行
  *  统一升级：summary 一行 + 点击看原始载荷；zcode 全操作可查看语义）。 */
 function metaDetailsCard(summaryText, payload, extraCls = "") {
@@ -601,30 +696,36 @@ function renderEvent(e, options = {}) {
       body.className = "bubble-body";
       body.textContent = e.message?.content ?? "";
       el.appendChild(body);
-      if (e.source !== "injected") {
-        // T-P3-160 需求 1：每条用户消息可编辑（回填输入框改完再发）与重发
-        //（原文直接再跑一轮）——zcode 用户输入可行动语义；注入消息除外
+      if (e.source !== "injected" && (window.__viewOnlySession ?? null) === null) {
+        // T-P3-161 需求 1：复制+编辑外置气泡右下（zcode 用户消息操作形态）；
+        // 只读视图（查看其他会话）不挂写操作——回溯只作用于当前连接会话
+        // 编辑=气泡内原地改+回溯重发（revert 到该消息之前再 prompt——
+        // append-only 流：旧消息与 session/revert 标记全部留档，审计可查）
         const raw = e.message?.content ?? "";
+        const promptId = typeof e.promptId === "string" ? e.promptId : "";
+        el.dataset.msgSeq = String(e.seq ?? "?"); // 调试/定位辅助面
         const actions = document.createElement("span");
         actions.className = "user-actions";
+        const copyBtn = document.createElement("button");
+        copyBtn.type = "button";
+        copyBtn.title = "复制这条消息";
+        copyBtn.setAttribute("aria-label", "复制这条消息");
+        copyBtn.append(icon("copy", { cls: "icon-sm" }));
+        copyBtn.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(raw);
+            toast("已复制", "info");
+          } catch {
+            toast("复制失败——浏览器未授权剪贴板", "warn");
+          }
+        });
         const editBtn = document.createElement("button");
         editBtn.type = "button";
-        editBtn.textContent = "编辑";
-        editBtn.title = "把这条消息取回输入框，修改后重新发送";
-        editBtn.addEventListener("click", () => {
-          input.value = raw;
-          autoGrow();
-          updateSendBtnState();
-          input.focus();
-          input.setSelectionRange(raw.length, raw.length);
-          input.scrollIntoView({ block: "nearest" });
-        });
-        const resendBtn = document.createElement("button");
-        resendBtn.type = "button";
-        resendBtn.textContent = "重发";
-        resendBtn.title = "把这条消息原样再发送一轮（不回溯历史）";
-        resendBtn.addEventListener("click", () => void submitPrompt(raw));
-        actions.append(editBtn, resendBtn);
+        editBtn.title = "编辑并重新发送（回溯到这条消息之前，旧过程留档可查）";
+        editBtn.setAttribute("aria-label", "编辑并重新发送");
+        editBtn.append(icon("edit", { cls: "icon-sm" }));
+        editBtn.addEventListener("click", () => startUserEdit(el, raw, promptId));
+        actions.append(copyBtn, editBtn);
         el.appendChild(actions);
         setLastUserPrompt(raw);
       }
@@ -977,8 +1078,23 @@ function renderEventEnvelope(envelope) {
   turnNavRegister(node, envelope.event); // 目录登记（含 null 守卫——user/assistant 两类）
 }
 
-/** 恢复视图：历史事件一次性渲染（query 快照；此后走 event 流续播）。 */
-function renderHistory(events) {
+/** 恢复视图：历史事件一次性渲染（query 快照；此后走 event 流续播）。
+ *  T-P3-161：按最新 session/revert 标记过滤（effectiveEvents 同款）——
+ *  回溯后的旧过程不再显示（事件库全量留档，搜索/导出仍可查）。 */
+function renderHistory(allEvents) {
+  let cut = Number.POSITIVE_INFINITY;
+  for (const e of allEvents) {
+    if (e.type === "session/revert") {
+      cut = e.phase === "revert" ? e.targetSeq : Number.POSITIVE_INFINITY;
+    }
+  }
+  // seq 原样保留（回溯定位依赖绝对 seq）；attach/detach 只是不渲染
+  const events = allEvents.filter(
+    (e) =>
+      e.seq <= cut &&
+      e.type !== "surface/attach" &&
+      e.type !== "surface/detach",
+  );
   for (const e of events) {
     const node = renderEvent(e);
     if (node !== null) appendStreamNode(node, e);
@@ -2659,6 +2775,16 @@ function handleEnvelope(envelope) {
         buildCard(envelope.name, envelope.payload ?? {});
         // T-P3-156：待决审批 → 侧栏状态点（橙色）
         window.dispatchEvent(new CustomEvent("agent:awaiting"));
+      } else if (envelope.name === "thinking_set") {
+        // T-P3-161：思考档回执（pill 文案随档位刷新）
+        notifyThinkingSet(envelope.payload?.level);
+      } else if (envelope.name === "reverted") {
+        // T-P3-161：回溯回执——唤醒回溯重发的双确认等待（重发主体在
+        // rewindAndResend 的历史重放完成后；此处只置位不重发防乱序）
+        if (revertedWaiter !== null) {
+          revertedWaiter(true);
+          revertedWaiter = null;
+        }
       } else if (envelope.name === "approval_settled") {
         removeCard(envelope.payload?.requestId);
         appendLine(`审批已结算：${envelope.payload?.allowed ? "允许" : "拒绝"}`, "meta");

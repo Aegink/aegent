@@ -63,7 +63,7 @@ import { DEFAULT_SPILL_DIR } from "./tools/truncate.js";
 import { sweepSessionSpill } from "./tools/spill-gc.js";
 import { connectAndRegister } from "../mcp/registry-bridge.js";
 import { loadConfiguredPlugins } from "./plugin-loader.js";
-import { loadSettings } from "../session/settings.js";
+import { loadSettings, THINKING_LEVELS } from "../session/settings.js";
 import { parseCommandArgs, parseSlashInvocation, substituteArgs } from "./prompt-args.js";
 import {
   BUILTIN_PROMPT_TEMPLATES,
@@ -1138,9 +1138,35 @@ export async function runAgentChildStdio(
       case "cancel":
         loop.cancel(req.cause as CancelCause);
         return;
+      case "thinking/set": {
+        // T-P3-161：会话思考档覆盖（档位闭集 + "omit" 哨兵；受理即生效点
+        // 在新 turn——与 model/switch 同款捕获语义）。回执经 notification。
+        const valid = (THINKING_LEVELS as readonly string[]).includes(req.level) || req.level === "omit";
+        if (!valid) {
+          send({
+            type: "error",
+            code: "THINKING_LEVEL_INVALID",
+            message: `思考档非法：${req.level}（合法：omit|${THINKING_LEVELS.join("|")}）`,
+          });
+          return;
+        }
+        if (!assembly) {
+          send({
+            type: "error",
+            code: "THINKING_UNAVAILABLE",
+            message: "子进程未装配会话服务（最小装配无思考档覆盖）",
+          });
+          return;
+        }
+        assembly.setThinkingOverride(req.level);
+        send({ type: "thinking_set", level: req.level });
+        return;
+      }
       case "revert": {
         // E4+E11 双回退：先对话态（校验便宜、失败不产生半退）再代码态。
         // 成功回 reverted 回执（CLI 据此报告代码是否回退）；失败回 error 行。
+        // T-P3-161：promptId 定位形态——child 流内查该 user/message 的
+        // seq-1（UI 端 seq 存在 live/镜像双轨漂移，promptId 免疫）。
         if (!assembly) {
           send({
             type: "error",
@@ -1149,15 +1175,40 @@ export async function runAgentChildStdio(
           });
           return;
         }
+        const reqUnion = req as { targetSeq?: number; promptId?: string };
+        let resolvedTargetSeq = reqUnion.targetSeq;
+        if (typeof reqUnion.promptId === "string") {
+          const hit = store
+            .load(sessionId)
+            .filter((e) => e.type === "user/message" && e.promptId === reqUnion.promptId)
+            .at(-1);
+          if (hit === undefined) {
+            send({
+              type: "error",
+              code: "REVERT_FAILED",
+              message: `回溯失败：找不到 promptId=${reqUnion.promptId} 的用户消息`,
+            });
+            return;
+          }
+          resolvedTargetSeq = hit.seq - 1;
+        }
+        if (resolvedTargetSeq === undefined) {
+          send({
+            type: "error",
+            code: "REVERT_FAILED",
+            message: "revert 需要 targetSeq 或 promptId",
+          });
+          return;
+        }
         void (async () => {
           try {
-            assembly.handleRevert(req.targetSeq);
+            assembly.handleRevert(resolvedTargetSeq);
             let codeRestored = false;
             if (assembly.checkpoint) {
-              await assembly.checkpoint.restoreCodeTo(req.targetSeq);
+              await assembly.checkpoint.restoreCodeTo(resolvedTargetSeq);
               codeRestored = true;
             }
-            send({ type: "reverted", targetSeq: req.targetSeq, codeRestored });
+            send({ type: "reverted", targetSeq: resolvedTargetSeq, codeRestored });
           } catch (e) {
             send({
               type: "error",

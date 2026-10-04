@@ -6230,3 +6230,120 @@ details.thinking-card.running .thinking-label {
 .progress-todo-fold:hover {
   color: var(--text-subtle);
 }
+
+/* ===== T-P3-161 用户消息操作/原地编辑/自适应/思考度 ===== */
+
+/* 需求 1：操作钮外置（气泡右下外侧——zcode 截图形态：复制+铅笔图标） */
+.user-actions {
+  position: absolute;
+  right: -4px;
+  bottom: -30px;
+  margin: 0;
+  gap: 6px;
+}
+
+.user-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  color: var(--text-subtle);
+}
+
+/* 需求 1：气泡/卡片随内容自适应（zcode fit-content——用户气泡不再横向铺满） */
+.bubble.user {
+  width: fit-content;
+}
+
+.bubble.user .bubble-body {
+  display: block;
+  white-space: pre-wrap;
+}
+
+.tool-card,
+.meta-card {
+  width: fit-content;
+  min-width: 260px;
+  max-width: 100%;
+}
+
+/* 需求 1：原地编辑器（气泡内 textarea + 取消/回溯重发） */
+.user-edit-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.user-edit-input {
+  width: 100%;
+  resize: vertical;
+  min-height: 60px;
+  background: var(--bg);
+}
+
+.user-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.user-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.bubble.user.editing {
+  width: 100%;
+  max-width: 100%;
+}
+
+.bubble.user.editing .user-actions {
+  display: none;
+}
+
+/* 需求 2：思考度档位段（模型二级面板底部） */
+.thinking-seg {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.thinking-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px 0 4px;
+}
+
+.thinking-chip {
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-subtle);
+  font-size: var(--text-ui-xs);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.thinking-chip:hover {
+  color: var(--text);
+  border-color: var(--border-hover);
+}
+
+.thinking-chip.current {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--bg);
+}

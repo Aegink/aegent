@@ -310,6 +310,11 @@ export interface AgentLoopDeps {
     options?: ModelRequestOptions;
   };
   /**
+   * T-P3-161：会话思考档覆盖读取（turn 捕获时取一次——档位/"omit"/undefined
+   * 跟模型默认）。装配由 thinking/set 命令写入（内存态，与换模生命周期同款）。
+   */
+  thinkingOverrideForTurn?: () => string | undefined;
+  /**
    * J11 换模事务（T-P1-05 装配接线）：turn 以 error 终止时通知装配——
    * 装配处据此驱动 ModelSwitchService.reportRequestFailure（不兼容判据
    * 命中 → 回滚 prev）。同 beforeFirstModelRequest 先例：显式时点 hook，
@@ -646,11 +651,33 @@ export class AgentLoop {
     // J7 捕获：turn 启动即定本 turn 的模型（此后在途换模只影响后续 turn）。
     // 捕获在 turn/start 落盘前——装配侧坏状态在此爆出，不污染事件流。
     // T-P3-146 H：命令级覆盖（frontmatter model）优先于 modelForTurn。
-    this.turnModel = extras?.model
+    const captured: {
+      provider: ModelProvider;
+      identity: ModelIdentity;
+      options?: ModelRequestOptions;
+    } = extras?.model
       ? extras.model
       : this.deps.modelForTurn
         ? this.deps.modelForTurn(turn)
         : { provider: this.deps.provider, identity: this.deps.identity };
+    // T-P3-161：会话思考档覆盖（thinking/set）——用户显式意图最高优先，
+    // 叠加进捕获 options（turn 内一致；命令级 extras.model 的思考档同被
+    // 覆盖——思考档与模型选择正交、以最后显式动作为准）。
+    const thinkingOverride = this.deps.thinkingOverrideForTurn?.();
+    this.turnModel =
+      thinkingOverride === undefined && captured.options === undefined
+        ? captured
+        : {
+            ...captured,
+            ...(captured.options !== undefined || thinkingOverride !== undefined
+              ? {
+                  options: {
+                    ...(captured.options ?? {}),
+                    ...(thinkingOverride !== undefined ? { reasoningEffort: thinkingOverride } : {}),
+                  },
+                }
+              : {}),
+          };
     store.append(sessionId, [
       {
         type: "turn/start",
