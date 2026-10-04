@@ -6347,3 +6347,9 @@ details.thinking-card.running .thinking-label {
   border-color: var(--text);
   color: var(--bg);
 }
+
+/* T-P3-162：停止钮方块填充（pi SquareIcon fill-current 同款） */
+.icon-fill {
+  fill: currentColor;
+  stroke-width: 0;
+}

@@ -16,6 +16,47 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::Manager;
 
+/// T-P3-162 需求 3：Windows 上隐藏子进程控制台窗（node.exe 是 console
+/// 程序——不设此 flag 时便携版每次启动都弹命令行黑窗）。
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// 静默杀进程树（taskkill /T 递归含 agent-child——child.kill() 不递归，
+/// 关窗后孤儿内核持锁 = 用户遇到的"旧缓存"根因）。
+fn kill_tree(pid: u32) {
+    let mut cmd = Command::new("taskkill");
+    cmd.args(["/PID", &pid.to_string(), "/T", "/F"]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let _ = cmd.spawn();
+}
+
+/// 收束 host 进程树（关窗/退出两路共用——taskkill /T 递归含 agent-child，
+/// 再 kill/wait 兜底同步收尸）。
+fn kill_host_tree(state: &HostProcess) {
+    if let Ok(mut guard) = state.0.lock() {
+        if let Some(child) = guard.as_mut() {
+            kill_tree(child.id());
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+/// 启动前清理：读上次 pid 文件，仍在则杀树（壳异常退出的孤儿兜底）。
+fn kill_stale_host(dir: &std::path::Path) {
+    let pid_file = dir.join("data").join("host.pid");
+    if let Ok(pid) = std::fs::read_to_string(&pid_file) {
+        if let Ok(pid) = pid.trim().parse::<u32>() {
+            kill_tree(pid);
+        }
+        let _ = std::fs::remove_file(&pid_file);
+    }
+}
+
 mod browser; // T-P3-156 Q：浏览器面板 webview 管理（真实内核）
 mod picker; // T-P3-158 反馈 2：系统文件夹选择器（rfd 直挂，不加插件）
 
@@ -44,8 +85,8 @@ fn spawn_host(dir: &std::path::Path) -> std::io::Result<Child> {
         .append(true)
         .open(log_dir.join("host.log"))?;
     let log_err = log.try_clone()?;
-    Command::new(&node)
-        .args([
+    let mut cmd = Command::new(&node);
+    cmd.args([
             "host.cjs",
             "--port",
             &HOST_PORT.to_string(),
@@ -58,8 +99,13 @@ fn spawn_host(dir: &std::path::Path) -> std::io::Result<Child> {
         ])
         .current_dir(dir)
         .stdout(Stdio::from(log))
-        .stderr(Stdio::from(log_err))
-        .spawn()
+        .stderr(Stdio::from(log_err));
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd.spawn()
 }
 
 /// TCP 健康探测：host HTTP 端口可连 = 监听在位（WS 升级同端口；HTTP 通即
@@ -84,7 +130,13 @@ pub fn run() {
         .parent()
         .expect("可执行文件无父目录")
         .to_path_buf();
+    // T-P3-162 需求 3：上次孤儿 host 清理（壳崩溃残留——pid 文件兜底）
+    kill_stale_host(&dir);
     let child = spawn_host(&dir);
+    if let Ok(pid) = child.as_ref().map(|c| c.id()) {
+        // pid 文件 = 下次启动的孤儿清理依据（异常退出兜底）
+        let _ = std::fs::write(dir.join("data").join("host.pid"), pid.to_string());
+    }
     if let Err(e) = &child {
         // 开发态（target/debug 无 portable 布局）走这里——不炸壳
         eprintln!("[aegent-shell] host spawn 失败（开发态无 portable 布局属正常）: {e}");
@@ -95,6 +147,13 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(HostProcess(Mutex::new(child.ok())))
+        // T-P3-162 需求 3：关窗 = 彻底关闭（窗口销毁即杀 host 树——
+        // 旧缓存问题的根因是孤儿内核持锁）
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                kill_host_tree(&window.app_handle().state::<HostProcess>());
+            }
+        })
         // U7/T-P3-114：updater 单插件入册（九插件群不取的解禁例外——签名
         // 校验链；endpoints 指向 localhost 演示面，pubkey 在 tauri.conf.json）
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -126,12 +185,7 @@ pub fn run() {
         .run(|app_handle, event| {
             if let tauri::RunEvent::Exit = event {
                 if let Some(state) = app_handle.try_state::<HostProcess>() {
-                    if let Ok(mut guard) = state.0.lock() {
-                        if let Some(child) = guard.as_mut() {
-                            let _ = child.kill();
-                            let _ = child.wait();
-                        }
-                    }
+                    kill_host_tree(&state);
                 }
             }
         });

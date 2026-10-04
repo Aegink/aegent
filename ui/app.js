@@ -244,7 +244,7 @@ const TOOL_PRESENTATION = {
   read: { icon: "file", verb: "读取", kind: "file" },
   write: { icon: "edit", verb: "写入", kind: "file" },
   edit: { icon: "filePen", verb: "编辑", kind: "file" },
-  apply_patch: { icon: "bandage", verb: "补丁", kind: "plain" },
+  apply_patch: { icon: "fileDiff", verb: "补丁", kind: "plain" },
   bash: { icon: "terminal", verb: "终端", kind: "shell" },
   pwsh: { icon: "terminal", verb: "终端", kind: "shell" },
   glob: { icon: "folder", verb: "查找文件", kind: "plain" },
@@ -1816,7 +1816,7 @@ function updateSendBtnState() {
     sendBtn.disabled = false;
     sendBtn.classList.add("send-stop");
     sendBtn.replaceChildren(
-      icon("circleStop", { cls: "icon-sm" }),
+      icon("square", { cls: "icon-sm icon-fill" }),
       document.createTextNode(" 停止"),
     );
     sendBtn.title = "停止当前执行";

@@ -98,3 +98,10 @@ for details" 正好指回那份专有许可：
 
 排除标准（供后续新增仓库时复用）：泄露镜像 / 无许可证 /
 README 自述源自 leaked Claude Code 且含专有源码。
+
+## lucide（图标数据）
+
+- 来源：lucide-react v1.51.0（https://lucide.dev）
+- 许可：ISC
+- 用途：ui/icons.js 的图形数据（T-P3-162 方案 A——由 scratch/_tmp_p162/gen-icons.mjs 从官方图标数据生成，语义名是 aegent 稳定接口）
+- 修改：无（path 数据原样；key 属性剔除）

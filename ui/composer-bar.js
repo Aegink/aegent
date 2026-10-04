@@ -243,7 +243,7 @@ function paintPermPill() {
   if (permPill === null) return;
   const current = settingsCache?.permission?.mode ?? "ask";
   const labels = { ask: "每次询问", "accept-edits": "自动批编辑", "read-only": "只读", auto: "全自动", unattended: "无人值守" };
-  permPill.replaceChildren(icon("lock", { cls: "icon-sm" }), document.createTextNode(` ${labels[current] ?? current}`));
+  permPill.replaceChildren(icon("shield", { cls: "icon-sm" }), document.createTextNode(` ${labels[current] ?? current}`));
 }
 
 /** settings 保存/切档回执后由 app.js 调（pill 文案随档位刷新）。 */
@@ -305,23 +305,18 @@ async function openModelMenu() {
         }
         const foot = document.createElement("div");
         foot.className = "model-picker-foot";
-        const addProvider = document.createElement("button");
-        addProvider.type = "button";
-        addProvider.className = "model-picker-row";
-        addProvider.textContent = "新供应商";
-        addProvider.addEventListener("click", () => {
-          close();
-          location.hash = "#settings/providers";
-        });
+        // T-P3-162 需求 1：一级只有「管理模型」入口（供应商列表已动态
+        // 承载既配名字——点击进对应二级模型+思考度选择）
         const manage = document.createElement("button");
         manage.type = "button";
         manage.className = "model-picker-row";
         manage.textContent = "管理模型";
+        manage.title = "打开设置 → 供应商（新增供应商/配置模型都在那里）";
         manage.addEventListener("click", () => {
           close();
           location.hash = "#settings/providers";
         });
-        foot.append(addProvider, manage);
+        foot.appendChild(manage);
         body.appendChild(foot);
       };
       const paintModels = (provider) => {
@@ -426,7 +421,7 @@ async function switchModel(provider, modelId) {
   const providerId = provider.id ?? provider.name ?? provider.baseUrl;
   try {
     await sendRequest(sid, { type: "model/switch", identity: { provider: providerId, modelId } });
-    modelPill.replaceChildren(icon("sparkles", { cls: "icon-sm" }), document.createTextNode(` ${modelId}`));
+    modelPill.replaceChildren(icon("cpu", { cls: "icon-sm" }), document.createTextNode(` ${modelId}`));
     toast(`模型已切换：${providerId} / ${modelId}（下一轮起生效）`, "info");
   } catch (e) {
     toast(`切换失败：${e?.message ?? ""}（需要写租约）`, "warn");
@@ -440,14 +435,14 @@ function paintModelPill() {
     : "";
   const currentModel = settingsCache?.model?.identity?.modelId;
   if (currentModel !== undefined && currentModel !== "") {
-    modelPill.replaceChildren(icon("sparkles", { cls: "icon-sm" }), document.createTextNode(` ${currentModel}${thinkingLabel}`));
+    modelPill.replaceChildren(icon("cpu", { cls: "icon-sm" }), document.createTextNode(` ${currentModel}${thinkingLabel}`));
     return;
   }
   const first = settingsCache?.providers?.[0];
   const firstModel = first?.models?.[0];
   if (first !== undefined && firstModel !== undefined) {
     const label = modelLabel(firstModel);
-    modelPill.replaceChildren(icon("sparkles", { cls: "icon-sm" }), document.createTextNode(` ${label}${thinkingLabel}`));
+    modelPill.replaceChildren(icon("cpu", { cls: "icon-sm" }), document.createTextNode(` ${label}${thinkingLabel}`));
     modelPill.title = `当前缺省：${first.name ?? first.id ?? ""} / ${label}${thinkingLabel}（点击切换本次会话模型与思考度）`;
   }
 }
