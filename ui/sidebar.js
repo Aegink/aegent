@@ -61,6 +61,7 @@ let manualOrder = (() => {
   }
 })();
 let expandedProjects = readIdSet(EXPAND_KEY);
+let expandBootstrapped = false; // 活动项目默认展开——会话内只做一次
 
 // 运行态（app.js 经 CustomEvent 推送——W 的 idle 信号同源）：当前会话
 // 是否有在途轮。任务/项目状态点据此判定。
@@ -120,6 +121,16 @@ export async function refreshSidebar() {
     if (envelope.ok) {
       setSettingsCache(envelope.result.settings);
       applyAppearance(); // T-P3-157：启动首拉后应用外观（此前仅设置保存路径生效——重启必回暗色）
+    }
+  }
+  // 活动项目默认展开（会话内一次——首次使用无展开记录时；此后用户手动
+  // 折叠不被反复撑开）。zcode 任务列表常显语义：对话时项目下任务行可见，
+  // 运行呼吸点才有舞台。
+  if (!expandBootstrapped && settingsCache?.activeProject) {
+    expandBootstrapped = true;
+    if (expandedProjects.size === 0) {
+      expandedProjects.add(settingsCache.activeProject);
+      writeIdSet(EXPAND_KEY, expandedProjects);
     }
   }
   if (filesProjectId !== null) {
@@ -234,7 +245,7 @@ function projectRow(project) {
     head.appendChild(chipEl("missing", "sb-chip-missing"));
   }
   if (!expanded && running) {
-    head.appendChild(chipEl("●", "sb-chip-running")); // 折叠态黄点=仍有 Agent 在跑
+    head.appendChild(chipEl("", "sb-chip-running")); // 折叠态呼吸圆点=仍有 Agent 在跑
   }
 
   // hover 浮层：+ 新建任务 / ⋯ 菜单（pideck 行尾浮层——absolute 不占布局）
@@ -422,9 +433,19 @@ function taskRow(task) {
   const row = document.createElement("div");
   row.className = "sb-task-row";
   const isCurrent = task.sessionId === getSessionId();
+  // 行首状态槽（pi-desktop sidebar-session-status 归一：待审批 > 运行 >
+  // 空闲无色——空闲保留透明占位点，行首对齐不跳）
   const dot = document.createElement("span");
-  dot.className = `sb-task-dot${isCurrent && agentState.busy ? " busy" : ""}${isCurrent && agentState2.awaiting ? " awaiting" : ""}`;
-  dot.title = isCurrent ? (agentState.busy ? "运行中" : "当前会话") : "历史任务";
+  dot.className = "sb-task-dot";
+  if (isCurrent && agentState2.awaiting) {
+    dot.classList.add("awaiting");
+    dot.title = "等待你的审批/答复";
+  } else if (isCurrent && agentState.busy) {
+    dot.classList.add("busy");
+    dot.title = "运行中";
+  } else {
+    dot.title = isCurrent ? "当前会话" : "历史任务";
+  }
   const title = document.createElement("span");
   title.className = "sb-label";
   title.textContent = task.title !== "" ? task.title : task.sessionId;

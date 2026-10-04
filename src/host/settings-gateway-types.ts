@@ -118,6 +118,12 @@ export interface SettingsGateway {
   terminalResizeOp(payload: { id: string; cols: number; rows: number }): { resized: true };
   importScan(): Promise<unknown>;
   projectTasks(projectId: string): Promise<unknown>;
+  /** 镜像 store 回注（T-P3-164——project-tasks 的 turn 中内存权威源；
+   * HostServer 构造后调一次。FileSettingsGateway 实现）。 */
+  attachMirrorSource?(source: {
+    sessionIds(): string[];
+    load(sessionId: string): readonly { type: string; ts: number; message?: unknown }[];
+  }): void;
   sessionAttach(payload: { sessionId: string; projectId: string }): Promise<{ attached: true }>;
   projectBranch(path: string): Promise<{ branch?: string }>;
   /** T-P3-150 B2：任务重命名（custom 权威级——自动命名永不覆盖手动名）。 */

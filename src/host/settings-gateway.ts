@@ -47,7 +47,7 @@ import {
 } from "./panel-ops.js";
 import { terminalCreateOp, terminalInputOp, terminalResizeOp } from "./terminal-ops.js";
 import { runTtsSynthesize } from "./tts-gateway.js";
-import { fsReadOp, fsShellOp, fsTreeOp, importPreviewOp, importScanOp, importSessionsOp, projectBranchOp, projectCloneOp, projectTasksOp, sessionAttachOp, sessionRenameOp } from "./settings-project-ops.js";
+import { fsReadOp, fsShellOp, fsTreeOp, importPreviewOp, importScanOp, importSessionsOp, projectBranchOp, projectCloneOp, projectTasksOp, sessionAttachOp, sessionRenameOp, type MirrorTasksSource } from "./settings-project-ops.js";
 import { checkPluginDir, listPlugins } from "./plugins-gateway.js";
 import {
   marketOpImpl,
@@ -102,6 +102,13 @@ export class FileSettingsGateway implements SettingsGateway {
     private readonly homeDir: string = homedir(),
     private readonly sttFetch: typeof fetch = fetch,
   ) {}
+
+  /** 镜像 store 回注（HostServer 构造后调——project-tasks 的 turn 中内存
+   * 权威源，write-behind 库滞后根因修）。 */
+  private mirrorTasksSource?: MirrorTasksSource;
+  attachMirrorSource(source: MirrorTasksSource): void {
+    this.mirrorTasksSource = source;
+  }
 
   async get(): Promise<SettingsShape> {
     return (await loadSettings(this.settingsPath)).settings;
@@ -270,7 +277,7 @@ export class FileSettingsGateway implements SettingsGateway {
   terminalInputOp(payload: { id: string; data: string }): { written: true } { return terminalInputOp(payload); }
   terminalResizeOp(payload: { id: string; cols: number; rows: number }): { resized: true } { return terminalResizeOp(payload); }
   importScan(): Promise<unknown> { return importScanOp(this.homeDir); }
-  projectTasks(projectId: string): Promise<unknown> { return Promise.resolve(projectTasksOp(this.sessionDb, projectId)); }
+  projectTasks(projectId: string): Promise<unknown> { return Promise.resolve(projectTasksOp(this.sessionDb, projectId, this.mirrorTasksSource)); }
   sessionAttach(payload: { sessionId: string; projectId: string }): Promise<{ attached: true }> { return Promise.resolve(sessionAttachOp(this.sessionDb, payload)); }
   projectBranch(path: string): Promise<{ branch?: string }> { return Promise.resolve(projectBranchOp(path)); }
   sessionRename(payload: { sessionId: string; title: string }): Promise<{ renamed: true }> { return Promise.resolve(sessionRenameOp(this.sessionDb, payload)); }

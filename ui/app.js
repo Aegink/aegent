@@ -81,7 +81,6 @@ import "./pane-git.js";
 import "./pane-review.js";
 import "./pane-assistant.js";
 import "./pane-tree.js";
-import "./pane-tasks.js"; // T-P3-164：任务列表面板（zcode 任务列表同构）
 import { openBrowserPane } from "./pane-browser.js";
 
 installGlobalErrorReporters(); // T-P3-154 A3：全局错误捕获（模块加载即挂——视图崩溃也捕）
@@ -673,6 +672,9 @@ function renderEvent(e, options = {}) {
     case "turn/end": {
       // 反馈 4：正常结束不渲染；仅失败保留一行（错误原因+重试入口）
       if (e.reason?.kind !== "error") {
+        // T-P3-164：turn 末延迟刷侧栏（仅 live）——自动命名/索引落库后
+        // 任务标题跟上（立即刷会撞写库竞态，取旧标题）
+        if (options.live === true) setTimeout(() => void refreshSidebar(), 1200);
         return null; // 正常结束静默（idle 通知承担续跑/进度复位）
       }
       const card = metaDetailsCard(` 轮以错误结束（${endKindText(e.reason)}）`, e, "meta error-line");
@@ -731,6 +733,10 @@ function renderEvent(e, options = {}) {
         setLastUserPrompt(raw);
       }
       appendMsgTime(el, e.ts); // T-P3-141：时间戳开关（设置外观段）
+      // T-P3-164：任务建立即刷侧栏（仅 live——重放不刷）。镜像 store 内存
+      // 权威清单已回注 project-tasks（write-behind 库滞后根因修）——
+      // pi-desktop 事件驱动同语义：对话中任务行立刻出现并亮运行点。
+      if (options.live === true) void refreshSidebar();
       return el;
     }
     case "assistant/message": {

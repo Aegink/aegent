@@ -99,6 +99,13 @@ export class HostServer {
     const registry = new HostRegistry();
     const host = registry.register({ sessionId });
     const store = new SessionStore(this.options.storage ?? new InMemoryEventStorage());
+    // T-P3-164：镜像 store 回注 settings 网关——project-tasks 的 turn 中
+    // 内存权威源（write-behind 库滞后：turn 进行中读库恒空，活跃会话永远
+    // 不进任务清单——用户"对话了但任务列表不出现"的根因修）。
+    this.options.settingsGateway?.attachMirrorSource?.({
+      sessionIds: () => store.sessionIds(),
+      load: (sid) => store.load(sid),
+    });
     // T-P3-147 E：会话标题服务（turn/end 触发——host 旁路；无库 = no-op）
     const titleService = this.options.titleDeps
       ? createTitleService({

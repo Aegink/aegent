@@ -290,9 +290,18 @@ export class SqliteEventStorage implements EventStorage {
   }
 
   listSessionProjects(): { sessionId: string; projectId: string }[] {
-    return this.db
-      .prepare("SELECT session_id, project_id FROM session_projects")
-      .all() as Array<{ sessionId: string; projectId: string }>;
+    // 显式映射（SQLite bare-column 返回蛇形键——直接 as 驼峰是断言不是
+    // 转换，r.sessionId 恒 undefined → project-tasks 归属匹配恒空，
+    // 任务清单从未出过任务（T-P3-164 走查实录根因）。
+    return (
+      this.db
+        .prepare("SELECT session_id, project_id FROM session_projects")
+        .all()
+        .map((r) => {
+          const row = r as Record<string, unknown>;
+          return { sessionId: String(row["session_id"]), projectId: String(row["project_id"]) };
+        })
+    );
   }
 
   /**

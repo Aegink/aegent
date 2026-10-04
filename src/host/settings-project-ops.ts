@@ -10,14 +10,51 @@ import { fsListDir, fsReadFile, fsShellAction } from "./fs-gateway.js";
 import { projectGitClone, readGitBranch, scanImportableProjects } from "./projects-gateway.js";
 
 /** 项目任务清单 = 归属映射 ∩ 会话索引（标题沿用 listSessionSummaries 的
- * title 管线——session_titles 优先、首条消息截断回退）。 */
+ * title 管线——session_titles 优先、首条消息截断回退）。
+ *
+ * mirror（T-P3-164 根因修）：镜像 store 的 write-behind 与子进程同律——
+ * turn 末才排空，**turn 进行中读库恒空**，活跃会话永远不进任务清单（用户
+ * "对话了但任务列表不出现"的根因）。镜像会话（内存权威）不在库索引时从
+ * 事件流折叠最小事实（标题=首条 user/message 截断），与库索引合并去重。 */
+export interface MirrorTasksSource {
+  sessionIds(): string[];
+  load(sessionId: string): readonly { type: string; ts: number; message?: unknown }[];
+}
+
 export function projectTasksOp(
   sessionDb: SqliteEventStorage | undefined,
   projectId: string,
+  mirror?: MirrorTasksSource,
 ): { projectId: string; tasks: { sessionId: string; title: string; createdTs: number; updatedTs: number; eventCount: number }[] } {
   const db = requireDb(sessionDb, "任务面");
-  const summaries = db.listSessionSummaries(500);
+  const summaries = [...db.listSessionSummaries(500)];
   const ownership = new Map(db.listSessionProjects().map((r) => [r.sessionId, r.projectId]));
+  if (mirror !== undefined) {
+    const known = new Set(summaries.map((s) => s.sessionId));
+    for (const sid of mirror.sessionIds()) {
+      if (known.has(sid)) continue;
+      const events = mirror.load(sid);
+      if (events.length === 0) continue;
+      const first = events[0];
+      const last = events[events.length - 1];
+      if (first === undefined || last === undefined) continue;
+      // user/message 的 message 跨事件类型形状不一（ToolProgress 是 string）——
+      // 运行时形状判别后取 content（事件联合的窄化在泛型面做不到）
+      const firstUser = events.find((e) => e.type === "user/message");
+      const raw = firstUser?.message;
+      const content =
+        typeof raw === "object" && raw !== null && "content" in raw
+          ? String((raw as { content?: unknown }).content ?? "")
+          : "";
+      summaries.push({
+        sessionId: sid,
+        title: content.replace(/\s+/g, " ").trim().slice(0, 40),
+        createdTs: first.ts,
+        updatedTs: last.ts,
+        eventCount: events.length,
+      });
+    }
+  }
   const tasks = summaries
     .filter((s) => ownership.get(s.sessionId) === projectId)
     .map((s) => ({
