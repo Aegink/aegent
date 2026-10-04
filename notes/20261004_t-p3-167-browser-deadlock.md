@@ -20,3 +20,9 @@
 - 用户真机复测：浏览器面板（真实 WebView2 子窗跟随面板区域——首次实机视觉确认）/关窗清零/导入弹窗 tab
 - CDP 实测通道记档（WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port）——壳内 UI 自动化从此可测
 - 残留僵尸进程 26048（旧方案 A 死锁进程）杀不掉——用户重启机器自然清；新版不再产生
+## 追记（同日）：T-P3-168 子窗跟随与 z 序（1193f55+9d5da3f，已推）
+- **位置语义重定位**：browser_set_offset 上报「面板区域相对视口的物理偏移」，Rust 在主窗 Moved/Resized 事件里直算子窗屏幕位置（视口原点=outer+边框修正（outer/inner 差）+offset）——拖动/拖宽零延迟跟随，不依赖 UI 轮询（窗口移动不触发 DOM ResizeObserver 的实测盲区）。
+- **CDP 实测**：子窗 1263,194=理论精确对齐；主窗移动+158,+150 后子窗 1420,344=理论 1421,344（±1 取整）——跟随通过。
+- **z 序修复（用户实测"移动主窗子窗被覆盖"）**：子窗设 owner（属主窗口）语义——tauri 2.12 WebviewWindowBuilder.owner_raw(HWND)；MSDN：owned 窗恒浮于属主之上/随属主最小化/属主销毁即销毁。CDP 复测：主窗 133,74→307,180、子窗 1263,194→1437,300 同步零偏差且不再被覆盖。
+- 便携 exe 已重编含全部修复。
+
