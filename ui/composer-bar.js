@@ -1,5 +1,5 @@
 /**
- * 输入 Tab 栏 + 排队"等待中"条（T-P3-156 方案 K/L——需求四）。
+ * 输入 Tab 栏 + 排队条（T-P3-156 方案 K/L；T-P3-159 需求 3/4/5 重构）。
  *
  * L（需求四：附件/权限/用量/模型常驻可见）：
  * - 附件 pill：隐藏 file input（multiple）→ 既有 addAttachment 链（10MB/件、
@@ -9,25 +9,29 @@
  *   config/refresh 会话内即时生效，回执 toast 在 app.js 的 W 消费）。
  * - 上下文 % pill（gauge 图标）：数据源 = query op:"usage"（hello 后与每轮结算后由
  *   app.js 拉取并推入 refreshContextUsage）——≥80% 橙、≥95% 红（qwen
- *   ContextUsageDisplay 阈值语义）；点击弹本会话用量明细。
- * - 模型 pill：菜单 = settings.providers × models（本地已配置面）→
- *   model/switch（写命令持约；回执经事件流 renderEvent 呈现）。
+ *   ContextUsageDisplay 阈值语义）；点击弹锚定浮层小面板（不再开模态）。
+ * - 模型 pill：锚定浮层选择器（搜索 + 按供应商分组 + 当前勾选——zcode
+ *   模型面板形态）→ model/switch（写命令持约；回执经事件流 renderEvent 呈现）。
  *
- * K（需求四：等待中 + 立即发送）：
+ * K（需求三：排队条——只在「执行中插话」时出现）：
  * - 内核忙时发送的 prompt 自动入队（agent-process admission：忙 → queue.ts
- *   enqueue 返 accepted）——UI 侧排队条只是**投影**：发送时 agent 忙则记
- *   本地 queued 摘要；idle（队列已排空）/prompt_returned（中止退回）时清空。
- * - 停止 = cancel{cause:{kind:"user"}}（写命令持约）——中止后剩余排队经
- *   prompt_returned 回填输入框（app.js W 消费）。
+ *   enqueue 返 accepted）——排队条是**本地投影**：仅 queued 非空才渲染，
+ *   宽度与输入框同宽（同 max-width 820 居中）——正常发送不再出现任何弹窗。
+ * - turn/start 时投影 FIFO 出队一条（内核 drain 语义——该条已在跑）；
+ *   idle（队列排空）/prompt_returned（中止退回）清零。
+ * - 撤回 = cancel{cause:{kind:"user"}}——中止后剩余排队经 prompt_returned
+ *   回填输入框（app.js W 消费）。
  * - 立即发送 = steer{expectedTurn, content}（输入框当前内容注入在途轮
  *   ——不打断，内核 turn 边界插入；排队消息仍在轮末自动发送）。
+ * - 发送/停止按钮实时态（需求五）归 app.js updateSendBtnState——本模块
+ *   导出 stopCurrentTurn 供其停止模式调用。
  */
 
 import { sendQuery, sendRequest } from "./api.js";
 import { getSessionId, settingsCache } from "./state.js";
 import { toast } from "./feedback.js";
 import { icon } from "./icons.js";
-import { openMenu } from "./views/settings/core.js";
+import { openMenu, openPopover } from "./views/settings/core.js";
 
 let input = null;
 let queueBar = null;
@@ -37,7 +41,8 @@ let modelPill = null;
 let attachBtn = null;
 let fileInput = null;
 
-/** 排队投影（本地摘要——内核队列的展示面，非控制面）。 */
+/** 排队投影（本地摘要——内核队列的展示面，非控制面）。存全文（编辑/撤回
+ *  语义需要原文），展示端再截断。 */
 const queued = [];
 /** 当前轮号（turn/start 记录——steer 的 expectedTurn）。 */
 let currentTurn = 0;
@@ -86,9 +91,11 @@ export function initComposerBar(deps) {
 // 运行态通知（app.js 事件转发进来——模块间解耦经显式调用）
 // ---------------------------------------------------------------------------
 
-/** turn/start：记录轮号 + 排队条进入"执行中"形态。 */
+/** turn/start：轮号记录 + 投影 FIFO 出队一条（内核 drain——该条已在跑）+
+ *  排队条重绘。 */
 export function notifyTurnStarted(turn) {
   currentTurn = Number(turn) || currentTurn;
+  if (queued.length > 0) queued.shift();
   paintQueueBar();
 }
 
@@ -106,7 +113,7 @@ export function notifyPromptReturned() {
 
 /** 发送时 agent 忙 → 本条进了内核队列（投影摘要）。由 app.js submitPrompt 调。 */
 export function notifyQueued(content) {
-  queued.push(oneLineOf(content));
+  queued.push(String(content));
   paintQueueBar();
 }
 
@@ -120,7 +127,8 @@ function oneLineOf(text) {
 }
 
 // ---------------------------------------------------------------------------
-// K：排队条渲染与动作
+// K：排队条渲染与动作（T-P3-159 需求 3——仅插话时出现；同输入框宽度；
+//    行 = 排队原文一行省略；条动作 = 立即发送（steer 输入框内容）+ 撤回）
 // ---------------------------------------------------------------------------
 
 function paintQueueBar() {
@@ -128,38 +136,41 @@ function paintQueueBar() {
   const busy = window.__agentBusy === true;
   queueBar.dataset.busy = busy ? "1" : "0";
   queueBar.replaceChildren();
-  if (!busy && queued.length === 0) {
+  if (queued.length === 0) {
     queueBar.hidden = true;
-    return;
+    return; // 正常发送/空闲执行：无排队内容 = 不出现任何弹窗（需求三）
   }
   queueBar.hidden = false;
 
+  const head = document.createElement("div");
+  head.className = "queue-head";
   const status = document.createElement("span");
   status.className = "queue-status";
-  if (busy) {
-    status.innerHTML = `<span class="queue-dot"></span> AI 执行中${currentTurn > 0 ? `（第 ${currentTurn} 轮）` : ""}`;
-  } else {
-    status.textContent = "空闲";
-  }
-  queueBar.appendChild(status);
+  status.append(
+    icon("loader", { cls: "icon-sm icon-spin" }),
+    document.createTextNode(` 排队 ${String(queued.length)} 条`),
+  );
+  const hint = document.createElement("span");
+  hint.className = "queue-hint";
+  hint.title = "排队消息将在本轮结束后自动逐条发送；在输入框写入新内容可点「立即发送」插队注入当前轮。";
+  hint.textContent = "轮末自动发送";
+  head.append(status, hint);
+  queueBar.appendChild(head);
 
-  if (queued.length > 0) {
-    const list = document.createElement("span");
-    list.className = "queue-list";
-    list.title = queued.join("\n");
-    list.replaceChildren(
-      icon("loader", { cls: "icon-sm icon-spin" }),
-      document.createTextNode(` 等待中 ${queued.length} 条：${queued[0]}${queued.length > 1 ? ` …` : ""}`),
-    );
-    queueBar.appendChild(list);
-    const hint = document.createElement("span");
-    hint.className = "queue-hint";
-    hint.title = "排队消息将在本轮结束后自动逐条发送；在输入框写入新内容可点「立即发送」插队注入当前轮。";
-    hint.textContent = "轮末自动发送";
-    queueBar.appendChild(hint);
+  const list = document.createElement("div");
+  list.className = "queue-rows";
+  for (const text of queued) {
+    const row = document.createElement("div");
+    row.className = "queue-row";
+    row.title = text;
+    row.textContent = oneLineOf(text);
+    list.appendChild(row);
   }
+  queueBar.appendChild(list);
 
   if (busy) {
+    const actions = document.createElement("div");
+    actions.className = "queue-actions";
     // 立即发送：输入框当前内容 steer 注入在途轮（不打断——codex steer 语义）
     const sendNow = document.createElement("button");
     sendNow.type = "button";
@@ -167,14 +178,15 @@ function paintQueueBar() {
     sendNow.textContent = "立即发送";
     sendNow.title = "把输入框当前内容立即注入当前轮（AI 在下一步间隙即可看到——不打断执行）";
     sendNow.addEventListener("click", () => void steerNow());
-    // 停止：cancel（中止后剩余排队经 prompt_returned 回填输入框）
-    const stop = document.createElement("button");
-    stop.type = "button";
-    stop.className = "queue-btn queue-btn-danger";
-    stop.textContent = "停止";
-    stop.title = "中止当前轮（未消费的排队输入会退回输入框）";
-    stop.addEventListener("click", () => void cancelTurn());
-    queueBar.append(sendNow, stop);
+    // 撤回：cancel（中止后剩余排队经 prompt_returned 回填输入框）
+    const recall = document.createElement("button");
+    recall.type = "button";
+    recall.className = "queue-btn";
+    recall.textContent = "撤回";
+    recall.title = "停止当前轮并把排队消息退回输入框";
+    recall.addEventListener("click", () => void cancelTurn());
+    actions.append(sendNow, recall);
+    queueBar.appendChild(actions);
   }
 }
 
@@ -199,7 +211,8 @@ async function steerNow() {
   }
 }
 
-async function cancelTurn() {
+/** 停止当前轮（导出——app.js 发送按钮停止模式与排队条「撤回」共用）。 */
+export async function stopCurrentTurn() {
   const sid = getSessionId();
   if (sid === "") return;
   try {
@@ -253,23 +266,85 @@ function modelIdOf(model) {
   return model?.id ?? model?.name ?? "";
 }
 
+/** 模型选择器（T-P3-159 需求 4——锚定浮层：搜索 + 供应商分组 + 当前勾选，
+ *  zcode 模型面板同构；宽度受限、从 pill 原位向上展开）。 */
 async function openModelMenu() {
   const providers = settingsCache?.providers ?? [];
-  const items = [];
+  const entries = [];
   for (const provider of providers) {
     for (const model of provider.models ?? []) {
-      const label = `${provider.name ?? provider.id ?? provider.baseUrl} · ${modelLabel(model)}`;
-      items.push({
-        label,
-        onClick: () => void switchModel(provider, modelIdOf(model)),
+      entries.push({
+        provider,
+        model,
+        label: modelLabel(model),
+        providerName: provider.name ?? provider.id ?? provider.baseUrl,
+        providerId: provider.id ?? provider.name ?? provider.baseUrl,
+        modelId: modelIdOf(model),
       });
     }
   }
-  if (items.length === 0) {
+  if (entries.length === 0) {
     toast("尚未配置任何供应商/模型——设置「供应商」分节添加后可用", "warn");
     return;
   }
-  openMenu(modelPill, items);
+  const current = settingsCache?.model?.identity?.modelId;
+  openPopover(modelPill, {
+    width: 380,
+    build: (panel, close) => {
+      const search = document.createElement("input");
+      search.className = "input";
+      search.type = "text";
+      search.placeholder = "搜索模型…";
+      const list = document.createElement("div");
+      list.className = "model-picker-list";
+      const paint = (filter) => {
+        list.replaceChildren();
+        const kw = String(filter ?? "").trim().toLowerCase();
+        const groups = new Map();
+        for (const entry of entries) {
+          if (kw !== "" && !`${entry.providerName} ${entry.label}`.toLowerCase().includes(kw)) continue;
+          const bucket = groups.get(entry.providerName) ?? [];
+          bucket.push(entry);
+          groups.set(entry.providerName, bucket);
+        }
+        if (groups.size === 0) {
+          const empty = document.createElement("div");
+          empty.className = "queue-hint";
+          empty.textContent = "没有匹配的模型";
+          list.appendChild(empty);
+          return;
+        }
+        for (const [providerName, models] of groups) {
+          const head = document.createElement("div");
+          head.className = "model-picker-group";
+          head.textContent = providerName;
+          list.appendChild(head);
+          for (const entry of models) {
+            const row = document.createElement("button");
+            row.type = "button";
+            row.className = "model-picker-row";
+            const name = document.createElement("span");
+            name.className = "model-picker-name";
+            name.textContent = entry.label;
+            row.appendChild(name);
+            if (entry.modelId !== "" && entry.modelId === current) {
+              row.classList.add("current");
+              row.appendChild(icon("check", { cls: "icon-sm" }));
+            }
+            row.addEventListener("click", () => {
+              close();
+              void switchModel(entry.provider, modelIdOf(entry.model));
+            });
+            list.appendChild(row);
+          }
+        }
+      };
+      paint("");
+      search.addEventListener("input", () => paint(search.value));
+      panel.append(search, list);
+      queueMicrotask(() => search.focus());
+    },
+  });
 }
 
 async function switchModel(provider, modelId) {
@@ -331,18 +406,40 @@ function paintCtxPill() {
 }
 
 async function openUsageDetail() {
-  const body = document.createElement("div");
+  // T-P3-159 需求 4：用量明细改锚定小浮层（原为居中模态——体积与位置
+  // 都超出「从原点击位置展开」的预期）
   const { contextTokens, contextWindow } = usageInfo;
   const pct = contextWindow > 0 ? Math.round((contextTokens / contextWindow) * 100) : 0;
   const fmt = (n) => new Intl.NumberFormat("zh-CN", { notation: n >= 10000 ? "compact" : "standard" }).format(n);
-  body.innerHTML = `
-    <div class="usage-detail-row"><span>本会话上下文占用</span><b>${fmt(contextTokens)} / ${fmt(contextWindow)} token（${String(pct)}%）</b></div>
-    <div class="usage-detail-row"><span>数据口径</span><span>本会话末轮计量——完整趋势/热力/成本见「用量统计」页</span></div>
-  `;
-  const { openDialog } = await import("./views/settings/core.js");
-  openDialog({
-    title: "上下文用量",
-    body,
-    actions: [{ label: "打开用量页", className: "btn btn-primary", onClick: () => { location.hash = "#usage"; } }],
+  openPopover(ctxPill, {
+    width: 320,
+    build: (panel, close) => {
+      const row1 = document.createElement("div");
+      row1.className = "usage-detail-row";
+      const k1 = document.createElement("span");
+      k1.textContent = "本会话上下文占用";
+      const v1 = document.createElement("b");
+      v1.textContent = `${fmt(contextTokens)} / ${fmt(contextWindow)} token（${String(pct)}%）`;
+      row1.append(k1, v1);
+      const row2 = document.createElement("div");
+      row2.className = "usage-detail-row";
+      const k2 = document.createElement("span");
+      k2.textContent = "数据口径";
+      const v2 = document.createElement("span");
+      v2.textContent = "本会话末轮计量";
+      row2.append(k2, v2);
+      const actions = document.createElement("div");
+      actions.className = "usage-detail-actions";
+      const openUsage = document.createElement("button");
+      openUsage.type = "button";
+      openUsage.className = "btn btn-primary";
+      openUsage.textContent = "打开用量页";
+      openUsage.addEventListener("click", () => {
+        close();
+        location.hash = "#usage";
+      });
+      actions.appendChild(openUsage);
+      panel.append(row1, row2, actions);
+    },
   });
 }

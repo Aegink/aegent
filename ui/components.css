@@ -699,6 +699,80 @@ input[type="checkbox"] {
   background: color-mix(in srgb, var(--destructive) 12%, transparent);
 }
 
+/* ===== anchor-popover（T-P3-159 需求 4——锚定小面板通用壳：从触发位置
+   展开/空间不足向上翻/宽度受限；模型选择器与用量明细消费） ===== */
+.anchor-popover {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: min(360px, 60vh);
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-2);
+  animation: dialog-zoom-in 0.12s ease-out;
+  overflow: hidden;
+}
+
+/* 模型选择器（composer 模型 pill 面板——zcode 模型面板同构） */
+.model-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.model-picker-group {
+  padding: 6px 8px 2px;
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtlest);
+}
+
+.model-picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--text-ui-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.model-picker-row:hover {
+  background: var(--surface-hover);
+}
+
+.model-picker-row.current {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.model-picker-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 用量明细浮层行（composer ctx pill——原模态行样式迁移） */
+.usage-detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
+
 /* ===== kbd（键位胶囊——快捷键清单形态） ===== */
 .kbd {
   display: inline-flex;

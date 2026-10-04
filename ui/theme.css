@@ -43,13 +43,8 @@
   --heat-3: color-mix(in srgb, #0ea5e9 62%, var(--surface));
   --heat-4: color-mix(in srgb, #7dd3fc 78%, var(--surface)); /* sky-300 78% */
 
-  /* —— 会话轨迹六色（消息流侧边着色/小地图——trajectory 面板同构） —— */
-  --traj-user: #60a5fa;
-  --traj-assistant: #2dd4bf;
-  --traj-reasoning: #a78bfa;
-  --traj-tool-call: #f59e0b;
-  --traj-tool-result: #38bdf8;
-  --traj-reasoning-alt: #7c3aed;
+  /* （会话轨迹六色已退役——T-P3-159 色彩纪律：消息流/小地图只以深浅
+     对比重要程度，不再消费六色槽；皮肤块同步删除） */
 
   /* —— 代码高亮四档（hljs token 调色板——暗/亮共用中间对比档，批 C 自
         style.css 迁入收口取色唯一处纪律） —— */
@@ -148,11 +143,6 @@ body[data-appearance="catppuccin"] {
   --brand: #89b4fa;
   --primary: #cba6f7;
   --primary-foreground: #1e1e2e;
-  --traj-user: #89b4fa;
-  --traj-assistant: #a6e3a1;
-  --traj-reasoning: #cba6f7;
-  --traj-tool-call: #f9e2af;
-  --traj-tool-result: #94e2d5;
 }
 body[data-appearance="catppuccin"][data-theme="light"] {
   color-scheme: light;
@@ -184,11 +174,6 @@ body[data-appearance="tokyonight"] {
   --text-subtle: rgba(192, 202, 245, 0.62);
   --text-subtlest: rgba(192, 202, 245, 0.38);
   --brand: #7aa2f7;
-  --traj-user: #7aa2f7;
-  --traj-assistant: #9ece6a;
-  --traj-reasoning: #bb9af7;
-  --traj-tool-call: #e0af68;
-  --traj-tool-result: #7dcfff;
 }
 body[data-appearance="tokyonight"][data-theme="light"] {
   color-scheme: light;
@@ -202,11 +187,6 @@ body[data-appearance="tokyonight"][data-theme="light"] {
   --text-subtle: rgba(55, 96, 191, 0.72);
   --text-subtlest: rgba(55, 96, 191, 0.45);
   --brand: #2e7de9;
-  --traj-user: #2e7de9;
-  --traj-assistant: #587539;
-  --traj-reasoning: #9857bd;
-  --traj-tool-call: #8c6c3e;
-  --traj-tool-result: #00719c;
 }
 
 /* —— 皮肤：Nord（暗=polar night / 亮=snow storm——亮色变体同 P-001 补齐） —— */
@@ -222,11 +202,6 @@ body[data-appearance="nord"] {
   --text-subtle: rgba(236, 239, 244, 0.62);
   --text-subtlest: rgba(236, 239, 244, 0.38);
   --brand: #88c0d0;
-  --traj-user: #81a1c1;
-  --traj-assistant: #a3be8c;
-  --traj-reasoning: #b48ead;
-  --traj-tool-call: #ebcb8b;
-  --traj-tool-result: #8fbcbb;
 }
 body[data-appearance="nord"][data-theme="light"] {
   color-scheme: light;
@@ -240,11 +215,6 @@ body[data-appearance="nord"][data-theme="light"] {
   --text-subtle: rgba(59, 66, 82, 0.72);
   --text-subtlest: rgba(59, 66, 82, 0.45);
   --brand: #5e81ac;
-  --traj-user: #5e81ac;
-  --traj-assistant: #6f8f3f;
-  --traj-reasoning: #9d6b8f;
-  --traj-tool-call: #a57706;
-  --traj-tool-result: #4c89a8;
 }
 
 /* —— 皮肤：Solarized（暗=solarized-dark / 亮=solarized-light） —— */
@@ -260,11 +230,6 @@ body[data-appearance="solarized"] {
   --text-subtle: rgba(238, 232, 213, 0.62);
   --text-subtlest: rgba(238, 232, 213, 0.38);
   --brand: #268bd2;
-  --traj-user: #268bd2;
-  --traj-assistant: #859900;
-  --traj-reasoning: #6c71c4;
-  --traj-tool-call: #b58900;
-  --traj-tool-result: #2aa198;
 }
 body[data-appearance="solarized"][data-theme="light"] {
   color-scheme: light;
@@ -288,7 +253,10 @@ body[data-accent="rose"] { --brand: #fb7185; --chart-1: #fb7185; }
 body[data-accent="cyan"] { --brand: #22d3ee; --chart-1: #22d3ee; }
 
 /* —— 消息流外观（zcode messageStreamShowReasoning / grok show_timestamps 同位） —— */
-body.hide-reasoning .line.reasoning { display: none; }
+body.hide-reasoning .line.reasoning,
+body.hide-reasoning details.thinking-card {
+  display: none;
+}
 .msg-time {
   display: block;
   margin-top: 2px;
@@ -331,11 +299,6 @@ body.daltonized {
   --chart-4: #cc79a7;
   --chart-5: #56b4e9;
   --chart-6: #f0e442;
-  --traj-user: #0072b2;
-  --traj-assistant: #009e73;
-  --traj-reasoning: #cc79a7;
-  --traj-tool-call: #e69f00;
-  --traj-tool-result: #56b4e9;
   --code-keyword: #0072b2;
   --code-string: #009e73;
 }

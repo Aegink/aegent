@@ -214,11 +214,54 @@ export function openMenu(anchor, items) {
     menu.appendChild(btn);
   }
   document.body.appendChild(menu);
+  // T-P3-159 需求 4：从原点击位置展开 + 空间不足向上翻（composer 底部
+  // pill 的菜单一律向上弹——pi/zcode 弹层锚定同构），并按视口收拢钳位。
   const rect = anchor.getBoundingClientRect();
   const menuHeight = menu.offsetHeight;
-  menu.style.top = `${Math.min(rect.bottom + 4, window.innerHeight - menuHeight - 8)}px`;
-  menu.style.left = `${Math.max(8, rect.right - menu.offsetWidth)}px`;
+  const menuWidth = menu.offsetWidth;
+  const below = window.innerHeight - rect.bottom;
+  const aboveTop = rect.top - menuHeight - 4;
+  const top = below < menuHeight + 8 && aboveTop > 8 ? aboveTop : Math.min(rect.bottom + 4, window.innerHeight - menuHeight - 8);
+  menu.style.top = `${Math.max(8, top)}px`;
+  menu.style.left = `${Math.min(Math.max(8, rect.right - menuWidth), window.innerWidth - menuWidth - 8)}px`;
   setTimeout(() => document.addEventListener("click", onDocClick, true), 0);
+  window.addEventListener("keydown", onEsc, true);
+  return close;
+}
+
+/** 锚定浮层（T-P3-159 需求 4——模型选择器/用量明细等小型面板的通用壳，
+ *  pi/zcode composer 弹层同构）：从触发位置展开、空间不足向上翻、宽度
+ *  受限不铺满、点击外部/Esc 关闭。build(panel, close) 填充内容。 */
+export function openPopover(anchor, { width = 360, build }) {
+  const panel = document.createElement("div");
+  panel.className = "anchor-popover";
+  panel.style.width = `${Math.max(200, Math.min(width, window.innerWidth - 16))}px`;
+  const close = () => {
+    document.removeEventListener("mousedown", onDocDown, true);
+    window.removeEventListener("keydown", onEsc, true);
+    panel.remove();
+  };
+  const onDocDown = (ev) => {
+    const t = ev.target;
+    if (!panel.contains(t) && t !== anchor && !(anchor.contains?.(t))) close();
+  };
+  const onEsc = (ev) => {
+    if (ev.key === "Escape") {
+      ev.stopPropagation();
+      close();
+    }
+  };
+  build(panel, close);
+  document.body.appendChild(panel);
+  const rect = anchor.getBoundingClientRect();
+  const height = panel.offsetHeight;
+  const panelWidth = panel.offsetWidth;
+  const below = window.innerHeight - rect.bottom;
+  const aboveTop = rect.top - height - 6;
+  const top = below < height + 12 && aboveTop > 8 ? aboveTop : Math.min(rect.bottom + 6, window.innerHeight - height - 8);
+  panel.style.top = `${Math.max(8, top)}px`;
+  panel.style.left = `${Math.min(Math.max(8, rect.right - panelWidth), window.innerWidth - panelWidth - 8)}px`;
+  setTimeout(() => document.addEventListener("mousedown", onDocDown, true), 0);
   window.addEventListener("keydown", onEsc, true);
   return close;
 }

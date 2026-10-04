@@ -53,7 +53,7 @@ import { applyLocalePreference, t } from "./i18n.js";
 import { installGlobalErrorReporters } from "./log-report.js";
 // T-P3-156 布局批（方案 A/B/C/E/W）：侧栏两分段 + 切换面板宿主
 import { initSidebar, refreshSidebar, newTaskFlow } from "./sidebar.js";
-import { initPane, togglePane, registerPane, openPane } from "./pane.js";
+import { initPane, togglePane, registerPane, openPane, openFilePane } from "./pane.js";
 // T-P3-156 功能批（方案 K/L/U）：输入 Tab 栏 + 排队条 + 右上角进度弹窗
 import {
   initComposerBar,
@@ -63,6 +63,7 @@ import {
   notifyQueued,
   notifyPermissionChanged,
   refreshContextUsage,
+  stopCurrentTurn,
 } from "./composer-bar.js";
 import { initProgressDock, notifyToolCall, notifyEventLine } from "./progress-dock.js";
 // T-P3-156 面板批（P/Q/R/S/T）：终端抽屉 + 浏览器/Git/审查/辅助对话四面板
@@ -292,16 +293,24 @@ function buildToolCard(e) {
   verb.className = "tool-verb";
   verb.append(icon(pres.icon, { cls: "icon-sm" }), document.createTextNode(pres.verb));
   summary.append(verb, name);
-  // 文件类：文件类型图标+文件名+目录（zcode 截图语义——「写入 [js] pane-browser.js ui/ +173」）
+  // 文件类：文件类型图标+文件名（可点击 → 右侧面板预览）+目录（zcode 截图语义
+  // ——「写入 [js] pane-browser.js ui/ +173」；T-P3-159 需求 2 文件可行动）
   const filePath = args !== null && typeof args.path === "string" ? args.path : "";
   if (pres.kind === "file" && filePath !== "") {
     const parts = filePath.split(/[\/]/);
     const fileName = parts.at(-1) ?? filePath;
     const dir = parts.slice(0, -1).join("/");
-    const fileNameSpan = document.createElement("span");
-    fileNameSpan.className = "tool-file-name";
-    fileNameSpan.textContent = fileName;
-    summary.append(fileIconOf(fileName), fileNameSpan);
+    const fileNameBtn = document.createElement("button");
+    fileNameBtn.type = "button";
+    fileNameBtn.className = "tool-file-name";
+    fileNameBtn.textContent = fileName;
+    fileNameBtn.title = `在右侧面板查看 ${filePath}`;
+    fileNameBtn.addEventListener("click", (ev) => {
+      ev.preventDefault(); // details summary 内点击不触发开合
+      ev.stopPropagation();
+      void openFilePane(filePath);
+    });
+    summary.append(fileIconOf(fileName), fileNameBtn);
     if (dir !== "") {
       const dirSpan = document.createElement("span");
       dirSpan.className = "tool-file-dir";
@@ -324,9 +333,13 @@ function buildToolCard(e) {
     summary.append(argsSpan);
   }
   const status = document.createElement("span");
-  status.className = "tool-status running";
+  status.className = "tool-status running tool-shimmer";
   status.textContent = "运行中";
   summary.appendChild(status);
+  const chev = document.createElement("span");
+  chev.className = "tool-chev";
+  chev.append(icon("chevronDown", { cls: "icon-sm" }));
+  summary.appendChild(chev);
   const body = document.createElement("div");
   body.className = "tool-body";
   const argsPre = document.createElement("pre");
@@ -337,6 +350,31 @@ function buildToolCard(e) {
   if (diff !== null) body.appendChild(diffEl(diff)); // 写操作 diff 对照
   card.append(summary, body);
   return card;
+}
+
+/** 思考块（T-P3-159 需求 2——zcode Reasoning 对标）：脑图标 + 「思考」 +
+ *  时长占位（renderEventEnvelope 结算回填）+ 悬停 chevron；点击展开思考
+ *  原文（reasoning-delta 流记录拼接——文本已随 assistant/message.stream
+ *  下发，纯前端消费，零协议扩展）。挂 reasoning 类随「隐藏思考」开关。 */
+function buildThinkingCard(text, ts) {
+  const details = document.createElement("details");
+  details.className = "thinking-card reasoning";
+  const summary = document.createElement("summary");
+  const label = document.createElement("span");
+  label.className = "thinking-label";
+  label.textContent = "思考";
+  const dur = document.createElement("span");
+  dur.className = "think-dur";
+  const chev = document.createElement("span");
+  chev.className = "tool-chev";
+  chev.append(icon("chevronDown", { cls: "icon-sm" }));
+  summary.append(icon("brain", { cls: "icon-sm" }), label, dur, chev);
+  const body = document.createElement("div");
+  body.className = "thinking-body";
+  body.textContent = text;
+  details.append(summary, body);
+  details.dataset.startTs = String(ts);
+  return details;
 }
 
 // T-P3-145 G：task/meta 子会话回放入口（task 与 task_wait 结果卡——点击
@@ -426,6 +464,10 @@ function settleToolCard(e) {
     icon(isError ? "xCircle" : "checkCircle", { cls: "icon-sm" }),
     document.createTextNode(` ${oneLine(content, 160)}`),
   );
+  const chev = document.createElement("span");
+  chev.className = "tool-chev";
+  chev.append(icon("chevronDown", { cls: "icon-sm" }));
+  summary.appendChild(chev);
   if (isError) summary.title = `失败原因：${oneLine(content, 200)}`;
   const body = document.createElement("div");
   body.className = "tool-body";
@@ -463,6 +505,22 @@ function attachRetry(el, error) {
 
 // 反馈 3：思考时长回填游标（live 流——下一个事件到达时结算「持续了 N 秒」）
 let lastThinking = null;
+
+/** 从 assistant/message 顶层 stream 记录拼接思考原文（TimedStreamChunk
+ *  形态 {time, chunk}——T-P3-159 需求 2：思考可展开的文本来源，零协议
+ *  扩展；兼容 message 内嵌的旧形态）。 */
+function reasoningTextOf(e) {
+  const stream = e.stream ?? e.message?.stream;
+  if (!Array.isArray(stream)) return "";
+  let text = "";
+  for (const rec of stream) {
+    const chunk = rec?.chunk ?? rec;
+    if (chunk?.type === "reasoning-delta" && typeof chunk.text === "string") {
+      text += chunk.text;
+    }
+  }
+  return text.trim();
+}
 
 /** 事件 → DOM 节点（U4 分层版）；null = 不展示或已并入既有卡。 */
 function renderEvent(e, options = {}) {
@@ -509,32 +567,54 @@ function renderEvent(e, options = {}) {
       return el;
     }
     case "assistant/message": {
-      const bubble = document.createElement("div");
-      bubble.className = `bubble agent ${e.interrupted ? "warn" : ""}`.trim();
+      // T-P3-159 需求 2：思考 = 可展开卡（zcode Reasoning 对标）——reasoning
+      // 文本从 stream 记录拼接；与正文同段时思考卡置于正文前（同包 .bubble.agent
+      // 容器——只读聚合扫描按 .bubble 延续的语义不变）。
       const content = e.message?.content ?? "";
+      const reasoning = reasoningTextOf(e);
+      const wrapper = document.createElement("div");
+      wrapper.className = `bubble agent ${e.interrupted ? "warn" : ""}`.trim();
+      if (reasoning !== "") {
+        wrapper.appendChild(buildThinkingCard(reasoning, Number(e.ts) || Date.now()));
+      }
       if (content === "") {
-        // 反馈 3：思考行带时长（下一事件到达时回填「持续了 N 秒」——zcode
-        // thinking 块时长语义；历史恢复无后续时差则只显示标记）
-        const el = lineEl(" 思考", "agent thinking");
+        if (reasoning !== "") {
+          // 纯思考段：时长游标挂思考卡（下一事件到达结算）
+          lastThinking = {
+            dur: wrapper.querySelector(".think-dur"),
+            ts: Number(e.ts) || Date.now(),
+          };
+          return wrapper;
+        }
+        // 无 reasoning 文本（旧会话历史/异常）：保留极简标记行
+        const el = lineEl(" 思考", "reasoning thinking");
         el.prepend(icon("brain", { cls: "icon-sm" }));
-        lastThinking = { el, ts: Number(e.ts) || Date.now() };
+        const dur = document.createElement("span");
+        dur.className = "think-dur";
+        el.appendChild(dur);
+        lastThinking = { dur, ts: Number(e.ts) || Date.now() };
         return el;
       }
       // 终态装饰（时间戳 + 朗读按钮）——流式期间 textContent/innerHTML 覆盖
       // 会清掉子元素，统一在 onDone 后挂载（顺修 T-P3-141 流式时间戳丢失）
       const decorate = () => {
-        appendMsgTime(bubble, e.ts);
+        appendMsgTime(wrapper, e.ts);
         const speakBtn = buildSpeakButton(content);
-        if (speakBtn !== null) bubble.appendChild(speakBtn);
-        bubble.appendChild(buildSaveRuleButton(content)); // T-P3-151 C1
+        if (speakBtn !== null) wrapper.appendChild(speakBtn);
+        wrapper.appendChild(buildSaveRuleButton(content)); // T-P3-151 C1
       };
+      const bubble = document.createElement("div");
+      bubble.className = "agent-text";
       if (options.live) {
-        typeStream(bubble, e.message?.stream ?? [], content, decorate); // 流式打字节流
+        // T-P3-159 顺修：stream 在事件顶层（message 里从来没有）——打字机
+        // 此前恒拿空数组直接跳终态，从未真正逐字。
+        typeStream(bubble, e.stream ?? e.message?.stream ?? [], content, decorate); // 流式打字节流
       } else {
         bubble.innerHTML = renderMarkdown(content); // 恢复视图直接终态
         decorate();
       }
-      return bubble;
+      wrapper.appendChild(bubble);
+      return wrapper;
     }
     case "tool/call":
       // T-P3-156 U：进度弹窗的当前工具行（仅 live 流）
@@ -803,15 +883,15 @@ function maybeCollapseReadonly() {
 }
 
 function renderEventEnvelope(envelope) {
-  // 反馈 3：思考时长结算（上一事件是 thinking 且非同一 ts——秒差回填）
+  // 反馈 3 + T-P3-159：思考时长结算（上一事件是思考段且非同一 ts——秒差
+  // 回填进思考卡的 .think-dur 占位；zcode Reasoning duration 语义）
   if (lastThinking !== null) {
     const ts = Number(envelope.event?.ts);
     if (Number.isFinite(ts) && ts > lastThinking.ts) {
       const sec = Math.round((ts - lastThinking.ts) / 1000);
-      const dur = document.createElement("span");
-      dur.className = "think-dur";
-      dur.textContent = ` · 持续了 ${String(sec)} 秒`;
-      lastThinking.el.appendChild(dur);
+      if (lastThinking.dur !== null && lastThinking.dur !== undefined) {
+        lastThinking.dur.textContent = ` · 持续了 ${sec === 0 ? "几" : String(sec)} 秒`;
+      }
     }
     lastThinking = null;
   }
@@ -1013,6 +1093,7 @@ function buildCard(name, payload) {
     q.textContent = payload.question ?? "";
     card.append(title, q);
     const answerInput = document.createElement("input");
+    answerInput.className = "input"; // T-P3-159 输入框统一样式（全站唯一基线）
     answerInput.type = "text";
     answerInput.placeholder = "输入答复（空 = 跳过）";
     const answerBtn = document.createElement("button");
@@ -1455,20 +1536,59 @@ async function submitPrompt() {
   setLastUserPrompt(content);
   input.value = "";
   autoGrow();
+  updateSendBtnState(); // 程序化清空不触发 input 事件——发送/停止态即时回切（T-P3-159 需求 5）
   const attachments = pendingAttachments.splice(0, pendingAttachments.length);
   renderAttachmentsPreview();
-  // T-P3-156 K：内核忙时 prompt 自动入队（queue.ts enqueue 返 accepted）——
-  // UI 侧记录排队投影（等待中条）；idle/prompt_returned 时清零
-  if (window.__agentBusy === true) notifyQueued(content);
+  // T-P3-156 K + T-P3-159 修：内核忙时 prompt 自动入队（queue.ts enqueue 返
+  // accepted）——排队投影在**回执 ok 后**才记（无租约被拒时不得显示假排队）
+  const wasBusy = window.__agentBusy === true;
   void sendRequest(sessionId(), {
     type: "prompt",
     messageId: allocRequestId("m"),
     content,
     ...(attachments.length > 0 ? { attachments } : {}),
+  }).then((envelope) => {
+    if (wasBusy && envelope.ok) notifyQueued(content);
   });
 }
 
-sendBtn.addEventListener("click", submitPrompt);
+// T-P3-159 需求 5：发送按钮 = 发送/停止双态（zcode ConversationComposer
+// 状态机——执行中 + 空草稿 → 停止钮；执行中 + 有草稿 → 发送（入队）；
+// 空闲 → 发送）。实时随 agent:busy/agent:idle/输入变化重绘。
+function updateSendBtnState() {
+  if (sendBtn === null) return;
+  const busy = window.__agentBusy === true;
+  const hasText = input.value.trim() !== "";
+  if (busy && !hasText) {
+    sendBtn.dataset.mode = "stop";
+    sendBtn.disabled = false;
+    sendBtn.classList.add("send-stop");
+    sendBtn.replaceChildren(
+      icon("circleStop", { cls: "icon-sm" }),
+      document.createTextNode(" 停止"),
+    );
+    sendBtn.title = "停止当前执行";
+    return;
+  }
+  sendBtn.dataset.mode = "send";
+  sendBtn.classList.remove("send-stop");
+  sendBtn.replaceChildren(document.createTextNode("发送"));
+  sendBtn.title = busy
+    ? "执行中——发送将排队，本轮结束后自动继续"
+    : "发送";
+  sendBtn.disabled = !hasText;
+}
+
+sendBtn.addEventListener("click", () => {
+  if (sendBtn.dataset.mode === "stop") {
+    void stopCurrentTurn();
+    return;
+  }
+  submitPrompt();
+});
+window.addEventListener("agent:busy", updateSendBtnState);
+window.addEventListener("agent:idle", updateSendBtnState);
+updateSendBtnState();
 input.addEventListener("keydown", (ev) => {
   if (autocomplete.hidden === false && acItems.length > 0) {
     if (ev.key === "ArrowDown") {
@@ -1751,11 +1871,7 @@ input.addEventListener("input", () => {
   }
   updateSendBtnState();
 });
-/** 发送钮空态禁用（P-023——空输入可点但静默 return=用户困惑）。 */
-function updateSendBtnState() {
-  if (sendBtn !== null) sendBtn.disabled = input.value.trim() === "";
-}
-updateSendBtnState();
+// —— T-P3-159：updateSendBtnState 上移至 sendBtn 接线处（三态实时版）
 
 // ---------------------------------------------------------------------------
 // 面板函数（函数名保留——调用点兼容；实现 = 路由跳转，数据拉取在视图模块）
@@ -1963,7 +2079,7 @@ const chatEmpty = document.getElementById("chat-empty");
 function syncChatEmpty() {
   if (chatEmpty === null) return;
   // 判据 = 存在实质消息节点（气泡/工具卡）——surface 接入等元行不挤走欢迎卡
-  chatEmpty.hidden = stream.querySelector(".bubble, .tool-card") !== null;
+  chatEmpty.hidden = stream.querySelector(".bubble, .tool-card, .thinking-card") !== null;
 }
 
 // 能力快捷入口（欢迎卡按钮——路由/聚焦输入，零新协议面）
@@ -2022,6 +2138,13 @@ function showRecoveryIfInterrupted(events) {
   }
   const openTurns = [...open.keys()].sort((a, b) => a - b);
   if (openTurns.length === 0) return;
+  // T-P3-159 运行态补盲：页面加载时已存在在途轮（M3 续跑——恢复视图不回放
+  // live 标志，turn/start 广播已错过）→ 显式补广播，发送/停止钮与队列投影
+  // 不再误判空闲。
+  if (window.__agentBusy !== true) {
+    window.__agentBusy = true;
+    window.dispatchEvent(new CustomEvent("agent:busy"));
+  }
   const banner = document.getElementById("recovery-banner");
   document.getElementById("recovery-text").textContent =
     `检测到中断的轮：turn ${openTurns.join("、")} 未正常收束（M3 续跑在子进程启动时已自动执行）`;
