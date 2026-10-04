@@ -20,35 +20,36 @@ import { icon } from "./icons.js";
 let seq = 0;
 let activeTabId = null; // 当前渲染实例的壳侧 label（browser-<n>）
 let observer = null;
+let followTimer = null; // 主窗移动跟随轮询（300ms——等值短路零流量）
 
 function tauriInvoke(cmd, args) {
   return window.__TAURI_INTERNALS__.invoke(cmd, args);
 }
 
-/** 物理坐标上报（防抖——拖拽/resize 高频）——单实例即可，paint 重挂时换绑。 */
+/** 面板偏移上报（T-P3-168：相对视口的物理偏移——子窗屏幕位置由 Rust 在
+ *  主窗 Moved/Resized 事件里直算，拖动/拖宽零延迟跟随；UI 只在尺寸变化
+ *  时上报 offset，等值短路零流量）。单实例即可，paint 重挂时换绑。 */
 function bindBoundsSync(hostEl, tabId) {
   if (observer !== null) observer.disconnect();
-  let raf = 0;
+  let last = "";
   const report = () => {
-    raf = 0;
     if (!hostEl.isConnected) return;
     const rect = hostEl.getBoundingClientRect();
     if (rect.width < 4 || rect.height < 4) return;
     const dpr = window.devicePixelRatio || 1;
-    void tauriInvoke("browser_show", {
-      label: tabId,
+    const payload = `${Math.round(rect.left * dpr)},${Math.round(rect.top * dpr)},${Math.round(rect.width * dpr)},${Math.round(rect.height * dpr)}`;
+    if (payload === last) return; // 等值短路
+    last = payload;
+    void tauriInvoke("browser_set_offset", {
       x: Math.round(rect.left * dpr),
       y: Math.round(rect.top * dpr),
       width: Math.round(rect.width * dpr),
       height: Math.round(rect.height * dpr),
     }).catch(() => {});
   };
-  observer = new ResizeObserver(() => {
-    if (raf === 0) raf = requestAnimationFrame(report);
-  });
+  observer = new ResizeObserver(report);
   observer.observe(hostEl);
-  // 初次对齐（两帧后——布局稳定）
-  requestAnimationFrame(() => requestAnimationFrame(report));
+  report(); // 初次上报
 }
 
 function normalizeUrl(raw) {
@@ -71,6 +72,10 @@ registerPane("browser", {
     if (observer !== null) {
       observer.disconnect();
       observer = null;
+    }
+    if (followTimer !== null) {
+      clearInterval(followTimer);
+      followTimer = null;
     }
   },
   render: (body, tab) => {
@@ -164,6 +169,16 @@ registerPane("browser", {
         }
         host.innerHTML = "";
         bindBoundsSync(host, tabId);
+        // 首次对齐（子窗初始藏屏外——show 一次按当前面板区域落位）
+        const rect0 = host.getBoundingClientRect();
+        const dpr0 = window.devicePixelRatio || 1;
+        void tauriInvoke("browser_show", {
+          label: tabId,
+          x: Math.round(rect0.left * dpr0),
+          y: Math.round(rect0.top * dpr0),
+          width: Math.round(rect0.width * dpr0),
+          height: Math.round(rect0.height * dpr0),
+        }).catch(() => {});
       } catch (e) {
         host.innerHTML = `<div class="browser-host-hint">内核创建失败：${String(e?.message ?? e)}——请重启 aegent 重试；若持续出现请反馈 logs/webview.log</div>`;
         void tauriInvoke("browser_destroy", { label: tabId }).catch(() => {});

@@ -17,6 +17,56 @@ use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 /// 每 tab 的子窗口登记表（label → 存活标记；句柄经 get_webview_window 取）。
 pub struct BrowserRegistry(Mutex<HashMap<String, bool>>);
 
+/// 浏览器面板相对主窗视口的物理偏移（UI 上报——Rust 在主窗 Moved/Resized
+/// 事件里直接重算子窗屏幕位置，拖动/拖宽零延迟跟随，不依赖 UI 轮询）。
+pub struct PanelOffset(pub Mutex<(i32, i32, u32, u32)>);
+
+/// 视口原点（屏幕物理坐标）= 外框位置 + 边框修正（Windows：水平对称/垂直
+/// 顶部标题栏+底边框）。用 outer/inner 尺寸差求边框，避免硬编码。
+fn viewport_origin(app: &AppHandle) -> Option<(i32, i32)> {
+    let main = app.get_webview_window("main")?;
+    let outer = main.outer_position().ok()?;
+    let outer_size = main.outer_size().ok()?;
+    let inner = main.inner_size().ok()?;
+    let ox = (outer_size.width as i32 - inner.width as i32) / 2;
+    let oy = outer_size.height as i32 - inner.height as i32 - ox;
+    Some((outer.x + ox, outer.y + oy))
+}
+
+/// 把全部存活子窗对齐到「视口原点 + 面板偏移」（Moved/Resized/set_offset 共用）。
+pub fn sync_browser_bounds(app: &AppHandle) {
+    let state = match app.try_state::<PanelOffset>() {
+        Some(s) => s,
+        None => return,
+    };
+    let offset = match state.0.lock() {
+        Ok(g) => *g,
+        Err(_) => return,
+    };
+    let origin = match viewport_origin(app) {
+        Some(o) => o,
+        None => return,
+    };
+    if let Some(reg_state) = app.try_state::<BrowserRegistry>() {
+        if let Ok(registry) = reg_state.0.lock() {
+            for label in registry.keys() {
+                if let Some(window) = app.get_webview_window(label) {
+                    if window.is_visible().unwrap_or(false) {
+                        let _ = window.set_position(tauri::PhysicalPosition::new(
+                            origin.0 + offset.0,
+                            origin.1 + offset.1,
+                        ));
+                        let _ = window.set_size(tauri::PhysicalSize::new(
+                            offset.2.max(1),
+                            offset.3.max(1),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// 诊断日志（便携壳 stderr 被吞——落 logs/webview.log 供排障）。
 fn wvlog(msg: &str) {
     if let Ok(exe) = std::env::current_exe() {
@@ -83,7 +133,24 @@ pub async fn browser_create(
     Ok(label)
 }
 
-/// 对齐 bounds 并显示（UI 面板区域变化/激活 tab 时调——物理像素）。
+/// 上报面板偏移（UI ResizeObserver 调——Rust 侧 Moved/Resized 驱动跟随）。
+#[tauri::command]
+pub async fn browser_set_offset(
+    app: AppHandle,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+) -> Result<(), String> {
+    let state = app
+        .try_state::<PanelOffset>()
+        .ok_or_else(|| "panel offset 未初始化".to_string())?;
+    *state.0.lock().map_err(|_| "offset 锁中毒")? = (x, y, width.max(1), height.max(1));
+    sync_browser_bounds(&app);
+    Ok(())
+}
+
+/// 对齐 bounds 并显示（tab 切换/首次打开时调——显示即对齐当前面板区域）。
 #[tauri::command]
 pub async fn browser_show(
     app: AppHandle,
@@ -93,10 +160,15 @@ pub async fn browser_show(
     width: u32,
     height: u32,
 ) -> Result<(), String> {
+    let state = app
+        .try_state::<PanelOffset>()
+        .ok_or_else(|| "panel offset 未初始化".to_string())?;
+    *state.0.lock().map_err(|_| "offset 锁中毒")? = (x, y, width.max(1), height.max(1));
     let window = app
         .get_webview_window(&label)
         .ok_or_else(|| "tab 不存在".to_string())?;
-    let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+    let origin = viewport_origin(&app).unwrap_or((x, y));
+    let _ = window.set_position(tauri::PhysicalPosition::new(origin.0 + x, origin.1 + y));
     let _ = window.set_size(tauri::PhysicalSize::new(width.max(1), height.max(1)));
     let _ = window.show();
     Ok(())
@@ -145,6 +217,20 @@ pub async fn browser_eval(app: AppHandle, label: String, js: String) -> Result<(
         .ok_or_else(|| "tab 不存在".to_string())?;
     let _ = window.eval(&js);
     Ok(())
+}
+
+/// 同步隐藏全部子窗（T-P3-168：关闭到托盘/最小化联动——子窗是独立
+/// 窗口，主窗 hide 不会带走它们；CloseRequested 事件回调直接调）。
+pub fn hide_all_sync(app: &AppHandle) {
+    if let Some(state) = app.try_state::<BrowserRegistry>() {
+        if let Ok(registry) = state.0.lock() {
+            for label in registry.keys() {
+                if let Some(window) = app.get_webview_window(label) {
+                    let _ = window.hide();
+                }
+            }
+        }
+    }
 }
 
 /// 注册表挂载（lib.rs setup 调）。

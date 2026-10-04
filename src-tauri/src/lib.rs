@@ -189,6 +189,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(HostProcess(Mutex::new(main_entry)))
         .manage(WorkspaceHosts(Mutex::new(Vec::new())))
+        .manage(browser::PanelOffset(Mutex::new((0, 0, 480, 600))))
         // T-P3-162 需求 3 + T-P3-163 反馈 7：关窗 = 彻底关闭。CloseRequested
         // 阶段先杀树（防 webview 销毁阻塞导致用户感知「关不掉」）；
         // Destroyed 与 RunEvent::Exit 兜底幂等重杀。
@@ -208,6 +209,8 @@ pub fn run() {
                         if behavior == "tray" {
                             api.prevent_close();
                             let _ = window.hide();
+                            // 浏览器子窗同步藏（独立窗不随主窗 hide）
+                            browser::hide_all_sync(window.app_handle());
                         } else {
                             kill_host_tree(&window.app_handle().state::<HostProcess>());
                             if let Some(pool) = window.app_handle().try_state::<WorkspaceHosts>() {
@@ -223,6 +226,18 @@ pub fn run() {
                             // → app 不退出（进程残留=「关不掉」）——杀树后显式退出
                             window.app_handle().exit(0);
                         }
+                    }
+                }
+                tauri::WindowEvent::Moved(..) => {
+                    // T-P3-168：主窗移动 → 浏览器子窗零延迟跟随（Rust 直算，
+                    // 不依赖 UI 轮询——窗口移动不触发 DOM ResizeObserver）
+                    if is_main {
+                        browser::sync_browser_bounds(window.app_handle());
+                    }
+                }
+                tauri::WindowEvent::Resized(..) => {
+                    if is_main {
+                        browser::sync_browser_bounds(window.app_handle());
                     }
                 }
                 tauri::WindowEvent::Destroyed => {
@@ -261,6 +276,7 @@ pub fn run() {
             close_workspace_host,
             get_close_behavior,
             set_close_behavior,
+            browser::browser_set_offset,
         ])
         .setup(|app| {
             browser::manage_registry(app.handle());
