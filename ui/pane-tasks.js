@@ -14,7 +14,13 @@ let body = null; // 激活面板的内容容器（render 注入）
 function rowOf(t, cls) {
   const row = document.createElement("div");
   row.className = `progress-todo ${cls}`;
-  row.textContent = t.content;
+  if (cls === "done") {
+    // zcode 同款：已完成行前置绿色圆勾（占位伪元素圆点的位置系统）
+    row.appendChild(icon("checkCircle", { cls: "icon-sm todo-done-check" }));
+    row.appendChild(document.createTextNode(t.content));
+  } else {
+    row.textContent = t.content;
+  }
   return row;
 }
 

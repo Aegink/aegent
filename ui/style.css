@@ -6223,6 +6223,16 @@ details.thinking-card.running .thinking-label {
   text-decoration: line-through;
 }
 
+/* zcode 同款：已完成行绿色圆勾（绝对定位落在伪元素圆点位——不挤文字） */
+.progress-todo .todo-done-check {
+  position: absolute;
+  left: -1px;
+  top: 3px;
+  width: 13px;
+  height: 13px;
+  color: var(--success);
+}
+
 .progress-todo-fold {
   padding: 2px 0;
   border: none;

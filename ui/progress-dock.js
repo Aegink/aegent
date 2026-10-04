@@ -18,6 +18,7 @@
  */
 
 import { settingsCache } from "./state.js";
+import { icon } from "./icons.js";
 
 const DONE_STAY_MS = 8000;
 const EVENT_BUFFER_MAX = 6;
@@ -212,7 +213,12 @@ function paintPanel() {
     const rowOf = (t, cls) => {
       const row = document.createElement("div");
       row.className = `progress-todo ${cls}`;
-      row.textContent = t.content;
+      if (cls === "done") {
+        row.appendChild(icon("checkCircle", { cls: "icon-sm todo-done-check" }));
+        row.appendChild(document.createTextNode(t.content));
+      } else {
+        row.textContent = t.content;
+      }
       return row;
     };
     for (const t of doing) seg.appendChild(rowOf(t, "doing"));
