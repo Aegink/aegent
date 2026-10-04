@@ -282,6 +282,18 @@ export interface SettingsShape {
     pasteThreshold?: number;
     ctxReadout?: "used" | "remaining";
     reasoningDisplay?: "detailed" | "concise";
+    /** T-P3-166 需求 4：无尽重试（流恢复重试上限解除——loop recovery）。 */
+    retryUnlimited?: boolean;
+    /** 平滑流式显示（缺省开=打字机匀速；关=瞬时整段渲染）。 */
+    smoothStream?: boolean;
+    /** 终端命令 Shell（terminal-create 的 PTY 程序；缺省系统 ComSpec）。 */
+    shell?: "cmd" | "powershell" | "pwsh" | "bash";
+  };
+  /** 网络代理（T-P3-166 需求 4——pi networkProxy 同构；模型请求在 Node
+   *  侧 undici dispatcher 生效，custom 模式重启 agent-child 后生效）。 */
+  network?: {
+    mode?: "system" | "direct" | "custom";
+    url?: string;
   };
   /**
    * 沙箱档（B8a 网络档 + workspace/事件库落位）。T-P3-140 批次 A：mode =
@@ -894,6 +906,7 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
     const chatWidth = c["ctxReadout"];
     const reasoning = c["reasoningDisplay"];
     const threshold = c["pasteThreshold"];
+    const shell = c["shell"];
     out.chat = {
       ...(boolOrUndef("enterToSend") !== undefined ? { enterToSend: boolOrUndef("enterToSend") } : {}),
       ...(typeof threshold === "number" && Number.isFinite(threshold) && threshold >= 200
@@ -901,6 +914,24 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
         : {}),
       ...(chatWidth === "used" || chatWidth === "remaining" ? { ctxReadout: chatWidth } : {}),
       ...(reasoning === "detailed" || reasoning === "concise" ? { reasoningDisplay: reasoning } : {}),
+      ...(boolOrUndef("retryUnlimited") !== undefined ? { retryUnlimited: boolOrUndef("retryUnlimited") } : {}),
+      ...(boolOrUndef("smoothStream") !== undefined ? { smoothStream: boolOrUndef("smoothStream") } : {}),
+      ...(shell === "cmd" || shell === "powershell" || shell === "pwsh" || shell === "bash"
+        ? { shell }
+        : {}),
+    };
+  }
+  const network = rec["network"];
+  if (network !== undefined) {
+    if (network === null || typeof network !== "object" || Array.isArray(network)) {
+      throw new SettingsError("network 段需要对象");
+    }
+    const n = network as Record<string, unknown>;
+    const mode = n["mode"];
+    const url = n["url"];
+    out.network = {
+      ...(mode === "system" || mode === "direct" || mode === "custom" ? { mode } : {}),
+      ...(typeof url === "string" && url !== "" ? { url } : {}),
     };
   }
   const logging = rec["logging"];

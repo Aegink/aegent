@@ -40,7 +40,10 @@ function resolveAllowedRoot(roots: string[], cwd: string): string {
   throw Object.assign(new Error("cwd 不在项目根白名单内"), { code: "CWD_NOT_ALLOWED" });
 }
 
-export function terminalCreateOp(roots: string[], payload: { id: string; cwd: string }): unknown {
+export function terminalCreateOp(
+  roots: string[],
+  payload: { id: string; cwd: string; shell?: "cmd" | "powershell" | "pwsh" | "bash" },
+): unknown {
   const { id, cwd } = payload;
   const existing = sessions.get(id);
   if (existing !== undefined) {
@@ -48,7 +51,19 @@ export function terminalCreateOp(roots: string[], payload: { id: string; cwd: st
     return { id, reused: true, cwd: existing.cwd }; // 幂等——Tab 重挂不杀进程
   }
   const root = resolveAllowedRoot(roots, cwd);
-  const shell = process.platform === "win32" ? process.env.ComSpec ?? "cmd.exe" : process.env.SHELL ?? "/bin/bash";
+  // T-P3-166 需求 4：命令 Shell 选择（settings.chat.shell——缺省系统 ComSpec）
+  const SHELL_MAP: Record<string, string> = {
+    cmd: process.env.ComSpec ?? "cmd.exe",
+    powershell: "powershell.exe",
+    pwsh: "pwsh.exe",
+    bash: "bash.exe",
+  };
+  const shell =
+    payload.shell !== undefined && SHELL_MAP[payload.shell] !== undefined
+      ? SHELL_MAP[payload.shell] as string
+      : process.platform === "win32"
+        ? process.env.ComSpec ?? "cmd.exe"
+        : process.env.SHELL ?? "/bin/bash";
   const pty = ptySpawn(shell, [], {
     name: "xterm-256color",
     cols: 80,

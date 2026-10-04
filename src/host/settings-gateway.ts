@@ -273,7 +273,7 @@ export class FileSettingsGateway implements SettingsGateway {
   gitLogOp(roots: string[], cwd: string): Promise<unknown> { return gitLogOp(roots, cwd); }
   assistantLogAppendOp(entry: { role: "user" | "assistant"; text: string }): Promise<{ appended: true }> { return assistantLogAppendOp(entry); }
   assistantLogReadOp(limit?: number): Promise<unknown> { return assistantLogReadOp(limit); }
-  terminalCreateOp(roots: string[], payload: { id: string; cwd: string }): unknown { return terminalCreateOp(roots, payload); }
+  terminalCreateOp(roots: string[], payload: { id: string; cwd: string; shell?: "cmd" | "powershell" | "pwsh" | "bash" }): unknown { return terminalCreateOp(roots, payload); }
   terminalInputOp(payload: { id: string; data: string }): { written: true } { return terminalInputOp(payload); }
   terminalResizeOp(payload: { id: string; cols: number; rows: number }): { resized: true } { return terminalResizeOp(payload); }
   importScan(): Promise<unknown> { return importScanOp(this.homeDir); }

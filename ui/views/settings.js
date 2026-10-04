@@ -36,6 +36,7 @@ const NAV_GROUPS = [
       ["sandbox", "沙箱档"],
       ["appearance", "外观与语言"],
       ["chat", "对话与输入"],
+      ["network", "网络"],
       ["profiles", "场景配置档"],
     ],
   },

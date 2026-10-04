@@ -296,4 +296,4 @@ function extractResultText(raw: unknown): string {
 }
 
 
-const BUILTIN_SOURCE_IDS = ["claude", "codex", "opencode", "workbuddy", "pi", "gemini"];
+const BUILTIN_SOURCE_IDS = ["claude", "codex", "opencode", "workbuddy", "pi", "gemini", "zcode"];

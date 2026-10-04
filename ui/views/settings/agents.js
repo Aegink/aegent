@@ -309,9 +309,12 @@ export const SECTIONS_HTML = `
     <div class="row">
       <div class="row-copy">
         <div class="row-title">STT 端点根</div>
-        <div class="row-desc">OpenAI 协议兼容端点（如 https://api.openai.com/v1）</div>
+        <div class="row-desc">OpenAI 协议兼容端点（如 https://api.openai.com/v1）；「复用供应商」= 填入当前供应商 baseUrl 并复用其凭据（供应商带语音模型时零额外配置）。</div>
       </div>
-      <div class="row-control"><input id="stt-baseurl" class="input input-wide" type="text" placeholder="（未配置——语音输入不可用）" autocomplete="off" /></div>
+      <div class="row-control">
+        <input id="stt-baseurl" class="input input-wide" type="text" placeholder="（未配置——语音输入不可用）" autocomplete="off" />
+        <button id="stt-from-provider" type="button" class="btn">复用供应商</button>
+      </div>
     </div>
     <div class="row">
       <div class="row-copy">
@@ -2281,6 +2284,30 @@ function sttInputHandler(field) {
   });
 }
 
+/** 复用供应商（T-P3-166 需求 4）：把当前缺省供应商的 baseUrl 填进 STT
+ *  端点——语音模型挂在供应商名下时零额外配置；凭据读取侧 provider 留空 =
+ *  复用缺省供应商 key（stt 凭据解析的既有语义）。 */
+function bindSttFromProvider() {
+  document.getElementById("stt-from-provider")?.addEventListener("click", () => {
+    const providers = settingsCache?.providers ?? [];
+    const provider = providers.find((p) => p.id === settingsCache?.defaultProvider || p.name === settingsCache?.defaultProvider) ?? providers[0];
+    if (provider === undefined || (provider.baseUrl ?? "") === "") {
+      toast("尚未配置任何供应商——语音输入先要有一个可用供应商", "warn");
+      return;
+    }
+    const baseUrl = String(provider.baseUrl ?? "");
+    const modelInput = document.getElementById("stt-model");
+    document.getElementById("stt-baseurl").value = baseUrl;
+    if (modelInput !== null && modelInput.value.trim() === "") {
+      // 常见语音模型缺省猜测（用户可改）
+      const audioModel = (provider.models ?? []).find((m) => /audio|asr|whisper|voice/i.test(String(m.id ?? m.name ?? "")));
+      if (audioModel !== undefined) modelInput.value = String(audioModel.id ?? audioModel.name ?? "");
+    }
+    document.getElementById("stt-baseurl").dispatchEvent(new Event("change"));
+    toast(`已填入供应商端点：${baseUrl}`, "info");
+  });
+}
+
 // T-P3-149：TTS 配置即改即存（同 stt 惯例——baseUrl+model 齐备为已配置）
 function ttsInputHandler(field) {
   document.getElementById(`tts-${field}`).addEventListener("change", () => {
@@ -2849,6 +2876,7 @@ export function bind() {
   sttInputHandler("refine");
   sttInputHandler("silence");
   sttInputHandler("protocol");
+  bindSttFromProvider();
   ttsInputHandler("baseurl");
   ttsInputHandler("model");
   ttsInputHandler("voice");

@@ -12,7 +12,7 @@
  * 该项目为活动 + 重启指引；任务点击 = 只读恢复视图（续聊走 CLI resume）。
  */
 
-import { sendQuery, sendSettings, invalidateMetaCache, IS_DESKTOP } from "./api.js";
+import { sendQuery, sendSettings, invalidateMetaCache, IS_DESKTOP, switchHost, hostAddress } from "./api.js";
 
 /** 桌面壳 Tauri command 直调（pane-browser.js 同款——不引壳运行时）。 */
 function tauriInvoke(cmd, args) {
@@ -604,7 +604,7 @@ function taskRow(task) {
     openMenu(moreBtn, taskMenuItems(task, refresh));
   });
   row.appendChild(moreBtn);
-  row.addEventListener("click", () => void viewTaskSession(task));
+  row.addEventListener("click", () => void switchToSession(task.sessionId));
   row.addEventListener("contextmenu", (ev) => {
     ev.preventDefault();
     openMenu(row, taskMenuItems(task, refresh));
@@ -772,7 +772,24 @@ async function paintHistory() {
     box.appendChild(fail);
     return;
   }
-  sessionsCache = (envelope.result.sessions ?? []).slice().sort((a, b) => (b.updatedTs ?? 0) - (a.updatedTs ?? 0));
+  sessionsCache = (envelope.result.sessions ?? [])
+    .filter((s) => showArchivedTasks || taskArchived(s.sessionId) !== true)
+    .sort((a, b) => (b.updatedTs ?? 0) - (a.updatedTs ?? 0));
+  // 置顶分区（T-P3-166 需求 3——pi sidebar-pinned-sessions 同构：跨项目
+  // 集中展示置顶会话；仅当有 pin 时渲染，从最近会话清单抽出）
+  const pinnedSessions = sessionsCache.filter((s) => taskPinned(s.sessionId));
+  if (pinnedSessions.length > 0) {
+    const pinBox = document.createElement("div");
+    pinBox.className = "sb-pinned";
+    const pinHead = document.createElement("div");
+    pinHead.className = "sb-section-title";
+    pinHead.textContent = "置顶";
+    pinBox.appendChild(pinHead);
+    for (const session of pinnedSessions.slice(0, 10)) {
+      pinBox.appendChild(sessionRow(session, map));
+    }
+    box.appendChild(pinBox);
+  }
   const shown = historyExpanded ? sessionsCache : sessionsCache.slice(0, 8);
   const map = readMap();
   if (shown.length === 0) {
@@ -815,26 +832,107 @@ function sessionRow(session, map) {
   meta.textContent = rowTimeLabel(session.updatedTs ?? 0);
   row.append(dot, title, meta);
   if (isCurrent) row.classList.add("current");
+  if (taskPinned(session.sessionId)) {
+    const pin = document.createElement("span");
+    pin.className = "sb-task-pin";
+    pin.replaceChildren(icon("pin", { cls: "icon-sm" }));
+    row.append(pin);
+  }
+  const moreBtn = document.createElement("button");
+  moreBtn.type = "button";
+  moreBtn.className = "sb-row-more";
+  moreBtn.setAttribute("aria-label", "会话操作");
+  moreBtn.replaceChildren(icon("more", { cls: "icon-sm" }));
+  moreBtn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    openMenu(moreBtn, historyMenuItems(session));
+  });
+  row.appendChild(moreBtn);
   row.addEventListener("click", () => {
     markRead(session.sessionId, Date.now());
-    location.hash = "#chat";
-    void restoreSessionView(session.sessionId);
+    void switchToSession(session.sessionId);
   });
   row.addEventListener("contextmenu", (ev) => {
     ev.preventDefault();
-    openMenu(row, [
-      { label: "查看（只读恢复视图）", onClick: () => void row.dispatchEvent(new Event("click")) },
-      { label: "分支会话（fork 历史快照）", onClick: () => void forkSession(session) },
-      { label: "复制会话 ID", onClick: () => void copyText(session.sessionId, "已复制会话 ID") },
-      { label: "删除会话", danger: true, onClick: () => void deleteSession(session) },
-    ]);
+    openMenu(row, historyMenuItems(session));
   });
   return row;
+}
+
+/** 最近会话行菜单（T-P3-166 需求 3：置顶/归档入列——跨项目置顶分区的
+ *  数据入口；taskMeta 本地元数据与项目任务列表共用）。 */
+function historyMenuItems(session) {
+  const sid = session.sessionId;
+  return [
+    { label: "查看（只读恢复视图）", onClick: () => void restoreSessionView(sid).then(() => { location.hash = "#chat"; }) },
+    {
+      label: taskPinned(sid) ? "取消置顶" : "置顶",
+      icon: "pin",
+      onClick: () => {
+        const meta = (taskMeta[sid] = taskMeta[sid] ?? {});
+        meta.pinned = meta.pinned !== true;
+        writeTaskMeta();
+        void paintHistory();
+      },
+    },
+    {
+      label: taskArchived(sid) ? "恢复会话" : "归档",
+      icon: taskArchived(sid) ? "archiveRestore" : "archive",
+      onClick: () => {
+        const meta = (taskMeta[sid] = taskMeta[sid] ?? {});
+        meta.archived = meta.archived !== true;
+        writeTaskMeta();
+        void paintHistory();
+      },
+    },
+    { label: "分支会话（fork 历史快照）", icon: "gitFork", onClick: () => void forkSession(session) },
+    { label: "复制会话 ID", icon: "copy", onClick: () => void copyText(sid, "已复制会话 ID") },
+    { label: "打开会话路径", icon: "folder", onClick: () => void openSessionPath({ sessionId: sid }) },
+    { label: "删除会话", icon: "trash", danger: true, keepOpen: true, onClick: (btn) => {
+        if (deleteArmed(sid)) {
+          void deleteSession(session);
+          return;
+        }
+        btn.classList.add("armed");
+        btn.replaceChildren(icon("trash", { cls: "icon-sm" }), document.createTextNode(" 确认删除？"));
+      } },
+  ];
 }
 
 /** 会话级 fork（同 forkTaskSession——入口在「最近会话」分段）。 */
 async function forkSession(session) {
   await forkTaskSession({ sessionId: session.sessionId, title: session.title ?? "" });
+}
+
+/** 任务真切换（T-P3-166 需求 2——pi-desktop selectSession 同构的多进程
+ *  形态）：目标会话有活工作 host → 重连其端口；没有 → 壳起一个（历史从
+ *  事件库恢复）。后台会话的进程独立存活 = 多任务真并发。web 端无壳能力
+ *  → 降级只读查看。 */
+export async function switchToSession(sessionId) {
+  if (sessionId === getSessionId()) {
+    location.hash = "#chat";
+    return;
+  }
+  if (!IS_DESKTOP) {
+    await restoreSessionView(sessionId);
+    return;
+  }
+  try {
+    const hosts = await tauriInvoke("list_hosts");
+    let target = (hosts ?? []).find((h) => h.sessionId === sessionId && h.alive === true);
+    if (target === undefined) {
+      target = await tauriInvoke("spawn_workspace_host", { sessionId });
+    }
+    const address = `ws://127.0.0.1:${String(target.port)}`;
+    if (address !== hostAddress()) {
+      switchHost(address);
+      toast(`已切换到任务（端口 ${String(target.port)}）——后台任务继续运行`, "info");
+    }
+    location.hash = "#chat";
+  } catch (e) {
+    toast(`切换失败：${String(e?.message ?? e)}——回退只读查看`, "warn");
+    await restoreSessionView(sessionId);
+  }
 }
 
 /** 只读恢复（history.js 同款——resetStream 后 renderHistory）。 */
@@ -1233,7 +1331,9 @@ async function openAddDialog() {
     }
   };
   let mode = "folder";
-  for (const tabMode of ["folder", "git", "import"]) {
+  // T-P3-166 需求 6：扫描导入 tab 退役（入口统一 #import 一体化导入页；
+  // 旧弹窗版与新版并存让用户误入旧体验——用户实测截图佐证）
+  for (const tabMode of ["folder", "git"]) {
     const tab = document.createElement("button");
     tab.type = "button";
     tab.className = `btn proj-add-tab${tabMode === mode ? " active" : ""}`;

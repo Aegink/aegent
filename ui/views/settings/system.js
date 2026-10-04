@@ -19,6 +19,7 @@ import * as logging from "./logging.js";
 import * as about from "./about.js";
 import { shortcutCaptureKeydown } from "./shortcuts.js";
 import { settingsCache } from "../../state.js";
+import { IS_DESKTOP } from "../../api.js";
 
 const instructionsSection = instructions.SECTION_HTML;
 const shortcutsSection = shortcuts.SECTION_HTML;
@@ -66,6 +67,68 @@ export const SECTIONS_HTML = `
         <div class="settings-row-desc">粘贴超过该字符数自动转为文本附件（200-100000）。</div>
       </div>
       <input id="chat-paste-threshold" class="input" type="number" min="200" max="100000" step="100" style="width: 120px" />
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-title">无尽重试</div>
+        <div class="settings-row-desc">模型流中断后持续自动重试（开启前建议先确认网络/代理稳定）。</div>
+      </div>
+      <label class="switch"><input id="chat-retry-unlimited" type="checkbox" aria-label="无尽重试" /><span class="switch-track"></span></label>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-title">平滑流式显示</div>
+        <div class="settings-row-desc">开启 = AI 回复打字机匀速呈现；关闭 = 收完整段立即渲染。</div>
+      </div>
+      <label class="switch"><input id="chat-smooth-stream" type="checkbox" aria-label="平滑流式显示" /><span class="switch-track"></span></label>
+    </div>
+    <div class="settings-row" id="close-behavior-row" hidden>
+      <div>
+        <div class="settings-row-title">关闭行为</div>
+        <div class="settings-row-desc">关闭到托盘 = 后台任务继续运行、托盘图标点回；退出应用 = 彻底关闭全部会话。</div>
+      </div>
+      <div class="tab-group" id="close-behavior">
+        <button type="button" class="tab-trigger" data-value="tray">关闭到托盘</button>
+        <button type="button" class="tab-trigger" data-value="exit">退出应用</button>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-title">终端命令 Shell</div>
+        <div class="settings-row-desc">底部终端抽屉启动的命令行程序。</div>
+      </div>
+      <div class="tab-group" id="chat-shell">
+        <button type="button" class="tab-trigger" data-value="cmd">CMD</button>
+        <button type="button" class="tab-trigger" data-value="powershell">PowerShell</button>
+        <button type="button" class="tab-trigger" data-value="pwsh">pwsh</button>
+        <button type="button" class="tab-trigger" data-value="bash">Bash</button>
+      </div>
+    </div>
+  </div>
+</section>
+<section data-section="network">
+  <div class="section-head">
+    <h2 class="section-title">网络</h2>
+  </div>
+  <p class="hint">模型请求的出站代理（pi-desktop networkProxy 同构；http/https 代理，配置变更重启 aegent 后生效）。</p>
+  <div class="card">
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-title">代理模式</div>
+        <div class="settings-row-desc">系统 = 读取环境变量 HTTP(S)_PROXY；直连 = 忽略一切代理设置；自定义 = 使用下方地址。</div>
+      </div>
+      <div class="tab-group" id="net-mode">
+        <button type="button" class="tab-trigger" data-value="system">系统</button>
+        <button type="button" class="tab-trigger" data-value="direct">直连</button>
+        <button type="button" class="tab-trigger" data-value="custom">自定义</button>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-title">代理地址</div>
+        <div class="settings-row-desc">http://host:port（自定义模式生效；不支持认证内联与 socks）。</div>
+      </div>
+      <input id="net-url" class="input" type="text" placeholder="http://127.0.0.1:7890" style="width: 240px" />
     </div>
   </div>
 </section>
@@ -149,6 +212,14 @@ function fillChatSection() {
   const chat = chatSettings();
   const enterBtn = document.getElementById("chat-enter-send");
   if (enterBtn !== null) enterBtn.checked = chat.enterToSend !== false; // 缺省 = 开（既有语义）
+  const retry = document.getElementById("chat-retry-unlimited");
+  if (retry !== null) retry.checked = chat.retryUnlimited === true;
+  const smooth = document.getElementById("chat-smooth-stream");
+  if (smooth !== null) smooth.checked = chat.smoothStream !== false; // 缺省 = 开
+  const shellValue = chat.shell ?? "cmd";
+  for (const b of document.querySelectorAll("#chat-shell .tab-trigger")) {
+    b.classList.toggle("active", b.dataset.value === shellValue);
+  }
   const readout = chat.ctxReadout ?? "used";
   for (const b of document.querySelectorAll("#chat-ctx-readout .tab-trigger")) {
     b.classList.toggle("active", b.dataset.value === readout);
@@ -183,4 +254,66 @@ function bindChatSection() {
     }
     if (await saveChatSection({ pasteThreshold: Math.floor(value) })) fillChatSection();
   });
+  document.getElementById("chat-retry-unlimited")?.addEventListener("change", async (ev) => {
+    if (await saveChatSection({ retryUnlimited: ev.target.checked })) fillChatSection();
+  });
+  document.getElementById("chat-smooth-stream")?.addEventListener("change", async (ev) => {
+    if (await saveChatSection({ smoothStream: ev.target.checked })) fillChatSection();
+  });
+  for (const b of document.querySelectorAll("#chat-shell .tab-trigger")) {
+    b.addEventListener("click", async () => {
+      if (await saveChatSection({ shell: b.dataset.value })) fillChatSection();
+    });
+  }
+  // —— 关闭行为（壳专属配置 data/shell.json——桌面壳门控）——
+  if (IS_DESKTOP) {
+    const row = document.getElementById("close-behavior-row");
+    if (row !== null) row.hidden = false;
+    void (async () => {
+      const mode = await window.__TAURI_INTERNALS__.invoke("get_close_behavior");
+      for (const b of document.querySelectorAll("#close-behavior .tab-trigger")) {
+        b.classList.toggle("active", b.dataset.value === mode);
+      }
+    })();
+    for (const b of document.querySelectorAll("#close-behavior .tab-trigger")) {
+      b.addEventListener("click", () => {
+        void window.__TAURI_INTERNALS__.invoke("set_close_behavior", { mode: b.dataset.value }).then(() => {
+          for (const x of document.querySelectorAll("#close-behavior .tab-trigger")) {
+            x.classList.toggle("active", x === b);
+          }
+          toast("已保存——下次关闭窗口时生效", "info");
+        });
+      });
+    }
+  }
+  // —— 网络分节（settings.network）——
+  const network = settingsCache?.network ?? {};
+  const netMode = network.mode ?? "system";
+  for (const b of document.querySelectorAll("#net-mode .tab-trigger")) {
+    b.classList.toggle("active", b.dataset.value === netMode);
+    b.addEventListener("click", async () => {
+      if (await saveNetwork({ mode: b.dataset.value })) fillChatSection();
+    });
+  }
+  const netUrl = document.getElementById("net-url");
+  if (netUrl !== null) {
+    netUrl.value = network.url ?? "";
+    netUrl.addEventListener("change", async () => {
+      if (await saveNetwork({ mode: "custom", url: netUrl.value.trim() })) fillChatSection();
+    });
+  }
+}
+
+async function saveNetwork(patch) {
+  const envelope = await (await import("../api.js")).sendSettings({
+    op: "update",
+    patch: { network: { ...(settingsCache?.network ?? {}), ...patch } },
+  });
+  if (!envelope.ok) {
+    const { toast } = await import("../feedback.js");
+    toast(`保存失败：${envelope.error?.message ?? ""}`, "warn");
+    return false;
+  }
+  toast("已保存——代理配置重启 aegent 后生效", "info");
+  return true;
 }

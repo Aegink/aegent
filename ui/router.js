@@ -61,6 +61,13 @@ async function applyRoute() {
   // D 方案：设置独立形态（无项目侧栏）——settings-mode 类随路由切换
   document.getElementById("app-shell")?.classList.toggle("settings-mode", route.view === "settings");
 
+  // T-P3-166 需求 6：离开对话页收束全部面板（浏览器 child webview 是壳级
+  // 悬浮物——pane DOM 被 view-root 替换后其关闭入口消失，webview 残留=关不掉）
+  if (route.view !== "chat") {
+    const pane = await import("./pane.js");
+    pane.hideAllPanes();
+  }
+
   // 卸载旧视图（toast 计时器/审批倒计时随视图卸载收束的纪律入口）
   if (currentModule !== null && typeof currentModule.unmount === "function") {
     try {

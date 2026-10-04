@@ -45,6 +45,7 @@ const TEMPLATE = `
   <div class="import-foot">
     <span id="imp-count">已选 0 / 0</span>
     <button id="imp-import" type="button" class="btn btn-primary">导入为会话</button>
+    <button id="imp-folders" type="button" class="btn">仅把目录建为项目</button>
     <span id="imp-loaded" class="import-loaded"></span>
   </div>
 </div>
@@ -64,6 +65,7 @@ export async function render(container) {
   document.getElementById("imp-clear").addEventListener("click", () => selectAll(false));
   document.getElementById("imp-search").addEventListener("input", () => paintTree());
   document.getElementById("imp-import").addEventListener("click", () => void importChecked());
+  document.getElementById("imp-folders").addEventListener("click", () => void importFoldersOnly());
   await runScan();
 }
 
@@ -104,13 +106,14 @@ function paintSources() {
   for (const s of scanData.sources) {
     const card = document.createElement("button");
     card.type = "button";
-    card.className = `import-source-card${selectedSource !== null && selectedSource === s.id ? " active" : ""}`;
+    const sourceId = s.source ?? s.id;
+    card.className = `import-source-card${selectedSource !== null && selectedSource === sourceId ? " active" : ""}`;
     const count = Number(s.sessionCount ?? 0);
     const meta = count > 0 ? `${String(count)} 个会话${s.custom === true ? "（自定义）" : ""}` : "未检测到";
-    card.innerHTML = `<b>${escapeHtml(String(s.label ?? s.id ?? "?"))}</b><span>${escapeHtml(meta)}${s.note !== undefined ? ` · ${escapeHtml(String(s.note))}` : ""}</span>`;
+    card.innerHTML = `<b>${escapeHtml(String(s.label ?? sourceId ?? "?"))}</b><span>${escapeHtml(meta)}${s.note !== undefined ? ` · ${escapeHtml(String(s.note))}` : ""}</span>`;
     if (count > 0) {
       card.addEventListener("click", () => {
-        selectedSource = selectedSource === s.id ? null : s.id;
+        selectedSource = selectedSource === sourceId ? null : sourceId;
         paintSources();
         paintTree();
       });
@@ -320,6 +323,39 @@ async function importChecked() {
   paintCount();
   void hooks.refreshSidebar?.();
   void sendQuery({ sessionId: getSessionId() || "-", op: "sessions" }); // 预热会话清单缓存
+}
+
+/** 勾选会话的原始目录 → 建项目（不导内容——旧弹窗"仅把目录建为项目"平移）。 */
+async function importFoldersOnly() {
+  const cwds = new Set();
+  for (const key of checked) {
+    const [source, externalId] = key.split(" ");
+    const session = scanData.sessions.find((s) => s.source === source && s.externalId === externalId);
+    if (session?.projectPath) cwds.add(session.projectPath);
+  }
+  if (cwds.size === 0) {
+    toast("未勾选任何带目录的会话", "warn");
+    return;
+  }
+  const existing = new Set((settingsCache?.projects ?? []).map((p) => String(p.folders?.[0] ?? "").toLowerCase()));
+  const additions = [];
+  for (const cwd of cwds) {
+    if (existing.has(cwd.toLowerCase())) continue;
+    const name = cwd.split(/[\/]/).filter(Boolean).pop() ?? "project";
+    additions.push({ name, folders: [cwd] });
+  }
+  if (additions.length === 0) {
+    toast("勾选的目录都已是项目", "info");
+    return;
+  }
+  const projects = [...(settingsCache?.projects ?? []), ...additions];
+  const envelope = await sendSettings({ op: "update", patch: { projects } });
+  if (!envelope.ok) {
+    toast(`建项目失败：${envelope.error?.message ?? ""}`, "warn");
+    return;
+  }
+  toast(`已创建 ${String(additions.length)} 个项目（不含会话内容）`, "info");
+  void hooks.refreshSidebar?.();
 }
 
 function formatWhen(iso) {

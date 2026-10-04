@@ -143,17 +143,30 @@ registerPane("browser", {
       void tauriInvoke("browser_eval", { label: tabId, js: "location.reload()" }).catch(() => {});
     });
 
-    // 创建/复用真实内核 → 对齐 bounds
+    // 创建/复用真实内核 → 对齐 bounds。T-P3-166 需求 5：加超时兜底——
+    // 壳侧 webview 创建异常挂起时用户面对永恒「正在加载内核」无法自愈；
+    // 超时/失败都给出可行动提示并清理注册表残留。
     void (async () => {
+      const timedOut = new Promise((resolve) =>
+        setTimeout(() => resolve("timeout"), 12_000),
+      );
       try {
-        await tauriInvoke("browser_create", {
-          label: tabId,
-          url: tab.payload.url ?? "https://www.bing.com",
-        });
+        const created = await Promise.race([
+          tauriInvoke("browser_create", {
+            label: tabId,
+            url: tab.payload.url ?? "https://www.bing.com",
+          }).then(() => "ok"),
+          timedOut,
+        ]);
+        if (created === "timeout") {
+          host.innerHTML = `<div class="browser-host-hint">内核创建超时——请重启 aegent 重试；若持续出现请反馈 logs/webview.log</div>`;
+          return;
+        }
         host.innerHTML = "";
         bindBoundsSync(host, tabId);
       } catch (e) {
-        host.innerHTML = `<div class="browser-host-hint">内核创建失败：${String(e?.message ?? e)}</div>`;
+        host.innerHTML = `<div class="browser-host-hint">内核创建失败：${String(e?.message ?? e)}——请重启 aegent 重试；若持续出现请反馈 logs/webview.log</div>`;
+        void tauriInvoke("browser_destroy", { label: tabId }).catch(() => {});
       }
     })();
   },

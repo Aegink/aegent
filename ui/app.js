@@ -797,9 +797,10 @@ function renderEvent(e, options = {}) {
       };
       const bubble = document.createElement("div");
       bubble.className = "agent-text";
-      if (options.live) {
+      if (options.live && settingsCache?.chat?.smoothStream !== false) {
         // T-P3-159 顺修：stream 在事件顶层（message 里从来没有）——打字机
         // 此前恒拿空数组直接跳终态，从未真正逐字。
+        // T-P3-166 需求 4：平滑流式开关（关 = 瞬时整段渲染）
         typeStream(bubble, e.stream ?? e.message?.stream ?? [], content, decorate); // 流式打字节流
       } else {
         bubble.innerHTML = renderMarkdown(content); // 恢复视图直接终态
@@ -2756,6 +2757,11 @@ function handleEnvelope(envelope) {
       // 握手回执携带本 host 的会话 id（路由引导）→ 发 query 恢复视图
       //（快照先行）；流续播随 event 信封自然衔接。
       leaseBtn.hidden = false;
+      // T-P3-166 需求 2：会话切换（工作 host 重连——sessionId 变化）先清
+      // 旧流再重放，防新会话历史 append 到旧会话流尾
+      if (getSessionId() !== "" && (envelope.sessionId ?? "") !== "" && getSessionId() !== envelope.sessionId) {
+        resetStreamView();
+      }
       setSessionId(envelope.sessionId ?? null);
       void refreshSidebar(); // T-P3-156：连接就绪 → 侧栏两分段首拉（WS 建立前不发 settings）
       void refreshContextUsage(); // T-P3-156 L：输入条上下文 % 首拉

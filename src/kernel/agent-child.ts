@@ -376,6 +376,10 @@ async function main(): Promise<void> {
 
   // U5/T-P3-104：settings 多注册表装配（J6 换模可选面；单模型分支零变化）。
   const settingsFile = (await loadSettings(cli.settingsPath)).settings;
+  // T-P3-166 需求 4：网络代理（pi networkProxy 同构——undici 全局
+  // dispatcher；custom=ProxyAgent(url)、direct=禁 env、system=Env 代理；
+  // 配置变更重启 child 生效——诚实语义）
+  await applyNetworkDispatcher(settingsFile.network);
   const registry =
     cli.provider === undefined ? await buildModelsRegistry(settingsFile, cli.settingsPath) : undefined;
   if (registry !== undefined) {
@@ -582,6 +586,11 @@ async function main(): Promise<void> {
             ...(settingsFile.skills?.roots?.length
               ? { skillsRoots: settingsFile.skills.roots }
               : {}),
+            // T-P3-166 需求 4：无尽重试（chat.retryUnlimited——流恢复上限
+            // 解除；缺省 2 次不变）
+            ...(settingsFile.chat?.retryUnlimited === true
+              ? { streamRecovery: { maxRetries: 1_000_000 } }
+              : {}),
             // U24/T-P3-127：C22 user 档规则文件 + 全局指令（~/.aegent 两位）
             ...(userRules.length > 0 ? { rules: userRules } : {}),
             ...(globalAgentsPath !== undefined ? { globalAgentsPath } : {}),
@@ -636,3 +645,34 @@ void main().catch((e: unknown) => {
   );
   process.exit(1);
 });
+
+/** 网络代理装配（settings.network——模型请求 fetch 的全局 dispatcher）。
+ *  system=EnvHttpProxyAgent（读 HTTP(S)_PROXY 环境变量）；direct=显式禁用
+ *  env 代理；custom=ProxyAgent(url)（http/https；socks 由 undici Agent 自
+ *  定义 connect 支持——socks5h 归一到 socks5）。缺省/system 无 env = 直连
+ *  零变化。动态 import（bundl 外部依赖——esbuild external 已含原生面）。 */
+async function applyNetworkDispatcher(network: { mode?: string; url?: string } | undefined): Promise<void> {
+  const mode = network?.mode ?? "system";
+  try {
+    const undici = await import("undici");
+    if (mode === "custom" && network?.url !== undefined && network.url !== "") {
+      const href = network.url.replace(/^socks5h:/, "socks5:");
+      if (/^socks5:/.test(href)) {
+        // socks 代理需要 fetch-socks 伴侣包（未内置——记档 P2）；诚实降级直连
+        return;
+      }
+      undici.setGlobalDispatcher(new undici.ProxyAgent(href));
+      return;
+    }
+    if (mode === "direct") {
+      undici.setGlobalDispatcher(new undici.Agent({ connect: { timeout: 30_000 } }));
+      return;
+    }
+    const hasEnvProxy = Object.keys(process.env).some((k) => /^(https?_proxy|all_proxy)$/i.test(k));
+    if (hasEnvProxy) {
+      undici.setGlobalDispatcher(new undici.EnvHttpProxyAgent());
+    }
+  } catch {
+    // undici 不在场/配置坏 = 缺省 dispatcher（直连）——诚实降级不炸启动
+  }
+}

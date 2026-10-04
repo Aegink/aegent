@@ -158,6 +158,32 @@ const PI: ImportSpec = {
   },
 };
 
+/** zcode：~/.zcode/cli/db/db.sqlite（sqlite-session 三层 session→message→part）。
+ * part 同时挂 message_id/session_id（按 session 直取）；time 列为毫秒整数
+ * （toIso 双单位秒/毫秒通吃）；part.textTypes 只取 text（reasoning/step-start/
+ * model_change 跳过）；tool part 的 state.input/output 与 opencode 同形状。 */
+const ZCODE: ImportSpec = {
+  id: "zcode",
+  label: "ZCode",
+  driver: "sqlite-session",
+  db: "~/.zcode/cli/db/db.sqlite",
+  session: {
+    table: "session", idCol: "id", titleCol: "title",
+    pathCol: "directory", createdCol: "time_created", updatedCol: "time_updated",
+  },
+  message: {
+    table: "message", idCol: "id", sessionIdCol: "session_id",
+    createdCol: "time_created", dataCol: "data", rolePath: "role",
+    tsPath: "time.created",
+  },
+  part: {
+    table: "part", sessionIdCol: "session_id", dataCol: "data",
+    createdCol: "time_created", textTypes: ["text"], toolType: "tool",
+    toolNamePath: "tool", argsPath: "state.input", resultPath: "state.output",
+    statusPath: "state.status",
+  },
+} as ImportSpec;
+
 /** gemini：~/.gemini/tmp 递归 chats 内 session-*.json——一文件一会话（json-tree）；
  * projectHash 无法反解真实目录——projectPath 置空（UI 归未定位组）。 */
 const GEMINI: ImportSpec = {
@@ -179,7 +205,7 @@ const GEMINI: ImportSpec = {
 };
 
 /** 内置 spec 顺序即扫描卡片顺序。 */
-export const BUILTIN_SPECS: ImportSpec[] = [CLAUDE, CODEX, OPENCODE, WORKBUDDY, PI, GEMINI];
+export const BUILTIN_SPECS: ImportSpec[] = [CLAUDE, CODEX, OPENCODE, WORKBUDDY, PI, GEMINI, ZCODE];
 
 /** 自定义来源配置文件（全局——~/.aegent/import-sources.json）。 */
 export function customSourcesPath(home: string = homedir()): string {

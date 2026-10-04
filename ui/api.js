@@ -22,6 +22,14 @@ export function allocRequestId(prefix) {
 }
 
 let ws = null;
+// 工作会话 host 覆盖（T-P3-166 需求 2——任务切换=重连目标端口；重连循环
+// 沿用该地址，返回主 host 置 null）
+let addressOverride = null;
+
+export function switchHost(address) {
+  addressOverride = address !== null && address !== "" ? address : null;
+  if (ws !== null) ws.close(); // close 触发既有重连循环（新地址生效）
+}
 
 export function sendRaw(envelope) {
   ws.send(JSON.stringify(envelope));
@@ -82,6 +90,7 @@ export function invalidateMetaCache() {
  * WebView 从 tauri:// 协议加载（location.host 无意义）——直连本机 host
  * 缺省端口（server.ts --port 缺省 8787），可用 URL 参数 ?host= 覆盖。 */
 export function hostAddress() {
+  if (addressOverride !== null) return addressOverride;
   const params = new URLSearchParams(location.search);
   const explicit = params.get("host");
   if (explicit !== null && explicit !== "") return explicit;

@@ -125,6 +125,19 @@ export function paneIsOpen() {
   return root !== null && !root.hidden;
 }
 
+/** 路由离开对话页时收束全部面板（T-P3-166 需求 6：浏览器 webview 是壳级
+ *  悬浮物——DOM 隐藏不够，须逐 tab 触发 onBlur 显式 hide，否则 webview
+ *  残留在设置页上方且失去唯一关闭入口 = 用户"关不掉"。返回对话页不自动
+ *  重开——由用户点切换面板钮恢复）。 */
+export function hideAllPanes() {
+  if (root === null) return;
+  for (const t of state.tabs) {
+    renderers.get(t.type)?.onBlur?.(t);
+  }
+  root.hidden = true;
+  syncToggleBtn();
+}
+
 /** 面板是否已有某类型 tab（侧栏/进度弹窗的入口态判定用）。 */
 export function paneHas(type) {
   return state.tabs.some((t) => t.type === type);

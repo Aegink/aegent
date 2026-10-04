@@ -137,7 +137,7 @@ export interface ImportedMessage {
 // 资源上限（A5——对齐该插件默认值；spec 可覆盖 maxFiles/maxBytes/maxLines）
 // ---------------------------------------------------------------------------
 
-export const BUILTIN_SOURCE_IDS = ["claude", "codex", "opencode", "workbuddy", "pi", "gemini"];
+export const BUILTIN_SOURCE_IDS = ["claude", "codex", "opencode", "workbuddy", "pi", "gemini", "zcode"];
 
 export const LIMITS = {
   maxFiles: 2000,

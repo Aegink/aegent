@@ -19,6 +19,29 @@ use tauri::{AppHandle, Manager, Webview, WebviewUrl, WebviewBuilder, Window};
 /// 每 tab 的 webview 句柄登记表（label → Webview；label = `browser-<id>`）。
 pub struct BrowserRegistry(Mutex<HashMap<String, Webview>>);
 
+/// 诊断日志（T-P3-166 需求 5：便携壳 stderr 被 CREATE_NO_WINDOW 吞——
+/// webview 创建/对齐事件落 logs/webview.log 供用户反馈排障）。
+fn wvlog(msg: &str) {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let log_dir = dir.join("logs");
+            let _ = std::fs::create_dir_all(&log_dir);
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(log_dir.join("webview.log"))
+            {
+                use std::io::Write;
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                let _ = writeln!(f, "[ts={ts}] {msg}");
+            }
+        }
+    }
+}
+
 /// 创建（或复用）一个浏览器 tab 的真实 webview：挂主窗、bounds 先给面板
 /// 初始区域（1px 藏底——show 时再对齐，避免创建瞬间闪整窗）。
 #[tauri::command]
@@ -27,31 +50,43 @@ pub fn browser_create(
     label: String,
     url: String,
 ) -> Result<String, String> {
+    wvlog(&format!("browser_create label={label} url={url}"));
     // add_child 挂在 Window（非 WebviewWindow）——tauri 2.12 unstable 面
     let window: Window = app
         .get_window("main")
-        .ok_or_else(|| "主窗未就绪".to_string())?;
-    let parsed: tauri::Url = url
-        .parse()
-        .map_err(|e| format!("URL 不合法：{e}"))?;
+        .ok_or_else(|| {
+            wvlog("browser_create 主窗未就绪");
+            "主窗未就绪".to_string()
+        })?;
+    let parsed: tauri::Url = url.parse().map_err(|e| {
+        wvlog(&format!("browser_create url 解析失败: {e}"));
+        format!("URL 不合法：{e}")
+    })?;
     let state = app
         .try_state::<BrowserRegistry>()
         .ok_or_else(|| "browser registry 未初始化".to_string())?;
     let mut registry = state.0.lock().map_err(|_| "registry 锁中毒".to_string())?;
     if let Some(existing) = registry.get(&label) {
+        wvlog("browser_create 复用既有 webview");
         let _ = existing.show();
         return Ok(label);
     }
-    let webview = window
-        .add_child(
-            WebviewBuilder::new(label.clone(), WebviewUrl::External(parsed))
-                .initialization_script("window.__AEGENT_BROWSER_TAB = true;"),
-            tauri::LogicalPosition::new(0.0, 10_000.0), // 藏在窗外——show 时对齐
-            tauri::LogicalSize::new(400.0, 300.0),
-        )
-        .map_err(|e| format!("webview 创建失败：{e}"))?;
-    registry.insert(label.clone(), webview);
-    Ok(label)
+    match window.add_child(
+        WebviewBuilder::new(label.clone(), WebviewUrl::External(parsed))
+            .initialization_script("window.__AEGENT_BROWSER_TAB = true;"),
+        tauri::LogicalPosition::new(0.0, 10_000.0), // 藏在窗外——show 时对齐
+        tauri::LogicalSize::new(400.0, 300.0),
+    ) {
+        Ok(webview) => {
+            wvlog("browser_create add_child 成功");
+            registry.insert(label.clone(), webview);
+            Ok(label)
+        }
+        Err(e) => {
+            wvlog(&format!("browser_create add_child 失败: {e}"));
+            Err(format!("webview 创建失败：{e}"))
+        }
+    }
 }
 
 /// 对齐 bounds 并显示（UI 面板区域变化/激活 tab 时调——物理像素）。

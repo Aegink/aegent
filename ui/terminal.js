@@ -79,7 +79,12 @@ async function ensureSession() {
   xterm.reset();
   xterm.writeln(`\x1b[36m—— aegent 终端 · ${cwd ?? "用户主目录"} ——\x1b[0m`);
   try {
-    const envelope = await sendSettings({ op: "terminal-create", id: sid, cwd: cwd ?? "" });
+    const envelope = await sendSettings({
+      op: "terminal-create",
+      id: sid,
+      cwd: cwd ?? "",
+      ...(settingsCache?.chat?.shell ? { shell: settingsCache.chat.shell } : {}),
+    });
     if (!envelope.ok) {
       xterm.writeln(`\x1b[31m终端创建失败：${envelope.error?.message ?? ""}\x1b[0m`);
       return;

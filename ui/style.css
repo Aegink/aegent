@@ -510,6 +510,14 @@ code,
   color: var(--destructive);
 }
 
+/* 置顶分区（pi sidebar-pinned-sessions 同构——跨项目集中展示） */
+.sb-pinned {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-bottom: 4px;
+}
+
 .sb-task-meta {
   margin-left: auto;
   font-size: 10px;

@@ -66,6 +66,7 @@ export function tryPanelSettingsOp(
     data?: string;
     cols?: number;
     rows?: number;
+    shell?: string;
   },
 ): Promise<unknown> | unknown {
   switch (call.op) {
@@ -85,7 +86,11 @@ export function tryPanelSettingsOp(
       return gateway.assistantLogReadOp(call.limit);
     case "terminal-create":
       return resolveRoots(gateway).then((roots) =>
-        gateway.terminalCreateOp(roots, { id: call.id!, cwd: call.cwd! }),
+        gateway.terminalCreateOp(roots, {
+          id: call.id!,
+          cwd: call.cwd!,
+          ...(call.shell !== undefined ? { shell: call.shell as "cmd" | "powershell" | "pwsh" | "bash" } : {}),
+        }),
       );
     case "terminal-input":
       return gateway.terminalInputOp({ id: call.id!, data: call.data ?? "" });

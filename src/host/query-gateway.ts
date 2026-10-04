@@ -181,7 +181,11 @@ export async function handleHostQuery(
     return { events };
   }
   const all = store.load(query.sessionId);
+  // T-P3-166 需求 2：工作 host 的镜像从空起（历史在事件库）——镜像空时回
+  // 源库（恢复视图/切换会话的首屏不丢历史；镜像有事件后以内存序为准）
+  const source =
+    all.length > 0 ? all : (deps.sessionsLibrary?.readAll(query.sessionId) ?? []);
   const events =
-    query.afterSeq !== undefined ? all.filter((e) => e.seq > query.afterSeq!) : [...all];
+    query.afterSeq !== undefined ? source.filter((e) => e.seq > query.afterSeq!) : [...source];
   return { events };
 }

@@ -57,7 +57,7 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     // credentials 分节并入供应商页（用户裁决"功能重复"——凭据管理面 =
     // providers.js 的孤儿预存密钥区，data-section 不复存在）
     // T-P3-148 O：plugins 分节迁独立页 views/plugins.js（data-section 不复存在）
-    for (const section of ["providers", "permission", "sandbox", "appearance", "chat", "logging", "prompts", "skills", "subagents", "instructions", "shortcuts", "mcp", "enhancement", "profiles", "transfer", "speech", "about"]) { // T-P3-165：projects 分节退役（侧栏承载）换 chat 分节
+    for (const section of ["providers", "permission", "sandbox", "appearance", "chat", "network", "logging", "prompts", "skills", "subagents", "instructions", "shortcuts", "mcp", "enhancement", "profiles", "transfer", "speech", "about"]) { // T-P3-165：projects 分节退役（侧栏承载）换 chat 分节
       expect(settingsView).toContain(`data-section="${section}"`);
     }
     expect(settingsView).not.toContain('data-section="credentials"');

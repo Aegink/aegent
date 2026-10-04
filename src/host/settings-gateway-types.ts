@@ -113,7 +113,7 @@ export interface SettingsGateway {
   gitLogOp(roots: string[], cwd: string): Promise<unknown>;
   assistantLogAppendOp(entry: { role: "user" | "assistant"; text: string }): Promise<{ appended: true }>;
   assistantLogReadOp(limit?: number): Promise<unknown>;
-  terminalCreateOp(roots: string[], payload: { id: string; cwd: string }): unknown;
+  terminalCreateOp(roots: string[], payload: { id: string; cwd: string; shell?: "cmd" | "powershell" | "pwsh" | "bash" }): unknown;
   terminalInputOp(payload: { id: string; data: string }): { written: true };
   terminalResizeOp(payload: { id: string; cols: number; rows: number }): { resized: true };
   importScan(): Promise<unknown>;

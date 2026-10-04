@@ -17,7 +17,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # T-P3-156 Q：浏览器面板需要主窗内 child Webview（真实内核）——multiwebview
 # 属 unstable 面（tauri 官方标 unstable 的 multi-webview API）
-tauri = { version = "2", features = ["unstable"] }
+tauri = { version = "2", features = ["unstable", "tray-icon"] }
 # U7/T-P3-114：updater 单插件入册（九插件群不取的解禁例外——签名校验链）
 tauri-plugin-updater = "2"
 # T-P3-158 反馈 2：系统文件夹选择器（自定义 pick_folder command——不加
