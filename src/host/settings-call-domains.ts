@@ -37,6 +37,7 @@ const DOMAIN_OPS = new Set([
   "project-tasks",
   "session-attach",
   "session-rename",
+  "task-create",
   "project-branch",
   "import-preview",
   "import-sessions",
@@ -112,7 +113,7 @@ export function validateDomainSettingsCall(op: string, record: Record<string, un
     throw new Error("settings op=git-clone 需要 url（仓库地址）非空字符串");
   }
   if (
-    (op === "project-tasks" || op === "session-attach") &&
+    (op === "project-tasks" || op === "session-attach" || op === "task-create") &&
     (typeof record["projectId"] !== "string" || record["projectId"].trim() === "")
   ) {
     throw new Error(`settings op=${op} 需要 projectId（项目 id）非空字符串`);

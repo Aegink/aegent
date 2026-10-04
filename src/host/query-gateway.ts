@@ -116,15 +116,20 @@ export async function handleHostQuery(
       prompts: caps?.prompts ?? [],
     };
   }
-  // U15/T-P3-117：工作面板聚合面——变更提取纯函数从流算（不建状态）。
-  // 读面与 events op 同款：本会话内存序（最新无 write-behind 滞后）、
-  // 跨会话回源库（历史会话的恢复视图同享工作面板）。
+  // T-P3-170：镜像与库的 seq 去重合并读（多会话并发下镜像可能只含该会话
+  // 的活跃增量——child 重启恢复的历史在库；write-behind 反向滞后时镜像
+  // 又比库新。两侧并读、库行为底镜像覆盖、seq 排序=恒完整的读面）。
+  // 库未配置（InMemory 测试）= 镜像独源。
+  const mergedStream = ((): import("../kernel/events.js").SessionEvent[] => {
+    const mirrored = [...(deps.store?.load(query.sessionId) ?? [])];
+    if (deps.sessionsLibrary === undefined) return mirrored;
+    const bySeq = new Map<number, import("../kernel/events.js").SessionEvent>();
+    for (const e of deps.sessionsLibrary.readAll(query.sessionId)) bySeq.set(e.seq, e);
+    for (const e of mirrored) bySeq.set(e.seq, e);
+    return [...bySeq.values()].sort((a, b) => a.seq - b.seq);
+  })();
   if (query.op === "review") {
-    const stream =
-      query.sessionId === deps.hostSessionId()
-        ? (store.load(query.sessionId) ?? [])
-        : (deps.sessionsLibrary?.readAll(query.sessionId) ?? []);
-    return { review: reviewChangesFromEvents(stream) };
+    return { review: reviewChangesFromEvents(mergedStream) };
   }
   if (query.op === "file") {
     return {
@@ -140,8 +145,10 @@ export async function handleHostQuery(
     // 幂等建视图（本 host 是 usage_rollup 的首个生产消费方——IF NOT
     // EXISTS 语义见 obs/usage.ts，无迁移问题）
     ensureUsageView(library.db);
-    const sessionId = deps.hostSessionId();
-    const stream = deps.store?.load(sessionId) ?? [];
+    // T-P3-170：用量按查询会话（多会话并发——composer 上下文读数跟当前
+    // 会话走；镜像折叠 + 库行 turn 去重与 events 读面同源）
+    const sessionId = query.sessionId;
+    const stream = mergedStream;
     // 镜像折叠覆盖库行（T-P3-165 需求 5：write-behind turn 末才落库——
     // turn 进行中库视图读不到本轮 usage；镜像内存序无滞后，turn 号去重
     // 后以镜像为准）
@@ -167,25 +174,9 @@ export async function handleHostQuery(
       byTask: usageByTask(library.db),
     };
   }
-  // 本会话：内存序读取（同步）：镜像 append 的直接产物——最新、无
-  // write-behind 缓冲滞后（restore/readAll 只见已 flush 部分——E1
-  // 纪律的读面选择）。U3：跨会话（历史查看入口）直接回源 SQLite 库
-  // ——历史会话不在内存镜像；库未配置 = 空流（无历史可看）。
-  if (query.sessionId !== deps.hostSessionId()) {
-    if (deps.sessionsLibrary === undefined) return { events: [] };
-    const archived = deps.sessionsLibrary.readAll(query.sessionId);
-    const events =
-      query.afterSeq !== undefined
-        ? archived.filter((e) => e.seq > query.afterSeq!)
-        : [...archived];
-    return { events };
-  }
-  const all = store.load(query.sessionId);
-  // T-P3-166 需求 2：工作 host 的镜像从空起（历史在事件库）——镜像空时回
-  // 源库（恢复视图/切换会话的首屏不丢历史；镜像有事件后以内存序为准）
-  const source =
-    all.length > 0 ? all : (deps.sessionsLibrary?.readAll(query.sessionId) ?? []);
+  // T-P3-170：events 恢复视图统一走 mergedStream（镜像+库 seq 去重合并）
+  // ——本会话/历史会话/其他活跃会话一个读面；afterSeq 增量过滤照旧。
   const events =
-    query.afterSeq !== undefined ? source.filter((e) => e.seq > query.afterSeq!) : [...source];
+    query.afterSeq !== undefined ? mergedStream.filter((e) => e.seq > query.afterSeq!) : [...mergedStream];
   return { events };
 }

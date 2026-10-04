@@ -47,7 +47,7 @@ import {
 } from "./panel-ops.js";
 import { terminalCreateOp, terminalInputOp, terminalResizeOp } from "./terminal-ops.js";
 import { runTtsSynthesize } from "./tts-gateway.js";
-import { fsReadOp, fsShellOp, fsTreeOp, importPreviewOp, importScanOp, importSessionsOp, projectBranchOp, projectCloneOp, projectTasksOp, sessionAttachOp, sessionRenameOp, type MirrorTasksSource } from "./settings-project-ops.js";
+import { fsReadOp, fsShellOp, fsTreeOp, importPreviewOp, importScanOp, importSessionsOp, projectBranchOp, projectCloneOp, projectTasksOp, sessionAttachOp, sessionRenameOp, taskCreateOp, type MirrorTasksSource } from "./settings-project-ops.js";
 import { checkPluginDir, listPlugins } from "./plugins-gateway.js";
 import {
   marketOpImpl,
@@ -281,6 +281,7 @@ export class FileSettingsGateway implements SettingsGateway {
   sessionAttach(payload: { sessionId: string; projectId: string }): Promise<{ attached: true }> { return Promise.resolve(sessionAttachOp(this.sessionDb, payload)); }
   projectBranch(path: string): Promise<{ branch?: string }> { return Promise.resolve(projectBranchOp(path)); }
   sessionRename(payload: { sessionId: string; title: string }): Promise<{ renamed: true }> { return Promise.resolve(sessionRenameOp(this.sessionDb, payload)); }
+  taskCreate(projectId: string): Promise<{ sessionId: string }> { return Promise.resolve(taskCreateOp(this.sessionDb, projectId)); }
   importPreview(source: string, externalId: string): Promise<unknown> { return Promise.resolve(importPreviewOp(source, externalId, this.homeDir)); }
   importSessions(items: { source: string; externalId: string; projectPath?: string }[]): Promise<unknown> {
     return this.get().then((s) => importSessionsOp(this.sessionDb, items, s.projects ?? [], this.homeDir));

@@ -115,16 +115,22 @@ export class HostServer {
           sessionStream: (sid) => store.load(sid),
         })
       : undefined;
-    const agent =
-      this.options.agent ??
+    // T-P3-170 多会话并发（pi-desktop 单 sidecar 多路复用同构）：主会话
+    // child 随 host 启动常驻；其他会话的 child 由 bridge 按需懒派生（同
+    // host 进程内并发，事件按 sessionId 归属广播）——多任务真并发互不影响。
+    const agentFactory = (sessionId: string): import("./protocol.js").AgentChannel =>
       spawnAgentProcess({
         entryPath: this.options.agentEntryPath ?? "",
         args: ["--session", sessionId, ...(this.options.childArgs ?? [])],
         stderrSink: agentStderrSink(),
       });
+    const agent =
+      this.options.agent ??
+      agentFactory(sessionId);
     const bridge = new HostBridge({
       host,
       agent,
+      agentFactory,
       store,
       ...(this.options.settingsGateway !== undefined ? { settingsGateway: this.options.settingsGateway } : {}),
       ...(this.options.sessionsLibrary !== undefined ? { sessionsLibrary: this.options.sessionsLibrary } : {}),
@@ -148,16 +154,17 @@ export class HostServer {
     // SessionStore.append 同步纪律（write-behind 持久化在 storage 端）。
     // T-P3-150 B1：首条用户话语按当时 activeProject 自动归属任务
     // （归属面在 settings-project-ops.makeProjectAttacher——幂等+静默）。
+    // T-P3-170：镜像与归属都按事件实际会话（sid）——多会话并发下各自
+    // 独立镜像、各自归属。
     const projectAttacher = makeProjectAttacher(
-      sessionId,
       this.options.storage instanceof SqliteEventStorage ? this.options.storage : undefined,
       this.options.settingsGateway,
     );
-    bridge.onEvent((_sid, event) => {
-      projectAttacher(event.type);
+    bridge.onEvent((sid, event) => {
+      projectAttacher(sid, event.type);
       if (event.type === "turn/start" || event.type === "turn/end") channelLogger("host").info(`turn 边界：${event.type}`, { category: "session" }); // T-P3-154：不含消息正文（D9）
       try {
-        store.append(sessionId, [event as never]);
+        store.append(sid, [event as never]);
       } catch (e) {
         channelLogger("host").error(`[mirror] append failed: ${e instanceof Error ? e.message : String(e)}`, { category: "session" });
         // 镜像是读面加速：单事件失败不炸 host（错误经 query 读面可见为缺事件）
@@ -197,6 +204,7 @@ export class HostServer {
       port,
       stop: async () => {
         if (hubUnsub !== undefined) hubUnsub(); // U13：通知订阅随 stop 收束
+        await bridge.killAllChannels(); // T-P3-170：池化 child 收束（主 agent 在下）
         for (const client of wss.clients) client.terminate(); // 强制断开（未 close 的测试客户端/慢端）
         await new Promise<void>((resolve) => wss.close(() => resolve()));
         await new Promise<void>((resolve) => httpServer.close(() => resolve()));

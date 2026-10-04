@@ -866,7 +866,8 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
       return client.waitFor((e) => e.type === "response" && e.requestId === requestId, `query(${requestId})`) as Promise<Record<string, unknown>>;
     };
 
-    const usage = await queryCall({ sessionId: "-", op: "usage" });
+    // T-P3-170：usage 按查询会话走（composer 上下文读数跟当前会话——本测试查主会话）
+    const usage = await queryCall({ sessionId: "s-h1", op: "usage" });
     expect(usage.ok).toBe(true);
     const u = usage.result as {
       contextWindow?: number;

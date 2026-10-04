@@ -29,106 +29,120 @@ const aboutSection = about.SECTION_HTML;
 
 export const SECTIONS_HTML = `
 <section data-section="chat">
-  <div class="section-head">
-    <h2 class="section-title">对话与输入</h2>
-  </div>
+  <div class="section-head"><h2 class="section-title">对话与输入</h2></div>
   <p class="hint">影响主对话页的输入与展示行为（zcode 常规/全局 AI 页同位功能的真实可用子集）。</p>
-  <div class="card">
-    <div class="settings-row">
-      <div>
-        <div class="settings-row-title">回车发送</div>
-        <div class="settings-row-desc">开启 = Enter 直接发送、Shift+Enter 换行；关闭 = Ctrl+Enter 发送。</div>
+  <div class="group-title">输入行为</div>
+  <div class="row-list">
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title">回车发送</div>
+        <div class="row-desc">开启 = Enter 直接发送、Shift+Enter 换行；关闭 = Ctrl+Enter 发送。</div>
       </div>
-      <label class="switch"><input id="chat-enter-send" type="checkbox" aria-label="回车发送" /><span class="switch-track"></span></label>
+      <div class="row-control"><label class="switch"><input id="chat-enter-send" type="checkbox" aria-label="回车发送" /><span class="switch-track"></span></label></div>
     </div>
-    <div class="settings-row">
-      <div>
-        <div class="settings-row-title">上下文用量读数</div>
-        <div class="settings-row-desc">输入条用量圆标显示已用占比还是剩余占比。</div>
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title">大段文本粘贴阈值</div>
+        <div class="row-desc">粘贴超过该字符数自动转为文本附件（200-100000）。</div>
       </div>
-      <div class="tab-group" id="chat-ctx-readout">
-        <button type="button" class="tab-trigger" data-value="used">已用</button>
-        <button type="button" class="tab-trigger" data-value="remaining">剩余</button>
-      </div>
+      <div class="row-control"><input id="chat-paste-threshold" class="input input-num" type="number" min="200" max="100000" step="100" /></div>
     </div>
-    <div class="settings-row">
-      <div>
-        <div class="settings-row-title">思考过程展示模式</div>
-        <div class="settings-row-desc">详细 = 思考卡默认展开；精简 = 默认收起（点击展开）。</div>
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title">终端命令 Shell</div>
+        <div class="row-desc">底部终端抽屉启动的命令行程序。</div>
       </div>
-      <div class="tab-group" id="chat-reasoning-display">
-        <button type="button" class="tab-trigger" data-value="detailed">详细</button>
-        <button type="button" class="tab-trigger" data-value="concise">精简</button>
-      </div>
-    </div>
-    <div class="settings-row">
-      <div>
-        <div class="settings-row-title">大段文本粘贴阈值</div>
-        <div class="settings-row-desc">粘贴超过该字符数自动转为文本附件（200-100000）。</div>
-      </div>
-      <input id="chat-paste-threshold" class="input" type="number" min="200" max="100000" step="100" style="width: 120px" />
-    </div>
-    <div class="settings-row">
-      <div>
-        <div class="settings-row-title">无尽重试</div>
-        <div class="settings-row-desc">模型流中断后持续自动重试（开启前建议先确认网络/代理稳定）。</div>
-      </div>
-      <label class="switch"><input id="chat-retry-unlimited" type="checkbox" aria-label="无尽重试" /><span class="switch-track"></span></label>
-    </div>
-    <div class="settings-row">
-      <div>
-        <div class="settings-row-title">平滑流式显示</div>
-        <div class="settings-row-desc">开启 = AI 回复打字机匀速呈现；关闭 = 收完整段立即渲染。</div>
-      </div>
-      <label class="switch"><input id="chat-smooth-stream" type="checkbox" aria-label="平滑流式显示" /><span class="switch-track"></span></label>
-    </div>
-    <div class="settings-row" id="close-behavior-row" hidden>
-      <div>
-        <div class="settings-row-title">关闭行为</div>
-        <div class="settings-row-desc">关闭到托盘 = 后台任务继续运行、托盘图标点回；退出应用 = 彻底关闭全部会话。</div>
-      </div>
-      <div class="tab-group" id="close-behavior">
-        <button type="button" class="tab-trigger" data-value="tray">关闭到托盘</button>
-        <button type="button" class="tab-trigger" data-value="exit">退出应用</button>
+      <div class="row-control">
+        <div class="tabs-pill" id="chat-shell">
+          <button type="button" class="tab-trigger" data-value="cmd">CMD</button>
+          <button type="button" class="tab-trigger" data-value="powershell">PowerShell</button>
+          <button type="button" class="tab-trigger" data-value="pwsh">pwsh</button>
+          <button type="button" class="tab-trigger" data-value="bash">Bash</button>
+        </div>
       </div>
     </div>
-    <div class="settings-row">
-      <div>
-        <div class="settings-row-title">终端命令 Shell</div>
-        <div class="settings-row-desc">底部终端抽屉启动的命令行程序。</div>
+  </div>
+  <div class="group-title">对话展示</div>
+  <div class="row-list">
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title">上下文用量读数</div>
+        <div class="row-desc">输入条用量圆标显示已用占比还是剩余占比。</div>
       </div>
-      <div class="tab-group" id="chat-shell">
-        <button type="button" class="tab-trigger" data-value="cmd">CMD</button>
-        <button type="button" class="tab-trigger" data-value="powershell">PowerShell</button>
-        <button type="button" class="tab-trigger" data-value="pwsh">pwsh</button>
-        <button type="button" class="tab-trigger" data-value="bash">Bash</button>
+      <div class="row-control">
+        <div class="tabs-pill" id="chat-ctx-readout">
+          <button type="button" class="tab-trigger" data-value="used">已用</button>
+          <button type="button" class="tab-trigger" data-value="remaining">剩余</button>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title">思考过程展示模式</div>
+        <div class="row-desc">详细 = 思考卡默认展开；精简 = 默认收起（点击展开）。</div>
+      </div>
+      <div class="row-control">
+        <div class="tabs-pill" id="chat-reasoning-display">
+          <button type="button" class="tab-trigger" data-value="detailed">详细</button>
+          <button type="button" class="tab-trigger" data-value="concise">精简</button>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title">平滑流式显示</div>
+        <div class="row-desc">开启 = AI 回复打字机匀速呈现；关闭 = 收完整段立即渲染。</div>
+      </div>
+      <div class="row-control"><label class="switch"><input id="chat-smooth-stream" type="checkbox" aria-label="平滑流式显示" /><span class="switch-track"></span></label></div>
+    </div>
+  </div>
+  <div class="group-title">运行与窗口</div>
+  <div class="row-list">
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title">无尽重试</div>
+        <div class="row-desc">模型流中断后持续自动重试（开启前建议先确认网络/代理稳定）。</div>
+      </div>
+      <div class="row-control"><label class="switch"><input id="chat-retry-unlimited" type="checkbox" aria-label="无尽重试" /><span class="switch-track"></span></label></div>
+    </div>
+    <div class="row" id="close-behavior-row" hidden>
+      <div class="row-copy">
+        <div class="row-title">关闭行为</div>
+        <div class="row-desc">关闭到托盘 = 后台任务继续运行、托盘图标点回；退出应用 = 彻底关闭全部会话。</div>
+      </div>
+      <div class="row-control">
+        <div class="tabs-pill" id="close-behavior">
+          <button type="button" class="tab-trigger" data-value="tray">关闭到托盘</button>
+          <button type="button" class="tab-trigger" data-value="exit">退出应用</button>
+        </div>
       </div>
     </div>
   </div>
 </section>
 <section data-section="network">
-  <div class="section-head">
-    <h2 class="section-title">网络</h2>
-  </div>
+  <div class="section-head"><h2 class="section-title">网络</h2></div>
   <p class="hint">模型请求的出站代理（pi-desktop networkProxy 同构；http/https 代理，配置变更重启 aegent 后生效）。</p>
-  <div class="card">
-    <div class="settings-row">
-      <div>
-        <div class="settings-row-title">代理模式</div>
-        <div class="settings-row-desc">系统 = 读取环境变量 HTTP(S)_PROXY；直连 = 忽略一切代理设置；自定义 = 使用下方地址。</div>
+  <div class="group-title">出站代理</div>
+  <div class="row-list">
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title">代理模式</div>
+        <div class="row-desc">系统 = 读取环境变量 HTTP(S)_PROXY；直连 = 忽略一切代理设置；自定义 = 使用下方地址。</div>
       </div>
-      <div class="tab-group" id="net-mode">
-        <button type="button" class="tab-trigger" data-value="system">系统</button>
-        <button type="button" class="tab-trigger" data-value="direct">直连</button>
-        <button type="button" class="tab-trigger" data-value="custom">自定义</button>
+      <div class="row-control">
+        <div class="tabs-pill" id="net-mode">
+          <button type="button" class="tab-trigger" data-value="system">系统</button>
+          <button type="button" class="tab-trigger" data-value="direct">直连</button>
+          <button type="button" class="tab-trigger" data-value="custom">自定义</button>
+        </div>
       </div>
     </div>
-    <div class="settings-row">
-      <div>
-        <div class="settings-row-title">代理地址</div>
-        <div class="settings-row-desc">http://host:port（自定义模式生效；不支持认证内联与 socks）。</div>
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title">代理地址</div>
+        <div class="row-desc">http://host:port（自定义模式生效；不支持认证内联与 socks）。</div>
       </div>
-      <input id="net-url" class="input" type="text" placeholder="http://127.0.0.1:7890" style="width: 240px" />
+      <div class="row-control"><input id="net-url" class="input" type="text" placeholder="http://127.0.0.1:7890" style="width: 240px" /></div>
     </div>
   </div>
 </section>
@@ -281,7 +295,7 @@ function bindChatSection() {
           for (const x of document.querySelectorAll("#close-behavior .tab-trigger")) {
             x.classList.toggle("active", x === b);
           }
-          toast("已保存——下次关闭窗口时生效", "info");
+          void import("../../feedback.js").then((m) => m.toast("已保存——下次关闭窗口时生效", "info"));
         });
       });
     }

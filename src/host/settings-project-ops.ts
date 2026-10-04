@@ -30,11 +30,12 @@ export function projectTasksOp(
   const summaries = [...db.listSessionSummaries(500)];
   const ownership = new Map(db.listSessionProjects().map((r) => [r.sessionId, r.projectId]));
   if (mirror !== undefined) {
+    // T-P3-170：镜像折叠双用途——①镜像会话不在库索引时补整行（T-P3-164
+    // 原语义）；②库行标题空（write-behind 窗口内首轮刚结算）时用镜像
+    // 首条 user 话语补标题（新任务发出第一条消息后标题立即可见）。
     const known = new Set(summaries.map((s) => s.sessionId));
     for (const sid of mirror.sessionIds()) {
-      if (known.has(sid)) continue;
       const events = mirror.load(sid);
-      if (events.length === 0) continue;
       const first = events[0];
       const last = events[events.length - 1];
       if (first === undefined || last === undefined) continue;
@@ -46,13 +47,20 @@ export function projectTasksOp(
         typeof raw === "object" && raw !== null && "content" in raw
           ? String((raw as { content?: unknown }).content ?? "")
           : "";
-      summaries.push({
-        sessionId: sid,
-        title: content.replace(/\s+/g, " ").trim().slice(0, 40),
-        createdTs: first.ts,
-        updatedTs: last.ts,
-        eventCount: events.length,
-      });
+      const mirroredTitle = content.replace(/\s+/g, " ").trim().slice(0, 40);
+      if (!known.has(sid)) {
+        if (events.length === 0) continue;
+        summaries.push({
+          sessionId: sid,
+          title: mirroredTitle,
+          createdTs: first.ts,
+          updatedTs: last.ts,
+          eventCount: events.length,
+        });
+      } else if (mirroredTitle !== "") {
+        const hit = summaries.find((s) => s.sessionId === sid);
+        if (hit !== undefined && (hit.title ?? "") === "") hit.title = mirroredTitle;
+      }
     }
   }
   const tasks = summaries
@@ -75,6 +83,20 @@ export function sessionAttachOp(
     overwrite: true,
   });
   return { attached: true };
+}
+
+/** T-P3-170：任务创建（pi newSession 同语义——会话记录即刻落库 + 项目归属
+ *  即刻绑定，UI 侧任务列表**毫秒级可见**，不等首条话语）。会话流本体仍由
+ *  首条 prompt 自然落（事件库 INSERT OR IGNORE 幂等——两侧创建不冲突）。 */
+export function taskCreateOp(
+  sessionDb: SqliteEventStorage | undefined,
+  projectId: string,
+): { sessionId: string } {
+  const db = requireDb(sessionDb, "任务创建");
+  const sessionId = randomUUID();
+  db.createSession(sessionId);
+  db.setSessionProject(sessionId, projectId);
+  return { sessionId };
 }
 
 /** T-P3-150 B2：任务重命名（custom 源——db.setTitle 的 custom 短路保证
@@ -148,6 +170,7 @@ export function tryProjectSettingsOp(
     sessionAttach(payload: { sessionId: string; projectId: string }): Promise<{ attached: true }>;
     projectBranch(path: string): Promise<{ branch?: string }>;
     sessionRename(payload: { sessionId: string; title: string }): Promise<{ renamed: true }>;
+    taskCreate(projectId: string): Promise<{ sessionId: string }>;
     importPreview(source: string, externalId: string): Promise<unknown>;
     importSessions(items: { source: string; externalId: string; projectPath?: string }[]): Promise<unknown>;
   },
@@ -172,6 +195,8 @@ export function tryProjectSettingsOp(
       return gateway.projectBranch(call.path!);
     case "session-rename":
       return gateway.sessionRename({ sessionId: call.sessionId!, title: call.text! });
+    case "task-create":
+      return gateway.taskCreate(call.projectId!);
     case "import-preview":
       return gateway.importPreview(call.source!, call.path!);
     case "import-sessions":
@@ -190,15 +215,16 @@ export function tryProjectSettingsOp(
  * 静默（不炸镜像）。
  */
 export function makeProjectAttacher(
-  sessionId: string,
   sqliteStorage: SqliteEventStorage | undefined,
   settingsGateway: { get(): Promise<{ activeProject?: string }> } | undefined,
-): (eventType: string) => void {
-  let attached = false;
-  return (eventType: string) => {
-    if (eventType !== "user/message" || attached) return;
+): (sessionId: string, eventType: string) => void {
+  // T-P3-170：per-session attached 标志（多会话并发下每个会话的首条
+  // user 话语各归属一次——闭包单布尔会吞掉第二个会话的归属）
+  const attached = new Set<string>();
+  return (sessionId: string, eventType: string) => {
+    if (eventType !== "user/message" || attached.has(sessionId)) return;
     if (sqliteStorage === undefined || settingsGateway === undefined) return;
-    attached = true;
+    attached.add(sessionId);
     settingsGateway
       .get()
       .then((settings) => {

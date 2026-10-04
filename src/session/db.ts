@@ -104,6 +104,16 @@ export class SqliteEventStorage implements EventStorage {
     run();
   }
 
+  /** T-P3-170：会话行显式创建（task-create op——零事件任务即刻可见；
+   *  INSERT OR IGNORE 幂等，首条事件落库时同语句自然收敛）。 */
+  createSession(sessionId: string, ts = Date.now()): void {
+    const run = this.db.transaction(() => {
+      this.ensureSession.run(sessionId, ts);
+      this.upsertIndex(sessionId);
+    });
+    run();
+  }
+
   /** 会话索引 upsert：从本会话事件聚合（幂等——重建与增量同一 SQL）。 */
   private upsertIndex(sessionId: string): void {
     this.db

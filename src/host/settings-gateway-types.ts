@@ -128,6 +128,8 @@ export interface SettingsGateway {
   projectBranch(path: string): Promise<{ branch?: string }>;
   /** T-P3-150 B2：任务重命名（custom 权威级——自动命名永不覆盖手动名）。 */
   sessionRename(payload: { sessionId: string; title: string }): Promise<{ renamed: true }>;
+  /** T-P3-170：任务创建（会话行即刻落库+项目归属——UI 列表毫秒级可见）。 */
+  taskCreate(projectId: string): Promise<{ sessionId: string }>;
   /** T-P3-150 B1：会话预览（convert 单会话消息还原——勾选前看完整对话）。 */
   importPreview(source: string, externalId: string): Promise<unknown>;
   /** T-P3-150 A6：会话内容导入（幂等账+事件流重建+项目归属）。 */

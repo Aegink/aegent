@@ -673,6 +673,7 @@ function renderEvent(e, options = {}) {
       // 反馈 4：turn 边界行不再渲染（zcode 对标——聊天流只见内容不见回合噪声）
       if (options.live === true) {
         window.__agentBusy = true;
+        markSessionState(getSessionId(), { busy: true }); // T-P3-170：状态表记账（侧栏任务点）
         notifyTurnStarted(e.turn);
         window.dispatchEvent(new CustomEvent("agent:busy"));
       }
@@ -682,7 +683,10 @@ function renderEvent(e, options = {}) {
       if (e.reason?.kind !== "error") {
         // T-P3-164：turn 末延迟刷侧栏（仅 live）——自动命名/索引落库后
         // 任务标题跟上（立即刷会撞写库竞态，取旧标题）
-        if (options.live === true) setTimeout(() => void refreshSidebar(), 1200);
+        if (options.live === true) {
+          markSessionState(getSessionId(), { busy: false }); // T-P3-170：状态表记账
+          setTimeout(() => void refreshSidebar(), 1200);
+        }
         return null; // 正常结束静默（idle 通知承担续跑/进度复位）
       }
       const card = metaDetailsCard(` 轮以错误结束（${endKindText(e.reason)}）`, e, "meta error-line");
@@ -1225,11 +1229,14 @@ async function persistApprovalRule(payload, action) {
   toast(`规则已沉淀：${envelope.result.line}`, "info");
 }
 
-function buildCard(name, payload) {
+function buildCard(name, payload, sourceSessionId) {
   pending.classList.add("active");
   const card = document.createElement("div");
   card.className = "card";
   card.dataset.requestId = payload.requestId;
+  // T-P3-170：来源会话归属（多会话并发——后台任务的审批答复必须路由回
+  // 其所属会话，不能错发给当前正查看的会话）
+  card.dataset.sessionId = typeof sourceSessionId === "string" ? sourceSessionId : "";
   const title = document.createElement("div");
   title.className = "card-title";
   if (name === "approval_requested") {
@@ -1290,7 +1297,7 @@ function buildCard(name, payload) {
         if (scope === "always") {
           await persistApprovalRule(payload, action);
         }
-        await sendRequest(sessionId(), {
+        await sendRequest(card.dataset.sessionId || sessionId(), {
           type: "approve",
           requestId: payload.requestId,
           action,
@@ -1367,7 +1374,7 @@ function buildCard(name, payload) {
       const parts = [...selected];
       const free = answerInput.value.trim();
       if (free !== "") parts.push(free);
-      await sendRequest(sessionId(), {
+      await sendRequest(card.dataset.sessionId || sessionId(), {
         type: "question/answer",
         requestId: payload.requestId,
         answer: parts.join("；"),
@@ -1375,7 +1382,7 @@ function buildCard(name, payload) {
       removeCard(payload.requestId);
     });
     skipBtn.addEventListener("click", async () => {
-      await sendRequest(sessionId(), {
+      await sendRequest(card.dataset.sessionId || sessionId(), {
         type: "question/answer",
         requestId: payload.requestId,
         answer: "",
@@ -2751,9 +2758,17 @@ applyNavKeyHints();
 // 信封分发与状态展示）
 // ---------------------------------------------------------------------------
 
+// T-P3-170：多会话任务状态表（侧栏任务行实时状态点的数据源——全部会话的
+// 事件归属在此记账，当前会话也记；切走后状态可回放。sid → {busy, awaiting}）
+window.__sessionStates = window.__sessionStates ?? {};
+function markSessionState(sid, patch) {
+  if (typeof sid !== "string" || sid === "") return;
+  window.__sessionStates[sid] = { ...(window.__sessionStates[sid] ?? {}), ...patch };
+  window.dispatchEvent(new CustomEvent("sb:tasks-dirty", { detail: { sessionId: sid } }));
+}
+
 function handleEnvelope(envelope) {
-  switch (envelope.type) {
-    case "hello":
+  switch (envelope.type) {    case "hello":
       // 握手回执携带本 host 的会话 id（路由引导）→ 发 query 恢复视图
       //（快照先行）；流续播随 event 信封自然衔接。
       leaseBtn.hidden = false;
@@ -2799,41 +2814,67 @@ function handleEnvelope(envelope) {
       }
       break;
     }
-    case "event":
-      if (getSessionId() === "") setSessionId(envelope.sessionId);
+    case "event": {
+      // T-P3-170 多会话分发：事件按归属会话记账（侧栏状态）；非当前会话的
+      // 事件不进主对话流（后台任务的流在侧栏状态点实时可见）。未连接
+      // （hello 未回填）时不回填不渲染——多会话下首个事件可能属于任意会话。
+      if (getSessionId() === "") break;
+      const evSid = envelope.sessionId;
+      if (evSid !== getSessionId()) {
+        if (envelope.event.type === "turn/start") markSessionState(evSid, { busy: true });
+        else if (envelope.event.type === "turn/end") markSessionState(evSid, { busy: false });
+        break;
+      }
       renderEventEnvelope(envelope);
       break;
-    case "notification":
+    }
+    case "notification": {
+      // T-P3-170 多会话分发：主 UI 作用面（排队/退回/思考档/空闲投影）只对
+      // 当前会话信封生效；后台会话的审批/提问照常弹卡（答复路由到来源会话）
+      // 且侧栏状态点实时变化。
+      const nid = envelope.sessionId;
+      const foreign = nid !== getSessionId();
       if (envelope.name === "n5") {
         consumeN5(envelope.payload ?? {}); // U13：N5 分型通知中心消费
       } else if (envelope.name === "approval_requested" || envelope.name === "question_asked") {
-        if (getSessionId() === "") setSessionId(envelope.sessionId);
-        buildCard(envelope.name, envelope.payload ?? {});
-        // T-P3-156：待决审批 → 侧栏状态点（橙色）
-        window.dispatchEvent(new CustomEvent("agent:awaiting"));
+        if (getSessionId() === "") setSessionId(nid);
+        markSessionState(nid, { awaiting: true });
+        buildCard(envelope.name, envelope.payload ?? {}, nid);
+        // T-P3-156：待决审批 → 侧栏状态点（橙色）——当前会话才驱动主 UI 点
+        if (!foreign) window.dispatchEvent(new CustomEvent("agent:awaiting"));
       } else if (envelope.name === "thinking_set") {
         // T-P3-161：思考档回执（pill 文案随档位刷新）
-        notifyThinkingSet(envelope.payload?.level);
+        if (!foreign) notifyThinkingSet(envelope.payload?.level);
       } else if (envelope.name === "reverted") {
         // T-P3-161：回溯回执——唤醒回溯重发的双确认等待（重发主体在
         // rewindAndResend 的历史重放完成后；此处只置位不重发防乱序）
-        if (revertedWaiter !== null) {
+        if (!foreign && revertedWaiter !== null) {
           revertedWaiter(true);
           revertedWaiter = null;
         }
       } else if (envelope.name === "approval_settled") {
-        removeCard(envelope.payload?.requestId);
-        appendLine(`审批已结算：${envelope.payload?.allowed ? "允许" : "拒绝"}`, "meta");
+        markSessionState(nid, { awaiting: false });
+        if (!foreign) {
+          removeCard(envelope.payload?.requestId);
+          appendLine(`审批已结算：${envelope.payload?.allowed ? "允许" : "拒绝"}`, "meta");
+        } else {
+          removeCard(envelope.payload?.requestId); // 后台会话的卡也随结算摘除
+        }
       } else if (envelope.name === "idle") {
         // T-P3-156 W：内核空闲信号（agent-process 收尾宣告——队列空+无在途轮）。
         // 权威空闲面：排队续跑中不误报（kick 后有下条时内核不发 idle）。
-        window.__agentBusy = false;
-        notifyComposerIdle();
-        void refreshContextUsage(); // 轮末拉一次上下文用量（输入条 % 刷新）
-        window.dispatchEvent(new CustomEvent("agent:idle"));
+        // T-P3-170：仅当前会话驱动主 UI 空闲态；任一会话 idle 都刷侧栏。
+        if (!foreign) {
+          window.__agentBusy = false;
+          notifyComposerIdle();
+          void refreshContextUsage(); // 轮末拉一次上下文用量（输入条 % 刷新）
+          window.dispatchEvent(new CustomEvent("agent:idle"));
+        }
+        markSessionState(nid, { busy: false });
       } else if (envelope.name === "prompt_returned") {
         // T-P3-156 W：中止退回——未消费输入回填输入框（qwen ↑popAllMessages
         // 同语义；contents = 队列剩余的未消费原文）
+        if (foreign) break;
         const contents = Array.isArray(envelope.payload?.contents) ? envelope.payload.contents : [];
         if (contents.length > 0) {
           const existing = input.value.trim();
@@ -2845,6 +2886,7 @@ function handleEnvelope(envelope) {
         notifyPromptReturned(); // K：排队投影清零（退回的已在输入框）
       } else if (envelope.name === "config_refreshed") {
         // T-P3-156 W：会话内切档回执（settings/basic.js 与输入条权限 pill 共用）
+        if (foreign) break;
         const applied = Array.isArray(envelope.payload?.applied) ? envelope.payload.applied : [];
         toast(applied.length > 0 ? `已生效：${applied.join("、")}` : "配置已刷新", "info");
         notifyPermissionChanged(); // L：权限 pill 文案随档位刷新
@@ -2863,6 +2905,7 @@ function handleEnvelope(envelope) {
         void refreshSidebar();
       }
       break;
+    }
     case "hello_error":
       statusEl.textContent = `协议版本不符：${envelope.error?.message ?? ""}`;
       break;

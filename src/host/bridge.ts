@@ -36,6 +36,13 @@ const WRITE_COMMANDS = new Set(["prompt", "steer", "cancel", "approve", "questio
 export interface HostBridgeOptions {
   host: AgentHost;
   agent: AgentChannel;
+  /**
+   * T-P3-170 多会话并发（pi-desktop 单 sidecar Map<sessionId,Runtime> 的
+   * 进程形态对应）：按会话派生 agent 通道的工厂（生产 = spawnAgentProcess
+   * 每 sessionId 一个 child——同 host 进程内多会话并发，事件按 sessionId
+   * 归属广播）。缺席 = 单会话模型（options.agent 恒用——既有测试零变化）。
+   */
+  agentFactory?: (sessionId: string) => AgentChannel;
   /** roster 事件的落流面（提供时 surface 注册/断开 append 进会话流）。 */
   store?: SessionStore;
   /** N5 分类通知面（分型是附加发布面——既有 notification 广播零变化）。 */
@@ -58,29 +65,25 @@ interface SurfaceRegistration {
 export class HostBridge implements SessionRouter {
   private readonly listeners = new Set<(sessionId: string, event: SessionEvent) => void>();
   private readonly registrations = new Map<string, SurfaceRegistration>();
-  private readonly pendingPrompts = new Map<string, (value: unknown) => void>();
-  private lastPendingPromptId: string | undefined;
+  /** T-P3-170：per-session 在途 prompt 收执（键 = sessionId——多 child 各自的消息 id 空间互不串线）。 */
+  private readonly pendingPrompts = new Map<string, Map<string, (value: unknown) => void>>();
+  private readonly lastPendingPromptIds = new Map<string, string | undefined>();
   private readonly pendingPolishes = new Map<string, (value: unknown) => void>();
+  /** T-P3-170：懒派生的非主会话通道池（主会话通道在 options.agent——进程生命周期与 host 同步）。 */
+  private readonly channels = new Map<string, AgentChannel>();
   /** U10 ready 捕获清单（工具/技能/prompts——/ 补全来源）。 */
   private agentCapabilities: import("./query-gateway.js").AgentCapabilities | undefined;
   private readonly unconsumed: Promise<void>;
 
   constructor(private readonly options: HostBridgeOptions) {
     // agent 消息泵：event → 会话事件广播；审批/提问 → notification 广播。
-    this.unconsumed = (async () => {
-      for await (const message of options.agent.messages) {
-        this.handleAgentMessage(message);
-      }
-    })()
+    // 主会话通道在此起泵；T-P3-170 池化通道的泵在 channelFor 懒派生时起。
+    this.unconsumed = this.pumpSession(this.options.host.sessionId, options.agent)
       .catch(() => {})
       .finally(() => {
-        // T-P3-147（走查实录）：agent 通道死亡后未决 prompt/polish 不类型化
+        // T-P3-147（走查实录）：主 agent 通道死亡后未决 prompt/polish 不类型化
         // 拒绝将永久挂起——child 死 = 后续请求必死，全部立即回执类型化失败。
-        for (const resolve of this.pendingPrompts.values()) {
-          resolve({ __bridgeError: { code: "AGENT_CHANNEL_DEAD", message: "agent 进程已退出——本请求不会被处理（查看 host 日志的装配错误）" } });
-        }
-        this.pendingPrompts.clear();
-        this.lastPendingPromptId = undefined;
+        this.rejectPendingOf(this.options.host.sessionId);
         for (const resolve of this.pendingPolishes.values()) {
           resolve({ type: "polish_result", requestId: "", ok: false, error: "agent 进程已退出" });
         }
@@ -88,8 +91,61 @@ export class HostBridge implements SessionRouter {
       });
   }
 
-  private handleAgentMessage(message: AgentMessage): void {
-    const sessionId = this.options.host.sessionId;
+  /** 一个会话通道的消息泵（T-P3-170：每通道一个——消息按会话归属分发）。 */
+  private async pumpSession(sessionId: string, channel: AgentChannel): Promise<void> {
+    for await (const message of channel.messages) {
+      this.handleAgentMessage(sessionId, message);
+    }
+  }
+
+  /** 该会话通道死亡时未决 prompt 的类型化收尾（挂起防呆）。 */
+  private rejectPendingOf(sessionId: string): void {
+    for (const resolve of this.pendingPrompts.get(sessionId)?.values() ?? []) {
+      resolve({
+        __bridgeError: { code: "AGENT_CHANNEL_DEAD", message: "agent 进程已退出——本请求不会被处理（查看 host 日志的装配错误）" },
+      });
+    }
+    this.pendingPrompts.delete(sessionId);
+    this.lastPendingPromptIds.delete(sessionId);
+  }
+
+  /** 会话通道取用面：主会话走 options.agent（生命周期同步）；其余会话经
+   *  agentFactory 懒派生并入池（child 崩溃即从池摘除——下次请求重派生，
+   *  新 child 靠 --db 持久恢复历史）。 */
+  private channelFor(sessionId: string): AgentChannel {
+    if (sessionId === this.options.host.sessionId || this.options.agentFactory === undefined) {
+      return this.options.agent;
+    }
+    let channel = this.channels.get(sessionId);
+    if (channel === undefined) {
+      channel = this.options.agentFactory(sessionId);
+      this.channels.set(sessionId, channel);
+      void this.pumpSession(sessionId, channel).catch(() => {}).finally(() => {
+        this.rejectPendingOf(sessionId);
+        this.channels.delete(sessionId);
+      });
+    }
+    return channel;
+  }
+
+  /** T-P3-170：stop 收束面——杀掉全部池化 child（主 agent 由 server.stop 直杀）。 */
+  async killAllChannels(): Promise<void> {
+    const pool = [...this.channels.entries()];
+    this.channels.clear();
+    for (const [sessionId, channel] of pool) {
+      this.rejectPendingOf(sessionId);
+      const killable = channel as Partial<{ kill: () => Promise<void> | void }>;
+      if (typeof killable.kill === "function") {
+        try {
+          await killable.kill();
+        } catch {
+          // 收束幂等——单 child 杀失败不阻断其余
+        }
+      }
+    }
+  }
+
+  private handleAgentMessage(sessionId: string, message: AgentMessage): void {
     // U10/T-P3-109：ready 携带的注册表清单（工具名 + 技能名单）——
     // / 补全的清单来源，经 query op:"meta" 曝光给端。
     if (message.type === "ready") {
@@ -123,22 +179,24 @@ export class HostBridge implements SessionRouter {
       return;
     }
     if (message.type === "accepted") {
-      const resolve = this.pendingPrompts.get(message.messageId);
+      const resolve = this.pendingPrompts.get(sessionId)?.get(message.messageId);
       if (resolve !== undefined) {
-        this.pendingPrompts.delete(message.messageId);
-        if (this.lastPendingPromptId === message.messageId) this.lastPendingPromptId = undefined;
+        this.pendingPrompts.get(sessionId)?.delete(message.messageId);
+        if (this.lastPendingPromptIds.get(sessionId) === message.messageId) {
+          this.lastPendingPromptIds.set(sessionId, undefined);
+        }
         resolve({ accepted: message.messageId });
       }
       return;
     }
     if (message.type === "error") {
-      // error 行无关联 id（agent-protocol 连接级错误）——归属最近在途 prompt
-      if (this.lastPendingPromptId !== undefined) {
-        const id = this.lastPendingPromptId;
-        const resolve = this.pendingPrompts.get(id);
+      // error 行无关联 id（agent-protocol 连接级错误）——归属该会话最近在途 prompt
+      const lastId = this.lastPendingPromptIds.get(sessionId);
+      if (lastId !== undefined) {
+        const resolve = this.pendingPrompts.get(sessionId)?.get(lastId);
         if (resolve !== undefined) {
-          this.pendingPrompts.delete(id);
-          this.lastPendingPromptId = undefined;
+          this.pendingPrompts.get(sessionId)?.delete(lastId);
+          this.lastPendingPromptIds.set(sessionId, undefined);
           // 类型化拒绝（N6 错误面）经同一通道回给端
           resolve({
             __bridgeError: { code: message.code, message: message.message },
@@ -147,18 +205,22 @@ export class HostBridge implements SessionRouter {
       }
       return;
     }
-    // 审批/提问/退回/空闲：非会话流事实 → notification 广播
+    // 审批/提问/退回/空闲：非会话流事实 → notification 广播（会话归属随事件带出——T-P3-170）
     const { type: name, ...payload } = message as { type: string } & Record<string, unknown>;
-    this.notifyAll(name, payload);
+    this.notifySession(sessionId, name, payload);
     // N5 分型：挂起类事实的分类发布（approval_requested/question_asked）
     if (name === "approval_requested" || name === "question_asked") {
       this.options.notifyHub?.publish("approval_pending", { sessionId, name, payload });
     }
   }
 
-  /** 全端广播一条 notification 信封（agent 消息与 N5 hub 转发共用面）。 */
+  /** 全端广播一条 notification 信封（主会话归属——terminal 等宿主级事实）。 */
   notifyAll(name: string, payload: unknown): void {
-    const sessionId = this.options.host.sessionId;
+    this.notifySession(this.options.host.sessionId, name, payload);
+  }
+
+  /** T-P3-170：会话归属的通知广播（agent 消息按来源会话带出）。 */
+  notifySession(sessionId: string, name: string, payload: unknown): void {
     for (const registration of this.registrations.values()) {
       registration.server.notify(sessionId, name, payload);
     }
@@ -171,35 +233,35 @@ export class HostBridge implements SessionRouter {
     request: AgentRequest,
     from?: { surfaceId?: string },
   ): Promise<unknown> {
-    if (sessionId !== this.options.host.sessionId) {
-      const error = new Error(`会话 ${sessionId} 没有 host 注册`);
-      (error as unknown as { code: string }).code = "UNKNOWN_HOST_SESSION";
-      throw error;
-    }
     if (WRITE_COMMANDS.has(request.type)) {
       // N7/N3 贯穿：写命令必须持约——发送端身份（from.surfaceId）就是
       // 当前租约持有者；匿名观察者 / 未持约 surface 一律拒绝。
+      // T-P3-170：租约保持连接面语义（host 级运行授权）——多会话下持约端
+      // 可驱动任一会话（单 UI 部署形态的写方唯一性不变；跨端竞写弱化记档）。
       const holder = this.options.host.surfaces.currentLeaseHolder();
       const surfaceId = from?.surfaceId;
       if (holder === undefined || surfaceId === undefined || holder !== surfaceId) {
         throw new NotLeaseHolderError(surfaceId ?? "(匿名连接)");
       }
     }
+    const channel = this.channelFor(sessionId);
     if (request.type === "prompt") {
       return new Promise((resolve) => {
-        this.pendingPrompts.set(request.messageId, resolve);
-        this.lastPendingPromptId = request.messageId;
-        this.options.agent.send(request);
+        const pending = this.pendingPrompts.get(sessionId) ?? new Map<string, (value: unknown) => void>();
+        pending.set(request.messageId, resolve);
+        this.pendingPrompts.set(sessionId, pending);
+        this.lastPendingPromptIds.set(sessionId, request.messageId);
+        channel.send(request);
       });
     }
     // T-P3-146 I：polish 旁路请求（写命令租约已过——回执经 polish_result）
     if (request.type === "polish") {
       return new Promise((resolve) => {
         this.pendingPolishes.set(request.requestId, resolve);
-        this.options.agent.send(request);
+        channel.send(request);
       });
     }
-    this.options.agent.send(request);
+    channel.send(request);
     // A9 纪律：无专用回执的命令发出即受理——事实经事件流可见。
     return { sent: true };
   }
@@ -372,7 +434,15 @@ export class HostBridge implements SessionRouter {
   }
 
   // T-P3-148 热加载通知器（host 落盘插件后主动发；通道关闭静默——新会话兜底）。
-  private reloadNotifier = () => () => this.options.agent.send({ type: "plugins/reload" } as unknown as AgentRequest);
+  // T-P3-170：广播全部通道（主 + 池化——每个 child 的工具清单都要刷新）。
+  private reloadNotifier = (): (() => void) => {
+    const fire = (): void => {
+      const reload = { type: "plugins/reload" } as unknown as AgentRequest;
+      this.options.agent.send(reload);
+      for (const channel of this.channels.values()) channel.send(reload);
+    };
+    return fire;
+  };
   /** surface 数量（通知广播面）。 */
   get surfaceCount(): number {
     return this.registrations.size;

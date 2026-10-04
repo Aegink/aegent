@@ -113,7 +113,11 @@ interface TestRig {
   kill(): Promise<void>;
 }
 
-async function startRig(provider: ModelProvider, workspace: string): Promise<TestRig> {
+async function startRig(
+  provider: ModelProvider,
+  workspace: string,
+  extra: { agentFactory?: (sessionId: string) => import("./protocol.js").AgentChannel } = {},
+): Promise<TestRig> {
   const { agent, kill: killChild } = startMemoryChild({
     sessionId: "s-a",
     provider,
@@ -126,7 +130,7 @@ async function startRig(provider: ModelProvider, workspace: string): Promise<Tes
   const registry = new HostRegistry();
   const host = registry.register({ sessionId: "s-a" });
   const store = new SessionStore(new InMemoryEventStorage()); // host 侧 roster 流
-  const bridge = new HostBridge({ host, agent, store });
+  const bridge = new HostBridge({ host, agent, store, ...(extra.agentFactory !== undefined ? { agentFactory: extra.agentFactory } : {}) });
   return {
     bridge,
     host,
@@ -144,6 +148,46 @@ async function startRig(provider: ModelProvider, workspace: string): Promise<Tes
     kill: () => killChild(),
   };
 }
+
+describe("T-P3-170 多会话并发路由", () => {
+  it("第二会话经 agentFactory 懒派生通道：prompt 路由到各自 child、事件归属各会话不串线", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "aegent-bridge-multi-"));
+    const factoryChildren: ReturnType<typeof startMemoryChild>[] = [];
+    const rig = await startRig(scriptedProvider([[{ type: "text-delta", text: "a1" }, { type: "done" }]]), workspace, {
+      agentFactory: (sessionId: string) => {
+        const child = startMemoryChild({ sessionId, provider: scriptedProvider([[{ type: "text-delta", text: "b1" }, { type: "done" }]]) });
+        factoryChildren.push(child);
+        return child.agent;
+      },
+    });
+    try {
+      const ui = rig.connect("u1");
+      ui.server.handleLine(JSON.stringify({ type: "lease", op: "acquire", surfaceId: "u1" }));
+      await waitForEnvelope(ui.out, (e) => e.type === "response" && e.requestId === "(lease)" && e.ok === true);
+
+      // 主会话 s-a 一轮 + 新会话 s-b 一轮——两个 child 各自回声
+      await rig.bridge.send("s-a", { type: "prompt", messageId: "m-a", content: "hello-a" } as never, { surfaceId: "u1" });
+      const aDone = waitForEnvelope(ui.out, (e) => e.type === "event" && e.sessionId === "s-a" && e.event.type === "turn/end");
+      await rig.bridge.send("s-b", { type: "prompt", messageId: "m-b", content: "hello-b" } as never, { surfaceId: "u1" });
+      const bDone = waitForEnvelope(ui.out, (e) => e.type === "event" && e.sessionId === "s-b" && e.event.type === "turn/end");
+      await aDone;
+      await bDone;
+
+      // 事件归属严格分流：s-a 流里没有 s-b 的事件，反之亦然
+      const aSids = new Set(ui.out.filter((e) => e.type === "event").map((e) => (e as { sessionId: string }).sessionId));
+      expect(aSids.has("s-a")).toBe(true);
+      expect(aSids.has("s-b")).toBe(true);
+      const bUser = ui.out.find((e) => e.type === "event" && e.sessionId === "s-b" && (e as { event?: { type?: string } }).event?.type === "user/message");
+      expect(bUser).toBeDefined();
+
+      // s-b 的 child 确实由工厂独立创建（池化——第二次 send 复用同一通道）
+      expect(factoryChildren).toHaveLength(1);
+    } finally {
+      await rig.kill();
+      for (const child of factoryChildren) await child.kill();
+    }
+  });
+});
 
 describe("N2/T-P1-116 审批跨端（协议线场景③）", () => {
   it("A 端开轮挂起 → 审批广播两端 → A 断开 → B 端 acquire+approve → 轮继续完成", async () => {

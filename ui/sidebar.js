@@ -12,14 +12,14 @@
  * 该项目为活动 + 重启指引；任务点击 = 只读恢复视图（续聊走 CLI resume）。
  */
 
-import { sendQuery, sendSettings, invalidateMetaCache, IS_DESKTOP, switchHost, hostAddress } from "./api.js";
+import { sendQuery, sendSettings, invalidateMetaCache, IS_DESKTOP } from "./api.js";
 
 /** 桌面壳 Tauri command 直调（pane-browser.js 同款——不引壳运行时）。 */
 function tauriInvoke(cmd, args) {
   return window.__TAURI_INTERNALS__.invoke(cmd, args);
 }
 
-import { settingsCache, setSettingsCache, getSessionId, hooks, applyAppearance } from "./state.js";
+import { settingsCache, setSettingsCache, getSessionId, setSessionId, hooks, applyAppearance } from "./state.js";
 import { toast, appendLine } from "./feedback.js";
 import { openMenu, confirmDialog, openDialog, markDirty, dirtySections, flushSettings, onSectionRefresh, upgradeSelects } from "./views/settings/core.js";
 import { renderFileTree, copyText } from "./views/projects-files.js";
@@ -156,6 +156,16 @@ let historyExpanded = false;
 export function initSidebar() {
   onSectionRefresh(() => void refreshSidebar());
   hooks.refreshSidebar = refreshSidebar;
+  // T-P3-170：多会话实时刷新——任一会话的轮边界/审批态变化 → 节流刷侧栏
+  //（任务行状态点/标题/最近会话跟上；text-delta 不发脏标记——频率受控）
+  let dirtyTimer = null;
+  window.addEventListener("sb:tasks-dirty", () => {
+    if (dirtyTimer !== null) return;
+    dirtyTimer = setTimeout(() => {
+      dirtyTimer = null;
+      void refreshSidebar();
+    }, 500);
+  });
   // 首拉不在此处——sendSettings 依赖已建立的 WS（api.js send 为 null 时
   // 抛），由 app.js 的 hello 握手回执触发首次 refreshSidebar（连接就绪时点）
 }
@@ -557,13 +567,18 @@ function taskRow(task) {
   row.className = "sb-task-row";
   const isCurrent = task.sessionId === getSessionId();
   // 行首状态槽（pi-desktop sidebar-session-status 归一：待审批 > 运行 >
-  // 空闲无色——空闲保留透明占位点，行首对齐不跳）
+  // 空闲无色——空闲保留透明占位点，行首对齐不跳）。
+  // T-P3-170：状态源 = 全会话状态表（后台任务的实时运行/待审态也可见）；
+  // 当前会话兜底全局态（恢复视图重放无 live 广播的窗口）。
+  const st = window.__sessionStates?.[task.sessionId] ?? {};
+  const awaiting = st.awaiting === true || (isCurrent && agentState2.awaiting === true);
+  const busy = st.busy === true || (isCurrent && agentState.busy === true);
   const dot = document.createElement("span");
   dot.className = "sb-task-dot";
-  if (isCurrent && agentState2.awaiting) {
+  if (awaiting) {
     dot.classList.add("awaiting");
     dot.title = "等待你的审批/答复";
-  } else if (isCurrent && agentState.busy) {
+  } else if (busy) {
     dot.classList.add("busy");
     dot.title = "运行中";
   } else {
@@ -904,38 +919,36 @@ async function forkSession(session) {
   await forkTaskSession({ sessionId: session.sessionId, title: session.title ?? "" });
 }
 
-/** 任务真切换（T-P3-166 需求 2——pi-desktop selectSession 同构的多进程
- *  形态）：目标会话有活工作 host → 重连其端口；没有 → 壳起一个（历史从
- *  事件库恢复）。后台会话的进程独立存活 = 多任务真并发。web 端无壳能力
- *  → 降级只读查看。 */
+/** 任务真切换（T-P3-170 单 host 多会话——pi-desktop selectSession 同语义）：
+ *  切换 = 纯前端换会话（同 WS 连接，不换进程不重连，毫秒级）；各任务的
+ *  child 进程独立存活 = 多任务真并发互不影响；事件流按会话归属分发
+ *  （app.js handleEnvelope——后台任务切走后侧栏状态点仍实时更新）。
+ *  web 端与桌面端同模型零差异。 */
 export async function switchToSession(sessionId) {
   if (sessionId === getSessionId()) {
     location.hash = "#chat";
     return;
   }
-  if (!IS_DESKTOP) {
-    await restoreSessionView(sessionId);
-    return;
+  setSessionId(sessionId);
+  window.__viewOnlySession = null; // 切换即当前会话（可写）——只读查看态清除
+  location.hash = "#chat";
+  hooks.resetStreamView();
+  // 后台在跑的任务切进来：恢复视图重放无 live 标志——busy 态先从状态表
+  // 回放（renderHistory 内 showRecoveryIfInterrupted 对未闭合轮再补盲；
+  // 先置位才能让发送/停止钮与队列投影不误判空闲）
+  window.__agentBusy = window.__sessionStates?.[sessionId]?.busy === true;
+  window.dispatchEvent(new CustomEvent(window.__agentBusy ? "agent:busy" : "agent:idle"));
+  const view = await sendQuery({ sessionId, op: "events" });
+  if (view.ok) {
+    hooks.renderHistory(view.result.events ?? []);
+  } else {
+    toast(`会话恢复失败：${view.error?.message ?? ""}`, "warn");
   }
-  try {
-    const hosts = await tauriInvoke("list_hosts");
-    let target = (hosts ?? []).find((h) => h.sessionId === sessionId && h.alive === true);
-    if (target === undefined) {
-      target = await tauriInvoke("spawn_workspace_host", { sessionId });
-    }
-    const address = `ws://127.0.0.1:${String(target.port)}`;
-    if (address !== hostAddress()) {
-      switchHost(address);
-      toast(`已切换到任务（端口 ${String(target.port)}）——后台任务继续运行`, "info");
-    }
-    location.hash = "#chat";
-  } catch (e) {
-    toast(`切换失败：${String(e?.message ?? e)}——回退只读查看`, "warn");
-    await restoreSessionView(sessionId);
-  }
+  await refreshSidebar();
 }
 
-/** 只读恢复（history.js 同款——resetStream 后 renderHistory）。 */
+/** 只读恢复（「最近会话」菜单入口保留——resetStream 后 renderHistory，
+ *  不切换会话身份）。 */
 async function restoreSessionView(sessionId) {
   // T-P3-161：只读视图标记——非当前会话的查看态禁用「编辑/重发」等写操作
   //（编辑回溯作用于当前连接会话，跨会话错位防护）
@@ -947,7 +960,7 @@ async function restoreSessionView(sessionId) {
   }
   hooks.resetStreamView();
   hooks.renderHistory(view.result.events ?? []);
-  appendLine("── 只读视图：续聊请执行 aegent sessions resume " + sessionId + " ──", "warn");
+  appendLine("── 只读视图：点击侧栏任务行可切换为当前会话 ──", "warn");
 }
 
 async function deleteSession(session) {
@@ -1059,28 +1072,21 @@ async function hideFileTree() {
 // 数据操作（projects.js 迁入——添加三模式 / 编辑 / 删除 / 设活动 / 新建任务）
 // ---------------------------------------------------------------------------
 
-/** 新建任务（T-P3-165 需求 2——pi newSession 同语义：**无弹窗直接开**）：
- *  写活动项目 → 桌面壳重启 host 指向新 --session（单会话架构下立即进入
- *  新会话的唯一真路径）；web 端无壳能力 → 诚实降级为重启指引。运行保护：
- *  当前任务在跑先停再开（restart 会杀 agent-child）。 */
+/** 新建任务（T-P3-170 多会话版——pi newSession 同语义：**无弹窗直接开、
+ *  新建立现**）：host 端 task-create op 落库会话行 + 项目归属（毫秒级）→
+ *  侧栏立现新任务行 → 直接进入。不再重启 host——同项目/跨项目多任务并发
+ *  互不影响（单 host 多 child 模型），web 端同链路零差异。 */
 async function createTask(project) {
-  if (isActive(project) && agentState.busy) {
-    toast("当前任务还在运行——请先停止再新建", "warn");
-    return;
-  }
   await persistActiveProject(project);
-  if (!IS_DESKTOP) {
-    toast(`已设「${project.name}」为活动项目——重启 aegent 以它开启新任务`, "info");
-    await refreshSidebar();
+  const created = await sendSettings({ op: "task-create", projectId: project.id });
+  if (!created.ok) {
+    toast(`新任务创建失败：${created.error?.message ?? ""}`, "warn");
     return;
   }
-  try {
-    const sid = crypto.randomUUID();
-    await tauriInvoke("restart_host", { sessionId: sid });
-    toast(`已开启新任务——「${project.name}」`, "info");
-  } catch (e) {
-    toast(`新任务开启失败：${String(e?.message ?? e)}（活动项目已切换，重启 aegent 后生效）`, "warn");
-  }
+  const sid = created.result?.sessionId;
+  toast(`已开启新任务——「${project.name}」`, "info");
+  await refreshSidebar();
+  if (typeof sid === "string" && sid !== "") await switchToSession(sid);
 }
 
 /** 顶部「新建任务」入口（快捷键/命令动作保留）：无项目 → 添加；有项目 →

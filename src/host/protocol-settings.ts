@@ -35,6 +35,7 @@ const OPS = [
   "session-attach",
   "project-branch",
   "session-rename",
+  "task-create",
   "import-preview",
   "import-sessions",
   "plugins-list",
