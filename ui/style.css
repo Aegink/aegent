@@ -6353,3 +6353,60 @@ details.thinking-card.running .thinking-label {
   fill: currentColor;
   stroke-width: 0;
 }
+
+/* ===== T-P3-163 面板空态卡片网格（pi-desktop「打开标签页」同构） ===== */
+.pane-empty-title {
+  font-size: var(--text-ui-xl);
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+  margin-top: 22vh;
+}
+
+.pane-empty-subtitle {
+  font-size: var(--text-ui-sm);
+  color: var(--text-subtle);
+  text-align: center;
+  margin: 6px 0 20px;
+}
+
+.pane-empty-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  padding: 0 24px;
+}
+
+.pane-empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 18px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 100ms ease, border-color 100ms ease;
+}
+
+.pane-empty-card:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-hover);
+}
+
+.pane-empty-card-icon {
+  color: var(--text-subtle);
+}
+
+.pane-empty-card-label {
+  font-size: var(--text-ui-sm);
+  font-weight: 530;
+}
+
+.pane-empty-card-desc {
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtlest);
+}

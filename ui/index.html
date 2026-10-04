@@ -72,10 +72,10 @@
               <span data-icon="bell"></span><span id="notify-badge" class="nav-badge" hidden></span>
             </button>
             <button id="terminal-btn" class="topbar-btn" type="button" data-i18n-title="终端" title="终端" hidden>
-              <span data-icon="workterminal<span class="topbar-btn-label">终端</span>
+              <span data-icon="terminal"></span><span class="topbar-btn-label">终端</span>
             </button>
             <button id="pane-toggle-btn" class="topbar-btn" type="button" data-i18n-title="切换面板" title="切换面板">
-              <span data-icon="workpanelRight></span><span class="topbar-btn-label">切换面板</span>
+              <span data-icon="panelRight"></span><span class="topbar-btn-label">切换面板</span>
             </button>
           </div>
         </header>
@@ -184,6 +184,10 @@
         <button id="rn-close" type="button">关闭</button>
       </div>
     </div>
+    <!-- T-P3-163 修：xterm UMD 此前从未加载（只有 css）——mountXterm 抛
+         ReferenceError = 抽屉永远只有工具条无终端内容 -->
+    <script src="/vendor/xterm.js" defer></script>
+    <script src="/vendor/xterm-fit.js" defer></script>
     <script type="module" src="/app.js"></script>
   </body>
 </html>

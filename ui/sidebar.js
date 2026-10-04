@@ -243,7 +243,8 @@ function projectRow(project) {
   const addBtn = document.createElement("button");
   addBtn.type = "button";
   addBtn.className = "sb-hover-btn";
-  addBtn.textContent = "+";
+  addBtn.replaceChildren(icon("plus", { cls: "icon-sm" }));
+  addBtn.setAttribute("aria-label", "添加");
   addBtn.title = "新建任务（设为活动工作区）";
   addBtn.addEventListener("click", (ev) => {
     ev.stopPropagation();
@@ -261,7 +262,8 @@ function projectRow(project) {
   const moreBtn = document.createElement("button");
   moreBtn.type = "button";
   moreBtn.className = "sb-hover-btn";
-  moreBtn.textContent = "⋯";
+  moreBtn.replaceChildren(icon("more", { cls: "icon-sm" }));
+  moreBtn.setAttribute("aria-label", "更多操作");
   moreBtn.title = "项目操作";
   moreBtn.addEventListener("click", (ev) => {
     ev.stopPropagation();

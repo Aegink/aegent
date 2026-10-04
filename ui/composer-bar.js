@@ -51,6 +51,27 @@ let usageInfo = { contextTokens: 0, contextWindow: 0 };
 /** 会话思考档覆盖（thinking/set 回执记忆——内存态与内核同生命周期）。 */
 let currentThinking;
 
+/** 当前会话模型的 spec（settingsCache.providers × modelId——思考档默认值
+ *  与 thinkingLevels 白名单的数据源）。 */
+function currentModelSpec() {
+  const current = settingsCache?.model?.identity?.modelId;
+  if (current === undefined || current === "") return undefined;
+  for (const provider of settingsCache?.providers ?? []) {
+    for (const model of provider.models ?? []) {
+      if (modelIdOf(model) === current) return model;
+    }
+  }
+  return undefined;
+}
+
+/** 生效思考档 = 会话覆盖（thinking/set）?? 模型默认档（spec.reasoning）。 */
+function effectiveThinking() {
+  if (currentThinking !== undefined) return currentThinking;
+  return currentModelSpec()?.reasoning;
+}
+
+const ALL_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+
 export function initComposerBar(deps) {
   input = deps.input;
   queueBar = document.getElementById("queue-bar");
@@ -354,11 +375,20 @@ async function openModelMenu() {
           });
           body.appendChild(row);
         }
-        // T-P3-161 需求 2：思考度档位（thinking/set——pi-desktop 模型面板
-        // 同构；omit=请求不带思考参数，off=关，minimal~max=预算档）
+        // T-P3-163 需求 3：思考度档位按模型动态（spec.thinkingLevels 白名单
+        // ——内置目录标注的该模型支持档；无配置 = 全集）；omit=请求不带思考
+        // 参数；当前高亮 = 会话覆盖 ?? 模型默认档（spec.reasoning）
+        const spec = currentModelSpec();
+        const levels = Array.isArray(spec?.thinkingLevels) && spec.thinkingLevels.length > 0
+          ? spec.thinkingLevels
+          : [...ALL_THINKING_LEVELS];
+        const effective = effectiveThinking();
         const THINKING = [
-          ["omit", "不传"], ["off", "off"], ["minimal", "minimal"], ["low", "low"],
-          ["medium", "medium"], ["high", "high"], ["xhigh", "xhigh"], ["max", "max"],
+          ["omit", "不传"],
+          ...levels.map((lv) => [lv, lv]),
+          ...(effective !== undefined && effective !== "omit" && !levels.includes(effective)
+            ? [[effective, effective]]
+            : []),
         ];
         const seg = document.createElement("div");
         seg.className = "thinking-seg";
@@ -371,7 +401,7 @@ async function openModelMenu() {
         for (const [value, label] of THINKING) {
           const chip = document.createElement("button");
           chip.type = "button";
-          chip.className = `thinking-chip${currentThinking === value ? " current" : ""}`;
+          chip.className = `thinking-chip${effective === value ? " current" : ""}`;
           chip.textContent = label;
           chip.title = value === "omit" ? "请求不带思考参数（跟服务端默认）" : `思考档 ${value}`;
           chip.addEventListener("click", () => {
@@ -430,8 +460,9 @@ async function switchModel(provider, modelId) {
 
 function paintModelPill() {
   if (modelPill === null) return;
-  const thinkingLabel = currentThinking !== undefined
-    ? (currentThinking === "omit" ? " · 不传" : ` · ${currentThinking}`)
+  const eff = effectiveThinking();
+  const thinkingLabel = eff !== undefined
+    ? (eff === "omit" ? " · 不传" : ` · ${eff}`)
     : "";
   const currentModel = settingsCache?.model?.identity?.modelId;
   if (currentModel !== undefined && currentModel !== "") {

@@ -164,21 +164,46 @@ function paint() {
   const previous = state.tabs.find((t) => t.id === previousActiveId);
   root.replaceChildren();
   if (state.tabs.length === 0) {
-    // 空宿主：保留「+」菜单（切换面板钮展开时可见内置面板清单）——
-    // hidden 态仍整面板收起（togglePane 控制）
+    // 空宿主：hidden 态仍整面板收起（togglePane 控制）
     if (root.hidden) {
       syncToggleBtn();
       previousActiveId = null;
       return;
     }
-    const emptyBar = document.createElement("div");
-    emptyBar.className = "pane-tabbar";
-    emptyBar.appendChild(addMenuButton());
-    root.appendChild(emptyBar);
+    // T-P3-163 需求 5：空面板 = pi-desktop「打开标签页」卡片网格——内置
+    // 操作（审查/浏览器/辅助对话/Git/会话树）直接可见可点，不再依赖先点
+    //「+」再从菜单挑（用户实测判不可发现）。
+    const CATALOG = [
+      { type: "review", label: "审查", icon: "search", desc: "变更逐条评审" },
+      { type: "browser", label: "浏览器", icon: "globe", desc: "内嵌网页浏览" },
+      { type: "assistant", label: "辅助对话", icon: "messageCircle", desc: "侧聊不打断主任务" },
+      { type: "git", label: "Git 管理", icon: "gitBranch", desc: "状态 / 差异 / 提交" },
+      { type: "tree", label: "会话树", icon: "gitFork", desc: "血统与分支" },
+    ];
+    const title = document.createElement("div");
+    title.className = "pane-empty-title";
+    title.textContent = "打开面板";
+    const subtitle = document.createElement("div");
+    subtitle.className = "pane-empty-subtitle";
+    subtitle.textContent = "选择要在侧边面板中打开的操作。";
+    const grid = document.createElement("div");
+    grid.className = "pane-empty-grid";
+    for (const item of CATALOG.filter((c) => renderers.has(c.type))) {
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "pane-empty-card";
+      card.append(
+        icon(item.icon, { cls: "pane-empty-card-icon", size: 20 }),
+        Object.assign(document.createElement("span"), { textContent: item.label, className: "pane-empty-card-label" }),
+        Object.assign(document.createElement("span"), { textContent: item.desc, className: "pane-empty-card-desc" }),
+      );
+      card.addEventListener("click", () => openPane(item.type, {}));
+      grid.appendChild(card);
+    }
     const hint = document.createElement("div");
     hint.className = "pane-empty-hint";
-    hint.textContent = "从「+」打开面板（审查 / 浏览器 / 辅助对话 / Git）；文件树点文件也会在这里预览。";
-    root.appendChild(hint);
+    hint.textContent = "文件树点文件也会在这里预览。";
+    root.append(title, subtitle, grid, hint);
     syncToggleBtn();
     previousActiveId = null;
     return;
@@ -239,7 +264,8 @@ function addMenuButton() {
   btn.type = "button";
   btn.className = "pane-add-btn";
   btn.title = "打开面板（审查/浏览器/辅助对话/Git）";
-  btn.textContent = "+";
+  btn.setAttribute("aria-label", "打开面板清单");
+  btn.replaceChildren(icon("plus", { cls: "icon-sm" }));
   btn.addEventListener("click", () => {
     openMenu(btn, CATALOG.filter((item) => renderers.has(item.type)).map((item) => ({
       label: item.label,
