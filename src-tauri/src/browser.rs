@@ -113,6 +113,13 @@ pub async fn browser_create(
         wvlog(&format!("browser_create url 解析失败: {e}"));
         format!("URL 不合法：{e}")
     })?;
+    // T-P3-168 实测：主窗移动/点击时子窗被主窗覆盖——设 owner（属主窗口）
+    // 语义：owned 窗永远浮在属主之上、随属主最小化、不抢任务栏（内嵌面板
+    // 子窗的正确 Windows 形态）。
+    let main_hwnd = app
+        .get_webview_window("main")
+        .and_then(|m| m.hwnd().ok())
+        .ok_or_else(|| "主窗未就绪".to_string())?;
     let window = WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(parsed))
         .title("浏览器")
         .decorations(false)
@@ -120,6 +127,7 @@ pub async fn browser_create(
         .resizable(true)
         .inner_size(400.0, 300.0)
         .visible(true)
+        .owner_raw(main_hwnd)
         .build()
         .map_err(|e| {
             wvlog(&format!("browser_create build 失败: {e}"));
