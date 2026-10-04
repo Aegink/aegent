@@ -414,7 +414,21 @@ function renderDonut() {
   }
 }
 
+// T-P3-165 需求 5：用量页失效重拉（idle=turn 末落盘完成——页面开着时
+// 自动刷新，不再"对话了页面恒旧"；监听模块级只挂一次，元素消失即跳过）
+let idleHooked = false;
+let lastContainer = null;
+
 export async function render(container) {
+  lastContainer = container;
+  if (!idleHooked) {
+    idleHooked = true;
+    window.addEventListener("agent:idle", () => {
+      if (lastContainer !== null && lastContainer.isConnected && location.hash === "#usage") {
+        void render(lastContainer);
+      }
+    });
+  }
   container.innerHTML = TEMPLATE;
   document.getElementById("usage-close").addEventListener("click", () => {
     location.hash = "#chat";

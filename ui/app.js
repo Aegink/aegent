@@ -71,6 +71,8 @@ import {
   refreshContextUsage,
   stopCurrentTurn,
   notifyThinkingSet,
+  notifyModelSwitch,
+  notifyUsage,
 } from "./composer-bar.js";
 import { initProgressDock, notifyToolCall, notifyEventLine, notifyTodos } from "./progress-dock.js";
 // T-P3-156 面板批（P/Q/R/S/T）：终端抽屉 + 浏览器/Git/审查/辅助对话四面板
@@ -387,6 +389,12 @@ function buildThinkingCard(text, ts) {
   body.textContent = text;
   details.append(summary, body);
   details.dataset.startTs = String(ts);
+  // T-P3-165 需求 4：思考过程展示模式（精简 = 默认收起；详细/缺省 = 展开）
+  if (settingsCache?.chat?.reasoningDisplay === "concise") {
+    details.removeAttribute("open");
+  } else {
+    details.setAttribute("open", "");
+  }
   return details;
 }
 
@@ -682,6 +690,12 @@ function renderEvent(e, options = {}) {
       attachRetry(card, e.reason.error); // 错误重试交互（挂在卡尾——zcode 失败行可行动语义）
       return card;
     }
+    case "model/switch": {
+      // T-P3-165 需求 1：当前模型权威源 = 流内最新 to（live+恢复重放统一——
+      // 只读视图不喂，防止查看其他会话污染本会话身份）。事件本身不渲染行。
+      if ((window.__viewOnlySession ?? null) === null) notifyModelSwitch(e.to);
+      return null;
+    }
     case "user/message": {
       // 用户输入不渲染（注入面防呆——textContent 原样，不走 markdown 管线）
       const el = document.createElement("div");
@@ -740,6 +754,11 @@ function renderEvent(e, options = {}) {
       return el;
     }
     case "assistant/message": {
+      // T-P3-165 需求 5：usage 事件驱动直喂（live+恢复重放统一——上下文
+      // pill 即时准确；只读视图不喂，防查看其他会话污染本会话计量）
+      if ((window.__viewOnlySession ?? null) === null && e.usage !== undefined) {
+        notifyUsage(e.usage);
+      }
       // T-P3-159 需求 2：思考 = 可展开卡（zcode Reasoning 对标）——reasoning
       // 文本从 stream 记录拼接；与正文同段时思考卡置于正文前（同包 .bubble.agent
       // 容器——只读聚合扫描按 .bubble 延续的语义不变）。
@@ -1503,7 +1522,8 @@ input.addEventListener("paste", (ev) => {
 input.addEventListener("paste", (ev) => {
   const text = ev.clipboardData?.getData("text/plain") ?? "";
   if (text === "") return;
-  const overBytes = new Blob([text]).size > 8 * 1024;
+  const pasteThreshold = settingsCache?.chat?.pasteThreshold ?? 8192;
+  const overBytes = new Blob([text]).size > pasteThreshold;
   const overLines = text.split("\n").length > 400;
   if (!overBytes && !overLines) return;
   ev.preventDefault();
@@ -1878,7 +1898,13 @@ input.addEventListener("keydown", (ev) => {
     }
   }
   // 命令提交：Enter 时若输入是完整 UI 命令则本地执行（不发 prompt）
-  if (ev.key === "Enter" && !ev.shiftKey) {
+  // T-P3-165 需求 4：回车发送开关（chat.enterToSend，缺省开；关 = Ctrl+Enter）
+  const enterToSend = settingsCache?.chat?.enterToSend !== false;
+  if (
+    ev.key === "Enter" &&
+    !ev.shiftKey &&
+    (enterToSend ? true : ev.ctrlKey || ev.metaKey)
+  ) {
     ev.preventDefault();
     const trimmed = input.value.trim();
     if (UI_COMMANDS.some((c) => c.label === trimmed)) {
@@ -2705,7 +2731,6 @@ function applyNavKeyHints() {
   const bindings = getKeymapBindings();
   for (const [btnId, action] of [
     ["sb-search", "search"],
-    ["sb-new-task", "new-task"],
     ["pane-toggle-btn", "pane"],
     ["terminal-btn", "terminal"],
     ["notify-top-btn", "notify"],
@@ -2904,7 +2929,6 @@ try {
 })();
 
 // T-P3-156：侧栏「新建任务」流程（项目选择/添加 → 设为活动工作区）
-document.getElementById("sb-new-task").addEventListener("click", () => void newTaskFlow());
 
 // T-P3-156 K/L：输入 Tab 栏 + 排队条（权限/上下文%/模型/附件；addAttachment
 // 复用既有粘贴附件链——限额/预览/revoke 全一致）。try/catch 可见化：启动期

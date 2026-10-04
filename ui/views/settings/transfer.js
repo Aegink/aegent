@@ -47,6 +47,13 @@ export const SECTION_HTML = `
     </div>
     <div class="row">
       <div class="row-copy">
+        <div class="row-title">一体化会话导入</div>
+        <div class="row-desc">扫描本机 AI 工具（Claude Code / Codex / OpenCode / ZCode 等），来源卡选择 + 项目分组勾选 + 原始记录预览后批量导入</div>
+      </div>
+      <div class="row-control"><a class="btn" href="#import">打开导入页</a></div>
+    </div>
+    <div class="row">
+      <div class="row-copy">
         <div class="row-title">备份中心</div>
         <div class="row-desc">导入与恢复前自动滚动备份最近 5 份；可随时手动备份并一键恢复</div>
       </div>

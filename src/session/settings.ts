@@ -272,6 +272,18 @@ export interface SettingsShape {
     mode?: PermissionMode;
   };
   /**
+   * 对话与输入（T-P3-165 需求 4——zcode 常规/全局 AI 页我们缺失项的真实
+   * 可用子集）：enterToSend（关 = Ctrl+Enter 发送）、pasteThreshold（大段
+   * 文本粘贴转附件的字符阈值）、ctxReadout（上下文 pill 读数口径）、
+   * reasoningDisplay（思考卡默认展开/收起）。
+   */
+  chat?: {
+    enterToSend?: boolean;
+    pasteThreshold?: number;
+    ctxReadout?: "used" | "remaining";
+    reasoningDisplay?: "detailed" | "concise";
+  };
+  /**
    * 沙箱档（B8a 网络档 + workspace/事件库落位）。T-P3-140 批次 A：mode =
    * 沙箱三档（read-only / workspace-write / danger-full-access——闭集见
    * sandbox/backend.ts SANDBOX_MODES；缺省 = 全自动直通）；writeWhitelist
@@ -867,6 +879,28 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
       ...(outputLanguage !== undefined
         ? { outputLanguage: outputLanguage as "auto" | "zh-CN" | "en" }
         : {}),
+    };
+  }
+  const chat = rec["chat"];
+  if (chat !== undefined) {
+    if (chat === null || typeof chat !== "object" || Array.isArray(chat)) {
+      throw new SettingsError("chat 段需要对象");
+    }
+    const c = chat as Record<string, unknown>;
+    const boolOrUndef = (field: string): boolean | undefined => {
+      const value = c[field];
+      return value === undefined ? undefined : (value as boolean);
+    };
+    const chatWidth = c["ctxReadout"];
+    const reasoning = c["reasoningDisplay"];
+    const threshold = c["pasteThreshold"];
+    out.chat = {
+      ...(boolOrUndef("enterToSend") !== undefined ? { enterToSend: boolOrUndef("enterToSend") } : {}),
+      ...(typeof threshold === "number" && Number.isFinite(threshold) && threshold >= 200
+        ? { pasteThreshold: Math.floor(threshold) }
+        : {}),
+      ...(chatWidth === "used" || chatWidth === "remaining" ? { ctxReadout: chatWidth } : {}),
+      ...(reasoning === "detailed" || reasoning === "concise" ? { reasoningDisplay: reasoning } : {}),
     };
   }
   const logging = rec["logging"];

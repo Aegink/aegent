@@ -17,6 +17,7 @@ const VIEW_MODULES = {
   plugins: () => import("./views/plugins.js"),
   usage: () => import("./views/usage.js"),
   work: () => import("./views/work.js"),
+  import: () => import("./views/import.js"),
   notify: () => import("./views/notify.js"),
   search: () => import("./views/search.js"),
 };
@@ -27,7 +28,7 @@ export function parseHash(hash) {
   const [head, sub] = raw.split("/");
   if (head === "settings") return { view: "settings", section: sub || null };
   if (head === "work") return { view: "work", tab: sub ?? null };
-  if (head === "plugins" || head === "usage" || head === "notify" || head === "search") {
+  if (head === "plugins" || head === "usage" || head === "notify" || head === "search" || head === "import") {
     return { view: head };
   }
   // —— T-P3-156 重定向面：项目/历史已迁侧栏两分段（sidebar.js）——

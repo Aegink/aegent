@@ -208,8 +208,10 @@ export function openMenu(anchor, items) {
       btn.textContent = item.label;
     }
     btn.addEventListener("click", () => {
-      close();
-      void item.onClick?.();
+      // keepOpen（两段式删除的"武装"步——pi-desktop armedDelete 同语义）：
+      // 菜单不关，onClick 收到按钮引用自行改写条目文案/样式
+      if (item.keepOpen !== true) close();
+      void item.onClick?.(btn);
     });
     menu.appendChild(btn);
   }

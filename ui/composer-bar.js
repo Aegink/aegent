@@ -51,17 +51,50 @@ let usageInfo = { contextTokens: 0, contextWindow: 0 };
 /** 会话思考档覆盖（thinking/set 回执记忆——内存态与内核同生命周期）。 */
 let currentThinking;
 
-/** 当前会话模型的 spec（settingsCache.providers × modelId——思考档默认值
- *  与 thinkingLevels 白名单的数据源）。 */
+/** 当前会话模型身份（权威 = 流内最新 model/switch 事件的 to——内核 J6 落
+ *  流事实；无流事实 = 默认链。此前读 settingsCache.model 根本不存在的字
+ *  段 → spec 恒失配 → thinkingLevels 白名单失效（回退全集）+ 档位无高亮
+ *  + pill 恒显示第一个模型——T-P3-165 需求 1 根因）。 */
+let currentIdentity;
+
+/** 当前会话模型的 spec（providers × 当前身份 → 思考档默认值与
+ *  thinkingLevels 白名单的数据源）。 */
 function currentModelSpec() {
-  const current = settingsCache?.model?.identity?.modelId;
-  if (current === undefined || current === "") return undefined;
-  for (const provider of settingsCache?.providers ?? []) {
-    for (const model of provider.models ?? []) {
-      if (modelIdOf(model) === current) return model;
+  const providers = settingsCache?.providers ?? [];
+  const providerName = (p) => p.id ?? p.name ?? "";
+  if (currentIdentity !== undefined) {
+    for (const p of providers) {
+      if (providerName(p) !== currentIdentity.provider) continue;
+      for (const m of p.models ?? []) {
+        if (modelIdOf(m) === currentIdentity.modelId) return m;
+      }
     }
   }
-  return undefined;
+  // 默认链：defaultProvider 条目内 defaultModel ?? 首个（agent-child
+  // initialIdentity 同语义——J6 换模前的会话期事实）。
+  const dp = providers.find((p) => providerName(p) === settingsCache?.defaultProvider);
+  const dm = settingsCache?.defaultModel;
+  for (const m of dp?.models ?? []) {
+    if (dm !== undefined && modelIdOf(m) === dm) return m;
+  }
+  return dp?.models?.[0] ?? providers[0]?.models?.[0];
+}
+
+/** spec 所在供应商名（pill 的 provider/model 形态）。 */
+function currentProviderName() {
+  const providers = settingsCache?.providers ?? [];
+  const providerName = (p) => p.id ?? p.name ?? "";
+  if (currentIdentity !== undefined) {
+    const hit = providers.find((p) => {
+      if (providerName(p) !== currentIdentity.provider) return false;
+      return (p.models ?? []).some((m) => modelIdOf(m) === currentIdentity.modelId);
+    });
+    if (hit !== undefined) return providerName(hit);
+  }
+  const spec = currentModelSpec();
+  return providers.find((p) => (p.models ?? []).includes(spec)) !== undefined
+    ? providerName(providers.find((p) => (p.models ?? []).includes(spec)))
+    : "";
 }
 
 /** 生效思考档 = 会话覆盖（thinking/set）?? 模型默认档（spec.reasoning）。 */
@@ -293,7 +326,7 @@ function modelIdOf(model) {
  *  层级菜单语义；锚定浮层、当前项勾选、底部「新供应商/管理模型」直达设置）。 */
 async function openModelMenu() {
   const providers = settingsCache?.providers ?? [];
-  const currentModel = settingsCache?.model?.identity?.modelId;
+  const currentModel = currentIdentity?.modelId ?? "";
   if (providers.length === 0) {
     toast("尚未配置任何供应商/模型——设置「供应商」分节添加后可用", "warn");
     return;
@@ -442,6 +475,17 @@ export function notifyThinkingSet(level) {
   paintModelPill();
 }
 
+/** model/switch 事件消费（live+恢复重放统一入口——流内最新 to 即当前
+ *  身份；只读视图由调用方判定不喂）。 */
+export function notifyModelSwitch(to) {
+  if (to === null || typeof to !== "object") return;
+  const modelId = typeof to.modelId === "string" ? to.modelId : "";
+  const provider = typeof to.provider === "string" ? to.provider : "";
+  if (modelId === "") return;
+  currentIdentity = { provider, modelId };
+  paintModelPill();
+}
+
 async function switchModel(provider, modelId) {
   const sid = getSessionId();
   if (sid === "") {
@@ -451,7 +495,7 @@ async function switchModel(provider, modelId) {
   const providerId = provider.id ?? provider.name ?? provider.baseUrl;
   try {
     await sendRequest(sid, { type: "model/switch", identity: { provider: providerId, modelId } });
-    modelPill.replaceChildren(icon("cpu", { cls: "icon-sm" }), document.createTextNode(` ${modelId}`));
+    notifyModelSwitch({ provider: providerId, modelId }); // 本地即置（事件环回幂等）——pill/档位即时正确
     toast(`模型已切换：${providerId} / ${modelId}（下一轮起生效）`, "info");
   } catch (e) {
     toast(`切换失败：${e?.message ?? ""}（需要写租约）`, "warn");
@@ -464,17 +508,13 @@ function paintModelPill() {
   const thinkingLabel = eff !== undefined
     ? (eff === "omit" ? " · 不传" : ` · ${eff}`)
     : "";
-  const currentModel = settingsCache?.model?.identity?.modelId;
-  if (currentModel !== undefined && currentModel !== "") {
-    modelPill.replaceChildren(icon("cpu", { cls: "icon-sm" }), document.createTextNode(` ${currentModel}${thinkingLabel}`));
-    return;
-  }
-  const first = settingsCache?.providers?.[0];
-  const firstModel = first?.models?.[0];
-  if (first !== undefined && firstModel !== undefined) {
-    const label = modelLabel(firstModel);
-    modelPill.replaceChildren(icon("cpu", { cls: "icon-sm" }), document.createTextNode(` ${label}${thinkingLabel}`));
-    modelPill.title = `当前缺省：${first.name ?? first.id ?? ""} / ${label}${thinkingLabel}（点击切换本次会话模型与思考度）`;
+  const spec = currentModelSpec();
+  if (spec !== undefined) {
+    const provider = currentProviderName();
+    const label = modelLabel(spec);
+    const text = provider !== "" ? `${provider}/${label}` : label;
+    modelPill.replaceChildren(icon("cpu", { cls: "icon-sm" }), document.createTextNode(` ${text}${thinkingLabel}`));
+    modelPill.title = `当前模型：${text}${thinkingLabel}（点击切换本次会话模型与思考度）`;
   }
 }
 
@@ -498,10 +538,43 @@ export async function refreshContextUsage() {
 function paintCtxPill() {
   if (ctxPill === null) return;
   const { contextTokens, contextWindow } = usageInfo;
+  // zcode getRenderableTaskUsage 同语义：无计量数据不渲染数字（0% 会误导）
+  if (contextTokens <= 0) {
+    ctxPill.replaceChildren(icon("gauge", { cls: "icon-sm" }), document.createTextNode(" —"));
+    ctxPill.classList.remove("ctx-warn", "ctx-hot");
+    ctxPill.title = "上下文用量（等待首轮模型计量）";
+    return;
+  }
   const pct = contextWindow > 0 ? Math.min(100, Math.round((contextTokens / contextWindow) * 100)) : 0;
-  ctxPill.replaceChildren(icon("gauge", { cls: "icon-sm" }), document.createTextNode(` ${String(pct)}%`));
+  // 读数口径（T-P3-165 需求 4：chat.ctxReadout——剩余档按 remaining 反相，
+  // 告警色仍按 used 阈值——pi-desktop contextUsageView 同语义）
+  const remaining = settingsCache?.chat?.ctxReadout === "remaining";
+  const shown = remaining ? 100 - pct : pct;
+  const prefix = remaining ? "剩 " : " ";
+  ctxPill.replaceChildren(icon("gauge", { cls: "icon-sm" }), document.createTextNode(`${prefix}${String(shown)}%`));
   ctxPill.classList.toggle("ctx-warn", pct >= 80 && pct < 95);
   ctxPill.classList.toggle("ctx-hot", pct >= 95);
+  ctxPill.title = `上下文用量 ${Intl.NumberFormat("zh-CN", { notation: "compact" }).format(contextTokens)} token（${String(pct)}% 已用）`;
+}
+
+/** assistant/message 的 usage 直喂（T-P3-165 需求 5——事件驱动即时报：
+ *  每条带计量的模型消息落地即更新 pill，不依赖 op 往返与库落盘）。
+ *  口径 = pi-desktop context-usage：单次模型请求 input+output+reasoning+
+ *  cacheRead+cacheWrite（cache read 不跨请求累加，避免超窗假象）。 */
+export function notifyUsage(usage) {
+  if (usage === null || typeof usage !== "object") return;
+  const num = (v) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
+  const input = num(usage.inputTokens);
+  const output = num(usage.outputTokens);
+  const used = input + output + num(usage.reasoningTokens) + num(usage.cacheReadTokens) + num(usage.cacheWriteTokens);
+  const total = num(usage.totalTokens);
+  const contextTokens = used > 0 ? used : total;
+  if (contextTokens <= 0) return; // 等值短路（zcode areTaskUsageStatesEqual 语义）
+  usageInfo = {
+    contextTokens,
+    contextWindow: usageInfo.contextWindow > 0 ? usageInfo.contextWindow : 200_000,
+  };
+  paintCtxPill();
 }
 
 async function openUsageDetail() {

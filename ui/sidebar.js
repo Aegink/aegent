@@ -33,6 +33,53 @@ import { icon, injectIcons } from "./icons.js";
 const PIN_KEY = "aegent.pinnedProjects";
 const ORDER_KEY = "aegent.projectOrder";
 const EXPAND_KEY = "aegent.expandedProjects";
+// 任务行会话元数据（T-P3-165 需求 2——pi-desktop sidebarPreferences 同构：
+// pinned/archived 是 renderer 本地元数据不动内核；归档默认隐藏）
+const TASK_META_KEY = "aegent.sessionMeta";
+const SHOW_ARCHIVED_KEY = "aegent.showArchivedTasks";
+
+function readTaskMeta() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(TASK_META_KEY) ?? "{}");
+    return raw !== null && typeof raw === "object" ? raw : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeTaskMeta() {
+  try {
+    localStorage.setItem(TASK_META_KEY, JSON.stringify(taskMeta));
+  } catch {
+    // 存储不可用——置顶/归档退化为会话内有效
+  }
+}
+
+let taskMeta = readTaskMeta();
+let showArchivedTasks = false;
+try {
+  showArchivedTasks = JSON.parse(localStorage.getItem(SHOW_ARCHIVED_KEY) ?? "false") === true;
+} catch {
+  showArchivedTasks = false;
+}
+
+function taskPinned(sid) {
+  return taskMeta[sid]?.pinned === true;
+}
+
+function taskArchived(sid) {
+  return taskMeta[sid]?.archived === true;
+}
+
+// 两段式删除武装表（pi-desktop armedDelete 同语义——3s 内二次点击才真删）
+const armedDeletes = new Set();
+function deleteArmed(sid) {
+  const hit = armedDeletes.delete(sid);
+  if (hit) return true;
+  armedDeletes.add(sid);
+  setTimeout(() => armedDeletes.delete(sid), 3000);
+  return false;
+}
 
 function readIdSet(key) {
   try {
@@ -367,6 +414,19 @@ function projectMenuItems(project) {
       onClick: () => void copyText(project.folders[0] ?? "", "已复制项目路径"),
     },
     {
+      // T-P3-165 需求 2（pi 排序菜单的 Show archived 迁到项目菜单——发现性优先）
+      label: showArchivedTasks ? "隐藏已归档任务" : "显示已归档任务",
+      onClick: () => {
+        showArchivedTasks = !showArchivedTasks;
+        try {
+          localStorage.setItem(SHOW_ARCHIVED_KEY, JSON.stringify(showArchivedTasks));
+        } catch {
+          // 存储不可用——开关会话内有效
+        }
+        void paintProjects();
+      },
+    },
+    {
       label: pinned.has(project.id) ? "取消置顶" : "置顶",
       onClick: () => {
         if (pinned.has(project.id)) pinned.delete(project.id);
@@ -414,11 +474,18 @@ async function loadTasks(taskBox, project) {
     taskBox.textContent = `任务加载失败：${envelope.error?.message ?? ""}`;
     return;
   }
-  const tasks = (envelope.result.tasks ?? []).slice().sort((a, b) => b.updatedTs - a.updatedTs);
+  // 归档默认隐藏（pi archiveSession 语义——"显示已归档任务"开关在项目菜单）
+  const tasks = (envelope.result.tasks ?? [])
+    .filter((t) => showArchivedTasks || taskArchived(t.sessionId) !== true)
+    .sort((a, b) => {
+      const pin = Number(taskPinned(b.sessionId)) - Number(taskPinned(a.sessionId));
+      if (pin !== 0) return pin;
+      return b.updatedTs - a.updatedTs;
+    });
   if (tasks.length === 0) {
     const empty = document.createElement("div");
     empty.className = "sb-tasks-empty";
-    empty.textContent = "还没有任务——新建任务后第一句话自动命名";
+    empty.textContent = showArchivedTasks ? "没有任务" : "还没有任务——项目行 + 号直接新建";
     taskBox.appendChild(empty);
     return;
   }
@@ -427,6 +494,62 @@ async function loadTasks(taskBox, project) {
   }
   // 展开任务的项目顺带刷 topbar（当前会话标题可能刚生成）
   refreshTopbar();
+}
+
+/** 任务行全功能菜单（T-P3-165 需求 2——pi-desktop openSessionRowMenu 同
+ *  构：重命名/置顶/归档/从此处分支/复制对话 ID/打开会话路径/删除；删除
+ *  两段式武装 3s；菜单项图标 lucide 语义名）。 */
+function taskMenuItems(task, refresh) {
+  const sid = task.sessionId;
+  return [
+    { label: "重命名任务", icon: "edit", onClick: () => void renameTask(task) },
+    {
+      label: taskPinned(sid) ? "取消置顶" : "置顶",
+      icon: "pin",
+      onClick: () => {
+        const meta = (taskMeta[sid] = taskMeta[sid] ?? {});
+        meta.pinned = meta.pinned !== true;
+        writeTaskMeta();
+        void refresh();
+      },
+    },
+    {
+      label: taskArchived(sid) ? "恢复任务" : "归档",
+      icon: taskArchived(sid) ? "archiveRestore" : "archive",
+      onClick: () => {
+        const meta = (taskMeta[sid] = taskMeta[sid] ?? {});
+        meta.archived = meta.archived !== true;
+        writeTaskMeta();
+        void refresh();
+      },
+    },
+    { label: "从此处分支", icon: "gitFork", onClick: () => void forkTaskSession(task) },
+    {
+      label: "复制对话 ID",
+      icon: "copy",
+      onClick: () => {
+        void copyText(sid)
+          .then(() => toast("对话 ID 已复制", "info"))
+          .catch(() => toast("复制失败——浏览器未授权剪贴板", "warn"));
+      },
+    },
+    { label: "打开会话路径", icon: "folder", onClick: () => void openSessionPath(task) },
+    {
+      label: "删除任务",
+      icon: "trash",
+      danger: true,
+      keepOpen: true,
+      onClick: (btn) => {
+        // 两段式武装（pi armedDelete：第一次点仅变红改文案，3s 内再点真删）
+        if (deleteArmed(sid)) {
+          void deleteTask(task);
+          return;
+        }
+        btn.classList.add("armed");
+        btn.replaceChildren(icon("trash", { cls: "icon-sm" }), document.createTextNode(" 确认删除？"));
+      },
+    },
+  ];
 }
 
 function taskRow(task) {
@@ -454,16 +577,37 @@ function taskRow(task) {
   meta.textContent = new Date(task.updatedTs).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
   row.append(dot, title, meta);
   if (isCurrent) row.classList.add("current");
+  if (taskPinned(task.sessionId)) {
+    // pi thread-item-pin：标题前置小图钉
+    const pin = document.createElement("span");
+    pin.className = "sb-task-pin";
+    pin.replaceChildren(icon("pin", { cls: "icon-sm" }));
+    row.append(pin);
+  }
+  const refresh = () => {
+    const box = row.parentElement;
+    if (box !== null && box.classList.contains("sb-tasks")) {
+      // 就地重排（pin/archive 切换——不整树重拉，避免滚动位丢失）
+      box.replaceChildren();
+      void loadTasks(box, { id: row.closest(".sb-project")?.dataset.id ?? "" });
+    }
+  };
+  // hover ⋯ 钮（pi thread-item-status 同位——hover/focus 显隐）
+  const moreBtn = document.createElement("button");
+  moreBtn.type = "button";
+  moreBtn.className = "sb-row-more";
+  moreBtn.setAttribute("aria-label", "任务操作");
+  moreBtn.title = "任务操作";
+  moreBtn.replaceChildren(icon("more", { cls: "icon-sm" }));
+  moreBtn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    openMenu(moreBtn, taskMenuItems(task, refresh));
+  });
+  row.appendChild(moreBtn);
   row.addEventListener("click", () => void viewTaskSession(task));
   row.addEventListener("contextmenu", (ev) => {
     ev.preventDefault();
-    openMenu(row, [
-      { label: "重命名", onClick: () => void renameTask(task) },
-      { label: "查看（只读恢复视图）", onClick: () => void viewTaskSession(task) },
-      { label: "分支会话（fork 历史快照）", onClick: () => void forkTaskSession(task) },
-      { label: "打开会话路径", onClick: () => void openSessionPath(task) },
-      { label: "删除任务", danger: true, onClick: () => void deleteTask(task) },
-    ]);
+    openMenu(row, taskMenuItems(task, refresh));
   });
   return row;
 }
@@ -817,18 +961,32 @@ async function hideFileTree() {
 // 数据操作（projects.js 迁入——添加三模式 / 编辑 / 删除 / 设活动 / 新建任务）
 // ---------------------------------------------------------------------------
 
-/** 新建任务：无项目时引导添加；有项目时选择 + 设活动 + 重启指引。 */
-async function createTask(project, { confirm = true } = {}) {
-  if (confirm) {
-    const ok = await confirmDialog(
-      `把「${project.name}」设为活动项目？当前对话保持不动；下次打开 aegent 时会以 ${project.folders[0] ?? ""} 开启新对话（即新任务）。`,
-    );
-    if (ok !== true) return;
+/** 新建任务（T-P3-165 需求 2——pi newSession 同语义：**无弹窗直接开**）：
+ *  写活动项目 → 桌面壳重启 host 指向新 --session（单会话架构下立即进入
+ *  新会话的唯一真路径）；web 端无壳能力 → 诚实降级为重启指引。运行保护：
+ *  当前任务在跑先停再开（restart 会杀 agent-child）。 */
+async function createTask(project) {
+  if (isActive(project) && agentState.busy) {
+    toast("当前任务还在运行——请先停止再新建", "warn");
+    return;
   }
-  await setActiveProject(project);
+  await persistActiveProject(project);
+  if (!IS_DESKTOP) {
+    toast(`已设「${project.name}」为活动项目——重启 aegent 以它开启新任务`, "info");
+    await refreshSidebar();
+    return;
+  }
+  try {
+    const sid = crypto.randomUUID();
+    await tauriInvoke("restart_host", { sessionId: sid });
+    toast(`已开启新任务——「${project.name}」`, "info");
+  } catch (e) {
+    toast(`新任务开启失败：${String(e?.message ?? e)}（活动项目已切换，重启 aegent 后生效）`, "warn");
+  }
 }
 
-/** 顶部「新建任务」入口：无项目 → 添加对话框；有项目 → 项目选择。 */
+/** 顶部「新建任务」入口（快捷键/命令动作保留）：无项目 → 添加；有项目 →
+ *  项目选择弹窗后直开。侧栏常驻按钮已退役——日常入口是项目行 + 号。 */
 export async function newTaskFlow() {
   const projects = sortedProjects();
   if (projects.length === 0) {
@@ -846,22 +1004,23 @@ export async function newTaskFlow() {
   await new Promise((resolve) => {
     openDialog({
       title: "新建任务",
-      description: "选择一个项目设为活动——当前对话不变；下次打开 aegent 时以它开启新对话。",
+      description: "选择要在哪个项目下开启新任务。",
       body: select,
       onClose: () => resolve(null),
       actions: [
         { label: "取消", className: "btn btn-ghost", onClick: () => resolve(null) },
-        { label: "设为活动", className: "btn btn-primary", onClick: () => resolve(select.value) },
+        { label: "开启新任务", className: "btn btn-primary", onClick: () => resolve(select.value) },
       ],
     });
     upgradeSelects(document.body); // P-041：模态内 select 桥接自绘下拉（openDialog 同步挂载 body——扫描幂等）
   }).then(async (picked) => {
     const project = projects.find((p) => p.id === picked);
-    if (project !== undefined) await createTask(project, { confirm: false }); // 已在弹窗选过——不再二次确认
+    if (project !== undefined) await createTask(project);
   });
 }
 
-async function setActiveProject(project) {
+/** 活动项目写盘（flushSettings 落 settings.json——新 host 启动读取）。 */
+async function persistActiveProject(project) {
   settingsCache.activeProject = project.id;
   project.lastOpenedAt = Date.now();
   dirtySections.add("projects");
@@ -869,6 +1028,11 @@ async function setActiveProject(project) {
   markDirty("projects");
   markDirty("activeProject");
   await flushSettings();
+}
+
+/** 仅切活动项目（项目菜单"设为活动"——不重启 host，重启后生效语义保留）。 */
+async function setActiveProject(project) {
+  await persistActiveProject(project);
   toast(`已设「${project.name}」为活动项目——下次打开 aegent 以它开启新对话`, "info");
   await refreshSidebar();
 }

@@ -57,7 +57,7 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     // credentials 分节并入供应商页（用户裁决"功能重复"——凭据管理面 =
     // providers.js 的孤儿预存密钥区，data-section 不复存在）
     // T-P3-148 O：plugins 分节迁独立页 views/plugins.js（data-section 不复存在）
-    for (const section of ["providers", "permission", "sandbox", "appearance", "logging", "projects", "prompts", "skills", "subagents", "instructions", "shortcuts", "mcp", "enhancement", "profiles", "transfer", "speech", "about"]) {
+    for (const section of ["providers", "permission", "sandbox", "appearance", "chat", "logging", "prompts", "skills", "subagents", "instructions", "shortcuts", "mcp", "enhancement", "profiles", "transfer", "speech", "about"]) { // T-P3-165：projects 分节退役（侧栏承载）换 chat 分节
       expect(settingsView).toContain(`data-section="${section}"`);
     }
     expect(settingsView).not.toContain('data-section="credentials"');
@@ -165,8 +165,8 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     // U11 项目 CRUD → T-P3-150 迁独立页 → T-P3-156（方案 A）迁侧栏两分段
     // ui/sidebar.js（工作区/任务/文件树/添加三模式）；settings 分节只留
     // 跳转卡 + 项目指令仍走指令中心
-    expect(settingsView).toContain("打开工作台"); // 分节跳转卡（T-P3-157 P-044：#projects 死链改 #work）
-    expect(html).toContain('id="sb-new-task"'); // 侧栏「新建任务」入口（方案 A）
+    expect(settingsView).toContain("对话与输入"); // T-P3-165：projects 跳转卡退役——chat 分节（回车发送/粘贴阈值/读数口径/思考展示）
+    expect(html).not.toContain('id="sb-new-task"'); // T-P3-165 需求 2：新建任务收敛到项目行 + 号
     expect(sidebar).toContain("git-clone"); // A3 Git 仓库添加
     expect(sidebar).toContain("import-scan"); // A4 扫描导入
     expect(sidebar).toContain('op: "session-rename"'); // B2 任务重命名

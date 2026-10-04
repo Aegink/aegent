@@ -18,7 +18,7 @@ import type { PricingEntry } from "../session/settings.js";
 import { querySessionsDb } from "../session/query.js";
 import { reviewChangesFromEvents } from "../session/review-changes.js";
 import { listWorkspaceFiles, readWorkspaceFile } from "./files-list.js";
-import { ensureUsageView, usageBySession, usageByTurn, usageByDay, usageByModel, usageByTask } from "../obs/usage.js";
+import { ensureUsageView, usageBySession, usageByTurn, usageByDay, usageByModel, usageByTask, turnsFromStream } from "../obs/usage.js";
 import { costRollup } from "../obs/cost.js";
 import { compactionStats } from "../obs/compaction-stats.js";
 
@@ -141,11 +141,15 @@ export async function handleHostQuery(
     // EXISTS 语义见 obs/usage.ts，无迁移问题）
     ensureUsageView(library.db);
     const sessionId = deps.hostSessionId();
-    const turns = usageByTurn(library.db, sessionId);
+    const stream = deps.store?.load(sessionId) ?? [];
+    // 镜像折叠覆盖库行（T-P3-165 需求 5：write-behind turn 末才落库——
+    // turn 进行中库视图读不到本轮 usage；镜像内存序无滞后，turn 号去重
+    // 后以镜像为准）
+    const mirrored = turnsFromStream(sessionId, stream);
+    const turns = [...usageByTurn(library.db, sessionId).filter((r) => !mirrored.some((m) => m.turn === r.turn)), ...mirrored].sort((a, b) => a.turn - b.turn);
     const lastUsage = turns.length > 0 ? turns[turns.length - 1] : undefined;
     const pricing =
       deps.settingsGateway !== undefined ? ((await deps.settingsGateway.get()).pricing ?? []) : [];
-    const stream = deps.store?.load(sessionId) ?? [];
     return {
       contextWindow: deps.contextWindow,
       currentSession: {

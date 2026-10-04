@@ -35,6 +35,7 @@ const NAV_GROUPS = [
       ["permission", "权限档"],
       ["sandbox", "沙箱档"],
       ["appearance", "外观与语言"],
+      ["chat", "对话与输入"],
       ["profiles", "场景配置档"],
     ],
   },
@@ -53,7 +54,6 @@ const NAV_GROUPS = [
   {
     title: "数据与系统",
     sections: [
-      ["projects", "项目"],
       ["instructions", "指令中心"],
       ["shortcuts", "快捷键"],
       ["transfer", "导入与导出"],

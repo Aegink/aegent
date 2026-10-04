@@ -8,7 +8,7 @@ import { parseSettingsShape, type SettingsShape } from "../session/settings.js";
 export const SETTINGS_PATCH_SECTIONS = [
   "providers", "permission", "sandbox", "appearance", "logging", "projects",
   "activeProject", "pricing", "prompts", "mcp", "enhancement", "profiles",
-  "activeProfile", "onboardingDone", "defaultProvider", "defaultModel",
+  "activeProfile", "onboardingDone", "defaultProvider", "defaultModel", "chat",
   "skills", "subagents", "shortcuts", "stt", "tts", "plugins",
 ] as const;
 

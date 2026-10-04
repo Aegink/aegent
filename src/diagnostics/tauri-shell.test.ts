@@ -153,7 +153,7 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(html).toContain('id="lease-status"');
     expect(html).toContain('id="lease-btn"');
     // 图标注入面：data-icon 占位 + icons.js 图标集（≥24 枚）+ 注入函数
-    expect(html).toContain('data-icon="chat"');
+    expect(html).toContain('data-icon="search"'); // T-P3-165：sb-new-task 退役——顶栏动作行只剩搜索
     const icons = read("icons.js");
     expect(icons).toContain("export const ICON_NAMES");
     expect(icons).toContain("export function icon(");

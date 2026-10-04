@@ -27,12 +27,47 @@ const loggingSection = logging.SECTION_HTML;
 const aboutSection = about.SECTION_HTML;
 
 export const SECTIONS_HTML = `
-<section data-section="projects">
+<section data-section="chat">
   <div class="section-head">
-    <h2 class="section-title">项目</h2>
-    <a class="btn btn-primary" href="#work">打开工作台</a>
+    <h2 class="section-title">对话与输入</h2>
   </div>
-  <p class="hint">项目列表在左侧栏（右键项目行可添加任务/设为活动）；工作台聚合文件、变更评审、子代理与协作。#projects 旧链接已并入对话页。</p>
+  <p class="hint">影响主对话页的输入与展示行为（zcode 常规/全局 AI 页同位功能的真实可用子集）。</p>
+  <div class="card">
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-title">回车发送</div>
+        <div class="settings-row-desc">开启 = Enter 直接发送、Shift+Enter 换行；关闭 = Ctrl+Enter 发送。</div>
+      </div>
+      <label class="switch"><input id="chat-enter-send" type="checkbox" aria-label="回车发送" /><span class="switch-track"></span></label>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-title">上下文用量读数</div>
+        <div class="settings-row-desc">输入条用量圆标显示已用占比还是剩余占比。</div>
+      </div>
+      <div class="tab-group" id="chat-ctx-readout">
+        <button type="button" class="tab-trigger" data-value="used">已用</button>
+        <button type="button" class="tab-trigger" data-value="remaining">剩余</button>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-title">思考过程展示模式</div>
+        <div class="settings-row-desc">详细 = 思考卡默认展开；精简 = 默认收起（点击展开）。</div>
+      </div>
+      <div class="tab-group" id="chat-reasoning-display">
+        <button type="button" class="tab-trigger" data-value="detailed">详细</button>
+        <button type="button" class="tab-trigger" data-value="concise">精简</button>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-title">大段文本粘贴阈值</div>
+        <div class="settings-row-desc">粘贴超过该字符数自动转为文本附件（200-100000）。</div>
+      </div>
+      <input id="chat-paste-threshold" class="input" type="number" min="200" max="100000" step="100" style="width: 120px" />
+    </div>
+  </div>
 </section>
 ${instructionsSection}${shortcutsSection}${transferSection}${loggingSection}
 ${aboutSection}
@@ -64,6 +99,7 @@ export { applyDeepLink, applyImportedSettingsObject, summarizeImported } from ".
 // ---------------------------------------------------------------------------
 
 export function bind() {
+  bindChatSection(); // T-P3-165 需求 4：对话与输入分节
   // T-P3-152：快捷键域（绑定/捕获监听/录制搜索/单行重置在 shortcuts.js）
   shortcuts.bind();
   window.addEventListener("keydown", shortcutCaptureKeydown, true);
@@ -76,6 +112,7 @@ export function bind() {
 }
 
 export function fill() {
+  fillChatSection(); // T-P3-165：对话与输入回填
   shortcuts.render();
   logging.fill(); // T-P3-154：日志中心表单回填（rawDir/级别/保留天数）
   about.fill();
@@ -84,4 +121,66 @@ export function fill() {
 /** 指令中心打开时拉一次（壳 open 委派——逻辑在 instructions 域文件）。 */
 export function refreshInstructionsOnce() {
   void instructions.refresh();
+}
+
+// ---------------------------------------------------------------------------
+// T-P3-165 需求 4：对话与输入分节（settings.chat 段——回车发送/上下文读数
+// 口径/思考展示模式/粘贴阈值；保存走既有 op:update patch 全链）。
+// ---------------------------------------------------------------------------
+
+function chatSettings() {
+  return settingsCache?.chat ?? {};
+}
+
+async function saveChatSection(patch) {
+  const envelope = await (await import("../api.js")).sendSettings({
+    op: "update",
+    patch: { chat: { ...chatSettings(), ...patch } },
+  });
+  if (!envelope.ok) {
+    const { toast } = await import("../feedback.js");
+    toast(`保存失败：${envelope.error?.message ?? ""}`, "warn");
+    return false;
+  }
+  return true;
+}
+
+function fillChatSection() {
+  const chat = chatSettings();
+  const enterBtn = document.getElementById("chat-enter-send");
+  if (enterBtn !== null) enterBtn.checked = chat.enterToSend !== false; // 缺省 = 开（既有语义）
+  const readout = chat.ctxReadout ?? "used";
+  for (const b of document.querySelectorAll("#chat-ctx-readout .tab-trigger")) {
+    b.classList.toggle("active", b.dataset.value === readout);
+  }
+  const reasoning = chat.reasoningDisplay ?? "detailed";
+  for (const b of document.querySelectorAll("#chat-reasoning-display .tab-trigger")) {
+    b.classList.toggle("active", b.dataset.value === reasoning);
+  }
+  const threshold = document.getElementById("chat-paste-threshold");
+  if (threshold !== null) threshold.value = String(chat.pasteThreshold ?? 8192);
+}
+
+function bindChatSection() {
+  document.getElementById("chat-enter-send")?.addEventListener("change", async (ev) => {
+    if (await saveChatSection({ enterToSend: ev.target.checked })) fillChatSection();
+  });
+  for (const b of document.querySelectorAll("#chat-ctx-readout .tab-trigger")) {
+    b.addEventListener("click", async () => {
+      if (await saveChatSection({ ctxReadout: b.dataset.value })) fillChatSection();
+    });
+  }
+  for (const b of document.querySelectorAll("#chat-reasoning-display .tab-trigger")) {
+    b.addEventListener("click", async () => {
+      if (await saveChatSection({ reasoningDisplay: b.dataset.value })) fillChatSection();
+    });
+  }
+  document.getElementById("chat-paste-threshold")?.addEventListener("change", async (ev) => {
+    const value = Number(ev.target.value);
+    if (!Number.isFinite(value) || value < 200 || value > 100000) {
+      fillChatSection();
+      return;
+    }
+    if (await saveChatSection({ pasteThreshold: Math.floor(value) })) fillChatSection();
+  });
 }

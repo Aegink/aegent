@@ -103,6 +103,39 @@ export function usageByTurn(db: Database, sessionId: string): UsageRow[] {
   return rows.map(toRow);
 }
 
+/** 镜像流折叠的轮次行（T-P3-165 需求 5——write-behind 库滞后的补面：turn
+ *  进行中 events 表还没有本会话数据，usage 页/pill 只能读到上一轮；从镜像
+ *  store 的事件流按 assistant/message.usage 折叠出**全部**轮次（与视图同
+ *  口径），调用方按 turn 号去重合并（镜像覆盖库行——内存更新）。 */
+export function turnsFromStream(sessionId: string, events: readonly { type: string; turn?: number; usage?: { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number; totalTokens?: number } | null }[]): UsageRow[] {
+  const acc = new Map<number, { requests: number; input: number; output: number; cacheRead: number; cacheWrite: number; total: number }>();
+  for (const e of events) {
+    if (e.type !== "assistant/message" || e.usage === undefined || e.usage === null) continue;
+    const turn = typeof e.turn === "number" && e.turn > 0 ? e.turn : 0;
+    const row = acc.get(turn) ?? { requests: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+    row.requests += 1;
+    row.input += e.usage.inputTokens ?? 0;
+    row.output += e.usage.outputTokens ?? 0;
+    row.cacheRead += e.usage.cacheReadTokens ?? 0;
+    row.cacheWrite += e.usage.cacheWriteTokens ?? 0;
+    row.total += e.usage.totalTokens ?? (e.usage.inputTokens ?? 0) + (e.usage.outputTokens ?? 0);
+    acc.set(turn, row);
+  }
+  return [...acc.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([turn, row]) => ({
+      sessionId,
+      turn,
+      requests: row.requests,
+      inputTokens: row.input,
+      outputTokens: row.output,
+      cacheReadTokens: row.cacheRead,
+      cacheCreationTokens: row.cacheWrite,
+      totalTokens: row.total,
+      ...(row.input > 0 ? { cacheHitRate: row.cacheRead / row.input } : {}),
+    }));
+}
+
 // ---------------------------------------------------------------------------
 // 统计页聚合（T-P3-135 批 B⑩——byDay 单点定形取 host 路线：方案 §1.2 唯一
 // 数据缺口，前端现算不可行〔sessions 汇总无日期、turns 仅本会话——跨会话

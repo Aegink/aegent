@@ -71,7 +71,7 @@ const HEALTH_TIMEOUT: Duration = Duration::from_secs(15);
 /// 的 import.meta shim 布局都在旁）。stdout/stderr 落 logs/host.log
 /// （T-P3-137 走查反馈：打包态输出被丢弃 = 用户无日志可看——追查列表
 /// 消失类问题时需要 host 侧现场）。
-fn spawn_host(dir: &std::path::Path) -> std::io::Result<Child> {
+fn spawn_host(dir: &std::path::Path, session_id: Option<&str>) -> std::io::Result<Child> {
     let node = dir.join(if cfg!(windows) { "node.exe" } else { "node" });
     let log_dir = dir.join("logs");
     let _ = std::fs::create_dir_all(&log_dir);
@@ -97,8 +97,14 @@ fn spawn_host(dir: &std::path::Path) -> std::io::Result<Child> {
             "--host-db",
             host_db.to_str().expect("db 路径非 UTF-8"),
         ])
-        .current_dir(dir)
-        .stdout(Stdio::from(log))
+        .current_dir(dir);
+    // T-P3-165 需求 2：指定会话 id（「新建任务」= 壳重启 host 指向新
+    // --session——单会话架构下立即进入新会话的唯一真路径）。缺省不传 =
+    // host 自生成（启动语义不变）。
+    if let Some(sid) = session_id {
+        cmd.arg("--session").arg(sid);
+    }
+    cmd.stdout(Stdio::from(log))
         .stderr(Stdio::from(log_err));
     #[cfg(windows)]
     {
@@ -132,7 +138,7 @@ pub fn run() {
         .to_path_buf();
     // T-P3-162 需求 3：上次孤儿 host 清理（壳崩溃残留——pid 文件兜底）
     kill_stale_host(&dir);
-    let child = spawn_host(&dir);
+    let child = spawn_host(&dir, None);
     if let Ok(pid) = child.as_ref().map(|c| c.id()) {
         // pid 文件 = 下次启动的孤儿清理依据（异常退出兜底）
         let _ = std::fs::write(dir.join("data").join("host.pid"), pid.to_string());
@@ -178,6 +184,7 @@ pub fn run() {
             browser::browser_destroy,
             browser::browser_eval,
             picker::pick_folder,
+            restart_host,
         ])
         .setup(|app| {
             browser::manage_registry(app.handle());
@@ -201,6 +208,45 @@ pub fn run() {
                 }
             }
         });
+}
+
+/// T-P3-165 需求 2：「新建任务」= 壳重启 host 指向新 --session（单会话
+/// 架构下立即进入新会话的唯一真路径；web 端无壳能力走 UI 降级提示）。
+/// 调用前置：UI 已把 settings.activeProject 写盘（新 host 首轮归属按它）。
+/// 流程：杀旧树（含 agent-child）→ spawn 新 host（--session）→ 写 pid →
+/// 同步健康探测（UI 的 WS 断线重连循环会在端口回来后自动握手新会话）。
+#[tauri::command]
+fn restart_host(
+    app: tauri::AppHandle,
+    session_id: String,
+) -> Result<String, String> {
+    if session_id.trim().is_empty() || !session_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err("session id 不合法".into());
+    }
+    let dir = std::env::current_exe()
+        .map_err(|e| format!("无法定位可执行文件：{e}"))?
+        .parent()
+        .expect("可执行文件无父目录")
+        .to_path_buf();
+    {
+        let state = app.state::<HostProcess>();
+        kill_host_tree(&state);
+    }
+    kill_stale_host(&dir);
+    let child = spawn_host(&dir, Some(session_id.trim()))
+        .map_err(|e| format!("host 重启失败：{e}"))?;
+    let pid = child.id();
+    let _ = std::fs::write(dir.join("data").join("host.pid"), pid.to_string());
+    {
+        let state = app.state::<HostProcess>();
+        // map 内完成写入并 drop guard（if-let 临时作用域借用 state 会报 E0597）
+        let _ = state.0.lock().map(|mut guard| *guard = Some(child));
+    }
+    // 健康探测放后台线程（command 面不阻塞 webview——UI 重连循环自会等）
+    std::thread::spawn(move || {
+        let _ = wait_healthy(HEALTH_TIMEOUT);
+    });
+    Ok(session_id)
 }
 
 /// U7/T-P3-114：启动时检查更新（演示面——endpoints 指向 localhost），
