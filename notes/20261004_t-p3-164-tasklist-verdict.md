@@ -19,3 +19,8 @@
 - 用户真机验收：对话时左侧项目下任务行出现+呼吸点/任务完成后点消失（透明占位）/待审批橙脉冲
 - zcode 运行层置顶排序记档（单会话架构下意义有限，多会话并行时再做）
 - IAB locator click 隧道不稳再证（本轮回退 evaluate click 可用）——已入工具坑
+## 追记（同日）：便携 exe 完整重编（用户反馈「便携的还是一点的」）
+- 根因：本轮只跑了 build-host-bundle（刷 host.cjs/agent-child.cjs/磁盘 ui/）——**aegent-desktop.exe 内嵌 frontendDist=../ui，exe 不重编则窗口加载的 ui 永远是打包时快照**（记忆里 T-P3-150 已有此教训，仍踩）。
+- 补全流程：杀便携实例 → tauri:build（2m06s，首跑缺 TAURI_SIGNING_PRIVATE_KEY 签名失败 → 按 T-P3-150 先例传 tail -n 1 private/tauri-updater.key 重跑签名过）→ 拷 exe+setup+sig → md5：exe 704d5c34→**8fdabac7**、setup **8166f708**、host.cjs d181d3e7、build-info 32a4425。
+- 冒烟：新壳起动+便携 host 8787 探活 200+taskkill /T 收束；内嵌资产明文搜不到（tauri 压缩嵌入）——以编译时间晚于 ui 改动+frontendDist 源头推定，md5 变化为硬证据。
+
