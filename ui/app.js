@@ -13,7 +13,13 @@
 
 // U4/T-P3-107 渲染分层：assistant 走 markdown+高亮管线（render.js——
 // 用户输入不走此管线，注入面防呆）；vendor 本地化见 ui/vendor/README.md
-import { buildDiffLines, parseDenial, renderMarkdown } from "./render.js";
+import {
+  buildDiffLines,
+  parseDenial,
+  renderMarkdown,
+  highlightedCodeBlock,
+  langFromPath,
+} from "./render.js";
 // U25/T-P3-128 快捷键分发面（注册表本体与清单渲染在 state.js/设置视图）
 import { resolveAction } from "./keymap.js";
 // 共享层（批 A③ 下沉——单向依赖：app/views → api/state/feedback）
@@ -65,7 +71,7 @@ import {
   refreshContextUsage,
   stopCurrentTurn,
 } from "./composer-bar.js";
-import { initProgressDock, notifyToolCall, notifyEventLine } from "./progress-dock.js";
+import { initProgressDock, notifyToolCall, notifyEventLine, notifyTodos } from "./progress-dock.js";
 // T-P3-156 面板批（P/Q/R/S/T）：终端抽屉 + 浏览器/Git/审查/辅助对话四面板
 import { initTerminalPane, toggleTerminal } from "./terminal.js";
 import { fileIcon as fileIconOf } from "./views/projects-files.js";
@@ -340,6 +346,12 @@ function buildToolCard(e) {
   chev.className = "tool-chev";
   chev.append(icon("chevronDown", { cls: "icon-sm" }));
   summary.appendChild(chev);
+  // T-P3-160 需求 6：read 结果 = 源码高亮（VS Code 观感——语言由路径扩展名
+  // 推断，结算时消费；write/edit 无文件内容不标）
+  if (e.name === "read" && filePath !== "") {
+    card.dataset.highlight = "1";
+    card.dataset.lang = langFromPath(filePath);
+  }
   const body = document.createElement("div");
   body.className = "tool-body";
   const argsPre = document.createElement("pre");
@@ -446,6 +458,9 @@ function settleToolCard(e) {
     const denial = isError ? parseDenial(content) : null;
     if (denial !== null) {
       body.appendChild(denialEl(denial)); // C55 结构化拒绝面
+    } else if (existing.dataset.highlight === "1" && content.trim() !== "") {
+      // read 源码高亮（T-P3-160 需求 6——VS Code 观感；空内容仍走 pre）
+      body.appendChild(highlightedCodeBlock(content, existing.dataset.lang ?? ""));
     } else {
       const resultPre = document.createElement("pre");
       resultPre.className = `card-args ${isError ? "warn" : ""}`.trim();
@@ -522,6 +537,30 @@ function reasoningTextOf(e) {
   return text.trim();
 }
 
+/** 元事实可展开卡（T-P3-160 需求 3——压缩/卸载/错误结束等原本的纯文本行
+ *  统一升级：summary 一行 + 点击看原始载荷；zcode 全操作可查看语义）。 */
+function metaDetailsCard(summaryText, payload, extraCls = "") {
+  const details = document.createElement("details");
+  details.className = `tool-card meta-card ${extraCls}`.trim();
+  const summary = document.createElement("summary");
+  const label = document.createElement("span");
+  label.className = "meta-label";
+  label.textContent = summaryText;
+  const chev = document.createElement("span");
+  chev.className = "tool-chev";
+  chev.append(icon("chevronDown", { cls: "icon-sm" }));
+  summary.append(label, chev);
+  const body = document.createElement("div");
+  body.className = "tool-body";
+  const pre = document.createElement("pre");
+  pre.className = "card-args";
+  const { el: _omit, ...rest } = payload ?? {};
+  pre.textContent = JSON.stringify(rest, null, 2);
+  body.appendChild(pre);
+  details.append(summary, body);
+  return details;
+}
+
 /** 事件 → DOM 节点（U4 分层版）；null = 不展示或已并入既有卡。 */
 function renderEvent(e, options = {}) {
   switch (e.type) {
@@ -540,10 +579,10 @@ function renderEvent(e, options = {}) {
       if (e.reason?.kind !== "error") {
         return null; // 正常结束静默（idle 通知承担续跑/进度复位）
       }
-      const el = lineEl(` 轮以错误结束（${endKindText(e.reason)}）`, "meta error-line");
-      el.prepend(icon("xCircle", { cls: "icon-sm icon-err" }));
-      attachRetry(el, e.reason.error); // 错误重试交互
-      return el;
+      const card = metaDetailsCard(` 轮以错误结束（${endKindText(e.reason)}）`, e, "meta error-line");
+      card.querySelector("summary")?.prepend(icon("xCircle", { cls: "icon-sm icon-err" }));
+      attachRetry(card, e.reason.error); // 错误重试交互（挂在卡尾——zcode 失败行可行动语义）
+      return card;
     }
     case "user/message": {
       // 用户输入不渲染（注入面防呆——textContent 原样，不走 markdown 管线）
@@ -562,7 +601,33 @@ function renderEvent(e, options = {}) {
       body.className = "bubble-body";
       body.textContent = e.message?.content ?? "";
       el.appendChild(body);
-      if (e.source !== "injected") setLastUserPrompt(e.message?.content ?? "");
+      if (e.source !== "injected") {
+        // T-P3-160 需求 1：每条用户消息可编辑（回填输入框改完再发）与重发
+        //（原文直接再跑一轮）——zcode 用户输入可行动语义；注入消息除外
+        const raw = e.message?.content ?? "";
+        const actions = document.createElement("span");
+        actions.className = "user-actions";
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.textContent = "编辑";
+        editBtn.title = "把这条消息取回输入框，修改后重新发送";
+        editBtn.addEventListener("click", () => {
+          input.value = raw;
+          autoGrow();
+          updateSendBtnState();
+          input.focus();
+          input.setSelectionRange(raw.length, raw.length);
+          input.scrollIntoView({ block: "nearest" });
+        });
+        const resendBtn = document.createElement("button");
+        resendBtn.type = "button";
+        resendBtn.textContent = "重发";
+        resendBtn.title = "把这条消息原样再发送一轮（不回溯历史）";
+        resendBtn.addEventListener("click", () => void submitPrompt(raw));
+        actions.append(editBtn, resendBtn);
+        el.appendChild(actions);
+        setLastUserPrompt(raw);
+      }
       appendMsgTime(el, e.ts); // T-P3-141：时间戳开关（设置外观段）
       return el;
     }
@@ -621,14 +686,21 @@ function renderEvent(e, options = {}) {
       if (options.live === true) {
         notifyToolCall(e.name ?? "tool", oneLine(JSON.stringify(e.args ?? {}), 60));
         notifyEventLine(`调用工具 ${e.name ?? "tool"}`);
+        // T-P3-160 需求 5：todo_write 实时喂进度面板「进程」段（zcode
+        // statusPanel todo 语义——进行中/待处理/已完成三态）
+        if (e.name === "todo_write") {
+          const args = safeParseArgs(e.arguments);
+          if (Array.isArray(args?.items)) notifyTodos(args.items);
+        }
       }
       return buildToolCard(e);
     case "tool/result":
       return settleToolCard(e);
     case "compaction":
-      return lineEl(`◇ 压缩：${e.reason ?? e.strategy ?? ""}`, "meta");
+      // T-P3-160 需求 3：元事实也走可展开卡（点击看原始载荷——不再纯文本行）
+      return metaDetailsCard(`◇ 压缩：${e.reason ?? e.strategy ?? ""}`, e);
     case "image/offload":
-      return lineEl(`◇ 图片卸载：${(e.targets ?? []).length} 组`, "meta");
+      return metaDetailsCard(`◇ 图片卸载：${(e.targets ?? []).length} 组`, e);
     case "surface/attach":
     case "surface/detach":
       return null; // 反馈 4：端面连接事实不进聊天流（通知中心 surface_changed 仍可查）
@@ -902,7 +974,7 @@ function renderEventEnvelope(envelope) {
     scrollBottom();
     syncChatEmpty(); // 首个可见事件到达 = 欢迎卡让位
   }
-  minimapRegister(node, envelope.event); // 小地图登记（含 null 守卫）
+  turnNavRegister(node, envelope.event); // 目录登记（含 null 守卫——user/assistant 两类）
 }
 
 /** 恢复视图：历史事件一次性渲染（query 快照；此后走 event 流续播）。 */
@@ -911,7 +983,7 @@ function renderHistory(events) {
     const node = renderEvent(e);
     if (node !== null) appendStreamNode(node, e);
     if (e.type === "turn/end") maybeCollapseReadonly(); // G：重放路径同聚合
-    minimapRegister(node, e);
+    turnNavRegister(node, e);
   }
   if (events.length > 0) appendLine(`── 已恢复 ${events.length} 条历史事件 ──`, "meta");
   scrollBottom();
@@ -1087,28 +1159,88 @@ function buildCard(name, payload) {
       card.appendChild(btn);
     }
   } else if (name === "question_asked") {
-    title.textContent = `模型提问`;
-    const q = document.createElement("pre");
-    q.className = "card-args";
+    // T-P3-160 需求 4：决策卡参考 pi-desktop/zcode（问题标题 + 选项卡片
+    // （单选/多选随 multiple）+ 「输入其他答案」+ 跳过/提交答案——无候选项
+    // 时退化为自由文本答复，协议语义不变：question/answer 仍是单字符串）。
+    title.textContent = "模型提问——需要你的决策";
+    const q = document.createElement("div");
+    q.className = "question-text";
     q.textContent = payload.question ?? "";
     card.append(title, q);
+    const options = Array.isArray(payload.options) ? payload.options.filter((o) => typeof o === "string") : [];
+    const multiple = payload.multiple === true;
+    const selected = new Set();
+    if (options.length > 0) {
+      const list = document.createElement("div");
+      list.className = "question-options";
+      const multipleNote = document.createElement("div");
+      multipleNote.className = "question-multiple-note";
+      multipleNote.textContent = multiple ? "可多选" : "单选";
+      list.appendChild(multipleNote);
+      for (const option of options) {
+        const optBtn = document.createElement("button");
+        optBtn.type = "button";
+        optBtn.className = "question-option";
+        optBtn.dataset.value = option;
+        const mark = document.createElement("span");
+        mark.className = "question-option-mark";
+        optBtn.append(mark, document.createTextNode(option));
+        optBtn.addEventListener("click", () => {
+          if (multiple) {
+            if (selected.has(option)) {
+              selected.delete(option);
+              optBtn.classList.remove("selected");
+            } else {
+              selected.add(option);
+              optBtn.classList.add("selected");
+            }
+          } else {
+            selected.clear();
+            list.querySelectorAll(".question-option.selected").forEach((n) => n.classList.remove("selected"));
+            selected.add(option);
+            optBtn.classList.add("selected");
+          }
+        });
+        list.appendChild(optBtn);
+      }
+      card.appendChild(list);
+    }
     const answerInput = document.createElement("input");
     answerInput.className = "input"; // T-P3-159 输入框统一样式（全站唯一基线）
     answerInput.type = "text";
-    answerInput.placeholder = "输入答复（空 = 跳过）";
-    const answerBtn = document.createElement("button");
-    answerBtn.type = "button";
-    answerBtn.textContent = "答复";
-    answerBtn.className = "allow";
-    answerBtn.addEventListener("click", async () => {
+    answerInput.placeholder = options.length > 0 ? "输入其他答案（可与选项并用）" : "输入答复（空 = 跳过）";
+    const actionsRow = document.createElement("div");
+    actionsRow.className = "question-actions";
+    const skipBtn = document.createElement("button");
+    skipBtn.type = "button";
+    skipBtn.className = "btn btn-ghost";
+    skipBtn.textContent = "跳过";
+    skipBtn.title = "不回答——模型会基于已有信息继续";
+    const submitBtn = document.createElement("button");
+    submitBtn.type = "button";
+    submitBtn.className = "btn btn-primary";
+    submitBtn.textContent = "提交答案";
+    submitBtn.addEventListener("click", async () => {
+      const parts = [...selected];
+      const free = answerInput.value.trim();
+      if (free !== "") parts.push(free);
       await sendRequest(sessionId(), {
         type: "question/answer",
         requestId: payload.requestId,
-        answer: answerInput.value,
+        answer: parts.join("；"),
       });
       removeCard(payload.requestId);
     });
-    card.append(answerInput, answerBtn);
+    skipBtn.addEventListener("click", async () => {
+      await sendRequest(sessionId(), {
+        type: "question/answer",
+        requestId: payload.requestId,
+        answer: "",
+      });
+      removeCard(payload.requestId);
+    });
+    actionsRow.append(skipBtn, submitBtn);
+    card.append(answerInput, actionsRow);
     answerInput.focus();
   }
   pending.appendChild(card);
@@ -1514,8 +1646,10 @@ function executeCommand(label) {
 // —— 提交：多行（Shift+Enter 换行）/ 斜杠命令拦截 / 未知命令本地拦截
 // （T-P3-146 E——codex/kimi 语义：/ 开头的命令形 token 若不是已知命令，
 // 本地报错不进模型；去掉斜杠或补建模板后可发）
-async function submitPrompt() {
-  const content = input.value.trim();
+async function submitPrompt(explicitContent) {
+  // T-P3-160 需求 1：重发 = 传 explicitContent 直接走同链路（不清输入框）；
+  // 常规发送 = 读输入框并在受理后清空。
+  const content = String(explicitContent ?? input.value).trim();
   if (content === "") return;
   const slash = content.match(/^\/([a-z0-9][a-z0-9_:/-]*)$/i) ?? content.match(/^\/([a-z0-9][a-z0-9_:/-]*)[\s\n]/i);
   if (slash !== null) {
@@ -1534,9 +1668,11 @@ async function submitPrompt() {
     }
   }
   setLastUserPrompt(content);
-  input.value = "";
-  autoGrow();
-  updateSendBtnState(); // 程序化清空不触发 input 事件——发送/停止态即时回切（T-P3-159 需求 5）
+  if (explicitContent === undefined) {
+    input.value = "";
+    autoGrow();
+    updateSendBtnState(); // 程序化清空不触发 input 事件——发送/停止态即时回切（T-P3-159 需求 5）
+  }
   const attachments = pendingAttachments.splice(0, pendingAttachments.length);
   renderAttachmentsPreview();
   // T-P3-156 K + T-P3-159 修：内核忙时 prompt 自动入队（queue.ts enqueue 返
@@ -2012,58 +2148,140 @@ function openFind() {
   if (findInput.value.trim() !== "") findInStream(findInput.value.trim());
 }
 
-// —— 小地图：消息类型着色条 + 点击跳轮（纯 DOM——展示什么导航什么）。
-// 批 C 轨迹六色：现三色扩六类（--traj-* 六色槽——方案 §2.4 trajectory 同构；
-// reasoning = 空文本 assistant 段〔模型转入工具调用〕；reasoning-alt 为备用槽）。
-const minimap = document.getElementById("minimap");
-const MINIMAP_KINDS = {
-  "user/message": "mm-user",
-  "assistant/message": "mm-agent",
-  "tool/call": "mm-toolcall",
-  "tool/result": "mm-toolresult",
-};
-const minimapEntries = [];
-let minimapTurn = 0;
+// —— T-P3-160 需求 1：会话流左侧目录（zcode ConversationTurnNavigator 同构
+// ——每条用户消息一根指示条；悬停显示用户原文+回复预览，点击平滑跳转；
+// 滚动时活动条加深。替换原右侧 minimap——zcode 只有左 rail，双导航是 clutter）。
+const turnNav = document.getElementById("turn-nav");
+const turnNavEntries = []; // { el, text, reply, turn }
+let turnNavActive = -1;
+let turnNavHoverIdx = -1;
+let turnNavPreview = null;
 
-function minimapRegister(node, e) {
-  let kind = MINIMAP_KINDS[e.type];
-  if (kind === undefined) {
-    if (e.type === "turn/start") minimapTurn = e.turn;
+function turnNavRegister(node, e) {
+  if (e.type === "user/message") {
+    turnNavEntries.push({
+      el: node,
+      turn: Number(e.turn) || 0,
+      text: String(e.message?.content ?? ""),
+      reply: "",
+    });
+    turnNavPaint();
     return;
   }
-  if (e.type === "assistant/message" && (e.message?.content ?? "") === "") {
-    kind = "mm-reasoning"; // 推理段（空文本 assistant——转工具调用前）
+  if (e.type === "assistant/message") {
+    const content = String(e.message?.content ?? "");
+    if (content !== "") {
+      for (let i = turnNavEntries.length - 1; i >= 0; i--) {
+        if (turnNavEntries[i].reply === "") {
+          turnNavEntries[i].reply = content.replace(/\s+/g, " ").trim().slice(0, 120);
+          break;
+        }
+      }
+      turnNavPaint();
+    }
   }
-  if (node === null) return;
-  minimapEntries.push({ el: node, turn: minimapTurn });
-  const row = document.createElement("div");
-  row.className = `mm-row ${kind}`;
-  row.dataset.idx = String(minimapEntries.length - 1);
-  row.title = `turn ${minimapTurn} · ${e.type}`;
-  minimap.appendChild(row);
 }
 
-function minimapReset() {
-  minimapEntries.length = 0;
-  minimapTurn = 0;
-  minimap.replaceChildren();
+function turnNavReset() {
+  turnNavEntries.length = 0;
+  turnNavActive = -1;
+  turnNavHoverIdx = -1;
+  turnNavPaint();
 }
 
-minimap.addEventListener("click", (ev) => {
-  const row = ev.target instanceof Element ? ev.target.closest(".mm-row") : null;
-  if (row === null) return;
-  const entry = minimapEntries[Number(row.dataset.idx)];
-  if (entry === undefined) return;
-  entry.el.scrollIntoView({ block: "start" });
-  entry.el.classList.add("mm-flash");
-  setTimeout(() => entry.el.classList.remove("mm-flash"), 1200);
+function turnNavPaint() {
+  if (turnNav === null) return;
+  if (turnNavEntries.length < 2) {
+    turnNav.hidden = true; // 单条无需导航（zcode items<2 return null 同款）
+    return;
+  }
+  turnNav.hidden = false;
+  turnNav.replaceChildren();
+  turnNavEntries.forEach((entry, index) => {
+    const bar = document.createElement("button");
+    bar.type = "button";
+    bar.className = `turn-nav-item${index === turnNavActive ? " active" : ""}`;
+    bar.title = `第 ${String(index + 1)} 条 · turn ${String(entry.turn)}`;
+    bar.setAttribute("aria-label", `跳到第 ${String(index + 1)} 条输入`);
+    bar.addEventListener("click", () => {
+      entry.el.scrollIntoView({ behavior: "smooth", block: "start" });
+      entry.el.classList.add("mm-flash");
+      setTimeout(() => entry.el.classList.remove("mm-flash"), 1200);
+    });
+    bar.addEventListener("pointerenter", () => turnNavShowPreview(index, bar));
+    bar.addEventListener("pointerleave", () => turnNavHidePreview());
+    turnNav.appendChild(bar);
+  });
+}
+
+function turnNavShowPreview(index, bar) {
+  turnNavHoverIdx = index;
+  const entry = turnNavEntries[index];
+  if (entry === undefined || turnNav === null) return;
+  if (turnNavPreview === null) {
+    turnNavPreview = document.createElement("div");
+    turnNavPreview.className = "turn-nav-preview";
+    turnNavPreview.addEventListener("pointerleave", () => turnNavHidePreview());
+    document.body.appendChild(turnNavPreview);
+  }
+  const head = document.createElement("div");
+  head.className = "turn-nav-preview-head";
+  head.textContent = `#${String(index + 1)}${entry.turn > 0 ? ` · turn ${String(entry.turn)}` : ""}`;
+  const userLine = document.createElement("p");
+  userLine.className = "turn-nav-preview-user";
+  userLine.textContent = entry.text;
+  const rect = bar.getBoundingClientRect();
+  turnNavPreview.replaceChildren(head, userLine);
+  if (entry.reply !== "") {
+    const replyLine = document.createElement("p");
+    replyLine.className = "turn-nav-preview-reply";
+    replyLine.textContent = entry.reply;
+    turnNavPreview.appendChild(replyLine);
+  }
+  turnNavPreview.style.visibility = "hidden";
+  turnNavPreview.style.display = "block";
+  const ph = turnNavPreview.offsetHeight;
+  const top = Math.min(Math.max(70, rect.top - ph / 2), window.innerHeight - ph - 16);
+  turnNavPreview.style.top = `${Math.max(8, top)}px`;
+  turnNavPreview.style.left = `${Math.min(rect.right + 10, window.innerWidth - turnNavPreview.offsetWidth - 8)}px`;
+  turnNavPreview.style.visibility = "";
+}
+
+function turnNavHidePreview() {
+  turnNavHoverIdx = -1;
+  if (turnNavPreview !== null) turnNavPreview.style.display = "none";
+}
+
+// 滚动随动：视口顶部附近的用户消息 = 活动条（rAF 节流）
+let turnNavScrollTick = false;
+stream.addEventListener("scroll", () => {
+  if (turnNavScrollTick || turnNavEntries.length === 0) return;
+  turnNavScrollTick = true;
+  requestAnimationFrame(() => {
+    turnNavScrollTick = false;
+    const streamTop = stream.getBoundingClientRect().top;
+    let active = -1;
+    for (let i = 0; i < turnNavEntries.length; i++) {
+      if (turnNavEntries[i].el.getBoundingClientRect().top >= streamTop - 40) {
+        active = i;
+        break;
+      }
+    }
+    if (active === -1) active = turnNavEntries.length - 1;
+    if (active !== turnNavActive) {
+      turnNavActive = active;
+      for (let i = 0; i < turnNav.children.length; i++) {
+        turnNav.children[i].classList.toggle("active", i === turnNavActive);
+      }
+    }
+  });
 });
 
 /** 流视图整体重置（只读查看入口共用——搜索命中摘帽 + 小地图重建）。 */
 function resetStreamView() {
   stopSpeaking(); // 朗读随流销毁收束（Blob URL revoke + 按钮复位）
   clearHits();
-  minimapReset();
+  turnNavReset();
   lastStreamDay = null; // 日期分隔随流重建归零
   stream.replaceChildren();
   syncChatEmpty();

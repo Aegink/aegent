@@ -108,8 +108,9 @@
               <button id="find-next" type="button" title="下一处（Enter）"><span data-icon="chevronDown" data-icon-size="14"></span></button>
               <button id="find-close" type="button" title="关闭（Esc）"><span data-icon="close" data-icon-size="14"></span></button>
             </div>
-            <!-- U9/T-P3-108 小地图：消息类型着色条 + 点击跳轮（纯 DOM） -->
-            <div id="minimap" aria-label="会话结构导航"></div>
+            <!-- T-P3-160 需求 1：会话流左侧目录（zcode ConversationTurnNavigator
+                 同构——每条用户消息一根指示条，悬停预览、点击跳转） -->
+            <nav id="turn-nav" aria-label="会话目录" hidden></nav>
             <section id="pending" aria-label="待决审批"></section>
             <footer id="composer">
               <!-- U10/T-P3-109：补全下拉（@ 文件/目录、/ 命令+工具+技能） -->

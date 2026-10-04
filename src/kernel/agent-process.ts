@@ -274,10 +274,18 @@ export async function runAgentChildStdio(
   const forwardApprovalAnnouncement = (announcement: ApprovalAnnouncement): void => {
     if (announcement.kind === "asked") {
       if (announcement.request.tool === "question") {
+        // T-P3-160：候选项/多选语义透传（UI 决策卡数据源——args 由 question
+        // 工具规范化后原样落在挂起面上）
+        const rawOptions = announcement.request.args["options"];
+        const qOptions = Array.isArray(rawOptions)
+          ? rawOptions.filter((o): o is string => typeof o === "string")
+          : undefined;
         send({
           type: "question_asked",
           requestId: announcement.request.id,
           question: String(announcement.request.args["question"] ?? ""),
+          ...(qOptions !== undefined && qOptions.length > 0 ? { options: qOptions } : {}),
+          ...(announcement.request.args["multiple"] === true ? { multiple: true } : {}),
           timeoutMs: announcement.timeoutMs,
         });
         options.assembly?.onApprovalAnnouncement?.(announcement);

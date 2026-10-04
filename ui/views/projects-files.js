@@ -13,7 +13,7 @@
 import { sendSettings } from "../api.js";
 import { icon } from "../icons.js";
 import { toast } from "../feedback.js";
-import { renderMarkdown } from "../render.js";
+import { renderMarkdown, highlightedCodeBlock, langFromPath } from "../render.js";
 import { openMenu } from "./settings/core.js";
 
 /** Markdown 扩展名（预览态判定——md 走真渲染管线）。 */
@@ -264,10 +264,7 @@ export async function renderFilePreview(container, deps) {
         body.replaceChildren(rendered);
       } else {
         toggle.textContent = "切换到预览";
-        const pre = document.createElement("pre");
-        pre.className = "proj-preview-code";
-        pre.textContent = result.content ?? "";
-        body.replaceChildren(pre);
+        body.replaceChildren(highlightedCodeBlock(result.content ?? "", "markdown"));
       }
     };
     toggle.addEventListener("click", () => {
@@ -277,13 +274,12 @@ export async function renderFilePreview(container, deps) {
     actions.prepend(toggle);
     paint();
   } else {
-    const pre = document.createElement("pre");
-    pre.className = "proj-preview-code";
-    pre.textContent =
-      result.truncated === true
-        ? `${result.content ?? ""}\n\n── 文件过大，仅显示前 256KB ──`
-        : (result.content ?? "");
-    body.replaceChildren(pre);
+    // T-P3-160 需求 7：源码高亮（hljs token 多色 + VS Code 观感——扩展名
+    // 推断语言；截断文件同样走高亮，标注行留在块尾）
+    const content = result.truncated === true
+      ? `${result.content ?? ""}\n\n── 文件过大，仅显示前 256KB ──`
+      : (result.content ?? "");
+    body.replaceChildren(highlightedCodeBlock(content, langFromPath(filePath)));
   }
 }
 

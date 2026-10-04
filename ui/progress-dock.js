@@ -6,8 +6,9 @@
  * ActivityGroup live ticker 的信息密度）：
  * - 收起 pill（运行时出现）：运行中 mm:ss（圆点）· 当前工具摘要 —— 每秒 tick
  *   （tabular-nums，BackgroundTaskElapsedLabel 的本地时钟基线语义）；
- * - 点击展开面板：当前任务（活动项目 · 会话标题）+ 当前工具 + 最近事件
- *   迷你列表（环形缓冲 6 条）+ 审批挂起提示；
+ * - 点击展开面板：当前任务（活动项目 · 会话标题）+ 当前工具 + 进程段
+ *   （T-P3-160：todo_write 实时喂入的进行中/待处理/已完成三态——zcode
+ *   statusPanel todo 语义）+ 最近事件迷你列表（环形缓冲 6 条）+ 审批挂起提示；
  * - 终态驻留：idle → 「完成 · 用时 mm:ss」8s 后收起（点击可提前收起）；
  * - 审批挂起：pill 转橙 + 面板首行「等待你的审批」。
  *
@@ -29,6 +30,9 @@ let doneTimer = null;
 let awaiting = false;
 let running = false;
 const eventBuffer = [];
+/** 最新 todo 清单（todo_write 实时推入——{content,status} 数组）。 */
+let todosCache = [];
+let todosShowDone = false; // 已完成折叠开关（zcode statusPanel fold 语义）
 
 export function initProgressDock() {
   dock = document.getElementById("progress-dock");
@@ -95,6 +99,16 @@ export function notifyIdle() {
 export function notifyToolCall(toolName, argsPreview) {
   pushEvent(`调用工具 ${toolName}${argsPreview !== "" ? `：${argsPreview}` : ""}`);
   dock.dataset.tool = toolName ?? "";
+  paintAll();
+}
+
+/** todo_write 实时喂入（app.js renderEvent tool/call 转发——仅 live 流）。 */
+export function notifyTodos(items) {
+  if (!Array.isArray(items)) return;
+  todosCache = items
+    .filter((t) => t !== null && typeof t === "object" && typeof t.content === "string")
+    .map((t) => ({ content: String(t.content), status: String(t.status ?? "pending") }));
+  todosShowDone = false;
   paintAll();
 }
 
@@ -169,6 +183,49 @@ function paintPanel() {
     tool.className = "progress-panel-tool";
     tool.textContent = `当前工具：${currentToolLabel()}`;
     panel.appendChild(tool);
+  }
+
+  // 进程段（T-P3-160 需求 5）：进行中完整显示 / 待处理列首几项 / 已完成
+  // 折叠为计数行（点击展开）——zcode statusPanel todo 三态同构
+  if (todosCache.length > 0) {
+    const done = todosCache.filter((t) => t.status === "completed");
+    const doing = todosCache.filter((t) => t.status === "in_progress");
+    const waiting = todosCache.filter((t) => t.status !== "completed" && t.status !== "in_progress");
+    const seg = document.createElement("div");
+    seg.className = "progress-panel-todos";
+    const segHead = document.createElement("div");
+    segHead.className = "progress-todos-head";
+    segHead.textContent = `进程  ${String(done.length)}/${String(todosCache.length)}`;
+    seg.appendChild(segHead);
+    const rowOf = (t, cls) => {
+      const row = document.createElement("div");
+      row.className = `progress-todo ${cls}`;
+      row.textContent = t.content;
+      return row;
+    };
+    for (const t of doing) seg.appendChild(rowOf(t, "doing"));
+    if (waiting.length > 0) {
+      for (const t of waiting.slice(0, 5)) seg.appendChild(rowOf(t, "waiting"));
+      if (waiting.length > 5) {
+        const more = document.createElement("div");
+        more.className = "progress-todo-fold";
+        more.textContent = `待处理 ${String(waiting.length)} 项（显示前 5）`;
+        seg.appendChild(more);
+      }
+    }
+    if (done.length > 0) {
+      const fold = document.createElement("button");
+      fold.type = "button";
+      fold.className = "progress-todo-fold";
+      fold.textContent = todosShowDone ? `收起 ${String(done.length)} 项已完成` : `已完成 ${String(done.length)} 项`;
+      fold.addEventListener("click", () => {
+        todosShowDone = !todosShowDone;
+        paintPanel();
+      });
+      seg.appendChild(fold);
+      if (todosShowDone) for (const t of done) seg.appendChild(rowOf(t, "done"));
+    }
+    panel.appendChild(seg);
   }
 
   const list = document.createElement("div");

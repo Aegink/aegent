@@ -266,83 +266,100 @@ function modelIdOf(model) {
   return model?.id ?? model?.name ?? "";
 }
 
-/** 模型选择器（T-P3-159 需求 4——锚定浮层：搜索 + 供应商分组 + 当前勾选，
- *  zcode 模型面板同构；宽度受限、从 pill 原位向上展开）。 */
+/** 模型选择器（T-P3-160 需求 2——两级：供应商一级 → 模型二级，pi/zcode
+ *  层级菜单语义；锚定浮层、当前项勾选、底部「新供应商/管理模型」直达设置）。 */
 async function openModelMenu() {
   const providers = settingsCache?.providers ?? [];
-  const entries = [];
-  for (const provider of providers) {
-    for (const model of provider.models ?? []) {
-      entries.push({
-        provider,
-        model,
-        label: modelLabel(model),
-        providerName: provider.name ?? provider.id ?? provider.baseUrl,
-        providerId: provider.id ?? provider.name ?? provider.baseUrl,
-        modelId: modelIdOf(model),
-      });
-    }
-  }
-  if (entries.length === 0) {
+  const currentModel = settingsCache?.model?.identity?.modelId;
+  if (providers.length === 0) {
     toast("尚未配置任何供应商/模型——设置「供应商」分节添加后可用", "warn");
     return;
   }
-  const current = settingsCache?.model?.identity?.modelId;
   openPopover(modelPill, {
-    width: 380,
+    width: 340,
     build: (panel, close) => {
-      const search = document.createElement("input");
-      search.className = "input";
-      search.type = "text";
-      search.placeholder = "搜索模型…";
-      const list = document.createElement("div");
-      list.className = "model-picker-list";
-      const paint = (filter) => {
-        list.replaceChildren();
-        const kw = String(filter ?? "").trim().toLowerCase();
-        const groups = new Map();
-        for (const entry of entries) {
-          if (kw !== "" && !`${entry.providerName} ${entry.label}`.toLowerCase().includes(kw)) continue;
-          const bucket = groups.get(entry.providerName) ?? [];
-          bucket.push(entry);
-          groups.set(entry.providerName, bucket);
+      const body = document.createElement("div");
+      body.className = "model-picker-list";
+      const paintProviders = () => {
+        body.replaceChildren();
+        const title = document.createElement("div");
+        title.className = "model-picker-group";
+        title.textContent = "选择供应商";
+        body.appendChild(title);
+        for (const provider of providers) {
+          const count = (provider.models ?? []).length;
+          const row = document.createElement("button");
+          row.type = "button";
+          row.className = "model-picker-row has-children";
+          const name = document.createElement("span");
+          name.className = "model-picker-name";
+          name.textContent = provider.name ?? provider.id ?? provider.baseUrl;
+          const meta = document.createElement("span");
+          meta.className = "model-picker-meta";
+          meta.textContent = `${String(count)} 个模型`;
+          row.append(name, meta);
+          row.addEventListener("click", () => paintModels(provider));
+          body.appendChild(row);
         }
-        if (groups.size === 0) {
+        const foot = document.createElement("div");
+        foot.className = "model-picker-foot";
+        const addProvider = document.createElement("button");
+        addProvider.type = "button";
+        addProvider.className = "model-picker-row";
+        addProvider.textContent = "新供应商";
+        addProvider.addEventListener("click", () => {
+          close();
+          location.hash = "#settings/providers";
+        });
+        const manage = document.createElement("button");
+        manage.type = "button";
+        manage.className = "model-picker-row";
+        manage.textContent = "管理模型";
+        manage.addEventListener("click", () => {
+          close();
+          location.hash = "#settings/providers";
+        });
+        foot.append(addProvider, manage);
+        body.appendChild(foot);
+      };
+      const paintModels = (provider) => {
+        body.replaceChildren();
+        const back = document.createElement("button");
+        back.type = "button";
+        back.className = "model-picker-back";
+        back.append(icon("chevronUp", { cls: "icon-sm" }), document.createTextNode(` ${provider.name ?? provider.id ?? ""}`));
+        back.title = "返回供应商列表";
+        back.addEventListener("click", paintProviders);
+        body.appendChild(back);
+        const models = provider.models ?? [];
+        if (models.length === 0) {
           const empty = document.createElement("div");
           empty.className = "queue-hint";
-          empty.textContent = "没有匹配的模型";
-          list.appendChild(empty);
-          return;
+          empty.textContent = "该供应商尚未配置模型";
+          body.appendChild(empty);
         }
-        for (const [providerName, models] of groups) {
-          const head = document.createElement("div");
-          head.className = "model-picker-group";
-          head.textContent = providerName;
-          list.appendChild(head);
-          for (const entry of models) {
-            const row = document.createElement("button");
-            row.type = "button";
-            row.className = "model-picker-row";
-            const name = document.createElement("span");
-            name.className = "model-picker-name";
-            name.textContent = entry.label;
-            row.appendChild(name);
-            if (entry.modelId !== "" && entry.modelId === current) {
-              row.classList.add("current");
-              row.appendChild(icon("check", { cls: "icon-sm" }));
-            }
-            row.addEventListener("click", () => {
-              close();
-              void switchModel(entry.provider, modelIdOf(entry.model));
-            });
-            list.appendChild(row);
+        for (const model of models) {
+          const id = modelIdOf(model);
+          const row = document.createElement("button");
+          row.type = "button";
+          row.className = "model-picker-row";
+          const name = document.createElement("span");
+          name.className = "model-picker-name";
+          name.textContent = modelLabel(model);
+          row.appendChild(name);
+          if (id !== "" && id === currentModel) {
+            row.classList.add("current");
+            row.appendChild(icon("check", { cls: "icon-sm" }));
           }
+          row.addEventListener("click", () => {
+            close();
+            void switchModel(provider, id);
+          });
+          body.appendChild(row);
         }
       };
-      paint("");
-      search.addEventListener("input", () => paint(search.value));
-      panel.append(search, list);
-      queueMicrotask(() => search.focus());
+      paintProviders();
+      panel.append(body);
     },
   });
 }

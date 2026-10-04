@@ -143,12 +143,12 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     // U9/T-P3-108：会话内搜索条 + 跨会话搜索页 + 小地图（导航/检索资产）
     expect(html).toContain('id="find-bar"');
     expect(html).toContain('id="find-input"');
-    expect(html).toContain('id="minimap"');
+    expect(html).toContain('id="turn-nav"'); // T-P3-160：左侧目录（zcode turn navigator 同构）
     expect(searchView).toContain('id="search-panel"');
     expect(searchView).toContain('id="search-results"');
     expect(searchView).toContain('op: "search"'); // Q2 检索的 UI 消费
     expect(app).toContain("findInStream"); // 渲染层文本检索
-    expect(app).toContain("minimapRegister"); // 消息结构导航条
+    expect(app).toContain("turnNavRegister"); // T-P3-160：目录登记（用户消息逐条定位）
     // U10/T-P3-109：Composer 升级（多行/两类补全/粘贴图入附件链）
     expect(html).toContain('id="autocomplete"');
     expect(html).toContain('id="attachments-preview"');
@@ -325,7 +325,7 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     for (const marker of [".work-tab", ".tree-row", ".review-badge", "#work-preview"]) {
       expect(css).toContain(marker);
     }
-    for (const marker of [".search-hit", ".mm-row", "#find-bar", "#minimap", ".ac-row", ".attachment-chip"]) {
+    for (const marker of [".search-hit", ".turn-nav-item", "#find-bar", "#turn-nav", ".ac-row", ".attachment-chip"]) {
       expect(css).toContain(marker);
     }
     // 主题 token 层（批 A 迁 theme.css——全站唯一取色处；亮色覆盖在位）

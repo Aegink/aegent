@@ -232,10 +232,13 @@ export type AgentMessage =
   | { type: "approval_settled"; requestId: string; allowed: boolean }
   | {
       /** B8b/T-P1-21：模型提问挂起（协议分型——工具名为 question 的
-       * 审批宣告转成此消息，不经 approval_requested 面）。 */
+       * 审批宣告转成此消息，不经 approval_requested 面）。T-P3-160：
+       * options/multiple 随 args 透传（UI 决策卡数据源——可缺省）。 */
       type: "question_asked";
       requestId: string;
       question: string;
+      options?: string[];
+      multiple?: boolean;
       timeoutMs: number;
     }
   | { type: "reverted"; targetSeq: number; codeRestored: boolean }
@@ -856,10 +859,18 @@ export function decodeMessage(line: string): AgentMessage {
       if (typeof msg.timeoutMs !== "number") {
         throw new ProtocolError("PROTOCOL_MALFORMED", "question_asked 需要 timeoutMs");
       }
+      // T-P3-160：options/multiple 透传（缺省缺席——旧 child 兼容；msg 是
+      // 宽形状 Record——字段级收窄后消费）
+      const rawMsg = msg as { options?: unknown; multiple?: unknown };
+      const options = Array.isArray(rawMsg.options)
+        ? rawMsg.options.filter((o): o is string => typeof o === "string")
+        : undefined;
       return {
         type: "question_asked",
         requestId: msg.requestId,
         question: msg.question,
+        ...(options !== undefined && options.length > 0 ? { options } : {}),
+        ...(rawMsg.multiple === true ? { multiple: true } : {}),
         timeoutMs: msg.timeoutMs,
       };
     }

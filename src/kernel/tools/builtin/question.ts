@@ -55,6 +55,16 @@ export function createQuestionTool(deps: QuestionToolDeps): ToolDef {
           type: "string",
           description: "要问用户的问题（具体、可直接回答）",
         },
+        options: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "可选的候选项（1~8 项，每项一句话）。提供时 UI 显示选项卡让用户点选，也可自由输入",
+        },
+        multiple: {
+          type: "boolean",
+          description: "选项是否可多选（仅在提供 options 时有意义；缺省单选）",
+        },
       },
       required: ["question"],
     },
@@ -76,6 +86,15 @@ export function createQuestionTool(deps: QuestionToolDeps): ToolDef {
           `question 文本 ${question.length} 字符超上界 ${MAX_USER_HINT_LENGTH}，已截断（C36 有界纪律）`,
         );
       }
+      // T-P3-160：候选项规范化（UI 决策卡数据源——选项逐项截断同 hint 的
+      // C36 有界纪律；非法形态静默忽略不炸提问）。多选语义随 args 下发，
+      // 答复仍是自由文本（多选 = 选中项 join，UI 侧拼接）。
+      const rawOptions = Array.isArray(args["options"]) ? args["options"] : [];
+      const options = rawOptions
+        .filter((o): o is string => typeof o === "string" && o.trim() !== "")
+        .slice(0, 8)
+        .map((o) => (o.length > MAX_USER_HINT_LENGTH ? o.slice(0, MAX_USER_HINT_LENGTH) : o.trim()));
+      const multiple = args["multiple"] === true && options.length > 0;
       let verdict: Verdict;
       try {
         verdict = await deps.pending.ask(
@@ -83,7 +102,11 @@ export function createQuestionTool(deps: QuestionToolDeps): ToolDef {
             id: ctx.toolCallId,
             sessionId: deps.sessionId,
             tool: "question",
-            args: { question: hint },
+            args: {
+              question: hint,
+              ...(options.length > 0 ? { options } : {}),
+              ...(multiple ? { multiple: true } : {}),
+            },
             // C54：question 是提问发起面（关类时 ask 自动 deny → declined 面）
             category: "question",
           },

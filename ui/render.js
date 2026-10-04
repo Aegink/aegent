@@ -32,13 +32,42 @@ export function safeHref(href) {
   return /^(https?:|mailto:)/i.test(raw) ? raw : "#";
 }
 
+/** 无语言标注时自动探测的候选子集（T-P3-160 需求 6——全库 highlightAuto
+ *  对短片段命中率低，限定常见语言后明显更准；vendor 36 语言内的闭集）。 */
+const AUTO_LANG_SUBSET = [
+  "javascript", "typescript", "python", "json", "bash", "xml", "css", "go",
+  "rust", "java", "sql", "yaml", "markdown", "ini", "shell", "kotlin", "swift",
+];
+
+/** 路径扩展名 → hljs 语言（read 工具结果/文件预览源码高亮——VS Code 观感）。 */
+const EXT_LANG = new Map([
+  ["js", "javascript"], ["mjs", "javascript"], ["cjs", "javascript"], ["jsx", "javascript"],
+  ["ts", "typescript"], ["mts", "typescript"], ["cts", "typescript"], ["tsx", "typescript"],
+  ["py", "python"], ["json", "json"], ["jsonc", "json"], ["sh", "bash"], ["bash", "bash"],
+  ["ps1", "powershell"] , ["html", "xml"], ["htm", "xml"], ["xml", "xml"], ["svg", "xml"],
+  ["css", "css"], ["less", "less"], ["scss", "scss"], ["go", "go"], ["rs", "rust"],
+  ["java", "java"], ["kt", "kotlin"], ["swift", "swift"], ["sql", "sql"], ["yml", "yaml"],
+  ["yaml", "yaml"], ["toml", "ini"], ["ini", "ini"], ["md", "markdown"], ["c", "c"],
+  ["h", "c"], ["cpp", "cpp"], ["hpp", "cpp"], ["cs", "csharp"], ["rb", "ruby"],
+  ["php", "php"], ["lua", "lua"], ["mk", "makefile"], ["makefile", "makefile"],
+  ["diff", "diff"], ["patch", "diff"],
+]);
+
+/** 从文件路径推断高亮语言（无匹配回 ""——调用方转义兜底）。 */
+export function langFromPath(path) {
+  const name = String(path ?? "").split(/[\\/]/).at(-1) ?? "";
+  if (name.toLowerCase() === "makefile") return "makefile";
+  const ext = name.includes(".") ? name.split(".").at(-1).toLowerCase() : "";
+  return EXT_LANG.get(ext) ?? "";
+}
+
 /** 代码高亮（指定语言 → 自动探测回退 → 失败转义兜底）。 */
 export function highlightCode(code, lang) {
   try {
     if (lang !== "" && hljs.getLanguage(lang)) {
       return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
     }
-    return hljs.highlightAuto(code).value;
+    return hljs.highlightAuto(code, AUTO_LANG_SUBSET).value;
   } catch {
     return escapeHtml(code);
   }
@@ -72,6 +101,24 @@ marked.use({
 /** 渲染模型产出的 markdown → HTML（同步；仅 assistant 面调用——见头注）。 */
 export function renderMarkdown(text) {
   return marked.parse(String(text ?? ""), { async: false });
+}
+
+/** 高亮代码块 DOM（T-P3-160 需求 6/7——read 工具结果与文件预览源码共用，
+ *  VS Code 观感：hljs token 多色 + 复制钮，与 assistant md 代码块同形）。 */
+export function highlightedCodeBlock(code, lang) {
+  const wrap = document.createElement("div");
+  wrap.className = "code-block";
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.className = "code-copy";
+  copy.textContent = "复制";
+  const pre = document.createElement("pre");
+  const codeEl = document.createElement("code");
+  codeEl.className = "hljs";
+  codeEl.innerHTML = highlightCode(code, lang);
+  pre.appendChild(codeEl);
+  wrap.append(copy, pre);
+  return wrap;
 }
 
 const DENIAL_PREFIX = "被权限策略拒绝：";

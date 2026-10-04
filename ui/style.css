@@ -2868,59 +2868,13 @@ mark.search-hit.active {
   color: var(--bg);
 }
 
-#minimap {
-  position: fixed;
-  right: 3px;
-  top: 64px;
-  bottom: 96px;
-  width: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  z-index: 20;
-}
 
-.mm-row {
-  flex: 0 0 3px;
-  min-height: 2px;
-  border-radius: 1px;
-  cursor: pointer;
-  opacity: 0.75;
-}
 
-.mm-row:hover {
-  opacity: 1;
-  outline: 1px solid var(--brand);
-}
 
-/* T-P3-159 小地图中性化：六色槽退役，只以深浅对比消息类型重要度
-   （用户最强 → 助手 → 工具 → 推理最淡——深浅即层级） */
-.mm-user {
-  background: color-mix(in srgb, var(--text) 62%, transparent);
-}
 
-.mm-agent {
-  background: color-mix(in srgb, var(--text) 40%, transparent);
-}
-
-.mm-reasoning {
-  background: color-mix(in srgb, var(--text) 14%, transparent);
-}
-
-.mm-toolcall {
-  background: color-mix(in srgb, var(--text) 24%, transparent);
-}
-
-.mm-toolresult {
-  background: color-mix(in srgb, var(--text) 17%, transparent);
-}
-
-.mm-reasoning-alt {
-  background: color-mix(in srgb, var(--text) 12%, transparent);
-}
 
 .mm-flash {
-  outline: 2px solid var(--brand) !important;
+  outline: 2px solid var(--text) !important;
   border-radius: 4px;
 }
 
@@ -5953,4 +5907,326 @@ details.thinking-card.running .thinking-label {
 
 #stream > .bubble.user {
   margin: 16px 0 6px;
+}
+
+/* ===== T-P3-160 对话流深化（目录/用户操作/决策卡/元卡/两级模型/进度 todo） ===== */
+
+/* 需求 1：会话流左侧目录（zcode ConversationTurnNavigator 同构——每条用户
+   消息一根指示条；悬停预览卡显示原文+回复摘要；窄屏隐藏） */
+#turn-nav {
+  position: absolute;
+  left: max(4px, calc((100% - 820px) / 2 - 52px));
+  top: 70px;
+  bottom: 120px;
+  width: 36px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: 20;
+  scrollbar-width: none;
+}
+
+#turn-nav::-webkit-scrollbar {
+  display: none;
+}
+
+#turn-nav[hidden] {
+  display: none;
+}
+
+.turn-nav-item {
+  flex: 0 0 10px;
+  height: 10px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+}
+
+.turn-nav-item::before {
+  content: "";
+  display: block;
+  width: 14px;
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--text) 34%, transparent);
+  transition: background 150ms ease, width 150ms ease;
+}
+
+.turn-nav-item:hover::before {
+  background: color-mix(in srgb, var(--text) 62%, transparent);
+  width: 22px;
+}
+
+.turn-nav-item.active::before {
+  background: var(--text);
+  width: 26px;
+}
+
+/* 悬停预览卡（zcode HoverCard 形态：序号 + 用户原文 2 行 + 回复摘要 3 行） */
+.turn-nav-preview {
+  position: fixed;
+  z-index: 70;
+  display: none;
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-2);
+  pointer-events: none;
+}
+
+.turn-nav-preview-head {
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtlest);
+  margin-bottom: 4px;
+}
+
+.turn-nav-preview-user {
+  margin: 0;
+  font-size: var(--text-ui-sm);
+  font-weight: 530;
+  color: var(--text);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-line;
+}
+
+.turn-nav-preview-reply {
+  margin: 6px 0 0;
+  font-size: var(--text-ui-sm);
+  color: var(--text-subtle);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 需求 1：用户消息悬浮操作（编辑/重发——hover 浮现，zcode 行动语义） */
+.user-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.bubble.user:hover .user-actions {
+  opacity: 1;
+}
+
+.user-actions button {
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-subtle);
+  font-size: var(--text-ui-xs);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.user-actions button:hover {
+  color: var(--text);
+  border-color: var(--border-hover);
+}
+
+/* 需求 3：元事实可展开卡（压缩/卸载/错误结束——原纯文本行升级） */
+.meta-card > summary {
+  color: var(--text-subtlest);
+  font-size: var(--text-ui-sm);
+}
+
+.meta-card.error-line > summary {
+  color: var(--destructive);
+}
+
+.meta-card .meta-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 需求 4：决策卡（pi-desktop 形态——问题 + 选项卡片 + 其他答案 + 跳过/提交） */
+.question-text {
+  font-size: var(--text-ui-base);
+  font-weight: 530;
+  color: var(--text);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.question-multiple-note {
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtlest);
+  padding: 2px 0;
+}
+
+.question-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.question-option {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--text-ui-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background 100ms ease, border-color 100ms ease;
+}
+
+.question-option:hover {
+  background: var(--surface-hover);
+}
+
+.question-option.selected {
+  border-color: var(--text);
+  background: color-mix(in srgb, var(--text) 8%, var(--surface));
+}
+
+.question-option-mark {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--border-hover);
+  border-radius: var(--radius-full);
+  align-self: center;
+}
+
+.question-option.selected .question-option-mark {
+  background: var(--text);
+  border-color: var(--text);
+}
+
+.question-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* 需求 2：两级模型选择器补样式（供应商行右侧计数/返回条） */
+.model-picker-row.has-children .model-picker-meta {
+  flex-shrink: 0;
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtlest);
+}
+
+.model-picker-back {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  margin-bottom: 2px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-subtle);
+  font-family: inherit;
+  font-size: var(--text-ui-sm);
+  cursor: pointer;
+}
+
+.model-picker-back:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.model-picker-foot {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+/* 需求 5：进度面板进程段（todo 三态——进行中/待处理/已完成折叠） */
+.progress-panel-todos {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 0;
+  border-top: 1px dashed var(--border);
+}
+
+.progress-todos-head {
+  font-size: var(--text-ui-xs);
+  font-weight: 530;
+  color: var(--text);
+  padding: 2px 0;
+}
+
+.progress-todo {
+  font-size: var(--text-ui-sm);
+  line-height: 1.4;
+  padding: 2px 0 2px 14px;
+  position: relative;
+}
+
+.progress-todo.doing::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 9px;
+  width: 7px;
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: var(--text);
+}
+
+.progress-todo.waiting {
+  color: var(--text-subtle);
+}
+
+.progress-todo.waiting::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 8px;
+  width: 5px;
+  height: 5px;
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-full);
+}
+
+.progress-todo.done {
+  color: var(--text-subtlest);
+  text-decoration: line-through;
+}
+
+.progress-todo-fold {
+  padding: 2px 0;
+  border: none;
+  background: none;
+  color: var(--text-subtlest);
+  font-size: var(--text-ui-xs);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.progress-todo-fold:hover {
+  color: var(--text-subtle);
 }
