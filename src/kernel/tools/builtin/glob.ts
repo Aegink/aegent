@@ -23,6 +23,14 @@ export const MAX_GLOB_RESULTS = 100;
 export function createGlobTool(): ToolDef {
   return {
     name: "glob",
+    parameters: {
+      type: "object",
+      properties: {
+        pattern: { type: "string", description: "Glob pattern to match files, e.g. src/**/*.ts" },
+        path: { type: "string", description: "Search root directory (optional, defaults to the workspace root)" },
+      },
+      required: ["pattern"],
+    },
     parallel: true, // B17：纯读，声明可并行（parallel 模式持读锁）
     async execute(args) {
       const { pattern, path: base } = args as Partial<GlobArgs>;

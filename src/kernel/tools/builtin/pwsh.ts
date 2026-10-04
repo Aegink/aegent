@@ -49,6 +49,14 @@ export function createPwshTool(options: {
 }): ToolDef {
   return {
     name: "pwsh",
+    parameters: {
+      type: "object",
+      properties: {
+        command: { type: "string", description: "The PowerShell command to run" },
+        timeout: { type: "number", description: "Timeout in seconds (optional)" },
+      },
+      required: ["command"],
+    },
     async execute(args, ctx: ToolContext) {
       const { command, timeout } = args as Partial<BashArgs>;
       if (typeof command !== "string" || command === "") {

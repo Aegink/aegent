@@ -22,6 +22,15 @@ export interface WriteArgs {
   content: string;
 }
 
+const schema: NonNullable<ToolDef["parameters"]> = {
+  type: "object",
+  properties: {
+    path: { type: "string", description: "Absolute path of the file to write" },
+    content: { type: "string", description: "Full file content to write" },
+  },
+  required: ["path", "content"],
+};
+
 export function createWriteTool(options: {
   writeQueue?: WriteQueue;
   pathGuard: PathGuard;
@@ -30,6 +39,7 @@ export function createWriteTool(options: {
   const guard = options.pathGuard;
   return {
     name: "write",
+    parameters: schema,
     async execute(args, ctx) {
       const { path: filePath, content } = args as Partial<WriteArgs>;
       if (typeof filePath !== "string" || filePath === "") {

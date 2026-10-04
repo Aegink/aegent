@@ -25,6 +25,15 @@ export interface ReadArgs {
 export function createReadTool(options: { pathGuard: PathGuard }): ToolDef {
   return {
     name: "read",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Absolute path of the file to read" },
+        offset: { type: "number", description: "Start line (1-based, optional)" },
+        limit: { type: "number", description: "Max lines to read (optional)" },
+      },
+      required: ["path"],
+    },
     parallel: true, // B17：纯读，声明可并行（parallel 模式持读锁）
     async execute(args, ctx) {
       const { path: filePath, offset, limit } = args as Partial<ReadArgs>;

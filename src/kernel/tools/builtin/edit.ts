@@ -44,6 +44,15 @@ export function createEditTool(options: {
   const guard = options.pathGuard;
   return {
     name: "edit",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Absolute path of the file to edit" },
+        oldText: { type: "string", description: "Exact existing text to replace (must appear exactly once unless replaceAll)" },
+        newText: { type: "string", description: "Replacement text" },
+      },
+      required: ["path", "oldText", "newText"],
+    },
     async execute(args, ctx) {
       const { path: filePath, oldText, newText } = args as Partial<EditArgs>;
       if (typeof filePath !== "string" || filePath === "") {

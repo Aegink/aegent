@@ -155,10 +155,52 @@ function endKindText(reason) {
   }
 }
 
-/** 流式打字：text-delta 节流追加（rAF 消费 TimedStreamChunk 时间轴——事件
- * 自带流记录即回放输入，零新增 wire 面）；终态换完整 markdown+高亮渲染。
- * onDone = 终态渲染后的装饰回调（时间戳/朗读按钮——textContent/innerHTML
- * 覆盖会清掉先前 append 的子元素，装饰必须等终态后挂载）。 */
+/**
+ * 顶级 markdown 块切分（pi-desktop advanceMarkdownBlocks 的零依赖简化形）：
+ * 空行分隔、``` 围栏内不切——流式期间已定稿块（前 n-1 块）内容不变，
+ * 只有尾块每帧重解析。 */
+function splitMarkdownBlocks(src) {
+  const blocks = [];
+  let cur = [];
+  let inFence = false;
+  for (const line of String(src).split("\n")) {
+    if (/^\s*```/.test(line)) inFence = !inFence;
+    if (!inFence && line.trim() === "" && cur.length > 0) {
+      blocks.push(cur.join("\n"));
+      cur = [];
+      continue;
+    }
+    cur.push(line);
+  }
+  if (cur.length > 0) blocks.push(cur.join("\n"));
+  return blocks;
+}
+
+/** 增量 markdown 渲染（T-P3-171 过程感核心——pi-desktop frame-batcher +
+ * 分块缓存同构）：每帧只重渲染尾块，已定稿块以源文本为 key 跳过重复
+ * 赋值——终态与流式走同一条渲染路径，**消除"纯文本打字→整段替换"的
+ * 终态跳变**（用户反馈 3 的根源）。 */
+function renderMarkdownBlocks(container, source) {
+  const blocks = splitMarkdownBlocks(source);
+  for (let i = 0; i < blocks.length; i++) {
+    let el = container.children[i];
+    if (el === undefined) {
+      el = document.createElement("div");
+      el.className = "md-block";
+      container.appendChild(el);
+    }
+    const key = blocks[i];
+    if (el.__src !== key) {
+      el.innerHTML = renderMarkdown(key);
+      el.__src = key;
+    }
+  }
+  while (container.children.length > blocks.length) container.lastChild.remove();
+}
+
+/** 流式渲染：rAF 消费 TimedStreamChunk 时间轴（事件自带流记录即回放输
+ *  入，零新增 wire 面；超长流 ≤2s 压缩保留），每帧增量重渲染 markdown
+ *  尾块。onDone = 终态装饰回调（时间戳/朗读按钮）。 */
 function typeStream(bubble, chunks, finalContent, onDone) {
   const deltas = [];
   for (const c of chunks) {
@@ -182,12 +224,14 @@ function typeStream(bubble, chunks, finalContent, onDone) {
       acc += deltas[i].text;
       i++;
     }
-    bubble.textContent = acc; // 打字过程纯文本增量追加（不重排）
+    if (acc !== "") renderMarkdownBlocks(bubble, acc); // 每帧只重渲染尾块（已定稿块跳过）
     scrollBottom();
     if (i < deltas.length) {
       requestAnimationFrame(tick);
     } else {
-      bubble.innerHTML = renderMarkdown(finalContent);
+      // 终态：同一渲染路径吃完整内容（finalContent 与流拼接一致）——视觉零跳变
+      bubble.replaceChildren();
+      renderMarkdownBlocks(bubble, finalContent);
       scrollBottom();
       if (onDone !== undefined) onDone();
     }
@@ -384,16 +428,26 @@ function buildThinkingCard(text, ts) {
   chev.className = "tool-chev";
   chev.append(icon("chevronDown", { cls: "icon-sm" }));
   summary.append(icon("brain", { cls: "icon-sm" }), label, dur, chev);
+  // T-P3-171（zcode reasoning 折叠态）：摘要行 = 思考文本最后一行——
+  // 单行渐隐 mask，展开时隐藏（details.open 由 CSS :checked 语义控制）
+  const lastLine = String(text).split("\n").filter((l) => l.trim() !== "").at(-1) ?? "";
+  if (lastLine !== "") {
+    const prev = document.createElement("span");
+    prev.className = "think-preview";
+    prev.textContent = lastLine.trim();
+    summary.appendChild(prev);
+  }
   const body = document.createElement("div");
   body.className = "thinking-body";
   body.textContent = text;
   details.append(summary, body);
   details.dataset.startTs = String(ts);
-  // T-P3-165 需求 4：思考过程展示模式（精简 = 默认收起；详细/缺省 = 展开）
-  if (settingsCache?.chat?.reasoningDisplay === "concise") {
-    details.removeAttribute("open");
-  } else {
+  // T-P3-165 需求 4 + T-P3-171：思考展示模式（缺省 = 精简收起——zcode
+  // 语义「流式思考展开会持续挤压工具和正文空间」；显式选详细才展开）
+  if (settingsCache?.chat?.reasoningDisplay === "detailed") {
     details.setAttribute("open", "");
+  } else {
+    details.removeAttribute("open");
   }
   return details;
 }
@@ -435,17 +489,16 @@ function attachSubagentView(body, meta) {
  * G：失败原因悬浮——错误摘要挂 summary.title（折叠态 hover 即见原因，
  * zcode showFailureStatus 的 tooltip 语义；展开卡内仍有完整错误原文）。 */
 function setToolStatus(card, isError, errorDigest, resultDigest) {
+  // T-P3-171（zcode 工具行语义）：失败态 = 状态词「失败」+ 虚线下划线 +
+  // hover 错误原文 tooltip——不挂红圈图标、整行不染红（错误详情仍可展开看原文）
   const status = card.querySelector(".tool-status");
   if (status !== null) {
     status.className = `tool-status ${isError ? "fail" : "done"}`;
-    status.replaceChildren(
-      icon(isError ? "xCircle" : "checkCircle", { cls: "icon-sm" }),
-      document.createTextNode(isError ? " 失败" : resultDigest !== undefined && resultDigest !== "" ? ` ${resultDigest}` : " 完成"),
-    );
-  }
-  const summary = card.querySelector("summary");
-  if (summary !== null) {
-    summary.title = isError && errorDigest !== undefined && errorDigest !== "" ? `失败原因：${errorDigest}` : "";
+    status.textContent = isError ? "失败" : resultDigest !== undefined && resultDigest !== "" ? resultDigest : "完成";
+    if (isError && errorDigest !== undefined && errorDigest !== "") {
+      status.title = errorDigest;
+      status.classList.add("has-error-detail");
+    }
   }
 }
 
@@ -484,10 +537,7 @@ function settleToolCard(e) {
   card.className = `tool-card result-only ${isError ? "error" : ""}`.trim();
   card.dataset.callId = e.callId;
   const summary = document.createElement("summary");
-  summary.append(
-    icon(isError ? "xCircle" : "checkCircle", { cls: "icon-sm" }),
-    document.createTextNode(` ${oneLine(content, 160)}`),
-  );
+  summary.append(document.createTextNode(oneLine(content, 160)));
   const chev = document.createElement("span");
   chev.className = "tool-chev";
   chev.append(icon("chevronDown", { cls: "icon-sm" }));
@@ -674,6 +724,7 @@ function renderEvent(e, options = {}) {
       if (options.live === true) {
         window.__agentBusy = true;
         markSessionState(getSessionId(), { busy: true }); // T-P3-170：状态表记账（侧栏任务点）
+        showWorkingLine(); // T-P3-171：过程状态行（turn 期间常驻）
         notifyTurnStarted(e.turn);
         window.dispatchEvent(new CustomEvent("agent:busy"));
       }
@@ -685,6 +736,7 @@ function renderEvent(e, options = {}) {
         // 任务标题跟上（立即刷会撞写库竞态，取旧标题）
         if (options.live === true) {
           markSessionState(getSessionId(), { busy: false }); // T-P3-170：状态表记账
+          hideWorkingLine(); // T-P3-171：状态行随轮收束卸载
           setTimeout(() => void refreshSidebar(), 1200);
         }
         return null; // 正常结束静默（idle 通知承担续跑/进度复位）
@@ -1011,7 +1063,50 @@ function appendStreamNode(node, e) {
     lastStreamDay = key;
     stream.appendChild(dateSepEl(e.ts));
   }
-  stream.appendChild(node);
+  // T-P3-171：常驻状态行恒在流尾——后续节点插到它之前
+  const working = document.getElementById("working-line");
+  if (working !== null) {
+    stream.insertBefore(node, working);
+  } else {
+    stream.appendChild(node);
+  }
+}
+
+/**
+ * 常驻尾部状态行（T-P3-171 过程感——pi-desktop WorkingIndicator 同构）：
+ * turn 开始即挂载（三点跳动 + 秒计时），首个 token/工具运行不隐藏，
+ * turn 结束卸载；审批/提问挂起时隐藏（交互等待优先）。
+ */
+let workingLineTimer = null;
+function showWorkingLine() {
+  if (stream.querySelector("#working-line") !== null) return;
+  const line = document.createElement("div");
+  line.id = "working-line";
+  line.className = "working-line";
+  line.setAttribute("role", "status");
+  const dots = document.createElement("span");
+  dots.className = "working-dots";
+  for (let i = 0; i < 3; i++) dots.appendChild(document.createElement("i"));
+  const label = document.createElement("span");
+  label.className = "working-label";
+  label.textContent = "正在工作";
+  const time = document.createElement("span");
+  time.className = "working-time";
+  const t0 = Date.now();
+  workingLineTimer = setInterval(() => {
+    const sec = Math.floor((Date.now() - t0) / 1000);
+    time.textContent = sec > 0 ? ` · ${String(sec)}s` : "";
+  }, 1000);
+  line.append(dots, label, time);
+  stream.appendChild(line);
+  scrollBottom();
+}
+function hideWorkingLine() {
+  if (workingLineTimer !== null) {
+    clearInterval(workingLineTimer);
+    workingLineTimer = null;
+  }
+  document.getElementById("working-line")?.remove();
 }
 
 // —— T-P3-156 G：只读工具聚合（codex Exploring 卡语义）——turn 结束后把
@@ -2437,6 +2532,7 @@ function resetStreamView() {
   stopSpeaking(); // 朗读随流销毁收束（Blob URL revoke + 按钮复位）
   clearHits();
   turnNavReset();
+  hideWorkingLine(); // T-P3-171：状态行计时器随流收束（残留=幽灵秒表）
   lastStreamDay = null; // 日期分隔随流重建归零
   stream.replaceChildren();
   syncChatEmpty();
@@ -2514,10 +2610,14 @@ function showRecoveryIfInterrupted(events) {
   // T-P3-159 运行态补盲：页面加载时已存在在途轮（M3 续跑——恢复视图不回放
   // live 标志，turn/start 广播已错过）→ 显式补广播，发送/停止钮与队列投影
   // 不再误判空闲。
-  if (window.__agentBusy !== true) {
+  const wasBusy = window.__agentBusy === true;
+  if (!wasBusy) {
     window.__agentBusy = true;
     window.dispatchEvent(new CustomEvent("agent:busy"));
   }
+  // T-P3-171：轮在跑（状态表 busy 或本函数刚补广播）= 没有中断，只是
+  // "恢复视图时该轮尚未收束"——不打断用户的黄色横幅只在真停摆时出现。
+  if (wasBusy || window.__sessionStates?.[getSessionId()]?.busy === true) return;
   const banner = document.getElementById("recovery-banner");
   document.getElementById("recovery-text").textContent =
     `检测到中断的轮：turn ${openTurns.join("、")} 未正常收束（M3 续跑在子进程启动时已自动执行）`;
@@ -2839,6 +2939,7 @@ function handleEnvelope(envelope) {
       } else if (envelope.name === "approval_requested" || envelope.name === "question_asked") {
         if (getSessionId() === "") setSessionId(nid);
         markSessionState(nid, { awaiting: true });
+        if (!foreign) hideWorkingLine(); // T-P3-171：交互等待优先——状态行让位审批卡
         buildCard(envelope.name, envelope.payload ?? {}, nid);
         // T-P3-156：待决审批 → 侧栏状态点（橙色）——当前会话才驱动主 UI 点
         if (!foreign) window.dispatchEvent(new CustomEvent("agent:awaiting"));
@@ -2854,6 +2955,7 @@ function handleEnvelope(envelope) {
         }
       } else if (envelope.name === "approval_settled") {
         markSessionState(nid, { awaiting: false });
+        if (!foreign && window.__agentBusy === true) showWorkingLine(); // 轮仍在跑——状态行回归
         if (!foreign) {
           removeCard(envelope.payload?.requestId);
           appendLine(`审批已结算：${envelope.payload?.allowed ? "允许" : "拒绝"}`, "meta");
@@ -2887,8 +2989,8 @@ function handleEnvelope(envelope) {
       } else if (envelope.name === "config_refreshed") {
         // T-P3-156 W：会话内切档回执（settings/basic.js 与输入条权限 pill 共用）
         if (foreign) break;
-        const applied = Array.isArray(envelope.payload?.applied) ? envelope.payload.applied : [];
-        toast(applied.length > 0 ? `已生效：${applied.join("、")}` : "配置已刷新", "info");
+        // T-P3-171：热切换不再弹 toast（zcode 纪律——可见状态本身即反馈；
+        // 权限/沙箱档是高频切换，pill 文案已实时变化）
         notifyPermissionChanged(); // L：权限 pill 文案随档位刷新
         window.dispatchEvent(new CustomEvent("agent:config-refreshed", { detail: { applied } }));
       } else if (envelope.name === "terminal-data") {

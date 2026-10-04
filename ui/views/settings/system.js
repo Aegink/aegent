@@ -19,7 +19,8 @@ import * as logging from "./logging.js";
 import * as about from "./about.js";
 import { shortcutCaptureKeydown } from "./shortcuts.js";
 import { settingsCache } from "../../state.js";
-import { IS_DESKTOP } from "../../api.js";
+import { IS_DESKTOP, sendSettings } from "../../api.js";
+import { toast } from "../../feedback.js";
 
 const instructionsSection = instructions.SECTION_HTML;
 const shortcutsSection = shortcuts.SECTION_HTML;
@@ -210,15 +211,16 @@ function chatSettings() {
 }
 
 async function saveChatSection(patch) {
-  const envelope = await (await import("../api.js")).sendSettings({
+  const envelope = await sendSettings({
     op: "update",
     patch: { chat: { ...chatSettings(), ...patch } },
   });
   if (!envelope.ok) {
-    const { toast } = await import("../feedback.js");
     toast(`保存失败：${envelope.error?.message ?? ""}`, "warn");
     return false;
   }
+  // 本地缓存即时回填（pill 等消费点读 settingsCache——不等下一次全拉）
+  settingsCache.chat = { ...chatSettings(), ...patch };
   return true;
 }
 
@@ -238,7 +240,7 @@ function fillChatSection() {
   for (const b of document.querySelectorAll("#chat-ctx-readout .tab-trigger")) {
     b.classList.toggle("active", b.dataset.value === readout);
   }
-  const reasoning = chat.reasoningDisplay ?? "detailed";
+  const reasoning = chat.reasoningDisplay ?? "concise";
   for (const b of document.querySelectorAll("#chat-reasoning-display .tab-trigger")) {
     b.classList.toggle("active", b.dataset.value === reasoning);
   }
@@ -295,7 +297,6 @@ function bindChatSection() {
           for (const x of document.querySelectorAll("#close-behavior .tab-trigger")) {
             x.classList.toggle("active", x === b);
           }
-          void import("../../feedback.js").then((m) => m.toast("已保存——下次关闭窗口时生效", "info"));
         });
       });
     }
@@ -319,15 +320,14 @@ function bindChatSection() {
 }
 
 async function saveNetwork(patch) {
-  const envelope = await (await import("../api.js")).sendSettings({
+  const envelope = await sendSettings({
     op: "update",
     patch: { network: { ...(settingsCache?.network ?? {}), ...patch } },
   });
   if (!envelope.ok) {
-    const { toast } = await import("../feedback.js");
     toast(`保存失败：${envelope.error?.message ?? ""}`, "warn");
     return false;
   }
-  toast("已保存——代理配置重启 aegent 后生效", "info");
+  settingsCache.network = { ...(settingsCache?.network ?? {}), ...patch };
   return true;
 }

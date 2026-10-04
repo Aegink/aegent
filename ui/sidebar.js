@@ -1084,7 +1084,6 @@ async function createTask(project) {
     return;
   }
   const sid = created.result?.sessionId;
-  toast(`已开启新任务——「${project.name}」`, "info");
   await refreshSidebar();
   if (typeof sid === "string" && sid !== "") await switchToSession(sid);
 }

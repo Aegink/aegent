@@ -356,6 +356,13 @@ export function createApplyPatchTool(options: {
   const guard = options.pathGuard;
   return {
     name: "apply_patch",
+    parameters: {
+      type: "object",
+      properties: {
+        patchText: { type: "string", description: "Patch document describing the file changes to apply" },
+      },
+      required: ["patchText"],
+    },
     async execute(args, ctx) {
       const { patchText } = args as Partial<ApplyPatchArgs>;
       if (typeof patchText !== "string" || patchText.trim() === "") {

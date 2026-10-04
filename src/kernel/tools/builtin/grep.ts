@@ -32,6 +32,15 @@ const MAX_LINE_DISPLAY = 200;
 export function createGrepTool(): ToolDef {
   return {
     name: "grep",
+    parameters: {
+      type: "object",
+      properties: {
+        pattern: { type: "string", description: "Text (case-insensitive) or /regex/ to search inside files" },
+        path: { type: "string", description: "Search root directory (optional, defaults to the workspace root)" },
+        include: { type: "string", description: "Glob filter for file names, e.g. *.ts (optional)" },
+      },
+      required: ["pattern"],
+    },
     parallel: true, // B17：纯读，声明可并行（parallel 模式持读锁）
     async execute(args) {
       const { pattern, path: base, include } = args as Partial<GrepArgs>;

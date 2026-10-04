@@ -2665,6 +2665,13 @@ details.hint-more > summary::marker {
   color: var(--destructive);
 }
 
+/* T-P3-171：失败详情虚线下划线（zcode underline decoration-dotted——hover 见错误原文） */
+.tool-status.has-error-detail {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
 /* 运行态：文案扫光（zcode animated-gradient-text 语义——不用彩色点/旋转占用渲染） */
 .tool-status.running {
   color: var(--text-subtle);
@@ -2697,7 +2704,7 @@ details.hint-more > summary::marker {
 }
 
 .tool-card.error summary {
-  color: var(--destructive);
+  color: var(--text-subtle);
 }
 
 .tool-body {
@@ -6788,4 +6795,87 @@ details.thinking-card.running .thinking-label {
 .import-loaded {
   color: var(--text-subtle);
   font-size: var(--text-ui-xs);
+}
+
+/* ===== T-P3-171 过程感：常驻状态行 + 分块流式间距 + 工具失败中性化 ===== */
+.working-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0 4px;
+  color: var(--text-subtle);
+  font-size: var(--text-ui-sm);
+  animation: stream-fade-in 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.working-dots {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.working-dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: working-dot 1s var(--ease-standard, cubic-bezier(0.2, 0, 0, 1)) infinite;
+}
+
+.working-dots i:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.working-dots i:nth-child(3) {
+  animation-delay: 240ms;
+}
+
+@keyframes working-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+
+  30% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes stream-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.working-time {
+  color: var(--text-subtlest, var(--text-subtle));
+  font-variant-numeric: tabular-nums;
+}
+
+/* 增量分块渲染：块间距（块内首末段 margin 已被既有规则归零） */
+.agent-text .md-block + .md-block {
+  margin-top: 10px;
+}
+
+/* 思考折叠态末行摘要（zcode reasoning trigger——单行渐隐，展开时隐藏） */
+.think-preview {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--text-subtlest, var(--text-subtle));
+  mask-image: linear-gradient(to right, black, black calc(100% - 16px), transparent);
+  -webkit-mask-image: linear-gradient(to right, black, black calc(100% - 16px), transparent);
+}
+
+.thinking-card[open] .think-preview {
+  display: none;
 }
