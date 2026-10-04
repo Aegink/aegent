@@ -65,6 +65,12 @@ function normalizeUrl(raw) {
 registerPane("browser", {
   title: (tab) => tab.payload.title ?? "浏览器",
   icon: "globe",
+  onClose: (tab) => {
+    // 关闭 tab = 真销毁 webview（区别于切走的 hide 保活）
+    if (IS_DESKTOP && tab.payload?.tabId) {
+      void tauriInvoke("browser_destroy", { label: tab.payload.tabId }).catch(() => {});
+    }
+  },
   onBlur: (tab) => {
     if (IS_DESKTOP && activeTabId !== null) {
       void tauriInvoke("browser_hide", { label: activeTabId }).catch(() => {});

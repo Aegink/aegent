@@ -91,6 +91,9 @@ export function closePane(id) {
   const wasActive = state.activeId === id;
   const closing = state.tabs.find((t) => t.id === id);
   state.tabs.splice(idx, 1);
+  // T-P3-169：tab 关闭 = 资源销毁钩子（浏览器 webview close——区别于
+  // onBlur 的 hide 保活；切走保活、关闭销毁）
+  renderers.get(closing.type)?.onClose?.(closing);
   if (wasActive) {
     // 关闭激活 tab → 落到相邻 tab（zcode syncSubagentSessionSidePaneTabs
     // 的落点语义）；空了就收起面板
