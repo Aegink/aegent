@@ -1,26 +1,23 @@
-//! 浏览器面板的壳侧 webview 管理（T-P3-156 方案 Q——用户裁决"完整实现+
-//! 真实浏览器内核"：zcode 好用的关键正是真实 webview，TUI 类替代品测不出
-//! 真实行为）。
+//! 浏览器面板的壳侧承载（T-P3-167 方案 B——**独立无边框子窗口**）。
 //!
-//! 形态：主窗内 **child Webview**（tauri `unstable` multiwebview 面）——
-//! 每个 tab 一个 Webview 实例，同窗共存；bounds 由 UI 面板 DOM 区域经
-//! ResizeObserver 上报（browser_show），隐藏 tab 用 `hide()` 保活（滚动
-//! 位置/登录态不丢——zcode tab residency 语义的简化版）。数据目录独立于
-//! 宿主（不共享登录态/LocalStorage——安全边界，报告 §4-Q⑤）。
+//! 历史：T-P3-156 用主窗内 child webview（unstable multiwebview 的
+//! Window::add_child）——真机实测（T-P3-166/167）在 Windows WebView2 上
+//! **同步死锁**：add_child 内部同步等待 WebView2 controller 异步创建，
+//! 阻塞主线程消息泵等自己（webview.log 恒停在入口、UI 恒"正在加载内核"）。
+//! 方案 B 改用 tauri 核心多窗口能力：每个浏览器 tab = 一个无边框、不进
+//! 任务栏的独立 WebviewWindow，UI 面板 DOM 区域经 bounds 上报驱动
+//! set_position/set_size——真实 WebView2 内核不变，主窗消息泵零阻塞。
 //!
-//! 与 agent 的联动：聊天流链接点击 → UI 调 browser_navigate（意图路由在
-//! UI 层）；agent 驱动/截图（CDP 面）为后续增强（webview2 的
-//! CallDevToolsProtocolMethod 经 with_webview——接口在本模块留 eval 面）。
+//! 数据目录独立于宿主（不共享登录态/LocalStorage——安全边界）。
 
 use std::collections::HashMap;
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager, Webview, WebviewUrl, WebviewBuilder, Window};
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
-/// 每 tab 的 webview 句柄登记表（label → Webview；label = `browser-<id>`）。
-pub struct BrowserRegistry(Mutex<HashMap<String, Webview>>);
+/// 每 tab 的子窗口登记表（label → 存活标记；句柄经 get_webview_window 取）。
+pub struct BrowserRegistry(Mutex<HashMap<String, bool>>);
 
-/// 诊断日志（T-P3-166 需求 5：便携壳 stderr 被 CREATE_NO_WINDOW 吞——
-/// webview 创建/对齐事件落 logs/webview.log 供用户反馈排障）。
+/// 诊断日志（便携壳 stderr 被吞——落 logs/webview.log 供排障）。
 fn wvlog(msg: &str) {
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
@@ -42,56 +39,53 @@ fn wvlog(msg: &str) {
     }
 }
 
-/// 创建（或复用）一个浏览器 tab 的真实 webview：挂主窗、bounds 先给面板
-/// 初始区域（1px 藏底——show 时再对齐，避免创建瞬间闪整窗）。
+/// 创建（或复用）浏览器 tab 的子窗口。初始藏屏幕外，show 时对齐。
 #[tauri::command]
-pub fn browser_create(
+pub async fn browser_create(
     app: AppHandle,
     label: String,
     url: String,
 ) -> Result<String, String> {
     wvlog(&format!("browser_create label={label} url={url}"));
-    // add_child 挂在 Window（非 WebviewWindow）——tauri 2.12 unstable 面
-    let window: Window = app
-        .get_window("main")
-        .ok_or_else(|| {
-            wvlog("browser_create 主窗未就绪");
-            "主窗未就绪".to_string()
-        })?;
-    let parsed: tauri::Url = url.parse().map_err(|e| {
-        wvlog(&format!("browser_create url 解析失败: {e}"));
-        format!("URL 不合法：{e}")
-    })?;
     let state = app
         .try_state::<BrowserRegistry>()
         .ok_or_else(|| "browser registry 未初始化".to_string())?;
     let mut registry = state.0.lock().map_err(|_| "registry 锁中毒".to_string())?;
-    if let Some(existing) = registry.get(&label) {
-        wvlog("browser_create 复用既有 webview");
-        let _ = existing.show();
-        return Ok(label);
-    }
-    match window.add_child(
-        WebviewBuilder::new(label.clone(), WebviewUrl::External(parsed))
-            .initialization_script("window.__AEGENT_BROWSER_TAB = true;"),
-        tauri::LogicalPosition::new(0.0, 10_000.0), // 藏在窗外——show 时对齐
-        tauri::LogicalSize::new(400.0, 300.0),
-    ) {
-        Ok(webview) => {
-            wvlog("browser_create add_child 成功");
-            registry.insert(label.clone(), webview);
-            Ok(label)
+    if let Some(alive) = registry.get(&label) {
+        if *alive && app.get_webview_window(&label).is_some() {
+            wvlog("browser_create 复用既有子窗");
+            return Ok(label);
         }
-        Err(e) => {
-            wvlog(&format!("browser_create add_child 失败: {e}"));
-            Err(format!("webview 创建失败：{e}"))
-        }
+        // 标记在但窗已亡（用户 Alt+F4）——自愈重建
+        wvlog("browser_create 标记在窗已亡——自愈重建");
     }
+    let parsed: tauri::Url = url.parse().map_err(|e| {
+        wvlog(&format!("browser_create url 解析失败: {e}"));
+        format!("URL 不合法：{e}")
+    })?;
+    let window = WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(parsed))
+        .title("浏览器")
+        .decorations(false)
+        .skip_taskbar(true)
+        .resizable(true)
+        .inner_size(400.0, 300.0)
+        .visible(true)
+        .build()
+        .map_err(|e| {
+            wvlog(&format!("browser_create build 失败: {e}"));
+            format!("子窗创建失败：{e}")
+        })?;
+    // 初始藏屏幕外（show 时对齐面板区域）
+    use tauri::Manager;
+    let _ = window.set_position(tauri::LogicalPosition::new(20_000.0, 20_000.0));
+    registry.insert(label.clone(), true);
+    wvlog("browser_create build 成功");
+    Ok(label)
 }
 
 /// 对齐 bounds 并显示（UI 面板区域变化/激活 tab 时调——物理像素）。
 #[tauri::command]
-pub fn browser_show(
+pub async fn browser_show(
     app: AppHandle,
     label: String,
     x: i32,
@@ -99,65 +93,57 @@ pub fn browser_show(
     width: u32,
     height: u32,
 ) -> Result<(), String> {
-    let state = app.try_state::<BrowserRegistry>().ok_or("registry 未初始化")?;
-    let registry = state.0.lock().map_err(|_| "registry 锁中毒")?;
-    let webview = registry.get(&label).ok_or("tab 不存在")?;
-    // 其余 tab 先藏（单显——多 tab 切换语义）
-    for (other_label, other) in registry.iter() {
-        if other_label != &label {
-            let _ = other.hide();
-        }
-    }
-    let _ = webview.set_bounds(tauri::Rect {
-        position: tauri::PhysicalPosition::new(x, y).into(),
-        size: tauri::PhysicalSize::new(width.max(1), height.max(1)).into(),
-    });
-    let _ = webview.show();
+    let window = app
+        .get_webview_window(&label)
+        .ok_or_else(|| "tab 不存在".to_string())?;
+    let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+    let _ = window.set_size(tauri::PhysicalSize::new(width.max(1), height.max(1)));
+    let _ = window.show();
     Ok(())
 }
 
 /// 隐藏（tab 切走/面板收起——保活不销毁）。
 #[tauri::command]
 pub fn browser_hide(app: AppHandle, label: String) -> Result<(), String> {
-    let state = app.try_state::<BrowserRegistry>().ok_or("registry 未初始化")?;
-    let registry = state.0.lock().map_err(|_| "registry 锁中毒")?;
-    if let Some(webview) = registry.get(&label) {
-        let _ = webview.hide();
+    if let Some(window) = app.get_webview_window(&label) {
+        let _ = window.hide();
     }
     Ok(())
 }
 
-/// 导航（地址栏/前进后退刷新由前端 history 面承担——webview 内部自持；
-/// 这里只承担"外部 URL 打进指定 tab"）。url 为空 = 刷新当前页语义交前端。
+/// 导航（地址栏/前进后退刷新由前端 history 面承担）。
 #[tauri::command]
-pub fn browser_navigate(app: AppHandle, label: String, url: String) -> Result<(), String> {
-    let state = app.try_state::<BrowserRegistry>().ok_or("registry 未初始化")?;
-    let registry = state.0.lock().map_err(|_| "registry 锁中毒")?;
-    let webview = registry.get(&label).ok_or("tab 不存在")?;
+pub async fn browser_navigate(app: AppHandle, label: String, url: String) -> Result<(), String> {
+    let window = app
+        .get_webview_window(&label)
+        .ok_or_else(|| "tab 不存在".to_string())?;
     let parsed: tauri::Url = url.parse().map_err(|e| format!("URL 不合法：{e}"))?;
-    let _ = webview.navigate(parsed);
+    let _ = window.navigate(parsed);
     Ok(())
 }
 
-/// 销毁 tab（关闭 Tab 时——真回收，区别于 hide 保活）。
+/// 销毁 tab 子窗（关闭 Tab 时——真回收）。
 #[tauri::command]
-pub fn browser_destroy(app: AppHandle, label: String) -> Result<(), String> {
-    let state = app.try_state::<BrowserRegistry>().ok_or("registry 未初始化")?;
-    let mut registry = state.0.lock().map_err(|_| "registry 锁中毒")?;
-    if let Some(webview) = registry.remove(&label) {
-        let _ = webview.close(); // Webview 无 destroy——close 是销毁面
+pub async fn browser_destroy(app: AppHandle, label: String) -> Result<(), String> {
+    let state = app
+        .try_state::<BrowserRegistry>()
+        .ok_or_else(|| "browser registry 未初始化".to_string())?;
+    let mut registry = state.0.lock().map_err(|_| "registry 锁中毒".to_string())?;
+    registry.remove(&label);
+    if let Some(window) = app.get_webview_window(&label) {
+        let _ = window.destroy();
     }
+    wvlog(&format!("browser_destroy label={label}"));
     Ok(())
 }
 
-/// 在指定 tab 内执行 JS（联动面预留：页面信息采集/截图前置/agent 驱动的
-/// 最小底座）。返回串行化结果（JSON 字符串——复杂值由页面侧自序列化）。
+/// 在指定 tab 内执行 JS（后退/前进/刷新由前端经此驱动）。
 #[tauri::command]
-pub fn browser_eval(app: AppHandle, label: String, js: String) -> Result<(), String> {
-    let state = app.try_state::<BrowserRegistry>().ok_or("registry 未初始化")?;
-    let registry = state.0.lock().map_err(|_| "registry 锁中毒")?;
-    let webview = registry.get(&label).ok_or("tab 不存在")?;
-    let _ = webview.eval(&js);
+pub async fn browser_eval(app: AppHandle, label: String, js: String) -> Result<(), String> {
+    let window = app
+        .get_webview_window(&label)
+        .ok_or_else(|| "tab 不存在".to_string())?;
+    let _ = window.eval(&js);
     Ok(())
 }
 

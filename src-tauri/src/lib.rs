@@ -219,12 +219,25 @@ pub fn run() {
                                     }
                                 }
                             }
+                            // T-P3-167 实测：浏览器子窗活着时不满足「全部窗口关闭」
+                            // → app 不退出（进程残留=「关不掉」）——杀树后显式退出
+                            window.app_handle().exit(0);
                         }
                     }
                 }
                 tauri::WindowEvent::Destroyed => {
                     if is_main {
                         kill_host_tree(&window.app_handle().state::<HostProcess>());
+                        // T-P3-167 实录：工作池也收束（Destroy 路径此前漏池）
+                        if let Some(pool) = window.app_handle().try_state::<WorkspaceHosts>() {
+                            if let Ok(mut guard) = pool.0.lock() {
+                                for mut entry in guard.drain(..) {
+                                    kill_tree(entry.child.id());
+                                    let _ = entry.child.kill();
+                                    let _ = entry.child.wait();
+                                }
+                            }
+                        }
                     }
                 }
                 _ => {}
@@ -310,6 +323,13 @@ fn restart_host(
         kill_host_tree(&state);
     }
     kill_stale_host(&dir);
+    // T-P3-167 实录：杀树后端口 TIME_WAIT——EADDRINUSE 一次，spawn 前等释放
+    for _ in 0..20 {
+        if TcpStream::connect(("127.0.0.1", HOST_PORT)).is_err() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
     let child = spawn_host(&dir, Some(session_id.trim()), HOST_PORT)
         .map_err(|e| format!("host 重启失败：{e}"))?;
     let pid = child.id();

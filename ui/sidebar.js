@@ -1331,9 +1331,9 @@ async function openAddDialog() {
     }
   };
   let mode = "folder";
-  // T-P3-166 需求 6：扫描导入 tab 退役（入口统一 #import 一体化导入页；
-  // 旧弹窗版与新版并存让用户误入旧体验——用户实测截图佐证）
-  for (const tabMode of ["folder", "git"]) {
+  // T-P3-167 需求 3（用户裁决回迁）：项目导入统一放在添加项目弹窗的扫描
+  // 导入 tab——比独立页更顺手；#import 一体化页保留为全量视角入口
+  for (const tabMode of ["folder", "git", "import"]) {
     const tab = document.createElement("button");
     tab.type = "button";
     tab.className = `btn proj-add-tab${tabMode === mode ? " active" : ""}`;
