@@ -109,7 +109,19 @@ export function notifyTodos(items) {
     .filter((t) => t !== null && typeof t === "object" && typeof t.content === "string")
     .map((t) => ({ content: String(t.content), status: String(t.status ?? "pending") }));
   todosShowDone = false;
+  // T-P3-164：任务列表面板同源消费（pane-tasks 监听——重绘+首次自动打开）
+  window.dispatchEvent(new CustomEvent("todos:updated"));
   paintAll();
+}
+
+/** 任务列表面板数据面（pane-tasks 同源读取）。 */
+export function getTodos() {
+  return [...todosCache];
+}
+
+/** 当前动作行（pane-tasks 顶部——最近一次工具调用摘要）。 */
+export function getRunningTool() {
+  return dock?.dataset?.tool ?? "";
 }
 
 export function notifyEventLine(text) {

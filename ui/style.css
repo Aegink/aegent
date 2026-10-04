@@ -749,6 +749,11 @@ code,
   display: none;
 }
 
+/* T-P3-164 需求 1：空态整块垂直居中（窄面板不再头上一大截空白） */
+#pane-root {
+  justify-content: center;
+}
+
 .pane-tabbar {
   display: flex;
   align-items: stretch;
@@ -2278,12 +2283,13 @@ details.hint-more > summary::marker {
    border + bg-surface + px-4 py-3 + max-w-xl——中性深浅，无彩色侧条） */
 .bubble.user {
   position: relative;
-  padding: 10px 14px;
+  padding: 12px 16px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg) var(--radius-sm) var(--radius-lg) var(--radius-lg);
+  border-radius: var(--radius-card) var(--radius-sm) var(--radius-card) var(--radius-card);
   background: var(--surface);
   max-width: min(88%, 640px);
   margin-left: auto;
+  line-height: 1.6;
 }
 
 /* 助手消息 = 裸文本（zcode assistant 无气泡无侧条——内容即层级） */
@@ -5906,7 +5912,7 @@ details.thinking-card.running .thinking-label {
 }
 
 #stream > .bubble.user {
-  margin: 16px 0 6px;
+  margin: 16px 0 6px auto; /* T-P3-164 需求 5：简写曾覆盖 margin-left:auto → 气泡靠左 */
 }
 
 /* ===== T-P3-160 对话流深化（目录/用户操作/决策卡/元卡/两级模型/进度 todo） ===== */
@@ -6028,20 +6034,21 @@ details.thinking-card.running .thinking-label {
 }
 
 .user-actions button {
-  height: 22px;
-  padding: 0 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-card);
-  color: var(--text-subtle);
-  font-size: var(--text-ui-xs);
-  font-family: inherit;
-  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-subtlest);
 }
 
 .user-actions button:hover {
   color: var(--text);
-  border-color: var(--border-hover);
+  background: var(--surface-hover);
 }
 
 /* 需求 3：元事实可展开卡（压缩/卸载/错误结束——原纯文本行升级） */
@@ -6246,13 +6253,13 @@ details.thinking-card.running .thinking-label {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   padding: 0;
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius-md);
-  background: var(--bg-card);
-  color: var(--text-subtle);
+  background: transparent;
+  color: var(--text-subtlest);
 }
 
 /* 需求 1：气泡/卡片随内容自适应（zcode fit-content——用户气泡不再横向铺满） */
@@ -6360,7 +6367,6 @@ details.thinking-card.running .thinking-label {
   font-weight: 600;
   color: var(--text);
   text-align: center;
-  margin-top: 22vh;
 }
 
 .pane-empty-subtitle {
@@ -6409,4 +6415,66 @@ details.thinking-card.running .thinking-label {
 .pane-empty-card-desc {
   font-size: var(--text-ui-xs);
   color: var(--text-subtlest);
+}
+
+/* ===== T-P3-164 需求 6：输入区右侧按钮 zcode 化 =====
+   低频动作（导出/语音/润色）= ghost 图标钮（无边框 28px hover 显底）；
+   发送 = 圆形主钮（32px 圆 ArrowUp——pi-desktop 形态）。 */
+.composer-actions-right > button,
+.composer-actions-right > span > button,
+.composer-actions-right #chat-export-btn,
+.composer-actions-right #mic-btn,
+.composer-actions-right #polish-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-subtle);
+}
+
+.composer-actions-right > button:hover,
+.composer-actions-right #chat-export-btn:hover,
+.composer-actions-right #mic-btn:hover,
+.composer-actions-right #polish-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+#send-btn {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0;
+  border-radius: var(--radius-full); /* 圆形主钮 */
+}
+
+#send-btn.send-stop {
+  background: var(--bg-card);
+  border: 1px solid var(--border-hover);
+  color: var(--text);
+}
+
+#send-btn.send-stop:hover {
+  background: var(--surface-hover);
+}
+
+/* ===== T-P3-164 任务列表面板（zcode 任务列表同构） ===== */
+.tasks-panel-tool {
+  font-size: var(--text-ui-sm);
+  color: var(--text-subtle);
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--border);
+  margin-bottom: 8px;
+}
+
+.tasks-panel-empty {
+  font-size: var(--text-ui-sm);
+  color: var(--text-subtlest);
+  text-align: center;
+  padding: 24px 12px;
 }

@@ -147,11 +147,23 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(HostProcess(Mutex::new(child.ok())))
-        // T-P3-162 需求 3：关窗 = 彻底关闭（窗口销毁即杀 host 树——
-        // 旧缓存问题的根因是孤儿内核持锁）
+        // T-P3-162 需求 3 + T-P3-163 反馈 7：关窗 = 彻底关闭。CloseRequested
+        // 阶段先杀树（防 webview 销毁阻塞导致用户感知「关不掉」）；
+        // Destroyed 与 RunEvent::Exit 兜底幂等重杀。
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
-                kill_host_tree(&window.app_handle().state::<HostProcess>());
+            let is_main = window.label() == "main";
+            match event {
+                tauri::WindowEvent::CloseRequested { .. } => {
+                    if is_main {
+                        kill_host_tree(&window.app_handle().state::<HostProcess>());
+                    }
+                }
+                tauri::WindowEvent::Destroyed => {
+                    if is_main {
+                        kill_host_tree(&window.app_handle().state::<HostProcess>());
+                    }
+                }
+                _ => {}
             }
         })
         // U7/T-P3-114：updater 单插件入册（九插件群不取的解禁例外——签名

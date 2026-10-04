@@ -81,6 +81,7 @@ import "./pane-git.js";
 import "./pane-review.js";
 import "./pane-assistant.js";
 import "./pane-tree.js";
+import "./pane-tasks.js"; // T-P3-164：任务列表面板（zcode 任务列表同构）
 import { openBrowserPane } from "./pane-browser.js";
 
 installGlobalErrorReporters(); // T-P3-154 A3：全局错误捕获（模块加载即挂——视图崩溃也捕）
@@ -1815,16 +1816,14 @@ function updateSendBtnState() {
     sendBtn.dataset.mode = "stop";
     sendBtn.disabled = false;
     sendBtn.classList.add("send-stop");
-    sendBtn.replaceChildren(
-      icon("square", { cls: "icon-sm icon-fill" }),
-      document.createTextNode(" 停止"),
-    );
+    sendBtn.replaceChildren(icon("square", { cls: "icon-md icon-fill" }));
     sendBtn.title = "停止当前执行";
     return;
   }
   sendBtn.dataset.mode = "send";
   sendBtn.classList.remove("send-stop");
-  sendBtn.replaceChildren(document.createTextNode("发送"));
+  sendBtn.setAttribute("aria-label", "发送");
+  sendBtn.replaceChildren(icon("send", { cls: "icon-md" })); // 圆形主钮=上箭头（pi 形态）
   sendBtn.title = busy
     ? "执行中——发送将排队，本轮结束后自动继续"
     : "发送";

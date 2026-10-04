@@ -179,6 +179,7 @@ function paint() {
       { type: "assistant", label: "辅助对话", icon: "messageCircle", desc: "侧聊不打断主任务" },
       { type: "git", label: "Git 管理", icon: "gitBranch", desc: "状态 / 差异 / 提交" },
       { type: "tree", label: "会话树", icon: "gitFork", desc: "血统与分支" },
+      { type: "tasks", label: "任务列表", icon: "listChecks", desc: "本轮待办与进度" },
     ];
     const title = document.createElement("div");
     title.className = "pane-empty-title";
@@ -259,6 +260,7 @@ function addMenuButton() {
     { type: "assistant", label: "辅助对话", icon: "messageCircle" },
     { type: "git", label: "Git 管理", icon: "gitBranch" },
     { type: "tree", label: "会话树", icon: "gitFork" },
+    { type: "tasks", label: "任务列表", icon: "listChecks" },
   ];
   const btn = document.createElement("button");
   btn.type = "button";
