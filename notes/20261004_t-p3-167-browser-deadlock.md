@@ -25,4 +25,10 @@
 - **CDP 实测**：子窗 1263,194=理论精确对齐；主窗移动+158,+150 后子窗 1420,344=理论 1421,344（±1 取整）——跟随通过。
 - **z 序修复（用户实测"移动主窗子窗被覆盖"）**：子窗设 owner（属主窗口）语义——tauri 2.12 WebviewWindowBuilder.owner_raw(HWND)；MSDN：owned 窗恒浮于属主之上/随属主最小化/属主销毁即销毁。CDP 复测：主窗 133,74→307,180、子窗 1263,194→1437,300 同步零偏差且不再被覆盖。
 - 便携 exe 已重编含全部修复。
+## 追记二（同日）：T-P3-169 浏览器承载终版（91a4275，已推；便携 6ceedda0）
+- **跨窗方案整体弃用**：方案 B（独立子窗+SetWindowPos 跟随）在 Windows 拖拽边框的模态消息循环里高频跨窗 SetWindowPos → 消息重入 → 卡死+renderer 崩溃（用户实测拖边框卡死、CDP 诊断页面 DOM 全空——后证实部分为 CDP target 选错到 bing 页的假象，但重入风险真实）。
+- **终版 = 主窗内嵌 child webview（方案 A 正确打开方式）**：add_child 的死锁解 = **async command（线程池）+ run_on_main 排队到活着的事件循环**（泵在跑 → WebView2 controller 异步创建可完成——不再"等自己"）。内嵌后跟随/覆盖/z 序天然成立（webview 是主窗一部分，bounds 相对视口 set_bounds）。
+- **CDP 全链实测**（9223 调试口驱动真壳）：add_child 成功 → 导航 Example Domain 真实加载 → 30 次高频 resize（985ms）不卡页面存活 → 关 tab browser_destroy 真销毁（onClose 钩子——区别于切走 hide 保活，修 webview 泄漏）。
+- **CDP 壳内实测方法论**：WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9223 + target 选择器须用 tauri.localhost 前缀（bing 页 url 也 endsWith('/') 会误选）。
+- 多实例：registry 按 label 天然支持多浏览器 tab 并存（子代理/子会话面板各自实例）；agent 自动驱动浏览器（AI 操作网页）为内核工具面记档。
 
