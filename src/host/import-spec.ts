@@ -116,7 +116,10 @@ export interface ImportedSessionSummary {
   projectPath: string | null;
   createdAt: string | null;
   updatedAt: string;
-  messageCount: number;
+  /** 消息数；超大文件（>1MB 采样）诚实降级为 null——pideck 同款"未计数"。 */
+  messageCount: number | null;
+  /** 超大文件标记（UI 显示"超大文件未计数"）。 */
+  truncated?: boolean;
   /** jsonl/json-tree 驱动的源文件（convert 复读 + isInside 边界复验）。 */
   filePath?: string;
   /** sqlite 驱动的库路径（convert 复读 + resolveDbPath 复验）。 */

@@ -1560,7 +1560,7 @@ async function runImportScan(bodyBox) {
         check.checked = true;
         const copy = document.createElement("span");
         copy.className = "proj-import-copy";
-        copy.innerHTML = `${escapeHtml(session.title)} <span class="proj-card-meta">${session.source} · ${new Date(session.updatedAt).toLocaleString("zh-CN")} · ${String(session.messageCount)} 条</span>`;
+        copy.innerHTML = `${escapeHtml(session.title)} <span class="proj-card-meta">${session.source} · ${new Date(session.updatedAt).toLocaleString("zh-CN")} · ${session.messageCount === null ? "超大文件未计数" : `${String(session.messageCount)} 条`}</span>`;
         const previewLink = document.createElement("button");
         previewLink.type = "button";
         previewLink.className = "btn btn-ghost";

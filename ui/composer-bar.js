@@ -167,14 +167,57 @@ export function notifyPromptReturned() {
   paintQueueBar();
 }
 
-/** 发送时 agent 忙 → 本条进了内核队列（投影摘要）。由 app.js submitPrompt 调。 */
-export function notifyQueued(content) {
-  queued.push(String(content));
+/** 发送时 agent 忙 → 本条进了内核队列（投影摘要 + messageId——批次 7 行内
+ *  编辑/删除的定位键；旧调用不带 messageId = 只投影不可操作）。由 app.js
+ *  submitPrompt 调。 */
+export function notifyQueued(content, messageId) {
+  queued.push({ text: String(content), ...(messageId !== undefined ? { messageId } : {}) });
   paintQueueBar();
 }
 
+/** 行内操作回调（app.js 注入——sendRequest 面在主模块）。 */
+export function setQueueRowAction(fn) {
+  queueRowAction = fn;
+}
+
+let queueRowAction = null;
+
 export function isAgentBusy() {
   return queueBar !== null && queueBar.dataset.busy === "1";
+}
+
+/** 行内编辑（批次 7）：行内容换 textarea，保存 = queue/edit + 投影同步。 */
+function beginQueueRowEdit(row, entry, repaint) {
+  row.replaceChildren();
+  const ta = document.createElement("textarea");
+  ta.className = "input queue-row-edit";
+  ta.rows = Math.min(5, Math.max(2, entry.text.split("\n").length));
+  ta.value = entry.text;
+  const actions = document.createElement("div");
+  actions.className = "queue-actions";
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "queue-btn";
+  cancel.textContent = "取消";
+  cancel.addEventListener("click", repaint);
+  const save = document.createElement("button");
+  save.type = "button";
+  save.className = "queue-btn queue-btn-primary";
+  save.textContent = "保存";
+  save.addEventListener("click", () => {
+    const next = ta.value.trim();
+    if (next === "" || next === entry.text) {
+      repaint();
+      return;
+    }
+    queueRowAction({ type: "queue/edit", messageId: entry.messageId, content: next, apply: (ok) => {
+      if (ok) entry.text = next;
+      repaint();
+    } });
+  });
+  actions.append(cancel, save);
+  row.append(ta, actions);
+  ta.focus();
 }
 
 function oneLineOf(text) {
@@ -215,11 +258,31 @@ function paintQueueBar() {
 
   const list = document.createElement("div");
   list.className = "queue-rows";
-  for (const text of queued) {
+  for (const entry of queued) {
+    const text = typeof entry === "string" ? entry : entry.text;
     const row = document.createElement("div");
-    row.className = "queue-row";
+    row.className = "queue-row queue-row-editable";
     row.title = text;
-    row.textContent = oneLineOf(text);
+    const line = document.createElement("span");
+    line.className = "queue-row-text";
+    line.textContent = oneLineOf(text);
+    row.appendChild(line);
+    // T-P3-174 批次 7：行内编辑/删除（messageId 在场才可操作——旧投影兼容）
+    if (typeof entry === "object" && entry.messageId !== undefined && queueRowAction !== null) {
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "queue-btn";
+      editBtn.title = "编辑这条排队消息";
+      editBtn.textContent = "编辑";
+      editBtn.addEventListener("click", () => beginQueueRowEdit(row, entry, paintQueueBar));
+      const delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "queue-btn queue-btn-danger";
+      delBtn.title = "从队列移除这条消息";
+      delBtn.textContent = "删除";
+      delBtn.addEventListener("click", () => queueRowAction({ type: "queue/remove", messageId: entry.messageId }));
+      row.append(editBtn, delBtn);
+    }
     list.appendChild(row);
   }
   queueBar.appendChild(list);

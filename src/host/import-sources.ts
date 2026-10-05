@@ -170,6 +170,10 @@ const ZCODE: ImportSpec = {
   session: {
     table: "session", idCol: "id", titleCol: "title",
     pathCol: "directory", createdCol: "time_created", updatedCol: "time_updated",
+    // T-P3-174 批次 7：子代理会话过滤（task_type="subagent_child"——本机
+    // 278 会话中 175 个是子代理派生，导入页只收用户交互会话 interactive/
+    // selection_side_chat；exclude 的 WHERE 等值排除面既有）
+    exclude: [{ col: "task_type", equals: "subagent_child" }],
   },
   message: {
     table: "message", idCol: "id", sessionIdCol: "session_id",

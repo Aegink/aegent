@@ -32,7 +32,7 @@ import type { AgentChannel } from "./protocol.js";
 import type { DeliveryKind } from "./lease.js";
 import { NotificationHub } from "./notify.js";
 /** 写命令闭集（租约校验适用面——只读查询如 policy/check 不在此列）。 */
-const WRITE_COMMANDS = new Set(["prompt", "steer", "cancel", "approve", "question/answer", "polish", "revert", "thinking/set"]);
+const WRITE_COMMANDS = new Set(["prompt", "steer", "cancel", "approve", "question/answer", "polish", "revert", "thinking/set", "queue/remove", "queue/edit"]);
 
 
 export interface HostBridgeOptions {

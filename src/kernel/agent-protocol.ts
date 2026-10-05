@@ -66,12 +66,31 @@ export type AgentRequest =
       sessionRefs?: SessionRef[];
     }
   | { type: "cancel"; cause: CancelCause }
-  | { type: "revert"; targetSeq: number }
+  | {
+      type: "revert";
+      targetSeq: number;
+      /** T-P3-174 批次 7：是否同时回退代码改动（E11 checkpoint——缺省 true
+       * 保既有双回退；UI"同时回退文件改动"取消勾选时传 false）。 */
+      restoreCode?: boolean;
+    }
   | {
       /** T-P3-161：按 promptId 定位回溯（回溯到该 user/message 之前）——
        *  UI 端 seq 有 live/镜像双轨漂移，promptId 是漂移免疫的关联键。 */
       type: "revert";
       promptId: string;
+      /** 同 targetSeq 形态——代码回退开关（批次 7 UI 勾选面）。 */
+      restoreCode?: boolean;
+    }
+  | {
+      /** T-P3-174 批次 7：排队条行内删除（messageId = enqueue 收执键）。 */
+      type: "queue/remove";
+      messageId: string;
+    }
+  | {
+      /** T-P3-174 批次 7：排队条行内编辑（content 改写排队内容）。 */
+      type: "queue/edit";
+      messageId: string;
+      content: string;
     }
   | {
       /** T-P3-161：会话思考档覆盖（档位或 "omit" 哨兵=显式不传思考参数）。
@@ -256,6 +275,8 @@ export type AgentMessage =
     }
   | { type: "reverted"; targetSeq: number; codeRestored: boolean }
   | { type: "thinking_set"; level: string }
+  | { type: "queued_removed"; messageId: string }
+  | { type: "queued_edited"; messageId: string }
   | {
       /** A8/T-P1-52：取消后未消费输入退回（"退回输入框"）——轮以 aborted
        * 终止且队列非空时，队列中尚未进入模型历史的 prompt 全量退给父进程
@@ -327,6 +348,8 @@ const REQUEST_TYPES = new Set([
   "approve",
   "model/switch",
   "thinking/set", // T-P3-161 分支既在（decode 编排尾部）——白名单漏项由批次 4 thinking/set 落流测试实抓（直发行被 PROTOCOL_UNKNOWN_REQUEST 拒）
+  "queue/remove", // T-P3-174 批次 7：排队条行内删除
+  "queue/edit", // T-P3-174 批次 7：排队条行内编辑
   "question/answer",
   "session/fork",
   "session/resume",
@@ -369,6 +392,7 @@ export function decodeRequest(line: string): AgentRequest {
     content?: unknown;
     cause?: unknown;
     targetSeq?: unknown;
+    restoreCode?: unknown;
     requestId?: unknown;
     action?: unknown;
     reason?: unknown;
@@ -487,20 +511,33 @@ export function decodeRequest(line: string): AgentRequest {
       }
       return { type: "thinking/set", level: raw.level };
     }
+  if (req.type === "queue/remove" || req.type === "queue/edit") {
+    // T-P3-174 批次 7：排队条行内操作（messageId 必填；edit 另需非空 content）
+    if (typeof req.messageId !== "string" || req.messageId === "") {
+      throw new ProtocolError("PROTOCOL_MALFORMED", `${req.type} 需要 messageId 字符串`);
+    }
+    if (req.type === "queue/edit") {
+      if (typeof req.content !== "string" || req.content.trim() === "") {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "queue/edit 需要 content 非空字符串");
+      }
+      return { type: "queue/edit", messageId: req.messageId, content: req.content };
+    }
+    return { type: "queue/remove", messageId: req.messageId };
+  }
   if (req.type === "revert" && req.targetSeq === undefined) {
     // T-P3-161：promptId 定位形态（形状校验；语义在 process 侧查流定位；
     // req 是宽形状 Record——字段级收窄后消费）
-    const raw = req as { promptId?: unknown };
+    const raw = req as { promptId?: unknown; restoreCode?: unknown };
     if (typeof raw.promptId !== "string" || raw.promptId === "") {
       throw new ProtocolError("PROTOCOL_MALFORMED", "revert 需要 promptId 字符串");
     }
-    return { type: "revert", promptId: raw.promptId };
+    return { type: "revert", promptId: raw.promptId, ...(raw.restoreCode === false ? { restoreCode: false } : {}) };
   }
 if (req.type === "revert") {
     if (typeof req.targetSeq !== "number" || !Number.isInteger(req.targetSeq) || req.targetSeq < 0) {
       throw new ProtocolError("PROTOCOL_MALFORMED", "revert 需要非负整数 targetSeq");
     }
-    return { type: "revert", targetSeq: req.targetSeq };
+    return { type: "revert", targetSeq: req.targetSeq, ...(req.restoreCode === false ? { restoreCode: false } : {}) };
   }
   if (req.type === "approve") {
     if (typeof req.requestId !== "string" || req.requestId === "") {
@@ -1016,6 +1053,16 @@ export function decodeMessage(line: string): AgentMessage {
         ...(typeof msg.ms === "number" ? { ms: msg.ms } : {}),
       };
     }
+    case "queued_removed":
+      if (typeof msg.messageId !== "string" || msg.messageId === "") {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "queued_removed 需要 messageId 字符串");
+      }
+      return { type: "queued_removed", messageId: msg.messageId };
+    case "queued_edited":
+      if (typeof msg.messageId !== "string" || msg.messageId === "") {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "queued_edited 需要 messageId 字符串");
+      }
+      return { type: "queued_edited", messageId: msg.messageId };
     case "thinking_set":
       // T-P3-161 回执的 decode 面（批次 4 落流测试实抓：decode 白名单与
       // REQUEST_TYPES 同型漏项——spawn 路径消费端也走 decodeMessage）。

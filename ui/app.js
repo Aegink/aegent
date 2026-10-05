@@ -69,6 +69,7 @@ import {
   notifyIdle as notifyComposerIdle,
   notifyPromptReturned,
   notifyQueued,
+  setQueueRowAction,
   notifyPermissionChanged,
   refreshContextUsage,
   stopCurrentTurn,
@@ -643,7 +644,7 @@ function startUserEdit(bubble, original, promptId) {
       toast("内容没有变化——直接发新消息即可", "info");
       return;
     }
-    void rewindAndResend(promptId, next, bubble, original);
+    void rewindAndResend(promptId, next, bubble, original, codeCb.checked);
   });
   ta.addEventListener("keydown", (ev) => {
     if (ev.key === "Enter" && !ev.shiftKey) {
@@ -652,8 +653,16 @@ function startUserEdit(bubble, original, promptId) {
     }
     if (ev.key === "Escape") cancel.click();
   });
+  // T-P3-174 批次 7：同时回退文件改动（E11 checkpoint——默认勾选保既有
+  // 双回退语义；取消勾 = revert 带 restoreCode:false 只截断对话）
+  const codeBox = document.createElement("label");
+  codeBox.className = "check-line user-edit-code";
+  const codeCb = document.createElement("input");
+  codeCb.type = "checkbox";
+  codeCb.checked = true;
+  codeBox.append(codeCb, document.createTextNode("同时回退文件改动"));
   row.append(cancel, send);
-  box.append(ta, row);
+  box.append(ta, row, codeBox);
   body.replaceChildren(box);
   bubble.classList.add("editing");
   ta.focus();
@@ -663,10 +672,10 @@ function startUserEdit(bubble, original, promptId) {
 /** 回溯重发：revert 到该 user/message 之前（promptId 定位——UI 端 seq 有
  *  live/镜像双轨漂移，promptId 是 child 流权威关联键）→ reverted 回执 →
  *  以编辑后文本走正常 prompt 链（租约/排队/投影全复用）。 */
-async function rewindAndResend(promptId, newText, bubble, original) {
+async function rewindAndResend(promptId, newText, bubble, original, restoreCode = true) {
   const body = bubble.querySelector(".bubble-body");
   try {
-    const envelope = await sendRequest(sessionId(), { type: "revert", promptId });
+    const envelope = await sendRequest(sessionId(), { type: "revert", promptId, ...(restoreCode ? {} : { restoreCode: false }) });
     if (!envelope.ok && envelope.error !== undefined) {
       toast(`回溯失败：${envelope.error.message ?? envelope.error.code ?? ""}`, "warn");
       return;
@@ -2157,7 +2166,8 @@ async function submitPrompt(explicitContent) {
     content,
     ...(attachments.length > 0 ? { attachments } : {}),
   }).then((envelope) => {
-    if (wasBusy && envelope.ok) notifyQueued(content);
+    // 批次 7：messageId 透传（enqueue 收执键——排队条行内编辑/删除定位）
+    if (wasBusy && envelope.ok) notifyQueued(content, envelope.result?.messageId);
     // T-P3-174 批次 2：请求被拒 → composer 上方错误横幅（不再只是一行流内
     // 文字——重试 = 原文重发）
     if (!envelope.ok && envelope.error !== undefined) {
@@ -3409,6 +3419,17 @@ try {
 })();
 
 // T-P3-156：侧栏「新建任务」流程（项目选择/添加 → 设为活动工作区）
+
+// 批次 7：排队条行内操作回调（sendRequest 面——queue/remove|edit + 投影回执同步）
+setQueueRowAction(async (op) => {
+  const envelope = await sendRequest(sessionId(), { type: op.type, messageId: op.messageId, ...(op.content !== undefined ? { content: op.content } : {}) });
+  if (!envelope.ok) {
+    toast(`排队操作失败：${envelope.error?.message ?? ""}`, "warn");
+    op.apply?.(false);
+    return;
+  }
+  op.apply?.(true);
+});
 
 // T-P3-156 K/L：输入 Tab 栏 + 排队条（权限/上下文%/模型/附件；addAttachment
 // 复用既有粘贴附件链——限额/预览/revoke 全一致）。try/catch 可见化：启动期

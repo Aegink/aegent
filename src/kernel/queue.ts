@@ -120,6 +120,25 @@ export class PromptQueue {
     return this.items.splice(0);
   }
 
+  /**
+   * T-P3-174 批次 7：行内移除（排队条行删除——messageId 定位；不存在返回
+   * false，调用方回类型化 error）。
+   */
+  remove(messageId: string): boolean {
+    const idx = this.items.findIndex((i) => i.messageId === messageId);
+    if (idx < 0) return false;
+    this.items.splice(idx, 1);
+    return true;
+  }
+
+  /** T-P3-174 批次 7：行内编辑（排队条行内容改写——messageId 不存在 false）。 */
+  edit(messageId: string, content: string): boolean {
+    const item = this.items.find((i) => i.messageId === messageId);
+    if (item === undefined || content.trim() === "") return false;
+    item.content = content;
+    return true;
+  }
+
   /** 仍在队列里的消息数（可观测；one-at-a-time 下常 > 0 直到轮结束）。 */
   get size(): number {
     return this.items.length;

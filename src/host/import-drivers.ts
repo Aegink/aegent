@@ -124,7 +124,10 @@ export function scanJsonl(spec: JsonlSpec, home: string = homedir()): ImportedSe
       projectPath,
       createdAt: messages[0]?.createdAt ?? mtimeIso,
       updatedAt: messages[messages.length - 1]?.createdAt ?? mtimeIso ?? "",
-      messageCount: messages.length,
+      // T-P3-174 批次 7：>1MB 文件采样计数不诚实（maxLines 截断）——
+      // messageCount=null 诚实降级（pideck 同款），UI 显示"超大文件未计数"
+      messageCount: size > 1024 * 1024 ? null : messages.length,
+      ...(size > 1024 * 1024 ? { truncated: true } : {}),
       filePath: file,
     });
   }

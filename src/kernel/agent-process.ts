@@ -1208,6 +1208,21 @@ export async function runAgentChildStdio(
       case "cancel":
         loop.cancel(req.cause as CancelCause);
         return;
+      case "queue/remove":
+      case "queue/edit": {
+        // T-P3-174 批次 7：排队条行内操作（messageId 定位——回执按操作分型）
+        const qReq = req as { type: string; messageId?: string; content?: string };
+        const isEdit = qReq.type === "queue/edit";
+        const qOk = isEdit
+          ? queue.edit(qReq.messageId ?? "", qReq.content ?? "")
+          : queue.remove(qReq.messageId ?? "");
+        if (!qOk) {
+          send({ type: "error", code: "QUEUE_NOT_FOUND", message: `排队消息不存在：${qReq.messageId ?? ""}` });
+          return;
+        }
+        send({ type: isEdit ? "queued_edited" : "queued_removed", messageId: qReq.messageId ?? "" });
+        return;
+      }
       case "thinking/set": {
         // T-P3-161：会话思考档覆盖（档位闭集 + "omit" 哨兵；受理即生效点
         // 在新 turn——与 model/switch 同款捕获语义）。回执经 notification。

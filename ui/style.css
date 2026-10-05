@@ -5143,6 +5143,28 @@ button.transfer-row:hover {
   color: var(--primary-foreground);
 }
 
+.queue-btn-danger {
+  color: var(--danger, #e5484d);
+}
+.queue-btn-danger:hover {
+  background: color-mix(in srgb, var(--danger, #e5484d) 12%, transparent);
+}
+.queue-row-edit {
+  flex: 1;
+  min-height: 48px;
+  resize: vertical;
+  font-size: 12px;
+}
+.queue-row-editable {
+  gap: 6px;
+}
+.queue-row-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .queue-btn-primary:hover {
   background: color-mix(in srgb, var(--primary) 80%, transparent);
   color: var(--primary-foreground);

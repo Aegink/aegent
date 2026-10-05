@@ -57,7 +57,8 @@ export function scanJsonTree(spec: JsonTreeSpec, home: string = homedir()): Impo
       projectPath: typeof projectRaw === "string" && projectRaw !== "" ? projectRaw : null,
       createdAt: toIso(safeMtime(file)),
       updatedAt,
-      messageCount: messagesRaw.length,
+      messageCount: (statSync(file).size > 1024 * 1024 ? null : messagesRaw.length),
+      ...(statSync(file).size > 1024 * 1024 ? { truncated: true } : {}),
       filePath: file,
     });
   }

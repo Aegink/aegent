@@ -97,7 +97,9 @@ export function scanSqlite(spec: SqliteSpec, home: string = homedir()): Imported
     const sMap = tableMap(spec.session, "session");
     if (!tableExists(db, sMap.table)) return [];
     const exclude = sMap.exclude;
-    const whereSql = exclude.map((e, i) => `s.[${ident(e.col)}] = @ex${String(i)}`).join(" AND ");
+    // exclude = 等值排除（命名即语义——T-P3-174 批次 7 修正：原实现写反成
+    // include 等值匹配且无消费者从未暴露）
+    const whereSql = exclude.map((e, i) => `s.[${ident(e.col)}] != @ex${String(i)}`).join(" AND ");
     const params: Record<string, string> = {};
     exclude.forEach((e, i) => {
       params[`ex${String(i)}`] = e.equals;
@@ -125,7 +127,7 @@ export function scanSqlite(spec: SqliteSpec, home: string = homedir()): Imported
         projectPath: row.directory ?? null,
         createdAt: toIso(row.created),
         updatedAt: toIso(row.updated) ?? toIso(safeMtime(dbPath)) ?? "",
-        messageCount: Number(row.message_count ?? 0),
+        messageCount: Number(row.message_count ?? 0), // sqlite COUNT 准确——不降级
         dbPath,
       });
     }
