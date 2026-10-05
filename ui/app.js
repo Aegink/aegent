@@ -55,6 +55,8 @@ import {
   hooks,
 } from "./state.js";
 import { lineEl, appendLine, scrollBottom, pinScrollToBottom, oneLine, toast } from "./feedback.js";
+// T-P3-174 批次 2：摘要滚动队列（zcode QueuedSummaryContent 零构建复刻）
+import { createSummaryRoll } from "./summary-roll.js";
 import { applyLocalePreference, t } from "./i18n.js";
 import { installGlobalErrorReporters } from "./log-report.js";
 // T-P3-156 布局批（方案 A/B/C/E/W）：侧栏两分段 + 切换面板宿主
@@ -854,6 +856,16 @@ function renderEvent(e, options = {}) {
       };
       const bubble = document.createElement("div");
       bubble.className = "agent-text";
+      if (options.live === true) {
+        // T-P3-174 批次 2：流式正文事实（字数推进走同 key 原位刷新——
+        // zcode streaming assistant message 语义，不重播整条摘要）
+        feedWorkingRoll({
+          key: "stream",
+          refreshVersion: content.length,
+          primaryText: "正在回复",
+          secondaryText: `${String(content.length)} 字`,
+        });
+      }
       if (options.live && settingsCache?.chat?.smoothStream !== false) {
         // T-P3-159 顺修：stream 在事件顶层（message 里从来没有）——打字机
         // 此前恒拿空数组直接跳终态，从未真正逐字。
@@ -871,6 +883,9 @@ function renderEvent(e, options = {}) {
       if (options.live === true) {
         notifyToolCall(e.name ?? "tool", oneLine(JSON.stringify(e.args ?? {}), 60));
         notifyEventLine(`调用工具 ${e.name ?? "tool"}`);
+        // T-P3-174 批次 2：步骤事实进滚动队列（当前命令/文件/URL——zcode
+        // execute 组语义）
+        feedWorkingRoll(workingRollSnapshotForCall(e));
         // T-P3-160 需求 5：todo_write 实时喂进度面板「进程」段（zcode
         // statusPanel todo 语义——进行中/待处理/已完成三态）
         if (e.name === "todo_write") {
@@ -880,6 +895,22 @@ function renderEvent(e, options = {}) {
       }
       return buildToolCard(e);
     case "tool/result":
+      // T-P3-174 批次 2：结果事实进队列（输出行数/失败原因首行——zcode
+      // 完成态摘要语义）
+      if (options.live === true) {
+        const rollContent = e.message?.content ?? "";
+        const rollErr = e.message?.isError === true;
+        const rollLines = rollContent === "" ? 0 : rollContent.split("\n").length;
+        feedWorkingRoll({
+          key: `done:${e.callId}`,
+          primaryText: "完成",
+          secondaryText: rollErr
+            ? oneLine(rollContent, 60)
+            : rollLines > 0
+              ? `${String(rollLines)} 行输出`
+              : "",
+        });
+      }
       return settleToolCard(e);
     case "compaction":
       // T-P3-160 需求 3：元事实也走可展开卡（点击看原始载荷——不再纯文本行）
@@ -1079,6 +1110,7 @@ function appendStreamNode(node, e) {
  * turn 结束卸载；审批/提问挂起时隐藏（交互等待优先）。
  */
 let workingLineTimer = null;
+let workingRoll = null; // T-P3-174 批次 2：工作行搭载的摘要滚动队列
 function showWorkingLine() {
   if (stream.querySelector("#working-line") !== null) return;
   const line = document.createElement("div");
@@ -1099,14 +1131,44 @@ function showWorkingLine() {
     time.textContent = sec > 0 ? ` · ${String(sec)}s` : "";
   }, 1000);
   line.append(dots, label, time);
+  // T-P3-174 批次 2：常驻状态行搭载摘要滚动队列（zcode 步骤事实语义——
+  // 运行中把当前命令/文件/输出行数喂进 3 格队列，滚动展示不打断计时）
+  workingRoll = createSummaryRoll();
+  line.appendChild(workingRoll.el);
   stream.appendChild(line);
   scrollBottom();
+}
+
+/** 步骤事实喂入（live 流专用——恢复视图/重放零副作用）。 */
+function feedWorkingRoll(snapshot) {
+  if (workingRoll !== null) workingRoll.push(snapshot);
+}
+
+/** 从 tool/call 事件提取步骤事实（动词 + 参数一行摘要——zcode execute 组文案）。 */
+function workingRollSnapshotForCall(e) {
+  const args = safeParseArgs(e.arguments);
+  const pres = TOOL_PRESENTATION[e.name] ?? { icon: "wrench", verb: e.name, kind: "plain" };
+  let detail = "";
+  if (args !== null && typeof args === "object") {
+    if (typeof args.command === "string") detail = `$ ${oneLine(args.command, 72)}`;
+    else if (typeof args.path === "string") detail = oneLine(args.path, 72);
+    else if (typeof args.url === "string") detail = oneLine(args.url, 72);
+    else if (typeof args.pattern === "string") detail = oneLine(args.pattern, 72);
+    else detail = oneLine(JSON.stringify(args), 60);
+  }
+  return {
+    key: `call:${e.callId ?? e.name}`,
+    primaryText: pres.verb,
+    secondaryText: detail,
+  };
 }
 function hideWorkingLine() {
   if (workingLineTimer !== null) {
     clearInterval(workingLineTimer);
     workingLineTimer = null;
   }
+  workingRoll?.clear();
+  workingRoll = null;
   document.getElementById("working-line")?.remove();
 }
 
@@ -1993,6 +2055,15 @@ async function submitPrompt(explicitContent) {
     ...(attachments.length > 0 ? { attachments } : {}),
   }).then((envelope) => {
     if (wasBusy && envelope.ok) notifyQueued(content);
+    // T-P3-174 批次 2：请求被拒 → composer 上方错误横幅（不再只是一行流内
+    // 文字——重试 = 原文重发）
+    if (!envelope.ok && envelope.error !== undefined) {
+      showComposerError({
+        code: envelope.error.code ?? "PROMPT_REJECTED",
+        message: envelope.error.message ?? "请求被拒绝",
+        retry: () => void submitPrompt(content),
+      });
+    }
   });
 }
 
@@ -2635,7 +2706,12 @@ for (const btn of document.querySelectorAll("#chat-empty [data-empty-action]")) 
 function consumeN5(payload) {
   notifications.push(payload);
   if (notifications.length > 50) notifications.shift(); // 面板容量防呆
-  toast(n5ToastText(payload), payload.kind);
+  // T-P3-174 批次 2（toast 分区锚定）：审批挂起/端面变化/屏幕操作 = 系统
+  // 类顶中；轮次/后台任务结算 = 操作结果类底右（zcode 分区调用点约定）
+  const zone = payload.kind === "approval_pending" || payload.kind === "surface_changed" || payload.kind === "computer_operation"
+    ? "top"
+    : "bottom";
+  toast(n5ToastText(payload), payload.kind, undefined, { zone });
   emitNotify(); // 通知视图挂载期重渲染清单
   updateNotifyBadge(); // 侧栏徽标常显
   // U15：turn 结算 → 工作面板自动刷新（订阅制——面板挂载期生效）
@@ -2699,6 +2775,90 @@ document.getElementById("recovery-retry").addEventListener("click", () => {
 });
 document.getElementById("recovery-dismiss").addEventListener("click", () => {
   document.getElementById("recovery-banner").hidden = true;
+});
+
+// —— T-P3-174 批次 2：连接/请求级错误聚合横幅（composer 上方常驻错误槽，
+// zcode ChatErrorBanner 同构）：中性 surface（不染红）、单槽后错替前错、
+// 关闭按错误指纹记忆（同一条错误不顶回，新错误照常显示——zcode
+// dismissedErrorKeys 语义，保留最近 20 条指纹）。
+const errorBannerDismissed = []; // 错误指纹（cap 20）
+let errorBannerCurrent = null;   // { fingerprint, code, message, detail, retry }
+
+function showComposerError(err) {
+  const code = String(err?.code ?? "ERROR");
+  const message = String(err?.message ?? "发生未知错误");
+  const detail = typeof err?.detail === "string" && err.detail !== "" ? err.detail : undefined;
+  const retry = typeof err?.retry === "function" ? err.retry : undefined;
+  const fingerprint = `${code}|${message}`;
+  if (errorBannerDismissed.includes(fingerprint)) return; // 用户已关同一条
+  errorBannerCurrent = { fingerprint, code, message, detail, retry };
+  const banner = document.getElementById("error-banner");
+  if (banner === null) return;
+  banner.dataset.errorCode = code;
+  document.getElementById("error-banner-text").textContent = oneLine(message, 160);
+  document.getElementById("error-banner-text").title = message;
+  document.getElementById("error-banner-details").hidden = detail === undefined;
+  document.getElementById("error-banner-copy").hidden = false;
+  document.getElementById("error-banner-retry").hidden = retry === undefined;
+  banner.hidden = false;
+}
+
+function hideComposerError() {
+  errorBannerCurrent = null;
+  const banner = document.getElementById("error-banner");
+  if (banner !== null) banner.hidden = true;
+}
+
+document.getElementById("error-banner-dismiss").addEventListener("click", () => {
+  if (errorBannerCurrent !== null) {
+    errorBannerDismissed.push(errorBannerCurrent.fingerprint);
+    if (errorBannerDismissed.length > 20) errorBannerDismissed.shift();
+  }
+  hideComposerError();
+});
+document.getElementById("error-banner-retry").addEventListener("click", () => {
+  const retry = errorBannerCurrent?.retry;
+  hideComposerError();
+  if (typeof retry === "function") retry();
+});
+document.getElementById("error-banner-copy").addEventListener("click", async () => {
+  if (errorBannerCurrent === null) return;
+  const c = errorBannerCurrent;
+  const parts = ["错误报告", "", `摘要：${c.message}`, `代码：${c.code}`];
+  if (c.detail !== undefined) parts.push("", "详情：", c.detail);
+  try {
+    await navigator.clipboard.writeText(parts.join("\n"));
+    toast("错误详情已复制", "info", undefined, { zone: "bottom" });
+  } catch {
+    toast("复制失败——浏览器未授权剪贴板", "warn", undefined, { zone: "bottom" });
+  }
+});
+document.getElementById("error-banner-details").addEventListener("click", () => {
+  if (errorBannerCurrent?.detail === undefined) return;
+  const existing = document.getElementById("error-banner-details-dialog");
+  if (existing !== null) {
+    existing.remove();
+    return;
+  }
+  const dlg = document.createElement("div");
+  dlg.id = "error-banner-details-dialog";
+  dlg.className = "ob-overlay"; // 复用首释引导的遮罩层形态
+  const card = document.createElement("div");
+  card.className = "ob-card";
+  const h = document.createElement("h2");
+  h.textContent = "错误详情";
+  const pre = document.createElement("pre");
+  pre.textContent = errorBannerCurrent.detail;
+  const close = document.createElement("button");
+  close.type = "button";
+  close.textContent = "关闭";
+  close.addEventListener("click", () => dlg.remove());
+  card.append(h, pre, close);
+  dlg.appendChild(card);
+  dlg.addEventListener("click", (ev) => {
+    if (ev.target === dlg) dlg.remove();
+  });
+  document.body.appendChild(dlg);
 });
 
 // —— 更新横幅 + 发布说明弹窗（U7 消费端：宿主面更新器经
@@ -2972,7 +3132,11 @@ function handleEnvelope(envelope) {
           appendLine(`恢复视图失败：${envelope.error?.code ?? ""} ${envelope.error?.message ?? ""}`, "warn");
         }
       } else if (!envelope.ok && !envelope.requestId.startsWith("s-")) {
-        appendLine(`请求被拒：${envelope.error?.code ?? ""} ${envelope.error?.message ?? ""}`, "warn");
+        // T-P3-174 批次 2：用户消息（m-）的拒绝走 composer 上方错误横幅
+        //（不再一行流内文字重复两处）；其余请求保留流内提示。
+        if (!envelope.requestId.startsWith("m-")) {
+          appendLine(`请求被拒：${envelope.error?.code ?? ""} ${envelope.error?.message ?? ""}`, "warn");
+        }
       }
       break;
     }
@@ -3248,6 +3412,13 @@ connect({
   onEnvelope: handleEnvelope,
   onStatus: (text) => {
     statusEl.textContent = text;
+    // T-P3-174 批次 2：连接断开 → 错误横幅（顶区 toast 之外的常驻槽——
+    // 重连成功自动撤下；断连期间横幅随每次重试计数原位更新）
+    if (text.includes("重新连接中")) {
+      showComposerError({ code: "CONNECTION_LOST", message: text });
+    } else if (text === "已连接") {
+      hideComposerError();
+    }
   },
   onClose: () => setLeaseUi(false, undefined), // 断连归还租约 UI（原 close 语义）
 });

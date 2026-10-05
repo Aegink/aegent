@@ -110,6 +110,18 @@
                  同构——每条用户消息一根指示条，悬停预览、点击跳转） -->
             <nav id="turn-nav" aria-label="会话目录" hidden></nav>
             <section id="pending" aria-label="待决审批"></section>
+            <!-- T-P3-174 批次 2：连接/请求级错误聚合横幅（composer 上方常驻
+                 错误槽——zcode ChatErrorBanner 同款中性 surface，单槽后错替前错） -->
+            <div id="error-banner" hidden>
+              <span class="error-banner-icon"><span data-icon="alert" data-icon-size="14"></span></span>
+              <span id="error-banner-text" class="error-banner-text"></span>
+              <span class="error-banner-actions">
+                <button id="error-banner-details" type="button" hidden>详情</button>
+                <button id="error-banner-copy" type="button" hidden>复制</button>
+                <button id="error-banner-retry" type="button" hidden><span data-icon="retry" data-icon-size="14"></span> 重试</button>
+                <button id="error-banner-dismiss" type="button" title="关闭" aria-label="关闭错误提示"><span data-icon="close" data-icon-size="14"></span></button>
+              </span>
+            </div>
             <footer id="composer">
               <!-- U10/T-P3-109：补全下拉（@ 文件/目录、/ 命令+工具+技能） -->
               <div id="autocomplete" hidden></div>
@@ -164,6 +176,7 @@
 
     <!-- 浮层（全路由共用）：Toast / 恢复横幅 / 更新横幅 + 发布说明 / 首次引导
          ——U13/T-P3-112 五件套的横幅与弹窗面（通知中心已迁 views/notify.js） -->
+    <div id="toast-area-top" aria-live="polite"></div>
     <div id="toast-area" aria-live="polite"></div>
     <div id="recovery-banner" hidden>
       <span id="recovery-text"></span>

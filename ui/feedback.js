@@ -173,24 +173,62 @@ let lastToast = { text: "", el: null, count: 0, badge: null, timer: 0 };
 
 const TOAST_MS = 3000; // T-P3-172：zcode 3000ms（托盘挂起时 WebView timer 冻结——点按即关兜底）
 
-export function toast(text, kind, action) {
-  const area = document.getElementById("toast-area");
-  if (lastToast.text === text && document.contains(lastToast.el)) {
-    lastToast.count += 1;
-    lastToast.badge.textContent = ` ×${lastToast.count}`;
-    clearTimeout(lastToast.timer);
-    lastToast.timer = setTimeout(() => {
-      lastToast.el?.remove();
-      lastToast = { text: "", el: null, count: 0, badge: null, timer: 0 };
-    }, TOAST_MS);
-    return lastToast.el;
+/** 栈上限（T-P3-174 批次 2）：每分区最多 4 条，超限最老先走。 */
+const TOAST_STACK_LIMIT = 4;
+
+/** dedupeKey → toast 元素（跨调用 upsert 合并——长任务进度原位更新终态）。 */
+const toastByKey = new Map();
+
+/**
+ * toast 分区锚定（T-P3-174 批次 2 —— zcode toast 分区语义）：
+ *   - zone "top"    = 顶中（系统/连接类：审批挂起、断连、端面变化）；
+ *   - zone "bottom" = 底右（操作结果类：保存/复制/轮次结算——缺省）。
+ * opts：{ zone, dedupeKey, durationMs }——durationMs ≤ 0 = 常驻不自动消失
+ * （终态时用 updateToast 换文案并给正 durationMs 收敛，zcode 同款）；
+ * dedupeKey 相同 → 原位更新文案并移到栈底，不重播入场动画。
+ */
+export function toast(text, kind, action, opts) {
+  const zone = opts?.zone === "top" ? "top" : "bottom";
+  const area = document.getElementById(zone === "top" ? "toast-area-top" : "toast-area");
+  const dedupeKey = typeof opts?.dedupeKey === "string" ? opts.dedupeKey : "";
+  const durationMs = opts?.durationMs !== undefined ? opts.durationMs : TOAST_MS;
+
+  /** 退场（200ms 动画后移除）——dedupeKey/lastToast 索引同步清理。 */
+  const dismissToast = (h) => {
+    h.el.classList.add("toast-out");
+    setTimeout(() => h.el.remove(), 200);
+    if (h.dedupeKey !== "" && toastByKey.get(h.dedupeKey) === h) toastByKey.delete(h.dedupeKey);
+    if (lastToast.el === h.el) lastToast = { text: "", el: null, count: 0, badge: null, timer: 0 };
+  };
+
+  // dedupeKey upsert：同业务键 → 原位更新（文案/计数），移到栈底
+  if (dedupeKey !== "" && toastByKey.has(dedupeKey)) {
+    const existing = toastByKey.get(dedupeKey);
+    if (document.contains(existing.el)) {
+      existing.textEl.textContent = ` ${text}`;
+      existing.kind = kind;
+      area.appendChild(existing.el); // 移到栈底（zcode upsertToastItem 同款）
+      if (durationMs > 0) {
+        clearTimeout(existing.timer);
+        existing.timer = setTimeout(() => dismissToast(existing), durationMs);
+      } else {
+        clearTimeout(existing.timer);
+        existing.timer = 0;
+      }
+      return existing.el;
+    }
+    toastByKey.delete(dedupeKey);
   }
+
   const t = document.createElement("div");
   t.className = "toast";
   t.title = "点击关闭";
   const badge = document.createElement("span");
   badge.className = "line-dedup-count";
-  t.append(icon(KIND_ICONS[kind] ?? "bell", { cls: "icon-sm" }), document.createTextNode(` ${text}`), badge);
+  const textEl = document.createElement("span");
+  textEl.textContent = ` ${text}`;
+  t.append(icon(KIND_ICONS[kind] ?? "bell", { cls: "icon-sm" }), textEl, badge);
+  const handle = { text, kind, el: t, textEl, count: 1, badge, timer: 0, dedupeKey };
   // T-P3-173（A3）：动作按钮——通知从"看了就没了"变可行动
   if (action && typeof action.label === "string" && typeof action.onClick === "function") {
     const btn = document.createElement("button");
@@ -199,22 +237,30 @@ export function toast(text, kind, action) {
     btn.textContent = action.label;
     btn.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      t.remove();
+      dismissToast(handle);
       action.onClick();
     });
     t.appendChild(btn);
   }
   // T-P3-172（zcode 通知样式）：可点按关闭（托盘挂起 timer 冻结时的兜底出口）
-  t.addEventListener("click", () => {
-    t.remove();
-    if (lastToast.el === t) lastToast = { text: "", el: null, count: 0, badge: null, timer: 0 };
-  });
+  t.addEventListener("click", () => dismissToast(handle));
+  // 栈上限 4：超限最老先走（带退场动画）
+  while (area.children.length >= TOAST_STACK_LIMIT) {
+    const oldest = area.firstElementChild;
+    if (oldest === null) break;
+    oldest.classList.add("toast-out");
+    const stale = oldest;
+    setTimeout(() => stale.remove(), 200);
+    for (const [key, h] of toastByKey) {
+      if (h.el === oldest) toastByKey.delete(key);
+    }
+    break; // 每次插入最多淘汰 1 条（同文案合并窗口之外的兜底面）
+  }
   area.appendChild(t);
-  const handle = { text, el: t, count: 1, badge, timer: 0 };
-  handle.timer = setTimeout(() => {
-    t.remove();
-    if (lastToast.el === t) lastToast = { text: "", el: null, count: 0, badge: null, timer: 0 };
-  }, TOAST_MS);
+  if (dedupeKey !== "") toastByKey.set(dedupeKey, handle);
+  if (durationMs > 0) {
+    handle.timer = setTimeout(() => dismissToast(handle), durationMs);
+  }
   lastToast = handle;
   return t;
 }

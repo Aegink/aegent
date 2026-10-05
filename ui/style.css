@@ -5880,6 +5880,12 @@ button.transfer-row:hover {
   color: var(--text);
 }
 
+/* T-P3-174 批次 2（zcode 细节）：运行中且收起态的摘要用无衬线（等宽仅在
+   展开态/终态出现——运行中的命令行摘要保持行卡文字节奏，展开才 mono）。 */
+.tool-card:not([open]):has(.tool-status.running) .tool-args.mono {
+  font-family: var(--font-sans, inherit);
+}
+
 /* 错误结束行（仅失败轮保留——重试入口） */
 .meta.error-line {
   color: var(--destructive);
@@ -6806,6 +6812,13 @@ details.thinking-card.running .thinking-label {
   color: var(--text-subtle);
   font-size: var(--text-ui-sm);
   animation: stream-fade-in 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* T-P3-174 批次 2：工作行搭载的摘要滚动队列（zcode 步骤事实——
+   队列占满剩余宽度，溢出裁切由 .summary-roll-window 承担） */
+.working-line .summary-roll {
+  flex: 1;
+  min-width: 0;
 }
 
 .working-dots {
