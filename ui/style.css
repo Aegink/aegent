@@ -6938,6 +6938,23 @@ details.thinking-card.running .thinking-label {
   font-variant-numeric: tabular-nums;
 }
 
+/* 任务段小节头（T-P3-174 批次 3——「进行中（N）/ 历史」视觉分组） */
+.sb-tasks-group {
+  padding: 6px 10px 2px;
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtlest);
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
+/* 待审批小节头（批次 3——多卡并存计数） */
+.pending-header {
+  padding: 2px 2px 6px;
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtle);
+  user-select: none;
+}
+
 /* 审批卡来源归属条 */
 .card-origin {
   display: inline-flex;

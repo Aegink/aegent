@@ -1111,6 +1111,7 @@ function appendStreamNode(node, e) {
  */
 let workingLineTimer = null;
 let workingRoll = null; // T-P3-174 批次 2：工作行搭载的摘要滚动队列
+let workingLineStartedAt = 0; // T-P3-174 批次 3：本轮工作段开始时刻（折叠行耗时回填）
 function showWorkingLine() {
   if (stream.querySelector("#working-line") !== null) return;
   const line = document.createElement("div");
@@ -1122,10 +1123,11 @@ function showWorkingLine() {
   for (let i = 0; i < 3; i++) dots.appendChild(document.createElement("i"));
   const label = document.createElement("span");
   label.className = "working-label";
-  label.textContent = "正在工作";
+  label.textContent = "工作中"; // T-P3-174 批次 3：zcode 工作段用语
   const time = document.createElement("span");
   time.className = "working-time";
   const t0 = Date.now();
+  workingLineStartedAt = t0; // 轮末折叠行回填耗时用（已工作 · N 步 · Xs）
   workingLineTimer = setInterval(() => {
     const sec = Math.floor((Date.now() - t0) / 1000);
     time.textContent = sec > 0 ? ` · ${String(sec)}s` : "";
@@ -1178,6 +1180,13 @@ function hideWorkingLine() {
  * 一张可展开行（默认收起，点开=铺回原位 DOM move 保留展开态/结果）。
  * 少于 3 步不折（简短轮保持平铺）；错误卡不入折叠（失败始终可见）。
  */
+/** 工作段耗时文案（1m2s 压缩形——与侧栏 formatRunningMs 同风格）。 */
+function formatSegDuration(sec) {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return m > 0 ? `${String(m)}m${String(s)}s` : `${String(s)}s`;
+}
+
 function collapseWorkSegment() {
   const working = document.getElementById("working-line");
   const stream2 = document.getElementById("stream");
@@ -1198,7 +1207,13 @@ function collapseWorkSegment() {
   wrap.className = "work-segment";
   const summary = document.createElement("summary");
   const label = document.createElement("span");
-  label.textContent = `已工作 · ${String(segment.length)} 步`;
+  // T-P3-174 批次 3：运行中"工作中 · Xs"实时态（工作行）→ 完成收起一次
+  // 定格"已工作 · N 步 · Xs"（zcode autoCollapseOnComplete 边沿语义——
+  // 耗时随轮定格，不再变化）
+  const elapsedSec = workingLineStartedAt > 0 ? Math.max(1, Math.round((Date.now() - workingLineStartedAt) / 1000)) : 0;
+  const durText = elapsedSec > 0 ? ` · ${formatSegDuration(elapsedSec)}` : "";
+  label.textContent = `已工作 · ${String(segment.length)} 步${durText}`;
+  workingLineStartedAt = 0;
   const chev = document.createElement("span");
   chev.className = "tool-chev";
   chev.append(icon("chevronDown", { cls: "icon-sm" }));
@@ -1385,9 +1400,26 @@ function safeParseArgs(raw) {
 // 审批 / 提问卡（notification 面驱动——"任何通道可答"）
 // ---------------------------------------------------------------------------
 
+/** 待审批小节头（批次 3——多卡并存计数；空区自动移除）。 */
+function syncPendingHeader() {
+  let header = pending.querySelector(".pending-header");
+  const count = pending.querySelectorAll(".card").length;
+  if (count === 0) {
+    header?.remove();
+    return;
+  }
+  if (header === null) {
+    header = document.createElement("div");
+    header.className = "pending-header";
+    pending.prepend(header);
+  }
+  header.textContent = `待审批 / 提问（${String(count)}）`;
+}
+
 function removeCard(requestId) {
   const card = pending.querySelector(`[data-request-id="${CSS.escape(requestId)}"]`);
   if (card !== null) card.remove();
+  syncPendingHeader();
   if (pending.children.length === 0) {
     pending.classList.remove("active");
     // T-P3-156：待决清空 → 侧栏状态点复位（审批橙点）
@@ -1482,7 +1514,16 @@ function buildCard(name, payload, sourceSessionId) {
         clearInterval(timer);
         return;
       }
-      countdown.textContent = `${Math.max(0, Math.ceil((deadline - Date.now()) / 1000))}s`;
+      const left = deadline - Date.now();
+      if (left <= 0) {
+        // T-P3-174 批次 3：审批超时 → 卡自动摘除 + 顶中提示（内核侧按超时
+        // 拒结算——卡片滞留只会误导"还在等待"）
+        clearInterval(timer);
+        removeCard(payload.requestId);
+        toast(`审批已超时（${payload.tool ?? "tool"}）——内核按超时拒绝结算`, "warn", undefined, { zone: "top" });
+        return;
+      }
+      countdown.textContent = `${String(Math.ceil(left / 1000))}s`;
     }, 1000);
     // T-P3-140 批次 E：升级理由独立展示行（审批人先读理由再看参数）
     if (typeof escArgs?.justification === "string" && escArgs.justification !== "") {
@@ -1612,6 +1653,7 @@ function buildCard(name, payload, sourceSessionId) {
     answerInput.focus();
   }
   pending.appendChild(card);
+  syncPendingHeader(); // T-P3-174 批次 3：计数头在卡片入位后同步（多卡一眼可数）
 }
 
 // ---------------------------------------------------------------------------

@@ -509,7 +509,32 @@ async function loadTasks(taskBox, project) {
     taskBox.appendChild(empty);
     return;
   }
+  // T-P3-174 批次 3：任务段小节头（pi-desk 对齐——「进行中（N）」与
+  // 「历史」视觉分组；排序已在上方，这里只补分组标题。全部历史时不加
+  // 头（单段列表保持无噪声））
+  const activeCount = tasks.filter((t) => {
+    const st = window.__sessionStates?.[t.sessionId] ?? {};
+    return st.awaiting === true || st.busy === true;
+  }).length;
+  let activeHeaderDone = activeCount === 0;
+  let historyHeaderDone = activeCount === 0;
+  const groupHeader = (text) => {
+    const el = document.createElement("div");
+    el.className = "sb-tasks-group";
+    el.textContent = text;
+    taskBox.appendChild(el);
+  };
   for (const task of tasks) {
+    const st = window.__sessionStates?.[task.sessionId] ?? {};
+    const isActive = st.awaiting === true || st.busy === true;
+    if (!activeHeaderDone && isActive) {
+      groupHeader(`进行中（${String(activeCount)}）`);
+      activeHeaderDone = true;
+    }
+    if (!historyHeaderDone && !isActive && activeHeaderDone) {
+      groupHeader("历史");
+      historyHeaderDone = true;
+    }
     taskBox.appendChild(taskRow(task));
   }
   // 展开任务的项目顺带刷 topbar（当前会话标题可能刚生成）
