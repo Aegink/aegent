@@ -834,6 +834,23 @@ export interface FeedbackNoteEvent extends EventBase {
   doctorSummary?: string;
 }
 
+/**
+ * 会话思考档选择（T-P3-174 批次 4）：会话级思考档覆盖（thinking/set 命令）
+ * 的持久事实——**重启后档位保持**的判据（此前是纯内存态，换 child/重启即丢）。
+ * 锚点 = model/switch 同构（J9 纪律"换模/回滚以持久事件承载，绝不静默改
+ * 状态"——思考档覆盖是同族会话级选择）。E12 整值：level 是变更后的完整值；
+ * 会话级事实源 = 流内最新本事件的 level。log-only：不进模型历史（装配面
+ * 消费，不影响消息重建），跨 compaction 保留。会话级元事件：不要求
+ * turn/step 开合上下文（model/switch 同款，turn 挂流内最后轮空流兜 0）。
+ * level 值域 = "omit" 哨兵 | THINKING_LEVELS（闭集校验在 project 校验面）。
+ * 词汇表 30→31（T-P3-174 批次 4 立案 #31）。
+ */
+export interface ThinkingSetEvent extends EventBase {
+  type: "thinking/set";
+  /** 思考档（"omit"=显式不传思考参数；其余 = THINKING_LEVELS 档位）。 */
+  level: string;
+}
+
 import type { AttachmentRef } from "../attachments/types.js";
 
 export type SessionEvent =
@@ -866,9 +883,10 @@ export type SessionEvent =
   | ImageOffloadEvent
   | SessionArchiveEvent
   | ApprovalSupersededEvent
-  | FeedbackNoteEvent;
+  | FeedbackNoteEvent
+  | ThinkingSetEvent;
 
-/** 29 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
+/** 31 事件类型清单（封闭联合的运行时面；C16 要求与 SessionEvent 严格一致）。 */
 export const EVENT_TYPES = [
   "turn/start",
   "turn/end",
@@ -900,6 +918,7 @@ export const EVENT_TYPES = [
   "session/archive",
   "approval/superseded",
   "feedback/note",
+  "thinking/set",
 ] as const;
 
 export type SessionEventType = (typeof EVENT_TYPES)[number];

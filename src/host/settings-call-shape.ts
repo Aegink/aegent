@@ -83,4 +83,7 @@ export type SettingsCall = {
   data?: string; // op=terminal-input：键入数据
   cols?: number; // op=terminal-resize：列数
   rows?: number; // op=terminal-resize：行数
+  // T-P3-174 批次 4 载荷：confirm=WebDAV 两段式确认 seq=检查点回退目标
+  confirm?: boolean;
+  seq?: number;
 };

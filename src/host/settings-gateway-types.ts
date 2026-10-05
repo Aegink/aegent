@@ -162,6 +162,8 @@ export interface SettingsGateway {
   mcpImportScan(): Promise<McpImportScanResult>;
   skillImportScan(): Promise<SkillImportScanResult>;
   skillImportApply(items: SkillImportItem[]): Promise<SkillImportApplyResult>;
+  /** T-P3-174 批次 4：技能 ZIP 导入（zip-read 安全解包——content 为 base64）。 */
+  skillZipImport(content: string): Promise<import("./skill-zip-import.js").SkillZipImportResult>;
   skillDelete(skillPath: string): Promise<{ deleted: true; path: string }>;
   skillReveal(skillPath: string): Promise<{ revealed: true }>;
   promptsList(): Promise<PromptListView>;

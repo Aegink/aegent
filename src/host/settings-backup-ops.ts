@@ -99,3 +99,46 @@ export function deleteSettingsBackupOp(settingsPath: string, index: number): { d
   unlinkSync(p);
   return { deleted: true };
 }
+
+// ---------------------------------------------------------------------------
+// 周期自动备份（T-P3-174 批次 4）：host 侧定时 tick 判据 + 保留策略。
+// "上次备份时间"不另存账本——bak.0 的 mtime 即持久事实（重启无损，天然幂
+// 等：同一 tick 窗口内 host 重启不会重复备份）。
+// ---------------------------------------------------------------------------
+
+/** 自动备份 tick（host setInterval 每小时调一次）：距上次备份 ≥ interval
+ * 小时才真正滚动。返回 tick 是否产生了新备份。 */
+export function autoBackupTickOp(
+  settingsPath: string,
+  options: { auto?: boolean; intervalHours?: number; keep?: number },
+  now: number = Date.now(),
+): { backedUp: boolean } {
+  if (options.auto !== true) return { backedUp: false };
+  const intervalMs = Math.max(1, options.intervalHours ?? 24) * 3_600_000;
+  if (existsSync(settingsPath)) {
+    const latest = `${settingsPath}.bak.0`;
+    if (existsSync(latest) && now - statSync(latest).mtimeMs < intervalMs) {
+      return { backedUp: false }; // 未到间隔——tick 静默跳过
+    }
+  }
+  createSettingsBackupOp(settingsPath);
+  applyBackupRetentionPolicy(settingsPath, options.keep ?? 5);
+  return { backedUp: true };
+}
+
+/** 保留策略：序号 ≥ keep 的备份最老先删（手动/自动共用 bak 序号体系——
+ *  keep 动态收窄时超出序号一并清理，目录扫描面容错无残留账目）。 */
+export function applyBackupRetentionPolicy(settingsPath: string, keep: number): { removed: number[] } {
+  const removed: number[] = [];
+  for (const backup of listSettingsBackupsOp(settingsPath).backups) {
+    if (backup.index >= keep) {
+      try {
+        unlinkSync(backupPath(settingsPath, backup.index));
+        removed.push(backup.index);
+      } catch {
+        // 单份删除失败不中断策略（下一 tick 重试）
+      }
+    }
+  }
+  return { removed };
+}

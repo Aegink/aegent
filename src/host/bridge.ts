@@ -401,6 +401,8 @@ export class HostBridge implements SessionRouter {
         // T-P3-144：技能导入扫描/执行 + 删除/Reveal（护栏与复制在域文件）
         if (call.op === "skill-import-scan") return gateway.skillImportScan();
         if (call.op === "skill-import-apply") return gateway.skillImportApply(call.items!);
+        // T-P3-174 批次 4：技能 ZIP 导入（content = zip 字节 base64）
+        if (call.op === "skill-import-zip") return gateway.skillZipImport(call.content!);
         if (call.op === "skill-delete") return gateway.skillDelete(call.path!);
         if (call.op === "skill-reveal") return gateway.skillReveal(call.path!);
               if (call.op === "prompts-list") return gateway.promptsList();

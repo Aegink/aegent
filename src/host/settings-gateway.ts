@@ -78,6 +78,7 @@ import {
   type SkillImportApplyResult,
   type SkillImportItem,
 } from "./skill-import-op.js";
+import { skillZipImportOp, type SkillZipImportResult } from "./skill-zip-import.js";
 import { enhancementTestOp } from "./settings-provider-ops.js";
 import { applyImportedSettings, applyPartialImport, backupSettingsFile, resolveImportedPackage, summarizePackage } from "../session/settings-transfer.js";
 import { deleteSessionOp } from "./session-export-op.js";
@@ -359,6 +360,12 @@ export class FileSettingsGateway implements SettingsGateway {
   async skillImportApply(items: SkillImportItem[]): Promise<SkillImportApplyResult> {
     if (this.workspaceRoot === undefined) this.skillsUnavailable();
     return skillImportApply({ homeDir: this.homeDir, workspaceRoot: this.workspaceRoot! }, items);
+  }
+
+  /** T-P3-174 批次 4：技能 ZIP 导入（zip-read 安全解包 + 形状识别落盘）。 */
+  async skillZipImport(content: string): Promise<SkillZipImportResult> {
+    if (this.workspaceRoot === undefined) this.skillsUnavailable();
+    return skillZipImportOp({ workspaceRoot: this.workspaceRoot! }, content);
   }
 
   async skillDelete(skillPath: string): Promise<{ deleted: true; path: string }> {

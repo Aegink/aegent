@@ -52,6 +52,7 @@ const OPS = [
   "mcp-import-scan",
   "skill-import-scan",
   "skill-import-apply",
+  "skill-import-zip",
   "skill-delete",
   "skill-reveal",
   "prompts-list",
@@ -93,6 +94,12 @@ const OPS = [
   "terminal-create",
   "terminal-input",
   "terminal-resize",
+  // T-P3-174 批次 4 数据中心扩展（整库导出/WebDAV 云同步/检查点时间线）
+  "db-export",
+  "webdav-test",
+  "webdav-sync",
+  "checkpoint-timeline",
+  "checkpoint-restore",
 ] as const;
 
 export type SettingsOp = (typeof OPS)[number];
@@ -157,6 +164,8 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     // UI 侧表现为请求永久挂起——T-P3-157 P-030/P-031 实抓根因）
     "cwd", "limit", "file", "staged", "files", "unstage", "message", "amend",
     "role", "id", "data", "cols", "rows",
+    // T-P3-174 批次 4 载荷（confirm/seq——漏键即整信封被拒）
+    "confirm", "seq",
   ]);
   if (unknownKey) throw new Error(`settings 信封${unknownKey}`);
   if (typeof record["requestId"] !== "string" || record["requestId"] === "") {
@@ -192,6 +201,12 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
   if (op === "session-delete") {
     if (typeof record["sessionId"] !== "string" || record["sessionId"] === "") {
       throw new Error("settings op=session-delete 需要 sessionId 非空字符串");
+    }
+  }
+  // T-P3-174 批次 4：skill-import-zip = content（zip 字节 base64——上限在 op 层）。
+  if (op === "skill-import-zip") {
+    if (typeof record["content"] !== "string" || record["content"] === "") {
+      throw new Error("settings op=skill-import-zip 需要 content（zip 字节 base64）非空字符串");
     }
   }
   // T-P3-144：skill-import-apply = items（护栏在 op 层）。
@@ -349,6 +364,10 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     ...(typeof record["data"] === "string" ? { data: record["data"] } : {}),
     ...(typeof record["cols"] === "number" ? { cols: record["cols"] } : {}),
     ...(typeof record["rows"] === "number" ? { rows: record["rows"] } : {}),
+    // T-P3-174 批次 4 载荷（confirm 显式布尔——只拷 true 会吞 false 的坑；
+    // seq = 检查点回退目标）
+    ...(typeof record["confirm"] === "boolean" ? { confirm: record["confirm"] } : {}),
+    ...(typeof record["seq"] === "number" ? { seq: record["seq"] } : {}),
   };
 }
 

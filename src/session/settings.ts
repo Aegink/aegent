@@ -357,6 +357,30 @@ export interface SettingsShape {
     retentionDays?: number;
     logDir?: string;
   };
+  /**
+   * 备份中心（T-P3-174 批次 4）：周期自动备份配置——手动备份面（立即备份/
+   * 恢复/删除）不受本段影响。auto=false（缺省）= 只手动；intervalHours 是
+   * 两次自动备份的最小间隔（tick 判据 = bak.0 的 mtime 距今 ≥ interval）；
+   * keep = 保留份数（滚动挤出最老——与导入 safety 备份共用 bak 序号体系）。
+   */
+  backup?: {
+    auto?: boolean;
+    intervalHours?: number;
+    keep?: number;
+  };
+  /**
+   * WebDAV 云同步（T-P3-174 批次 4——cc-switch·WebdavSyncSection 行为锚）：
+   * 配置快照 + 技能目录 zip 两 artifact 的手动同步。密码不落本段——进凭据
+   * 库（credentials.bin DPAPI，provider="webdav"）；lastSyncAt/lastError 是
+   * 同步状态持久面（UI 上次同步时间与失败横幅的数据源）。
+   */
+  webdav?: {
+    url?: string;
+    username?: string;
+    remoteRoot?: string;
+    lastSyncAt?: number;
+    lastError?: string;
+  };
   /** 项目档（U11——多项目列表；activeProject 生效语义 = 新会话启动）。 */
   projects?: ProjectEntry[];
   activeProject?: string;
@@ -932,6 +956,63 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
     out.network = {
       ...(mode === "system" || mode === "direct" || mode === "custom" ? { mode } : {}),
       ...(typeof url === "string" && url !== "" ? { url } : {}),
+    };
+  }
+  const backup = rec["backup"];
+  if (backup !== undefined) {
+    if (backup === null || typeof backup !== "object" || Array.isArray(backup)) {
+      throw new SettingsError("backup 段需要对象");
+    }
+    const b = backup as Record<string, unknown>;
+    const auto = b["auto"];
+    const intervalHours = b["intervalHours"];
+    const keep = b["keep"];
+    if (auto !== undefined && typeof auto !== "boolean") {
+      throw new SettingsError("backup.auto 须为布尔");
+    }
+    if (intervalHours !== undefined && (typeof intervalHours !== "number" || !Number.isFinite(intervalHours) || intervalHours < 1 || intervalHours > 24 * 30)) {
+      throw new SettingsError("backup.intervalHours 须为 1..720 的数值（小时）");
+    }
+    if (keep !== undefined && (typeof keep !== "number" || !Number.isInteger(keep) || keep < 1 || keep > 50)) {
+      throw new SettingsError("backup.keep 须为 1..50 的整数（保留份数）");
+    }
+    out.backup = {
+      ...(auto === true ? { auto: true } : {}),
+      ...(typeof intervalHours === "number" && Number.isFinite(intervalHours) ? { intervalHours } : {}),
+      ...(typeof keep === "number" && Number.isInteger(keep) ? { keep } : {}),
+    };
+  }
+  const webdav = rec["webdav"];
+  if (webdav !== undefined) {
+    if (webdav === null || typeof webdav !== "object" || Array.isArray(webdav)) {
+      throw new SettingsError("webdav 段需要对象");
+    }
+    const w = webdav as Record<string, unknown>;
+    const url = w["url"];
+    const username = w["username"];
+    const remoteRoot = w["remoteRoot"];
+    const lastSyncAt = w["lastSyncAt"];
+    const lastError = w["lastError"];
+    if (url !== undefined && (typeof url !== "string" || !/^https?:\/\//i.test(url))) {
+      throw new SettingsError("webdav.url 须为 http(s) 地址");
+    }
+    for (const key of ["username", "remoteRoot"] as const) {
+      if (w[key] !== undefined && typeof w[key] !== "string") {
+        throw new SettingsError(`webdav.${key} 须为字符串`);
+      }
+    }
+    if (lastSyncAt !== undefined && (typeof lastSyncAt !== "number" || !Number.isFinite(lastSyncAt))) {
+      throw new SettingsError("webdav.lastSyncAt 须为数值（epoch 毫秒）");
+    }
+    if (lastError !== undefined && typeof lastError !== "string") {
+      throw new SettingsError("webdav.lastError 须为字符串");
+    }
+    out.webdav = {
+      ...(typeof url === "string" && url !== "" ? { url } : {}),
+      ...(typeof username === "string" && username !== "" ? { username } : {}),
+      ...(typeof remoteRoot === "string" && remoteRoot !== "" ? { remoteRoot } : {}),
+      ...(typeof lastSyncAt === "number" && Number.isFinite(lastSyncAt) ? { lastSyncAt } : {}),
+      ...(typeof lastError === "string" && lastError !== "" ? { lastError } : {}),
     };
   }
   const logging = rec["logging"];

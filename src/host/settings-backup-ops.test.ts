@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  applyBackupRetentionPolicy,
+  autoBackupTickOp,
   createSettingsBackupOp,
   deleteSettingsBackupOp,
   listSettingsBackupsOp,
@@ -71,5 +73,32 @@ describe("settings-backup-ops", () => {
     expect(deleteSettingsBackupOp(p, 3)).toEqual({ deleted: true });
     expect(existsSync(`${p}.bak.3`)).toBe(false);
     expect(() => deleteSettingsBackupOp(p, 3)).toThrow(/备份不存在/);
+  });
+});
+
+describe("周期自动备份（T-P3-174 批次 4）", () => {
+  it("tick：auto 关/未到间隔跳过；到间隔滚动备份并应用保留策略", () => {
+    const p = tempSettingsPath();
+    writeFileSync(p, JSON.stringify({ version: 1 }), "utf8");
+    // auto 缺省 = 不动
+    expect(autoBackupTickOp(p, {}, 1000).backedUp).toBe(false);
+    expect(existsSync(`${p}.bak.0`)).toBe(false);
+    // 首次（无 bak.0）= 立即备份
+    expect(autoBackupTickOp(p, { auto: true, intervalHours: 24, keep: 2 }, 1000).backedUp).toBe(true);
+    expect(existsSync(`${p}.bak.0`)).toBe(true);
+    // 未到间隔（bak.0 mtime = 文件系统真实时间——now 早于它即跳过）
+    expect(autoBackupTickOp(p, { auto: true, intervalHours: 24, keep: 2 }, 2000).backedUp).toBe(false);
+    // 超过间隔（now = 真实 mtime + 25h——mtime 由 copyFileSync 写为真实时钟）
+    const later = Date.now() + 25 * 3_600_000;
+    expect(autoBackupTickOp(p, { auto: true, intervalHours: 24, keep: 2 }, later).backedUp).toBe(true);
+  });
+  it("保留策略：keep 收窄时超出序号清理（最老先删）", () => {
+    const p = tempSettingsPath();
+    writeFileSync(p, JSON.stringify({ version: 1 }), "utf8");
+    createSettingsBackupOp(p);
+    for (const i of [1, 2, 3, 4]) writeFileSync(`${p}.bak.${i}`, "{}", "utf8");
+    const r = applyBackupRetentionPolicy(p, 3);
+    expect(r.removed.sort()).toEqual([3, 4]);
+    expect(listSettingsBackupsOp(p).backups.map((b) => b.index)).toEqual([0, 1, 2]);
   });
 });

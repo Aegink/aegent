@@ -22,6 +22,7 @@ import {
   type TodoStatus,
   type TokenUsage,
 } from "../kernel/events.js";
+import { THINKING_LEVELS } from "./settings.js";
 
 /** todo 项（投影面形状；与事件载荷 items 同构——E12 整值语义）。 */
 export interface ProjectionTodo {
@@ -354,6 +355,18 @@ export class Projector {
       case "model/switch":
       case "todo/update":
       case "goal/set":
+        break;
+      case "thinking/set":
+        // T-P3-174 批次 4 思考档选择（会话级元事件）：level 闭集校验
+        //（"omit" 哨兵 | THINKING_LEVELS——与 agent-process 受理面同源）。
+        if (
+          event.level !== "omit" &&
+          !(THINKING_LEVELS as readonly string[]).includes(event.level)
+        ) {
+          throw new ProjectError(
+            `thinking/set 的 level 非法：${String(event.level)}（合法：omit|${THINKING_LEVELS.join("|")}）`,
+          );
+        }
         break;
       case "session/revert":
         // 会话级元事件：不要求 turn/step 上下文。revert 的目标点不能在未来。
@@ -774,6 +787,8 @@ export class Projector {
         break; // L7 命令生命周期是 log-only 存在性记录：投影不聚值（事件流即真相）
       case "tool/progress":
         break; // B7 进度是瞬态事实：投影不消费（事实在事件流本身，按 callId+seqInCall 可查）
+      case "thinking/set":
+        break; // T-P3-174 思考档选择是会话级选择事实：投影不聚值（消费面 = child restore 扫流重建 override——流内最新 level 即事实源）
     }
   }
 

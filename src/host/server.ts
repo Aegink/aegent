@@ -36,6 +36,7 @@ import { createSessionId, isValidSessionId } from "../session/session-id.js";
 import { SqliteEventStorage } from "../session/db.js";
 import { InMemoryEventStorage, SessionStore, type EventStorage } from "../session/store.js";
 import { loadSettings, resolveChildLaunchArgv, defaultSettingsPath } from "../session/settings.js";
+import { autoBackupTickOp } from "./settings-backup-ops.js";
 import { createCredentialStore } from "../session/credentials.js";
 import { FileSettingsGateway } from "./settings-gateway.js";
 import { HostBridge, type AgentChannel } from "./bridge.js";
@@ -406,6 +407,28 @@ export async function main(argv: readonly string[]): Promise<void> {
   process.stdout.write(
     `aegent host（会话 ${parsed.sessionId}）：http://127.0.0.1:${handle.port}/ （WS: /ws）\n`,
   );
+  // T-P3-174 批次 4：周期自动备份 tick（host 侧——每 30 分钟醒一次，距上次
+  // 备份 ≥ intervalHours 才真正滚动；配置活值经 settingsGateway 读，UI 改完
+  // 下一 tick 即生效；bak.0 的 mtime 就是"上次备份时间"的持久事实——重启无损）。
+  const hostSettingsPath = parsed.settingsPath ?? defaultSettingsPath();
+  const backupTicker = setInterval(() => {
+    void (async () => {
+      try {
+        const settings = await settingsGateway.get();
+        const tick = autoBackupTickOp(hostSettingsPath, {
+          auto: settings.backup?.auto,
+          intervalHours: settings.backup?.intervalHours,
+          keep: settings.backup?.keep,
+        });
+        if (tick.backedUp) {
+          process.stdout.write(`[backup] 周期自动备份完成（interval=${settings.backup?.intervalHours ?? 24}h）\n`);
+        }
+      } catch (e) {
+        process.stderr.write(`[backup] 周期自动备份失败：${e instanceof Error ? e.message : String(e)}\n`);
+      }
+    })();
+  }, 30 * 60_000);
+  backupTicker.unref?.();
   const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
   rl.on("line", (line) => {
     if (line.trim() === "/exit") {

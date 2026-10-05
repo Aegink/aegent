@@ -274,6 +274,9 @@ export async function runAgentChildStdio(
   })(options.storage ?? new InMemoryEventStorage());
   // M3 resume 的 restore 前置：注入式 storage 才有跨进程历史可恢复
   //（InMemory 每次启动都是空流，restore 无意义）。
+  // T-P3-174 批次 4：restore 扫出的思考档覆盖暂存位（assembly 构造在后——
+  // restore 块先行；构造完成后立即应用）。
+  let pendingThinkingOverride: string | undefined;
   const externalStorage = options.storage;
   // T-P3-172：child 带持久库启动即恢复本会话流（seq 接续库中最大值——
   // 权威落库的前提；不 restore 则 append 从 1 重编号与库行主键冲突）。
@@ -292,6 +295,16 @@ export async function runAgentChildStdio(
         exit(1);
         return;
       }
+    }
+    // T-P3-174 批次 4：思考档选择从流重建（流内最新 thinking/set 即会话级
+    // 事实源——J14 回放保护纪律：恢复按流重建，不以全局默认覆盖）。空流无
+    // 事件 = 无覆盖，跟模型默认档。应用点在下方 assembly 构造后（override
+    // 挂在装配的 SessionThinkingOverride 面上）。
+    const restoredThinkingLevel = [...store.load(sessionId)]
+      .reverse()
+      .find((e) => e.type === "thinking/set");
+    if (restoredThinkingLevel !== undefined) {
+      pendingThinkingOverride = restoredThinkingLevel.level;
     }
   }
 
@@ -391,6 +404,7 @@ export async function runAgentChildStdio(
     loaded: boolean;
   } = { commands: [], skillDirs: [], mcpServers: [], loaded: false };
 
+
   const assembly: ChildAssembly | undefined = options.assembly
     ? createChildAssembly({
         sessionId,
@@ -416,6 +430,12 @@ export async function runAgentChildStdio(
         pluginSkillDirs: () => pluginContribBox.skillDirs,
       })
     : undefined;
+
+  // T-P3-174 批次 4：restore 扫出的思考档覆盖在装配构造后应用（重建先于
+  // 首轮 kick——生效点语义与 thinking/set 命令受理一致）。
+  if (assembly !== undefined && pendingThinkingOverride !== undefined) {
+    assembly.setThinkingOverride(pendingThinkingOverride);
+  }
 
   // H1/H4/T-P1-42：子代理 runner（顶层会话 depth=0）。降级规则的输入 =
   // 装配 rules 选项原样（deriveSubagentRules 在 runner 内对每层子装配
@@ -718,6 +738,9 @@ export async function runAgentChildStdio(
     // J11：turn 失败通知 → 装配驱动换模回滚判据。
     ...(assembly?.modelForTurn ? { modelForTurn: assembly.modelForTurn } : {}),
     ...(assembly?.onTurnError ? { onTurnError: assembly.onTurnError } : {}),
+    // T-P3-161/T-P3-174：思考档覆盖读取面（loop 每轮启动注入 reasoningEffort
+    //——批次 4 落流测试实抓：装配写入面在而 loop 读取面未接线，覆盖从不生效）
+    ...(assembly ? { thinkingOverrideForTurn: assembly.thinkingOverrideForTurn } : {}),
     // B6/B17（T-P1-15）：装配选择 parallel 时，并发分组以注册表的并行声明
     // 为准（未声明即排他）；缺省 sequential 时两个槽位都不进 deps（P0 原样）。
     ...(options.toolExecution === "parallel"
@@ -1206,6 +1229,16 @@ export async function runAgentChildStdio(
           return;
         }
         assembly.setThinkingOverride(req.level);
+        // T-P3-174 批次 4：受理落流（会话级选择事实——重启后档位保持的判据）。
+        // model/switch emit 同款：turn 挂流内最后轮空流兜 0（会话级元事件，
+        // 不要求 turn 开合上下文）。落流即 flush（write-behind 缓冲不等
+        // turn 末——否则"设完档位立刻重启"的窗口里 restore 读不到）。
+        const events = store.load(sessionId);
+        const lastTurn = events.length > 0 ? events[events.length - 1]!.turn : 0;
+        store.append(sessionId, [{ type: "thinking/set", turn: lastTurn, level: req.level }]);
+        void store.flush(sessionId).catch(() => {
+          // flush 失败不回滚受理（内存序已权威；fork 同款语义）
+        });
         send({ type: "thinking_set", level: req.level });
         return;
       }

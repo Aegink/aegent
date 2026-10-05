@@ -256,7 +256,6 @@ export type AgentMessage =
     }
   | { type: "reverted"; targetSeq: number; codeRestored: boolean }
   | { type: "thinking_set"; level: string }
-  | { type: "reverted"; targetSeq: number; codeRestored: boolean }
   | {
       /** A8/T-P1-52：取消后未消费输入退回（"退回输入框"）——轮以 aborted
        * 终止且队列非空时，队列中尚未进入模型历史的 prompt 全量退给父进程
@@ -327,6 +326,7 @@ const REQUEST_TYPES = new Set([
   "revert",
   "approve",
   "model/switch",
+  "thinking/set", // T-P3-161 分支既在（decode 编排尾部）——白名单漏项由批次 4 thinking/set 落流测试实抓（直发行被 PROTOCOL_UNKNOWN_REQUEST 拒）
   "question/answer",
   "session/fork",
   "session/resume",
@@ -762,6 +762,7 @@ export function decodeMessage(line: string): AgentMessage {
     usage?: unknown;
     ms?: unknown;
     draft?: unknown;
+    level?: unknown;
   };
   switch (msg.type) {
     case "ready": {
@@ -1015,6 +1016,13 @@ export function decodeMessage(line: string): AgentMessage {
         ...(typeof msg.ms === "number" ? { ms: msg.ms } : {}),
       };
     }
+    case "thinking_set":
+      // T-P3-161 回执的 decode 面（批次 4 落流测试实抓：decode 白名单与
+      // REQUEST_TYPES 同型漏项——spawn 路径消费端也走 decodeMessage）。
+      if (typeof msg.level !== "string" || msg.level === "") {
+        throw new ProtocolError("PROTOCOL_MALFORMED", "thinking_set 需要 level 字符串");
+      }
+      return { type: "thinking_set", level: msg.level };
     case "error":
       if (typeof msg.code !== "string" || typeof msg.message !== "string") {
         throw new ProtocolError("PROTOCOL_MALFORMED", "error 需要 code 与 message");

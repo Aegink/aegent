@@ -1240,6 +1240,11 @@ async function openSkillImportDialog() {
     actions: [
       { label: "取消", className: "btn btn-ghost" },
       {
+        label: "从 ZIP 导入…",
+        className: "btn",
+        onClick: () => void importSkillZip(holder),
+      },
+      {
         label: "导入所选",
         className: "btn btn-primary",
         onClick: async () => {
@@ -1276,6 +1281,51 @@ async function openSkillImportDialog() {
     ],
   });
   void rescan();
+}
+
+// —— T-P3-174 批次 4：技能 ZIP 导入（zip-read 安全解包——穿越/大小/CRC
+// 四道检查在 host；UI 只做文件选择 + base64 上送 + 结果 toast）。 ——
+async function importSkillZip(holder) {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".zip,application/zip";
+  input.addEventListener("change", async () => {
+    const file = input.files?.[0];
+    if (file === undefined) return;
+    if (file.size > 20 * 1024 * 1024) {
+      toast(`zip 超大小上限（${(file.size / 1024 / 1024).toFixed(1)}MB > 20MB）`, "warn");
+      return;
+    }
+    const buf = await file.arrayBuffer();
+    let binary = "";
+    const bytes = new Uint8Array(buf);
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    }
+    const content = btoa(binary);
+    toast("导入中…", "info");
+    const envelope = await sendSettings({ op: "skill-import-zip", content });
+    if (!envelope.ok) {
+      toast(`ZIP 导入不可用：${envelope.error?.message ?? ""}`, "warn");
+      return;
+    }
+    const r = envelope.result;
+    const warnNote = r.skipped.filter((s) => s.reason.includes("description"));
+    const hardSkip = r.skipped.length - warnNote.length;
+    toast(
+      `ZIP 导入完成：成功 ${r.imported.length}，跳过 ${hardSkip}（同名/空正文），失败 ${r.failed.length}` +
+        `${warnNote.length > 0 ? `；${warnNote.length} 个缺 description（清单不可见）` : ""}`,
+      r.imported.length > 0 ? "info" : "warn",
+    );
+    if (r.failed.length > 0) {
+      appendLine(`技能 ZIP 导入失败明细：${r.failed.map((f) => `${f.name}——${f.error}`).join("；")}`, "warn");
+    }
+    if (r.imported.length > 0) {
+      void refreshSkillsList();
+      holder.querySelectorAll("#skill-imp-refresh")[0]?.click(); // 重扫目录清单
+    }
+  });
+  input.click();
 }
 
 // ---------------------------------------------------------------------------
@@ -2004,6 +2054,15 @@ function openPromptImportDialog() {
     body: holder,
     actions: [
       { label: "取消", className: "btn btn-ghost" },
+      {
+        // T-P3-174 批次 4：一键全导（等价全选+导入——扫描完成后零点击直送）
+        label: "导入全部",
+        className: "btn",
+        onClick: () => {
+          for (const cb of holder.querySelectorAll("#prompt-imp-list input[type=checkbox]")) cb.checked = true;
+          void applyPromptImport(holder);
+        },
+      },
       { label: "导入选中", className: "btn btn-primary", onClick: () => void applyPromptImport(holder) },
     ],
   });

@@ -6,9 +6,11 @@
  * U27/T-P3-131 协作 Tab：会话间往来事实（流投影——session/collab）。
  */
 
-import { sendQuery, ensureFileCache } from "../api.js";
+import { sendQuery, sendSettings, ensureFileCache } from "../api.js";
 import { icon, injectIcons } from "../icons.js";
 import { getSessionId, subscribeTurnSettled } from "../state.js";
+import { toast } from "../feedback.js";
+import { confirmDialog } from "./settings/core.js";
 
 const TEMPLATE = `
 <aside id="workpanel" aria-label="工作面板">
@@ -22,6 +24,8 @@ const TEMPLATE = `
     <button type="button" data-worktab="subagent" class="work-tab"><span data-icon="bot" data-icon-size="14"></span> 子代理</button>
     <!-- U27/T-P3-131 协作 Tab：会话间往来事实（流投影——session/collab） -->
     <button type="button" data-worktab="collab" class="work-tab"><span data-icon="link2" data-icon-size="14"></span> 协作</button>
+    <!-- T-P3-174 批次 4 检查点时间线：E11 git 快照逐轮浏览 + 一键回退 -->
+    <button type="button" data-worktab="timeline" class="work-tab"><span data-icon="history" data-icon-size="14"></span> 时间线</button>
   </nav>
   <div class="page-body">
     <section data-worktab-body="files">
@@ -58,6 +62,11 @@ const TEMPLATE = `
       </table>
       <p class="hint">会话间派任务/消息往来的流内事实（session/collab 事件投影）；权限快照随派发固化——后续设置变更不影响排队/在途任务。</p>
     </section>
+    <section data-worktab-body="timeline" hidden>
+      <p id="work-timeline-hint" class="hint"></p>
+      <ul id="work-timeline-list" class="transfer-list"></ul>
+      <p class="hint">git 检查点在每轮开始前打点（stash 快照）——「改动」= 该检查点与上一检查点之间的统计。回退 = 丢弃当前 tracked 改动并应用该时点快照（untracked 新文件不回退）。</p>
+    </section>
   </div>
 </aside>
 `;
@@ -74,6 +83,68 @@ function setWorkTab(tab) {
   for (const sec of document.querySelectorAll("#workpanel [data-worktab-body]")) {
     sec.hidden = sec.dataset.worktabBody !== tab;
   }
+}
+
+// —— T-P3-174 批次 4：检查点时间线（E11 git 快照浏览 + 一键回退）——
+
+async function refreshCheckpointTimeline() {
+  const hint = document.getElementById("work-timeline-hint");
+  const list = document.getElementById("work-timeline-list");
+  if (hint === null || list === null) return; // 已卸载
+  const sessionId = getSessionId();
+  if (!sessionId) {
+    hint.textContent = "当前无会话——发起对话后这里出现 git 检查点时间线。";
+    list.replaceChildren();
+    return;
+  }
+  const envelope = await sendSettings({ op: "checkpoint-timeline", sessionId });
+  if (!envelope.ok) {
+    hint.textContent = `时间线不可用：${envelope.error?.message ?? ""}`;
+    list.replaceChildren();
+    return;
+  }
+  const items = envelope.result?.items ?? [];
+  if (items.length === 0) {
+    hint.textContent = "本会话尚无 git 检查点（git 仓库工作区每轮开始前自动打点；非 git 目录不做检查点）。";
+    list.replaceChildren();
+    return;
+  }
+  hint.textContent = `共 ${items.length} 个检查点（每轮开始前打点——即"该轮模型动手前"的状态）`;
+  list.replaceChildren();
+  for (const item of items) {
+    const li = document.createElement("li");
+    li.className = "transfer-row";
+    const copy = document.createElement("span");
+    copy.className = "transfer-row-copy";
+    const changes = item.changesUnavailable !== undefined
+      ? ` · 改动统计不可得（${item.changesUnavailable}）`
+      : item.changesText
+        ? ` · ${item.changesText}`
+        : "";
+    copy.textContent = `turn ${item.turn} · ${new Date(item.ts).toLocaleString()}${changes}`;
+    const restoreBtn = document.createElement("button");
+    restoreBtn.type = "button";
+    restoreBtn.className = "btn";
+    restoreBtn.textContent = "回退到此处";
+    restoreBtn.addEventListener("click", () => void restoreCheckpoint(sessionId, item));
+    li.append(copy, restoreBtn);
+    list.appendChild(li);
+  }
+}
+
+async function restoreCheckpoint(sessionId, item) {
+  const ok = await confirmDialog(
+    "将丢弃工作区当前全部 tracked 改动，并恢复到该轮开始前的 git 快照（untracked 新文件保留；对话历史不变）。此操作不可自动撤销。",
+    { title: `回退代码到 turn ${item.turn}`, confirmLabel: "确认回退", danger: true },
+  );
+  if (!ok) return;
+  const envelope = await sendSettings({ op: "checkpoint-restore", sessionId, seq: item.seq });
+  if (!envelope.ok) {
+    toast(`回退失败：${envelope.error?.message ?? ""}`, "warn");
+    return;
+  }
+  toast(item.ref === null ? "已回退（该时点与 HEAD 一致——已丢弃 tracked 改动）" : "已回退到该轮开始前的快照", "info");
+  void refreshCheckpointTimeline();
 }
 
 async function fetchReviewReport() {
@@ -253,11 +324,15 @@ export async function render(container, route) {
     document.getElementById("work-preview-box").hidden = true;
   });
   for (const btn of document.querySelectorAll("#work-tabs .work-tab")) {
-    btn.addEventListener("click", () => setWorkTab(btn.dataset.worktab));
+    btn.addEventListener("click", () => {
+      setWorkTab(btn.dataset.worktab);
+      if (btn.dataset.worktab === "timeline") void refreshCheckpointTimeline();
+    });
   }
   // 深链 #work/<tab>：直达指定 Tab（记忆的 activeTab 优先级低于显式深链）
   if (route?.tab) workActiveTab = route.tab;
   setWorkTab(workActiveTab);
+  if (workActiveTab === "timeline") void refreshCheckpointTimeline();
   // turn_settled 自动刷新（原"面板可见则刷新"的订阅制等价面——挂载期生效）
   unsubscribeTurnSettled = subscribeTurnSettled(() => void refreshWorkReview());
   const files = await ensureFileCache(getSessionId()); // 与 @ 补全同一会话期缓存

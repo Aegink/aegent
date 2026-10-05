@@ -64,6 +64,10 @@ _Avoid_: 重放（replay 是只读检视——L4 词汇）、回滚（回滚暗�
 代码状态快照的引用事件（checkpoint——provider + ref）；与 compaction 检查点（兜底恢复点）分域。
 _Avoid_: 快照（snapshot 泛指——checkpoint 专指落流引用事件）
 
+**Thinking Override（思考档覆盖）**:
+会话级思考档选择的持久事实（thinking/set——level 整值，流内最新即事实源）——child 启动 restore 扫流重建，重启后档位保持。
+_Avoid_: 设置（settings 是全局配置——覆盖是会话级选择）、推理参数（reasoning 是模型档位声明——override 是用户显式覆盖）
+
 **TurnEndReason（轮终态）**:
 轮结束原因的闭集枚举（completed / aborted / blocked / max-tokens 等）——落 turn/end。
 _Avoid_: 错误码（终态不是错误）、status（泛化词）
