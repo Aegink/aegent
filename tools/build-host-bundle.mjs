@@ -29,6 +29,7 @@ import { cpSync, existsSync, readdirSync, statSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = path.join(repoRoot, "dist", "portable");
@@ -63,6 +64,7 @@ const bundle = (entry, outfile) => {
       "--legal-comments=eof",
       "--external:better-sqlite3",
       "--external:node-pty", // T-P3-156 P：终端面板原生模块（ConPTY）——bundle 外置随包
+      "--external:sherpa-onnx-node", // T-P3-174 批次 6 G1：SenseVoice 原生面（.node 平台件随包）
       // import.meta.url shim（CJS 无 import.meta——bin 守卫与模块缺省路径依赖它）
       "--banner:js=const __import_meta_url = require('node:url').pathToFileURL(__filename).href;",
       "--define:import.meta.url=__import_meta_url",
@@ -73,6 +75,8 @@ const bundle = (entry, outfile) => {
 };
 bundle("dist/src/host/server.js", "host.cjs");
 bundle("dist/src/kernel/agent-child.js", "agent-child.cjs");
+// T-P3-174 批次 6 G1：本地转写 worker（host spawn 的独立入口——原生件 external）
+bundle("dist/src/host/local-stt-worker.js", "local-stt-worker.cjs");
 
 // 2) 便携布局：ui/ + node.exe + better-sqlite3
 const uiDst = path.join(outDir, "ui");
@@ -119,6 +123,22 @@ cpSync(path.join(repoRoot, "node_modules", "better-sqlite3"), nativeDst, {
   recursive: true,
   dereference: true, // pnpm 符号链接解引用
 });
+// T-P3-174 批次 6 G1：本地转写原生面（sherpa-onnx-node JS + win-x64 平台件
+// 23MB——optionalDependencies 缺失 = 本地转写诚实降级，云端 STT 不受影响）
+// pnpm 的平台件（optionalDependencies）不提升到顶层——require.resolve 定位
+// 真实落点（.pnpm/<pkg>@<ver>/node_modules/<pkg>）后按目录拷。
+const requireResolve = createRequire(path.join(repoRoot, "package.json"));
+const sherpaJsDir = path.dirname(requireResolve.resolve("sherpa-onnx-node/package.json"));
+cpSync(sherpaJsDir, path.join(outDir, "node_modules", "sherpa-onnx-node"), { dereference: true, recursive: true });
+// 平台件是 sherpa-onnx-node 的 optionalDependencies——pnpm 装在 .pnpm 但不
+// 提升到根解析链，按目录名前缀探测物理落点
+const pnpmDir = path.join(repoRoot, "node_modules", ".pnpm");
+const nativeEntry = readdirSync(pnpmDir).find((d) => d.startsWith("sherpa-onnx-win-x64@"));
+if (nativeEntry !== undefined) {
+  cpSync(path.join(pnpmDir, nativeEntry, "node_modules", "sherpa-onnx-win-x64"), path.join(outDir, "node_modules", "sherpa-onnx-win-x64"), { dereference: true, recursive: true });
+} else {
+  console.warn("[bundle] sherpa-onnx-win-x64 未安装——本地转写在便携包不可用（云端 STT 不受影响）");
+}
 
 // 3.5) 运行时伴生资产（copy-assets 的五类——bundle 里 import.meta.url 经
 // shim 指向 bundle 自身，故资产必须镜像到 bundle 同目录的相对形状：

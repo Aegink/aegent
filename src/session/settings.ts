@@ -414,10 +414,13 @@ export interface SettingsShape {
    * key 零明文：凭据在 credentials 库以 provider 名 "stt" 录入（U2 面复用）。
    */
   stt?: {
-    /** OpenAI 协议兼容端点根（如 https://api.openai.com/v1）。 */
-    baseUrl: string;
-    /** 转写模型名（如 whisper-1——provider 侧语义）。 */
-    model: string;
+    /** 转写引擎（T-P3-174 批次 6 G1）："cloud"（缺省——OpenAI 协议端点）|
+     *  "local"（SenseVoice 本地推理——模型经下载器落 ~/.aegent/models）。 */
+    engine?: "cloud" | "local";
+    /** OpenAI 协议兼容端点根（如 https://api.openai.com/v1）；engine=local 可缺省。 */
+    baseUrl?: string;
+    /** 转写模型名（如 whisper-1——provider 侧语义）；engine=local 可缺省。 */
+    model?: string;
     /** 语言提示（BCP-47 可选，如 zh）。 */
     language?: string;
     /** 录音时长上限秒数（缺省 120——dsh maxDurationSeconds 同款语义）。 */
@@ -439,6 +442,9 @@ export interface SettingsShape {
    * key 零明文：凭据在 credentials 库以 provider 名 "tts" 录入。
    */
   tts?: {
+    /** 回复自动朗读（T-P3-174 批次 6 G2——turn 内新 assistant 文本按句
+     *  分段合成入播放队列；新回复/手动停止/录音开始即抢占）。 */
+    autoSpeak?: boolean;
     /** OpenAI 协议兼容端点根（如 https://api.openai.com/v1）。 */
     baseUrl: string;
     /** 合成模型名（如 tts-1——provider 侧语义）。 */
@@ -1421,10 +1427,21 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
       throw new SettingsError("stt 须为对象");
     }
     const s = stt as Record<string, unknown>;
+    // engine（T-P3-174 批次 6 G1）："cloud"（缺省——baseUrl/model 必填）|
+    // "local"（SenseVoice 本地推理——baseUrl/model 可缺省）
+    const rawEngine = s["engine"];
+    if (rawEngine !== undefined && rawEngine !== "cloud" && rawEngine !== "local") {
+      throw new SettingsError('stt.engine 只接受 "cloud" | "local"');
+    }
+    const engine = rawEngine === "local" ? "local" : undefined;
     const baseUrl = assertString(s["baseUrl"], "stt.baseUrl");
-    if (baseUrl === undefined) throw new SettingsError("stt.baseUrl 缺失（OpenAI 协议端点根）");
+    if (engine !== "local" && baseUrl === undefined) {
+      throw new SettingsError("stt.baseUrl 缺失（OpenAI 协议端点根）");
+    }
     const model = assertString(s["model"], "stt.model");
-    if (model === undefined) throw new SettingsError("stt.model 缺失（转写模型名）");
+    if (engine !== "local" && model === undefined) {
+      throw new SettingsError("stt.model 缺失（转写模型名）");
+    }
     // maxSeconds：undefined/空缺省；非法（非正整数或超 600）fail-closed throw
     // （对齐 mcp timeoutMs 惯例；上界 600 = 10 分钟）
     let maxSeconds: number | undefined;
@@ -1445,8 +1462,9 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
       protocol = rawProtocol;
     }
     out.stt = {
-      baseUrl,
-      model,
+      ...(engine !== undefined ? { engine } : {}),
+      ...(baseUrl !== undefined ? { baseUrl } : {}),
+      ...(model !== undefined ? { model } : {}),
       ...(assertString(s["language"], "stt.language") !== undefined
         ? { language: s["language"] as string }
         : {}),
@@ -1466,7 +1484,12 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
     if (baseUrl === undefined) throw new SettingsError("tts.baseUrl 缺失（OpenAI 协议端点根）");
     const model = assertString(s["model"], "tts.model");
     if (model === undefined) throw new SettingsError("tts.model 缺失（合成模型名）");
+    const autoSpeak = s["autoSpeak"];
+    if (autoSpeak !== undefined && typeof autoSpeak !== "boolean") {
+      throw new SettingsError("tts.autoSpeak 须为布尔");
+    }
     out.tts = {
+      ...(autoSpeak === true ? { autoSpeak: true } : {}),
       baseUrl,
       model,
       ...(assertString(s["voice"], "tts.voice") !== undefined ? { voice: s["voice"] as string } : {}),

@@ -18,6 +18,8 @@ import { tryProjectSettingsOp } from "./settings-project-ops.js";
 import { tryInstructionSettingsOp } from "./settings-instruction-ops.js";
 import { tryPanelSettingsOp } from "./settings-panel-ops.js";
 import { tryTransferSettingsOp } from "./settings-transfer-ops.js";
+import { localSttStatus } from "./local-stt.js";
+import { sttDownloadAll } from "./local-stt-download.js";
 import { AgentHost } from "./registry.js";
 import {
   HostProtocolServer,
@@ -416,6 +418,9 @@ export class HostBridge implements SessionRouter {
         const instrOp = tryInstructionSettingsOp(gateway, call); // 指令域四 op 收敛（T-P3-151）
         if (instrOp !== undefined) return instrOp;
         if (call.op === "stt-transcribe") return gateway.sttTranscribe({ base64: call.content!, mediaType: call.mediaType! });
+        // T-P3-174 批次 6 G1：本地 SenseVoice 状态/下载（进度经 stt-local-status 轮询）
+        if (call.op === "stt-local-status") return localSttStatus();
+        if (call.op === "stt-local-download") return sttDownloadAll();
         if (call.op === "tts-synthesize") return gateway.ttsSynthesize({ text: call.text! });
         // T-P3-150 项目域八 op 一行收敛（分发面在 settings-project-ops）
         const projectOp = tryProjectSettingsOp(gateway, call);

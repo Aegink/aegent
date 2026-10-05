@@ -312,13 +312,13 @@ function attachSurface(bridge: HostBridge, ws: WebSocket): void {
 
 /** 仓库根的 ui/ 缺省位（dist/src/host/server.js 上溯三级）。 */
 export function defaultUiDir(): string {
-  return path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "..",
-    "..",
-    "..",
-    "ui",
-  );
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  // 便携 bundle 运行（host.cjs 旁的 ui/——build-host-bundle 布局）优先；
+  // 源码/dist 运行 = dist/src/host 上跳三级到仓库根 ui。裸 host.cjs 是
+  // 合法运行形态（无壳 --ui 旗标时的静态面——批次 6 走查实抓 404）。
+  const portableUi = path.resolve(here, "ui");
+  if (fs.existsSync(portableUi)) return portableUi;
+  return path.resolve(here, "..", "..", "..", "ui");
 }
 
 /** 仓库根的 agent-child 编译产物位（dist/src/host/server.js 旁：../kernel）。 */

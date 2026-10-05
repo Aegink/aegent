@@ -25,6 +25,8 @@ const OPS = [
   "instructions-list",
   "instruction-save",
   "stt-transcribe",
+  "stt-local-status",
+  "stt-local-download",
   "tts-synthesize",
   "fs-tree",
   "fs-read",

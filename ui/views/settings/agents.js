@@ -356,8 +356,39 @@ export const SECTIONS_HTML = `
     <button id="stt-test" type="button" class="btn">测试识别</button>
     <span id="stt-test-result" class="row-desc" style="flex:1">发送 0.5 秒静音音频走真实端点——回显转写结果或错误。</span>
   </div>
+  <div class="row-title" style="margin:16px 0 4px">本地转写（SenseVoice——离线引擎，实验性）</div>
+  <div class="row-list">
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title">转写引擎</div>
+        <div class="row-desc">云端 = 上方端点（模型在服务商侧）；本地 = SenseVoice int8 离线推理（首次下载约 230MB，之后离线可用；配置只影响新录音）</div>
+      </div>
+      <div class="row-control">
+        <div class="tabs-pill" id="stt-engine">
+          <button type="button" class="tab-trigger" data-value="cloud">云端</button>
+          <button type="button" class="tab-trigger" data-value="local">本地</button>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title" id="stt-local-title">本地模型</div>
+        <div class="row-desc" id="stt-local-desc">检查中…</div>
+      </div>
+      <div class="row-control">
+        <button id="stt-local-download" type="button" class="btn">下载模型</button>
+      </div>
+    </div>
+  </div>
   <div class="row-title" style="margin:16px 0 4px">语音合成（TTS——消息朗读）</div>
   <div class="row-list">
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title">回复自动朗读</div>
+        <div class="row-desc">回复结束后按句自动合成播放（新回复/停止按钮/开始录音即打断上一队列）</div>
+      </div>
+      <div class="row-control"><label class="check-line"><input id="tts-autospeak" type="checkbox" /> 启用</label></div>
+    </div>
     <div class="row">
       <div class="row-copy">
         <div class="row-title">TTS 端点根</div>
@@ -2312,6 +2343,100 @@ function syncPolishTemplateState() {
 // app.js——Composer 域）；空配置 = 删除 stt 段（回退缺省）
 // ---------------------------------------------------------------------------
 
+// —— T-P3-174 批次 6 G1：本地转写引擎（tabs-pill 二选一 + 模型下载进度）——
+let sttEngine = "cloud";
+let sttLocalPoll = null;
+
+function renderSttEngine() {
+  for (const b of document.querySelectorAll("#stt-engine .tab-trigger")) {
+    b.classList.toggle("active", b.dataset.value === sttEngine);
+  }
+}
+
+function renderSttLocalStatus(status) {
+  const desc = document.getElementById("stt-local-desc");
+  const btn = document.getElementById("stt-local-download");
+  if (desc === null || btn === null) return;
+  if (status?.installed === true) {
+    const mb = (status.files ?? []).reduce((s, f) => s + (f.bytes ?? 0), 0) / 1024 / 1024;
+    desc.textContent = `模型就绪（${mb.toFixed(0)}MB，sha256 已验）——录音走本地离线推理`;
+    btn.textContent = "重新校验";
+    btn.disabled = false;
+    return;
+  }
+  const dl = status?.downloading;
+  if (dl !== undefined && dl !== null && dl.phase === "downloading") {
+    const pct = dl.totalBytes > 0 ? Math.round((dl.completedBytes / dl.totalBytes) * 100) : 0;
+    desc.textContent = `下载中 ${pct}%（${(dl.completedBytes / 1024 / 1024).toFixed(0)}/${(dl.totalBytes / 1024 / 1024).toFixed(0)}MB）——保持网络畅通`;
+    btn.disabled = true;
+    return;
+  }
+  if (status?.lastError) {
+    desc.textContent = `上次下载失败：${status.lastError}——可重试（已完成的文件自动跳过）`;
+  } else {
+    desc.textContent = "未安装——模型 SenseVoice int8（中英日韩粤，239MB）+ 分段 VAD，首次下载后离线可用";
+  }
+  btn.textContent = "下载模型";
+  btn.disabled = false;
+}
+
+async function pollSttLocalStatus() {
+  try {
+    const envelope = await sendSettings({ op: "stt-local-status" });
+    if (!envelope.ok) return;
+    renderSttLocalStatus(envelope.result);
+    const stillDownloading = envelope.result?.downloading !== undefined && envelope.result?.downloading !== null;
+    if (stillDownloading && sttLocalPoll === null) {
+      sttLocalPoll = setInterval(async () => {
+        const env = await sendSettings({ op: "stt-local-status" });
+        if (env.ok) {
+          renderSttLocalStatus(env.result);
+          const dl = env.result?.downloading;
+          if (dl === undefined || dl === null) {
+            clearInterval(sttLocalPoll);
+            sttLocalPoll = null;
+          }
+        }
+      }, 1200);
+    }
+  } catch {
+    /* host 未响应——下次打开设置页重查 */
+  }
+}
+
+function bindSttEngine() {
+  for (const b of document.querySelectorAll("#stt-engine .tab-trigger")) {
+    b.addEventListener("click", () => {
+      sttEngine = b.dataset.value;
+      renderSttEngine();
+      // 引擎切换 = 保存段变更（sttInputHandler 的 change 面不覆盖 tabs——手动触发保存）
+      const baseUrl = document.getElementById("stt-baseurl").value.trim();
+      const model = document.getElementById("stt-model").value.trim();
+      const next = { ...(settingsCache?.stt ?? {}) };
+      if (sttEngine === "local") next.engine = "local";
+      else delete next.engine;
+      if (baseUrl !== "") next.baseUrl = baseUrl;
+      if (model !== "") next.model = model;
+      if (sttEngine === "local" || (baseUrl !== "" && model !== "")) {
+        settingsCache.stt = next;
+        dirtySections.add("stt");
+        markDirty("stt");
+      }
+    });
+  }
+  document.getElementById("stt-local-download")?.addEventListener("click", async () => {
+    const envelope = await sendSettings({ op: "stt-local-download" });
+    if (!envelope.ok) {
+      toast(`下载触发失败：${envelope.error?.message ?? ""}`, "warn");
+      return;
+    }
+    toast("模型下载已开始——进度见下方状态行", "info");
+    void pollSttLocalStatus();
+  });
+  renderSttEngine();
+  void pollSttLocalStatus();
+}
+
 function sttInputHandler(field) {
   document.getElementById(`stt-${field}`).addEventListener("change", () => {
     const baseUrl = document.getElementById("stt-baseurl").value.trim();
@@ -2321,7 +2446,9 @@ function sttInputHandler(field) {
     const refine = document.getElementById("stt-refine").checked;
     const silenceStop = document.getElementById("stt-silence").checked;
     const protocol = document.getElementById("stt-protocol").value;
+    const engine = sttEngine === "local" ? "local" : undefined;
     const next = {};
+    if (engine === "local") next.engine = "local";
     if (baseUrl !== "") next.baseUrl = baseUrl;
     if (model !== "") next.model = model;
     if (language !== "") next.language = language;
@@ -2332,7 +2459,8 @@ function sttInputHandler(field) {
     }
     if (refine) next.refineTranscript = true;
     if (silenceStop) next.silenceStop = true;
-    if (baseUrl === "" || model === "") {
+    // engine=local 时 baseUrl/model 可缺省（本地 SenseVoice 不走端点）
+    if (engine !== "local" && (baseUrl === "" || model === "")) {
       settingsCache.stt = undefined;
       delete settingsCache.stt;
     } else {
@@ -2373,12 +2501,14 @@ function ttsInputHandler(field) {
     const baseUrl = document.getElementById("tts-baseurl").value.trim();
     const model = document.getElementById("tts-model").value.trim();
     const voice = document.getElementById("tts-voice").value.trim();
+    const autoSpeak = document.getElementById("tts-autospeak")?.checked === true;
     if (baseUrl === "" || model === "") {
       settingsCache.tts = undefined;
       delete settingsCache.tts;
     } else {
       const next = { baseUrl, model };
       if (voice !== "") next.voice = voice;
+      if (autoSpeak) next.autoSpeak = true;
       settingsCache.tts = next;
     }
     dirtySections.add("tts");
@@ -2939,6 +3069,25 @@ export function bind() {
   ttsInputHandler("baseurl");
   ttsInputHandler("model");
   ttsInputHandler("voice");
+  const autospeak = document.getElementById("tts-autospeak");
+  if (autospeak !== null) {
+    autospeak.checked = settingsCache?.tts?.autoSpeak === true;
+    autospeak.addEventListener("change", () => {
+      // 开关独立保存（TTS 端点未配置时也允许预设——回复朗读只在端点齐时生效）
+      const cur = settingsCache?.tts ?? {};
+      const next = { ...cur };
+      if (autospeak.checked) next.autoSpeak = true;
+      else delete next.autoSpeak;
+      if (next.baseUrl === undefined || next.model === undefined) {
+        settingsCache.tts = Object.keys(next).length > 0 ? next : undefined;
+        if (settingsCache.tts === undefined) delete settingsCache.tts;
+      } else {
+        settingsCache.tts = next;
+      }
+      dirtySections.add("tts");
+      markDirty("tts");
+    });
+  }
   document.getElementById("stt-test").addEventListener("click", () => void runSttTest());
   document.getElementById("tts-test").addEventListener("click", () => void runTtsTest());
 
@@ -2970,6 +3119,10 @@ export function fill() {
   document.getElementById("stt-refine").checked = settingsCache?.stt?.refineTranscript === true;
   document.getElementById("stt-silence").checked = settingsCache?.stt?.silenceStop === true;
   document.getElementById("stt-protocol").value = settingsCache?.stt?.protocol === "chat" ? "chat" : "transcriptions";
+  // T-P3-174 批次 6 G1：引擎回填 + 本地模型状态拉取
+  sttEngine = settingsCache?.stt?.engine === "local" ? "local" : "cloud";
+  renderSttEngine();
+  if (document.getElementById("stt-local-download") !== null) bindSttEngine();
   // T-P3-149：TTS 分节回填
   document.getElementById("tts-baseurl").value = settingsCache?.tts?.baseUrl ?? "";
   document.getElementById("tts-model").value = settingsCache?.tts?.model ?? "";

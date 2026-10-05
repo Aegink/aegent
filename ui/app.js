@@ -853,6 +853,11 @@ function renderEvent(e, options = {}) {
         const speakBtn = buildSpeakButton(content);
         if (speakBtn !== null) wrapper.appendChild(speakBtn);
         wrapper.appendChild(buildSaveRuleButton(content)); // T-P3-151 C1
+        // T-P3-174 批次 6 G2：回复自动朗读（live 新回复 + 开关 + TTS 已配置；
+        // 历史重放不触发——options.live 门控）
+        if (options.live === true && settingsCache?.tts?.autoSpeak === true && speakBtn !== null) {
+          void speakTextAuto(content);
+        }
       };
       const bubble = document.createElement("div");
       bubble.className = "agent-text";
@@ -964,6 +969,7 @@ function stripMarkdownForSpeech(md) {
 }
 
 function stopSpeaking() {
+  speakGeneration += 1; // 代数推进——自动朗读队列旧代数全部终止
   if (speakAudio !== null) {
     speakAudio.pause();
     URL.revokeObjectURL(speakAudio.src);
@@ -973,6 +979,61 @@ function stopSpeaking() {
     speakBtnActive.replaceChildren(icon("volume2", { cls: "icon-sm" }));
     speakBtnActive.classList.remove("speaking");
     speakBtnActive = null;
+  }
+}
+
+// —— T-P3-174 批次 6 G2：回复自动朗读（TTS 播放队列——句子边界分段合成，
+// 首句更快出声；新回复/手动停止/录音开始 = 代数抢占，旧队列终止）——
+let speakGeneration = 0;
+let speakQueueBusy = false;
+
+/** 句子边界切分（。！？!?.；;…与换行——短段合成快、打断粒度细）。 */
+export function splitSpeechSentences(text) {
+  return text
+    .split(/(?<=[。！？!?；;….])\s*\n?\s*|\n\s*/)
+    .map((s) => s.trim())
+    .filter((s) => s !== "");
+}
+
+async function speakTextAuto(content) {
+  const gen = ++speakGeneration; // 新队列 = 新代数（旧队列 speakGeneration 不匹配即终止）
+  const plain = stripMarkdownForSpeech(content);
+  // 逐句合成入队（超 4000 字符的长句整句跳过——手动朗读面兜底全篇）
+  const queue = splitSpeechSentences(plain).filter((s) => s.length <= 4000);
+  if (queue.length === 0) return;
+  speakQueueBusy = true;
+  try {
+    for (const sentence of queue) {
+      if (gen !== speakGeneration) return; // 被新回复/停止抢占
+      const envelope = await sendSettings({ op: "tts-synthesize", text: sentence });
+      if (gen !== speakGeneration) return;
+      if (!envelope.ok) return; // 自动朗读失败静默收束（手动朗读才 toast）
+      const binary = atob(envelope.result.audioBase64 ?? "");
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+      await new Promise((resolve) => {
+        const url = URL.createObjectURL(new Blob([bytes], { type: envelope.result.mediaType ?? "audio/mpeg" }));
+        const audio = new Audio(url);
+        speakAudio = audio;
+        audio.addEventListener("ended", () => {
+          if (speakAudio === audio) {
+            URL.revokeObjectURL(url);
+            speakAudio = null;
+          }
+          resolve();
+        });
+        audio.addEventListener("error", () => {
+          if (speakAudio === audio) {
+            URL.revokeObjectURL(url);
+            speakAudio = null;
+          }
+          resolve();
+        });
+        void audio.play().catch(() => resolve());
+      });
+    }
+  } finally {
+    speakQueueBusy = false;
   }
 }
 

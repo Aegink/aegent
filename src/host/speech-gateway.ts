@@ -8,6 +8,7 @@
  */
 
 import { transcribeAudio } from "../attachments/stt.js";
+import { localTranscribe } from "./local-stt.js";
 import type { SettingsShape } from "../session/settings.js";
 import type { CredentialStore } from "../session/credentials.js";
 
@@ -27,8 +28,21 @@ export async function runSttTranscribe(
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ text: string; model: string }> {
   const stt = settings.stt;
-  if (stt === undefined || stt.baseUrl.trim() === "") {
-    const error = new Error("STT 未配置——设置页语音分节填端点与模型");
+  // T-P3-174 批次 6 G1：engine=local → 本地 SenseVoice（模型未就绪类型化
+  // 引导下载；不静默降级云端——本地引擎是用户显式选择）
+  if (stt?.engine === "local") {
+    const result = await localTranscribe(base64ToBytes(payload.base64), {
+      ...(stt.language !== undefined ? { language: stt.language } : {}),
+    });
+    if (!result.ok) {
+      const error = new Error(result.message ?? "本地转写失败");
+      (error as unknown as { code: string }).code = result.code ?? "STT_LOCAL_FAILED";
+      throw error;
+    }
+    return { text: result.text ?? "", model: "sensevoice-local" };
+  }
+  if (stt === undefined || stt.baseUrl === undefined || stt.baseUrl.trim() === "" || stt.model === undefined) {
+    const error = new Error("STT 未配置——设置页语音分节填端点与模型（或切换本地转写引擎）");
     (error as unknown as { code: string }).code = "STT_NOT_CONFIGURED";
     throw error;
   }
@@ -43,8 +57,8 @@ export async function runSttTranscribe(
   }
   const result = await transcribeAudio(
     {
-      baseUrl: stt.baseUrl,
-      model: stt.model,
+      baseUrl: stt.baseUrl!,
+      model: stt.model!,
       ...(stt.language !== undefined ? { language: stt.language } : {}),
       ...(stt.protocol !== undefined ? { protocol: stt.protocol } : {}),
       ...(apiKey !== undefined ? { apiKey } : {}),
