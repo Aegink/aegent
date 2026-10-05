@@ -202,6 +202,15 @@ export class Projector {
     return new Projector(emptyProjection());
   }
 
+  /**
+   * T-P3-172：校验锚快进（restore discard 档专用）——旧流不进内存但库
+   * seq 空间已被占用，后续 append 从 maxSeq+1 续写；投影只推进 lastSeq
+   * 校验锚，不产生任何投影事实（turn/步骤状态由新事件从零建立）。
+   */
+  skipTo(seq: number): void {
+    if (seq > this.state.lastSeq) this.state.lastSeq = seq;
+  }
+
   /** 全量 fold：冷启动 / 恢复 / 基准用（增量路径走 append）。 */
   static fold(events: readonly SessionEvent[]): Projector {
     const projector = Projector.fresh();

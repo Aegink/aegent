@@ -192,24 +192,49 @@ export class SessionStore {
 
   /**
    * 崩溃恢复：从 storage 重放已落库事件到内存（杀进程重启路径）。
-   * seq 不连续视为存储损坏，直接抛错——绝不带病重建内存序。
+   * 三级降级（T-P3-172——child 启动恢复的可用性阶梯）：
+   *   strict（缺省）：seq 断续/语义坏 → 抛错（快照/对账面语义不变）；
+   *   lenient：seq 断续容忍（按库实际 seq 灌内存、nextSeq=maxSeq+1 接续），
+   *     fold 仍失败 → 自动降 discard；
+   *   discard：旧流不进内存（恢复视图经库读面仍然完整可见），投影弃用——
+   *     后续 append 自动 fresh 新投影，新事件从 maxSeq+1 干净续写。
+   * 旧版本缺陷可能留下带洞/缺 turn 边界的流——**可用性优先**，历史内容
+   * 永不删除（库行原样保留）。
    */
-  async restore(sessionId: string): Promise<readonly SessionEvent[]> {
+  async restore(sessionId: string, options: { lenient?: boolean } = {}): Promise<readonly SessionEvent[]> {
     const rows = await this.storage.readAll(sessionId);
-    for (let i = 0; i < rows.length; i++) {
-      if (rows[i]!.seq !== i + 1) {
-        throw new Error(`存储损坏：seq 不连续（位置 ${i} 期望 ${i + 1}，实际 ${rows[i]!.seq}）`);
+    if (options.lenient !== true) {
+      for (let i = 0; i < rows.length; i++) {
+        if (rows[i]!.seq !== i + 1) {
+          throw new Error(`存储损坏：seq 不连续（位置 ${i} 期望 ${i + 1}，实际 ${rows[i]!.seq}）`);
+        }
       }
     }
-    this.events.set(sessionId, [...rows]);
-    // 恢复的流整体过一遍 fold（E16）：损坏数据在这里被拒，绝不带病重建内存序
-    this.projectors.set(sessionId, Projector.fold(rows));
-    const maxSeq = rows.length;
+    const maxSeq = rows.length > 0 ? rows[rows.length - 1]!.seq : 0;
+    let folded = false;
+    try {
+      this.projectors.set(sessionId, Projector.fold(rows));
+      folded = true;
+    } catch (e) {
+      // strict：原样上抛（E16 读路径闸门——未知类型/开合不配对的具体原因
+      // 必须可见）；lenient 且 fold 失败 → discard（见头注释）
+      if (options.lenient !== true) throw e;
+    }
+    if (folded) {
+      this.events.set(sessionId, [...rows]);
+    } else {
+      // discard：旧流不进内存，但投影的 lastSeq 预置 maxSeq（后续 append
+      // 的 seq 接续校验从 maxSeq+1 通过——投影流校验与库 seq 空间一致）
+      const projector = this.projectors.get(sessionId) ?? Projector.fresh();
+      projector.skipTo(maxSeq);
+      this.projectors.set(sessionId, projector);
+      this.events.delete(sessionId);
+    }
     this.lastSeq.set(sessionId, maxSeq);
     this.lastFlushedSeq.set(sessionId, maxSeq);
     this.nextSeqBySession.set(sessionId, maxSeq + 1);
     this.buffer.set(sessionId, []);
-    return rows;
+    return folded ? rows : [];
   }
 
   // -------------------------------------------------------------------------

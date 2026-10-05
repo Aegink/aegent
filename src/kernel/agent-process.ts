@@ -279,10 +279,17 @@ export async function runAgentChildStdio(
   if (externalStorage !== undefined) {
     try {
       await store.restore(sessionId);
-    } catch (e) {
-      send({ type: "error", code: "STORE_RESTORE_FAILED", message: e instanceof Error ? e.message : String(e) });
-      exit(1);
-      return;
+    } catch {
+      // T-P3-172：strict 恢复失败（seq 断续——旧版本缺陷留下的带洞流）
+      // 降级 lenient 重试（可用性优先：洞保留、新事件接 maxSeq+1）；
+      // lenient 仍失败才是真库损坏，fail-closed 拒绝带病启动。
+      try {
+        await store.restore(sessionId, { lenient: true });
+      } catch (e) {
+        send({ type: "error", code: "STORE_RESTORE_FAILED", message: e instanceof Error ? e.message : String(e) });
+        exit(1);
+        return;
+      }
     }
   }
 
