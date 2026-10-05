@@ -1,0 +1,3 @@
+View a local image file from the filesystem when visual inspection is needed. Use this for images already available on disk (screenshots you produced, diagrams, rendered output). The image is injected into the next model request as an attachment right after this tool's result.
+
+Supported formats: png, jpeg, gif, webp (up to 20MB). The path may be absolute or relative to the workspace root. Reading is workspace-guarded like the read tool.

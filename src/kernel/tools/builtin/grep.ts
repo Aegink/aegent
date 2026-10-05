@@ -14,6 +14,7 @@
 import { readFile, stat } from "node:fs/promises";
 import * as path from "node:path";
 import type { ToolDef } from "../registry.js";
+import type { ToolContext } from "../context.js";
 import { globToRegExp, walkFiles } from "./patterns.js";
 import { toolError } from "./util.js";
 
@@ -29,6 +30,94 @@ export const MAX_GREP_MATCHES = 200;
 /** 超长匹配行的展示截断（防单行巨文件刷屏；B5 的输出截断在 T-4-06）。 */
 const MAX_LINE_DISPLAY = 200;
 
+/**
+ * rg 快路径的 stdout 缓冲上限（pi-desktop RG_STDOUT_CAP 同款 8MB）：病态
+ * 大树在解析前不吃满内存；超限报错 → 回退内置搜索器（结果正确只是慢）。
+ */
+const RG_STDOUT_CAP = 8 * 1024 * 1024;
+
+/**
+ * rg 探测缓存（进程级）：`rg --version` 一次成功/失败后不再重复探测。
+ * 测试隔离面 resetGrepRgProbeForTests（O25 显式重置纪律）。
+ */
+let rgProbeResult: boolean | undefined;
+
+export function resetGrepRgProbeForTests(): void {
+  rgProbeResult = undefined;
+}
+
+/**
+ * JS RegExp 独有构造（rg 的 Rust regex 不支持——回退内置实现而非输出
+ * 假结果）：lookahead/lookbehind。`\d` 等共享转义两边方言一致，不拦。
+ */
+const JS_ONLY_REGEX_CONSTRUCTS = /\(\?[=!<]/;
+
+async function trySystemRg(
+  pattern: string,
+  root: string,
+  include: string | undefined,
+  ctx: ToolContext,
+): Promise<{ content: string; truncated: boolean } | "fallback"> {
+  const env = ctx.env;
+  if (env === undefined || env.execFile === undefined) return "fallback";
+  if (JS_ONLY_REGEX_CONSTRUCTS.test(pattern)) return "fallback";
+  // 探测（进程级缓存）：rg 不在 PATH → 永久走内置（本进程内）
+  if (rgProbeResult === undefined) {
+    try {
+      await env.execFile("rg", ["--version"], { timeoutMs: 5000 });
+      rgProbeResult = true;
+    } catch {
+      rgProbeResult = false;
+    }
+  }
+  if (rgProbeResult === false) return "fallback";
+  const args = ["--json", "--no-config", "-e", pattern, "--", root];
+  if (include !== undefined) args.splice(2, 0, "--glob", include);
+  let result;
+  try {
+    result = await env.execFile("rg", args, { maxBufferBytes: RG_STDOUT_CAP });
+  } catch {
+    // spawn 失败（ENOENT）/超时/缓冲超限：回退内置（不改变工具公共形状）
+    return "fallback";
+  }
+  // rg 退出码语义：0 = 有匹配，1 = 无匹配；其余 = rg 自身出错 → 回退
+  if (result.exitCode !== 0 && result.exitCode !== 1) return "fallback";
+  if (result.exitCode === 1) return { content: "No matches found", truncated: false };
+  const lines: string[] = [];
+  let truncated = false;
+  for (const raw of result.stdout.split("\n")) {
+    const trimmed = raw.trim();
+    if (trimmed === "") continue;
+    let parsed: {
+      type?: string;
+      data?: { path?: { text?: string }; line_number?: number; lines?: { text?: string } };
+    };
+    try {
+      parsed = JSON.parse(trimmed) as typeof parsed;
+    } catch {
+      continue; // 非 JSON 行（噪声）跳过
+    }
+    if (parsed.type !== "match" || parsed.data === undefined) continue;
+    const file = parsed.data.path?.text;
+    const lineNo = parsed.data.line_number;
+    const text = parsed.data.lines?.text ?? "";
+    if (file === undefined || lineNo === undefined) continue;
+    if (lines.length >= MAX_GREP_MATCHES) {
+      truncated = true;
+      break;
+    }
+    const clean = text.replace(/\r?\n$/, "");
+    const display = clean.length > MAX_LINE_DISPLAY ? `${clean.slice(0, MAX_LINE_DISPLAY)}…` : clean;
+    lines.push(`${file}:${String(lineNo)}: ${display}`);
+  }
+  if (lines.length === 0) return { content: "No matches found", truncated: false };
+  let content = lines.join("\n");
+  if (truncated) {
+    content += `\n\n[${String(MAX_GREP_MATCHES)}+ matches, output truncated. Refine the pattern or narrow the path.]`;
+  }
+  return { content, truncated };
+}
+
 export function createGrepTool(): ToolDef {
   return {
     name: "grep",
@@ -42,7 +131,7 @@ export function createGrepTool(): ToolDef {
       required: ["pattern"],
     },
     parallel: true, // B17：纯读，声明可并行（parallel 模式持读锁）
-    async execute(args) {
+    async execute(args, ctx) {
       const { pattern, path: base, include } = args as Partial<GrepArgs>;
       if (typeof pattern !== "string" || pattern === "") {
         return toolError("GrepError", "INVALID_ARGUMENTS", "grep 需要 pattern（非空字符串）");
@@ -64,6 +153,15 @@ export function createGrepTool(): ToolDef {
         );
       }
       const root = path.resolve(base ?? process.cwd());
+      // T-P3-174 批次 1：系统 rg 快路径（pi-desktop grep_rg 同构——spawn
+      // 失败/退出码非 0/1 一律无缝回退内置搜索器，工具公共形状不变）。
+      // 注意：rg 尊重 .gitignore（内置遍历不尊重）——结果面差异记档。
+      {
+        const fast = await trySystemRg(pattern, root, include, ctx);
+        if (fast !== "fallback") {
+          return { content: fast.content, ...(fast.truncated ? { meta: { truncated: true } } : {}) };
+        }
+      }
       let files: string[];
       try {
         const info = await stat(root);

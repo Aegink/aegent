@@ -1,0 +1,1 @@
+Get the remaining tokens in the current context window. Use this before long outputs or when unsure whether you can finish a task: it reports used/total/remaining tokens from the most recent model call measurement. If remaining is low, wrap up concisely or finish the task. Returns "not available yet" before the first measured model call.

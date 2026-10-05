@@ -17,10 +17,12 @@
 
 import { createInterface } from "node:readline";
 import { spawn } from "node:child_process";
+import path from "node:path";
 
 import type { CancelCause, SessionRef, TurnEndReason } from "./events.js";
 import { AgentLoop, type AgentLoopDeps, type ToolExecutionMode } from "./loop.js";
 import { PromptQueue, QueueFullError } from "./queue.js";
+import { BackgroundShellRegistry } from "./tools/background-shell.js";
 import { validateAttachments, AttachmentLimitError } from "../attachments/limits.js";
 import { base64ByteLength } from "../attachments/store.js";
 import type { AttachmentRef } from "../attachments/types.js";
@@ -495,6 +497,13 @@ export async function runAgentChildStdio(
       ? { readGate: options.assembly.readGate }
       : {}),
   });
+  // T-P3-174 批次 1：后台 shell 注册表（bash/pwsh/task_output 共享；会话
+  // 收尾 finish 统一 kill）+ shell spill 目录（<workspace>/.aegent/scratch）
+  const backgroundRegistry = new BackgroundShellRegistry();
+  const shellScratchDir =
+    options.assembly?.workspaceRoot !== undefined
+      ? path.join(options.assembly.workspaceRoot, ".aegent", "scratch")
+      : undefined;
   registerBuiltinTools(
     toolRegistry,
     {
@@ -555,6 +564,13 @@ export async function runAgentChildStdio(
             taskStop: { delegations: subagentRuntime.delegations },
           }
         : {}),
+      // T-P3-174 批次 1：后台 shell 面 + scratch spill + 附件/计量条件注册
+      backgroundShell: backgroundRegistry,
+      ...(shellScratchDir !== undefined ? { shellScratchDir } : {}),
+      sessionId,
+      workspaceRoot: options.assembly?.workspaceRoot ?? process.cwd(),
+      ...(options.attachmentStore ? { attachments: options.attachmentStore } : {}),
+      ...(assembly?.contextUsage ? { contextUsage: assembly.contextUsage } : {}),
     },
   );
   // U17/T-P3-119：MCP server 装配消费（settings mcp 段——agent-child 传入
@@ -789,6 +805,9 @@ export async function runAgentChildStdio(
     if (finishing) return;
     finishing = true;
     try {
+      // T-P3-174 批次 1：后台 shell 任务收尾（run_in_background 的进程树
+      // 随会话退出显式 kill——不留孤儿）
+      await backgroundRegistry.dispose();
       for (const conn of mcpConnections) {
         try {
           conn.client.dispose();

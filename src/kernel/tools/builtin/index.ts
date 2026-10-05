@@ -14,16 +14,21 @@ import { createNetworkGuard } from "../../../sandbox/network.js";
 import { createPlanModeService } from "../../plan-mode.js";
 import { ToolRegistry } from "../registry.js";
 import { WriteQueue } from "../write-queue.js";
+import { BackgroundShellRegistry } from "../background-shell.js";
+import type { AttachmentStore } from "../../../attachments/store.js";
 import { createApplyPatchTool } from "./apply-patch.js";
 import { createBashTool } from "./bash.js";
 import { createEditTool } from "./edit.js";
+import { createGetContextRemainingTool, type ContextUsageSnapshot } from "./get-context-remaining.js";
 import { createGlobTool } from "./glob.js";
 import { createGrepTool } from "./grep.js";
 import { createLspTool, type LspClientFor } from "./lsp.js";
+import { createNotebookEditTool } from "./notebook-edit.js";
 import { createPlanEnterTool, createPlanExitTool } from "./plan.js";
 import { createPwshTool } from "./pwsh.js";
 import { createQuestionTool, type QuestionToolDeps } from "./question.js";
 import { createReadTool } from "./read.js";
+import { createSaveMemoryTool } from "./save-memory.js";
 import {
   createSessionGetTool,
   createSessionQueryTool,
@@ -32,6 +37,7 @@ import {
 import { createSkillLoadTool } from "./skill.js";
 import { createPluginCreateTool } from "./plugin-create.js";
 import { createPluginDefineTool } from "./plugin-define.js";
+import { createTaskOutputTool } from "./task-output.js";
 import { createTaskTool, type TaskToolDeps } from "./task.js";
 import {
   createTaskWaitTool,
@@ -42,6 +48,7 @@ import {
 import { createTodoReadTool, type ProjectionTodo } from "./todo-read.js";
 import { createTodoWriteTool } from "./todo.js";
 import { createToolLoadTool } from "./tool-load.js";
+import { createViewImageTool } from "./view-image.js";
 import { createWebSearchTool } from "./web-search.js";
 import { createWebfetchTool } from "./webfetch.js";
 import { createWriteTool } from "./write.js";
@@ -53,7 +60,10 @@ import type { NetworkGuard } from "../../../sandbox/network.js";
 
 /** 内置工具名清单（C45 linter 的 unknown-tool 判定缺省面；与
  * registerBuiltinTools 的注册清单同步维护，新增工具两处都加）。
- * plan_enter/plan_exit 仅在装配启用 plan 模式时注册（T-P1-11）。 */
+ * plan_enter/plan_exit 仅在装配启用 plan 模式时注册（T-P1-11）。
+ * T-P3-174 批次 1：+task_output/view_image/get_context_remaining/
+ * save_memory/notebook_edit（view_image/get_context_remaining 随装配
+ * 条件注册——附件面/计量面缺席不注册）。 */
 export const BUILTIN_TOOL_NAMES = [
   "read",
   "write",
@@ -80,6 +90,11 @@ export const BUILTIN_TOOL_NAMES = [
   "session_get",
   "plugin_create",
   "plugin_define",
+  "task_output",
+  "view_image",
+  "get_context_remaining",
+  "save_memory",
+  "notebook_edit",
 ] as const;
 
 export function registerBuiltinTools(
@@ -167,23 +182,58 @@ export function registerBuiltinTools(
      * 无持久库的装配无历史可查；只读类，不落流）。
      */
     sessionQuery?: SessionQueryToolDeps;
+    /**
+     * T-P3-174 批次 1：后台 shell 任务注册表（bash/pwsh 的 run_in_background
+     * 与 task_output 共享同一实例）。缺省工厂内置一个（无 dispose 挂钩——
+     * 测试/最小装配面）；生产装配从 agent-process 注入以获得会话收尾 kill。
+     */
+    backgroundShell?: BackgroundShellRegistry;
+    /**
+     * T-P3-174 批次 1：shell 输出 spill 目录（`<workspace>/.aegent/scratch`）
+     * 与 Q13 标记的会话身份（bash/pwsh/task_output 共用）。缺省不落盘只截断。
+     */
+    shellScratchDir?: string;
+    /** T-P3-174 批次 1：Q13 spill 标记的会话身份（缺省 unknown-session）。 */
+    sessionId?: string;
+    /** T-P3-174 批次 1：相对路径解析基（view_image/notebook_edit）。 */
+    workspaceRoot?: string;
+    /** T-P3-174 批次 1：save_memory 的目标文件（缺省 ~/.aegent/memory/MEMORY.md）。 */
+    memoryPath?: string;
+    /**
+     * T-P3-174 批次 1：附件 store（view_image 的字节落点；缺省不注册
+     * view_image——无附件面的装配无图片注入通道）。
+     */
+    attachments?: AttachmentStore;
+    /**
+     * T-P3-174 批次 1：上下文计量快照（get_context_remaining 数据源——
+     * 装配 PressureMonitor 的投影；缺省不注册，无计量面不造假数字）。
+     */
+    contextUsage?: () => ContextUsageSnapshot | null;
   } = {},
 ): void {
   const guard = options.pathGuard ?? PathGuard.forWorkspace(process.cwd());
   // B4：write/edit 共享一个写队列（同路径互斥、异路径并行）
   const writeQueue = new WriteQueue();
+  // T-P3-174 批次 1：后台任务注册表（bash/pwsh/task_output 共享同一实例）
+  const backgroundRegistry = options.backgroundShell ?? new BackgroundShellRegistry();
   for (const def of [
     createReadTool({ pathGuard: guard }),
     createWriteTool({ writeQueue, pathGuard: guard }),
     createBashTool({
       pathGuard: guard,
       ...options.bash,
+      ...(options.shellScratchDir !== undefined ? { scratchDir: options.shellScratchDir } : {}),
+      ...(options.sessionId !== undefined ? { sessionId: options.sessionId } : {}),
+      background: backgroundRegistry,
       ...(options.bashSandbox !== undefined ? { sandbox: options.bashSandbox } : {}),
     }),
     // D11（T-P1-28）：PowerShell 一等 shell——与 bash 平行注册（dsh
     // tool-bash/tool-pwsh 同构；Windows 沙箱态宿主正路，见 win32-backend）
     createPwshTool({
       pathGuard: guard,
+      ...(options.shellScratchDir !== undefined ? { scratchDir: options.shellScratchDir } : {}),
+      ...(options.sessionId !== undefined ? { sessionId: options.sessionId } : {}),
+      background: backgroundRegistry,
       ...(options.pwshSandbox !== undefined ? { sandbox: options.pwshSandbox } : {}),
     }),
     createEditTool({ writeQueue, pathGuard: guard }),
@@ -266,6 +316,39 @@ export function registerBuiltinTools(
     ...(options.pluginCreate !== undefined ? [createPluginCreateTool(options.pluginCreate)] : []),
     // T-P3-148 X：动态插件定义（进程内、重启即失——审批走工具调用权限面）
     ...(options.pluginDefine !== undefined ? [createPluginDefineTool(options.pluginDefine)] : []),
+    // T-P3-174 批次 1：task_output（bash/pwsh run_in_background 的查询/kill
+    // 面——零依赖常驻，与 bash/pwsh 共享同一后台注册表）
+    createTaskOutputTool({
+      background: backgroundRegistry,
+      ...(options.shellScratchDir !== undefined ? { scratchDir: options.shellScratchDir } : {}),
+      ...(options.sessionId !== undefined ? { sessionId: options.sessionId } : {}),
+    }),
+    // T-P3-174 批次 1：view_image（附件 store 在位才注册——无附件面的装配
+    // 无图片注入通道；字节进 store、事件追加在 loop）
+    ...(options.attachments !== undefined
+      ? [
+          createViewImageTool({
+            attachments: options.attachments,
+            pathGuard: guard,
+            ...(options.workspaceRoot !== undefined ? { workspaceRoot: options.workspaceRoot } : {}),
+          }),
+        ]
+      : []),
+    // T-P3-174 批次 1：get_context_remaining（计量快照提供时才注册——
+    // 无计量面的装配不造假数字）
+    ...(options.contextUsage !== undefined
+      ? [createGetContextRemainingTool({ usage: options.contextUsage })]
+      : []),
+    // T-P3-174 批次 1：save_memory（零依赖常驻——C2 记忆索引挂点的追加面）
+    createSaveMemoryTool({
+      ...(options.memoryPath !== undefined ? { memoryPath: options.memoryPath } : {}),
+    }),
+    // T-P3-174 批次 1：notebook_edit（与 write/edit 同写队列 + 守卫）
+    createNotebookEditTool({
+      writeQueue,
+      pathGuard: guard,
+      ...(options.workspaceRoot !== undefined ? { workspaceRoot: options.workspaceRoot } : {}),
+    }),
   ]) {
     registry.registerTool(def);
   }
@@ -306,6 +389,17 @@ export function builtinToolParamNames(): Readonly<Record<string, readonly string
       toolRegistry: new ToolRegistry(),
       handles: [],
     },
+    // T-P3-174 批次 1：条件注册面（attachments/contextUsage）的桩——
+    // param-names 表必须覆盖全部可注册工具（schema 漂移免疫同纪律）
+    attachments: new (class {
+      save() {
+        return { attachmentId: "stub", mediaType: "image/png", size: 0 };
+      }
+      read() {
+        return null;
+      }
+    })() as AttachmentStore,
+    contextUsage: () => null,
   });
   const out: Record<string, readonly string[]> = {};
   for (const tool of registry.toChatTools()) {

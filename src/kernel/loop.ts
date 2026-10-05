@@ -1005,6 +1005,9 @@ export class AgentLoop {
           ...(result.meta !== undefined ? { meta: result.meta } : {}),
         },
       ]);
+      // T-P3-174 批次 1：view_image 的图片注入（tool/result 之后追加
+      // injected user/message——wire 序 assistant(tool_calls)→tool→user(image)）
+      this.appendImageAttachmentIfAny(turn, step, result);
       // 执行完回环时只查时间轴（不计数）——防单件慢工具绕过数量轴
       try {
         budget.progress();
@@ -1093,6 +1096,51 @@ export class AgentLoop {
   }
 
   /** 工具分发过 toolCall 链；基础设施崩溃也落成 isError 结果（配平不变量）。 */
+  /**
+   * T-P3-174 批次 1：view_image 的图片注入（codex 同款行为——工具调用后
+   * 模型能看到图片）。meta.imageAttachment（AttachmentRef 形状）在位时，
+   * tool/result 落流**之后**追加 source=injected 的 user/message（字节在
+   * AttachmentStore，流存引用——附件链既有纪律）；投影层经 resolveImage
+   * 展开为 image_url 块。注入失败只 warn 不打断（工具结果已闭合，配平
+   * 不变量不能被注入路径破坏）。
+   */
+  private appendImageAttachmentIfAny(
+    turn: number,
+    step: number,
+    result: ToolExecutionResult,
+  ): void {
+    if (result.meta === null || typeof result.meta !== "object" || Array.isArray(result.meta)) {
+      return;
+    }
+    const ref = (result.meta as Record<string, unknown>)["imageAttachment"];
+    if (ref === null || typeof ref !== "object" || Array.isArray(ref)) return;
+    const candidate = ref as Record<string, unknown>;
+    if (
+      typeof candidate["attachmentId"] !== "string" ||
+      typeof candidate["mediaType"] !== "string"
+    ) {
+      return;
+    }
+    try {
+      this.deps.store.append(this.deps.sessionId, [
+        {
+          type: "user/message",
+          turn,
+          step,
+          message: {
+            content: `[view_image] 图片已注入：${typeof candidate["name"] === "string" ? candidate["name"] : "image"}`,
+          },
+          source: "injected",
+          attachments: [ref as import("../attachments/types.js").AttachmentRef],
+        },
+      ]);
+    } catch (e) {
+      this.deps.logger?.warn("view_image 图片注入落流失败（工具结果不受影响）", {
+        userContent: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
   private async dispatchTool(
     turn: number,
     step: number,
@@ -1211,6 +1259,9 @@ export class AgentLoop {
               ...(result.meta !== undefined ? { meta: result.meta } : {}),
             },
           ]);
+          // T-P3-174 批次 1：parallel 路径同款图片注入（顺序面：result 按完
+          // 成序落流，注入消息跟在对应 result 之后——投影按流序展开）
+          this.appendImageAttachmentIfAny(turn, step, result);
         } finally {
           release();
         }

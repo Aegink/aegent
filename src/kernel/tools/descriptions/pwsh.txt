@@ -1,1 +1,5 @@
-Runs a PowerShell command and returns its stdout/stderr with the exit code. Use this tool when you need Windows-native operations (registry via PowerShell provider, Windows services, WMI/CIM queries, PowerShell-only cmdlets). The command runs in a fresh, non-interactive PowerShell process; output truncation and the same redirection path guards as bash apply. Note: PowerShell exit codes follow host semantics, and prefer bash for POSIX-style pipelines.
+Run a PowerShell command in the current working directory (fresh pwsh/powershell host per call; exit code is the host's). Accepts an optional timeout in seconds.
+
+Output keeps the first 96KB/4000 lines of stdout and the last 96KB/4000 lines of stderr (single lines are clipped at 16384 chars); anything over budget is spilled to a file named in the truncation marker ("完整输出已存至 X（N KB）") — grep or read that file instead of re-running the command.
+
+Set run_in_background to true to start the command without waiting: the call returns a task_id immediately and the process keeps running (not subject to timeout). Use task_output with that task_id to poll output/status or kill the process tree. Background execution requires the no-sandbox or full-auto (danger-full-access) mode; restricted sandbox modes do not support it.

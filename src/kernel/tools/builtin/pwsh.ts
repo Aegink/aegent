@@ -32,6 +32,8 @@ import type { ToolDef } from "../registry.js";
 import { toolError } from "./util.js";
 import { MAX_TIMEOUT_SECONDS, toResult } from "./bash.js";
 import type { BashArgs } from "./bash.js";
+import { BackgroundShellRegistry } from "../background-shell.js";
+import { formatShellOutput } from "../shell-output.js";
 
 export function createPwshTool(options: {
   pathGuard: PathGuard;
@@ -46,7 +48,12 @@ export function createPwshTool(options: {
     backend: import("../../../sandbox/backend.js").SandboxBackend;
     readonly defaultMode: import("../../../sandbox/backend.js").SandboxMode;
   };
+  /** T-P3-174 批次 1：与 bash 同款的后台注册表与 spill 归属面。 */
+  scratchDir?: string;
+  sessionId?: string;
+  background?: BackgroundShellRegistry;
 }): ToolDef {
+  const backgroundRegistry = options.background ?? new BackgroundShellRegistry();
   return {
     name: "pwsh",
     parameters: {
@@ -54,6 +61,12 @@ export function createPwshTool(options: {
       properties: {
         command: { type: "string", description: "The PowerShell command to run" },
         timeout: { type: "number", description: "Timeout in seconds (optional)" },
+        run_in_background: {
+          type: "boolean",
+          description:
+            "Run the command in the background: returns a task_id immediately. " +
+            "Query output/status or kill it later via task_output. Not subject to timeout.",
+        },
       },
       required: ["command"],
     },
@@ -95,6 +108,65 @@ export function createPwshTool(options: {
           "pwsh 需要执行环境（装配处未注入 ExecutionEnv）",
         );
       }
+      // T-P3-174 批次 1：后台执行分支（bash 同款语义——校验已全部在前，
+      // 仅 danger-full-access 有效档允许 env 后台启动，立即返回 task_id）。
+      if ((args as Partial<BashArgs>).run_in_background === true) {
+        const effectiveSandboxMode =
+          options.sandbox !== undefined ? options.sandbox.defaultMode : undefined;
+        if (
+          options.sandbox !== undefined &&
+          effectiveSandboxMode !== "danger-full-access"
+        ) {
+          return toolError(
+            "PwshError",
+            "SANDBOX_UNSUPPORTED",
+            `run_in_background 暂不支持沙箱模式「${String(effectiveSandboxMode)}」（后台执行仅 env 直通/全自动档——受限档无后台句柄无 kill）`,
+          );
+        }
+        const env = ctx.env;
+        if (!env || env.spawnBackground === undefined) {
+          return toolError(
+            "PwshError",
+            "BACKGROUND_UNSUPPORTED",
+            "当前执行环境不支持后台任务（spawnBackground 能力缺席）",
+          );
+        }
+        ctx.reportProgress?.("后台任务启动中");
+        try {
+          const handle = await env.spawnBackground(command, { shell: "pwsh" });
+          let taskId: string;
+          try {
+            taskId = backgroundRegistry.start({ shell: "pwsh", command, handle });
+          } catch (e) {
+            await handle.kill();
+            throw e;
+          }
+          return markStarted({
+            content:
+              `后台任务已启动\ntask_id: ${taskId}\ncommand: ${command}\n` +
+              "查询输出/状态或终止：task_output(task_id)。任务结束后输出仍可查询（进程内保留）。",
+            meta: { task_id: taskId, background: true },
+          });
+        } catch (e) {
+          if (e instanceof Error && e.message.includes("后台任务已满")) {
+            return toolError("PwshError", "BACKGROUND_TASKS_FULL", e.message);
+          }
+          if (isSpawnFailure(e)) {
+            return toolError(
+              "PwshError",
+              (e as NodeJS.ErrnoException).code ?? "EXEC_FAILED",
+              `命令启动失败：${String((e as Error).message)}`,
+            );
+          }
+          return markStarted(
+            toolError(
+              "PwshError",
+              (e as NodeJS.ErrnoException).code ?? "EXEC_FAILED",
+              `后台命令启动失败：${String((e as Error).message)}`,
+            ),
+          );
+        }
+      }
       // B7 进度示范（T-P1-16 同款立场）
       ctx.reportProgress?.(
         timeout !== undefined ? `命令已启动（超时 ${String(timeout)}s）` : "命令已启动",
@@ -117,7 +189,23 @@ export function createPwshTool(options: {
                 command,
                 timeout !== undefined ? { timeoutMs: timeout * 1000 } : undefined,
               );
-        return markStarted(toResult(result));
+        // T-P3-174 批次 1：双层预算输出（bash 同款——stdout 保头/stderr 保尾/
+        // 单行 16k/超限 spill，meta.outputBounded 让通用出口跳过）。
+        const formatted = await formatShellOutput({
+          stdout: result.stdout,
+          stderr: result.stderr,
+          exitCode: result.exitCode,
+          ...(options.scratchDir !== undefined ? { scratchDir: options.scratchDir } : {}),
+          label: "pwsh",
+          sessionId: options.sessionId ?? "unknown-session",
+          tool: "pwsh",
+          callId: ctx.toolCallId,
+        });
+        return markStarted({
+          content: formatted.text,
+          ...(result.exitCode !== 0 ? { isError: true as const } : {}),
+          meta: { exitCode: result.exitCode, ...formatted.meta },
+        });
       } catch (e) {
         if (e instanceof TimeoutError) {
           return markStarted(

@@ -614,6 +614,12 @@ export interface ChildAssembly {
   savePlanArtifact?: (plan: string) => { path: string };
   /** G3 goal 服务（goal 选项启用时存在；tick 与事实面供测试/owner 通道观测）。 */
   goal?: GoalService;
+  /**
+   * T-P3-174 批次 1：get_context_remaining 的数据源（F10 调用后压力测量
+   * 的只读投影——最后一条压力记录 = 最近一次模型调用的已用/窗口；无记录
+   * 返回 null 诚实降级）。
+   */
+  contextUsage?: () => import("./tools/builtin/get-context-remaining.js").ContextUsageSnapshot | null;
   /** 工具注册的面（PathGuard 由装配定形，注册处必收）。 */
   pathGuard: PathGuard;
   /** 释放未决审批（dispose 路径：按超时语义拒绝，不悬挂）。 */
@@ -1184,6 +1190,13 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
   return {
     layers,
     policyEvalOptions: toolGateEvalOptions,
+    // T-P3-174 批次 1：F10 压力测量的只读投影（get_context_remaining 数据源）
+    contextUsage: () => {
+      const last = monitor.history[monitor.history.length - 1];
+      return last === undefined
+        ? null
+        : { used: last.tokens, contextWindow: last.contextWindow };
+    },
     // F6/F13/T-P1-19：锚变化观测——rewritten 落 warn（前缀作废，换模时
     // 即违背 F13）；appended 落 info（位置性追加，F13 允许形态）。
     onCacheAnchorChange: (change) => {

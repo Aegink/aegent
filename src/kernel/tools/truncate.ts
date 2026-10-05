@@ -98,7 +98,7 @@ export async function boundedOutput(
  * 按字节截断且不切断 UTF-8 多字节序列：从 maxBytes 处向前回退续字节
  * （10xxxxxx），保证截点落在字符边界。
  */
-function truncateUtf8(s: string, maxBytes: number): string {
+export function truncateUtf8(s: string, maxBytes: number): string {
   const buf = Buffer.from(s, "utf8");
   if (buf.length <= maxBytes) return s;
   let cut = maxBytes;

@@ -1,0 +1,3 @@
+Save a fact worth remembering across sessions by appending one line to the persistent memory file (~/.aegent/memory/MEMORY.md), which is loaded into your system prompt's "## 持久记忆" section on the next assembly. Keep each fact specific, self-contained and one line; date is added automatically.
+
+For large content (logs, lists, docs), write a file first and save its path here instead. Use judiciously — memory is an index, not a dumping ground.

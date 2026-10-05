@@ -1,0 +1,3 @@
+Edit a Jupyter notebook (.ipynb) safely at the cell level. Use this instead of edit/write for notebook cells. Supports replace (default; rewrites a cell's source, optionally converting its type), insert (new cell after cell_id; at the beginning when omitted; type defaults to code) and delete (requires cell_id).
+
+Cell ids come from reading the notebook: real cell.id values, or cell-N (0-based) fallback for id-less notebooks. Edited code cells have execution_count reset to null and outputs cleared (this tool never executes cells); notebook formatting (indent, trailing newline) is preserved. Only .ipynb inside the workspace can be edited.

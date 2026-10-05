@@ -36,6 +36,7 @@ import { createGoogleGenerateProvider } from "../models/google-generate.js";
 import { createAnthropicMessagesProvider } from "../models/anthropic-messages.js";
 import { withRetry, type RetryObservation } from "../models/retry.js";
 import { SANDBOX_MODES, type SandboxMode } from "../sandbox/backend.js";
+import { LocalFileAttachmentStore } from "../attachments/store.js";
 import type { RegisteredModel } from "./model-switch.js";
 import {
   globalAgentsFile,
@@ -625,6 +626,12 @@ async function main(): Promise<void> {
               : {}),
           },
         }
+      : {}),
+    // T-P3-174 批次 1：附件 store 生产装配（持久库在位时启用——用户图片/
+    // 音频上传与 view_image 共用同一字节面；目录锚定库同目录 /attachments，
+    // 与会话数据同生命周期）。无 --db 的最小装配不启用（零新工具）。
+    ...(cli.db
+      ? { attachmentStore: new LocalFileAttachmentStore(path.join(path.dirname(cli.db), "attachments")) }
       : {}),
   };
   await runAgentChildStdio(options, {

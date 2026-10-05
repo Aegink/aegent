@@ -1,0 +1,3 @@
+Query the output and status of a background shell task started via bash/pwsh run_in_background, by its task_id. Optionally wait up to wait_seconds (0-300) for more output before returning the snapshot, or pass kill: true to terminate the task's whole process tree and get its final output.
+
+Each call returns a status line (task_id, shell, status, exit code, elapsed) followed by the captured output under the same budget rules as bash (stdout head / stderr tail, spill file named in the marker when over budget). Unknown task ids return the list of available ids; finished tasks keep their output queryable within this session.

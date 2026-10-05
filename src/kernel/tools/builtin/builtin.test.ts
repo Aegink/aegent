@@ -179,7 +179,7 @@ describe("bash 工具（T-4-05 回填后：执行经 ExecutionEnv）", () => {
     expect(ok.isError).toBeUndefined();
     // 输出原样转述（含尾换行不 trim）；截断属 T-4-06；started 为 D15 标记
     expect(ok.content).toBe("aegent-bash-ok\n");
-    expect(ok.meta).toEqual({ exitCode: 0, started: true });
+    expect(ok.meta).toEqual({ exitCode: 0, started: true, outputBounded: true, spillPaths: [] });
   }, 10_000);
 
   it("非零退出码 → isError + [exit code N] + meta.exitCode；空输出 → (no output)", async () => {
@@ -188,7 +188,7 @@ describe("bash 工具（T-4-05 回填后：执行经 ExecutionEnv）", () => {
     expect(failed.isError).toBe(true);
     expect(failed.content).toContain("oops");
     expect(failed.content).toContain("[exit code 7]");
-    expect(failed.meta).toEqual({ exitCode: 7, started: true });
+    expect(failed.meta).toEqual({ exitCode: 7, started: true, outputBounded: true, spillPaths: [] });
     const silent = await dispatch(registry, "bash", { command: "true" });
     expect(silent.isError).toBeUndefined();
     expect(silent.content).toBe("(no output)");
@@ -349,7 +349,7 @@ describe("grep 工具（P0 纯 JS 实现）", () => {
 });
 
 describe("内置工具注册入口", () => {
-  it("registerBuiltinTools 挂上十一个内置工具（无装配选项时），且描述文件在位（B2；skill_load 为 T-P1-08 新增、tool_load 为 T-P1-17 新增、pwsh 为 T-P1-28 新增、apply_patch 为 T-P1-56 新增）", () => {
+  it("registerBuiltinTools 挂上零依赖常驻内置工具（无装配选项时），且描述文件在位（B2；T-P3-174 批次 1 +task_output/save_memory/notebook_edit）", () => {
     const registry = new ToolRegistry();
     registerBuiltinTools(registry);
     expect(registry.names()).toEqual([
@@ -367,6 +367,10 @@ describe("内置工具注册入口", () => {
       // T-P3-172：ls/current_time 零依赖常驻（+2）
       "ls",
       "current_time",
+      // T-P3-174 批次 1：task_output/save_memory 零依赖常驻 + notebook_edit（+3）
+      "task_output",
+      "save_memory",
+      "notebook_edit",
     ]);
     // 描述从真 descriptions/ 目录读出（非空）——内置描述文件的存在性证明
     for (const name of registry.names()) {
@@ -439,7 +443,7 @@ describe("webfetch（B8a / T-P1-20）", () => {
     expect(result.content).toContain("C37");
   });
 
-  it("验收②：deny 档拒绝且 NETWORK_DENIED 含目标 URL（D3 语义复用，零真实 I/O）", async () => {
+  it("验收②：deny 档拒绝且 NETWORK_DENIED 含目标 URL（D3 语义复用，零真实 I/O；T-P3-174 起非私有 http:// 先升级 https://——拒绝消息含升级后目标）", async () => {
     const registry = new ToolRegistry();
     registerBuiltinTools(registry, {
       networkGuard: createNetworkGuard({ policy: "deny" }),
@@ -448,7 +452,9 @@ describe("webfetch（B8a / T-P1-20）", () => {
     const result = await dispatch(registry, "webfetch", { url: target });
     expect(result.isError).toBe(true);
     expect((result.error as { code: string }).code).toBe("NETWORK_DENIED");
-    expect(result.content).toContain(target);
+    // T-P3-174 批次 1：HTTP→HTTPS 升级在守卫判定之前（qwen 同构——守卫与
+    // 请求看到同一目标），拒绝消息含升级后的 URL
+    expect(result.content).toContain("https://example.invalid/path");
   });
 
   it("验收③：超长响应走 B5 出口截断落 spill（T-P1-14 联动），完整原文在 spill 文件", async () => {

@@ -385,6 +385,17 @@ export class ToolRegistry {
     result: ToolExecutionResult,
   ): Promise<ToolExecutionResult> {
     if (typeof result.content !== "string" || result.content === "") return result;
+    // T-P3-174 批次 1：自带双层预算的结果（bash/pwsh/task_output 的
+    // shell-output 格式化——96KB 预算 + workspace scratch spill）跳过本通用
+    // 出口——否则 96KB 会被 50KB 二次截断、spill 落两处。
+    if (
+      result.meta !== null &&
+      typeof result.meta === "object" &&
+      !Array.isArray(result.meta) &&
+      (result.meta as Record<string, unknown>)["outputBounded"] === true
+    ) {
+      return result;
+    }
     const bounded = await boundedOutput(result.content, {
       sessionId: this.sessionId ?? "unknown-session",
       tool: call.name,

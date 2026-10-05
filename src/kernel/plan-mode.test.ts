@@ -227,8 +227,9 @@ describe("注册面与提示词独立文件（验收⑤）", () => {
     expect(withPlan.names()).not.toContain("webfetch");
     // T-P3-172：web_search 同款门控（networkGuard 未传不注册）
     expect(withPlan.names()).not.toContain("web_search");
-    // T-P3-172：ls/current_time 零依赖常驻（+2）
-    expect(withPlan.names()).toHaveLength(15);
+    // T-P3-172：ls/current_time 零依赖常驻（+2）；T-P3-174 批次 1：
+    // +task_output/save_memory/notebook_edit（+3 = 18）
+    expect(withPlan.names()).toHaveLength(18);
 
     const full = new ToolRegistry();
     registerBuiltinTools(full, {
@@ -249,17 +250,25 @@ describe("注册面与提示词独立文件（验收⑤）", () => {
       // Q2/T-P2-105：会话查询工具（dbPath 提供才注册——注册面不打开库，
       // 任意非空路径即可）
       sessionQuery: { dbPath: "unused-plan-mode-names.sqlite" },
+      // T-P3-174 批次 1：view_image/get_context_remaining 的条件注册桩
+      attachments: {
+        save: () => ({ attachmentId: "stub", mediaType: "image/png", size: 0 }),
+        read: () => null,
+      },
+      contextUsage: () => null,
     });
     expect(full.names()).toEqual([...BUILTIN_TOOL_NAMES]);
-    // T-P3-172：+web_search/ls/current_time/todo_read（25）
-    expect(BUILTIN_TOOL_NAMES).toHaveLength(25);
+    // T-P3-172：+web_search/ls/current_time/todo_read（25）；T-P3-174
+    // 批次 1：+task_output/view_image/get_context_remaining/save_memory/
+    // notebook_edit（30）
+    expect(BUILTIN_TOOL_NAMES).toHaveLength(30);
 
     const withoutPlan = new ToolRegistry();
     registerBuiltinTools(withoutPlan);
     expect(withoutPlan.names()).not.toContain("plan_enter");
     expect(withoutPlan.names()).not.toContain("plan_exit");
-    // T-P3-172：+ls/current_time 零依赖常驻（13）
-    expect(withoutPlan.names()).toHaveLength(13);
+    // T-P3-172：+ls/current_time 零依赖常驻（13）；T-P3-174 批次 1 +3（16）
+    expect(withoutPlan.names()).toHaveLength(16);
   });
 
   it("提示词独立文件：改 plan_enter.txt 描述即变，零 .ts diff（T-4-01 基建同款）", () => {

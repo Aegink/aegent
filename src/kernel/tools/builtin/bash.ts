@@ -37,6 +37,8 @@ import type { SandboxMode } from "../../../sandbox/backend.js";
 import { SandboxUnavailableError } from "../../../sandbox/backend.js";
 import type { PendingApprovals } from "../../../policy/pending.js";
 import { isSpawnFailure, markStarted } from "../bash-retry-guard.js";
+import { BackgroundShellRegistry } from "../background-shell.js";
+import { formatShellOutput } from "../shell-output.js";
 import type { ToolContext } from "../context.js";
 import type { ToolDef } from "../registry.js";
 import { toolError } from "./util.js";
@@ -45,6 +47,12 @@ export interface BashArgs {
   command: string;
   /** 超时秒数（pi 同款：可选，不设默认超时）。 */
   timeout?: number;
+  /**
+   * T-P3-174 批次 1：后台执行（codex unified_exec / opencode background
+   * 语义）——立即返回 task_id，输出/状态经 task_output 查询，kill 同通道。
+   * 后台任务不受 timeout 约束（进程持续跑直到自然退出或被 kill）。
+   */
+  run_in_background?: boolean;
   /**
    * B15/T-P1-58 沙箱升级目标（执行期校验，schema enum = 封闭目标词汇）：
    * 本调用的文件效果档位严格宽于会话默认模式的申请——与 justification
@@ -84,6 +92,14 @@ export function createBashTool(options: {
    * 无默认超时（pi 同款行为保持）。上限档恒为 MAX_TIMEOUT_SECONDS，不可关。 */
   defaultTimeoutSeconds?: number;
   /**
+   * T-P3-174 批次 1：shell 输出双层预算的落盘与归属面——spill 目录（装配
+   * 传 `<workspace>/.aegent/scratch`，缺省不落盘只截断）+ Q13 标记的会话
+   * 身份 + 后台任务注册表（缺省工厂内置一个无 dispose 挂钩的实例）。
+   */
+  scratchDir?: string;
+  sessionId?: string;
+  background?: BackgroundShellRegistry;
+  /**
    * B15/T-P1-58 沙箱装配（缺省 undefined = 命令经 env 直通，升级参数报
    * SANDBOX_UNAVAILABLE——没有沙箱可升，fail-closed 不静默）。提供时命令
    * 走 backend.spawn（mode = defaultMode + 本调用升级），审批经 PendingApprovals。
@@ -98,11 +114,18 @@ export function createBashTool(options: {
   };
 }): ToolDef {
   const sandboxOptions = options.sandbox;
+  const backgroundRegistry = options.background ?? new BackgroundShellRegistry();
   const schema: NonNullable<ToolDef["parameters"]> = {
     type: "object",
     properties: {
       command: { type: "string", description: "The shell command to run" },
       timeout: { type: "number", description: "Timeout in seconds (optional)" },
+      run_in_background: {
+        type: "boolean",
+        description:
+          "Run the command in the background: returns a task_id immediately. " +
+          "Query output/status or kill it later via task_output. Not subject to timeout.",
+      },
       sandboxPermissions: SANDBOX_PERMISSIONS_SCHEMA,
       justification: {
         type: "string",
@@ -229,6 +252,70 @@ export function createBashTool(options: {
           "bash 需要执行环境或沙箱后端（装配处未注入 ExecutionEnv / SandboxBackend）",
         );
       }
+      // T-P3-174 批次 1：后台执行分支——PathGuard/升级校验已全部在前（被拒
+      // 命令未启动），立即返回 task_id。沙箱装配在场时仅当**有效档是
+      // danger-full-access**（该档下 local 后端本身就是 env 直通——语义
+      // 等价，见 createLocalBackend）允许 env 后台启动；其余受限档不支持
+      // （backend.spawn 无后台句柄无 kill——fail-closed 不静默降级）。
+      if ((args as Partial<BashArgs>).run_in_background === true) {
+        const effectiveSandboxMode =
+          sandboxOptions !== undefined ? (effectiveMode ?? sandboxOptions.defaultMode) : undefined;
+        if (
+          sandboxOptions !== undefined &&
+          effectiveSandboxMode !== "danger-full-access"
+        ) {
+          return toolError(
+            "BashError",
+            "SANDBOX_UNSUPPORTED",
+            `run_in_background 暂不支持沙箱模式「${String(effectiveSandboxMode)}」（后台执行仅 env 直通/全自动档——受限档无后台句柄无 kill）`,
+          );
+        }
+        const env = ctx.env;
+        if (!env || env.spawnBackground === undefined) {
+          return toolError(
+            "BashError",
+            "BACKGROUND_UNSUPPORTED",
+            "当前执行环境不支持后台任务（spawnBackground 能力缺席）",
+          );
+        }
+        ctx.reportProgress?.("后台任务启动中");
+        try {
+          const handle = await env.spawnBackground(command, { shell: "bash" });
+          let taskId: string;
+          try {
+            taskId = backgroundRegistry.start({ shell: "bash", command, handle });
+          } catch (e) {
+            // 满员等注册失败：杀掉刚 spawn 的句柄不留孤儿
+            await handle.kill();
+            throw e;
+          }
+          return markStarted({
+            content:
+              `后台任务已启动\ntask_id: ${taskId}\ncommand: ${command}\n` +
+              "查询输出/状态或终止：task_output(task_id)。任务结束后输出仍可查询（进程内保留）。",
+            meta: { task_id: taskId, background: true },
+          });
+        } catch (e) {
+          if (e instanceof Error && e.message.includes("后台任务已满")) {
+            return toolError("BashError", "BACKGROUND_TASKS_FULL", e.message);
+          }
+          if (isSpawnFailure(e)) {
+            return toolError(
+              "BashError",
+              (e as NodeJS.ErrnoException).code ?? "EXEC_FAILED",
+              `命令启动失败：${String((e as Error).message)}`,
+            );
+          }
+          // 未知失败：保守按已启动处理（D15 fail-closed——判断不了就不重试）
+          return markStarted(
+            toolError(
+              "BashError",
+              (e as NodeJS.ErrnoException).code ?? "EXEC_FAILED",
+              `后台命令启动失败：${String((e as Error).message)}`,
+            ),
+          );
+        }
+      }
       // B7 进度示范（T-P1-16）：启动前上报一次——长任务的最早可见事实，
       // 与 D15 的 started 标记同语义立场（"命令已启动"是工具的诚实陈述）
       ctx.reportProgress?.(
@@ -253,8 +340,25 @@ export function createBashTool(options: {
           // 前置检查保证：无沙箱装配时 ctx.env 必在场
           result = await ctx.env!.exec(command, execOptions);
         }
-        // D15：命令已启动——成功结果同样标记（自动重发会产生重复副作用）
-        return markStarted(toResult(result));
+        // D15：命令已启动——成功结果同样标记（自动重发会产生重复副作用）。
+        // T-P3-174 批次 1：输出走双层预算格式化（stdout 保头/stderr 保尾/
+        // 单行 16k/超限 spill 到 workspace scratch）——meta.outputBounded
+        // 让 registry 通用出口跳过（避免 50KB 二次截断 + 双 spill）。
+        const formatted = await formatShellOutput({
+          stdout: result.stdout,
+          stderr: result.stderr,
+          exitCode: result.exitCode,
+          ...(options.scratchDir !== undefined ? { scratchDir: options.scratchDir } : {}),
+          label: "bash",
+          sessionId: options.sessionId ?? "unknown-session",
+          tool: "bash",
+          callId: ctx.toolCallId,
+        });
+        return markStarted({
+          content: formatted.text,
+          ...(result.exitCode !== 0 ? { isError: true as const } : {}),
+          meta: { exitCode: result.exitCode, ...formatted.meta },
+        });
       } catch (e) {
         if (e instanceof SandboxUnavailableError) {
           // fail-closed 拒绝发生在 spawn 前——命令未启动，无 started 标记

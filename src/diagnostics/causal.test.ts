@@ -47,6 +47,12 @@ describe("跨组件因果链（O30）", () => {
       sessionQuery: { dbPath: "stub" },
       pluginCreate: { workspaceRoot: "stub" },
       pluginDefine: { toolRegistry: registry, handles: [] },
+      // T-P3-174 批次 1：view_image/get_context_remaining 的条件注册桩
+      attachments: {
+        save: () => ({ attachmentId: "stub", mediaType: "image/png", size: 0 }),
+        read: () => null,
+      },
+      contextUsage: () => null,
     });
     // 因果断言：注册动作的产出 = 清单里每个名字在注册表里可见（而非断言
     // "清单数组等于它自己"这种终态字段复读）
