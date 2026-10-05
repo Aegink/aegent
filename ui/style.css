@@ -6879,3 +6879,105 @@ details.thinking-card.running .thinking-label {
 .thinking-card[open] .think-preview {
   display: none;
 }
+
+/* ===== T-P3-173 差距补全：滚动跟随回底钮 + 任务行脉冲点/耗时 + 审批归属 ===== */
+.scroll-jump-btn {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: var(--text-ui-sm);
+  cursor: pointer;
+  box-shadow: var(--shadow-2);
+  animation: stream-fade-in 150ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.scroll-jump-btn:hover {
+  background: var(--surface);
+}
+
+/* 任务行运行态：脉冲点（pi-desktop activity-marker-pulse 同款）+ 运行耗时 */
+.sb-task-dot.busy {
+  animation: task-dot-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes task-dot-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.85);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+.sb-task-running-time {
+  color: var(--text-subtlest, var(--text-subtle));
+  font-variant-numeric: tabular-nums;
+}
+
+/* 审批卡来源归属条 */
+.card-origin {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  font-size: var(--text-ui-xs);
+  color: var(--text-subtle);
+}
+
+.card-origin.is-foreign {
+  color: var(--text);
+  border-color: var(--brand);
+}
+
+/* toast 动作按钮（T-P3-173 A3） */
+.toast-action {
+  margin-left: 8px;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-ui-xs);
+  cursor: pointer;
+}
+
+.toast-action:hover {
+  background: var(--surface);
+}
+
+/* 已工作折叠行（T-P3-173 A4——zcode AssistantHistoryStatus 简版） */
+.work-segment > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  margin: 6px 0;
+  border-top: 0.5px solid var(--border);
+  border-bottom: 0.5px solid var(--border);
+  font-size: var(--text-ui-sm);
+  color: var(--text-subtle);
+  cursor: pointer;
+  list-style: none;
+}
+
+.work-segment > summary::-webkit-details-marker {
+  display: none;
+}
+
+.work-segment > summary:hover {
+  color: var(--text);
+}

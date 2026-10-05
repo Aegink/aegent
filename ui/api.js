@@ -102,9 +102,12 @@ export function hostAddress() {
 /** WS 生命周期：hello → query 恢复 → live 流（重连 3s——原语义）。
  * onStatus(text) 更新连接状态展示；onClose() 断连通知（租约 UI 归还等）；
  * onEnvelope(envelope) 分发全部信封。 */
+let reconnectAttempt = 0; // T-P3-173（A2）：重连计数——"重新连接中 n"确定性反馈
+
 export function connect({ onEnvelope, onStatus, onClose }) {
   ws = new WebSocket(`${hostAddress()}/ws`);
   ws.addEventListener("open", () => {
+    reconnectAttempt = 0;
     onStatus("已连接");
     sendRaw({ type: "hello", version: PROTOCOL_VERSION, surfaceId: SURFACE_ID, deliveryKind: "push" });
   });
@@ -121,7 +124,8 @@ export function connect({ onEnvelope, onStatus, onClose }) {
     }
   });
   ws.addEventListener("close", () => {
-    onStatus("连接断开，3s 后重连…");
+    reconnectAttempt += 1;
+    onStatus(`重新连接中 ${String(reconnectAttempt)}（3s 后重试）…`);
     if (onClose) onClose();
     setTimeout(() => connect({ onEnvelope, onStatus, onClose }), 3000);
   });

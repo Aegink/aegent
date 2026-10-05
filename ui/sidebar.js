@@ -488,6 +488,16 @@ async function loadTasks(taskBox, project) {
   const tasks = (envelope.result.tasks ?? [])
     .filter((t) => showArchivedTasks || taskArchived(t.sessionId) !== true)
     .sort((a, b) => {
+      // T-P3-173（并发差距补全 B3）：待审批 > 运行中 > 置顶 > 时间——
+      // 多任务下需要处理的行永远在最上（pi-desktop 扫视效率语义）
+      const rankOf = (sid) => {
+        const st = window.__sessionStates?.[sid] ?? {};
+        if (st.awaiting === true) return 0;
+        if (st.busy === true) return 1;
+        return 2;
+      };
+      const rank = rankOf(a.sessionId) - rankOf(b.sessionId);
+      if (rank !== 0) return rank;
       const pin = Number(taskPinned(b.sessionId)) - Number(taskPinned(a.sessionId));
       if (pin !== 0) return pin;
       return b.updatedTs - a.updatedTs;
@@ -562,6 +572,30 @@ function taskMenuItems(task, refresh) {
   ];
 }
 
+/** 运行时长文案（B1——1h2m3s 压缩形）。 */
+function formatRunningMs(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = total % 60;
+  if (h > 0) return `${String(h)}h${String(m)}m`;
+  if (m > 0) return `${String(m)}m${String(sec)}s`;
+  return `${String(sec)}s`;
+}
+
+let runTimeTicker = null;
+function ensureRunTimeTicker() {
+  if (runTimeTicker !== null) return;
+  runTimeTicker = setInterval(() => {
+    const cells = document.querySelectorAll(".sb-task-running-time");
+    if (cells.length === 0) return; // 无运行行——ticker 空转（清理留给 DOM 移除后的下一轮）
+    for (const cell of cells) {
+      const since = Number(cell.dataset.since);
+      if (Number.isFinite(since) && since > 0) cell.textContent = formatRunningMs(Date.now() - since);
+    }
+  }, 1000);
+}
+
 function taskRow(task) {
   const row = document.createElement("div");
   row.className = "sb-task-row";
@@ -573,6 +607,14 @@ function taskRow(task) {
   const st = window.__sessionStates?.[task.sessionId] ?? {};
   const awaiting = st.awaiting === true || (isCurrent && agentState2.awaiting === true);
   const busy = st.busy === true || (isCurrent && agentState.busy === true);
+  // T-P3-173（并发差距补全 B1）：运行耗时（busySince 起算——每秒 ticker 更新）
+  let runTime = null;
+  if (busy && typeof st.busySince === "number") {
+    runTime = document.createElement("span");
+    runTime.className = "sb-task-running-time";
+    runTime.dataset.since = String(st.busySince);
+    runTime.textContent = formatRunningMs(Date.now() - st.busySince);
+  }
   const dot = document.createElement("span");
   dot.className = "sb-task-dot";
   if (awaiting) {
@@ -590,7 +632,7 @@ function taskRow(task) {
   const meta = document.createElement("span");
   meta.className = "sb-task-meta";
   meta.textContent = new Date(task.updatedTs).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
-  row.append(dot, title, meta);
+  row.append(dot, title, ...(runTime !== null ? [runTime] : []), meta);
   if (isCurrent) row.classList.add("current");
   if (taskPinned(task.sessionId)) {
     // pi thread-item-pin：标题前置小图钉
@@ -624,6 +666,7 @@ function taskRow(task) {
     ev.preventDefault();
     openMenu(row, taskMenuItems(task, refresh));
   });
+  if (runTime !== null) ensureRunTimeTicker();
   return row;
 }
 

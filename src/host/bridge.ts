@@ -71,6 +71,10 @@ export class HostBridge implements SessionRouter {
   private readonly pendingPolishes = new Map<string, (value: unknown) => void>();
   /** T-P3-170：懒派生的非主会话通道池（主会话通道在 options.agent——进程生命周期与 host 同步）。 */
   private readonly channels = new Map<string, AgentChannel>();
+  /** T-P3-173（并发差距补全 B4）：池内通道最后活跃时刻（空闲回收判据）。 */
+  private readonly channelLastActive = new Map<string, number>();
+  /** T-P3-173：空闲回收定时器（idleReaper——30min 无消息且无在途 prompt）。 */
+  private readonly idleReaper: ReturnType<typeof setInterval>;
   /** U10 ready 捕获清单（工具/技能/prompts——/ 补全来源）。 */
   private agentCapabilities: import("./query-gateway.js").AgentCapabilities | undefined;
   private readonly unconsumed: Promise<void>;
@@ -89,6 +93,24 @@ export class HostBridge implements SessionRouter {
         }
         this.pendingPolishes.clear();
       });
+    // T-P3-173（B4）：池内 child 空闲回收——30min 无消息且无在途 prompt 的
+    // 会话进程自动退出（kill 摘池；下次请求 channelFor 天然重派生，--db
+    // 持久恢复历史）。主会话通道豁免（生命周期与 host 同步）。
+    this.idleReaper = setInterval(() => {
+      const idleMs = 30 * 60_000;
+      const now = Date.now();
+      for (const [sid, channel] of [...this.channels.entries()]) {
+        const last = this.channelLastActive.get(sid) ?? now;
+        const hasPending = (this.pendingPrompts.get(sid)?.size ?? 0) > 0;
+        if (!hasPending && now - last > idleMs) {
+          this.channels.delete(sid);
+          this.channelLastActive.delete(sid);
+          const killable = channel as Partial<{ kill: () => Promise<void> | void }>;
+          if (typeof killable.kill === "function") void killable.kill();
+        }
+      }
+    }, 5 * 60_000);
+    this.idleReaper.unref?.();
   }
 
   /** 一个会话通道的消息泵（T-P3-170：每通道一个——消息按会话归属分发）。 */
@@ -130,6 +152,8 @@ export class HostBridge implements SessionRouter {
 
   /** T-P3-170：stop 收束面——杀掉全部池化 child（主 agent 由 server.stop 直杀）。 */
   async killAllChannels(): Promise<void> {
+    clearInterval(this.idleReaper);
+    this.channelLastActive.clear();
     const pool = [...this.channels.entries()];
     this.channels.clear();
     for (const [sessionId, channel] of pool) {
@@ -146,6 +170,7 @@ export class HostBridge implements SessionRouter {
   }
 
   private handleAgentMessage(sessionId: string, message: AgentMessage): void {
+    if (sessionId !== this.options.host.sessionId) this.channelLastActive.set(sessionId, Date.now());
     // U10/T-P3-109：ready 携带的注册表清单（工具名 + 技能名单）——
     // / 补全的清单来源，经 query op:"meta" 曝光给端。
     if (message.type === "ready") {

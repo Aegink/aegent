@@ -55,8 +55,83 @@ export function appendLine(text, cls = "") {
   return el;
 }
 
+// —— T-P3-173 滚动跟随状态机（zcode timelineScrollAnchor 同构——用户上滚
+// 读历史不被流式拽回；离底 48px 容差内算贴底）：
+let scrollFollowing = true;
+let scrollJumpBtn = null;
+
+/** 用户手势判定（wheel/touch/key——程序化 scrollTop 不改变跟随态）。 */
+function installScrollGuards() {
+  const stream = streamEl();
+  stream.addEventListener("wheel", (ev) => {
+    if (ev.deltaY < 0) {
+      scrollFollowing = false; // 上滚=离场读历史
+      paintJumpBtn();
+      return;
+    }
+    const atBottom = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 48;
+    if (atBottom) {
+      scrollFollowing = true; // 下滚到近底=回归跟随
+      paintJumpBtn();
+    }
+  }, { passive: true });
+  stream.addEventListener("touchmove", () => {
+    const atBottom = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 48;
+    if (!atBottom) {
+      scrollFollowing = false;
+      paintJumpBtn();
+    }
+  }, { passive: true });
+  stream.addEventListener("scroll", () => {
+    // 手势松手后的惯性滚动到位 → 恢复跟随
+    if (!scrollFollowing && stream.scrollHeight - stream.scrollTop - stream.clientHeight < 8) {
+      scrollFollowing = true;
+      paintJumpBtn();
+    }
+  }, { passive: true });
+}
+
+function paintJumpBtn() {
+  const stream = streamEl();
+  if (scrollFollowing) {
+    scrollJumpBtn?.remove();
+    scrollJumpBtn = null;
+    return;
+  }
+  if (scrollJumpBtn !== null && scrollJumpBtn.isConnected) return;
+  const chatView = stream.parentElement;
+  if (chatView === null) return;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "scroll-jump-btn";
+  btn.textContent = "↓ 回到底部";
+  btn.addEventListener("click", () => {
+    scrollFollowing = true;
+    stream.scrollTop = stream.scrollHeight;
+    btn.remove();
+    scrollJumpBtn = null;
+  });
+  chatView.appendChild(btn);
+  scrollJumpBtn = btn;
+}
+
+/** 发送动作强制重新钉底（zcode D151——用户主动发起新轮=意图在最新）。 */
+export function pinScrollToBottom() {
+  scrollFollowing = true;
+  paintJumpBtn();
+  const stream = streamEl();
+  stream.scrollTop = stream.scrollHeight;
+}
+
+let scrollGuardsInstalled = false;
+
 export function scrollBottom() {
   const stream = streamEl();
+  if (!scrollGuardsInstalled) {
+    scrollGuardsInstalled = true;
+    installScrollGuards();
+  }
+  if (!scrollFollowing) return; // 跟随解除——新内容不拽回
   stream.scrollTop = stream.scrollHeight;
 }
 
@@ -98,7 +173,7 @@ let lastToast = { text: "", el: null, count: 0, badge: null, timer: 0 };
 
 const TOAST_MS = 3000; // T-P3-172：zcode 3000ms（托盘挂起时 WebView timer 冻结——点按即关兜底）
 
-export function toast(text, kind) {
+export function toast(text, kind, action) {
   const area = document.getElementById("toast-area");
   if (lastToast.text === text && document.contains(lastToast.el)) {
     lastToast.count += 1;
@@ -116,6 +191,19 @@ export function toast(text, kind) {
   const badge = document.createElement("span");
   badge.className = "line-dedup-count";
   t.append(icon(KIND_ICONS[kind] ?? "bell", { cls: "icon-sm" }), document.createTextNode(` ${text}`), badge);
+  // T-P3-173（A3）：动作按钮——通知从"看了就没了"变可行动
+  if (action && typeof action.label === "string" && typeof action.onClick === "function") {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "toast-action";
+    btn.textContent = action.label;
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      t.remove();
+      action.onClick();
+    });
+    t.appendChild(btn);
+  }
   // T-P3-172（zcode 通知样式）：可点按关闭（托盘挂起 timer 冻结时的兜底出口）
   t.addEventListener("click", () => {
     t.remove();

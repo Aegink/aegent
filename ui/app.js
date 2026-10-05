@@ -54,7 +54,7 @@ import {
   getKeymapBindings,
   hooks,
 } from "./state.js";
-import { lineEl, appendLine, scrollBottom, oneLine, toast } from "./feedback.js";
+import { lineEl, appendLine, scrollBottom, pinScrollToBottom, oneLine, toast } from "./feedback.js";
 import { applyLocalePreference, t } from "./i18n.js";
 import { installGlobalErrorReporters } from "./log-report.js";
 // T-P3-156 布局批（方案 A/B/C/E/W）：侧栏两分段 + 切换面板宿主
@@ -723,7 +723,7 @@ function renderEvent(e, options = {}) {
       // 反馈 4：turn 边界行不再渲染（zcode 对标——聊天流只见内容不见回合噪声）
       if (options.live === true) {
         window.__agentBusy = true;
-        markSessionState(getSessionId(), { busy: true }); // T-P3-170：状态表记账（侧栏任务点）
+        markSessionState(getSessionId(), { busy: true, busySince: Date.now() }); // T-P3-173：busySince 供侧栏运行耗时
         showWorkingLine(); // T-P3-171：过程状态行（turn 期间常驻）
         notifyTurnStarted(e.turn);
         window.dispatchEvent(new CustomEvent("agent:busy"));
@@ -735,7 +735,8 @@ function renderEvent(e, options = {}) {
         // T-P3-164：turn 末延迟刷侧栏（仅 live）——自动命名/索引落库后
         // 任务标题跟上（立即刷会撞写库竞态，取旧标题）
         if (options.live === true) {
-          markSessionState(getSessionId(), { busy: false }); // T-P3-170：状态表记账
+          markSessionState(getSessionId(), { busy: false, busySince: undefined }); // T-P3-173：耗时随轮清
+          collapseWorkSegment(); // T-P3-173：本轮工具+思考折叠为「已工作」行
           hideWorkingLine(); // T-P3-171：状态行随轮收束卸载
           setTimeout(() => void refreshSidebar(), 1200);
         }
@@ -1109,6 +1110,51 @@ function hideWorkingLine() {
   document.getElementById("working-line")?.remove();
 }
 
+/**
+ * 本轮工作段折叠（T-P3-173 对话流差距补全 A4——zcode AssistantHistoryStatus
+ * 「已工作 X 分」简版）：turn 收束后把本轮的 tool-card/thinking-card 包进
+ * 一张可展开行（默认收起，点开=铺回原位 DOM move 保留展开态/结果）。
+ * 少于 3 步不折（简短轮保持平铺）；错误卡不入折叠（失败始终可见）。
+ */
+function collapseWorkSegment() {
+  const working = document.getElementById("working-line");
+  const stream2 = document.getElementById("stream");
+  if (working === null || stream2 === null) return;
+  const segment = [];
+  let n = working.previousElementSibling;
+  while (n !== null) {
+    const cls = n.classList;
+    if (cls.contains("bubble") && cls.contains("user")) break; // 本轮起点=上一条用户消息
+    if ((cls.contains("tool-card") || cls.contains("thinking-card")) && !cls.contains("error")) {
+      segment.push(n);
+    }
+    n = n.previousElementSibling;
+  }
+  if (segment.length < 3) return;
+  const first = segment[segment.length - 1];
+  const wrap = document.createElement("details");
+  wrap.className = "work-segment";
+  const summary = document.createElement("summary");
+  const label = document.createElement("span");
+  label.textContent = `已工作 · ${String(segment.length)} 步`;
+  const chev = document.createElement("span");
+  chev.className = "tool-chev";
+  chev.append(icon("chevronDown", { cls: "icon-sm" }));
+  summary.append(label, chev);
+  wrap.append(summary);
+  // DOM move：展开=铺回原位（first 之前逐个 insertBefore）；收起=收回 wrap
+  // 一次性展开：点开=铺回原位并移除折叠壳（zcode autoOpen 语义——读过即保留）
+  summary.addEventListener("click", () => {
+    requestAnimationFrame(() => {
+      if (!wrap.open || !wrap.isConnected) return;
+      for (const node of segment.slice().reverse()) first.parentElement.insertBefore(node, first);
+      wrap.remove();
+    });
+  });
+  first.parentElement.insertBefore(wrap, first);
+  for (const node of segment) wrap.appendChild(node);
+}
+
 // —— T-P3-156 G：只读工具聚合（codex Exploring 卡语义）——turn 结束后把
 // 该轮内**连续**只读卡（read/grep/glob/ls 类）包进一张「已探索 N 项」聚合
 // 卡（点击展开原卡列表——DOM move 保留展开态/结果，不重建节点）。
@@ -1332,6 +1378,21 @@ function buildCard(name, payload, sourceSessionId) {
   // T-P3-170：来源会话归属（多会话并发——后台任务的审批答复必须路由回
   // 其所属会话，不能错发给当前正查看的会话）
   card.dataset.sessionId = typeof sourceSessionId === "string" ? sourceSessionId : "";
+  // T-P3-173（并发差距补全 B2）：来源任务归属条——后台会话的审批可一眼
+  // 分清"谁在要审批"，点击跳到该任务处理
+  if (card.dataset.sessionId !== "" && card.dataset.sessionId !== sessionId()) {
+    const origin = document.createElement("button");
+    origin.type = "button";
+    origin.className = "card-origin is-foreign";
+    origin.textContent = `来自任务 ${card.dataset.sessionId.slice(0, 8)}… 点击切换`;
+    origin.title = "切换到该任务处理这条审批";
+    origin.addEventListener("click", async () => {
+      pending.classList.remove("active"); // 收起审批区再切换（切走后卡片留待回来处理）
+      const { switchToSession } = await import("./sidebar.js");
+      await switchToSession(card.dataset.sessionId);
+    });
+    title.appendChild(origin);
+  }
   const title = document.createElement("div");
   title.className = "card-title";
   if (name === "approval_requested") {
@@ -1924,6 +1985,7 @@ async function submitPrompt(explicitContent) {
   // T-P3-156 K + T-P3-159 修：内核忙时 prompt 自动入队（queue.ts enqueue 返
   // accepted）——排队投影在**回执 ok 后**才记（无租约被拒时不得显示假排队）
   const wasBusy = window.__agentBusy === true;
+  pinScrollToBottom(); // T-P3-173：发送即钉底（跟随态强制回归）
   void sendRequest(sessionId(), {
     type: "prompt",
     messageId: allocRequestId("m"),
@@ -2921,8 +2983,8 @@ function handleEnvelope(envelope) {
       if (getSessionId() === "") break;
       const evSid = envelope.sessionId;
       if (evSid !== getSessionId()) {
-        if (envelope.event.type === "turn/start") markSessionState(evSid, { busy: true });
-        else if (envelope.event.type === "turn/end") markSessionState(evSid, { busy: false });
+        if (envelope.event.type === "turn/start") markSessionState(evSid, { busy: true, busySince: Date.now() });
+        else if (envelope.event.type === "turn/end") markSessionState(evSid, { busy: false, busySince: undefined });
         break;
       }
       renderEventEnvelope(envelope);
@@ -2972,7 +3034,7 @@ function handleEnvelope(envelope) {
           void refreshContextUsage(); // 轮末拉一次上下文用量（输入条 % 刷新）
           window.dispatchEvent(new CustomEvent("agent:idle"));
         }
-        markSessionState(nid, { busy: false });
+        markSessionState(nid, { busy: false, busySince: undefined });
       } else if (envelope.name === "prompt_returned") {
         // T-P3-156 W：中止退回——未消费输入回填输入框（qwen ↑popAllMessages
         // 同语义；contents = 队列剩余的未消费原文）
