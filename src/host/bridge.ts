@@ -443,7 +443,14 @@ export class HostBridge implements SessionRouter {
           if (call.op === "provider-models") return gateway.providerModels(payload);
           return gateway.providerTest({ ...payload, modelId: call.modelId! });
         }
-        return { credentials: await gateway.credentialsList() };
+        // B3 补口：分发尾不再静默兜底（旧形状 = 返回 credentials 清单——
+        // 未分发 op 会拿到凭据数据且表现为"成功"）。fail-closed：抛类型化
+        // 错误，协议层回 ok:false（新增 op 漏分发立即暴露而非静默）。
+        const unhandled = new Error(
+          `settings op "${call.op}" 未被分发（协议闭集与 bridge 分发不同步）`,
+        );
+        (unhandled as unknown as { code: string }).code = "SETTINGS_OP_UNDISPATCHED";
+        throw unhandled;
       },
     };
     const server = new HostProtocolServer(this, serverOptions);

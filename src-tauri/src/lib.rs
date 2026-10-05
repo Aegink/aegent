@@ -226,7 +226,7 @@ pub fn run() {
             browser::browser_destroy,
             browser::browser_eval,
             picker::pick_folder,
-            restart_host,
+            pip_show,
             get_close_behavior,
             set_close_behavior,
             get_keep_awake,
@@ -270,52 +270,18 @@ pub fn run() {
         });
 }
 
-/// T-P3-165 需求 2：「新建任务」= 壳重启 host 指向新 --session（单会话
-/// 架构下立即进入新会话的唯一真路径；web 端无壳能力走 UI 降级提示）。
-/// 调用前置：UI 已把 settings.activeProject 写盘（新 host 首轮归属按它）。
-/// 流程：杀旧树（含 agent-child）→ spawn 新 host（--session）→ 写 pid →
-/// 同步健康探测（UI 的 WS 断线重连循环会在端口回来后自动握手新会话）。
+/// K9 画中画可达性修复（核对 A4）：按需显示 pip 窗口（tauri.conf 声明
+/// visible:false——此前全仓无 show 调用=窗口永不可达）。幂等：已显示则
+/// 取消最小化并前置聚焦。
 #[tauri::command]
-fn restart_host(
-    app: tauri::AppHandle,
-    session_id: String,
-) -> Result<String, String> {
-    if session_id.trim().is_empty() || !session_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
-        return Err("session id 不合法".into());
-    }
-    let dir = std::env::current_exe()
-        .map_err(|e| format!("无法定位可执行文件：{e}"))?
-        .parent()
-        .expect("可执行文件无父目录")
-        .to_path_buf();
-    {
-        let state = app.state::<HostProcess>();
-        kill_host_tree(&state);
-    }
-    kill_stale_host(&dir);
-    // T-P3-167 实录：杀树后端口 TIME_WAIT——EADDRINUSE 一次，spawn 前等释放
-    for _ in 0..20 {
-        if TcpStream::connect(("127.0.0.1", HOST_PORT)).is_err() {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(250));
-    }
-    let child = spawn_host(&dir, Some(session_id.trim()), HOST_PORT)
-        .map_err(|e| format!("host 重启失败：{e}"))?;
-    let pid = child.id();
-    let _ = std::fs::write(dir.join("data").join("host.pid"), pid.to_string());
-    {
-        let state = app.state::<HostProcess>();
-        // map 内完成写入并 drop guard（if-let 临时作用域借用 state 会报 E0597）
-        let _ = state.0.lock().map(|mut guard| {
-            *guard = Some(HostEntry { child });
-        });
-    }
-    // 健康探测放后台线程（command 面不阻塞 webview——UI 重连循环自会等）
-    std::thread::spawn(move || {
-        let _ = wait_healthy(HEALTH_TIMEOUT);
-    });
-    Ok(session_id)
+fn pip_show(app: tauri::AppHandle) -> Result<(), String> {
+    let win = app
+        .get_webview_window("pip")
+        .ok_or_else(|| "pip 窗口未声明（tauri.conf.json）".to_string())?;
+    let _ = win.unminimize();
+    win.show().map_err(|e| format!("pip show 失败：{e}"))?;
+    let _ = win.set_focus();
+    Ok(())
 }
 
 /// U7/T-P3-114：启动时检查更新（演示面——endpoints 指向 localhost），

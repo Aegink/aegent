@@ -235,3 +235,67 @@ describe("G2 · todo 工具过出口级硬拦（T-P1-10 验收④，为 T-P1-11 
     expect((await chain.evaluate(bashCall("echo x"))).action).toBe("abstain");
   });
 });
+
+describe("C46 · 出口级硬拦：pwsh 写通道（B1 补口）", () => {
+  const pwshCall = (command: string): PolicyCall => ({
+    tool: "pwsh",
+    args: { command },
+  });
+
+  it("pwsh Set-Content 写 .git/config——出口级无条件 deny（此前只扫 bash 的绕过口）", () => {
+    const verdict = enforceProtectedPaths(
+      { action: "allow", reason: "pwsh(*) 用户 allow" },
+      pwshCall("Set-Content .git/config evil"),
+    );
+    expect(verdict.action).toBe("deny");
+    expect(verdict.reason).toContain(".git");
+    expect(verdict.reason).toContain("pwsh");
+  });
+
+  it("pwsh 重定向写元数据目录同样命中（> 与 bash 同构）", () => {
+    const verdict = enforceProtectedPaths(
+      { action: "allow", reason: "pwsh(*) 用户 allow" },
+      pwshCall("echo x > .agents/config"),
+    );
+    expect(verdict.action).toBe("deny");
+    expect(verdict.reason).toContain(".agents");
+  });
+
+  it("pwsh Out-File / New-Item / .NET WriteAllText 写保留名单命中", () => {
+    for (const command of [
+      "Out-File .git/HEAD -InputObject x",
+      "New-Item .git/hooks/x -ItemType File",
+      "[IO.File]::WriteAllText('.git/config', 'x')",
+    ]) {
+      const verdict = enforceProtectedPaths({ action: "allow", reason: "pwsh(*)" }, pwshCall(command));
+      expect(verdict.action).toBe("deny");
+    }
+  });
+
+  it("pwsh 正常命令（非保护路径）不产生新拦截（对照）", () => {
+    for (const command of [
+      "Set-Content out.txt data",
+      "echo x > out.txt",
+      "Get-ChildItem .",
+      "[IO.File]::WriteAllText('out.txt', 'x')",
+    ]) {
+      const verdict = enforceProtectedPaths({ action: "allow", reason: "pwsh(*)" }, pwshCall(command));
+      expect(verdict.action).toBe("allow");
+    }
+  });
+
+  it("链上模块同位：pwsh 写 .git 被 shell-semantics 模块 deny（不依赖出口级）", async () => {
+    const core = createShellSemanticsModule();
+    const chain = assemblePolicyChain({ core: [core] });
+    const verdict = await chain.evaluate(pwshCall("Set-Content .git/config evil"));
+    expect(verdict.action).toBe("deny");
+    expect(verdict.reason).toContain("pwsh");
+  });
+
+  it("pwsh -EncodedCommand 整条 uncertain → 链上保守 ask（C28）", async () => {
+    const chain = assemblePolicyChain({ core: [createShellSemanticsModule()] });
+    const verdict = await chain.evaluate(pwshCall("pwsh -EncodedCommand SQBFAFgA"));
+    expect(verdict.action).toBe("ask");
+    expect(verdict.reason).toContain("EncodedCommand");
+  });
+});

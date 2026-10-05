@@ -860,6 +860,9 @@ async function paintHistory() {
     .sort((a, b) => (b.updatedTs ?? 0) - (a.updatedTs ?? 0));
   // 置顶分区（T-P3-166 需求 3——pi sidebar-pinned-sessions 同构：跨项目
   // 集中展示置顶会话；仅当有 pin 时渲染，从最近会话清单抽出）
+  // map 在置顶分区与历史清单两处共用——声明必须在前（此前 TDZ：置顶过
+  // 任何一个会话后本函数必抛 ReferenceError）
+  const map = readMap();
   const pinnedSessions = sessionsCache.filter((s) => taskPinned(s.sessionId));
   if (pinnedSessions.length > 0) {
     const pinBox = document.createElement("div");
@@ -874,7 +877,6 @@ async function paintHistory() {
     box.appendChild(pinBox);
   }
   const shown = historyExpanded ? sessionsCache : sessionsCache.slice(0, 8);
-  const map = readMap();
   if (shown.length === 0) {
     const empty = document.createElement("div");
     empty.className = "sb-tasks-empty";
@@ -1043,7 +1045,8 @@ async function deleteSession(session) {
   await refreshSidebar();
 }
 
-/** 导入会话 JSON 包（history.js「导入会话 JSON」迁入——query op:"import"）。 */
+/** 导入会话 JSON 包（history.js「导入会话 JSON」迁入——settings op:"session-import"，
+ * content = 包文本；query 通道无 import op，此前 op:"import" 恒被拒）。 */
 async function importSessionsJson() {
   const input = document.createElement("input");
   input.type = "file";
@@ -1052,7 +1055,7 @@ async function importSessionsJson() {
     const file = input.files?.[0];
     if (file === undefined) return;
     const text = await file.text();
-    const envelope = await sendQuery({ sessionId: getSessionId() || "-", op: "import", payload: text });
+    const envelope = await sendSettings({ op: "session-import", content: text });
     if (!envelope.ok) {
       toast(`导入失败：${envelope.error?.message ?? ""}`, "warn");
       return;

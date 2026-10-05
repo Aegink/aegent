@@ -86,7 +86,7 @@ function safeParse(raw) {
 function connect() {
   const ws = new WebSocket(WS_URL);
   ws.addEventListener("open", () => {
-    ws.send(JSON.stringify({ type: "hello", surfaceId: SURFACE_ID, deliveryKind: "push", protocol: PROTOCOL_VERSION }));
+    ws.send(JSON.stringify({ type: "hello", version: PROTOCOL_VERSION, surfaceId: SURFACE_ID, deliveryKind: "push" }));
     statusEl.textContent = "已连接";
   });
   ws.addEventListener("message", (message) => {

@@ -81,6 +81,7 @@ export const SHELL_ANALYSIS_LIMITATIONS: readonly string[] = Object.freeze([
   "tee/dd/cp 等以参数写文件的命令不识别为写操作",
   "虚拟操作的语义裁决（uncertain/危险模式/cd 保守）在链上受首匹配层序影响，可被用户层 allow 压过；保留名单硬拦已升出口级（protected-paths 消费本扫描器，不可被规则授权）",
   "不模拟 set -e、管道失败与子 shell 语义",
+  "pwsh 通道（B1 补口）：对象管道/别名/参数缩写组合（-Path 之外的位置约定）与 .NET 方法全覆盖不可静态分析——只识别常见写 cmdlet（Set-Content/Add-Content/Out-File/New-Item/Export-* /Tee-Object）与 [IO.File]::WriteAll* 的首参数；-EncodedCommand（base64 脚本）整条判 uncertain",
 ] as const);
 
 // ---------------------------------------------------------------------------
@@ -240,7 +241,14 @@ function isDynamicTarget(target: string): boolean {
   return target.includes("$") || target.includes("`");
 }
 
-/** 主入口：把一条 bash 命令分析成虚拟操作（B 档）。 */
+/** 主入口：把一条 shell 命令分析成虚拟操作（B 档）。
+ *
+ * shell 形态（B1 补口）：bash（缺省，行为与历史完全一致）与 pwsh。pwsh
+ * 是注册的内置工具（BUILTIN_TOOL_NAMES），此前虚拟写目标扫描只挂 bash
+ * ——Set-Content/Out-File 等 pwsh 写法不经重定向即写文件，保留元数据
+ * 目录可被一条 pwsh allow 规则绕过（C46 承诺破口）。pwsh 模式在既有
+ * 重定向抽取之上追加 pwsh 写 cmdlet 识别与 -EncodedCommand 保守化；
+ * 两种 shell 共享同一套降级/cd/uncertain 纪律。 */
 /**
  * 单条命令的扫描输入上限（T5/T-P1-123——预算 cap 总工作量，不 cap 语义能力）。
  * 依据：单条 bash 命令的 OS 硬限制约 ARG_MAX 128KB 的一半取整；本扫描器为
@@ -250,13 +258,48 @@ function isDynamicTarget(target: string): boolean {
  */
 export const MAX_COMMAND_LENGTH = 65_536;
 
-export function analyzeShellCommand(command: string): ShellAnalysis {
+/** pwsh 写路径 cmdlet（首个非 flag 参数 = 目标路径）。覆盖常见文件写面；
+ * 未覆盖的写法落 SHELL_ANALYSIS_LIMITATIONS（B 档承诺强度声明）。 */
+const PWSH_WRITE_CMDLETS: ReadonlySet<string> = new Set([
+  "set-content",
+  "add-content",
+  "out-file",
+  "new-item",
+  "export-csv",
+  "export-clixml",
+  "export-formatdata",
+  "tee-object",
+]);
+
+/** pwsh 侧写路径提取：cmdlet 调用的首个非 `-` 开头参数。返回 undefined =
+ * 该段不是已识别的写 cmdlet（或路径不可静态确认）。 */
+function extractPwshCmdletWrite(bare: string): string | undefined {
+  const tokens = bare.split(/\s+/);
+  const head = (tokens[0] ?? "").toLowerCase();
+  // [IO.File]::WriteAllText(path, …) 等 .NET 静态方法写面——括号内第一参数
+  //（单/双引号均可包裹，捕获前剥掉）
+  const dotnet = bare.match(/^\[[^\]]+\]::(WriteAllText|WriteAllBytes|AppendAllText|WriteAllLines)\s*\(\s*["']?([^",)\s'"]+)/);
+  if (dotnet !== null) return dotnet[2];
+  if (!PWSH_WRITE_CMDLETS.has(head)) return undefined;
+  for (const token of tokens.slice(1)) {
+    if (token.startsWith("-")) continue;
+    if (token === "") continue;
+    return token.replace(/^["']|["']$/g, "");
+  }
+  return undefined;
+}
+
+export function analyzeShellCommand(
+  command: string,
+  options: { shell?: "bash" | "pwsh" } = {},
+): ShellAnalysis {
+  const shell = options.shell ?? "bash";
   // T6/T-P1-123：畸形输入降级返回 + 显式标志（uncertain 恒 true——fail-closed），
   // 绝不因输入形态异常抛出失控异常。
   if (typeof (command as unknown) !== "string") {
     return { ops: [], uncertain: true, cwdUnknown: false, pathMayDependOnCwd: false, degraded: "non_string" };
   }
-  if ((command as string).includes(" ")) {
+  if ((command as string).includes("\0")) {
     return { ops: [], uncertain: true, cwdUnknown: false, pathMayDependOnCwd: false, degraded: "contains_nul" };
   }
   if ((command as string).length > MAX_COMMAND_LENGTH) {
@@ -316,6 +359,33 @@ export function analyzeShellCommand(command: string): ShellAnalysis {
           : {}),
       });
     }
+    // B1 补口（pwsh 模式）：写 cmdlet 与 .NET 静态方法的路径参数 → file-write
+    // （pwsh 写文件大多不经重定向；重定向抽取只覆盖 `>`/`>>` 一族）。
+    if (shell === "pwsh") {
+      const cmdletPath = extractPwshCmdletWrite(bare);
+      if (cmdletPath !== undefined) {
+        ops.push({
+          kind: "file-write",
+          path: cmdletPath,
+          ...(cdState === "unknown" ? { cwdUnknown: true } : {}),
+          ...(!cmdletPath.startsWith("/") &&
+          !cmdletPath.startsWith("~") &&
+          !/^[A-Za-z]:/.test(cmdletPath)
+            ? { pathMayDependOnCwd: true }
+            : {}),
+        });
+      }
+      // -EncodedCommand 把任意脚本藏进 base64——静态分析零能力，整条保守
+      if (/(^|\s)-(EncodedCommand|e)\b/i.test(bare)) {
+        uncertain = true;
+        ops.push({
+          kind: "command",
+          command: bare,
+          uncertain: true,
+          reason: "pwsh -EncodedCommand（base64 脚本）不可静态分析",
+        });
+      }
+    }
     for (const path of reads) {
       ops.push({ kind: "file-read", path });
     }
@@ -345,19 +415,21 @@ export function createShellSemanticsModule(
 async function evaluateShell(
   call: PolicyCall,
 ): Promise<PolicyOutcome | undefined> {
-  if (call.tool !== "bash") return undefined;
+  // B1 补口：pwsh 与 bash 同挂语义分析（此前只判 bash——pwsh 是注册的
+  // 内置工具，写 .git/ 等不经任何检查）。
+  if (call.tool !== "bash" && call.tool !== "pwsh") return undefined;
   const command = call.args.command;
   if (typeof command !== "string") return undefined;
-  const analysis = analyzeShellCommand(command);
+  const analysis = analyzeShellCommand(command, { shell: call.tool === "pwsh" ? "pwsh" : "bash" });
 
-  // C46 经 C27：bash 重定向写保留元数据目录 = 绕过文件规则的通道，deny
+  // C46 经 C27：重定向/cmdlet 写保留元数据目录 = 绕过文件规则的通道，deny
   for (const op of analysis.ops) {
     if (op.kind === "file-write" && op.path !== undefined) {
       const segment = findProtectedMetadataSegment(op.path);
       if (segment !== undefined) {
         return {
           action: "deny",
-          reason: `重定向写入保留元数据目录 "${segment}"（C46/C27 bash 旁路关闭）`,
+          reason: `写入保留元数据目录 "${segment}"（C46/C27 ${call.tool} 旁路关闭）`,
         };
       }
     }

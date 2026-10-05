@@ -40,26 +40,15 @@ const TEMPLATE = `
       </div>
     </section>
     <section data-worktab-body="review" hidden>
-      <p id="work-review-summary" class="hint"></p>
-      <ul id="work-review-list"></ul>
+      <div id="work-review-body"></div>
       <p class="hint">从事件流提取（write/edit/apply-patch 显式路径 + bash 的 rm/重定向推断——via 列标注来源）；失败调用不计入。</p>
     </section>
     <section data-worktab-body="subagent" hidden>
-      <table id="work-delegation-table" class="table">
-        <thead>
-          <tr><th>任务</th><th>子会话</th><th>状态</th><th>耗时</th></tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+      <div id="work-delegation-body"></div>
       <p id="work-delegation-hint" class="hint"></p>
     </section>
     <section data-worktab-body="collab" hidden>
-      <table id="work-collab-table" class="table">
-        <thead>
-          <tr><th>方向</th><th>对端会话</th><th>类型</th><th>状态</th><th>结果/错误</th></tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+      <div id="work-collab-body"></div>
       <p class="hint">会话间派任务/消息往来的流内事实（session/collab 事件投影）；权限快照随派发固化——后续设置变更不影响排队/在途任务。</p>
     </section>
     <section data-worktab-body="timeline" hidden>
@@ -154,17 +143,44 @@ async function fetchReviewReport() {
   return envelope.ok ? (envelope.result?.review ?? null) : null;
 }
 
-function renderReviewReport(report) {
-  if (!report) return;
-  if (document.getElementById("work-review-summary") === null) return; // 已卸载
+// —— A7 可复用重构：评审报告渲染从"写死工作台 DOM id 的私有函数"改为
+// 导出的纯构建函数（工作台与 pane-review 两处共用一份逻辑——此前 pane 的
+// typeof 检查对未导出函数恒 false，落 JSON 兜底即"有数据恒空白/裸 JSON"）。
+
+/** 状态单元格（T-P3-157 批 3：状态字形 → icons.js 节点+词）。 */
+function statusCell(status, runningWord) {
+  const spec = { completed: ["checkCircle", "完成", "icon-ok"], failed: ["xCircle", "失败", "icon-err"], cancelled: ["ban", "取消", "icon-warn"], running: ["loader", runningWord, "icon-spin"] }[status];
+  const span = document.createElement("span");
+  span.className = "ac-label";
+  if (spec === undefined) {
+    span.textContent = status === "queued" ? "排队中" : (runningWord ?? "—");
+    return span;
+  }
+  span.append(icon(spec[0], { cls: `icon-sm ${spec[2]}`.trim() }), document.createTextNode(` ${spec[1]}`));
+  return span;
+}
+
+/** 变更清单块（summary 行 + ul.review-list；空态 = 提示行）。 */
+export function buildReviewChanges(report) {
+  const frag = document.createDocumentFragment();
+  if (!report) {
+    const empty = document.createElement("p");
+    empty.className = "hint";
+    empty.textContent = "（本会话暂无文件写操作——agent 改动后自动刷新）";
+    frag.appendChild(empty);
+    return frag;
+  }
   const ops = report.operations ?? [];
   const writes = ops.filter((o) => o.op === "write").length;
   const edits = ops.filter((o) => o.op === "edit").length;
   const deletes = ops.filter((o) => o.op === "delete").length;
-  document.getElementById("work-review-summary").textContent =
+  const summary = document.createElement("p");
+  summary.className = "hint";
+  summary.textContent =
     `本会话 ${report.changes.length} 个文件被触碰：写入 ${writes} · 修改 ${edits} · 删除 ${deletes}`;
-  const list = document.getElementById("work-review-list");
-  list.replaceChildren();
+  frag.appendChild(summary);
+  const list = document.createElement("ul");
+  list.className = "work-review-list";
   for (const c of report.changes) {
     const li = document.createElement("li");
     li.className = `review-item review-${c.op}`;
@@ -185,28 +201,22 @@ function renderReviewReport(report) {
     li.textContent = "（本会话暂无文件写操作——agent 改动后自动刷新）";
     list.appendChild(li);
   }
+  frag.appendChild(list);
+  return frag;
+}
 
-  /** 状态单元格（T-P3-157 批 3：状态字形 → icons.js 节点+词）。 */
-  const statusCell = (status, runningWord) => {
-    const spec = { completed: ["checkCircle", "完成", "icon-ok"], failed: ["xCircle", "失败", "icon-err"], cancelled: ["ban", "取消", "icon-warn"], running: ["loader", runningWord, "icon-spin"] }[status];
-    const span = document.createElement("span");
-    span.className = "ac-label";
-    if (spec === undefined) {
-      span.textContent = status === "queued" ? "排队中" : (runningWord ?? "—");
-      return span;
-    }
-    span.append(icon(spec[0], { cls: `icon-sm ${spec[2]}`.trim() }), document.createTextNode(` ${spec[1]}`));
-    return span;
-  };
-
-  const body = document.querySelector("#work-delegation-table tbody");
-  body.replaceChildren();
-  for (const d of report.delegations ?? []) {
+/** 委派状态表（H1/H2 面的流投影）。 */
+export function buildDelegationTable(report) {
+  const table = document.createElement("table");
+  table.className = "work-delegation-table table";
+  table.innerHTML = "<thead><tr><th>任务</th><th>子会话</th><th>状态</th><th>耗时</th></tr></thead><tbody></tbody>";
+  const body = table.querySelector("tbody");
+  for (const d of report?.delegations ?? []) {
     const tr = document.createElement("tr");
     for (const [i, text] of [
       d.description || "（无描述）",
       d.subagentSessionId ?? "—",
-      null, // 状态列——节点组合（见下）
+      null, // 状态列——节点组合（见 statusCell）
       d.durationMs !== undefined ? `${(d.durationMs / 1000).toFixed(1)}s` : "—",
     ].entries()) {
       const td = document.createElement("td");
@@ -222,7 +232,7 @@ function renderReviewReport(report) {
     }
     body.appendChild(tr);
   }
-  if ((report.delegations ?? []).length === 0) {
+  if ((report?.delegations ?? []).length === 0) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
     td.colSpan = 4;
@@ -230,13 +240,16 @@ function renderReviewReport(report) {
     tr.appendChild(td);
     body.appendChild(tr);
   }
-  document.getElementById("work-delegation-hint").textContent =
-    "委派状态/耗时取 task 调用与结算的流内事实（H1/H2 面）；点击子代理 Tab 查看一览。";
+  return table;
+}
 
-  // U27/T-P3-131：协作往来（流投影——session/collab 事件）
-  const collabBody = document.querySelector("#work-collab-table tbody");
-  collabBody.replaceChildren();
-  for (const c of report.collaborations ?? []) {
+/** 协作往来表（U27/T-P3-131：session/collab 事件流投影）。 */
+export function buildCollabTable(report) {
+  const table = document.createElement("table");
+  table.className = "work-collab-table table";
+  table.innerHTML = "<thead><tr><th>方向</th><th>对端会话</th><th>类型</th><th>状态</th><th>结果/错误</th></tr></thead><tbody></tbody>";
+  const body = table.querySelector("tbody");
+  for (const c of report?.collaborations ?? []) {
     const tr = document.createElement("tr");
     const dir = c.direction === "outgoing" ? "→ 派出" : "← 收到";
     const outcome = c.result ?? c.error ?? "—";
@@ -249,16 +262,27 @@ function renderReviewReport(report) {
       }
       tr.appendChild(td);
     }
-    collabBody.appendChild(tr);
+    body.appendChild(tr);
   }
-  if ((report.collaborations ?? []).length === 0) {
+  if ((report?.collaborations ?? []).length === 0) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
     td.colSpan = 5;
     td.textContent = "（本会话暂无协作往来——跨会话派任务后可见）";
     tr.appendChild(td);
-    collabBody.appendChild(tr);
+    body.appendChild(tr);
   }
+  return table;
+}
+
+function renderReviewReport(report) {
+  // 已卸载 guard：工作台路由离开后容器不存在
+  if (document.getElementById("work-review-body") === null) return;
+  document.getElementById("work-review-body").replaceChildren(buildReviewChanges(report));
+  document.getElementById("work-delegation-body").replaceChildren(buildDelegationTable(report));
+  document.getElementById("work-delegation-hint").textContent =
+    "委派状态/耗时取 task 调用与结算的流内事实（H1/H2 面）；点击子代理 Tab 查看一览。";
+  document.getElementById("work-collab-body").replaceChildren(buildCollabTable(report));
 }
 
 async function refreshWorkReview() {

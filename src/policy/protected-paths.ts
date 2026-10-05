@@ -75,6 +75,20 @@ function findProtectedBashWriteTarget(
   return undefined;
 }
 
+/** pwsh 命令里命中保留名单的虚拟写目标（B1 补口——pwsh 是注册的内置
+ * 工具，此前只扫 bash：Set-Content 写 .git/ 可被一条 pwsh allow 规则
+ * 绕过硬拦）。shell 模式 = pwsh（写 cmdlet + 重定向双覆盖）。 */
+function findProtectedPwshWriteTarget(
+  command: string,
+): { path: string; segment: string } | undefined {
+  for (const op of analyzeShellCommand(command, { shell: "pwsh" }).ops) {
+    if (op.kind !== "file-write" || op.path === undefined) continue;
+    const segment = findProtectedMetadataSegment(op.path);
+    if (segment !== undefined) return { path: op.path, segment };
+  }
+  return undefined;
+}
+
 /**
  * V4A patch 文本的目标路径提取（T-P1-56 apply_patch 通道的扫描器——
  * 与 bash 虚拟写目标扫描同构的本地实现，不 import 工具层解析器以免
@@ -119,14 +133,17 @@ export function enforceProtectedPaths(
     }
     return verdict;
   }
-  if (call.tool === "bash") {
+  if (call.tool === "bash" || call.tool === "pwsh") {
     const command = call.args.command;
     if (typeof command === "string") {
-      const hit = findProtectedBashWriteTarget(command);
+      const hit =
+        call.tool === "bash"
+          ? findProtectedBashWriteTarget(command)
+          : findProtectedPwshWriteTarget(command);
       if (hit !== undefined) {
         return {
           action: "deny",
-          reason: `bash 虚拟写目标 "${hit.path}" 含保留元数据目录 "${hit.segment}"，硬拦不可被规则授权（C46 出口级）`,
+          reason: `${call.tool} 虚拟写目标 "${hit.path}" 含保留元数据目录 "${hit.segment}"，硬拦不可被规则授权（C46 出口级）`,
         };
       }
     }

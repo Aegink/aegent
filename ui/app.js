@@ -1543,7 +1543,10 @@ function buildCard(name, payload, sourceSessionId) {
   // 其所属会话，不能错发给当前正查看的会话）
   card.dataset.sessionId = typeof sourceSessionId === "string" ? sourceSessionId : "";
   // T-P3-173（并发差距补全 B2）：来源任务归属条——后台会话的审批可一眼
-  // 分清"谁在要审批"，点击跳到该任务处理
+  // 分清"谁在要审批"，点击跳到该任务处理（title 必须先声明——归属条
+  // append 到 title 上；此前声明在后构成 TDZ，后台任务审批卡一到即崩）
+  const title = document.createElement("div");
+  title.className = "card-title";
   if (card.dataset.sessionId !== "" && card.dataset.sessionId !== sessionId()) {
     const origin = document.createElement("button");
     origin.type = "button";
@@ -1557,8 +1560,6 @@ function buildCard(name, payload, sourceSessionId) {
     });
     title.appendChild(origin);
   }
-  const title = document.createElement("div");
-  title.className = "card-title";
   if (name === "approval_requested") {
     title.textContent = `审批请求：${payload.tool}`;
     // C54 审批来源分类 chip + 超时倒计时（审批卡优化——U4/T-P3-107）
@@ -3440,6 +3441,19 @@ try {
   initProgressDock();
   // T-P3-156 P：底部终端抽屉（xterm+node-pty——按钮按 IS_DESKTOP 显隐）
   initTerminalPane();
+  // K9 画中画可达性修复（核对 A4）：pip 窗口在壳内按需显示（此前
+  // tauri.conf visible:false 且全仓无 show 调用=窗口永不可达）；web 端
+  // 无壳能力保持隐藏。图标暂用 monitor——lucide pictureInPicture 待走
+  // 官方数据提取管线补录（icons.js 纪律：不凭记忆造 path）。
+  const pipBtn = document.getElementById("pip-btn");
+  if (pipBtn !== null && "__TAURI_INTERNALS__" in window) {
+    pipBtn.hidden = false;
+    pipBtn.addEventListener("click", () => {
+      window.__TAURI_INTERNALS__.invoke("pip_show").catch((e) => {
+        toast(`画中画窗口打开失败：${e ?? ""}`, "warn");
+      });
+    });
+  }
 } catch (e) {
   console.error("输入区/进度弹窗初始化失败", e);
   appendLine(`输入区初始化失败：${e?.message ?? String(e)}`, "warn");

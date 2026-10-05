@@ -157,3 +157,75 @@ describe("C37 · IMDS 与带外回调主机黑名单（T-P1-83）", () => {
     }
   });
 });
+
+describe("C37 补口（B2）：守卫接管重定向跟随并逐跳复检 IMDS", () => {
+  const makeGuard = (responder: (url: string) => Response) => {
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: Request | URL | string) => {
+      const url = typeof input === "string" ? input : String(input);
+      calls.push(url);
+      return responder(url);
+    });
+    const guard = createNetworkGuard({ policy: "allow", fetchImpl: fetchImpl as unknown as typeof fetch });
+    return { guard, calls };
+  };
+
+  it("302 跳到 IMDS 主机：逐跳复检命中 → NetworkImdsDeniedError（修复目标）", async () => {
+    const { guard } = makeGuard((url) =>
+      url === "https://evil.example/start"
+        ? new Response(null, { status: 302, headers: { location: "http://169.254.169.254/latest/meta-data/" } })
+        : new Response("secret", { status: 200 }),
+    );
+    await expect(guard.fetch("https://evil.example/start")).rejects.toMatchObject({
+      code: "NETWORK_IMDS_DENIED",
+    });
+  });
+
+  it("302 跳到正常主机：跟随成功且每跳重过守卫（黑名单外不拦截）", async () => {
+    const { guard, calls } = makeGuard((url) =>
+      url === "https://a.example/old"
+        ? new Response(null, { status: 302, headers: { location: "/new" } })
+        : new Response("final-body", { status: 200 }),
+    );
+    const res = await guard.fetch("https://a.example/old");
+    expect(res.status).toBe(200);
+    await expect(res.text()).resolves.toBe("final-body");
+    expect(calls).toEqual(["https://a.example/old", "https://a.example/new"]);
+  });
+
+  it("跟随请求强制 GET 无 body（重定向 GET 化——307/308 方法保留不承诺，记档）", async () => {
+    const seenInits: RequestInit[] = [];
+    const fetchImpl = vi.fn(async (input: Request | URL | string, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : String(input);
+      if (url === "https://a.example/2") seenInits.push(init ?? {});
+      return url === "https://a.example/1"
+        ? new Response(null, { status: 307, headers: { location: "https://a.example/2" } })
+        : new Response("ok", { status: 200 });
+    });
+    const guard = createNetworkGuard({ policy: "allow", fetchImpl: fetchImpl as unknown as typeof fetch });
+    await guard.fetch("https://a.example/1", { method: "POST", body: "x" });
+    expect(seenInits).toHaveLength(1);
+    expect(seenInits[0]?.method).toBe("GET");
+    expect(seenInits[0]?.body).toBeUndefined();
+  });
+
+  it("重定向超 5 跳：返回最后一个 3xx 响应（不无限循环）", async () => {
+    let n = 0;
+    const { guard, calls } = makeGuard((url) => {
+      n += 1;
+      return new Response(null, { status: 302, headers: { location: `https://a.example/next-${n}` } });
+    });
+    const res = await guard.fetch("https://a.example/start");
+    expect(res.status).toBe(302);
+    expect(calls.length).toBeLessThanOrEqual(7); // 首跳 + ≤5 跟随（含超限判定）
+  });
+
+  it("显式 redirect:'manual' 调用方直透（webfetch 契约不破坏——302 原样返回不跟随）", async () => {
+    const { guard, calls } = makeGuard(() =>
+      new Response(null, { status: 302, headers: { location: "http://169.254.169.254/x" } }),
+    );
+    const res = await guard.fetch("https://a.example/old", { redirect: "manual" });
+    expect(res.status).toBe(302); // 不跟随——IMDS 目标由调用方每跳重过守卫时拦
+    expect(calls).toHaveLength(1);
+  });
+});

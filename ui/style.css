@@ -3612,7 +3612,9 @@ mark.search-hit.active {
   color: var(--destructive);
 }
 
-#work-review-list {
+/* A7 可复用重构：评审块构建函数（work.js 导出）被工作台与 pane-review
+ * 两处消费——同一页面可双实例，选择器由 id 改 class。 */
+.work-review-list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -3620,25 +3622,25 @@ mark.search-hit.active {
   overflow-y: auto;
 }
 
-#work-delegation-table,
-#work-collab-table {
+.work-delegation-table,
+.work-collab-table {
   width: 100%;
   border-collapse: collapse;
   font-size: var(--text-ui-sm);
 }
 
-#work-delegation-table th,
-#work-delegation-table td,
-#work-collab-table th,
-#work-collab-table td {
+.work-delegation-table th,
+.work-delegation-table td,
+.work-collab-table th,
+.work-collab-table td {
   text-align: left;
   padding: 7px 10px;
   border-bottom: 1px solid var(--border);
   word-break: break-all;
 }
 
-#work-delegation-table th,
-#work-collab-table th {
+.work-delegation-table th,
+.work-collab-table th {
   color: var(--text-subtle);
   font-weight: 500;
 }

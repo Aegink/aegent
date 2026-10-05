@@ -5,7 +5,7 @@
  * assistant-log-append/read，按日文件 <home>/.aegent/assistant/）。
  */
 
-import { sendRequest, sendSettings } from "./api.js";
+import { sendRequest, sendSettings, allocRequestId } from "./api.js";
 import { getSessionId, settingsCache } from "./state.js";
 import { toast } from "./feedback.js";
 import { renderMarkdown } from "./render.js";
@@ -70,15 +70,26 @@ registerPane("assistant", {
       try {
         const sid = getSessionId();
         if (sid === "") throw new Error("会话未就绪");
-        const reply = await sendRequest(sid, { type: "polish", text });
-        const answer = String(reply?.text ?? reply?.polished ?? "").trim();
+        // polish 契约对齐（核对 A5 修复）：call 体必须自带 requestId 非空 +
+        // draft 非空（agent-protocol decode 校验；app.js 润色钮同款形状），
+        // 结果经 response 信封 result = polish_result 载荷回执。
+        const envelope = await Promise.race([
+          sendRequest(sid, { type: "polish", requestId: allocRequestId("pa"), draft: text }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("辅助对话请求超时（60s）")), 60_000)),
+        ]);
+        if (!envelope.ok) throw new Error(envelope.error?.message ?? envelope.error?.code ?? "请求被拒");
+        const result = envelope.result ?? {};
+        if (result.ok !== true || typeof result.text !== "string" || result.text.trim() === "") {
+          throw new Error(result.error ?? "模型未返回内容");
+        }
+        const answer = result.text.trim();
         pending.remove();
-        appendBubble("assistant", answer !== "" ? answer : "（辅助模型无返回——检查设置「辅助模型」分节）");
+        appendBubble("assistant", answer);
         history.push({ ts: Date.now(), role: "assistant", text: answer });
         void sendSettings({ op: "assistant-log-append", role: "assistant", text: answer }).catch(() => {});
       } catch (e) {
         pending.remove();
-        appendBubble("assistant", `请求失败：${e?.message ?? ""}（辅助模型未配置或需要写租约）`);
+        appendBubble("assistant", `请求失败：${e?.message ?? ""}（检查设置「辅助模型」分节是否已配置）`);
       }
     };
     sendBtn.addEventListener("click", () => void send());

@@ -84,9 +84,12 @@ export interface InstructionsView {
   };
 }
 
-/** 宿主内置防护清单（policy 链宿主面——装配在 user 规则集之外的独立环节）。 */
+/** 宿主内置防护清单（policy 链宿主面——装配在 user 规则集之外的独立环节）。
+ * 危险命令防护的诚实口径（核对修正）：独立模块 createDangerousCommandModule
+ * 无装配点——高危命令拦截实际由 shell-semantics 模块内部复用危险清单
+ * （bash/pwsh 通道）；保护路径/自防护才是真正的出口级硬拦。 */
 const HOST_PROTECTIONS: { name: string; description: string }[] = [
-  { name: "危险命令防护", description: "dangerous-commands——高危命令模式独立拦截（链上硬环节）" },
+  { name: "危险命令防护", description: "危险命令清单经 shell 语义分析复用拦截（bash/pwsh 通道；独立模块未装配）" },
   { name: "保护路径", description: "protected-paths——敏感路径读写护栏（链上硬环节）" },
   { name: "自防护", description: "self-guard——阻止策略自我修改（链上硬环节）" },
   { name: "计划模式闸", description: "plan-guard——plan 模式下编辑类硬拒（出口级）" },

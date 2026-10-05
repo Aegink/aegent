@@ -37,15 +37,16 @@ registerPane("review", {
         return;
       }
       const report = envelope.result?.review ?? null;
-      if (report === null) {
+      if (report === null || report.changes.length === 0) {
         box.innerHTML = `<div class="empty-state"><div class="empty-title">暂无变更</div><div class="empty-desc">AI 产出文件变更后这里会出现 diff 审查面。</div></div>`;
         return;
       }
-      // 复用 work.js 的报告渲染（模块导出面——无导出则内联摘要版）
+      // A7 修复：消费 work.js 导出的构建函数（变更/委派共用一份渲染——
+      // 此前引用不存在的 renderReviewReport 导出，恒落 JSON 兜底）。
       try {
         const work = await import("./views/work.js");
-        if (typeof work.renderReviewReport === "function") {
-          work.renderReviewReport(box, report);
+        if (typeof work.buildReviewChanges === "function" && typeof work.buildDelegationTable === "function") {
+          box.replaceChildren(work.buildReviewChanges(report), work.buildDelegationTable(report));
           return;
         }
       } catch {

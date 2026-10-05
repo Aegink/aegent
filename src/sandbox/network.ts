@@ -100,9 +100,58 @@ function targetUrl(input: FetchInput): string {
   return input.url;
 }
 
+/** 重定向自管跟随上限（webfetch 同值——防循环）。 */
+const MAX_GUARD_REDIRECTS = 5;
+
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+/** C37 补口（核对 B2）：守卫默认接管重定向跟随——此前透传 fetch（默认
+ * redirect:"follow"），30x 跳转目标不再复检 IMDS，SSRF 防护可被可控重定向
+ * 绕过。自管循环每跳重过黑名单；显式传 redirect:"manual" 的调用方
+ * （webfetch 自管同源跳转且每跳重过本守卫）原样透传，行为不变。
+ * 跟随请求一律 GET 无 body（工具面全为 GET；301/302/303 的 GET 化即
+ * 浏览器语义，307/308 的方法保留场景工具面不存在——记档）。 */
+async function guardedFollow(
+  fetchImpl: FetchLike,
+  url: string,
+  input: FetchInput,
+  init: RequestInit | undefined,
+): Promise<Response> {
+  let current = url;
+  let currentInput: FetchInput = input;
+  for (let hop = 0; hop <= MAX_GUARD_REDIRECTS; hop++) {
+    const response = await fetchImpl(currentInput, {
+      ...(init ?? {}),
+      redirect: "manual",
+    });
+    if (!REDIRECT_STATUSES.has(response.status)) return response;
+    const location = response.headers.get("location");
+    if (location === null || location === "") return response;
+    const next = new URL(location, current);
+    checkImds(next.href, next.hostname); // 每跳复检（本修复的核心）
+    if (hop === MAX_GUARD_REDIRECTS) return response; // 超限：返回最后 3xx（调用方可见 location）
+    current = next.href;
+    currentInput = current; // 跟随请求一律 GET（body 不重发——见头注释）
+    init = { ...(init ?? {}), method: "GET", body: undefined };
+  }
+  return fetchImpl(current, init); // 不可达（循环内 return），类型满足
+}
+
+/** IMDS 黑名单判定（allow 档入口与每跳共用）——命中/不可解析都 fail-closed。 */
+function checkImds(url: string, hostname: string | undefined): void {
+  if (hostname === undefined || isImdsTarget(hostname)) {
+    throw new NetworkImdsDeniedError(
+      url,
+      hostname === undefined
+        ? `目标 URL 无法解析（fail-closed）：${url}。C37 网络侧防护要求目标可验证后才可发起请求。`
+        : `目标命中 IMDS/带外回调主机防护清单（C37）：${url}。云实例元数据端点不允许工具访问（防 SSRF 式外带）。`,
+    );
+  }
+}
+
 /** 网络守卫：deny 档在任何真实 I/O 之前拒绝（被拒请求不发生）；allow 档先过
  * C37 IMDS 黑名单面（独立于档位——SSRF 防护），命中即拒、URL 无法解析
- * fail-closed，通过才透传。 */
+ * fail-closed，通过才透传；默认接管重定向跟随并逐跳复检（B2 补口）。 */
 export function createNetworkGuard(options: NetworkGuardOptions): NetworkGuard {
   const fetchImpl = options.fetchImpl ?? fetch;
   const guardedFetch: FetchLike = async (input, init) => {
@@ -120,15 +169,11 @@ export function createNetworkGuard(options: NetworkGuardOptions): NetworkGuard {
     } catch {
       hostname = undefined;
     }
-    if (hostname === undefined || isImdsTarget(hostname)) {
-      throw new NetworkImdsDeniedError(
-        url,
-        hostname === undefined
-          ? `目标 URL 无法解析（fail-closed）：${url}。C37 网络侧防护要求目标可验证后才可发起请求。`
-          : `目标命中 IMDS/带外回调主机防护清单（C37）：${url}。云实例元数据端点不允许工具访问（防 SSRF 式外带）。`,
-      );
+    checkImds(url, hostname);
+    if (init?.redirect === "manual") {
+      return fetchImpl(input, init); // 自管方（webfetch）——每跳重过本守卫
     }
-    return fetchImpl(input, init);
+    return guardedFollow(fetchImpl, url, input, init);
   };
   return { policy: options.policy, fetch: guardedFetch };
 }
