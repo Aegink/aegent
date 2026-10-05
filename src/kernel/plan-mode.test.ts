@@ -225,13 +225,17 @@ describe("注册面与提示词独立文件（验收⑤）", () => {
     expect(withPlan.names()).not.toContain("todo_write");
     // networkGuard 未传时 webfetch 不注册（同款能力面绑定装配）
     expect(withPlan.names()).not.toContain("webfetch");
-    expect(withPlan.names()).toHaveLength(13);
+    // T-P3-172：web_search 同款门控（networkGuard 未传不注册）
+    expect(withPlan.names()).not.toContain("web_search");
+    // T-P3-172：ls/current_time 零依赖常驻（+2）
+    expect(withPlan.names()).toHaveLength(15);
 
     const full = new ToolRegistry();
     registerBuiltinTools(full, {
       pluginCreate: { workspaceRoot: "stub" },
       pluginDefine: { toolRegistry: full, handles: [] },
       todoEmit: () => undefined,
+      todosRead: () => [], // T-P3-172：todo_read 注册面（与 todoEmit 对偶）
       planMode: createPlanModeService(),
       // BUILTIN_TOOL_NAMES 是"可注册清单"（webfetch/question/task/session_*
       // 随装配条件注册）——全集等价断言需带齐各能力面的装配件
@@ -247,13 +251,15 @@ describe("注册面与提示词独立文件（验收⑤）", () => {
       sessionQuery: { dbPath: "unused-plan-mode-names.sqlite" },
     });
     expect(full.names()).toEqual([...BUILTIN_TOOL_NAMES]);
-    expect(BUILTIN_TOOL_NAMES).toHaveLength(21); // T-P3-148：+plugin_create/plugin_define
+    // T-P3-172：+web_search/ls/current_time/todo_read（25）
+    expect(BUILTIN_TOOL_NAMES).toHaveLength(25);
 
     const withoutPlan = new ToolRegistry();
     registerBuiltinTools(withoutPlan);
     expect(withoutPlan.names()).not.toContain("plan_enter");
     expect(withoutPlan.names()).not.toContain("plan_exit");
-    expect(withoutPlan.names()).toHaveLength(11); // P0 六工具 + skill_load + tool_load + pwsh
+    // T-P3-172：+ls/current_time 零依赖常驻（13）
+    expect(withoutPlan.names()).toHaveLength(13);
   });
 
   it("提示词独立文件：改 plan_enter.txt 描述即变，零 .ts diff（T-4-01 基建同款）", () => {

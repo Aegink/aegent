@@ -96,6 +96,8 @@ export const KIND_ICONS = {
 // 同文 toast 合并窗口（P-055——同文案 3s 内重复弹只叠计数）
 let lastToast = { text: "", el: null, count: 0, badge: null, timer: 0 };
 
+const TOAST_MS = 3000; // T-P3-172：zcode 3000ms（托盘挂起时 WebView timer 冻结——点按即关兜底）
+
 export function toast(text, kind) {
   const area = document.getElementById("toast-area");
   if (lastToast.text === text && document.contains(lastToast.el)) {
@@ -105,20 +107,26 @@ export function toast(text, kind) {
     lastToast.timer = setTimeout(() => {
       lastToast.el?.remove();
       lastToast = { text: "", el: null, count: 0, badge: null, timer: 0 };
-    }, 4000);
+    }, TOAST_MS);
     return lastToast.el;
   }
   const t = document.createElement("div");
   t.className = "toast";
+  t.title = "点击关闭";
   const badge = document.createElement("span");
   badge.className = "line-dedup-count";
   t.append(icon(KIND_ICONS[kind] ?? "bell", { cls: "icon-sm" }), document.createTextNode(` ${text}`), badge);
+  // T-P3-172（zcode 通知样式）：可点按关闭（托盘挂起 timer 冻结时的兜底出口）
+  t.addEventListener("click", () => {
+    t.remove();
+    if (lastToast.el === t) lastToast = { text: "", el: null, count: 0, badge: null, timer: 0 };
+  });
   area.appendChild(t);
   const handle = { text, el: t, count: 1, badge, timer: 0 };
   handle.timer = setTimeout(() => {
     t.remove();
     if (lastToast.el === t) lastToast = { text: "", el: null, count: 0, badge: null, timer: 0 };
-  }, 4000);
+  }, TOAST_MS);
   lastToast = handle;
   return t;
 }

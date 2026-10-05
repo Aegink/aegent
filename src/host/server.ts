@@ -66,6 +66,12 @@ export interface HostServerOptions {
   settingsGateway?: import("./settings-gateway.js").SettingsGateway;
   /** U3/T-P3-105 会话清单库（SQLite 事件库本体——op:"sessions" 数据面）。 */
   sessionsLibrary?: SqliteEventStorage;
+  /**
+   * T-P3-172：child 权威事件库路径（与 sessionsLibrary 同文件——生产传入后
+   * agentFactory 给每个 child 注入 --db，事件经 child 的 turn 末 flush 落库；
+   * host 镜像退化为纯内存读面，消除双写）。
+   */
+  hostDbPath?: string;
   /** U10/T-P3-109 workspace 根（op:"files" 扫描面——缺省进程 cwd）。 */
   workspaceRoot?: string;
   /** U12/T-P3-111 上下文窗口 token 数（op:"usage" 占比分母——缺省 200_000）。 */
@@ -111,7 +117,7 @@ export class HostServer {
       ? createTitleService({
           settingsPath: this.options.titleDeps.settingsPath,
           credentials: this.options.titleDeps.credentials,
-          ...(this.options.storage instanceof SqliteEventStorage ? { db: this.options.storage } : {}),
+          ...(this.options.sessionsLibrary !== undefined ? { db: this.options.sessionsLibrary } : {}),
           sessionStream: (sid) => store.load(sid),
         })
       : undefined;
@@ -121,7 +127,14 @@ export class HostServer {
     const agentFactory = (sessionId: string): import("./protocol.js").AgentChannel =>
       spawnAgentProcess({
         entryPath: this.options.agentEntryPath ?? "",
-        args: ["--session", sessionId, ...(this.options.childArgs ?? [])],
+        args: [
+          "--session",
+          sessionId,
+          // T-P3-172：child 权威事件库（与 host --host-db 同文件——壳只需传
+          // host-db，事件持久化经 child 的 turn 末 flush 真实落库）
+          ...(this.options.hostDbPath !== undefined ? ["--db", this.options.hostDbPath] : []),
+          ...(this.options.childArgs ?? []),
+        ],
         stderrSink: agentStderrSink(),
       });
     const agent =
@@ -157,7 +170,7 @@ export class HostServer {
     // T-P3-170：镜像与归属都按事件实际会话（sid）——多会话并发下各自
     // 独立镜像、各自归属。
     const projectAttacher = makeProjectAttacher(
-      this.options.storage instanceof SqliteEventStorage ? this.options.storage : undefined,
+      this.options.sessionsLibrary,
       this.options.settingsGateway,
     );
     bridge.onEvent((sid, event) => {
@@ -349,11 +362,13 @@ export async function main(argv: readonly string[]): Promise<void> {
     credentialKey = await credentials.getKey(settings.defaultProvider);
   }
   const { args: launchArgs } = resolveChildLaunchArgv(parsed.childArgs, process.env, settings, { credentialKey });
-  const storage = parsed.hostDbPath !== undefined    ? SqliteEventStorage.open({ path: parsed.hostDbPath })
-    : new InMemoryEventStorage();
-  // U14/T-P3-103：settings 直答网关（生产 = 真文件——UI 改 → 文件变 → 重启
-  // 生效）。U3：SQLite 库在位时一并交给网关（会话删除的 target 库）。
-  const sqliteStorage = storage instanceof SqliteEventStorage ? storage : undefined;
+  // T-P3-172 持久化职责重划：事件权威 = child 进程（--db 注入，turn 末
+  // flush 落库+启动 restore 续 seq）；host 镜像退化为纯内存读面（append
+  // 进内存序即可见，不再落库——消除 child/host 双写同库的主键冲突）。
+  // host 库仍承载 host 侧直写面（task-create/归属/标题）与全部查询读面。
+  const sqliteStorage =
+    parsed.hostDbPath !== undefined ? SqliteEventStorage.open({ path: parsed.hostDbPath }) : undefined;
+  const storage = new InMemoryEventStorage();
   // U22/T-P3-125：workspace 根交给网关（技能管理面的扫描/写入根——与
   // op:"files" 同源：最终 launchArgs 的 --workspace > 进程 cwd）
   const workspaceRoot = (() => {
@@ -376,6 +391,7 @@ export async function main(argv: readonly string[]): Promise<void> {
     storage,
     settingsGateway,
     sessionsLibrary: sqliteStorage,
+    ...(parsed.hostDbPath !== undefined ? { hostDbPath: parsed.hostDbPath } : {}),
     // U10/T-P3-109：workspace 根与子进程同源——最终 launchArgs 的
     // --workspace（含 settings 档注入）> 进程 cwd（子进程缺省语义同款）。
     workspaceRoot,

@@ -39,10 +39,14 @@ import {
   createTaskStopTool,
   type TaskLifecycleDeps,
 } from "./task-lifecycle.js";
+import { createTodoReadTool, type ProjectionTodo } from "./todo-read.js";
 import { createTodoWriteTool } from "./todo.js";
 import { createToolLoadTool } from "./tool-load.js";
+import { createWebSearchTool } from "./web-search.js";
 import { createWebfetchTool } from "./webfetch.js";
 import { createWriteTool } from "./write.js";
+import { createLsTool } from "./ls.js";
+import { createCurrentTimeTool } from "./current-time.js";
 import type { PlanModeService } from "../../plan-mode.js";
 import type { NetworkGuard } from "../../../sandbox/network.js";
 
@@ -66,6 +70,10 @@ export const BUILTIN_TOOL_NAMES = [
   "plan_exit",
   "tool_load",
   "webfetch",
+  "web_search",
+  "ls",
+  "current_time",
+  "todo_read",
   "question",
   "task",
   "session_query",
@@ -103,6 +111,9 @@ export function registerBuiltinTools(
     todoEmit?: (
       items: Array<{ content: string; status: "pending" | "in_progress" | "completed" }>,
     ) => void;
+    /** T-P3-172：todo 投影 getter（todo_read 注入面——与 todoEmit 同源
+     * 的投影读面；缺省不注册 todo_read）。 */
+    todosRead?: () => Array<ProjectionTodo>;
     /** G1 plan 模式服务（装配注入）；缺省不注册 plan 工具——plan 硬关
      * 的出口联动只在 gate 在位的装配生效，单独的工具面是骗局。 */
     planMode?: PlanModeService;
@@ -221,6 +232,16 @@ export function registerBuiltinTools(
     ...(options.networkGuard !== undefined
       ? [createWebfetchTool({ guard: options.networkGuard })]
       : []),
+    // T-P3-172 web_search（需求 1 工具补齐）：webfetch 同款 networkGuard
+    // 门控（D3 唯一入口）——Exa 托管搜索免 key 可用
+    ...(options.networkGuard !== undefined
+      ? [createWebSearchTool({ guard: options.networkGuard })]
+      : []),
+    // T-P3-172：ls/current_time 零依赖常驻（看目录/对齐时间锚点的高频面）
+    createLsTool(),
+    createCurrentTimeTool(),
+    // T-P3-172 todo_read：投影 getter 提供时才注册（与 todo_write 对偶）
+    ...(options.todosRead !== undefined ? [createTodoReadTool({ todosRead: options.todosRead })] : []),
     // B8b question（T-P1-21）：审批基建（PendingApprovals）提供时才注册
     //（挂起结算复用同一注册表，无基建的装配无问答面）
     ...(options.question !== undefined

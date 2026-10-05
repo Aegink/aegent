@@ -364,6 +364,9 @@ describe("内置工具注册入口", () => {
       "grep",
       "skill_load",
       "tool_load",
+      // T-P3-172：ls/current_time 零依赖常驻（+2）
+      "ls",
+      "current_time",
     ]);
     // 描述从真 descriptions/ 目录读出（非空）——内置描述文件的存在性证明
     for (const name of registry.names()) {

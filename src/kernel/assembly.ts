@@ -168,6 +168,34 @@ export function createTodoUpdateEmitter(
 }
 
 /**
+ * T-P3-172：todo 投影 getter（todo_read 的数据源——与 emit 同源同纪律）：
+ * 流内最后一条 todo/update 的 items（E12 整值提交，无增量折叠问题；
+ * revert 切点语义由流本身承载——revert 后旧 update 仍在流上，与
+ * todo_write 的落流事实一致）。
+ */
+export function createTodoReadGetter(
+  store: SessionStore,
+  sessionId: string,
+): () => Array<{ content: string; status: "pending" | "in_progress" | "completed" }> {
+  return () => {
+    const events = store.load(sessionId);
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i] as { type?: string; items?: unknown };
+      if (e?.type === "todo/update" && Array.isArray(e.items)) {
+        return e.items.map((it) => {
+          const item = it as { content?: unknown; status?: unknown };
+          return {
+            content: typeof item?.content === "string" ? item.content : "",
+            status: item?.status === "in_progress" || item?.status === "completed" ? item.status : "pending",
+          };
+        });
+      }
+    }
+    return [];
+  };
+}
+
+/**
  * J14 回放保护 + J10 两存储位分离（T-P1-06）：装配时的初始模型身份按
  * 优先级解析——流内最新 model/switch 的 to（会话级选择，权威事实源）>
  * initialIdentity（会话装配参数）> 注册表首项。会话级选择与全局默认

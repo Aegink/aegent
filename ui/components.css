@@ -803,7 +803,6 @@ input[type="checkbox"] {
 .toast {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--brand);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-2);
   color: var(--text);
@@ -812,6 +811,17 @@ input[type="checkbox"] {
   max-width: 360px;
   word-break: break-word;
   animation: toast-in 0.2s ease-out;
+  /* T-P3-172：中性化（zcode 通知无彩条）+ 点按关闭（pointer-events 放开） */
+  border-left: 1px solid var(--border);
+  cursor: pointer;
+}
+
+#toast-area {
+  pointer-events: auto;
+}
+
+.toast .icon-sm {
+  color: var(--text-subtle);
 }
 
 @keyframes toast-in {

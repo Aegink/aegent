@@ -42,6 +42,9 @@ export class SqliteEventStorage implements EventStorage {
   private constructor(public readonly db: Database.Database) {
     db.pragma("journal_mode = WAL");
     db.pragma("foreign_keys = ON");
+    // T-P3-172：child（事件权威写方）与 host（任务/归属直写）并发写同一库
+    // ——WAL 多进程写锁等待，防 SQLITE_BUSY 直接炸 appendBatch
+    db.pragma("busy_timeout = 5000");
     this.migrate();
 
     this.ensureSession = db.prepare("INSERT OR IGNORE INTO sessions (id, created_ts) VALUES (?, ?)");

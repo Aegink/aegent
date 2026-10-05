@@ -200,6 +200,7 @@ describe("注册面（BUILTIN_TOOL_NAMES 与生产接线同步）", () => {
     const minimal = new ToolRegistry();
     registerBuiltinTools(minimal);
     expect(minimal.names()).not.toContain("todo_write");
-    expect(minimal.names()).toHaveLength(11); // P0 六工具 + skill_load + tool_load + pwsh + apply_patch（T-P1-56）
+    // T-P3-172：+ls/current_time 零依赖常驻（13）
+    expect(minimal.names()).toHaveLength(13);
   });
 });

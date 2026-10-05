@@ -36,6 +36,7 @@ describe("跨组件因果链（O30）", () => {
     registerBuiltinTools(registry, {
       // 桩 deps 与 builtinToolParamNames 同款（闭包捕获、永不执行——见 15b 记档）
       todoEmit: () => {},
+      todosRead: () => [],
       planMode: createPlanModeService(),
       savePlanArtifact: () => ({ path: "stub" }),
       networkGuard: createNetworkGuard({ policy: "deny" }),

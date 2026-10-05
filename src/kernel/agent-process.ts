@@ -52,7 +52,13 @@ import { Projector, ProjectError } from "../session/project.js";
 import { findInterruptedTurn, reconcileBootState } from "../session/boot-maintenance.js";
 import { RawChunkLog } from "./raw-chunk-log.js";
 import { loadSkillsFromRoots } from "./skills.js";
-import { createChildAssembly, createTodoUpdateEmitter, type ChildAssembly, type ChildAssemblyOptions } from "./assembly.js";
+import {
+  createChildAssembly,
+  createTodoReadGetter,
+  createTodoUpdateEmitter,
+  type ChildAssembly,
+  type ChildAssemblyOptions,
+} from "./assembly.js";
 import { evaluateToolPolicy } from "../policy/gate.js";
 import { ModelNotRegisteredError } from "./model-switch.js";
 import { createSubagentRunner } from "./subagent.js";
@@ -267,6 +273,18 @@ export async function runAgentChildStdio(
   // M3 resume 的 restore 前置：注入式 storage 才有跨进程历史可恢复
   //（InMemory 每次启动都是空流，restore 无意义）。
   const externalStorage = options.storage;
+  // T-P3-172：child 带持久库启动即恢复本会话流（seq 接续库中最大值——
+  // 权威落库的前提；不 restore 则 append 从 1 重编号与库行主键冲突）。
+  // 恢复失败 = 库损坏，fail-closed 拒绝带病启动。
+  if (externalStorage !== undefined) {
+    try {
+      await store.restore(sessionId);
+    } catch (e) {
+      send({ type: "error", code: "STORE_RESTORE_FAILED", message: e instanceof Error ? e.message : String(e) });
+      exit(1);
+      return;
+    }
+  }
 
   // 审批宣告分型（B8b/T-P1-21）：question 工具的挂起/结算不是权限审批——
   // asked 转成 question_asked 协议行、settled 不经 approval_settled 面
@@ -475,7 +493,10 @@ export async function runAgentChildStdio(
     {
       // G2 todo 落流出口（T-P1-10）：无条件构造——最小装配（无权限层）
       // 也有 store，todo/update 事件落流不依赖生产装配在位。
+      // T-P3-172：todo_read 投影 getter（与 emit 同源——todo_write 整值
+      // 提交，读回 = 最后一条 todo/update 的 items）。
       todoEmit: createTodoUpdateEmitter(store, sessionId),
+      todosRead: createTodoReadGetter(store, sessionId),
       ...(assembly
         ? {
             pathGuard: assembly.pathGuard,
