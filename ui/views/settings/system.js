@@ -118,11 +118,18 @@ export const SECTIONS_HTML = `
         </div>
       </div>
     </div>
+    <div class="row" id="keep-awake-row" hidden>
+      <div class="row-copy">
+        <div class="row-title">保持唤醒</div>
+        <div class="row-desc">开启后系统不自动睡眠、屏幕不熄灭（长任务跑批建议开）；托盘菜单有同一开关。</div>
+      </div>
+      <div class="row-control"><label class="switch"><input id="keep-awake" type="checkbox" aria-label="保持唤醒" /><span class="switch-track"></span></label></div>
+    </div>
   </div>
 </section>
 <section data-section="network">
   <div class="section-head"><h2 class="section-title">网络</h2></div>
-  <p class="hint">模型请求的出站代理（pi-desktop networkProxy 同构；http/https 代理，配置变更重启 aegent 后生效）。</p>
+  <p class="hint">模型请求的出站代理（pi-desktop networkProxy 同构；http/https/socks5 代理，配置变更重启 aegent 后生效——socks5h 归一为 socks5）。</p>
   <div class="group-title">出站代理</div>
   <div class="row-list">
     <div class="row">
@@ -143,7 +150,7 @@ export const SECTIONS_HTML = `
         <div class="row-title">代理地址</div>
         <div class="row-desc">http://host:port（自定义模式生效；不支持认证内联与 socks）。</div>
       </div>
-      <div class="row-control"><input id="net-url" class="input" type="text" placeholder="http://127.0.0.1:7890" style="width: 240px" /></div>
+      <div class="row-control"><input id="net-url" class="input" type="text" placeholder="http://127.0.0.1:7890 或 socks5://127.0.0.1:1080" style="width: 240px" /></div>
     </div>
   </div>
 </section>
@@ -285,6 +292,20 @@ function bindChatSection() {
   if (IS_DESKTOP) {
     const row = document.getElementById("close-behavior-row");
     if (row !== null) row.hidden = false;
+    // T-P3-174 批次 5：保持唤醒开关（同一 shell.json；托盘菜单同一开关）
+    const awakeRow = document.getElementById("keep-awake-row");
+    if (awakeRow !== null) awakeRow.hidden = false;
+    const awakeInput = document.getElementById("keep-awake");
+    if (awakeInput !== null) {
+      void window.__TAURI_INTERNALS__.invoke("get_keep_awake").then((on) => {
+        awakeInput.checked = on === true;
+      });
+      awakeInput.addEventListener("change", () => {
+        void window.__TAURI_INTERNALS__.invoke("set_keep_awake_command", { on: awakeInput.checked }).then(() => {
+          toast(awakeInput.checked ? "保持唤醒已开启（系统不再自动睡眠）" : "保持唤醒已关闭", "info");
+        });
+      });
+    }
     void (async () => {
       const mode = await window.__TAURI_INTERNALS__.invoke("get_close_behavior");
       for (const b of document.querySelectorAll("#close-behavior .tab-trigger")) {

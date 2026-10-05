@@ -77,19 +77,11 @@ mod browser; // T-P3-156 Q：浏览器面板 webview 管理（真实内核）
 mod picker; // T-P3-158 反馈 2：系统文件夹选择器（rfd 直挂，不加插件）
 
 /// host 子进程句柄（退出收束用——RunEvent::Exit 时 kill）。
-/// T-P3-166 需求 2：记录 session_id/port 支持多会话清单（UI 按端口重连）。
 struct HostEntry {
-    session_id: String,
-    port: u16,
     child: Child,
 }
 
 struct HostProcess(Mutex<Option<HostEntry>>);
-
-/// 工作会话 host 池（T-P3-166 需求 2——pi-desktop sidecar 多会话同构的
-/// 多进程形态：每会话一个 host+agent-child 独立端口，任务切换=UI 重连
-/// 目标端口；后台会话的进程独立存活 = 真并发）。
-struct WorkspaceHosts(Mutex<Vec<HostEntry>>);
 
 const HOST_PORT: u16 = 8787;
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(15);
@@ -181,14 +173,9 @@ pub fn run() {
     // 探测失败照常显示——诊断面在 UI 的连接状态。
     let _healthy = child.is_ok() && wait_healthy(HEALTH_TIMEOUT);
 
-    let main_entry = child.ok().map(|child| HostEntry {
-        session_id: main_session,
-        port: HOST_PORT,
-        child,
-    });
+    let main_entry = child.ok().map(|child| HostEntry { child });
     tauri::Builder::default()
         .manage(HostProcess(Mutex::new(main_entry)))
-        .manage(WorkspaceHosts(Mutex::new(Vec::new())))
         // T-P3-162 需求 3 + T-P3-163 反馈 7：关窗 = 彻底关闭。CloseRequested
         // 阶段先杀树（防 webview 销毁阻塞导致用户感知「关不掉」）；
         // Destroyed 与 RunEvent::Exit 兜底幂等重杀。
@@ -212,15 +199,6 @@ pub fn run() {
                             browser::hide_all_sync(window.app_handle());
                         } else {
                             kill_host_tree(&window.app_handle().state::<HostProcess>());
-                            if let Some(pool) = window.app_handle().try_state::<WorkspaceHosts>() {
-                                if let Ok(mut guard) = pool.0.lock() {
-                                    for mut entry in guard.drain(..) {
-                                        kill_tree(entry.child.id());
-                                        let _ = entry.child.kill();
-                                        let _ = entry.child.wait();
-                                    }
-                                }
-                            }
                             // T-P3-167 实测：浏览器子窗活着时不满足「全部窗口关闭」
                             // → app 不退出（进程残留=「关不掉」）——杀树后显式退出
                             window.app_handle().exit(0);
@@ -231,15 +209,6 @@ pub fn run() {
                     if is_main {
                         kill_host_tree(&window.app_handle().state::<HostProcess>());
                         // T-P3-167 实录：工作池也收束（Destroy 路径此前漏池）
-                        if let Some(pool) = window.app_handle().try_state::<WorkspaceHosts>() {
-                            if let Ok(mut guard) = pool.0.lock() {
-                                for mut entry in guard.drain(..) {
-                                    kill_tree(entry.child.id());
-                                    let _ = entry.child.kill();
-                                    let _ = entry.child.wait();
-                                }
-                            }
-                        }
                     }
                 }
                 _ => {}
@@ -258,11 +227,10 @@ pub fn run() {
             browser::browser_eval,
             picker::pick_folder,
             restart_host,
-            spawn_workspace_host,
-            list_hosts,
-            close_workspace_host,
             get_close_behavior,
             set_close_behavior,
+            get_keep_awake,
+            set_keep_awake_command,
         ])
         .setup(|app| {
             browser::manage_registry(app.handle());
@@ -275,6 +243,15 @@ pub fn run() {
                 let _ = window.set_focus();
             }
             spawn_update_check(app.handle().clone());
+            // T-P3-174 批次 5：保持唤醒线程（常驻；开关态读 shell.json）
+            {
+                let dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|x| x.to_path_buf()));
+                let on = dir
+                    .map(|d| read_shell_config(&d).get("keepAwake").and_then(|v| v.as_bool()).unwrap_or(false))
+                    .unwrap_or(false);
+                set_keep_awake(on);
+                spawn_keep_awake_thread();
+            }
             // T-P3-166 需求 4：托盘（关闭行为=tray 时的落点；失败不炸壳——
             // 托盘缺席时 close 行为退化为 exit）
             if let Err(e) = setup_tray(app.handle()) {
@@ -288,15 +265,6 @@ pub fn run() {
             if let tauri::RunEvent::Exit = event {
                 if let Some(state) = app_handle.try_state::<HostProcess>() {
                     kill_host_tree(&state);
-                }
-                if let Some(pool) = app_handle.try_state::<WorkspaceHosts>() {
-                    if let Ok(mut guard) = pool.0.lock() {
-                        for mut entry in guard.drain(..) {
-                            kill_tree(entry.child.id());
-                            let _ = entry.child.kill();
-                            let _ = entry.child.wait();
-                        }
-                    }
                 }
             }
         });
@@ -340,11 +308,7 @@ fn restart_host(
         let state = app.state::<HostProcess>();
         // map 内完成写入并 drop guard（if-let 临时作用域借用 state 会报 E0597）
         let _ = state.0.lock().map(|mut guard| {
-            *guard = Some(HostEntry {
-                session_id: session_id.trim().to_string(),
-                port: HOST_PORT,
-                child,
-            });
+            *guard = Some(HostEntry { child });
         });
     }
     // 健康探测放后台线程（command 面不阻塞 webview——UI 重连循环自会等）
@@ -393,19 +357,15 @@ fn shell_config_path(dir: &std::path::Path) -> std::path::PathBuf {
 }
 
 fn read_close_behavior(dir: &std::path::Path) -> String {
-    let path = shell_config_path(dir);
-    if let Ok(raw) = std::fs::read_to_string(&path) {
-        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) {
-            if let Some(mode) = value.get("closeBehavior").and_then(|v| v.as_str()) {
-                return mode.to_string();
-            }
-        }
-    }
-    "exit".to_string()
+    read_shell_config(dir)
+        .get("closeBehavior")
+        .and_then(|v| v.as_str())
+        .unwrap_or("exit")
+        .to_string()
 }
 
 #[tauri::command]
-fn get_close_behavior(app: tauri::AppHandle) -> Result<String, String> {
+fn get_close_behavior(_app: tauri::AppHandle) -> Result<String, String> {
     let dir = std::env::current_exe()
         .map_err(|e| format!("无法定位可执行文件：{e}"))?
         .parent()
@@ -428,20 +388,115 @@ fn set_close_behavior(
         .expect("可执行文件无父目录")
         .to_path_buf();
     let _ = std::fs::create_dir_all(dir.join("data"));
-    let value = serde_json::json!({ "closeBehavior": mode });
+    let mut value = read_shell_config(&dir);
+    value["closeBehavior"] = serde_json::json!(mode);
     std::fs::write(shell_config_path(&dir), serde_json::to_string(&value).unwrap_or_default())
         .map_err(|e| format!("写入壳配置失败：{e}"))?;
     let _ = app; // 保持签名一致（未来托盘菜单热更新用）
     Ok(())
 }
 
+// —— 保持唤醒（T-P3-174 批次 5）：Electron powerSaveBlocker 同位。windows
+// crate 直调 SetThreadExecutionState——ES_CONTINUOUS 是每线程状态，线程/进程
+// 退出 Windows 自动还原（崩溃不留僵尸请求）；powercfg /requests（管理员）
+// 的 SYSTEM/DISPLAY 段可见，可人工核验。专属常驻线程按开关设/清位。 ——
+#[cfg(windows)]
+static KEEP_AWAKE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(windows)]
+fn spawn_keep_awake_thread() {
+    std::thread::spawn(|| {
+        use windows::Win32::System::Power::{
+            SetThreadExecutionState, ES_CONTINUOUS, ES_DISPLAY_REQUIRED, ES_SYSTEM_REQUIRED,
+        };
+        let mut active = false;
+        loop {
+            let want = KEEP_AWAKE.load(std::sync::atomic::Ordering::Relaxed);
+            if want != active {
+                // 状态切换才调（SetThreadExecutionState 幂等；设位一次即持续，
+                // 其余程序的电源请求不影响本线程的累积状态）
+                let flags = if want {
+                    ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
+                } else {
+                    ES_CONTINUOUS
+                };
+                unsafe {
+                    SetThreadExecutionState(flags);
+                }
+                active = want;
+            }
+            std::thread::sleep(std::time::Duration::from_secs(30));
+        }
+    });
+}
+
+#[cfg(not(windows))]
+fn spawn_keep_awake_thread() {}
+
+#[cfg(windows)]
+fn set_keep_awake(on: bool) {
+    KEEP_AWAKE.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[cfg(not(windows))]
+fn set_keep_awake(_on: bool) {}
+
+/// 壳配置整对象读（read_close_behavior 的通用化——keepAwake/closeBehavior
+/// 共用 data/shell.json 一处落盘，读改写互不覆盖）。
+fn read_shell_config(dir: &std::path::Path) -> serde_json::Map<String, serde_json::Value> {
+    if let Ok(raw) = std::fs::read_to_string(shell_config_path(dir)) {
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) {
+            if let serde_json::Value::Object(map) = value {
+                return map;
+            }
+        }
+    }
+    serde_json::Map::new()
+}
+
+#[tauri::command]
+fn get_keep_awake(_app: tauri::AppHandle) -> Result<bool, String> {
+    let dir = std::env::current_exe()
+        .map_err(|e| format!("无法定位可执行文件：{e}"))?
+        .parent()
+        .expect("可执行文件无父目录")
+        .to_path_buf();
+    Ok(read_shell_config(&dir).get("keepAwake").and_then(|v| v.as_bool()).unwrap_or(false))
+}
+
+#[tauri::command]
+fn set_keep_awake_command(app: tauri::AppHandle, on: bool) -> Result<(), String> {
+    let dir = std::env::current_exe()
+        .map_err(|e| format!("无法定位可执行文件：{e}"))?
+        .parent()
+        .expect("可执行文件无父目录")
+        .to_path_buf();
+    let _ = std::fs::create_dir_all(dir.join("data"));
+    let mut value = read_shell_config(&dir);
+    value.insert("keepAwake".into(), serde_json::json!(on));
+    std::fs::write(shell_config_path(&dir), serde_json::to_string(&value).unwrap_or_default())
+        .map_err(|e| format!("写入壳配置失败：{e}"))?;
+    set_keep_awake(on);
+    let _ = app;
+    Ok(())
+}
+
 /// 托盘图标 + 菜单（显示主窗 / 退出；pi-desktop Tray 同位）。
 fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
-    use tauri::menu::{Menu, MenuItem};
+    use tauri::menu::{CheckMenuItem, Menu, MenuItem};
     use tauri::tray::TrayIconBuilder;
     let show = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出 aegent", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &quit])?;
+    // 保持唤醒开关（T-P3-174 批次 5）——初始态随 shell.json
+    let awake_initial = {
+        let dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|x| x.to_path_buf()));
+        match dir {
+            Some(dir) => read_shell_config(&dir).get("keepAwake").and_then(|v| v.as_bool()).unwrap_or(false),
+            None => false,
+        }
+    };
+    let awake = CheckMenuItem::with_id(app, "keep-awake", "保持唤醒", true, awake_initial, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &awake, &quit])?;
     TrayIconBuilder::with_id("main-tray")
         .tooltip("aegent")
         .menu(&menu)
@@ -451,6 +506,27 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
                 if let Some(window) = app_handle.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.set_focus();
+                }
+            } else if event.id.as_ref() == "keep-awake" {
+                // T-P3-174 批次 5：CheckMenuItem 勾选态由 tauri 自动翻转——
+                // 读翻转后的值落 shell.json + 电源位（与 settings 页 command 同面）
+                if let Some(item) = app_handle.menu().and_then(|m| m.get("keep-awake")) {
+                    if let Some(awake) = item.as_check_menuitem() {
+                        let on = awake.is_checked().unwrap_or(false);
+                        let dir = std::env::current_exe()
+                            .ok()
+                            .and_then(|p| p.parent().map(|x| x.to_path_buf()));
+                        if let Some(dir) = dir {
+                            let _ = std::fs::create_dir_all(dir.join("data"));
+                            let mut value = read_shell_config(&dir);
+                            value.insert("keepAwake".into(), serde_json::json!(on));
+                            let _ = std::fs::write(
+                                shell_config_path(&dir),
+                                serde_json::to_string(&value).unwrap_or_default(),
+                            );
+                        }
+                        set_keep_awake(on);
+                    }
                 }
             } else if event.id.as_ref() == "quit" {
                 app_handle.exit(0);
@@ -469,105 +545,3 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-/// 工作会话 host（T-P3-166 需求 2）：为指定会话起独立 host+agent-child
-/// （端口从 8788 起找空闲）——UI 切任务即重连目标端口；后台会话进程独立
-/// 存活 = 多任务真并发（pi-desktop sidecar 多会话同构的多进程形态）。
-#[tauri::command]
-fn spawn_workspace_host(
-    app: tauri::AppHandle,
-    session_id: String,
-) -> Result<serde_json::Value, String> {
-    let sid = session_id.trim().to_string();
-    if sid.is_empty() || !sid.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
-        return Err("session id 不合法".into());
-    }
-    let dir = std::env::current_exe()
-        .map_err(|e| format!("无法定位可执行文件：{e}"))?
-        .parent()
-        .expect("可执行文件无父目录")
-        .to_path_buf();
-    let state = app.state::<WorkspaceHosts>();
-    let mut pool = state.0.lock().map_err(|_| "hosts 锁中毒")?;
-    // 池内已有该会话的活 host → 直接复用
-    for entry in pool.iter_mut() {
-        if entry.session_id == sid {
-            if entry.child.try_wait().map(|st| st.is_none()).unwrap_or(false) {
-                return Ok(serde_json::json!({ "sessionId": sid, "port": entry.port }));
-            }
-        }
-    }
-    // 端口分配：8788 起找未被池占用且未监听的
-    let used: Vec<u16> = pool.iter().map(|e| e.port).collect();
-    let mut port = 8788u16;
-    while used.contains(&port) || TcpStream::connect(("127.0.0.1", port)).is_ok() {
-        port += 1;
-        if port > 8899 {
-            return Err("工作会话端口耗尽（8788-8899）——请关闭部分会话".into());
-        }
-    }
-    let child = spawn_host(&dir, Some(&sid), port).map_err(|e| format!("工作 host 启动失败：{e}"))?;
-    // 旧死条目清理 + 新条目入池
-    pool.retain_mut(|e| e.child.try_wait().map(|st| st.is_none()).unwrap_or(false));
-    pool.push(HostEntry {
-        session_id: sid.clone(),
-        port,
-        child,
-    });
-    std::thread::spawn(move || {
-        let _ = wait_healthy(HEALTH_TIMEOUT);
-    });
-    Ok(serde_json::json!({ "sessionId": sid, "port": port }))
-}
-
-/// 活跃 host 清单（主 host + 工作池；死了的条目顺手清除）。
-#[tauri::command]
-fn list_hosts(app: tauri::AppHandle) -> Result<Vec<serde_json::Value>, String> {
-    let mut out = Vec::new();
-    let main = app.state::<HostProcess>();
-    if let Ok(mut guard) = main.0.lock() {
-        if let Some(entry) = guard.as_mut() {
-            let alive = entry.child.try_wait().map(|st| st.is_none()).unwrap_or(false);
-            out.push(serde_json::json!({
-                "sessionId": entry.session_id,
-                "port": entry.port,
-                "alive": alive,
-                "main": true,
-            }));
-        }
-    }
-    let pool = app.state::<WorkspaceHosts>();
-    if let Ok(mut guard) = pool.0.lock() {
-        guard.retain_mut(|e| e.child.try_wait().map(|st| st.is_none()).unwrap_or(false));
-        for e in guard.iter() {
-            out.push(serde_json::json!({
-                "sessionId": e.session_id,
-                "port": e.port,
-                "alive": true,
-                "main": false,
-            }));
-        }
-    }
-    Ok(out)
-}
-
-/// 关闭指定工作会话的 host（杀进程树——会话历史在事件库，可再切回重开）。
-#[tauri::command]
-fn close_workspace_host(
-    app: tauri::AppHandle,
-    session_id: String,
-) -> Result<bool, String> {
-    let pool = app.state::<WorkspaceHosts>();
-    let mut guard = pool.0.lock().map_err(|_| "hosts 锁中毒")?;
-    let before = guard.len();
-    guard.retain_mut(|e| {
-        if e.session_id == session_id {
-            kill_tree(e.child.id());
-            let _ = e.child.kill();
-            let _ = e.child.wait();
-            false
-        } else {
-            e.child.try_wait().map(|st| st.is_none()).unwrap_or(false)
-        }
-    });
-    Ok(guard.len() < before)
-}

@@ -87,11 +87,32 @@ const nodePtyDst = path.join(outDir, "node_modules", "node-pty");
 rmSync(path.join(outDir, "node_modules"), { recursive: true, force: true });
 // Windows：pnpm 的 node_modules 项是 symlink（.pnpm 解引用）——非管理员无
 // Symlink 权限时 cpSync 建 symlink 即 EPERM；dereference 直接拷目标内容。
-// node-pty 1.1.0 原生面在 prebuilds/<平台>/（prebuildify）——不过滤整包拷
-// （"prebuilds" 含 "build" 子串，路径级排除会误杀；多拷的 C++ 源码 ~几 MB）。
+// node-pty 1.1.0 原生面在 prebuilds/<平台>/（prebuildify）。T-P3-174 批次 5
+// 瘦身：白名单精确目录（prebuilds 下只留 win32-x64——61.4MB→约 31MB；其余
+// 平台 .node 是死重）。**过滤按目录项名精确匹配，不用路径子串**——
+// "prebuilds" 含 "build" 子串，路径级排除会误杀（T-P3-156 P 的教训）。
 cpSync(path.join(repoRoot, "node_modules", "node-pty"), nodePtyDst, {
   recursive: true,
   dereference: true,
+  filter: (src) => {
+    const rel = path.relative(path.join(repoRoot, "node_modules", "node-pty"), src);
+    if (rel === "" || rel === "..") return true;
+    const top = rel.split(path.sep)[0];
+    // 运行时面：lib（JS 入口）/ prebuilds/win32-x64（ConPTY 原生件）/
+    // package.json；deps/src/third_party/scripts/typings 都是构建期源码
+    if (top === "lib" || top === "package.json" || top.startsWith("README") || top.startsWith("LICENSE")) {
+      if (top === "lib") {
+        const under = rel.split(path.sep);
+        if (under[1] === "prebuilds" && under[2] !== undefined && under[2] !== "win32-x64") return false;
+      }
+      return true;
+    }
+    if (top === "prebuilds") {
+      const under = rel.split(path.sep);
+      return under.length < 2 || under[1] === "win32-x64"; // 平台目录白名单
+    }
+    return false; // deps/src/third_party/scripts/typings 等 = 构建源码不随包
+  },
 });
 cpSync(path.join(repoRoot, "node_modules", "better-sqlite3"), nativeDst, {
   dereference: true,

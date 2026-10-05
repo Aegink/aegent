@@ -17,6 +17,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-updater",
+ "windows",
 ]
 
 [[package]]

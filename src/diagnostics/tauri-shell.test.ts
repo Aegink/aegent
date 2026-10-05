@@ -61,8 +61,10 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(cargo).toContain('rfd = "0.15"'); // T-P3-158：pick_folder 底层（dialog 插件同款底层，插件纪律不破）
     expect(cargo).toContain('serde_json = "1"');
     expect(cargo).toContain("tauri-build");
-    // 行数纪律：Cargo.toml 保持最小面（updater 注释两行使上限放宽）
-    expect(cargo.split("\n").length).toBeLessThanOrEqual(44);
+    // 行数纪律：Cargo.toml 保持最小面（updater 注释两行 + T-P3-174 批次 5
+    // 保唤醒 target 段三行使上限放宽）
+    expect(cargo.split("\n").length).toBeLessThanOrEqual(52);
+    expect(cargo).toContain("Win32_System_Power"); // T-P3-174 批次 5：保持唤醒
   });
 
   it("tauri.conf.json 形状：frontendDist 指向 ui/ 静态资产 + bundle 收窄 nsis + 主/画中画双窗口（K9/T-P2-409）", () => {

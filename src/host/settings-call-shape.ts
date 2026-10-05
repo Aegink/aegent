@@ -86,4 +86,6 @@ export type SettingsCall = {
   // T-P3-174 批次 4 载荷：confirm=WebDAV 两段式确认 seq=检查点回退目标
   confirm?: boolean;
   seq?: number;
+  /** op=terminal-create：PTY 程序（T-P3-165 chat.shell 四选——批次 5 走查实抓信封缺键） */
+  shell?: string;
 };

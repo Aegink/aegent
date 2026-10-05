@@ -166,6 +166,9 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     "role", "id", "data", "cols", "rows",
     // T-P3-174 批次 4 载荷（confirm/seq——漏键即整信封被拒）
     "confirm", "seq",
+    // T-P3-174 批次 5 走查实抓：terminal-create 的 shell 键（T-P3-165
+    // 遗留——真机终端创建恒被信封拒绝）
+    "shell",
   ]);
   if (unknownKey) throw new Error(`settings 信封${unknownKey}`);
   if (typeof record["requestId"] !== "string" || record["requestId"] === "") {
@@ -368,6 +371,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     // seq = 检查点回退目标）
     ...(typeof record["confirm"] === "boolean" ? { confirm: record["confirm"] } : {}),
     ...(typeof record["seq"] === "number" ? { seq: record["seq"] } : {}),
+    ...(typeof record["shell"] === "string" ? { shell: record["shell"] } : {}),
   };
 }
 

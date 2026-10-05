@@ -25,6 +25,11 @@ tauri-plugin-updater = "2"
 rfd = "0.15"
 serde_json = "1"
 
+# T-P3-174 批次 5：保持唤醒（SetThreadExecutionState 直调——windows 0.62
+# 已在依赖树（tao/wry 拉入），只补 feature 零新 crate）
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_System_Power"] }
+
 [profile.release]
 codegen-units = 1
 lto = true

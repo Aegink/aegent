@@ -655,9 +655,10 @@ void main().catch((e: unknown) => {
 
 /** 网络代理装配（settings.network——模型请求 fetch 的全局 dispatcher）。
  *  system=EnvHttpProxyAgent（读 HTTP(S)_PROXY 环境变量）；direct=显式禁用
- *  env 代理；custom=ProxyAgent(url)（http/https；socks 由 undici Agent 自
- *  定义 connect 支持——socks5h 归一到 socks5）。缺省/system 无 env = 直连
- *  零变化。动态 import（bundl 外部依赖——esbuild external 已含原生面）。 */
+ *  env 代理；custom=ProxyAgent(url)（http/https）/ socksDispatcher（socks5://
+ *  ——fetch-socks 伴侣包，T-P3-174 批次 5；socks5h 归一到 socks5）。缺省/
+ *  system 无 env = 直连零变化。动态 import（bundle 外部依赖——esbuild
+ *  external 已含原生面）。 */
 async function applyNetworkDispatcher(network: { mode?: string; url?: string } | undefined): Promise<void> {
   const mode = network?.mode ?? "system";
   try {
@@ -665,7 +666,23 @@ async function applyNetworkDispatcher(network: { mode?: string; url?: string } |
     if (mode === "custom" && network?.url !== undefined && network.url !== "") {
       const href = network.url.replace(/^socks5h:/, "socks5:");
       if (/^socks5:/.test(href)) {
-        // socks 代理需要 fetch-socks 伴侣包（未内置——记档 P2）；诚实降级直连
+        // T-P3-174 批次 5：socks5 经 fetch-socks 伴侣包（undici dispatcher
+        // 形态——opencode 同款）；不在场 = 诚实降级直连（旧 bundle 兼容）
+        const { socksDispatcher } = await import("fetch-socks");
+        // parseProxies 不在运行时导出面（类型层才有）——按 socks URI 手构
+        // proxies（type 5 = socks5；socks5h 已归一 socks5）
+        const parsed = new URL(href);
+        undici.setGlobalDispatcher(
+          socksDispatcher([
+            {
+              type: 5,
+              host: parsed.hostname,
+              port: Number(parsed.port || 1080),
+              ...(parsed.username ? { userId: parsed.username } : {}),
+              ...(parsed.password ? { password: parsed.password } : {}),
+            },
+          ]),
+        );
         return;
       }
       undici.setGlobalDispatcher(new undici.ProxyAgent(href));
