@@ -1132,30 +1132,47 @@ code,
   color: var(--text-subtle);
 }
 
-/* —— 横向溢出护栏（用户实测反馈轮五：task 长 prompt 把对话流摘要行与
- * 子代理面板内容双双撑出视口；同类问题全项目收口——四类容器统一约束） —— */
+/* —— 横向溢出强护栏（用户实测反馈轮五/六：task 长 prompt 两轮撑出视口；
+ * flex column 链上某级被内容撑破后"max-width:100% 相对父级"失效——本轮改
+ * 对溢出免疫的裁切层，不再依赖父级宽度传导） —— */
 /* ① 对话流：任何行内长 JSON/长 URL 不得横向撑破（换行优先于裁切） */
 #stream .line {
   overflow-wrap: anywhere;
 }
-/* ② 工具卡摘要行：summary 允许收缩（flex 链截断的缺失一环），args 行兜底 */
+/* ② 流内所有直接子级：宽度硬约束（flex item 的溢出免疫层） */
+#stream > * {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+/* ③ 工具卡摘要行：全局级规则（不依赖 .tool-card 前缀链）——nowrap+ellipsis
+ * 对 inline 元素不生效，flex 子项 + min-width:0 是生效前提 */
+.tool-args {
+  flex: 1 1 0%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .tool-card summary {
   min-width: 0;
+  overflow: hidden;
 }
-#stream .tool-args,
-.pane-body .tool-args {
-  max-width: 100%;
-}
-/* ③ 展开参数/结果 pre：换行渲染（默认 pre 不换行 = 撑宽父级的根因） */
+/* ④ 展开参数/结果 pre：换行渲染（默认 pre 不换行 = 撑宽父级的根因） */
 #stream pre,
 .pane-body pre {
   white-space: pre-wrap;
   word-break: break-word;
   max-width: 100%;
 }
-/* ④ 右侧面板体：内容一律不横向撑破面板 */
+/* ⑤ 右侧面板体：内容一律不横向撑破面板 */
 .pane-body {
   overflow-x: hidden;
+}
+.pane-body > * {
+  max-width: 100%;
+  min-width: 0;
 }
 
 .card button {
