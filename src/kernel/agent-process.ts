@@ -380,7 +380,11 @@ export async function runAgentChildStdio(
   // T-P3-140 批次 A：执行环境单例——ToolRegistry（无沙箱直通路径）与沙箱
   // 路由后端的 local 直通档共用同一个实例（全自动档与无沙箱行为完全一致；
   // 测试注入面也只有一处）。
-  const executionEnv = new NodeExecutionEnv();
+  // 反馈轮九：执行环境工作目录 = 装配工作区（agent 的 shell 相对路径/pwd
+// 对准项目，而非 child 进程 cwd=便携安装目录）
+const executionEnv = new NodeExecutionEnv({
+  ...(options.assembly?.workspaceRoot !== undefined ? { cwd: options.assembly.workspaceRoot } : {}),
+});
   // B21/T-P1-63：会话配置分层（可热刷新白名单 vs 会话内静态设置）——
   // 初始值取装配面既有可配项（缺省 undefined = getter 返回 undefined，
   // 未刷新路径零行为变化）；热刷新经协议命令 config/refresh。

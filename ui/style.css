@@ -2700,6 +2700,49 @@ details.hint-more > summary::marker {
   text-overflow: ellipsis;
 }
 
+/* ===== 流程图委派节点（反馈轮九——pi-desk 形态：task 委派在主会话渲染
+ * 为流程节点而非裸参数行：左侧 rail 连线 + bot 图标圆底 + 描述主文本；
+ * prompt 收敛进展开态；完成后点节点 = 右侧面板看子会话流程） ===== */
+.delegation-node {
+  flex-shrink: 0;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary);
+}
+
+.delegation-body {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  flex: 1;
+}
+
+.delegation-title {
+  font-size: var(--text-ui-sm);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 节点可点态（结算后有子会话 id——光手型 + 悬停提亮） */
+summary.delegation-clickable {
+  cursor: pointer;
+}
+summary.delegation-clickable .delegation-node {
+  transition: background 100ms ease;
+}
+summary.delegation-clickable:hover .delegation-node {
+  background: color-mix(in srgb, var(--primary) 26%, transparent);
+}
+
 /* 状态词（中性文本——完成不带彩、失败才红；运行中走扫光） */
 .tool-card .tool-status {
   flex-shrink: 0;
@@ -6097,7 +6140,9 @@ details.thinking-card.running .thinking-label {
    消息一根指示条；悬停预览卡显示原文+回复摘要；窄屏隐藏） */
 #turn-nav {
   position: absolute;
-  left: max(4px, calc((100% - 820px) / 2 - 52px));
+  /* 反馈轮九：T-P3-165 对话流全宽化后旧 820 居中公式失准（目录条落进
+   * 内容区遮挡）——贴滚动区左缘固定（左侧面板与对话之间、两边留距） */
+  left: 12px;
   top: 70px;
   bottom: 120px;
   width: 36px;

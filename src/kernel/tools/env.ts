@@ -116,17 +116,22 @@ const PWSH_PROGRAMS = ["pwsh", "powershell.exe"] as const;
 
 export class NodeExecutionEnv implements ExecutionEnv {
   private readonly shell: ShellKind;
+  /** 进程工作目录（反馈轮九：装配传 workspaceRoot——agent 的 shell/相对
+   * 路径语义对准项目工作区；此前恒 = child 进程 cwd = 便携安装目录）。 */
+  private readonly cwd: string | undefined;
 
-  constructor(options?: { shell?: ShellKind }) {
+  constructor(options?: { shell?: ShellKind; cwd?: string }) {
     this.shell = options?.shell ?? "bash";
+    this.cwd = options?.cwd;
   }
 
   async exec(command: string, options?: ExecOptions): Promise<ExecResult> {
     const timeoutMs = options?.timeoutMs;
+    const cwd = options?.cwd ?? this.cwd;
     if (this.shell === "pwsh") {
-      return this.execPwsh(command, timeoutMs, options?.cwd);
+      return this.execPwsh(command, timeoutMs, cwd);
     }
-    return this.execBash(command, timeoutMs, options?.cwd);
+    return this.execBash(command, timeoutMs, cwd);
   }
 
   execFile(

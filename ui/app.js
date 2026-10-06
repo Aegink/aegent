@@ -380,6 +380,21 @@ function buildToolCard(e) {
       diff.innerHTML = `${badge.add > 0 ? `<b class="add">+${String(badge.add)}</b>` : ""}${badge.del > 0 ? ` <b class="del">−${String(badge.del)}</b>` : ""}`;
       summary.appendChild(diff);
     }
+  } else if (e.name === "task") {
+    // 流程图节点形态（反馈轮九——pi-desk 委派节点：rail 连线 + 图标圆底 +
+    // 描述主文本；prompt 不进摘要行（收敛进展开态），zcode 自适应无固定框）
+    const node = document.createElement("span");
+    node.className = "delegation-node";
+    node.append(icon("bot", { cls: "icon-sm" }));
+    const nodeBody = document.createElement("span");
+    nodeBody.className = "delegation-body";
+    const title = document.createElement("span");
+    title.className = "delegation-title";
+    const desc = args !== null && typeof args.description === "string" ? args.description : "";
+    title.textContent = desc !== "" ? desc : "委派子代理";
+    if (desc !== "" && typeof args.prompt === "string") title.title = args.prompt;
+    nodeBody.appendChild(title);
+    summary.append(node, nodeBody);
   } else {
     const argsSpan = document.createElement("span");
     argsSpan.className = "tool-args";
@@ -491,7 +506,21 @@ function attachSubagentView(body, meta) {
 /** 任务卡状态徽标翻转（结果结算——完成/失败两态，运行中只存在于调用未闭合时）。
  * G：失败原因悬浮——错误摘要挂 summary.title（折叠态 hover 即见原因，
  * zcode showFailureStatus 的 tooltip 语义；展开卡内仍有完整错误原文）。 */
-function setToolStatus(card, isError, errorDigest, resultDigest) {
+function setToolStatus(card, isError, errorDigest, resultDigest, opts) {
+  // 流程节点联动（反馈轮九——pi-desk 形态：委派节点完成后点击节点 = 右侧
+  // 面板打开子会话流程，不再作为独立任务进侧栏）
+  if (opts?.subagentSessionId !== undefined && card.classList.contains("tool-card")) {
+    const summaryEl = card.querySelector("summary");
+    if (summaryEl !== null) {
+      summaryEl.classList.add("delegation-clickable");
+      summaryEl.title = "点击在右侧面板查看该子代理的完整过程";
+      summaryEl.addEventListener("click", (ev) => {
+        if ((ev.target ?? {}).closest?.(".tool-chev")) return; // chev 仍走展开
+        ev.preventDefault();
+        void import("./pane.js").then((m) => m.openPane("subagent", { sessionId: opts.subagentSessionId }));
+      });
+    }
+  }
   // T-P3-171（zcode 工具行语义）：失败态 = 状态词「失败」+ 虚线下划线 +
   // hover 错误原文 tooltip——不挂红圈图标、整行不染红（错误详情仍可展开看原文）
   const status = card.querySelector(".tool-status");
@@ -518,6 +547,7 @@ function settleToolCard(e) {
       isError,
       isError ? oneLine(content, 120) : undefined,
       !isError && resultLines > 0 ? `${String(resultLines)} 行` : undefined,
+      { subagentSessionId: e.meta?.subagent?.sessionId }, // 流程节点联动（pi-desk 形态）
     );
     const body = existing.querySelector(".tool-body");
     const denial = isError ? parseDenial(content) : null;

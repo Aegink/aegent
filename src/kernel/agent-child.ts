@@ -296,6 +296,25 @@ async function buildModelsRegistry(
   return { models, initial, resolveTarget };
 }
 
+/**
+ * 工作区解析（反馈轮九）：显式 --workspace > settings.activeProject 的
+ * 首个 folder > undefined（装配落进程 cwd）。此前缺省恒落 cwd——便携版
+ * = 安装目录（用户实测：项目在 ui/ 而 agent 报工作区 dist/portable）——
+ * 项目归属任务的工作区语义（U11/T-P3-150）没有传导到 agent 执行面。
+ */
+export function resolveWorkspaceRoot(
+  cli: ChildCliArgs,
+  settingsFile: import("../session/settings.js").SettingsShape,
+): string | undefined {
+  if (cli.workspace !== undefined) return cli.workspace;
+  const active = settingsFile.activeProject;
+  if (active === undefined || active === "") return undefined;
+  const project = (settingsFile.projects ?? []).find(
+    (pr) => pr.id === active || pr.name === active,
+  );
+  return project?.folders?.[0];
+}
+
 async function main(): Promise<void> {
   const cli = parseArgs(process.argv.slice(2), process.env);
   if (cli.network !== undefined && cli.network !== "allow" && cli.network !== "deny") {
@@ -571,13 +590,14 @@ async function main(): Promise<void> {
     (cli.writeWhitelist !== undefined && cli.writeWhitelist.length > 0)
       ? {
           assembly: {
-            workspaceRoot: cli.workspace ?? process.cwd(),
+            // 反馈轮九：显式 --workspace > activeProject 首个 folder > cwd
+            workspaceRoot: resolveWorkspaceRoot(cli, settingsFile) ?? process.cwd(),
             // I8 人格预设（T-P2-305）：--persona 选预设，系统提示首落时
             // 追加人格段；未知 id 在装配期类型化拒绝（启动即败）。
             ...(cli.persona !== undefined ? { personaId: cli.persona } : {}),
             // E11：工作区即 git 仓时启用代码检查点（非 git 目录由
             // GitCheckpointService 首次打点时拒绝并提示，不中断轮）
-            checkpointRepoRoot: cli.workspace ?? process.cwd(),
+            checkpointRepoRoot: resolveWorkspaceRoot(cli, settingsFile) ?? process.cwd(),
             contextWindow: cli.contextWindow ?? 200_000,
             approvalTimeoutMs: cli.approvalTimeoutMs ?? 120_000,
             // T-P3-137 八轮 A：权限模式（--permission-mode 注入——configStore

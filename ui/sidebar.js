@@ -856,6 +856,10 @@ async function paintHistory() {
     return;
   }
   sessionsCache = (envelope.result.sessions ?? [])
+    // 子代理子会话（task 委派的 ::task- 子会话）不进侧栏清单（反馈轮九——
+    // 用户实测"最近会话出现好几个子代理会话"：子代理过程在主会话的
+    // 流程节点卡/右侧面板看，不作为独立任务出现）
+    .filter((s) => !s.sessionId.includes("::task-"))
     .filter((s) => showArchivedTasks || taskArchived(s.sessionId) !== true)
     .sort((a, b) => (b.updatedTs ?? 0) - (a.updatedTs ?? 0));
   // 置顶分区（T-P3-166 需求 3——pi sidebar-pinned-sessions 同构：跨项目
