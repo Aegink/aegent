@@ -216,13 +216,22 @@ export class HostServer {
       this.options.sessionsLibrary,
       this.options.settingsGateway,
     );
+    // E16 刷屏治理（反馈轮七日志实锤：子代理运行时段 mirror append failed
+    // 每事件一条 error 刷屏）——镜像投影与 child 库流的 turn 状态可能失步
+    // （host 重启/会话重建后镜像空、事件 turn 号延续库流），权威读面是
+    // mergedStream 的库侧——每会话只记首条 warn + 静默计数，不刷屏。
+    const mirrorFailCount = new Map<string, number>();
     bridge.onEvent((sid, event) => {
       projectAttacher(sid, event.type);
       if (event.type === "turn/start" || event.type === "turn/end") channelLogger("host").info(`turn 边界：${event.type}`, { category: "session" }); // T-P3-154：不含消息正文（D9）
       try {
         store.append(sid, [event as never]);
       } catch (e) {
-        channelLogger("host").error(`[mirror] append failed: ${e instanceof Error ? e.message : String(e)}`, { category: "session" });
+        const n = (mirrorFailCount.get(sid) ?? 0) + 1;
+        mirrorFailCount.set(sid, n);
+        if (n === 1) {
+          channelLogger("host").warn(`[mirror] append failed（本会话后续失败静默计数，累计 ${"{n}"}）: ${e instanceof Error ? e.message : String(e)}`, { category: "session" });
+        }
         // 镜像是读面加速：单事件失败不炸 host（错误经 query 读面可见为缺事件）
       }
     });
