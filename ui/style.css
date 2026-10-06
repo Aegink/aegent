@@ -6069,6 +6069,20 @@ details.thinking-card.running .thinking-label {
   gap: 6px;
 }
 
+/* —— 溢出根因修复（真机 CDP 实测定案，2026-10-06 反馈轮七）：#stream 是
+ * 横向 flex item（chat-scroll-area 的子项），缺 min-width:0 时
+ * **min-width:auto = 内容 min-content**——nowrap 长文本（task prompt 参数行）
+ * 把 stream 撑到数万像素宽并沿 chat-scroll-area/chat-view 传导，此前所有
+ * "max-width:100%" 相对被撑大的父级全部失效（注入 3000 字符实测 stream
+ * 被撑到 18356px）；补 min-width:0 后同注入实测截断生效（906px）。
+ * **WebView2 内存暴涨（3.5GB）同源**——超宽行的栅格化渲染内存。 —— */
+#stream,
+#chat-scroll-area,
+#chat-view,
+#main-columns {
+  min-width: 0;
+}
+
 #stream > .bubble.user {
   margin: 16px 0 6px auto; /* T-P3-164 需求 5：简写曾覆盖 margin-left:auto → 气泡靠左 */
 }
