@@ -145,8 +145,9 @@ export const SECTIONS_HTML = `
       </select></label>
       <label>派发预算（ms）<input id="subagent-backend-timeout" class="input" type="number" min="1000" step="10000" placeholder="600000" autocomplete="off" /></label>
     </div>
-    <label>ACP 启动命令行（argv JSON 数组）<input id="subagent-backend-command" class="input" type="text" placeholder='["node", "acp-main.js", "--provider", "echo"]' autocomplete="off" /></label>
+    <label>ACP 启动命令行（argv JSON 数组）<input id="subagent-backend-command" class="input" type="text" placeholder='["node", "acp-echo.cjs", "--provider", "echo"]' autocomplete="off" /></label>
     <p class="hint">in-process = 内核起子循环（写隔离 + 权限降级继承）；acp = 每次派发 spawn 一个外部 ACP agent 进程（initialize → session/new → prompt → 流式块回收，进程随派发结束收摊）。切换与新会话生效；argv 数组非法 JSON 时保存被拒。</p>
+    <p class="hint"><strong>怎么派发</strong>：后端由 task 工具出闸——对 agent 说「用 task 工具委派一个子代理去统计当前目录文件数」即可触发（内置预设 explorer/code-reviewer 等都以 task 调用）。选中 acp 时该次派发走上方命令行启动的外部 agent 进程；便携版可用自带 <code>["node", "acp-echo.cjs", "--provider", "echo"]</code>（回显 agent——回复「echo：…」即链路通）。</p>
   </div>
   <div id="subagent-list"></div>
   <div id="subagent-editor" class="card-box" hidden>

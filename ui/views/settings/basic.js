@@ -84,7 +84,7 @@ export const SECTIONS_HTML = `
         <div class="row-title">启用 computer_* 工具族</div>
         <div class="row-desc">屏幕截图/点击/键入的最强审批面（无人值守恒拒 + 每操作显式人决）；默认关——开启后新会话注册工具。画中画窗口实时回显操作现场。</div>
       </div>
-      <div class="row-control"><label class="switch"><input id="perm-computer-use" type="checkbox" /><span></span></label></div>
+      <div class="row-control"><label class="switch"><input id="perm-computer-use" type="checkbox" aria-label="启用计算机使用" /><span class="switch-track"></span></label></div>
     </div>
   </div>
   <div class="form-actions"><button id="perm-audit-refresh" type="button" class="btn">刷新</button></div>

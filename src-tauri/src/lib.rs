@@ -249,6 +249,13 @@ pub fn run() {
                             // → app 不退出（进程残留=「关不掉」）——杀树后显式退出
                             window.app_handle().exit(0);
                         }
+                    } else if window.label() == "pip" {
+                        // 第二批反馈 1：pip 小窗「关闭」= 隐藏不销毁（Tauri
+                        // 默认 close=destroy——销毁后 get_webview_window("pip")
+                        // 恒 None，再开报「pip 窗口未声明」）。窗口常驻随
+                        // app 生命周期，pip_show 只做 show。
+                        api.prevent_close();
+                        let _ = window.hide();
                     }
                 }
                 tauri::WindowEvent::Destroyed => {

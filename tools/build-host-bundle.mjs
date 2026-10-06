@@ -77,6 +77,10 @@ bundle("dist/src/host/server.js", "host.cjs");
 bundle("dist/src/kernel/agent-child.js", "agent-child.cjs");
 // T-P3-174 批次 6 G1：本地转写 worker（host spawn 的独立入口——原生件 external）
 bundle("dist/src/host/local-stt-worker.js", "local-stt-worker.cjs");
+// C4：ACP echo agent 独立入口（子代理 acp 后端 spawn 的外部 agent 进程——
+// 便携包内 dist/src ESM 链不存在，bundle 成单文件 CJS；主模块判定入口随
+// import.meta.url shim 继续成立）
+bundle("dist/src/acp/main.js", "acp-echo.cjs");
 
 // 2) 便携布局：ui/ + node.exe + better-sqlite3
 const uiDst = path.join(outDir, "ui");
