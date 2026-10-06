@@ -236,3 +236,26 @@ describe("SubagentBackendRegistry —— 按名字选择", () => {
         expect(() => registry.register(makeInProcess())).toThrow(/重名/);
     });
 });
+
+describe("spawnAcpTransport（C4 真实进程传输）", () => {
+    it("入站行流 + 出站 write + close 收摊（真 spawn node 子进程）", async () => {
+        const { spawnAcpTransport } = await import("./acp-transport.js");
+        const script =
+            "process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:0,result:{ok:true}})+'\\n'); process.stdin.resume();";
+        const transport = spawnAcpTransport([process.execPath, "-e", script]);
+        const iterator = transport.lines[Symbol.asyncIterator]();
+        const first = await iterator.next();
+        expect(JSON.parse(first.value)).toEqual({ jsonrpc: "2.0", id: 0, result: { ok: true } });
+        transport.write(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "x", params: {} })); // 不炸（管道缓冲）
+        transport.close();
+    });
+
+    it("进程退出后 lines 迭代以错误收束（错误信息带 stderr 尾巴）", async () => {
+        const { spawnAcpTransport } = await import("./acp-transport.js");
+        const script = "console.error('boom-reason'); process.exit(1);";
+        const transport = spawnAcpTransport([process.execPath, "-e", script]);
+        const iterator = transport.lines[Symbol.asyncIterator]();
+        await expect(iterator.next()).rejects.toThrow(/boom-reason/);
+        transport.close(); // 幂等
+    });
+});

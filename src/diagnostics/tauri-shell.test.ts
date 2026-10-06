@@ -203,6 +203,9 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(lib).toContain("RunEvent::Exit"); // 退出收束
     expect(lib).toContain("child.kill()");
     expect(lib).toContain("settings.json"); // 启动参数来自 U1 配置（壳不加环境变量的说明）
+    // D 级债务清偿：kill_stale_host 杀树前经 PowerShell 身份比对（PID 复用防误杀）
+    expect(lib).toContain("stale_host_identity_matches");
+    expect(lib).toContain("FromUnixTimeMilliseconds");
     // ④资源清单：portable 布局随安装器分发（与 exe 同目录——exe_dir 解析）
     const conf = readFileSync(path.join(root, "src-tauri", "tauri.conf.json"), "utf8");
     for (const marker of ["host.cjs", "agent-child.cjs", "node.exe", "schema.sql", "ui/"]) {
@@ -239,5 +242,11 @@ describe("K2/T-P1-129 · Tauri 桌面壳结构红线", () => {
     expect(pipJs).not.toContain('"approve"');
     // surfaceId 前缀 pip-（不参与租约竞取的观察端）
     expect(pipJs).toContain("pip-");
+    // S17 修复：isError 在 message 层（此前读 event.isError 恒 undefined——
+    // 失败恒显示「完成」）
+    expect(pipJs).toContain("event.message?.isError === true");
+    // D 级债务 5：pip 面文案 i18n 化（词典键 = 中文原文）
+    expect(pipJs).toContain('t("失败")');
+    expect(pipJs).toContain('t("完成")');
   });
 });

@@ -21,6 +21,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 
 import { loadSettings, saveSettings } from "../session/settings.js";
+import { withSettingsRmw } from "./settings-rmw.js";
 import { validateManifest } from "../kernel/plugin-manifest.js";
 import { gitCloneSource, makeStagingDir, pluginRootFromClone } from "./plugins-marketplace-git.js";
 import {
@@ -224,17 +225,20 @@ export async function marketInstallPlugin(ctx: MarketOpContext, marketId: string
     });
     writeInstalled(root, installed);
     if (ctx.settingsPath === undefined) throw new Error("market install 需要 settingsPath（gateway 装配缺失）");
-    const { settings } = await loadSettings(ctx.settingsPath);
-    const settingsEntry = (settings.plugins ?? []).find((p) => p.name === entry.name);
-    const next = (settings.plugins ?? []).filter((p) => p.name !== entry.name);
-    next.push({
-      ...(settingsEntry ?? {}),
-      name: entry.name,
-      source: installPath,
-      marketplace: marketId,
+    // 读-改-写互斥（settings-rmw）：plugins 段写入与并发 settings 补丁不互相覆盖
+    await withSettingsRmw(async () => {
+      const { settings } = await loadSettings(ctx.settingsPath!);
+      const settingsEntry = (settings.plugins ?? []).find((p) => p.name === entry.name);
+      const next = (settings.plugins ?? []).filter((p) => p.name !== entry.name);
+      next.push({
+        ...(settingsEntry ?? {}),
+        name: entry.name,
+        source: installPath,
+        marketplace: marketId,
+      });
+      settings.plugins = next;
+      await saveSettings(ctx.settingsPath!, settings);
     });
-    settings.plugins = next;
-    await saveSettings(ctx.settingsPath, settings);
     return { name: entry.name, marketplace: marketId, version, installPath, updated: existing !== undefined };
   } finally {
     materialized.cleanup();
@@ -245,9 +249,11 @@ export async function marketInstallPlugin(ctx: MarketOpContext, marketId: string
 export async function marketUninstallPlugin(ctx: MarketOpContext, marketId: string, pluginName: string): Promise<{ removed: true }> {
   const root = marketplaceStorageRoot(ctx.homeDir);
   if (ctx.settingsPath !== undefined) {
-    const { settings } = await loadSettings(ctx.settingsPath);
-    settings.plugins = (settings.plugins ?? []).filter((p) => !(p.name === pluginName && p.marketplace === marketId));
-    await saveSettings(ctx.settingsPath, settings);
+    await withSettingsRmw(async () => {
+      const { settings } = await loadSettings(ctx.settingsPath!);
+      settings.plugins = (settings.plugins ?? []).filter((p) => !(p.name === pluginName && p.marketplace === marketId));
+      await saveSettings(ctx.settingsPath!, settings);
+    });
   }
   writeInstalled(root, readInstalled(root).filter((r) => !(r.name === pluginName && r.marketplace === marketId)));
   rmSync(path.join(root, "cache", sanitizeSegment(marketId), sanitizeSegment(pluginName)), { recursive: true, force: true });

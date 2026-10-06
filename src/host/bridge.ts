@@ -300,6 +300,17 @@ export class HostBridge implements SessionRouter {
   }
 
   /**
+   * host 侧自产事件的广播点（C10 协作——事件经 store.append 分配 seq 后
+   * 经此扇出所有端连接；emitRoster 同款循环形态的公开面）。事件落流由
+   * 调用方负责（本方法只广播）。
+   */
+  broadcastEvent(sessionId: string, events: readonly SessionEvent[]): void {
+    for (const event of events) {
+      for (const listener of this.listeners) listener(sessionId, event);
+    }
+  }
+
+  /**
    * host 内部调度通道（C1——cron/webhook 的 prompt 投递面）：与用户 prompt
    * 走完全相同的执行链，但**不经租约**。授权语义：定时任务是用户在定义时
    * 预先授权的 host-owned 自动化；租约（N7）管"多个实时端之间谁在驱动"，

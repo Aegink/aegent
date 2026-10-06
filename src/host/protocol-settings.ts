@@ -106,6 +106,8 @@ const OPS = [
   "cron-list",
   "cron-add",
   "cron-remove",
+  "collab-dispatch", // C10 协作（collab-runtime 模块级句柄）
+  "collab-cancel",
 ] as const;
 
 export type SettingsOp = (typeof OPS)[number];
@@ -177,6 +179,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     "shell",
     // C1 补口：cron 族载荷（expr=表达式/prompt=任务提示/id=任务 id）
     "expr",
+    "sourceSessionId", "targetSessionId", "collabId", // C10 协作族（kind/content 走通用键）
   ]);
   if (unknownKey) throw new Error(`settings 信封${unknownKey}`);
   if (typeof record["requestId"] !== "string" || record["requestId"] === "") {
@@ -382,6 +385,9 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     ...(typeof record["shell"] === "string" ? { shell: record["shell"] } : {}),
     // C1 cron 族载荷（expr = 表达式；prompt/id 走通用键拷贝——本行补 expr）
     ...(typeof record["expr"] === "string" ? { expr: record["expr"] } : {}),
+    ...(typeof record["sourceSessionId"] === "string" ? { sourceSessionId: record["sourceSessionId"] } : {}),
+    ...(typeof record["targetSessionId"] === "string" ? { targetSessionId: record["targetSessionId"] } : {}),
+    ...(typeof record["collabId"] === "string" ? { collabId: record["collabId"] } : {}),
   };
 }
 

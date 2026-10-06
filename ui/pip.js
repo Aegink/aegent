@@ -11,6 +11,8 @@
  */
 
 // Tauri 2 WebView 注入 __TAURI_INTERNALS__ 全局（与 app.js 同款判定）。
+import { t } from "./i18n.js";
+
 const SURFACE_ID = `pip-${Math.random().toString(36).slice(2, 8)}`;
 const PROTOCOL_VERSION = 1;
 /** 连接参数：与主窗口同 host 地址（?ws= 参数可覆盖——本地调试）。 */
@@ -41,22 +43,22 @@ function renderEntry(title, detail, screenshotData) {
   if (screenshotData) {
     const img = document.createElement("img");
     img.className = "pip-entry-shot";
-    img.alt = "操作截图";
+    img.alt = t("操作截图");
     img.src = `data:image/png;base64,${screenshotData}`;
     entry.appendChild(img);
   }
   streamEl.prepend(entry); // 最新在最上（小窗可视面积有限）
   operationCount += 1;
-  countEl.textContent = `${operationCount} 次操作`;
+  countEl.textContent = t("{n} 次操作", { n: operationCount });
 }
 
 /** tool/call 的参数 → 人类可读动作标注。 */
 function actionLabel(name, args) {
   const a = args ?? {};
-  if (name === "computer_click") return `点击 (${a.x ?? "?"}, ${a.y ?? "?"})${a.button ? ` ${a.button}` : ""}`;
-  if (name === "computer_type") return `输入文本 "${String(a.text ?? "").slice(0, 40)}"`;
-  if (name === "computer_key") return `按键 ${a.key ?? "?"}`;
-  if (name === "computer_screenshot") return "截屏";
+  if (name === "computer_click") return t("点击 ({x}, {y}){btn}", { x: a.x ?? "?", y: a.y ?? "?", btn: a.button ? ` ${a.button}` : "" });
+  if (name === "computer_type") return t('输入文本 "{text}"', { text: String(a.text ?? "").slice(0, 40) });
+  if (name === "computer_key") return t("按键 {key}", { key: a.key ?? "?" });
+  if (name === "computer_screenshot") return t("截屏");
   return name;
 }
 
@@ -64,14 +66,16 @@ function handleEvent(event) {
   if (event.type === "tool/call" && String(event.name ?? "").startsWith("computer_")) {
     const summary = actionLabel(String(event.name), safeParse(event.arguments));
     inflight.set(String(event.callId), summary);
-    renderEntry(summary, "执行中…", null);
+    renderEntry(summary, t("执行中…"), null);
   }
   if (event.type === "tool/result" && inflight.has(String(event.callId))) {
     const summary = inflight.get(String(event.callId));
     inflight.delete(String(event.callId));
     const meta = event.meta ?? {};
     const shot = typeof meta.data === "string" ? meta.data : null;
-    renderEntry(summary, event.isError ? "失败" : "完成", shot);
+    // S17 修复：isError 在 message 层（wire 形状 events.ts——此前读
+    // event.isError 恒 undefined，失败恒显示「完成」）
+    renderEntry(summary, event.message?.isError === true ? t("失败") : t("完成"), shot);
   }
 }
 
@@ -87,7 +91,7 @@ function connect() {
   const ws = new WebSocket(WS_URL);
   ws.addEventListener("open", () => {
     ws.send(JSON.stringify({ type: "hello", version: PROTOCOL_VERSION, surfaceId: SURFACE_ID, deliveryKind: "push" }));
-    statusEl.textContent = "已连接";
+    statusEl.textContent = t("已连接");
   });
   ws.addEventListener("message", (message) => {
     for (const line of String(message.data).split("\n")) {
@@ -102,7 +106,7 @@ function connect() {
     }
   });
   ws.addEventListener("close", () => {
-    statusEl.textContent = "连接断开（3s 重连）";
+    statusEl.textContent = t("连接断开（3s 重连）");
     setTimeout(connect, 3000);
   });
   ws.addEventListener("error", () => ws.close());

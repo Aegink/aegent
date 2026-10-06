@@ -318,3 +318,50 @@ describe("C6 · 审批跨端回转（T-P1-82）——场景③进程内对应", 
     expect(settled3!.replySource).toBeUndefined();
   });
 });
+
+describe("墓碑容量有界（D 级债务清偿）", () => {
+  it("超限 FIFO 淘汰最旧墓碑：被淘汰 id 迟到 reply 降为 Unknown（仍是拒绝），近期 id 保持 Stale", async () => {
+    const registry = new PendingApprovals(undefined, undefined, 2);
+    // a/b/c 各 ask→reply 结算，留下 3 个墓碑（上限 2 → a 被淘汰）
+    for (const id of ["t-a", "t-b", "t-c"]) {
+      const hanging = registry.ask(makeRequest(id), { timeoutMs: 60_000 });
+      await registry.reply(id, { action: "allow" });
+      await hanging;
+    }
+    // 最早的 t-a 墓碑已被 FIFO 淘汰 → Unknown（非 Stale）
+    await expect(registry.reply("t-a", { action: "deny" })).rejects.toThrow(UnknownApprovalError);
+    // 近期的 t-b/t-c 墓碑仍在 → Stale
+    await expect(registry.reply("t-b", { action: "deny" })).rejects.toThrow(StaleApprovalError);
+    await expect(registry.reply("t-c", { action: "deny" })).rejects.toThrow(StaleApprovalError);
+  });
+
+  it("淘汰只动 settled：挂起中的请求不受影响，同 id 重复 ask 仍 Duplicate", async () => {
+    const registry = new PendingApprovals(undefined, undefined, 1);
+    const first = registry.ask(makeRequest("live-1"), { timeoutMs: 60_000 });
+    // 结算另一个请求，触发淘汰位（上限 1 → live-1 的墓碑……live-1 尚未结算
+    // 不在 settled，淘汰不动 pending）
+    const other = registry.ask(makeRequest("live-2"), { timeoutMs: 60_000 });
+    await registry.reply("live-2", { action: "allow" });
+    await other;
+    // live-1 仍挂起：重复 ask 判重、reply 仍可正常结算
+    expect(() => registry.ask(makeRequest("live-1"), { timeoutMs: 60_000 })).toThrow(
+      DuplicateApprovalError,
+    );
+    await registry.reply("live-1", { action: "deny" });
+    await expect(first).resolves.toMatchObject({ action: "deny" });
+  });
+
+  it("缺省上限 = MAX_SETTLED_TOMBSTONES（1000），满额循环后仍可正常 ask/reply", async () => {
+    const registry = new PendingApprovals();
+    for (let i = 0; i < 1000; i++) {
+      const id = `bulk-${i}`;
+      const hanging = registry.ask(makeRequest(id), { timeoutMs: 60_000 });
+      await registry.reply(id, { action: "allow" });
+      await hanging;
+    }
+    // 满额后再走一轮完整生命周期（首批墓碑被淘汰）
+    const hanging = registry.ask(makeRequest("bulk-after"), { timeoutMs: 60_000 });
+    await registry.reply("bulk-after", { action: "allow" });
+    await expect(hanging).resolves.toMatchObject({ action: "allow" });
+  });
+});

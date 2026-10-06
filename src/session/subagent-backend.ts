@@ -100,7 +100,7 @@ export function createInProcessBackend(
 // 实现二：ACP 后端（client 侧连外部 ACP agent 进程）
 // ---------------------------------------------------------------------------
 
-/** ACP 后端的传输注入面（测试用内存桥；真实进程经 spawnAcpTransport）。 */
+/** ACP 后端的传输注入面（测试用内存桥；真实进程经 acp-transport.ts 的 spawnAcpTransport）。 */
 export interface AcpBackendTransport {
   /** 出站一行（JSON-RPC）。 */
   write(line: string): void;
@@ -117,6 +117,7 @@ export interface AcpBackendOptions {
   /** 单次派发预算（缺省 10 分钟——子代理是长任务；挂死可回收）。 */
   readonly timeoutMs?: number;
 }
+
 
 /**
  * 入站行解析（client 侧，JSON-RPC 2.0 最小面自持）：response（无 method、

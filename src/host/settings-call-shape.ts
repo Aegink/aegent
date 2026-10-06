@@ -28,6 +28,10 @@ export type SettingsCall = {
   skill?: SkillSavePayload;
   prompt?: PromptSavePayload; // op=prompt-save：模板写回载荷（T-P3-146 C）
   expr?: string; // op=cron-add：cron 表达式（C1）
+  // C10：协作族载荷（op=collab-dispatch / collab-cancel）
+  sourceSessionId?: string;
+  targetSessionId?: string;
+  collabId?: string;
   items?: SkillImportItem[];
   path?: string;
   target?: string;

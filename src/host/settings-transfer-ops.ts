@@ -7,6 +7,7 @@
 
 import type { SettingsCall } from "./protocol-settings.js";
 import type { SettingsGateway, TransferDeps } from "./settings-gateway-types.js";
+import { withSettingsRmw } from "./settings-rmw.js";
 import type { SessionEvent } from "../kernel/events.js";
 import type { SqliteEventStorage } from "../session/db.js";
 import type { SessionStore } from "../session/store.js";
@@ -241,13 +242,16 @@ export async function importSettingsOp(
   const { resolveImportedPackage, applyImportedSettings, applyPartialImport, summarizePackage, backupSettingsFile } =
     await import("../session/settings-transfer.js");
   const { saveSettings } = await import("../session/settings.js");
-  const current = await getSettings();
-  const resolved = resolveImportedPackage(packageRaw);
-  backupSettingsFile(settingsPath);
-  const merged =
-    resolved.mode === "replace"
-      ? applyImportedSettings(current, resolved.settings)
-      : applyPartialImport(current, resolved.partial, resolved.domains);
-  await saveSettings(settingsPath, merged);
-  return { applied: true, summary: summarizePackage(merged) };
+  // 读-改-写互斥（settings-rmw）：导入与并发段级补丁不互相覆盖
+  return withSettingsRmw(async () => {
+    const current = await getSettings();
+    const resolved = resolveImportedPackage(packageRaw);
+    backupSettingsFile(settingsPath);
+    const merged =
+      resolved.mode === "replace"
+        ? applyImportedSettings(current, resolved.settings)
+        : applyPartialImport(current, resolved.partial, resolved.domains);
+    await saveSettings(settingsPath, merged);
+    return { applied: true, summary: summarizePackage(merged) };
+  });
 }

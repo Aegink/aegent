@@ -11,6 +11,7 @@ import {
   tryTransferSettingsOp,
 } from "./settings-transfer-ops.js";
 import { trySchedulerSettingsOp } from "./scheduler-ops.js";
+import { tryCollabSettingsOp } from "./collab-runtime.js";
 import { tryInstructionSettingsOp } from "./settings-instruction-ops.js";
 import { tryProjectSettingsOp } from "./settings-project-ops.js";
 import { tryPanelSettingsOp } from "./settings-panel-ops.js";
@@ -121,6 +122,9 @@ export function buildSurfaceServerOptions(
       // C1：定时任务管理族（调度域——scheduler-ops 模块级运行时句柄）
       const schedulerOp = trySchedulerSettingsOp(call);
       if (schedulerOp !== undefined) return schedulerOp;
+      // C10：会话协作发起/取消族（协作域——collab-runtime 模块级句柄）
+      const collabOp = tryCollabSettingsOp(call);
+      if (collabOp !== undefined) return collabOp;
       if (call.op === "skills-list") return gateway.skillsList();
       if (call.op === "skill-save") return gateway.skillSave(call.skill!);
       // T-P3-144：技能导入扫描/执行 + 删除/Reveal（护栏与复制在域文件）

@@ -62,15 +62,53 @@ fn uuid_v4() -> String {
     format!("{a:08x}-4{b:03x}-4{a:03x}-8{b:012x}")
 }
 
-/// 启动前清理：读上次 pid 文件，仍在则杀树（壳异常退出的孤儿兜底）。
+/// 启动前清理：读上次 pid 文件，仍在且**身份匹配**才杀树（壳异常退出的
+/// 孤儿兜底）。pid 文件 v2 = "pid\nstartedAtMs"（写入时刻）——杀前经
+/// PowerShell 比对目标进程启动时间（±10s 容差）：PID 被系统复用为他进程
+/// 时跳过杀树只清文件（误杀任意进程的代价远大于一次孤儿残留）。v1 文件
+/// （无时间行，旧版残留）保守跳过杀树。
 fn kill_stale_host(dir: &std::path::Path) {
     let pid_file = dir.join("data").join("host.pid");
-    if let Ok(pid) = std::fs::read_to_string(&pid_file) {
-        if let Ok(pid) = pid.trim().parse::<u32>() {
-            kill_tree(pid);
-        }
+    let Ok(raw) = std::fs::read_to_string(&pid_file) else {
+        return;
+    };
+    let mut lines = raw.trim().lines();
+    let Some(pid) = lines.next().and_then(|l| l.trim().parse::<u32>().ok()) else {
         let _ = std::fs::remove_file(&pid_file);
+        return;
+    };
+    let owned = match lines.next().and_then(|l| l.trim().parse::<u64>().ok()) {
+        Some(started_at_ms) => stale_host_identity_matches(pid, started_at_ms),
+        None => false,
+    };
+    if owned {
+        kill_tree(pid);
     }
+    let _ = std::fs::remove_file(&pid_file);
+}
+
+/// 身份比对：Get-Process 取目标 pid 的启动时刻，与 pid 文件记录差 ≤10s
+/// 判为同一次 host 启动。查询失败/进程已退（gone）/时间不符一律 false
+/// （fail-closed：孤儿兜底放弃，绝不盲杀）。Get-Process 单进程查询亚秒
+/// 级返回，不设超时的等待风险可忽略。
+fn stale_host_identity_matches(pid: u32, started_at_ms: u64) -> bool {
+    let script = format!(
+        "$p=Get-Process -Id {pid} -ErrorAction SilentlyContinue\n\
+         if ($null -eq $p) {{ 'gone' }} else {{\n\
+         $e=[DateTimeOffset]::FromUnixTimeMilliseconds({started_at_ms}).LocalDateTime\n\
+         if ([math]::Abs(($p.StartTime - $e).TotalSeconds) -le 10) {{ 'match' }} else {{ 'mismatch' }} }}"
+    );
+    let mut cmd = Command::new("powershell");
+    cmd.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let Ok(output) = cmd.output() else {
+        return false;
+    };
+    String::from_utf8_lossy(&output.stdout).trim() == "match"
 }
 
 mod browser; // T-P3-156 Q：浏览器面板 webview 管理（真实内核）
@@ -162,8 +200,16 @@ pub fn run() {
     let main_session = format!("sess-{}", uuid_v4());
     let child = spawn_host(&dir, Some(&main_session), HOST_PORT);
     if let Ok(pid) = child.as_ref().map(|c| c.id()) {
-        // pid 文件 = 下次启动的孤儿清理依据（异常退出兜底）
-        let _ = std::fs::write(dir.join("data").join("host.pid"), pid.to_string());
+        // pid 文件 v2 = 下次启动的孤儿清理依据（第二行写入时刻供身份比对
+        // ——PID 复用防误杀，见 kill_stale_host）
+        let started_at_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        let _ = std::fs::write(
+            dir.join("data").join("host.pid"),
+            format!("{pid}\n{started_at_ms}"),
+        );
     }
     if let Err(e) = &child {
         // 开发态（target/debug 无 portable 布局）走这里——不炸壳

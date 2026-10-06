@@ -45,6 +45,7 @@ import { parseHostServerArgv, resolveContextWindow, resolveHostProductionDeps, d
 import { NotificationHub } from "./notify.js";
 import { disposeAllTerminals, reapIdleTerminals, setTerminalNotifier } from "./terminal-ops.js";
 import { createAutomationRuntime } from "./automation-runtime.js";
+import { createCollabRuntime, setCollabRuntime } from "./collab-runtime.js";
 import { HostRegistry } from "./registry.js";
 import { createTitleServiceFromOptions } from "./title-service.js";
 import { makeProjectAttacher } from "./settings-project-ops.js";
@@ -180,6 +181,27 @@ export class HostServer {
       ...(this.options.webhookToken !== undefined ? { webhookToken: this.options.webhookToken } : {}),
       ...(this.options.webhookSecret !== undefined ? { webhookSecret: this.options.webhookSecret } : {}),
     });
+    // C10：协作运行时（CollaborationService 生产实例化——发起/取消经
+    // settings op 分发，executor 走 bridge 跨会话投递；分发经模块级句柄）
+    setCollabRuntime(
+      createCollabRuntime({
+        bridge,
+        store,
+        ...(this.options.sessionsLibrary !== undefined ? { sessionsLibrary: this.options.sessionsLibrary } : {}),
+        ...(this.options.notifyHub !== undefined ? { notifyHub: this.options.notifyHub } : {}),
+        ...(this.options.settingsGateway !== undefined
+          ? {
+              getPermissionMode: async () => {
+                try {
+                  return (await this.options.settingsGateway!.get()).permission?.mode;
+                } catch {
+                  return undefined; // settings 读失败 = 快照走保守 ask
+                }
+              },
+            }
+          : {}),
+      }),
+    );
     // 会话流镜像（host 视角的读面）：非 roster 事件同步 append——
     // SessionStore.append 同步纪律（write-behind 持久化在 storage 端）。
     // T-P3-150 B1：首条用户话语按当时 activeProject 自动归属任务

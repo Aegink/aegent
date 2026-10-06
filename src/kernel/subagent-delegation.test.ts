@@ -156,3 +156,74 @@ describe("后台委托生命周期（T-P3-145 G）", () => {
     expect(overflow.result.error).toContain("并发上限");
   });
 });
+
+describe("C4：外部后端分派（opts.backend 消费）", () => {
+  it("命中 externalBackends：经注入函数出闸（不 fork 子循环——store 无子会话），结果原样结算", async () => {
+    const root = makeTmpRoot();
+    const store = new SessionStore();
+    const provider = new ScriptedProvider();
+    const spawned: { prompt: string; description: string }[] = [];
+    const runtime = createSubagentRunner({
+      parentSessionId: "s0",
+      store,
+      provider,
+      identity,
+      workspaceRoot: root,
+      contextWindow: 200_000,
+      parentRules: [],
+      depth: 0,
+      approvalTimeoutMs: 5_000,
+      externalBackends: new Map([
+        [
+          "acp",
+          async (request) => {
+            spawned.push({ prompt: request.prompt, description: request.description });
+            return { sessionId: "ext-1", stopReason: "completed", output: `ACP echo：${request.prompt}` };
+          },
+        ],
+      ]),
+    });
+    const outcome = await runtime.run("外部任务", "外部描述", { backend: "acp" });
+    expect(outcome.kind).toBe("foreground");
+    if (outcome.kind !== "foreground") throw new Error("unreachable");
+    expect(outcome.result).toMatchObject({
+      sessionId: "ext-1",
+      stopReason: "completed",
+      output: "ACP echo：外部任务",
+    });
+    expect(spawned).toEqual([{ prompt: "外部任务", description: "外部描述" }]);
+    // 关键：未走 fork 循环——store 里只有父会话（无 ::task- 子会话流）
+    const sessionIds = store.sessionIds();
+    expect(sessionIds).toHaveLength(0);
+  });
+
+  it("未装配的后端名：failed 结算带 SUBAGENT_BACKEND_UNKNOWN（never-reject 不炸父轮）", async () => {
+    const root = makeTmpRoot();
+    const runtime = createSubagentRunner({
+      parentSessionId: "s0",
+      store: new SessionStore(),
+      provider: new ScriptedProvider(),
+      identity,
+      workspaceRoot: root,
+      contextWindow: 200_000,
+      parentRules: [],
+      depth: 0,
+      approvalTimeoutMs: 5_000,
+      externalBackends: new Map(),
+    });
+    const outcome = await runtime.run("x", "x", { backend: "typo-acp" });
+    expect(outcome.kind).toBe("foreground");
+    if (outcome.kind !== "foreground") throw new Error("unreachable");
+    expect(outcome.result.stopReason).toBe("failed");
+    expect(outcome.result.error).toContain("SUBAGENT_BACKEND_UNKNOWN");
+  });
+
+  it("in-process 显式名与缺省一致：仍走本文件 fork 循环（既有行为零变化）", async () => {
+    const { runtime } = makeFixture([turnScript("fork 产出")]);
+    const outcome = await runtime.run("进程内任务", "描述", { backend: "in-process" });
+    expect(outcome.kind).toBe("foreground");
+    if (outcome.kind !== "foreground") throw new Error("unreachable");
+    expect(outcome.result.stopReason).toBe("completed");
+    expect(outcome.result.sessionId).toContain("::task-");
+  });
+});

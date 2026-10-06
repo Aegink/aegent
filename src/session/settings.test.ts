@@ -661,3 +661,61 @@ describe("resolveChildLaunchArgv（优先级链：显式 > env > file > 缺省�
     expect(empty.profiles?.[0]?.pluginsEnabled).toEqual([]);
   });
 });
+
+describe("subagentBackend 段 parse（C4 子代理后端选择）", () => {
+  const base = { providers: [{ name: "m" }], defaultProvider: "m" };
+
+  it("合法形状：in-process 裸段 / acp + command / acp + command + timeoutMs", () => {
+    expect(parseSettingsShape({ ...base, subagentBackend: { backend: "in-process" } }).subagentBackend).toEqual({
+      backend: "in-process",
+    });
+    const acp = parseSettingsShape({
+      ...base,
+      subagentBackend: { backend: "acp", acp: { command: ["node", "acp-main.js", "--provider", "echo"] } },
+    });
+    expect(acp.subagentBackend).toEqual({ backend: "acp", acp: { command: ["node", "acp-main.js", "--provider", "echo"] } });
+    const withTimeout = parseSettingsShape({
+      ...base,
+      subagentBackend: { backend: "acp", acp: { command: ["node", "agent.js"], timeoutMs: 60_000 } },
+    });
+    expect(withTimeout.subagentBackend).toMatchObject({ acp: { timeoutMs: 60_000 } });
+  });
+
+  it("fail-closed：坏 backend 值 / acp 缺 command / 空串项 / 非法 timeoutMs / in-process 带 acp", () => {
+    expect(() => parseSettingsShape({ ...base, subagentBackend: { backend: "ssh" } })).toThrow(
+      /backend 非法（合法：in-process\|acp）/,
+    );
+    expect(() => parseSettingsShape({ ...base, subagentBackend: { backend: "acp" } })).toThrow(/需要 subagentBackend\.acp\.command/);
+    expect(() =>
+      parseSettingsShape({ ...base, subagentBackend: { backend: "acp", acp: { command: [] } } }),
+    ).toThrow(/非空字符串数组/);
+    expect(() =>
+      parseSettingsShape({ ...base, subagentBackend: { backend: "acp", acp: { command: ["node", ""] } } }),
+    ).toThrow(/非空字符串数组/);
+    expect(() =>
+      parseSettingsShape({ ...base, subagentBackend: { backend: "acp", acp: { command: ["node"], timeoutMs: 100 } } }),
+    ).toThrow(/≥1000/);
+    expect(() =>
+      parseSettingsShape({ ...base, subagentBackend: { backend: "in-process", acp: { command: ["node"] } } }),
+    ).toThrow(/仅在 backend="acp" 时合法/);
+  });
+
+  it("段缺席 = undefined（缺省零变化——仅进程内 fork）", () => {
+    expect(parseSettingsShape({ ...base }).subagentBackend).toBeUndefined();
+  });
+});
+
+describe("computerUse 段 parse（S4 计算机使用开关）", () => {
+  const base = { providers: [{ name: "m" }], defaultProvider: "m" };
+
+  it("合法形状：缺省关（段缺席）/ 显式开启 / 显式关闭", () => {
+    expect(parseSettingsShape({ ...base }).computerUse).toBeUndefined();
+    expect(parseSettingsShape({ ...base, computerUse: { enabled: true } }).computerUse).toEqual({ enabled: true });
+    expect(parseSettingsShape({ ...base, computerUse: { enabled: false } }).computerUse).toEqual({ enabled: false });
+  });
+
+  it("fail-closed：坏段形状 / enabled 非布尔", () => {
+    expect(() => parseSettingsShape({ ...base, computerUse: "yes" })).toThrow("computerUse 须为对象");
+    expect(() => parseSettingsShape({ ...base, computerUse: { enabled: "on" } })).toThrow("computerUse.enabled 须为布尔");
+  });
+});

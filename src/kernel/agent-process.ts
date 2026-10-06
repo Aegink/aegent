@@ -68,6 +68,8 @@ import { createSubagentRunner } from "./subagent.js";
 import { registerBuiltinTools } from "./tools/builtin/index.js";
 import { createBrowserTools } from "../scheduler/browser.js";
 import { connectPanelBrowser, panelDataDir } from "../scheduler/browser-panel.js";
+import { createComputerTools } from "../scheduler/computer.js";
+import { createWin32ComputerRun } from "../scheduler/computer-win32.js";
 import { NodeExecutionEnv } from "./tools/env.js";
 import { ToolRegistry } from "./tools/registry.js";
 import { DEFAULT_SPILL_DIR } from "./tools/truncate.js";
@@ -139,6 +141,18 @@ export interface AgentChildOptions {
       subagent: import("../session/subagents-config.js").ResolvedSubagent,
     ) => { provider: ModelProvider; identity: ModelIdentity } | undefined;
   };
+  /**
+   * C4：外部子代理后端表（agent-child 按 settings subagentBackend 段装配
+   * ——acp 后端经 spawnAcpTransport/createAcpBackend 构造后注入）。缺省
+   * undefined = 仅进程内 fork（既有行为零变化）。
+   */
+  externalBackends?: import("./subagent.js").SubagentRunnerDeps["externalBackends"];
+  /**
+   * S4：计算机使用门控（settings computerUse 段透传——**缺省关**）。开 =
+   * computer_screenshot/click/type/key 四工具注册（审批三层纵深在
+   * scheduler/computer.ts）。
+   */
+  computerUse?: { enabled?: boolean };
   provider?: ModelProvider;
   identity?: ModelIdentity;
   /** 缺省用 process.stdin/stdout（测试可注入内存流做进程外单测）。 */
@@ -487,6 +501,8 @@ export async function runAgentChildStdio(
         ...(options.subagents?.resolveModel !== undefined
           ? { resolveSubagentModel: options.subagents.resolveModel }
           : {}),
+        // C4：外部后端表透传（run 的 opts.backend 命中时出闸分派）
+        ...(options.externalBackends !== undefined ? { externalBackends: options.externalBackends } : {}),
         ...(assembly?.modelForTurn ? { modelForTurn: assembly.modelForTurn } : {}),
         // T-P3-145 G：后台委托结算 → 报告注入父队列（drainQueue 在 step 边界
         // 落 user/message——模型看到报告继续；队列满被吞——报告留注册表，
@@ -632,6 +648,37 @@ export async function runAgentChildStdio(
       }
       options.logger?.info(`浏览器面板 CDP 工具已注册（${panelDir}）`);
     }
+  }
+  // S4 接线（D 级批次清偿——计算机使用四工具）：**默认关**（settings
+  // computerUse.enabled 门控——屏幕/输入控制是最高危工具面，注册即模型
+  // 可见，必须用户显式开启）。每操作审批复用 PendingApprovals（C 族主面；
+  // unattended 恒拒在 computerExecute 内层先于审批——双重纵深）。
+  if (options.computerUse?.enabled === true) {
+    for (const tool of createComputerTools({
+      run: createWin32ComputerRun(),
+      isUnattended: () => configStore.unattended === true,
+      ...(assembly?.pending !== undefined
+        ? {
+            approve: async (request: import("../scheduler/computer.js").ComputerUseRequest) => {
+              if (assembly?.pending === undefined) return false; // fail-closed
+              const verdict = await assembly.pending.ask(
+                {
+                  id: `computer-${request.operation}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                  sessionId,
+                  tool: `computer_${request.operation}`,
+                  args: request as unknown as import("./events.js").JsonRecord,
+                  category: "tool",
+                },
+                { timeoutMs: options.assembly?.approvalTimeoutMs ?? 120_000 },
+              );
+              return verdict.action === "allow" ? "user" : false;
+            },
+          }
+        : {}),
+    })) {
+      toolRegistry.registerTool(tool);
+    }
+    options.logger?.info("计算机使用工具已注册（settings computerUse.enabled）");
   }
   // U17/T-P3-119：MCP server 装配消费（settings mcp 段——agent-child 传入
   // 已过滤 enabled 的条目）。装配期连接注册（ready 前完成——tools 清单

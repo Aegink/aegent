@@ -7,6 +7,7 @@
  */
 
 import { sendQuery, sendSettings, ensureFileCache } from "../api.js";
+import { t } from "../i18n.js";
 import { icon, injectIcons } from "../icons.js";
 import { getSessionId, subscribeTurnSettled } from "../state.js";
 import { toast } from "../feedback.js";
@@ -48,8 +49,22 @@ const TEMPLATE = `
       <p id="work-delegation-hint" class="hint"></p>
     </section>
     <section data-worktab-body="collab" hidden>
+      <div class="card-box" id="collab-composer">
+        <div class="form-grid form-grid-2">
+          <label>${t("目标会话")}<select id="collab-target" class="select"></select></label>
+          <label>${t("类型")}<select id="collab-kind" class="select">
+            <option value="task">${t("task（派任务——完成后回投结果）")}</option>
+            <option value="message">${t("message（发消息——同状态机）")}</option>
+          </select></label>
+        </div>
+        <label>${t("内容")}<textarea id="collab-content" class="textarea" rows="3" placeholder="${t("要委托给目标会话的任务/消息……")}"></textarea></label>
+        <div class="form-actions">
+          <button id="collab-dispatch" type="button" class="btn btn-primary">${t("派发给目标会话")}</button>
+          <span id="collab-composer-hint" class="hint"></span>
+        </div>
+      </div>
       <div id="work-collab-body"></div>
-      <p class="hint">会话间派任务/消息往来的流内事实（session/collab 事件投影）；权限快照随派发固化——后续设置变更不影响排队/在途任务。</p>
+      <p class="hint">${t("会话间派任务/消息往来的流内事实（session/collab 事件投影）；权限快照随派发固化——后续设置变更不影响排队/在途任务。排队中的任务可取消。")}</p>
     </section>
     <section data-worktab-body="timeline" hidden>
       <p id="work-timeline-hint" class="hint"></p>
@@ -244,19 +259,32 @@ export function buildDelegationTable(report) {
 }
 
 /** 协作往来表（U27/T-P3-131：session/collab 事件流投影）。 */
-export function buildCollabTable(report) {
+export function buildCollabTable(report, onCancel) {
   const table = document.createElement("table");
   table.className = "work-collab-table table";
-  table.innerHTML = "<thead><tr><th>方向</th><th>对端会话</th><th>类型</th><th>状态</th><th>结果/错误</th></tr></thead><tbody></tbody>";
+  table.innerHTML = `<thead><tr><th>${t("方向")}</th><th>${t("对端会话")}</th><th>${t("类型")}</th><th>${t("状态")}</th><th>${t("结果/错误")}</th></tr></thead><tbody></tbody>`;
   const body = table.querySelector("tbody");
   for (const c of report?.collaborations ?? []) {
     const tr = document.createElement("tr");
-    const dir = c.direction === "outgoing" ? "→ 派出" : "← 收到";
+    const dir = c.direction === "outgoing" ? t("→ 派出") : t("← 收到");
     const outcome = c.result ?? c.error ?? "—";
     for (const [i, text] of [dir, c.peerSessionId, c.kind, null, outcome].entries()) {
       const td = document.createElement("td");
       if (i === 3) {
         td.appendChild(statusCell(c.status, "进行中"));
+        // C10：排队中的任务可取消（collab-cancel——取消后 update/report 双流落 fact）
+        if (c.status === "queued") {
+          const cancelBtn = document.createElement("button");
+          cancelBtn.type = "button";
+          cancelBtn.className = "btn";
+          cancelBtn.textContent = t("取消");
+          cancelBtn.onclick = async () => {
+            cancelBtn.disabled = true;
+            await sendSettings({ op: "collab-cancel", collabId: c.collabId });
+            onCancel?.();
+          };
+          td.appendChild(cancelBtn);
+        }
       } else {
         td.textContent = text;
       }
@@ -268,11 +296,57 @@ export function buildCollabTable(report) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
     td.colSpan = 5;
-    td.textContent = "（本会话暂无协作往来——跨会话派任务后可见）";
+    td.textContent = t("（本会话暂无协作往来——跨会话派任务后可见）");
     tr.appendChild(td);
     body.appendChild(tr);
   }
   return table;
+}
+
+/** C10：协作发起表单接线（目标下拉 + 派发提交；排队行取消在表格内）。 */
+export async function wireCollabComposer(onSettled) {
+  const targetSelect = document.getElementById("collab-target");
+  if (targetSelect === null) return;
+  const sessionsEnvelope = await sendQuery({ sessionId: getSessionId() || "-", op: "sessions" });
+  const sessions = sessionsEnvelope?.ok ? (sessionsEnvelope.result?.sessions ?? []) : [];
+  const current = getSessionId();
+  targetSelect.replaceChildren(
+    ...sessions
+      .filter((s) => s.sessionId !== current)
+      .map((s) => {
+        const option = document.createElement("option");
+        option.value = s.sessionId;
+        option.textContent = `${s.title ?? s.sessionId}（${s.sessionId.slice(0, 18)}…）`;
+        return option;
+      }),
+  );
+  const hint = document.getElementById("collab-composer-hint");
+  document.getElementById("collab-dispatch").onclick = async () => {
+    const targetSessionId = targetSelect.value;
+    const content = document.getElementById("collab-content").value.trim();
+    if (targetSessionId === undefined || targetSessionId === "") {
+      hint.textContent = t("没有可选的目标会话（历史会话清单为空）");
+      return;
+    }
+    if (content === "") {
+      hint.textContent = t("内容不能为空");
+      return;
+    }
+    const envelope = await sendSettings({
+      op: "collab-dispatch",
+      sourceSessionId: current,
+      targetSessionId,
+      kind: document.getElementById("collab-kind").value,
+      content,
+    });
+    if (envelope.ok) {
+      hint.textContent = t("已派发：{id}——排队/执行状态见下表", { id: envelope.result?.collabId ?? "" });
+      document.getElementById("collab-content").value = "";
+    } else {
+      hint.textContent = t("派发失败：{msg}", { msg: envelope.error?.message ?? t("未知错误") });
+    }
+    onSettled?.();
+  };
 }
 
 function renderReviewReport(report) {
@@ -282,7 +356,7 @@ function renderReviewReport(report) {
   document.getElementById("work-delegation-body").replaceChildren(buildDelegationTable(report));
   document.getElementById("work-delegation-hint").textContent =
     "委派状态/耗时取 task 调用与结算的流内事实（H1/H2 面）；点击子代理 Tab 查看一览。";
-  document.getElementById("work-collab-body").replaceChildren(buildCollabTable(report));
+  document.getElementById("work-collab-body").replaceChildren(buildCollabTable(report, refreshWorkReview));
 }
 
 async function refreshWorkReview() {
@@ -363,6 +437,8 @@ export async function render(container, route) {
   if (files && document.getElementById("work-filetree") !== null) {
     renderFileTree(files.entries ?? [], files.truncated === true);
   }
+  // C10：协作发起表单接线（目标下拉 + 派发；派发后 refreshWorkReview 刷表）
+  void wireCollabComposer(refreshWorkReview);
   await refreshWorkReview();
 }
 

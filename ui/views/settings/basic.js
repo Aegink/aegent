@@ -77,6 +77,16 @@ export const SECTIONS_HTML = `
   <div id="perm-test-result" class="perm-lint"></div>
   <div class="group-title">最近策略拒绝 <span class="badge">当前会话</span></div>
   <div id="perm-audit" class="row-list"></div>
+  <div class="group-title">计算机使用 <span class="badge">高危</span></div>
+  <div class="row-list">
+    <div class="row">
+      <div class="row-copy">
+        <div class="row-title">启用 computer_* 工具族</div>
+        <div class="row-desc">屏幕截图/点击/键入的最强审批面（无人值守恒拒 + 每操作显式人决）；默认关——开启后新会话注册工具。画中画窗口实时回显操作现场。</div>
+      </div>
+      <div class="row-control"><label class="switch"><input id="perm-computer-use" type="checkbox" /><span></span></label></div>
+    </div>
+  </div>
   <div class="form-actions"><button id="perm-audit-refresh" type="button" class="btn">刷新</button></div>
   <div class="group-title">策略链（内核固定顺序）</div>
   <div class="row-list">
@@ -1535,6 +1545,11 @@ export function bind() {
     settingsCache.permission = { ...settingsCache.permission, ...(Number.isFinite(ms) && ms > 0 ? { approvalTimeoutMs: ms } : {}) };
     markDirty("permission");
   });
+  // S4：计算机使用开关（settings computerUse 段——缺省关；保存即整段 patch）
+  document.getElementById("perm-computer-use").addEventListener("change", (ev) => {
+    settingsCache.computerUse = { enabled: ev.target.checked === true };
+    markDirty("computerUse");
+  });
   document.getElementById("sandbox-network").addEventListener("change", (ev) => {
     settingsCache.sandbox = { ...settingsCache.sandbox, ...(ev.target.value !== "" ? { network: ev.target.value } : {}) };
     markDirty("sandbox");
@@ -1715,6 +1730,7 @@ export function bind() {
 export function fill() {
   document.getElementById("perm-timeout").value =
     settingsCache?.permission?.approvalTimeoutMs ?? "";
+  document.getElementById("perm-computer-use").checked = settingsCache?.computerUse?.enabled === true;
   void refreshPolicyRules(); // 决策规则清单（读 user-rules 文件位）
   renderPermissionModes(); // 权限模式卡（settings.permission.mode 当前值）
   void refreshPolicyAudit(); // 审批历史（当前会话流的策略拒绝）

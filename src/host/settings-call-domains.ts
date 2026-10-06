@@ -65,6 +65,9 @@ const DOMAIN_OPS = new Set([
   "cron-list",
   "cron-add",
   "cron-remove",
+  // C10：会话协作发起/取消（协作域装配——collab-runtime）
+  "collab-dispatch",
+  "collab-cancel",
   "log-open-dir",
   "log-export",
   // T-P3-155 关于中心族
@@ -364,5 +367,20 @@ export function validateDomainSettingsCall(op: string, record: Record<string, un
   }
   if (op === "cron-remove" && (typeof record["id"] !== "string" || record["id"] === "")) {
     throw new Error("settings op=cron-remove 需要 id（任务 id）非空字符串");
+  }
+  // C10 协作族（kind 三值闭集 + 双会话 id + 内容非空）
+  if (op === "collab-dispatch") {
+    for (const key of ["sourceSessionId", "targetSessionId", "content"] as const) {
+      if (typeof record[key] !== "string" || (record[key] as string).trim() === "") {
+        throw new Error(`settings op=collab-dispatch 需要 ${key} 非空字符串`);
+      }
+    }
+    const kind = record["kind"];
+    if (kind !== "task" && kind !== "message" && kind !== "completion") {
+      throw new Error("settings op=collab-dispatch 需要 kind ∈ task|message|completion");
+    }
+  }
+  if (op === "collab-cancel" && (typeof record["collabId"] !== "string" || record["collabId"] === "")) {
+    throw new Error("settings op=collab-cancel 需要 collabId 非空字符串");
   }
 }

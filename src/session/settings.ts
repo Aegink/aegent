@@ -260,6 +260,17 @@ export interface SkillsConfig {
   roots?: string[];
 }
 
+/**
+ * 子代理后端选择（C4）：backend 闭集两值——"in-process"（进程内 fork，
+ * 缺省）与 "acp"（外部 ACP agent 进程，经 spawnAcpTransport stdio）。
+ * acp.command 是启动命令行（argv 数组——不经 shell，无注入面）；
+ * timeoutMs 为单次派发预算（createAcpBackend 缺省 10 分钟）。
+ */
+export interface SubagentBackendSettings {
+  backend: "in-process" | "acp";
+  acp?: { command: readonly string[]; timeoutMs?: number };
+}
+
 export interface SettingsShape {
   version: 1;
   providers: ProviderEntry[];
@@ -399,6 +410,17 @@ export interface SettingsShape {
   skills?: SkillsConfig;
   /** 子代理自定义（U23——同名覆盖内置预设；解析面见 session/subagents-config.ts）。 */
   subagents?: SubagentDefinition[];
+  /**
+   * 子代理后端选择（C4——task 工具的派发出闸；装配消费见 kernel/
+   * agent-child.ts）。缺省 undefined = 进程内 fork（既有行为零变化）。
+   */
+  subagentBackend?: SubagentBackendSettings;
+  /**
+   * 计算机使用开关（S4——屏幕/输入控制四工具的注册门控；**缺省关**，
+   * 高危面注册即模型可见，必须显式开启）。审批/审计/无人值守恒拒三层
+   * 在 scheduler/computer.ts 工具面纵深。
+   */
+  computerUse?: { enabled?: boolean };
   /** 快捷键覆盖（U25——action → 组合键规范串；部分覆盖语义，解析面见 ui/keymap.js）。 */
   shortcuts?: Record<string, string>;
   /**
@@ -1344,6 +1366,68 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
         } as SubagentDefinition,
       ];
     }
+  }
+  // C4：子代理后端选择段（backend 闭集两值；acp 命令行非空字符串数组——
+  // argv 形态不经 shell，无注入面）
+  const subagentBackend = rec["subagentBackend"];
+  if (subagentBackend !== undefined) {
+    if (subagentBackend === null || typeof subagentBackend !== "object" || Array.isArray(subagentBackend)) {
+      throw new SettingsError("subagentBackend 须为对象");
+    }
+    const sb = subagentBackend as Record<string, unknown>;
+    if (sb["backend"] !== "in-process" && sb["backend"] !== "acp") {
+      throw new SettingsError('subagentBackend.backend 非法（合法：in-process|acp）');
+    }
+    const acp = sb["acp"];
+    if (acp !== undefined) {
+      if (acp === null || typeof acp !== "object" || Array.isArray(acp)) {
+        throw new SettingsError("subagentBackend.acp 须为对象");
+      }
+      const a = acp as Record<string, unknown>;
+      if (
+        !Array.isArray(a["command"]) ||
+        a["command"].length === 0 ||
+        a["command"].some((c) => typeof c !== "string" || (c as string).trim() === "")
+      ) {
+        throw new SettingsError("subagentBackend.acp.command 须为非空字符串数组（启动命令行 argv）");
+      }
+      if (
+        a["timeoutMs"] !== undefined &&
+        (typeof a["timeoutMs"] !== "number" || !Number.isInteger(a["timeoutMs"]) || a["timeoutMs"] < 1_000)
+      ) {
+        throw new SettingsError("subagentBackend.acp.timeoutMs 须为 ≥1000 的整数");
+      }
+      if (sb["backend"] !== "acp") {
+        throw new SettingsError('subagentBackend.acp 仅在 backend="acp" 时合法');
+      }
+    } else if (sb["backend"] === "acp") {
+      throw new SettingsError('backend="acp" 需要 subagentBackend.acp.command（启动命令行 argv）');
+    }
+    out.subagentBackend = {
+      backend: sb["backend"] as "in-process" | "acp",
+      ...(acp !== undefined
+        ? {
+            acp: {
+              command: (acp as Record<string, unknown>)["command"] as string[],
+              ...((acp as Record<string, unknown>)["timeoutMs"] !== undefined
+                ? { timeoutMs: (acp as Record<string, unknown>)["timeoutMs"] as number }
+                : {}),
+            },
+          }
+        : {}),
+    };
+  }
+  // S4：计算机使用开关段（enabled 布尔——缺省关）
+  const computerUse = rec["computerUse"];
+  if (computerUse !== undefined) {
+    if (computerUse === null || typeof computerUse !== "object" || Array.isArray(computerUse)) {
+      throw new SettingsError("computerUse 须为对象");
+    }
+    const cu = computerUse as Record<string, unknown>;
+    if (cu["enabled"] !== undefined && typeof cu["enabled"] !== "boolean") {
+      throw new SettingsError("computerUse.enabled 须为布尔");
+    }
+    out.computerUse = { ...(cu["enabled"] !== undefined ? { enabled: cu["enabled"] as boolean } : {}) };
   }
   const shortcuts = rec["shortcuts"];
   if (shortcuts !== undefined) {

@@ -261,6 +261,14 @@
     {
       "path": "src/host/bridge.ts",
       "reason": "可用性核对 C 级装配记档（2026-10-06）：settings 四钩子已下沉 bridge-surface-options.ts、sendSystemPrompt/enqueuePendingPrompt 为 C1 调度通道新增——残余 408 行含 HostBridgeOptions 文档块与 send 收执面，拆分收益低于可读性损失；豁免带上限（后续 settings 分发若再加域必须先拆 settings-dispatch 域文件而非续写本文件）。"
+    },
+    {
+      "path": "src/host/settings-gateway.ts",
+      "reason": "D 级债务清偿记档（2026-10-06）：读-改-写互斥（settings-rmw）接入 update 通道 +3 行导致 402 行越限——网关是 25+ op 的聚合分发面，行为体已按行数纪律拆至 settings-*-ops.ts 各域文件；豁免带上限（再增行为体必须先拆新域文件，本文件只准做一行收敛分发）。"
+    },
+    {
+      "path": "src/host/server.ts",
+      "reason": "C10 协作装配记档（2026-10-06）：start() 是 host 装配编排面（registry/bridge/automation/collab/静态服务/WS 的组装线）——行为体已全部下沉 runtime/ops 域文件，本文件行数随装配面线性增长属编排固有形态；豁免带上限（再增行为逻辑必须先拆域文件，本文件只准做一行收敛装配调用）。"
     }
   ]
 }

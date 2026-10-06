@@ -137,6 +137,17 @@ export const SECTIONS_HTML = `
       <button id="subagent-new" type="button" class="btn btn-primary">新建自定义子代理</button>
     </div>
   </div>
+  <div class="card-box">
+    <div class="form-grid form-grid-2">
+      <label>派发后端<select id="subagent-backend-select" class="select">
+        <option value="in-process">进程内 fork（缺省——隔离 + 审批降级）</option>
+        <option value="acp">ACP 外部 agent 进程</option>
+      </select></label>
+      <label>派发预算（ms）<input id="subagent-backend-timeout" class="input" type="number" min="1000" step="10000" placeholder="600000" autocomplete="off" /></label>
+    </div>
+    <label>ACP 启动命令行（argv JSON 数组）<input id="subagent-backend-command" class="input" type="text" placeholder='["node", "acp-main.js", "--provider", "echo"]' autocomplete="off" /></label>
+    <p class="hint">in-process = 内核起子循环（写隔离 + 权限降级继承）；acp = 每次派发 spawn 一个外部 ACP agent 进程（initialize → session/new → prompt → 流式块回收，进程随派发结束收摊）。切换与新会话生效；argv 数组非法 JSON 时保存被拒。</p>
+  </div>
   <div id="subagent-list"></div>
   <div id="subagent-editor" class="card-box" hidden>
     <div id="subagent-preset-row" hidden>
@@ -2639,7 +2650,52 @@ async function runTtsTest() {
 // 挂载 / 回填
 // ---------------------------------------------------------------------------
 
+/** C4：后端表单 DOM → settingsCache.subagentBackend（argv JSON 非法时
+ * toast 提示且不写缓存——不发坏段）。 */
+function persistSubagentBackend() {
+  const backend = document.getElementById("subagent-backend-select").value;
+  if (backend !== "acp") {
+    settingsCache.subagentBackend = { backend: "in-process" };
+    dirtySections.add("subagentBackend");
+    markDirty("subagentBackend");
+    return;
+  }
+  const rawCommand = document.getElementById("subagent-backend-command").value.trim();
+  let command;
+  try {
+    command = JSON.parse(rawCommand);
+  } catch {
+    toast("ACP 启动命令行须为合法 JSON 数组（如 [\"node\", \"acp-main.js\"]）", "warn");
+    return;
+  }
+  if (!Array.isArray(command) || command.length === 0 || command.some((c) => typeof c !== "string" || c.trim() === "")) {
+    toast("ACP 启动命令行须为非空字符串数组", "warn");
+    return;
+  }
+  const timeoutRaw = document.getElementById("subagent-backend-timeout").value;
+  const timeoutMs = Number(timeoutRaw);
+  settingsCache.subagentBackend = {
+    backend: "acp",
+    acp: {
+      command,
+      ...(Number.isInteger(timeoutMs) && timeoutMs >= 1000 ? { timeoutMs } : {}),
+    },
+  };
+  dirtySections.add("subagentBackend");
+  markDirty("subagentBackend");
+}
+
 export function bind() {
+  // C4：子代理派发后端（settings subagentBackend 段——改缓存 → 标脏，
+  // 保存链 flushSettings 读 settingsCache）
+  const backendSelect = document.getElementById("subagent-backend-select");
+  backendSelect.addEventListener("change", () => {
+    persistSubagentBackend();
+    document.getElementById("subagent-backend-command").disabled = backendSelect.value !== "acp";
+    document.getElementById("subagent-backend-timeout").disabled = backendSelect.value !== "acp";
+  });
+  document.getElementById("subagent-backend-command").addEventListener("input", () => persistSubagentBackend());
+  document.getElementById("subagent-backend-timeout").addEventListener("input", () => persistSubagentBackend());
   document.getElementById("mcp-add").addEventListener("click", () => {
     editingMcpName = null;
     openMcpWizard(null);
@@ -3123,6 +3179,14 @@ export function fill() {
   sttEngine = settingsCache?.stt?.engine === "local" ? "local" : "cloud";
   renderSttEngine();
   if (document.getElementById("stt-local-download") !== null) bindSttEngine();
+  // C4：派发后端回填（缺省 in-process——settings 段缺席即缺省零变化）
+  const backendCfg = settingsCache?.subagentBackend;
+  const isAcp = backendCfg?.backend === "acp";
+  document.getElementById("subagent-backend-select").value = isAcp ? "acp" : "in-process";
+  document.getElementById("subagent-backend-command").value = isAcp && backendCfg?.acp ? JSON.stringify(backendCfg.acp.command) : "";
+  document.getElementById("subagent-backend-timeout").value = backendCfg?.acp?.timeoutMs !== undefined ? String(backendCfg.acp.timeoutMs) : "";
+  document.getElementById("subagent-backend-command").disabled = !isAcp;
+  document.getElementById("subagent-backend-timeout").disabled = !isAcp;
   // T-P3-149：TTS 分节回填
   document.getElementById("tts-baseurl").value = settingsCache?.tts?.baseUrl ?? "";
   document.getElementById("tts-model").value = settingsCache?.tts?.model ?? "";

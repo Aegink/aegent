@@ -171,6 +171,17 @@ export interface SubagentRunnerDeps {
    * 不注入。
    */
   readonly onSettle?: (delegation: DelegationSnapshot) => void;
+  /**
+   * C4：外部子代理后端表（装配方注入——agent-child 按 settings
+   * subagentBackend 段构造；键 = 后端名如 "acp"）。run 的 opts.backend
+   * 命中表时经其出闸（表内实现自带审批/超时/结算语义）；未命中 failed
+   * 结算（never-reject 纪律——不炸父轮）。缺省 undefined = 仅进程内
+   * fork（既有行为零变化）。
+   */
+  readonly externalBackends?: ReadonlyMap<
+    string,
+    (request: { prompt: string; description: string; signal?: AbortSignal }) => Promise<SubagentRunResult>
+  >;
 }
 
 /**
@@ -298,6 +309,33 @@ export function createSubagentRunner(deps: SubagentRunnerDeps): {
     const childDepth = deps.depth + 1;
     if (!Number.isSafeInteger(childDepth) || childDepth > maxDepth) {
       throw new SubagentDepthError(childDepth, maxDepth);
+    }
+    // —— C4 后端分派：task 工具透传的 backend 命中外部后端表时出闸
+    // （"in-process"/缺省走本文件 fork 循环——常量与 session 域
+    // IN_PROCESS_BACKEND 同值，kernel 不 import 该域仅字面对应）。
+    // 外部后端不经过子装配（fork 循环专属），审批/超时/结算语义由后端
+    // 实现自带（createAcpBackend：never-reject 转 failed/cancelled）。
+    if (opts?.backend !== undefined && opts.backend !== "in-process") {
+      const spawn = deps.externalBackends?.get(opts.backend);
+      if (spawn === undefined) {
+        return {
+          kind: "foreground",
+          result: {
+            sessionId: "",
+            stopReason: "failed",
+            output: "",
+            error: `子代理后端 "${opts.backend}" 未装配（SUBAGENT_BACKEND_UNKNOWN——设置页子智能体分节可切换 in-process/acp）`,
+          },
+        };
+      }
+      return {
+        kind: "foreground",
+        result: await spawn({
+          prompt,
+          description,
+          ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
+        }),
+      };
     }
     // U23/T-P3-126：预设解析（未知/停用同为类型化拒绝——停用名单不进
     // 可用清单，模型可见可自修）。缺省 undefined = 通用子代理（既有行为）。

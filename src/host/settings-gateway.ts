@@ -36,6 +36,7 @@ import {
   type InstructionTarget,
 } from "./instructions-gateway.js";
 import { appendInstruction, testInstructionRule } from "./settings-instruction-ops.js";
+import { withSettingsRmw } from "./settings-rmw.js";
 import { runSttTranscribe } from "./speech-gateway.js";
 import {
   assistantLogAppendOp,
@@ -117,11 +118,14 @@ export class FileSettingsGateway implements SettingsGateway {
     return (await loadSettings(this.settingsPath)).settings;
   }
   async update(patch: Record<string, unknown>): Promise<SettingsShape> {
-    const merged = applySettingsPatch(await this.get(), patch);
-    await saveSettings(this.settingsPath, merged);
-    // T-P3-154 E1：logging 段变更热更日志中心（级别/目录/保留期）
-    if (patch["logging"] !== undefined) reconfigureLogging(merged.logging, this.homeDir);
-    return merged;
+    // 读-改-写互斥（settings-rmw）：并发段级补丁不再整体覆盖丢段
+    return withSettingsRmw(async () => {
+      const merged = applySettingsPatch(await this.get(), patch);
+      await saveSettings(this.settingsPath, merged);
+      // T-P3-154 E1：logging 段变更热更日志中心（级别/目录/保留期）
+      if (patch["logging"] !== undefined) reconfigureLogging(merged.logging, this.homeDir);
+      return merged;
+    });
   }
 
   async credentialsSet(provider: string, key: string): Promise<{ masked: string }> {

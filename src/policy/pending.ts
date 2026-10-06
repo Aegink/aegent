@@ -196,6 +196,14 @@ interface SettledTombstone {
   readonly settledWith: "timeout" | "reply";
 }
 
+/**
+ * 墓碑容量上限（D 级债务清偿）：墓碑是"迟到 reply 的 stale 判定依据"，
+ * 只需近期事实——超限 FIFO 淘汰最旧。被淘汰 id 的迟到 reply 从 Stale 降为
+ * Unknown，仍是拒绝（fail-closed 语义不变，只是错误码不同）；代价远小于
+ * 长会话 host 进程里的无界 Map 慢性泄漏。
+ */
+export const MAX_SETTLED_TOMBSTONES = 1000;
+
 export class PendingApprovals {
   private readonly pending = new Map<string, PendingEntry>();
   /** 已结算请求的墓碑：迟到 reply 的 stale 判定依据（C31）。 */
@@ -206,8 +214,18 @@ export class PendingApprovals {
   constructor(
     private readonly announce?: (announcement: ApprovalAnnouncement) => void,
     categoryConfig?: ApprovalCategoryConfig,
+    private readonly tombstoneLimit: number = MAX_SETTLED_TOMBSTONES,
   ) {
     this.categoryConfig = categoryConfig ?? {};
+  }
+
+  /** 统一墓碑写入位：超限先淘汰最旧（Map 迭代序 = 插入序，FIFO）。 */
+  private markSettled(id: string, settledWith: "timeout" | "reply"): void {
+    if (!this.settled.has(id) && this.settled.size >= this.tombstoneLimit) {
+      const oldest = this.settled.keys().next();
+      if (oldest.done !== true) this.settled.delete(oldest.value);
+    }
+    this.settled.set(id, { settledWith });
   }
 
   /**
@@ -229,7 +247,7 @@ export class PendingApprovals {
         action: "deny",
         reason: `${APPROVAL_CATEGORY_CLOSED}：审批类别 "${req.category}" 已关闭（${req.tool} 的请求不呈现给用户，自动拒绝）`,
       };
-      this.settled.set(req.id, { settledWith: "reply" });
+      this.markSettled(req.id, "reply");
       this.announce?.({
         kind: "settled",
         id: req.id,
@@ -272,7 +290,7 @@ export class PendingApprovals {
       throw new UnknownApprovalError(id);
     }
     this.pending.delete(id);
-    this.settled.set(id, { settledWith: "reply" });
+    this.markSettled(id, "reply");
     clearTimeout(entry.timer);
     const verdict: ApprovalAnswer =
       reply.action === "allow"
@@ -302,7 +320,7 @@ export class PendingApprovals {
   dispose(): void {
     for (const [id, entry] of this.pending) {
       this.pending.delete(id);
-      this.settled.set(id, { settledWith: "timeout" });
+      this.markSettled(id, "timeout");
       clearTimeout(entry.timer);
       this.announce?.({
         kind: "timed-out",
@@ -318,7 +336,7 @@ export class PendingApprovals {
     const entry = this.pending.get(id);
     if (entry === undefined) return; // 已被 reply 结算，计时器迟到无害
     this.pending.delete(id);
-    this.settled.set(id, { settledWith: "timeout" });
+    this.markSettled(id, "timeout");
     this.announce?.({
       kind: "timed-out",
       id,

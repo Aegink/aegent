@@ -11,6 +11,8 @@ export const SETTINGS_PATCH_SECTIONS = [
   "activeProfile", "onboardingDone", "defaultProvider", "defaultModel", "chat", "network",
   "skills", "subagents", "shortcuts", "stt", "tts", "plugins",
   "backup", "webdav", // T-P3-174 批次 4：备份中心周期面 + WebDAV 云同步
+  "subagentBackend", // C4：子代理后端选择（in-process/acp）
+  "computerUse", // S4：计算机使用开关（缺省关）
 ] as const;
 
 export function applySettingsPatch(current: SettingsShape, patch: Record<string, unknown>): SettingsShape {

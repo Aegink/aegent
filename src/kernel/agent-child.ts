@@ -417,6 +417,26 @@ async function main(): Promise<void> {
   // T-P3-146：runner 恒建（内置五预设不依赖自定义清单——task 工具与模板
   // agent 面开箱即用；defs 缺省 undefined = 仅内置预设）。
   const subagentsSlot = subagentsOptions ?? { defs: settingsFile.subagents };
+  // C4：外部子代理后端装配——settings subagentBackend 段（缺省/缺段 =
+  // undefined = 仅进程内 fork，既有行为零变化）。acp：spawn 命令行 stdio
+  // 传输 → createAcpBackend；进程生命周期随单次派发（transport.close）。
+  let externalBackends: import("./subagent.js").SubagentRunnerDeps["externalBackends"];
+  if (settingsFile.subagentBackend?.backend === "acp" && settingsFile.subagentBackend.acp !== undefined) {
+    const acpSettings = settingsFile.subagentBackend.acp;
+    const { spawnAcpTransport } = await import("../session/acp-transport.js");
+    const { createAcpBackend, SubagentBackendRegistry } =
+      await import("../session/subagent-backend.js");
+    const backendRegistry = new SubagentBackendRegistry();
+    backendRegistry.register(
+      createAcpBackend({
+        transport: spawnAcpTransport(acpSettings.command),
+        ...(acpSettings.timeoutMs !== undefined ? { timeoutMs: acpSettings.timeoutMs } : {}),
+      }),
+    );
+    externalBackends = new Map([
+      ["acp", (request: { prompt: string; description: string; signal?: AbortSignal }) => backendRegistry.spawn("acp", request)],
+    ]);
+  }
   // T-P3-146 I + T-P3-147 B/G：润色模型回退链——polish 显式（含 fallbacks）
   // → fastModel → 主模型；总闸关 = 不装配（polish 类型化拒绝）。
   let polishTarget: RegisteredModel | undefined;
@@ -448,6 +468,10 @@ async function main(): Promise<void> {
     // U23/T-P3-126：预设清单 + 独立模型解析闭包（runner 内按次解析）
     // T-P3-146：runner 恒建（slot 兜底 = 仅内置预设）
     subagents: subagentsSlot,
+    // C4：外部子代理后端表（缺省 undefined = 仅进程内 fork）
+    ...(externalBackends !== undefined ? { externalBackends } : {}),
+    // S4：计算机使用门控（settings computerUse 段——缺省关，显式开启才注册）
+    ...(settingsFile.computerUse?.enabled === true ? { computerUse: { enabled: true } } : {}),
     // T-P3-146 A：提示词模板上下文（每次调用新鲜读取——settings 与模板
     // 文件的运行期改动即时生效；settings 读失败按空目录继续）
     promptContext: async () => {

@@ -10,7 +10,7 @@ import {
   parseIncoming,
 } from "./jsonrpc.js";
 import { AcpAgent, type AcpAgentChannel } from "./acp-agent.js";
-import { runAcpStdio } from "./main.js";
+import { createEchoAgent, runAcpStdio } from "./main.js";
 
 // ---------------------------------------------------------------------------
 // 结构红线（K4 验收机内化——"仅 8 个文件；不塞进 CLI 包"）
@@ -233,5 +233,77 @@ describe("K4/T-P1-117 stdio 循环", () => {
 
   it("encodeResponse 形状（jsonrpc 2.0 信封）", () => {
     expect(JSON.parse(encodeResponse(7, { ok: true }))).toEqual({ jsonrpc: "2.0", id: 7, result: { ok: true } });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C4：echo provider（全链自测闭环——spawnAcpTransport → createAcpBackend
+// → 本入口的 agent 端形状；真进程 e2e 在真机冒烟跑 dist 产物）
+// ---------------------------------------------------------------------------
+
+describe("C4 echo agent 通道", () => {
+  it("session/prompt 全链：initialize → session/new → prompt → 流式块 + end_turn response", async () => {
+    const { PassThrough } = await import("node:stream");
+    const input = new PassThrough();
+    const output = new PassThrough();
+    output.setEncoding("utf8");
+    runAcpStdio({
+      agent: createEchoAgent(),
+      sessionId: "s-echo",
+      input,
+      output,
+    });
+    input.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} })}\n`);
+    input.write(`${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "session/new", params: {} })}\n`);
+    input.write(
+      `${JSON.stringify({
+        jsonrpc: "2.0",
+        id: 3,
+        method: "session/prompt",
+        params: { sessionId: "s-echo", content: [{ type: "text", text: "你好 ACP" }] },
+      })}\n`,
+    );
+    await new Promise((r) => setTimeout(r, 50));
+    const lines = (output.read() as string)
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(lines[0]).toMatchObject({ id: 1, result: { protocolVersion: 1 } });
+    expect(lines[1]).toMatchObject({ id: 2, result: { sessionId: "s-echo" } });
+    // 流式块（agent_message_chunk）在 response 之前
+    const update = lines.find((l) => l.method === "session/update") as
+      | { params: { update: { sessionUpdate: string; content?: { text?: string } } } }
+      | undefined;
+    expect(update?.params.update).toMatchObject({ sessionUpdate: "agent_message_chunk", content: { text: "echo：你好 ACP" } });
+    // 长请求 response：end_turn（turn/end completed 映射）——id:3 有两行
+    // （runAcpStdio 的受理空回执 + turn/end 结算），取最后一条
+    const promptResponse = lines.filter((l) => l.id === 3).pop() as
+      | { result?: { stopReason?: string } }
+      | undefined;
+    expect(promptResponse?.result).toEqual({ stopReason: "end_turn" });
+    input.end();
+  });
+
+  it("send 对非 prompt 请求零操作不破状态：cancel 后 prompt 仍正常产出", async () => {
+    const { PassThrough } = await import("node:stream");
+    const echo = createEchoAgent();
+    echo.send({ type: "cancel", cause: { kind: "user" } }); // 零操作——不产消息不破状态
+    const input = new PassThrough();
+    const output = new PassThrough();
+    output.setEncoding("utf8");
+    runAcpStdio({ agent: echo, sessionId: "s-echo", input, output });
+    input.write(
+      `${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "session/prompt", params: { content: "cancel 后仍可用" } })}\n`,
+    );
+    await new Promise((r) => setTimeout(r, 50));
+    const lines = (output.read() as string)
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    const update = lines.find((l) => l.method === "session/update") as
+      | { params: { update: { content?: { text?: string } } } }
+      | undefined;
+    expect(update?.params.update).toMatchObject({ content: { text: "echo：cancel 后仍可用" } });
+    input.end();
   });
 });

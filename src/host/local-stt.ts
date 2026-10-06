@@ -36,7 +36,7 @@ let ready = false;
 let buffer = "";
 const pending = new Map<string, (r: { ok: boolean; text?: string; code?: string; message?: string }) => void>();
 let seq = 0;
-/** 空闲回收定时（30s 无请求杀 worker——冷加载代价下轮请求重付）。 */
+/** 空闲回收定时（30 分钟无请求杀 worker——冷加载代价下轮请求重付）。 */
 let idleTimer: NodeJS.Timeout | null = null;
 
 function killWorker(): void {
@@ -137,7 +137,7 @@ async function ensureWorker(threads: number): Promise<void> {
   });
 }
 
-/** 本地转写（串行队列一次一请求；队列满 = 类型化拒绝）。 */
+/** 本地转写（并发上限 4 的请求队列；队列满 = 类型化拒绝）。 */
 export async function localTranscribe(
   audio: Uint8Array,
   options: { language?: string; threads?: number } = {},
