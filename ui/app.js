@@ -3203,6 +3203,9 @@ function markSessionState(sid, patch) {
   window.dispatchEvent(new CustomEvent("sb:tasks-dirty", { detail: { sessionId: sid } }));
 }
 
+// 渲染诊断钩子（反馈轮七起——CDP 连真页面注入指定事件复现渲染问题；
+// 只读渲染入口，不做任何写操作面）
+window.__debugRenderEvent = (event, sid) => renderEventEnvelope({ type: "event", sessionId: sid ?? getSessionId(), event });
 function handleEnvelope(envelope) {
   switch (envelope.type) {    case "hello":
       // 握手回执携带本 host 的会话 id（路由引导）→ 发 query 恢复视图

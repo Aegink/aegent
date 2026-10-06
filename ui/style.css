@@ -1139,11 +1139,14 @@ code,
 #stream .line {
   overflow-wrap: anywhere;
 }
-/* ② 流内所有直接子级：宽度硬约束（flex item 的溢出免疫层） */
+/* ② 流内所有直接子级：宽度硬约束（flex item 的溢出免疫层）。
+ * **overflow-x 用 clip 不用 hidden**（反馈轮八实锤）：hidden 会把另一轴的
+ * visible 强制计算为 auto——每个消息块长出自己的纵向滚动框（"固定框"、
+ * 上下滚动不顺）；clip 纯裁切不创建滚动容器、不影响另一轴。 */
 #stream > * {
   max-width: 100%;
   min-width: 0;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 /* ③ 工具卡摘要行：全局级规则（不依赖 .tool-card 前缀链）——nowrap+ellipsis
  * 对 inline 元素不生效，flex 子项 + min-width:0 是生效前提 */
@@ -1166,13 +1169,14 @@ code,
   word-break: break-word;
   max-width: 100%;
 }
-/* ⑤ 右侧面板体：内容一律不横向撑破面板 */
+/* ⑤ 右侧面板体：内容一律不横向撑破面板（clip 同 ②——不产生滚动框） */
 .pane-body {
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 .pane-body > * {
   max-width: 100%;
   min-width: 0;
+  overflow-x: clip;
 }
 
 .card button {
