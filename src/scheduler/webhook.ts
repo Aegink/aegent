@@ -38,6 +38,11 @@ export interface WebhookEndpointOptions {
     jobs: Pick<JobRegistry, "start">;
     /** 派发附加动作（如把 payload 送给会话派发——装配面注入；缺省只入 ring）。 */
     onDispatch?: (payload: unknown, jobId: string) => void;
+    /**
+     * 载荷形状校验（装配面注入——形状不合格回 400 WEBHOOK_PAYLOAD_INVALID
+     * 而非"收下后静默丢弃"：假装受理是 C31 同族纪律的反面）。
+     */
+    validatePayload?: (payload: unknown) => { ok: true } | { ok: false; message: string };
 }
 
 /** 恒定时间字符串相等（防时序侧信道——凭据比对统一走这里）。 */
@@ -127,6 +132,14 @@ export class WebhookEndpoint {
         } catch {
             res.writeHead(400).end(JSON.stringify({ error: "WEBHOOK_PAYLOAD_NOT_JSON" }));
             return true;
+        }
+        // 装配面载荷校验（C5：形状不合格回 400 而非"收下后静默丢弃"）
+        if (this.options.validatePayload !== undefined) {
+            const check = this.options.validatePayload(payload);
+            if (!check.ok) {
+                res.writeHead(400).end(JSON.stringify({ error: "WEBHOOK_PAYLOAD_INVALID", message: check.message }));
+                return true;
+            }
         }
         const rawText = body.body.toString("utf8");
         // fire-and-forget：入 job 后立即 202——不阻塞响应等会话执行

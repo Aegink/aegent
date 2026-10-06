@@ -16,6 +16,7 @@ import type { ProviderTestResult } from "./provider-gateway.js";
 import {
   providerModelsOp,
   providerTestOp,
+  gatewayProbeProvider,
   type ProviderModelsPayload,
   type ProviderTestPayload,
 } from "./settings-provider-ops.js";
@@ -80,7 +81,8 @@ import {
 } from "./skill-import-op.js";
 import { skillZipImportOp, type SkillZipImportResult } from "./skill-zip-import.js";
 import { enhancementTestOp } from "./settings-provider-ops.js";
-import { applyImportedSettings, applyPartialImport, backupSettingsFile, resolveImportedPackage, summarizePackage } from "../session/settings-transfer.js";
+// 导入实现下沉 transfer 域（importSettingsOp——行数纪律拆分）
+import { importSettingsOp } from "./settings-transfer-ops.js";
 import { deleteSessionOp } from "./session-export-op.js";
 import { reconfigureLogging, channelLogger, defaultLogDir } from "./logging-ops.js";
 import { subagentCatalog, type SubagentDefinition } from "../session/subagents-config.js";
@@ -141,15 +143,9 @@ export class FileSettingsGateway implements SettingsGateway {
     return out;
   }
 
+  // 健康探测（C8 的 UI 消费面）下沉 provider 域（行数纪律拆分）
   async probeProvider(name: string): Promise<HealthCheckResult> {
-    const entry = (await this.get()).providers.find((p) => p.name === name);
-    if (entry === undefined || entry.baseUrl === undefined || entry.baseUrl.trim() === "") {
-      const missing = entry === undefined;
-      const error = new Error(missing ? `provider「${name}」不在配置中` : `provider「${name}」未配置 baseUrl，无法探测`);
-      (error as unknown as { code: string }).code = missing ? "PROVIDER_NOT_FOUND" : "PROVIDER_NO_BASE_URL";
-      throw error;
-    }
-    return this.healthProbe(name, entry.baseUrl);
+    return gatewayProbeProvider(name, this.healthProbe, () => this.get());
   }
   async sessionDelete(sessionId: string): Promise<{ deleted: boolean }> {
     return deleteSessionOp(this.sessionDb, sessionId); // T-P3-153 下沉会话数据域
@@ -182,20 +178,12 @@ export class FileSettingsGateway implements SettingsGateway {
     }
   }
 
-  // U20/T-P3-122 → T-P3-153 A2/A3：导入 = 整包上送（kind 校验+版本迁移+
-  // replace/merge 分型在 resolveImportedPackage；备份滚动先于任何落盘）。
+  // U20/T-P3-122 → T-P3-153 A2/A3：导入 = 整包上送（实现下沉 transfer 域
+  // ——行数纪律拆分；"备份滚动先于任何落盘"语义不变）。
   async importSettings(
     packageRaw: Record<string, unknown>,
   ): Promise<{ applied: true; summary: string[] }> {
-    const current = await this.get();
-    const resolved = resolveImportedPackage(packageRaw);
-    backupSettingsFile(this.settingsPath);
-    const merged =
-      resolved.mode === "replace"
-        ? applyImportedSettings(current, resolved.settings)
-        : applyPartialImport(current, resolved.partial, resolved.domains);
-    await saveSettings(this.settingsPath, merged);
-    return { applied: true, summary: summarizePackage(merged) };
+    return importSettingsOp(this.settingsPath, packageRaw, () => this.get());
   }
 
   private skillsUnavailable(): never {

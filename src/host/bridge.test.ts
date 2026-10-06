@@ -354,14 +354,17 @@ describe("N2/T-P1-116 审批跨端（协议线场景③）", () => {
 });
 
 describe("B3 补口：settings 分发尾 fail-closed（结构红线）", () => {
-  it("分发尾不再静默兜底返回 credentials——未分发 op 必须抛 SETTINGS_OP_UNDISPATCHED", () => {
+  it("credentials-list 是显式分支；其余分发尾抛 SETTINGS_OP_UNDISPATCHED 而非静默兜底", () => {
     // 说明：未知 op 在 protocol-parse 层即被拒（op 闭集校验），闭集内 op
-    // 当前 86/86 全部分发——分发尾在 e2e 上不可达，属"防御未来漏分发"的
-    // 结构红线；按 tauri-shell.test 先例以源码断言钉住（防静默兜底回潮）。
-    const source = readFile(new URL("./bridge.ts", import.meta.url), "utf8");
+    // 均有显式分支——分发尾在 e2e 上不可达，属"防御未来漏分发"的结构
+    // 红线；按 tauri-shell.test 先例以源码断言钉住（防静默兜底回潮）。
+    // 注：server.test 的 credentials 往返用例是"显式分支在位"的行为级验证
+    // （曾误把该分支当兜底删除——e2e 立即抓出，两条防线互补）；分发体已
+    // 下沉 bridge-surface-options.ts（行数纪律拆分），断言随代码位置。
+    const source = readFile(new URL("./bridge-surface-options.ts", import.meta.url), "utf8");
     return source.then((lib) => {
       expect(lib).toContain("SETTINGS_OP_UNDISPATCHED");
-      expect(lib).not.toContain("return { credentials: await gateway.credentialsList() }");
+      expect(lib).toMatch(/if \(call\.op === "credentials-list"\)/);
     });
   });
 });

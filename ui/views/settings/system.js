@@ -17,6 +17,7 @@ import * as shortcuts from "./shortcuts.js";
 import * as transfer from "./transfer.js";
 import * as logging from "./logging.js";
 import * as about from "./about.js";
+import * as automation from "./automation.js";
 import { shortcutCaptureKeydown } from "./shortcuts.js";
 import { settingsCache } from "../../state.js";
 import { IS_DESKTOP, sendSettings } from "../../api.js";
@@ -27,6 +28,7 @@ const shortcutsSection = shortcuts.SECTION_HTML;
 const transferSection = transfer.SECTION_HTML;
 const loggingSection = logging.SECTION_HTML;
 const aboutSection = about.SECTION_HTML;
+const automationSection = automation.SECTION_HTML;
 
 export const SECTIONS_HTML = `
 <section data-section="chat">
@@ -155,6 +157,7 @@ export const SECTIONS_HTML = `
   </div>
 </section>
 ${instructionsSection}${shortcutsSection}${transferSection}${loggingSection}
+${automationSection}
 ${aboutSection}
 `;
 
@@ -194,6 +197,8 @@ export function bind() {
   logging.bind();
   // T-P3-155：关于中心域（版本/环境路径/更新检查/入口在 about.js）
   about.bind();
+  // C1：定时任务域（清单/添加/删除在 automation.js）
+  automation.bind();
 }
 
 export function fill() {
@@ -201,6 +206,7 @@ export function fill() {
   shortcuts.render();
   logging.fill(); // T-P3-154：日志中心表单回填（rawDir/级别/保留天数）
   about.fill();
+  void automation.refresh(); // C1：任务清单拉取
 }
 
 /** 指令中心打开时拉一次（壳 open 委派——逻辑在 instructions 域文件）。 */

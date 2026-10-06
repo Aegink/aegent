@@ -102,6 +102,10 @@ const OPS = [
   "webdav-sync",
   "checkpoint-timeline",
   "checkpoint-restore",
+  // C1 补口：定时任务管理面（调度域装配——scheduler-ops）
+  "cron-list",
+  "cron-add",
+  "cron-remove",
 ] as const;
 
 export type SettingsOp = (typeof OPS)[number];
@@ -171,6 +175,8 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     // T-P3-174 批次 5 走查实抓：terminal-create 的 shell 键（T-P3-165
     // 遗留——真机终端创建恒被信封拒绝）
     "shell",
+    // C1 补口：cron 族载荷（expr=表达式/prompt=任务提示/id=任务 id）
+    "expr",
   ]);
   if (unknownKey) throw new Error(`settings 信封${unknownKey}`);
   if (typeof record["requestId"] !== "string" || record["requestId"] === "") {
@@ -374,6 +380,8 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     ...(typeof record["confirm"] === "boolean" ? { confirm: record["confirm"] } : {}),
     ...(typeof record["seq"] === "number" ? { seq: record["seq"] } : {}),
     ...(typeof record["shell"] === "string" ? { shell: record["shell"] } : {}),
+    // C1 cron 族载荷（expr = 表达式；prompt/id 走通用键拷贝——本行补 expr）
+    ...(typeof record["expr"] === "string" ? { expr: record["expr"] } : {}),
   };
 }
 

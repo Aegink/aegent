@@ -227,3 +227,27 @@ export function tryTransferSettingsOp(
       return tryLoggingSettingsOp(gateway, call); // T-P3-154 日志中心族 fallback（bridge 零增量串联）
   }
 }
+
+/**
+ * 配置包导入实现（U20/T-P3-153 A2/A3——自 settings-gateway 下沉：行数纪律
+ * 拆分）。kind 校验+版本迁移+replace/merge 分型在 resolveImportedPackage；
+ * 备份滚动先于任何落盘（恢复点语义不变）。
+ */
+export async function importSettingsOp(
+  settingsPath: string,
+  packageRaw: Record<string, unknown>,
+  getSettings: () => Promise<import("../session/settings.js").SettingsShape>,
+): Promise<{ applied: true; summary: string[] }> {
+  const { resolveImportedPackage, applyImportedSettings, applyPartialImport, summarizePackage, backupSettingsFile } =
+    await import("../session/settings-transfer.js");
+  const { saveSettings } = await import("../session/settings.js");
+  const current = await getSettings();
+  const resolved = resolveImportedPackage(packageRaw);
+  backupSettingsFile(settingsPath);
+  const merged =
+    resolved.mode === "replace"
+      ? applyImportedSettings(current, resolved.settings)
+      : applyPartialImport(current, resolved.partial, resolved.domains);
+  await saveSettings(settingsPath, merged);
+  return { applied: true, summary: summarizePackage(merged) };
+}

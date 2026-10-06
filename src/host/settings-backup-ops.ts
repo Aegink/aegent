@@ -142,3 +142,34 @@ export function applyBackupRetentionPolicy(settingsPath: string, keep: number): 
   }
   return { removed };
 }
+
+/**
+ * 周期自动备份 tick（T-P3-174 批次 4——自 server.ts main 下沉：行数纪律
+ * 拆分）。每 30 分钟醒一次，距上次备份（bak.0 的 mtime = 持久事实）≥
+ * intervalHours 才真正滚动；配置活值经 settingsGateway 读，UI 改完下一
+ * tick 即生效；重启无损。
+ */
+export function createBackupTicker(
+  settingsGateway: { get(): Promise<SettingsShape> },
+  settingsPath: string,
+): NodeJS.Timeout {
+  const ticker = setInterval(() => {
+    void (async () => {
+      try {
+        const settings = await settingsGateway.get();
+        const tick = autoBackupTickOp(settingsPath, {
+          auto: settings.backup?.auto,
+          intervalHours: settings.backup?.intervalHours,
+          keep: settings.backup?.keep,
+        });
+        if (tick.backedUp) {
+          process.stdout.write(`[backup] 周期自动备份完成（interval=${settings.backup?.intervalHours ?? 24}h）\n`);
+        }
+      } catch (e) {
+        process.stderr.write(`[backup] 周期自动备份失败：${e instanceof Error ? e.message : String(e)}\n`);
+      }
+    })();
+  }, 30 * 60_000);
+  ticker.unref?.();
+  return ticker;
+}

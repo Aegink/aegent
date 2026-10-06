@@ -88,6 +88,7 @@
         "policy",
         "session",
         "sandbox",
+        "scheduler",
         "diagnostics"
       ],
       "publicEntrypoints": [],
@@ -256,6 +257,10 @@
     {
       "path": "src/host/server.test.ts",
       "reason": "U3/T-P3-105 收口记档：K5 WS 传输 e2e 主测试 + 16a 批次 settings/probe/历史 wire 端到端（639 行）——共享 rig 与 ws 客户端的 e2e 内聚面；豁免只限测试文件，settings e2e 增量如再增长应拆 server-settings.test.ts（复用 server.test-utils）。"
+    },
+    {
+      "path": "src/host/bridge.ts",
+      "reason": "可用性核对 C 级装配记档（2026-10-06）：settings 四钩子已下沉 bridge-surface-options.ts、sendSystemPrompt/enqueuePendingPrompt 为 C1 调度通道新增——残余 408 行含 HostBridgeOptions 文档块与 send 收执面，拆分收益低于可读性损失；豁免带上限（后续 settings 分发若再加域必须先拆 settings-dispatch 域文件而非续写本文件）。"
     }
   ]
 }

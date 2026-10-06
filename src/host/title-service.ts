@@ -172,3 +172,22 @@ export function cleanTitle(raw: string): string {
   if (out.length > TITLE_MAX_CHARS) out = `${out.slice(0, TITLE_MAX_CHARS - 1)}…`;
   return out.trim();
 }
+
+/**
+ * HostServer.start 的组装入口（自 server.ts 下沉：行数纪律拆分）——
+ * titleDeps 提供时构造服务（db = host 库；sessionStream 活读镜像 store），
+ * 缺席 = undefined（无库 = no-op 语义不变）。
+ */
+export function createTitleServiceFromOptions(
+  titleDeps: { settingsPath?: string; credentials: import("../session/credentials.js").CredentialStore } | undefined,
+  sessionsLibrary: import("../session/db.js").SqliteEventStorage | undefined,
+  sessionStream: (sessionId: string) => readonly import("../kernel/events.js").SessionEvent[],
+): TitleService | undefined {
+  if (titleDeps === undefined) return undefined;
+  return createTitleService({
+    settingsPath: titleDeps.settingsPath,
+    credentials: titleDeps.credentials,
+    ...(sessionsLibrary !== undefined ? { db: sessionsLibrary } : {}),
+    sessionStream,
+  });
+}

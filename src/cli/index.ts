@@ -20,6 +20,8 @@ import { createCredentialStore } from "../session/credentials.js";
 import { loadSettings, resolveChildLaunchArgv } from "../session/settings.js";
 import { runKeyCommand } from "./key.js";
 import { runSessionsCommand } from "./sessions.js";
+import { runReplayCommand } from "./replay.js";
+import { runSyncCommand } from "./sync.js";
 import { runCli } from "./repl.js";
 import { attachReverseSearch } from "./editor.js";
 
@@ -115,6 +117,25 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
       if (code !== 0) process.exitCode = 1;
       return;
     }
+  }
+  // C6 补口：`aegent replay` 分流（L4 轨迹回放的生产消费入口——无 spawn）。
+  if (childArgs[0] === "replay") {
+    const code = await runReplayCommand(childArgs.slice(1), {
+      out: (line) => process.stdout.write(`${line}\n`),
+      err: (line) => process.stderr.write(`${line}\n`),
+    });
+    if (code !== 0) process.exitCode = 1;
+    return;
+  }
+  // C3 补口：`aegent sync` 分流（N9/N10 配置跨设备同步的生产消费入口——
+  // 无 spawn；远端 = settings.webdav 段，口令 = AEGENT_SYNC_PASSPHRASE）。
+  if (childArgs[0] === "sync") {
+    const code = await runSyncCommand(childArgs.slice(1), {
+      out: (line) => process.stdout.write(`${line}\n`),
+      err: (line) => process.stderr.write(`${line}\n`),
+    }, settingsPath);
+    if (code !== 0) process.exitCode = 1;
+    return;
   }
   // U1/T-P3-101：settings 装配（损坏 fail-closed——SettingsError 直达启动
   // 失败出口，错误消息自带行列号与修复指引）。三入口共用同一翻译面。

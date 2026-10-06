@@ -138,3 +138,23 @@ export async function enhancementTestOp(
     resolved: { provider: hit.entry.name, modelId: hit.modelId },
   };
 }
+
+/**
+ * 健康探测（C8——自 settings-gateway 下沉：行数纪律拆分）。条目缺失/缺
+ * baseUrl 类型化拒绝（PROVIDER_NOT_FOUND / PROVIDER_NO_BASE_URL）；其余
+ * 走注入的探针（生产 = models/health 的 probeProvider——不发消息）。
+ */
+export async function gatewayProbeProvider(
+  name: string,
+  healthProbe: (name: string, baseUrl: string) => Promise<import("../models/health.js").HealthCheckResult>,
+  getSettings: () => Promise<SettingsShape>,
+): Promise<import("../models/health.js").HealthCheckResult> {
+  const entry = (await getSettings()).providers.find((p) => p.name === name);
+  if (entry === undefined || entry.baseUrl === undefined || entry.baseUrl.trim() === "") {
+    const missing = entry === undefined;
+    const error = new Error(missing ? `provider「${name}」不在配置中` : `provider「${name}」未配置 baseUrl，无法探测`);
+    (error as unknown as { code: string }).code = missing ? "PROVIDER_NOT_FOUND" : "PROVIDER_NO_BASE_URL";
+    throw error;
+  }
+  return healthProbe(name, entry.baseUrl);
+}

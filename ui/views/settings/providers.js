@@ -411,7 +411,7 @@ function renderProviderList() {
       renderDefaultCard();
       markDirty("providers");
     };
-    // … 操作菜单（pi-desktop 行形态：编辑/本会话切换/测试连接/上移/下移/删除）
+    // … 操作菜单（pi-desktop 行形态：编辑/本会话切换/测试连接/健康探测/上移/下移/删除）
     const moreBtn = btnEl("⋯", "btn btn-icon", "更多操作");
     moreBtn.setAttribute("aria-haspopup", "menu");
     moreBtn.addEventListener("click", () => {
@@ -419,6 +419,7 @@ function renderProviderList() {
         { label: "编辑", onClick: () => openProviderDialog(entry) },
         { label: "本会话切换", onClick: () => void switchSession() },
         { label: "测试连接", onClick: () => void rowTest(entry) },
+        { label: "健康探测", onClick: () => void rowProbe(entry) },
         { label: "上移", onClick: () => move(-1) },
         { label: "下移", onClick: () => move(1) },
         { label: "删除", danger: true, onClick: () => void del() },
@@ -434,6 +435,19 @@ function renderProviderList() {
       console.error("服务行渲染失败", entry?.name, e);
       toast(`服务「${entry?.name ?? "?"}」行渲染失败：${e.message}`, "warn");
     }
+  }
+}
+
+/** 行内健康探测（… 菜单——C8 补口：probe op 的 UI 消费面；轻量连通性
+ * 检查，不发消息不写 verified——区别于 rowTest 的"真实发消息"验收）。 */
+async function rowProbe(entry) {
+  toast(`正在探测 ${entry.name}（连通性检查，不发消息）…`, "info");
+  const envelope = await sendSettings({ op: "probe", provider: entry.name });
+  const result = envelope.ok ? envelope.result : { success: false, message: envelope.error?.message ?? "" };
+  if (result.success === true) {
+    toast(`${entry.name} 可达（${result.status ?? "ok"}${result.responseTimeMs !== undefined ? ` · ${String(result.responseTimeMs)}ms` : ""}）：${result.message ?? ""}`, "info");
+  } else {
+    toast(`探测失败：${result.message ?? "未知错误"}`, "warn");
   }
 }
 

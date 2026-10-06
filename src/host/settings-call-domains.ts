@@ -61,6 +61,10 @@ const DOMAIN_OPS = new Set([
   // T-P3-154 日志中心族
   "log-report",
   "log-query",
+  // C1 补口：定时任务管理族（调度域装配——scheduler-ops）
+  "cron-list",
+  "cron-add",
+  "cron-remove",
   "log-open-dir",
   "log-export",
   // T-P3-155 关于中心族
@@ -348,5 +352,17 @@ export function validateDomainSettingsCall(op: string, record: Record<string, un
         typeof rows !== "number" || !Number.isInteger(rows) || rows <= 0 || rows > 300) {
       throw new Error("settings op=terminal-resize 需要 cols（1~500）/rows（1~300）正整数");
     }
+  }
+  // C1 定时任务族（表达式合法性在 CronStore.add 入库面——此处只校验形状）
+  if (op === "cron-add") {
+    if (typeof record["expr"] !== "string" || record["expr"].trim() === "") {
+      throw new Error("settings op=cron-add 需要 expr（cron 表达式）非空字符串");
+    }
+    if (typeof record["prompt"] !== "string" || record["prompt"].trim() === "") {
+      throw new Error("settings op=cron-add 需要 prompt（触发时投递的提示词）非空字符串");
+    }
+  }
+  if (op === "cron-remove" && (typeof record["id"] !== "string" || record["id"] === "")) {
+    throw new Error("settings op=cron-remove 需要 id（任务 id）非空字符串");
   }
 }

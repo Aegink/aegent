@@ -17,6 +17,7 @@
 
 import { createInterface } from "node:readline";
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import path from "node:path";
 
 import type { CancelCause, SessionRef, TurnEndReason } from "./events.js";
@@ -65,6 +66,8 @@ import { evaluateToolPolicy } from "../policy/gate.js";
 import { ModelNotRegisteredError } from "./model-switch.js";
 import { createSubagentRunner } from "./subagent.js";
 import { registerBuiltinTools } from "./tools/builtin/index.js";
+import { createBrowserTools } from "../scheduler/browser.js";
+import { connectPanelBrowser, panelDataDir } from "../scheduler/browser-panel.js";
 import { NodeExecutionEnv } from "./tools/env.js";
 import { ToolRegistry } from "./tools/registry.js";
 import { DEFAULT_SPILL_DIR } from "./tools/truncate.js";
@@ -593,6 +596,43 @@ export async function runAgentChildStdio(
       ...(assembly?.contextUsage ? { contextUsage: assembly.contextUsage } : {}),
     },
   );
+  // C2 接线（T-P3-174 浏览器驱动调研报告方案 A——最后一件胶水）：浏览器
+  // 面板 CDP 工具族（browser_navigate/screenshot/extract——审批/域白名单/
+  // deadline/NOTICE 安全面在 scheduler/browser.ts）。**条件注册**：壳的
+  // 面板 data directory（DevToolsActivePort 文件）在位 = CDP 通道真实可用
+  // （portable 布局 node.exe 与壳 exe 同目录）；缺席（无壳/测试）不注册，
+  // 工具清单基线零变化。每导航审批复用既有 PendingApprovals（C 族主面），
+  // 超时同 approvalTimeoutMs（C50）。
+  {
+    const panelDir = panelDataDir(path.dirname(process.execPath));
+    if (existsSync(path.join(panelDir, "DevToolsActivePort"))) {
+      const approvalTimeoutMs = options.assembly?.approvalTimeoutMs ?? 120_000;
+      for (const tool of createBrowserTools({
+        connect: () => connectPanelBrowser(panelDir),
+        ...(assembly?.pending !== undefined
+          ? {
+              approve: async (action: { tool: string; url?: string }) => {
+                if (assembly?.pending === undefined) return false; // fail-closed
+                const verdict = await assembly.pending.ask(
+                  {
+                    id: `browser-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    sessionId,
+                    tool: action.tool,
+                    args: (action.url !== undefined ? { url: action.url } : {}) as import("./events.js").JsonRecord,
+                    category: "tool",
+                  },
+                  { timeoutMs: approvalTimeoutMs },
+                );
+                return verdict.action === "allow";
+              },
+            }
+          : {}),
+      })) {
+        toolRegistry.registerTool(tool);
+      }
+      options.logger?.info(`浏览器面板 CDP 工具已注册（${panelDir}）`);
+    }
+  }
   // U17/T-P3-119：MCP server 装配消费（settings mcp 段——agent-child 传入
   // 已过滤 enabled 的条目）。装配期连接注册（ready 前完成——tools 清单
   // 一次性报全）；单 server 失败 warn 继续不炸启动（never-fail 装配——

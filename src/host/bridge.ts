@@ -15,9 +15,10 @@ import { handleHostQuery } from "./query-gateway.js";
 import { buildPolicyAuditEntries } from "./policy-audit-op.js";
 import { tryPluginSettingsOp } from "./settings-plugin-ops.js";
 import { tryProjectSettingsOp } from "./settings-project-ops.js";
-import { tryInstructionSettingsOp } from "./settings-instruction-ops.js";
+import { buildSurfaceServerOptions } from "./bridge-surface-options.js";
 import { tryPanelSettingsOp } from "./settings-panel-ops.js";
 import { tryTransferSettingsOp } from "./settings-transfer-ops.js";
+import { trySchedulerSettingsOp } from "./scheduler-ops.js";
 import { localSttStatus } from "./local-stt.js";
 import { sttDownloadAll } from "./local-stt-download.js";
 import { AgentHost } from "./registry.js";
@@ -298,6 +299,28 @@ export class HostBridge implements SessionRouter {
     return () => this.listeners.delete(listener);
   }
 
+  /**
+   * host 内部调度通道（C1——cron/webhook 的 prompt 投递面）：与用户 prompt
+   * 走完全相同的执行链，但**不经租约**。授权语义：定时任务是用户在定义时
+   * 预先授权的 host-owned 自动化；租约（N7）管"多个实时端之间谁在驱动"，
+   * host 自身调度不在其上（pi-desktop ADR 0041 同构）。
+   */
+  /** prompt 收执记账（send 与 sendSystemPrompt 共用——同一条 pendingPrompts 表）。 */
+  private enqueuePendingPrompt(sessionId: string, messageId: string, resolve: (value: unknown) => void): void {
+    const pending = this.pendingPrompts.get(sessionId) ?? new Map<string, (value: unknown) => void>();
+    pending.set(messageId, resolve);
+    this.pendingPrompts.set(sessionId, pending);
+    this.lastPendingPromptIds.set(sessionId, messageId);
+  }
+
+  sendSystemPrompt(sessionId: string, request: { type: "prompt"; messageId: string; content: string }): Promise<unknown> {
+    const channel = this.channelFor(sessionId);
+    return new Promise((resolve) => {
+      this.enqueuePendingPrompt(sessionId, request.messageId, resolve);
+      channel.send(request);
+    });
+  }
+
   // -- 端连接面 ------------------------------------------------------------
 
   /** 注册一个端连接：surface 注册 + 协议 server；close 组合两者收束（N7）。 */
@@ -316,143 +339,22 @@ export class HostBridge implements SessionRouter {
     const deliveryKind = surfaceOptions.deliveryKind ?? "push";
     const handle = this.options.host.surfaces.connect(surfaceId, deliveryKind);
     this.emitRoster({ type: "surface/attach", surfaceId, deliveryKind });
-    const serverOptions: HostProtocolServerOptions = {
-      write: surfaceOptions.write,
+    // 四钩子（hello/lease/query/settings）的组装下沉 bridge-surface-options.ts
+    //（行数纪律拆分）——本处只做 bridge 私有面的显式投影。
+    const serverOptions: HostProtocolServerOptions = buildSurfaceServerOptions(
+      {
+        host: this.options.host,
+        ...(this.options.store !== undefined ? { store: this.options.store } : {}),
+        ...(this.options.sessionsLibrary !== undefined ? { sessionsLibrary: this.options.sessionsLibrary } : {}),
+        ...(this.options.settingsGateway !== undefined ? { settingsGateway: this.options.settingsGateway } : {}),
+        ...(this.options.workspaceRoot !== undefined ? { workspaceRoot: this.options.workspaceRoot } : {}),
+        ...(this.options.contextWindow !== undefined ? { contextWindow: this.options.contextWindow } : {}),
+        reloadNotify: this.reloadNotifier(),
+        agentCapabilities: () => this.agentCapabilities,
+      },
       surfaceId,
-      sessionId: this.options.host.sessionId,
-      onHello: (hello) => {
-        // hello 携带的身份与注册不符 = 编程错误（connectSurface 已注册）
-        if (hello.surfaceId !== undefined && hello.surfaceId !== surfaceId) {
-          throw new Error(`hello 身份 ${hello.surfaceId} 与注册面 ${surfaceId} 不符`);
-        }
-      },
-      // N7 run 租约协议面：acquire/release 直答（不经 agent；code 透传）。
-      onLease: async (lease) => {
-        if (lease.op === "acquire") {
-          const acquired = this.options.host.surfaces.acquireRunLease(lease.surfaceId);
-          return { held: true, surfaceId: acquired.ownerId };
-        }
-        const released = this.options.host.surfaces.releaseRunLease(lease.surfaceId);
-        return { released };
-      },
-      // K5 恢复视图 + U3/U9/U10/U12 查询——实现拆分至 query-gateway.ts，
-      // 本处只做依赖注入（capabilities 是活查询——ready 捕获在泵内）。
-      onQuery: (query) =>
-        handleHostQuery(
-          {
-            hostSessionId: () => this.options.host.sessionId,
-            ...(this.options.store !== undefined ? { store: this.options.store } : {}),
-            ...(this.options.sessionsLibrary !== undefined
-              ? { sessionsLibrary: this.options.sessionsLibrary }
-              : {}),
-            ...(this.options.settingsGateway !== undefined
-              ? { settingsGateway: this.options.settingsGateway }
-              : {}),
-            ...(this.options.workspaceRoot !== undefined
-              ? { workspaceRoot: this.options.workspaceRoot }
-              : {}),
-            ...(this.options.contextWindow !== undefined
-              ? { contextWindow: this.options.contextWindow }
-              : {}),
-            capabilities: () => this.agentCapabilities,
-          },
-          query,
-        ),
-      // U14/T-P3-103 settings 直答（host 面配置——不经 agent 不落流）。
-      onSettings: async (call) => {
-        const gateway = this.options.settingsGateway;
-        if (gateway === undefined) {
-          const error = new Error("host 未配置 settings 面");
-          (error as unknown as { code: string }).code = "SETTINGS_UNSUPPORTED";
-          throw error;
-        }
-        if (call.op === "policy-audit") {
-          // 审批历史（八轮 E——store 在 bridge 手里故此拦截）
-          const sessionId = this.options.host.sessionId;
-          const store = this.options.store;
-          const all = store === undefined ? [] : store.load(sessionId);
-          return { entries: buildPolicyAuditEntries(all) };
-        }
-        // T-P3-140 自检 / T-P3-141 插件主题 CSS / T-P3-143 外部 MCP 扫描（只读）
-        if (call.op === "sandbox-doctor") return gateway.sandboxDoctor();
-        if (call.op === "plugin-theme-css") return gateway.pluginThemeCss(call.name!);
-        if (call.op === "mcp-import-scan") return gateway.mcpImportScan();
-        if (call.op === "get") return { settings: await gateway.get() };
-        if (call.op === "credentials-set") {
-          return { masked: (await gateway.credentialsSet(call.provider!, call.key!)).masked };
-        }
-        if (call.op === "credentials-delete") {
-          return { deleted: (await gateway.credentialsDelete(call.provider!)).deleted };
-        }
-        if (call.op === "probe") return { health: await gateway.probeProvider(call.provider!) };
-        // U17：MCP 连接校验（向导"测连接"——launch 一次握手+列工具）
-        if (call.op === "mcp-check") {
-          return {
-            check: await gateway.mcpCheck({
-              name: call.name!,
-              command: call.command!,
-              ...(Array.isArray(call.args) ? { args: call.args } : {}),
-              ...(call.env !== undefined ? { env: call.env } : {}),
-              ...(call.timeoutMs !== undefined ? { timeoutMs: call.timeoutMs } : {}),
-            }),
-          };
-        }
-        const transferOp = tryTransferSettingsOp(gateway, call, { store: this.options.store, sessionId: this.options.host.sessionId, ...(this.options.sessionsLibrary !== undefined ? { sessionsLibrary: this.options.sessionsLibrary } : {}) }); if (transferOp !== undefined) return transferOp; // T-P3-153/154：数据中心族+日志中心族一行收敛（logging fallback 在域文件内） // T-P3-153 数据中心族一行收敛（配置包/备份/会话导出/体检/会话删除——settings-transfer-ops；session-export 拦截在域文件——store 在 bridge 手里）
-        if (call.op === "skills-list") return gateway.skillsList();
-        if (call.op === "skill-save") return gateway.skillSave(call.skill!);
-        // T-P3-144：技能导入扫描/执行 + 删除/Reveal（护栏与复制在域文件）
-        if (call.op === "skill-import-scan") return gateway.skillImportScan();
-        if (call.op === "skill-import-apply") return gateway.skillImportApply(call.items!);
-        // T-P3-174 批次 4：技能 ZIP 导入（content = zip 字节 base64）
-        if (call.op === "skill-import-zip") return gateway.skillZipImport(call.content!);
-        if (call.op === "skill-delete") return gateway.skillDelete(call.path!);
-        if (call.op === "skill-reveal") return gateway.skillReveal(call.path!);
-              if (call.op === "prompts-list") return gateway.promptsList();
-        if (call.op === "prompt-save") return gateway.promptSave(call.prompt!);
-        if (call.op === "prompt-delete") return gateway.promptDelete(call.path!);
-        if (call.op === "prompt-reveal") return gateway.promptReveal(call.path!);
-        if (call.op === "prompt-import-scan") return gateway.promptImportScan();
-        if (call.op === "prompt-import-apply") return gateway.promptImportApply(call.items!);
-        if (call.op === "enhancement-test") return gateway.enhancementTest(call.task as import("./settings-provider-ops.js").EnhancementTestTask);
-        if (call.op === "subagents-list") return gateway.subagentsList();
-        const instrOp = tryInstructionSettingsOp(gateway, call); // 指令域四 op 收敛（T-P3-151）
-        if (instrOp !== undefined) return instrOp;
-        if (call.op === "stt-transcribe") return gateway.sttTranscribe({ base64: call.content!, mediaType: call.mediaType! });
-        // T-P3-174 批次 6 G1：本地 SenseVoice 状态/下载（进度经 stt-local-status 轮询）
-        if (call.op === "stt-local-status") return localSttStatus();
-        if (call.op === "stt-local-download") return sttDownloadAll();
-        if (call.op === "tts-synthesize") return gateway.ttsSynthesize({ text: call.text! });
-        // T-P3-150 项目域八 op 一行收敛（分发面在 settings-project-ops）
-        const projectOp = tryProjectSettingsOp(gateway, call);
-        if (projectOp !== undefined) return projectOp;
-        // T-P3-156 面板域（R/P/T：git 族/终端族/辅助对话历史）
-        const panelOp = tryPanelSettingsOp(gateway, call);
-        if (panelOp !== undefined) return panelOp;
-        if (call.op === "plugins-list") return gateway.pluginsList();
-        // T-P3-148：插件/市场族 op 一行收敛（分发在 settings-plugin-ops）
-        const pluginOp = tryPluginSettingsOp(gateway, call, this.reloadNotifier());
-        if (pluginOp !== undefined) return pluginOp;
-        if (call.op === "provider-models" || call.op === "provider-test") {
-          const payload = {
-            provider: call.provider!,
-            baseUrl: call.baseUrl!,
-            adapter: call.adapter as "openai" | "openai-responses" | "anthropic" | "google",
-            ...(call.headers !== undefined ? { headers: call.headers } : {}),
-            ...(call.apiKey !== undefined ? { apiKey: call.apiKey } : {}),
-          };
-          if (call.op === "provider-models") return gateway.providerModels(payload);
-          return gateway.providerTest({ ...payload, modelId: call.modelId! });
-        }
-        // B3 补口：分发尾不再静默兜底（旧形状 = 返回 credentials 清单——
-        // 未分发 op 会拿到凭据数据且表现为"成功"）。fail-closed：抛类型化
-        // 错误，协议层回 ok:false（新增 op 漏分发立即暴露而非静默）。
-        const unhandled = new Error(
-          `settings op "${call.op}" 未被分发（协议闭集与 bridge 分发不同步）`,
-        );
-        (unhandled as unknown as { code: string }).code = "SETTINGS_OP_UNDISPATCHED";
-        throw unhandled;
-      },
-    };
+      surfaceOptions.write,
+    );
     const server = new HostProtocolServer(this, serverOptions);
     const registration: SurfaceRegistration = {
       surfaceId,
@@ -472,8 +374,7 @@ export class HostBridge implements SessionRouter {
     };
   }
 
-  // T-P3-148 热加载通知器（host 落盘插件后主动发；通道关闭静默——新会话兜底）。
-  // T-P3-170：广播全部通道（主 + 池化——每个 child 的工具清单都要刷新）。
+  // T-P3-148/T-P3-170 热加载通知器：host 落盘插件后广播全部通道（主+池化）。
   private reloadNotifier = (): (() => void) => {
     const fire = (): void => {
       const reload = { type: "plugins/reload" } as unknown as AgentRequest;
@@ -488,12 +389,11 @@ export class HostBridge implements SessionRouter {
   }
 
   private emitRoster(event: { type: string; surfaceId: string; deliveryKind?: string; reason?: string }): void {
-    // roster 落流（N8）：store 提供时 append（seq/ts 由 store 分配），
-    // 并把已提交事件广播给所有端连接（event 通道）。
+    // roster 落流（N8）：seq/ts 由 store 分配；广播给所有端连接（event 通道）；
+    // turn 落 0（会话级元事件纪律——l0-events §3.2）；N5 分型发布端面进退。
     const store = this.options.store;
     if (store === undefined) return;
     const { type, surfaceId, ...rest } = event;
-    // 会话级元事件纪律：turn 落 0（l0-events §3.2——不要求轮上下文）。
     const committed = store.append(this.options.host.sessionId, [
       (type === "surface/attach"
         ? { type, turn: 0, surfaceId, ...(rest as { deliveryKind?: string }) }

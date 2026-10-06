@@ -27,6 +27,7 @@ export type SettingsCall = {
   timeoutMs?: number;
   skill?: SkillSavePayload;
   prompt?: PromptSavePayload; // op=prompt-save：模板写回载荷（T-P3-146 C）
+  expr?: string; // op=cron-add：cron 表达式（C1）
   items?: SkillImportItem[];
   path?: string;
   target?: string;

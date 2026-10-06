@@ -57,7 +57,7 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     // credentials 分节并入供应商页（用户裁决"功能重复"——凭据管理面 =
     // providers.js 的孤儿预存密钥区，data-section 不复存在）
     // T-P3-148 O：plugins 分节迁独立页 views/plugins.js（data-section 不复存在）
-    for (const section of ["providers", "permission", "sandbox", "appearance", "chat", "network", "logging", "prompts", "skills", "subagents", "instructions", "shortcuts", "mcp", "enhancement", "profiles", "transfer", "speech", "about"]) { // T-P3-165：projects 分节退役（侧栏承载）换 chat 分节
+    for (const section of ["providers", "permission", "sandbox", "appearance", "chat", "network", "logging", "prompts", "skills", "subagents", "instructions", "shortcuts", "mcp", "enhancement", "profiles", "transfer", "speech", "automation", "about"]) { // T-P3-165：projects 分节退役（侧栏承载）换 chat 分节；automation 为 C1 定时任务
       expect(settingsView).toContain(`data-section="${section}"`);
     }
     expect(settingsView).not.toContain('data-section="credentials"');
@@ -315,13 +315,13 @@ describe("U14/T-P3-103 · 设置中心与视图资产（拆自 tauri-shell.test�
     expect(workView).toContain('data-worktab="review"');
     expect(workView).toContain('data-worktab="subagent"');
     expect(workView).toContain('id="work-filetree"');
-    expect(workView).toContain('id="work-delegation-table"');
+    expect(workView).toContain('id="work-delegation-body"'); // A7：表骨架由构建函数产（work-delegation-table 类）
     expect(workView).toContain('op: "review"'); // 变更/委派纯函数直答数据源
     expect(workView).toContain('op: "file"'); // 文件树点击预览
     expect(workView).toContain("refreshWorkReview"); // turn_settled 自动刷新接线
     expect(workView).toContain("previewWorkspaceFile");
     expect(workView).toContain('data-worktab="collab"'); // U27 协作 Tab
-    expect(workView).toContain('id="work-collab-table"');
+    expect(workView).toContain('id="work-collab-body"'); // A7：表骨架由构建函数产（work-collab-table 类）
     for (const marker of [".work-tab", ".tree-row", ".review-badge", "#work-preview"]) {
       expect(css).toContain(marker);
     }

@@ -622,6 +622,8 @@ export interface ChildAssembly {
   contextUsage?: () => import("./tools/builtin/get-context-remaining.js").ContextUsageSnapshot | null;
   /** 工具注册的面（PathGuard 由装配定形，注册处必收）。 */
   pathGuard: PathGuard;
+  /** 审批挂起注册表（C2 浏览器工具接线——每导航审批复用同一实例）。 */
+  pending: import("../policy/pending.js").PendingApprovals;
   /** 释放未决审批（dispose 路径：按超时语义拒绝，不悬挂）。 */
   dispose(): void;
 }
@@ -1348,6 +1350,9 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
     ...(savePlanArtifactFn !== undefined ? { savePlanArtifact: savePlanArtifactFn } : {}),
     ...(goalService !== undefined ? { goal: goalService } : {}),
     pathGuard,
+    // C2 浏览器工具接线：审批挂起注册表暴露（同一实例——browser_* 工具的
+    // 每导航审批复用它，"不新增第二套挂起注册表"纪律）。
+    pending,
     dispose: () => {
       pending.dispose();
     },

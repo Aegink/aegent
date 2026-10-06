@@ -93,9 +93,36 @@ pub async fn browser_create(
             wvlog("browser_create 复用既有 webview");
             return Ok(label.clone());
         }
+        // CDP 通道安全面（T-P3-174 调研报告 §4.2 的硬前提）：面板 webview
+        // 配**专属 data directory**——①满足 tauri 约束"不同 browser args 的
+        // webview 必须配不同 data directory"；②开调试端口后暴露面只含面板
+        // target（主 UI 的 tauri.localhost target 不在同端口列表）；③兑现
+        // 本模块头注"数据目录独立"的设计意图。目录 = <exeDir>/data/
+        // webview-panel（host/agent 侧按同一约定读 DevToolsActivePort 发现
+        // 端口——随机端口零硬编码）。默认 wry args 被自定义覆盖，官方要求
+        // 自行补回 SmartScreen/PDF/UI 三项 disable。
+        let panel_data_dir = std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(|d| d.join("data").join("webview-panel")));
+        let builder = WebviewBuilder::new(label.clone(), WebviewUrl::External(parsed))
+            .initialization_script("window.__AEGENT_BROWSER_TAB = true;");
+        let builder = match panel_data_dir {
+            Some(dir) => {
+                if let Err(e) = std::fs::create_dir_all(&dir) {
+                    wvlog(&format!("panel data dir 创建失败（继续无 CDP 创建）: {e}"));
+                    builder
+                } else {
+                    builder
+                        .data_directory(dir)
+                        .additional_browser_args(
+                            "--remote-debugging-port=0 --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection",
+                        )
+                }
+            }
+            None => builder,
+        };
         match window.add_child(
-            WebviewBuilder::new(label.clone(), WebviewUrl::External(parsed))
-                .initialization_script("window.__AEGENT_BROWSER_TAB = true;"),
+            builder,
             tauri::LogicalPosition::new(0.0, 10_000.0), // 藏视口外——show 时对齐
             tauri::LogicalSize::new(400.0, 300.0),
         ) {

@@ -36,16 +36,17 @@ import { createSessionId, isValidSessionId } from "../session/session-id.js";
 import { SqliteEventStorage } from "../session/db.js";
 import { InMemoryEventStorage, SessionStore, type EventStorage } from "../session/store.js";
 import { loadSettings, resolveChildLaunchArgv, defaultSettingsPath } from "../session/settings.js";
-import { autoBackupTickOp } from "./settings-backup-ops.js";
+import { createBackupTicker } from "./settings-backup-ops.js";
 import { createCredentialStore } from "../session/credentials.js";
 import { FileSettingsGateway } from "./settings-gateway.js";
 import { HostBridge, type AgentChannel } from "./bridge.js";
 import { serveStatic } from "./static-files.js";
-import { parseHostServerArgv, resolveContextWindow, type HostServerArgv } from "./argv.js";
+import { parseHostServerArgv, resolveContextWindow, resolveHostProductionDeps, defaultUiDir, defaultAgentChildEntry, HOST_HELP_TEXT, type HostServerArgv } from "./argv.js";
 import { NotificationHub } from "./notify.js";
 import { disposeAllTerminals, reapIdleTerminals, setTerminalNotifier } from "./terminal-ops.js";
+import { createAutomationRuntime } from "./automation-runtime.js";
 import { HostRegistry } from "./registry.js";
-import { createTitleService } from "./title-service.js";
+import { createTitleServiceFromOptions } from "./title-service.js";
 import { makeProjectAttacher } from "./settings-project-ops.js";
 
 
@@ -87,6 +88,14 @@ export interface HostServerOptions {
     settingsPath?: string;
     credentials: import("../session/credentials.js").CredentialStore;
   };
+  /**
+   * C5 补口：webhook 入站触发（S2 装配面）。token/env 注入（凭据红线：
+   * AEGENT_WEBHOOK_TOKEN / AEGENT_WEBHOOK_SECRET——零落盘）；提供 token =
+   * 挂载 /webhook/<token> 路由，payload {"prompt": "..."} 经 host 内部调度
+   * 通道投递主会话（与 cron 同一 sendSystemPrompt 面）。缺席 = 不挂载。
+   */
+  webhookToken?: string;
+  webhookSecret?: string;
 }
 
 /** host 进程运行句柄（start 的产物——stop 收束全部资源）。 */
@@ -113,15 +122,12 @@ export class HostServer {
       sessionIds: () => store.sessionIds(),
       load: (sid) => store.load(sid),
     });
-    // T-P3-147 E：会话标题服务（turn/end 触发——host 旁路；无库 = no-op）
-    const titleService = this.options.titleDeps
-      ? createTitleService({
-          settingsPath: this.options.titleDeps.settingsPath,
-          credentials: this.options.titleDeps.credentials,
-          ...(this.options.sessionsLibrary !== undefined ? { db: this.options.sessionsLibrary } : {}),
-          sessionStream: (sid) => store.load(sid),
-        })
-      : undefined;
+    // T-P3-147 E：会话标题服务（组装下沉 title-service.ts——行数纪律拆分）
+    const titleService = createTitleServiceFromOptions(
+      this.options.titleDeps,
+      this.options.sessionsLibrary,
+      (sid) => store.load(sid),
+    );
     // T-P3-170 多会话并发（pi-desktop 单 sidecar 多路复用同构）：主会话
     // child 随 host 启动常驻；其他会话的 child 由 bridge 按需懒派生（同
     // host 进程内并发，事件按 sessionId 归属广播）——多任务真并发互不影响。
@@ -164,6 +170,16 @@ export class HostServer {
     const hubUnsub = this.options.notifyHub?.subscribe((n) => {
       bridge.notifyAll("n5", n);
     });
+    // C1/C5 装配下沉 automation-runtime.ts（行数纪律拆分）——cron 调度 +
+    // webhook 入站触发共用 host 内部投递通道（sendSystemPrompt）；无
+    // --host-db 不装配 cron，无 webhookToken 不挂 /webhook/ 路由。
+    const automation = createAutomationRuntime({
+      sessionId,
+      bridge,
+      ...(this.options.sessionsLibrary !== undefined ? { sessionsLibrary: this.options.sessionsLibrary } : {}),
+      ...(this.options.webhookToken !== undefined ? { webhookToken: this.options.webhookToken } : {}),
+      ...(this.options.webhookSecret !== undefined ? { webhookSecret: this.options.webhookSecret } : {}),
+    });
     // 会话流镜像（host 视角的读面）：非 roster 事件同步 append——
     // SessionStore.append 同步纪律（write-behind 持久化在 storage 端）。
     // T-P3-150 B1：首条用户话语按当时 activeProject 自动归属任务
@@ -187,6 +203,7 @@ export class HostServer {
 
     const wss = new WebSocketServer({ noServer: true });
     const httpServer: HttpServer = createServer((req, res) => {
+      if (automation.handleWebhook(req, res)) return;
       serveStatic(this.options.uiDir, req, res);
     });
     httpServer.on("upgrade", (req, socket, head) => {
@@ -218,6 +235,7 @@ export class HostServer {
       port,
       stop: async () => {
         if (hubUnsub !== undefined) hubUnsub(); // U13：通知订阅随 stop 收束
+        automation.stop(); // C1/C5：cron tick 收束 + webhook 句柄摘除
         await bridge.killAllChannels(); // T-P3-170：池化 child 收束（主 agent 在下）
         for (const client of wss.clients) client.terminate(); // 强制断开（未 close 的测试客户端/慢端）
         await new Promise<void>((resolve) => wss.close(() => resolve()));
@@ -310,125 +328,50 @@ function attachSurface(bridge: HostBridge, ws: WebSocket): void {
 //   [--ui <dir>] [--host-db <path>] [--provider echo|openai] …（透传子进程）
 // ---------------------------------------------------------------------------
 
-/** 仓库根的 ui/ 缺省位（dist/src/host/server.js 上溯三级）。 */
-export function defaultUiDir(): string {
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  // 便携 bundle 运行（host.cjs 旁的 ui/——build-host-bundle 布局）优先；
-  // 源码/dist 运行 = dist/src/host 上跳三级到仓库根 ui。裸 host.cjs 是
-  // 合法运行形态（无壳 --ui 旗标时的静态面——批次 6 走查实抓 404）。
-  const portableUi = path.resolve(here, "ui");
-  if (fs.existsSync(portableUi)) return portableUi;
-  return path.resolve(here, "..", "..", "..", "ui");
-}
-
-/** 仓库根的 agent-child 编译产物位（dist/src/host/server.js 旁：../kernel）。 */
-export function defaultAgentChildEntry(): string {
-  return path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "..",
-    "kernel",
-    "agent-child.js",
-  );
-}
-
 export async function main(argv: readonly string[]): Promise<void> {
   // T-P3-146 修：--help/-h 打印用法即退出（此前未识别旗标被静默忽略——
   // 实测坑：--help 起完整服务占缺省 8787，僵尸进程顶掉壳自起 host，
   // 壳 UI 连到旧代码 host 后新 settings op 全部静默失联）
   if (argv.some((a) => a === "--help" || a === "-h")) {
-    process.stdout.write(
-      [
-        "aegent host —— 端间协议传输落点（WS over TCP）",
-        "用法：host.cjs [--port <n>] [--session <id>] [--ui <dir>] [--host-db <path>]",
-        "       [--workspace <dir>] [--settings <path>] [--agent-entry <path>]",
-        "       [--context-window <n>] （其余旗标透传 agent 子进程）",
-      ].join("\n") + "\n",
-    );
+    process.stdout.write(HOST_HELP_TEXT);
     return;
   }
   const parsed = parseHostServerArgv(argv, { uiDir: defaultUiDir() });
-  // U1/T-P3-101：settings 装配（CLI 同款三入口共用面——损坏 fail-closed
-  // 直达启动失败出口）。host 的 childArgs 与 CLI 同走 resolveChildLaunchArgv。
-  // T-P3-147：凭据库路径可环境化（AEGENT_CREDENTIALS——多档隔离/走查隔离）；
-  // 单一实例三处共享（credentialKey 预取 / settingsGateway / titleService）。
-  const credentials = createCredentialStore(process.env["AEGENT_CREDENTIALS"] || undefined);
-  const { settings } = await loadSettings(parsed.settingsPath);
-  reconfigureLogging(settings.logging); // T-P3-154：启动即初始化日志中心
-  // U2/T-P3-102：凭据装配——CLI 同款（仅文件档条目会被选中时提前 decrypt）。
-  const providerFree =
-    !parsed.childArgs.includes("--provider") &&
-    (process.env["AEGENT_PROVIDER"] === undefined || process.env["AEGENT_PROVIDER"] === "");
-  let credentialKey: string | undefined;
-  if (providerFree && settings.defaultProvider !== undefined) {
-    credentialKey = await credentials.getKey(settings.defaultProvider);
-  }
-  const { args: launchArgs } = resolveChildLaunchArgv(parsed.childArgs, process.env, settings, { credentialKey });
-  // T-P3-172 持久化职责重划：事件权威 = child 进程（--db 注入，turn 末
-  // flush 落库+启动 restore 续 seq）；host 镜像退化为纯内存读面（append
-  // 进内存序即可见，不再落库——消除 child/host 双写同库的主键冲突）。
-  // host 库仍承载 host 侧直写面（task-create/归属/标题）与全部查询读面。
-  const sqliteStorage =
-    parsed.hostDbPath !== undefined ? SqliteEventStorage.open({ path: parsed.hostDbPath }) : undefined;
-  const storage = new InMemoryEventStorage();
-  // U22/T-P3-125：workspace 根交给网关（技能管理面的扫描/写入根——与
-  // op:"files" 同源：最终 launchArgs 的 --workspace > 进程 cwd）
-  const workspaceRoot = (() => {
-    const i = launchArgs.indexOf("--workspace");
-    return i >= 0 && i + 1 < launchArgs.length ? launchArgs[i + 1] : process.cwd();
-  })();
-  const settingsGateway = new FileSettingsGateway(
-    parsed.settingsPath ?? defaultSettingsPath(),
-    credentials,
-    undefined,
-    sqliteStorage,
-    workspaceRoot,
-  );
+  // U1/T-P3-101 + U2/T-P3-102 + T-P3-172：生产装配段（settings/凭据/
+  // launchArgs/事件库/workspace 根/设置网关）下沉 argv.ts——行数纪律拆分。
+  // T-P3-172 持久化职责：事件权威 = child 进程（--db 注入，turn 末 flush
+  // 落库+启动 restore 续 seq）；host 镜像退化为纯内存读面；host 库承载
+  // host 侧直写面（task-create/归属/标题）与全部查询读面。
+  const deps = await resolveHostProductionDeps(parsed);
+  reconfigureLogging(deps.settings.logging); // T-P3-154：启动即初始化日志中心
   const server = new HostServer({
     sessionId: parsed.sessionId,
     port: parsed.port,
     uiDir: parsed.uiDir,
     agentEntryPath: parsed.agentEntryPath ?? defaultAgentChildEntry(),
-    childArgs: [...launchArgs, ...(parsed.settingsPath !== undefined ? ["--settings", parsed.settingsPath] : [])],
-    storage,
-    settingsGateway,
-    sessionsLibrary: sqliteStorage,
+    childArgs: deps.childArgs,
+    storage: new InMemoryEventStorage(),
+    settingsGateway: deps.settingsGateway,
+    sessionsLibrary: deps.sqliteStorage,
     ...(parsed.hostDbPath !== undefined ? { hostDbPath: parsed.hostDbPath } : {}),
     // U10/T-P3-109：workspace 根与子进程同源——最终 launchArgs 的
     // --workspace（含 settings 档注入）> 进程 cwd（子进程缺省语义同款）。
-    workspaceRoot,
+    workspaceRoot: deps.workspaceRoot,
     // U12/T-P3-111：上下文窗口与子进程同源（解析面搬 argv.ts——行数纪律）
-    contextWindow: resolveContextWindow(launchArgs),
+    contextWindow: resolveContextWindow(deps.childArgs),
     // U13/T-P3-112：N5 分类通知面（bridge 发布 + 全端 WS 广播）。
     notifyHub: new NotificationHub(),
-    titleDeps: { settingsPath: parsed.settingsPath, credentials }, // T-P3-147 E：标题服务（凭据面共享）
+    titleDeps: { settingsPath: parsed.settingsPath, credentials: deps.credentials }, // T-P3-147 E：标题服务（凭据面共享）
 
   });
   const handle = await server.start();
   process.stdout.write(
     `aegent host（会话 ${parsed.sessionId}）：http://127.0.0.1:${handle.port}/ （WS: /ws）\n`,
   );
-  // T-P3-174 批次 4：周期自动备份 tick（host 侧——每 30 分钟醒一次，距上次
-  // 备份 ≥ intervalHours 才真正滚动；配置活值经 settingsGateway 读，UI 改完
-  // 下一 tick 即生效；bak.0 的 mtime 就是"上次备份时间"的持久事实——重启无损）。
+  // T-P3-174 批次 4：周期自动备份 tick（实现下沉 settings-backup-ops——
+  // 行数纪律拆分；bak.0 的 mtime 就是"上次备份时间"的持久事实——重启无损）。
   const hostSettingsPath = parsed.settingsPath ?? defaultSettingsPath();
-  const backupTicker = setInterval(() => {
-    void (async () => {
-      try {
-        const settings = await settingsGateway.get();
-        const tick = autoBackupTickOp(hostSettingsPath, {
-          auto: settings.backup?.auto,
-          intervalHours: settings.backup?.intervalHours,
-          keep: settings.backup?.keep,
-        });
-        if (tick.backedUp) {
-          process.stdout.write(`[backup] 周期自动备份完成（interval=${settings.backup?.intervalHours ?? 24}h）\n`);
-        }
-      } catch (e) {
-        process.stderr.write(`[backup] 周期自动备份失败：${e instanceof Error ? e.message : String(e)}\n`);
-      }
-    })();
-  }, 30 * 60_000);
-  backupTicker.unref?.();
+  createBackupTicker(deps.settingsGateway, hostSettingsPath);
   const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
   rl.on("line", (line) => {
     if (line.trim() === "/exit") {

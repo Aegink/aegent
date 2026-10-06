@@ -24,7 +24,8 @@ import { handles, makeUiFixture, startMemoryChild, fakeAgent, uiFixtures, type F
 import { HostServer, type HostServerHandle } from "./server.js";
 import type { EventStorage } from "../session/store.js";
 import type { AgentChannel } from "./bridge.js";
-import { createServer as createHttpServer, type Server as HttpServer } from "node:http";
+import { createServer as createHttpServer, request as httpRequest, type Server as HttpServer } from "node:http";
+import { createHmac } from "node:crypto";
 
 const settingsTmpDirs: string[] = [];
 let settingsCallSeq = 1;
@@ -45,6 +46,8 @@ async function startServer(options: {
   workspaceRoot?: string;
   contextWindow?: number;
   notifyHub?: NotificationHub;
+  webhookToken?: string;
+  webhookSecret?: string;
 }): Promise<{ handle: HostServerHandle; port: number }> {
   const uiDir = makeUiFixture();
   uiFixtures.push(uiDir);
@@ -59,6 +62,8 @@ async function startServer(options: {
     ...(options.workspaceRoot !== undefined ? { workspaceRoot: options.workspaceRoot } : {}),
     ...(options.contextWindow !== undefined ? { contextWindow: options.contextWindow } : {}),
     ...(options.notifyHub !== undefined ? { notifyHub: options.notifyHub } : {}),
+    ...(options.webhookToken !== undefined ? { webhookToken: options.webhookToken } : {}),
+    ...(options.webhookSecret !== undefined ? { webhookSecret: options.webhookSecret } : {}),
   });
   const handle = await server.start();
   handles.push(handle);
@@ -1517,3 +1522,49 @@ process.stdin.on("data", (c) => {
   });
 });
 
+
+// ---------------------------------------------------------------------------
+// C5 补口：webhook 入站触发（S2 装配面）——token 门控路由 + payload 投递
+// ---------------------------------------------------------------------------
+
+describe("C5 · webhook 入站触发", () => {
+    const post = (port: number, path: string, body: string, headers: Record<string, string> = {}) =>
+      new Promise<{ status: number; body: string }>((resolve, reject) => {
+        const r = httpRequest(
+          { host: "127.0.0.1", port, path, method: "POST", headers: { "content-type": "application/json", ...headers } },
+          (res: import("node:http").IncomingMessage) => {
+            let b = "";
+            res.on("data", (c: Buffer) => { b += c.toString("utf8"); });
+            res.on("end", () => resolve({ status: res.statusCode ?? 0, body: b }));
+          },
+        );
+        r.on("error", reject);
+        r.end(body);
+      });
+  const sign = (secret: string, body: string) =>
+    `sha256=${createHmac("sha256", secret).update(Buffer.from(body)).digest("hex")}`;
+
+  it("POST /webhook/<token> 的 {prompt} 经 sendSystemPrompt 投递主会话；错 token 401", async () => {
+    const agent = fakeAgent();
+    const { port } = await startServer({ agent, webhookToken: "tok-123", webhookSecret: "sec-abc" });
+    const body = JSON.stringify({ prompt: "webhook 触发一轮" });
+    const ok = await post(port, "/webhook/tok-123", body, { "x-signature": sign("sec-abc", body) });
+    expect(ok.status).toBe(202);
+    await new Promise((r) => setTimeout(r, 30));
+    const prompt = agent.sent.find((r) => r.type === "prompt");
+    expect(prompt !== undefined && prompt.content === "webhook 触发一轮").toBe(true);
+    // 错 token → 401（恒定时间比对）；无 prompt 载荷 → 400 不投递
+    const bad = await post(port, "/webhook/wrong", body);
+    expect(bad.status).toBe(401);
+    const emptyBody = JSON.stringify({ nope: 1 });
+    const empty = await post(port, "/webhook/tok-123", emptyBody, { "x-signature": sign("sec-abc", emptyBody) });
+    expect(empty.status).toBe(400);
+  }, 15000);
+
+  it("无 token 装配：/webhook/ 前缀不挂载（落静态面）", async () => {
+    const { port } = await startServer({ agent: fakeAgent() });
+    const res = await post(port, "/webhook/anything", "{}");
+    expect(res.status).not.toBe(202);
+    expect([404, 405, 501]).toContain(res.status);
+  }, 15000);
+});

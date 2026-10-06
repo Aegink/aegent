@@ -4,6 +4,10 @@
  * 与透传子进程的 childArgs 分流（agent-child parseArgs 消费）。
  */
 
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { createSessionId, isValidSessionId } from "../session/session-id.js";
 
 export interface HostServerArgv {
@@ -69,4 +73,88 @@ export function parseHostServerArgv(
 export function resolveContextWindow(launchArgs: readonly string[]): number {
   const i = launchArgs.indexOf("--context-window");
   return i >= 0 && i + 1 < launchArgs.length ? Number(launchArgs[i + 1]) || 200_000 : 200_000;
+}
+
+/** 仓库根的 ui/ 缺省位（自 server.ts 搬入——行数纪律位；dist/src/host 上溯
+ * 三级，与本文件同目录故 import.meta.url 定位不变）。 */
+export function defaultUiDir(): string {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  // 便携 bundle 运行（host.cjs 旁的 ui/——build-host-bundle 布局）优先；
+  // 源码/dist 运行 = dist/src/host 上跳三级到仓库根 ui。裸 host.cjs 是
+  // 合法运行形态（无壳 --ui 旗标时的静态面——批次 6 走查实抓 404）。
+  const portableUi = path.resolve(here, "ui");
+  if (fs.existsSync(portableUi)) return portableUi;
+  return path.resolve(here, "..", "..", "..", "ui");
+}
+
+/** 仓库根的 agent-child 编译产物位（dist/src/host 旁：../kernel）。 */
+export function defaultAgentChildEntry(): string {
+  return path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "kernel",
+    "agent-child.js",
+  );
+}
+
+/** workspace 根解析（自 server.ts main 下沉）：launchArgs 的 --workspace >
+ * 进程 cwd（子进程缺省语义同款）。 */
+export function resolveWorkspaceRoot(launchArgs: readonly string[]): string {
+  const i = launchArgs.indexOf("--workspace");
+  return i >= 0 && i + 1 < launchArgs.length ? (launchArgs[i + 1] as string) : process.cwd();
+}
+
+/** host 进程用法文本（--help 面——main 消费）。 */
+export const HOST_HELP_TEXT = [
+  "aegent host —— 端间协议传输落点（WS over TCP）",
+  "用法：host.cjs [--port <n>] [--session <id>] [--ui <dir>] [--host-db <path>]",
+  "       [--workspace <dir>] [--settings <path>] [--agent-entry <path>]",
+  "       [--context-window <n>] （其余旗标透传 agent 子进程）",
+].join("\n") + "\n";
+
+/**
+ * host 生产装配段（自 server.ts main 下沉：行数纪律拆分）——settings/
+ * 凭据/launchArgs/事件库/workspace 根/设置网关的一次性构建（U1/U2/T-P3-172
+ * 语义原样搬运）。
+ */
+export async function resolveHostProductionDeps(parsed: HostServerArgv): Promise<{
+  credentials: import("../session/credentials.js").CredentialStore;
+  sqliteStorage?: import("../session/db.js").SqliteEventStorage;
+  workspaceRoot: string;
+  settingsGateway: import("./settings-gateway.js").FileSettingsGateway;
+  childArgs: string[];
+}& { settings: import("../session/settings.js").SettingsShape } > {
+  const { createCredentialStore } = await import("../session/credentials.js");
+  const { loadSettings, resolveChildLaunchArgv, defaultSettingsPath } = await import("../session/settings.js");
+  const { SqliteEventStorage } = await import("../session/db.js");
+  const { FileSettingsGateway } = await import("./settings-gateway.js");
+  const { InMemoryEventStorage } = await import("../session/store.js");
+  const credentials = createCredentialStore(process.env["AEGENT_CREDENTIALS"] || undefined);
+  const { settings } = await loadSettings(parsed.settingsPath);
+  const providerFree =
+    !parsed.childArgs.includes("--provider") &&
+    (process.env["AEGENT_PROVIDER"] === undefined || process.env["AEGENT_PROVIDER"] === "");
+  let credentialKey: string | undefined;
+  if (providerFree && settings.defaultProvider !== undefined) {
+    credentialKey = await credentials.getKey(settings.defaultProvider);
+  }
+  const { args: launchArgs } = resolveChildLaunchArgv(parsed.childArgs, process.env, settings, { credentialKey });
+  const sqliteStorage =
+    parsed.hostDbPath !== undefined ? SqliteEventStorage.open({ path: parsed.hostDbPath }) : undefined;
+  const workspaceRoot = resolveWorkspaceRoot(launchArgs);
+  const settingsGateway = new FileSettingsGateway(
+    parsed.settingsPath ?? defaultSettingsPath(),
+    credentials,
+    undefined,
+    sqliteStorage,
+    workspaceRoot,
+  );
+  return {
+    settings,
+    credentials,
+    ...(sqliteStorage !== undefined ? { sqliteStorage } : {}),
+    workspaceRoot,
+    settingsGateway,
+    childArgs: [...launchArgs, ...(parsed.settingsPath !== undefined ? ["--settings", parsed.settingsPath] : [])],
+  };
 }
