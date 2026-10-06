@@ -1214,6 +1214,13 @@ code,
   align-items: center;
   gap: var(--space-2);
   margin-left: auto;
+  flex: none; /* 长模型名撑宽 tabs 时右侧动作区不得被 flex 挤没（用户实测：超长模型名 → 发送/语音/导出钮全消失） */
+}
+
+/* 模型 pill 限宽截断（图标保留、超出裁切——title 已有完整名） */
+#model-pill {
+  max-width: 300px;
+  overflow: hidden;
 }
 
 .composer-hint {
