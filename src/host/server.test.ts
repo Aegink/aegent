@@ -383,6 +383,7 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
       },
     });
     expect(updated.ok).toBe(true);
+    console.log("UPDATED-ENVELOPE:", JSON.stringify(updated).slice(0, 300));
     const merged = (updated.result as { settings: { defaultProvider?: string; appearance?: { theme?: string } } }).settings;
     expect(merged.defaultProvider).toBe("main");
     expect(merged.appearance?.theme).toBe("light");

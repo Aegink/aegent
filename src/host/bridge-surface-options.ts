@@ -122,9 +122,13 @@ export function buildSurfaceServerOptions(
       // C1：定时任务管理族（调度域——scheduler-ops 模块级运行时句柄）
       const schedulerOp = trySchedulerSettingsOp(call);
       if (schedulerOp !== undefined) return schedulerOp;
-      // C10：会话协作发起/取消族（协作域——collab-runtime 模块级句柄）
-      const collabOp = tryCollabSettingsOp(call);
-      if (collabOp !== undefined) return collabOp;
+      // C10：会话协作发起/取消族（协作域——collab-runtime 模块级句柄）。
+      // **op 前置判断**：tryCollabSettingsOp 是 async 函数——调用恒返回
+      // Promise（永不为 undefined），直接 `!== undefined` 判定会把所有
+      // settings op 劫持成 undefined 回执（server.test 六用例实锤）。
+      if (call.op === "collab-dispatch" || call.op === "collab-cancel") {
+        return tryCollabSettingsOp(call);
+      }
       if (call.op === "skills-list") return gateway.skillsList();
       if (call.op === "skill-save") return gateway.skillSave(call.skill!);
       // T-P3-144：技能导入扫描/执行 + 删除/Reveal（护栏与复制在域文件）

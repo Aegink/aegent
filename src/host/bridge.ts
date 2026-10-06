@@ -72,10 +72,14 @@ export class HostBridge implements SessionRouter {
   private readonly pendingPrompts = new Map<string, Map<string, (value: unknown) => void>>();
   private readonly lastPendingPromptIds = new Map<string, string | undefined>();
   private readonly pendingPolishes = new Map<string, (value: unknown) => void>();
-  /** T-P3-170：懒派生的非主会话通道池（主会话通道在 options.agent——进程生命周期与 host 同步）。 */
+  /** T-P3-170：per-session 通道池——**主会话也入池**（结构性设置热加载
+   * 需要 kill→重派生主 child；池化死亡自动重派生语义统一）。 */
   private readonly channels = new Map<string, AgentChannel>();
   /** T-P3-173（并发差距补全 B4）：池内通道最后活跃时刻（空闲回收判据）。 */
   private readonly channelLastActive = new Map<string, number>();
+  /** 热加载 busy 判据：进行中的用户轮（turn/start 入、turn/end 出——
+   * recycle 跳过 busy 会话，绝不杀正在执行的 child）。 */
+  private readonly activeTurns = new Set<string>();
   /** T-P3-173：空闲回收定时器（idleReaper——30min 无消息且无在途 prompt）。 */
   private readonly idleReaper: ReturnType<typeof setInterval>;
   /** U10 ready 捕获清单（工具/技能/prompts——/ 补全来源）。 */
@@ -84,13 +88,17 @@ export class HostBridge implements SessionRouter {
 
   constructor(private readonly options: HostBridgeOptions) {
     // agent 消息泵：event → 会话事件广播；审批/提问 → notification 广播。
-    // 主会话通道在此起泵；T-P3-170 池化通道的泵在 channelFor 懒派生时起。
+    // 主会话通道入池后起泵（死亡 finally 摘池——channelFor 经 agentFactory
+    // 重派生，结构性设置热加载依赖该路径）；T-P3-170 池化通道的泵同款。
+    this.channels.set(this.options.host.sessionId, options.agent);
     this.unconsumed = this.pumpSession(this.options.host.sessionId, options.agent)
       .catch(() => {})
       .finally(() => {
         // T-P3-147（走查实录）：主 agent 通道死亡后未决 prompt/polish 不类型化
         // 拒绝将永久挂起——child 死 = 后续请求必死，全部立即回执类型化失败。
         this.rejectPendingOf(this.options.host.sessionId);
+        this.activeTurns.delete(this.options.host.sessionId);
+        this.channels.delete(this.options.host.sessionId); // 入池后死亡摘池——channelFor 重派生
         for (const resolve of this.pendingPolishes.values()) {
           resolve({ type: "polish_result", requestId: "", ok: false, error: "agent 进程已退出" });
         }
@@ -103,6 +111,7 @@ export class HostBridge implements SessionRouter {
       const idleMs = 30 * 60_000;
       const now = Date.now();
       for (const [sid, channel] of [...this.channels.entries()]) {
+        if (sid === this.options.host.sessionId) continue; // 主会话豁免空闲回收
         const last = this.channelLastActive.get(sid) ?? now;
         const hasPending = (this.pendingPrompts.get(sid)?.size ?? 0) > 0;
         if (!hasPending && now - last > idleMs) {
@@ -134,11 +143,11 @@ export class HostBridge implements SessionRouter {
     this.lastPendingPromptIds.delete(sessionId);
   }
 
-  /** 会话通道取用面：主会话走 options.agent（生命周期同步）；其余会话经
-   *  agentFactory 懒派生并入池（child 崩溃即从池摘除——下次请求重派生，
-   *  新 child 靠 --db 持久恢复历史）。 */
+  /** 会话通道取用面：全部会话走池（主会话构造时入池——死亡重派生语义
+   * 统一，结构性设置热加载依赖）；无 agentFactory 的测试装配兜底直返
+   * options.agent。 */
   private channelFor(sessionId: string): AgentChannel {
-    if (sessionId === this.options.host.sessionId || this.options.agentFactory === undefined) {
+    if (this.options.agentFactory === undefined) {
       return this.options.agent;
     }
     let channel = this.channels.get(sessionId);
@@ -147,10 +156,39 @@ export class HostBridge implements SessionRouter {
       this.channels.set(sessionId, channel);
       void this.pumpSession(sessionId, channel).catch(() => {}).finally(() => {
         this.rejectPendingOf(sessionId);
+        this.activeTurns.delete(sessionId);
         this.channels.delete(sessionId);
       });
     }
     return channel;
+  }
+
+  /**
+   * 结构性设置热加载（用户裁决"可变动项实时热加载"）：回收**空闲** child
+   * （busy = 有进行中轮或在途 prompt 的会话绝不杀）——下次请求 channelFor
+   * 重派生新 child，启动时烘焙的配置（工具注册/后端/computerUse/mcp/
+   * plugins/预设/供应商清单）全部按最新 settings 生效。返回回收数。
+   */
+  recycleIdleChannels(): number {
+    let recycled = 0;
+    for (const [sid, channel] of [...this.channels.entries()]) {
+      const busy = this.activeTurns.has(sid) || (this.pendingPrompts.get(sid)?.size ?? 0) > 0;
+      if (busy) continue;
+      this.channels.delete(sid);
+      this.channelLastActive.delete(sid);
+      this.activeTurns.delete(sid);
+      this.rejectPendingOf(sid);
+      const killable = channel as Partial<{ kill: () => Promise<void> | void }>;
+      if (typeof killable.kill === "function") {
+        try {
+          void killable.kill();
+        } catch {
+          /* 幂等——杀失败留自然退出 */
+        }
+      }
+      recycled += 1;
+    }
+    return recycled;
   }
 
   /** T-P3-170：stop 收束面——杀掉全部池化 child（主 agent 由 server.stop 直杀）。 */
@@ -194,6 +232,9 @@ export class HostBridge implements SessionRouter {
       return;
     }
     if (message.type === "event") {
+      // 热加载 busy 判据：进行中轮跟踪（turn/start 入、turn/end 出）
+      if (message.event.type === "turn/start") this.activeTurns.add(sessionId);
+      if (message.event.type === "turn/end") this.activeTurns.delete(sessionId);
       for (const listener of this.listeners) listener(sessionId, message.event);
       if (message.event.type === "turn/end") {
         this.options.notifyHub?.publish("turn_settled", {

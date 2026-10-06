@@ -43,6 +43,13 @@ export async function flushSettings() {
     setSettingsCache(envelope.result.settings);
     applyTheme(settingsCache.appearance?.theme);
     rebuildKeymap(); // U25：shortcuts 段保存后键位同步
+    // 热加载提示：结构性段变更 → host 已回收空闲会话进程（回执 hotReloaded
+    // = 回收数）——下轮对话自动按新配置重派生，无需手动新建会话
+    const hotReloaded = envelope.result?.hotReloaded ?? 0;
+    if (hotReloaded > 0) {
+      const { toast } = await import("../feedback.js");
+      toast(`设置已保存——${hotReloaded} 个会话已重载，下轮对话生效`, "info");
+    }
     // T-P3-137：保存成功即分节列表刷新——settingsCache 已被服务端回包整体
     // 替换（元素对象全新），持有旧行引用的列表必须重渲（闭包引用失效类
     // bug 的根治点——如供应商列表上移/下移后消失）。只刷列表不回填表单

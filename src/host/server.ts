@@ -46,6 +46,7 @@ import { NotificationHub } from "./notify.js";
 import { disposeAllTerminals, reapIdleTerminals, setTerminalNotifier } from "./terminal-ops.js";
 import { createAutomationRuntime } from "./automation-runtime.js";
 import { createCollabRuntime, setCollabRuntime } from "./collab-runtime.js";
+import { setStructuralReload } from "./settings-plugin-ops.js";
 import { HostRegistry } from "./registry.js";
 import { createTitleServiceFromOptions } from "./title-service.js";
 import { makeProjectAttacher } from "./settings-project-ops.js";
@@ -171,6 +172,9 @@ export class HostServer {
     const hubUnsub = this.options.notifyHub?.subscribe((n) => {
       bridge.notifyAll("n5", n);
     });
+    // 结构性设置热加载装配（update op 命中结构性段 → 回收空闲 child——
+    // 下轮对话重派生即生效，同对话无需手动新建）
+    setStructuralReload(() => bridge.recycleIdleChannels());
     // C1/C5 装配下沉 automation-runtime.ts（行数纪律拆分）——cron 调度 +
     // webhook 入站触发共用 host 内部投递通道（sendSystemPrompt）；无
     // --host-db 不装配 cron，无 webhookToken 不挂 /webhook/ 路由。

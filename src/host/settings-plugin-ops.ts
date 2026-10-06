@@ -148,6 +148,30 @@ import type { SettingsCall } from "./protocol-settings.js";
  * bridge 的插件/市场族 op 分发（一行收敛面）：命中返回 Promise 结果，
  * 未命中返回 undefined（回落 gateway 既有链）。载荷按 op 闭集取值。
  */
+// ---------------------------------------------------------------------------
+// 结构性设置热加载（用户裁决"全项目可变动项实时热加载"）
+// ---------------------------------------------------------------------------
+
+/**
+ * 结构性段闭集：这些段的变更改变 child 启动时烘焙的装配面（工具注册/
+ * 子代理后端/computerUse/mcp 连接/plugins/预设清单/供应商注册表/skills/
+ * enhancement 链/网络与沙箱结构）——保存后回收空闲 child，下轮对话重
+ * 派生即生效（同对话无需手动新建）。不在集内的段（chat/appearance/
+ * logging 等）本就活读或已有专通道（config/refresh 五键 / logging 热更）。
+ */
+export const STRUCTURAL_HOT_RELOAD_SECTIONS = [
+  "providers", "defaultProvider", "defaultModel", "subagentBackend",
+  "computerUse", "mcp", "plugins", "subagents", "skills", "enhancement",
+  "network", "sandbox",
+] as const;
+
+let structuralReload: (() => number) | undefined;
+
+/** server 装配注入（bridge.recycleIdleChannels——bridge 构造先于本 setter 可用）。 */
+export function setStructuralReload(fn: (() => number) | undefined): void {
+  structuralReload = fn;
+}
+
 export function tryPluginSettingsOp(
   gateway: SettingsGateway,
   call: SettingsCall,
@@ -180,11 +204,16 @@ export function tryPluginSettingsOp(
         return result;
       })();
     case "update":
-      // settings 段级更新——plugins 段落盘即热重载（安装/启停/移除共用通道）
+      // settings 段级更新——plugins 段落盘即热重载（安装/启停/移除共用通道）；
+      // 结构性段命中 → 回收空闲 child（hotReloaded = 回收数——UI 提示"下轮对话生效"）
       return (async () => {
         const settings = await gateway.update(call.patch ?? {});
         if (call.patch !== undefined && "plugins" in call.patch) onPluginsMutated?.();
-        return { settings };
+        const structural =
+          call.patch !== undefined &&
+          Object.keys(call.patch).some((s) => (STRUCTURAL_HOT_RELOAD_SECTIONS as readonly string[]).includes(s));
+        const hotReloaded = structural ? (structuralReload?.() ?? 0) : 0;
+        return { settings, ...(hotReloaded > 0 ? { hotReloaded } : {}) };
       })();
     default:
       return undefined;
