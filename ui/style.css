@@ -1132,6 +1132,32 @@ code,
   color: var(--text-subtle);
 }
 
+/* —— 横向溢出护栏（用户实测反馈轮五：task 长 prompt 把对话流摘要行与
+ * 子代理面板内容双双撑出视口；同类问题全项目收口——四类容器统一约束） —— */
+/* ① 对话流：任何行内长 JSON/长 URL 不得横向撑破（换行优先于裁切） */
+#stream .line {
+  overflow-wrap: anywhere;
+}
+/* ② 工具卡摘要行：summary 允许收缩（flex 链截断的缺失一环），args 行兜底 */
+.tool-card summary {
+  min-width: 0;
+}
+#stream .tool-args,
+.pane-body .tool-args {
+  max-width: 100%;
+}
+/* ③ 展开参数/结果 pre：换行渲染（默认 pre 不换行 = 撑宽父级的根因） */
+#stream pre,
+.pane-body pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 100%;
+}
+/* ④ 右侧面板体：内容一律不横向撑破面板 */
+.pane-body {
+  overflow-x: hidden;
+}
+
 .card button {
   padding: 3px 14px;
   margin-right: 8px;
