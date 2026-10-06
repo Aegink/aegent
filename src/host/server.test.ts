@@ -677,6 +677,15 @@ describe("K5/T-P1-128 · host server（WS 传输定形）", () => {
     expect(listedIds).toContain("s-old2");
     expect(sessions.find((s) => s.sessionId === "s-old1")?.title).toBe("历史会话一");
 
+    // 多会话编排标志（v9 session_origins）：血统行 → 清单附 orchestratedFrom
+    // （普通会话不带键——"因协作而创建"与"被协作过"是两类事实）
+    sessionDb.setSessionOrigin("s-old2", "s-old1");
+    const relistedFlag = await queryCall({ sessionId: "-", op: "sessions" });
+    expect(relistedFlag.ok).toBe(true);
+    const flagged = (relistedFlag.result as { sessions: { sessionId: string; orchestratedFrom?: string }[] }).sessions;
+    expect(flagged.find((s) => s.sessionId === "s-old2")?.orchestratedFrom).toBe("s-old1");
+    expect(flagged.find((s) => s.sessionId === "s-old1")?.orchestratedFrom).toBeUndefined();
+
     // events 任意会话只读（历史查看入口——写命令仍限本会话）
     const view = await queryCall({ sessionId: "s-old1", op: "events" });
     expect(view.ok).toBe(true);

@@ -160,6 +160,20 @@ CREATE TABLE IF NOT EXISTS import_registry (
 );
 `;
 
+/**
+ * v8→v9：编排子会话血统表（多会话编排——pi-desktop 同构语义的标记位）。
+ * 记录"哪些会话是编排派生的 + 父会话是谁"——与 session/collab receive 事件
+ * 的区别：receive 只证明"被协作过"（已有会话也可被协作），本表证明"因协作
+ * 而创建"（清单标志的权威面——任务栏"子会话"badge 的数据源）。
+ */
+export const SCHEMA_V9_ORIGINS_DDL = `
+CREATE TABLE IF NOT EXISTS session_origins (
+    session_id         TEXT    PRIMARY KEY,
+    parent_session_id  TEXT    NOT NULL,
+    created_ts         INTEGER NOT NULL
+);
+`;
+
 export const MIGRATIONS: readonly SchemaMigration[] = [
   { from: 0, to: 1, apply: applyBaseSchema },
   {
@@ -222,6 +236,13 @@ export const MIGRATIONS: readonly SchemaMigration[] = [
     to: 8,
     apply: (db) => {
       db.exec(SCHEMA_V8_IMPORT_REGISTRY_DDL);
+    },
+  },
+  {
+    from: 8,
+    to: 9,
+    apply: (db) => {
+      db.exec(SCHEMA_V9_ORIGINS_DDL);
     },
   },
 ];

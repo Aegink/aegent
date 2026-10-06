@@ -16,6 +16,7 @@
  * 目标流最近一条 assistant/message。
  */
 
+import { randomUUID } from "node:crypto";
 import type { CollabEvent } from "../kernel/events.js";
 import { CollaborationService, type CollabExecutor } from "../session/collaboration.js";
 import type { CollabKind, CollabPermissionCeiling } from "../kernel/events.js";
@@ -53,6 +54,10 @@ export interface CollabRuntime {
     kind: CollabKind;
     content: string;
     notifyOnCompletion?: boolean;
+    /** 多会话编排（pi-desktop 同构）：true = 先创建真实新会话再派发——
+     * 项目继承源会话、血统落 session_origins（任务栏"子会话"标志数据源）、
+     * 标题秒级可读；targetSessionId 届时仅作占位被替换。 */
+    createNew?: boolean;
   }): Promise<string>;
   cancel(collabId: string): boolean;
 }
@@ -150,17 +155,45 @@ export function createCollabRuntime(options: CollabRuntimeOptions): CollabRuntim
 
   return {
     dispatch: async (request) => {
+      // 多会话编排创建（先于 service.dispatch——COLLAB_TARGET_MISSING 纪律
+      // 不破：service 继续只认已存在目标，"因协作而创建"是装配层的有意例外）。
+      let targetSessionId = request.targetSessionId;
+      if (request.createNew === true) {
+        targetSessionId = createOrchestrationSession(options, request.sourceSessionId, request.content);
+      }
       const mode = options.getPermissionMode !== undefined ? await options.getPermissionMode() : undefined;
       const collabId = service.dispatch({
         ...request,
+        targetSessionId,
         permissionCeiling: permissionModeToCeiling(mode),
       });
-      targetOf.set(collabId, request.targetSessionId);
-      void pump(request.targetSessionId);
+      targetOf.set(collabId, targetSessionId);
+      void pump(targetSessionId);
       return collabId;
     },
     cancel: (collabId) => service.cancel(collabId),
   };
+}
+
+/** 编排子会话创建（pi-desktop 多会话编排的"真实独立 Session"语义）：
+ * 空会话即落库（task-create 同款毫秒级可见）+ 项目继承源会话 + 血统标记 +
+ * 秒级标题（首行截断——清单立即可读，不等自动命名）。 */
+function createOrchestrationSession(
+  options: CollabRuntimeOptions,
+  sourceSessionId: string,
+  content: string,
+): string {
+  const db = options.sessionsLibrary;
+  if (db === undefined) {
+    throw new Error("编排创建需要权威会话库（sessionsLibrary 未装配）");
+  }
+  const sessionId = randomUUID();
+  db.createSession(sessionId);
+  const projectId = db.getSessionProject(sourceSessionId);
+  if (projectId !== undefined) db.setSessionProject(sessionId, projectId);
+  db.setSessionOrigin(sessionId, sourceSessionId);
+  db.setTitle(sessionId, `协作：${content.split("\n")[0]?.slice(0, 40) ?? ""}`, "generated");
+  return sessionId;
 }
 
 // ---------------------------------------------------------------------------
@@ -183,6 +216,7 @@ export async function tryCollabSettingsOp(call: SettingsCall): Promise<unknown> 
       targetSessionId: call.targetSessionId!,
       kind: call.kind as CollabKind,
       content: call.content!,
+      ...(call.createNew === true ? { createNew: true } : {}),
     });
     return { collabId };
   }

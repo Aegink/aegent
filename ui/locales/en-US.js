@@ -167,6 +167,8 @@ export const MESSAGES = {
   "没有可选的目标会话（历史会话清单为空）": "No target session available (session list is empty)",
   "内容不能为空": "Content must not be empty",
   "已派发：{id}——排队/执行状态见下表": "Dispatched: {id} — see the table below for queue/execution status",
+  "新建子会话（编排派生）": "New sub-session (orchestrated)",
+  "已创建子会话并派发：{id}——任务栏见\"子会话\"标志，状态见下表": "Sub-session created and dispatched: {id} — look for the \"sub-session\" badge in the task list; status in the table below",
   "派发失败：{msg}": "Dispatch failed: {msg}",
   "未知错误": "Unknown error",
   // —— index.html 骨架残余键（i18n-check 扫描补录） ——

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentMessage, AgentRequest } from "../kernel/agent-protocol.js";
 import { SessionStore } from "../session/store.js";
 import { CollaborationError } from "../session/collaboration.js";
+import { SqliteEventStorage } from "../session/db.js";
 import { HostBridge } from "./bridge.js";
 import {
   createCollabRuntime,
@@ -84,7 +85,7 @@ function makeFixture() {
     bridge,
     store,
   });
-  return { runtime, store, main, target, factoryCalls, broadcast };
+  return { runtime, store, main, target, factoryCalls, broadcast, bridge };
 }
 
 describe("collab-runtime（C10 生产装配）", () => {
@@ -152,6 +153,82 @@ describe("collab-runtime（C10 生产装配）", () => {
     expect(permissionModeToCeiling("read-only")).toBe("ask");
     expect(permissionModeToCeiling("unattended")).toBe("ask");
     expect(permissionModeToCeiling(undefined)).toBe("ask");
+  });
+});
+
+describe("多会话编排创建（createNew——pi-desktop 同构）", () => {
+  function makeLibraryFixture() {
+    const library = SqliteEventStorage.open({ path: ":memory:" });
+    const base = makeFixture();
+    const runtime = createCollabRuntime({
+      bridge: base.bridge,
+      store: base.store,
+      sessionsLibrary: library,
+    });
+    return { ...base, runtime, library };
+  }
+
+  it("createNew=true：先创建真实新会话（血统/秒级标题/项目继承）再派发——receive 落新流且 pump 到新会话", async () => {
+    const { runtime, store, target, factoryCalls, library } = makeLibraryFixture();
+    library.setSessionProject("s-main", "proj-1");
+
+    target.onSend = (request) => {
+      expect(request.type).toBe("prompt");
+      target.push({ type: "event", event: makeEvent("step/start", 1) as never });
+      target.push({ type: "event", event: makeEvent("assistant/message", 1) as never });
+      target.push({ type: "event", event: makeEvent("turn/end", 1) as never });
+    };
+    const collabId = await runtime.dispatch({
+      sourceSessionId: "s-main",
+      targetSessionId: "new",
+      kind: "task",
+      content: "统计工作区当前目录的测试用例数",
+      createNew: true,
+    });
+    expect(collabId).toMatch(/^collab-/);
+
+    // 新会话真实落库（毫秒级可见语义）+ 血统/标题/项目三面
+    const origins = library.listSessionOrigins();
+    expect(origins).toHaveLength(1);
+    const newSid = origins[0]!.sessionId;
+    expect(origins[0]!.parentSessionId).toBe("s-main");
+    expect(newSid).not.toContain("::task-");
+    expect(library.getSessionProject(newSid)).toBe("proj-1");
+    expect(library.getTitle(newSid)?.title).toBe("协作：统计工作区当前目录的测试用例数");
+    expect(library.getTitle(newSid)?.source).toBe("generated");
+    // executor 泵到的是新会话（factory 收到新 id——真实独立会话被调度）
+    expect(factoryCalls).toContain(newSid);
+    // receive 事件落新会话流（协作事实 + peer=父会话）
+    const receive = store
+      .load(newSid)
+      .find((e) => e.type === "session/collab" && (e as { direction?: string }).direction === "receive");
+    expect(receive).toBeDefined();
+    expect((receive as { peerSessionId?: string }).peerSessionId).toBe("s-main");
+
+    // 等后台 pump 的 update/report 落完再关库（异步链晚于断言——
+    // 不等就 close 会产生写已关闭库的 Unhandled Rejection）
+    for (let i = 0; i < 100; i++) {
+      const statuses = store
+        .load(newSid)
+        .filter((e) => e.type === "session/collab")
+        .map((e) => (e as { status?: string }).status);
+      if (statuses.includes("completed")) break;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    library.close();
+  });
+
+  it("createNew 但缺权威库：类型化报错（不静默降级为普通派发）", async () => {
+    const { runtime } = makeFixture();
+    await expect(
+      runtime.dispatch({
+        sourceSessionId: "s-main",
+        targetSessionId: "new",
+        kind: "task",
+        content: "x",
+        createNew: true,
+      }),
+    ).rejects.toThrow(/编排创建需要权威会话库/);
   });
 });
 

@@ -303,14 +303,20 @@ export function buildCollabTable(report, onCancel) {
   return table;
 }
 
-/** C10：协作发起表单接线（目标下拉 + 派发提交；排队行取消在表格内）。 */
+/** C10：协作发起表单接线（目标下拉 + 派发提交；排队行取消在表格内）。
+ *  多会话编排（pi-desktop 同构）：目标下拉首项 = 新建子会话——派发即创建
+ *  真实独立新会话（进任务栏 + "子会话"标志），再投递协作任务。 */
 export async function wireCollabComposer(onSettled) {
   const targetSelect = document.getElementById("collab-target");
   if (targetSelect === null) return;
   const sessionsEnvelope = await sendQuery({ sessionId: getSessionId() || "-", op: "sessions" });
   const sessions = sessionsEnvelope?.ok ? (sessionsEnvelope.result?.sessions ?? []) : [];
   const current = getSessionId();
+  const newOption = document.createElement("option");
+  newOption.value = "__new__";
+  newOption.textContent = `🞊 ${t("新建子会话（编排派生）")}`;
   targetSelect.replaceChildren(
+    newOption,
     ...sessions
       .filter((s) => s.sessionId !== current)
       .map((s) => {
@@ -332,15 +338,21 @@ export async function wireCollabComposer(onSettled) {
       hint.textContent = t("内容不能为空");
       return;
     }
+    const createNew = targetSessionId === "__new__";
     const envelope = await sendSettings({
       op: "collab-dispatch",
       sourceSessionId: current,
-      targetSessionId,
+      // 编排创建：targetSessionId 传 "new" 占位（域校验非空即可），host 侧
+      // 创建真实新会话后替换
+      targetSessionId: createNew ? "new" : targetSessionId,
+      ...(createNew ? { createNew: true } : {}),
       kind: document.getElementById("collab-kind").value,
       content,
     });
     if (envelope.ok) {
-      hint.textContent = t("已派发：{id}——排队/执行状态见下表", { id: envelope.result?.collabId ?? "" });
+      hint.textContent = createNew
+        ? t("已创建子会话并派发：{id}——任务栏见\"子会话\"标志，状态见下表", { id: envelope.result?.collabId ?? "" })
+        : t("已派发：{id}——排队/执行状态见下表", { id: envelope.result?.collabId ?? "" });
       document.getElementById("collab-content").value = "";
     } else {
       hint.textContent = t("派发失败：{msg}", { msg: envelope.error?.message ?? t("未知错误") });

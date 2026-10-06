@@ -504,6 +504,27 @@ code,
   height: 11px;
 }
 
+/* 编排子会话 badge（多会话编排——pi-desktop"被调度 Session"侧栏标志：
+   gitBranch 小图标 + "子会话"微标，行内不换行不撑爆——溢出纪律同款） */
+.sb-sub-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--brand) 14%, transparent);
+  color: var(--brand);
+  font-size: 10px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.sb-sub-badge .icon-sm {
+  width: 9px;
+  height: 9px;
+}
+
 /* 两段式删除武装态（pi armedDelete——红底白字确认步） */
 .menu-item.armed {
   background: color-mix(in oklab, var(--destructive) 14%, transparent);

@@ -118,4 +118,25 @@ describe("SqliteEventStorage（E2）", () => {
     expect(storage.readAll("s-quiet")).toHaveLength(2);
     storage.close();
   });
+  it("编排子会话血统（v9 session_origins）：写入/查询/删除联动", () => {
+    const storage = SqliteEventStorage.open({ path: tempDbPath() });
+    try {
+      storage.createSession("s-parent");
+      storage.createSession("s-child");
+      expect(storage.getSessionOrigin("s-child")).toBeUndefined();
+      storage.setSessionOrigin("s-child", "s-parent");
+      // 幂等（INSERT OR IGNORE——重复写不换行）
+      storage.setSessionOrigin("s-child", "s-other");
+      expect(storage.getSessionOrigin("s-child")).toBe("s-parent");
+      expect(storage.listSessionOrigins()).toEqual([
+        { sessionId: "s-child", parentSessionId: "s-parent" },
+      ]);
+      // 删除会话血统行联动清除（无孤儿血统）
+      expect(storage.deleteSession("s-child")).toBe(true);
+      expect(storage.getSessionOrigin("s-child")).toBeUndefined();
+      expect(storage.listSessionOrigins()).toEqual([]);
+    } finally {
+      storage.close();
+    }
+  });
 });

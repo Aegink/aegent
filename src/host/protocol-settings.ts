@@ -180,6 +180,7 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     // C1 补口：cron 族载荷（expr=表达式/prompt=任务提示/id=任务 id）
     "expr",
     "sourceSessionId", "targetSessionId", "collabId", // C10 协作族（kind/content 走通用键）
+    "createNew", // 多会话编排（collab-dispatch——新建子会话派发）
   ]);
   if (unknownKey) throw new Error(`settings 信封${unknownKey}`);
   if (typeof record["requestId"] !== "string" || record["requestId"] === "") {
@@ -388,6 +389,8 @@ export function parseSettingsEnvelope(record: Record<string, unknown>): Settings
     ...(typeof record["sourceSessionId"] === "string" ? { sourceSessionId: record["sourceSessionId"] } : {}),
     ...(typeof record["targetSessionId"] === "string" ? { targetSessionId: record["targetSessionId"] } : {}),
     ...(typeof record["collabId"] === "string" ? { collabId: record["collabId"] } : {}),
+    // 多会话编排布尔（typeof 拷贝——只拷 true 吞 false 的坑同款规避）
+    ...(typeof record["createNew"] === "boolean" ? { createNew: record["createNew"] as boolean } : {}),
   };
 }
 

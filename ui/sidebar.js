@@ -621,6 +621,20 @@ function ensureRunTimeTicker() {
   }, 1000);
 }
 
+/** 编排子会话 badge（多会话编排——pi-desktop"被调度 Session 侧栏可见 +
+ * 有标志"同构）：orchestratedFrom 在场才渲染（血统权威面 = session_origins
+ * 表；与 task 子代理区分——::task- 内部会话已过滤，本 badge 只标编排派生）。 */
+function subSessionBadge(originFrom) {
+  const badge = document.createElement("span");
+  badge.className = "sb-sub-badge";
+  badge.replaceChildren(icon("gitBranch", { cls: "icon-sm" }));
+  const label = document.createElement("span");
+  label.textContent = "子会话";
+  badge.appendChild(label);
+  badge.title = `多会话编排派生的子会话（父：${String(originFrom).slice(0, 24)}…）`;
+  return badge;
+}
+
 function taskRow(task) {
   const row = document.createElement("div");
   row.className = "sb-task-row";
@@ -657,7 +671,7 @@ function taskRow(task) {
   const meta = document.createElement("span");
   meta.className = "sb-task-meta";
   meta.textContent = new Date(task.updatedTs).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
-  row.append(dot, title, ...(runTime !== null ? [runTime] : []), meta);
+  row.append(dot, ...(typeof task.orchestratedFrom === "string" ? [subSessionBadge(task.orchestratedFrom)] : []), title, ...(runTime !== null ? [runTime] : []), meta);
   if (isCurrent) row.classList.add("current");
   if (taskPinned(task.sessionId)) {
     // pi thread-item-pin：标题前置小图钉
@@ -919,7 +933,7 @@ function sessionRow(session, map) {
   const meta = document.createElement("span");
   meta.className = "sb-task-meta";
   meta.textContent = rowTimeLabel(session.updatedTs ?? 0);
-  row.append(dot, title, meta);
+  row.append(dot, ...(typeof session.orchestratedFrom === "string" ? [subSessionBadge(session.orchestratedFrom)] : []), title, meta);
   if (isCurrent) row.classList.add("current");
   if (taskPinned(session.sessionId)) {
     const pin = document.createElement("span");

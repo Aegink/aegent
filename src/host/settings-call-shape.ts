@@ -31,6 +31,9 @@ export type SettingsCall = {
   // C10：协作族载荷（op=collab-dispatch / collab-cancel）
   sourceSessionId?: string;
   targetSessionId?: string;
+  /** op=collab-dispatch：多会话编排——true = 创建真实新会话再派发
+   * （targetSessionId 传 "new" 占位，host 侧创建后替换）。 */
+  createNew?: boolean;
   collabId?: string;
   items?: SkillImportItem[];
   path?: string;

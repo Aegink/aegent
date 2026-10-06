@@ -29,6 +29,9 @@ export function projectTasksOp(
   const db = requireDb(sessionDb, "任务面");
   const summaries = [...db.listSessionSummaries(500)];
   const ownership = new Map(db.listSessionProjects().map((r) => [r.sessionId, r.projectId]));
+  // 编排子会话血统（v9 session_origins——"因协作而创建"）：任务行附
+  // orchestratedFrom=父会话 id（UI 渲染"子会话"badge；普通任务不标）。
+  const originOf = new Map(db.listSessionOrigins().map((o) => [o.sessionId, o.parentSessionId]));
   if (mirror !== undefined) {
     // T-P3-170：镜像折叠双用途——①镜像会话不在库索引时补整行（T-P3-164
     // 原语义）；②库行标题空（write-behind 窗口内首轮刚结算）时用镜像
@@ -71,6 +74,9 @@ export function projectTasksOp(
       createdTs: s.createdTs,
       updatedTs: s.updatedTs,
       eventCount: s.eventCount,
+      ...(originOf.get(s.sessionId) !== undefined
+        ? { orchestratedFrom: originOf.get(s.sessionId) }
+        : {}),
     }));
   return { projectId, tasks };
 }

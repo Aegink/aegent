@@ -15,7 +15,7 @@ import type { EventStorage } from "./store.js";
 import { isValidSessionId } from "./session-id.js";
 import { MIGRATIONS, planMigrationChain } from "./migrate.js";
 
-export const CURRENT_SCHEMA_VERSION = 8;
+export const CURRENT_SCHEMA_VERSION = 9;
 
 /** 归档后从主库读该会话的 fail-closed 拒绝（Q8/T-P2-102）——归档 ≠ 删除，
  * 数据在归档档（archive.ts 的 readArchivedSession 可查），主库读路径必须
@@ -246,6 +246,36 @@ export class SqliteEventStorage implements EventStorage {
       .run(sessionId, title, source, Date.now());
   }
 
+  /**
+   * 编排子会话血统（多会话编排——v9）：写入点 = 协作派发 createNew 创建
+   * 新会话时（collab-runtime）。与 session/collab receive 事件互补——receive
+   * 只证明"被协作过"，本表证明"因协作而创建"（任务清单"子会话"标志）。
+   */
+  setSessionOrigin(sessionId: string, parentSessionId: string): void {
+    this.db
+      .prepare(
+        "INSERT OR IGNORE INTO session_origins (session_id, parent_session_id, created_ts) VALUES (?, ?, ?)",
+      )
+      .run(sessionId, parentSessionId, Date.now());
+  }
+
+  /** 单会话血统查询（编排派生 → 父会话 id；非派生 = undefined）。 */
+  getSessionOrigin(sessionId: string): string | undefined {
+    const row = this.db
+      .prepare("SELECT parent_session_id FROM session_origins WHERE session_id = ?")
+      .get(sessionId) as { parent_session_id: string } | undefined;
+    return row?.parent_session_id;
+  }
+
+  /** 全量血统清单（sessions 清单标志的批量读面——一条 SQL 不逐会话查）。 */
+  listSessionOrigins(): Array<{ sessionId: string; parentSessionId: string }> {
+    return (
+      this.db
+        .prepare("SELECT session_id, parent_session_id FROM session_origins")
+        .all() as Array<{ session_id: string; parent_session_id: string }>
+    ).map((r) => ({ sessionId: r.session_id, parentSessionId: r.parent_session_id }));
+  }
+
 
   /**
    * U3/T-P3-105 单会话删除（CLI/UI 的删除入口——硬删除三表事务）。
@@ -263,6 +293,7 @@ export class SqliteEventStorage implements EventStorage {
       this.db.prepare("DELETE FROM session_titles WHERE session_id = ?").run(sid);
       this.db.prepare("DELETE FROM session_projects WHERE session_id = ?").run(sid);
       this.db.prepare("DELETE FROM import_registry WHERE session_id = ?").run(sid);
+      this.db.prepare("DELETE FROM session_origins WHERE session_id = ?").run(sid);
       this.db.prepare("DELETE FROM session_index WHERE session_id = ?").run(sid);
       this.db.prepare("DELETE FROM archived_sessions WHERE session_id = ?").run(sid);
       this.db.prepare("DELETE FROM sessions WHERE id = ?").run(sid);

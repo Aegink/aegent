@@ -78,7 +78,16 @@ export async function handleHostQuery(
   }
   if (query.op === "sessions") {
     const library = libraryOrThrow(deps.sessionsLibrary, "会话清单");
-    return { sessions: library.listSessionSummaries() };
+    // 多会话编排标志（v9 session_origins——"因协作而创建"）：派生会话行附
+    // orchestratedFrom=父会话 id，任务栏渲染"子会话"badge（普通协作/手动
+    // 任务不标——receive 事件只证明被协作过，本表才证明因协作而创建）。
+    const origins = new Map(library.listSessionOrigins().map((o) => [o.sessionId, o.parentSessionId]));
+    const sessions = library
+      .listSessionSummaries()
+      .map((s) =>
+        origins.has(s.sessionId) ? { ...s, orchestratedFrom: origins.get(s.sessionId) } : s,
+      );
+    return { sessions };
   }
   // U9/T-P3-108：跨会话检索（Q2 消费面）——只回命中摘要行（sessionId/
   // seq/type/ts/excerpt），不回事件整值（payload 全量不出检索面）。
