@@ -648,6 +648,12 @@ async function main(): Promise<void> {
             ...(judgeTarget !== undefined
               ? { judgeModel: { provider: judgeTarget.provider, identity: judgeTarget.identity } }
               : {}),
+            // H1/H4：task 工具注册开关（T-P3-146 "runner 恒建"——**生产装配
+            // 缺口修复**：本键此前缺失 → options.assembly?.subagent 恒
+            // undefined → subagentRuntime 恒不构造 → task 工具在生产从未
+            // 注册（与 view_image 附件 store 缺口同款"库面在位装配漏键"；
+            // 行为测试直构 runner 从不过此装配面故全绿）。maxDepth 缺省 1。）
+            subagent: {},
           },
         }
       : {}),

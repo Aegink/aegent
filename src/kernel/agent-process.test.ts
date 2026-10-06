@@ -1201,6 +1201,10 @@ describe("agent-process × ready 清单（U10/T-P3-109 补全来源）", () => {
         workspaceRoot: ws,
         contextWindow: 100_000,
         approvalTimeoutMs: 5_000,
+        // 因果断言面（pi-desktop O30"装配动作后在注册表查得到"）：subagent
+        // 开关在位 → task 必进 ready 清单——**生产装配缺口回归锚**（agent-child
+        // 曾漏传此键 → task 从未注册，行为测试直构 runner 从不暴露）
+        subagent: {},
       },
     });
 
@@ -1235,6 +1239,8 @@ describe("agent-process × ready 清单（U10/T-P3-109 补全来源）", () => {
     for (const name of ["read", "write", "bash", "edit", "glob", "grep"]) {
       expect(ready.tools ?? []).toContain(name);
     }
+    // task 因果断言（assembly.subagent 在位 → task 注册——生产装配缺口回归锚）
+    expect(ready.tools ?? []).toContain("task");
     expect((ready.skills ?? []).some((s) => s.name === "demo-skill" && s.description.includes("演示"))).toBe(true);
 
     input.write(`${JSON.stringify({ type: "dispose" })}

@@ -2652,7 +2652,8 @@ async function runTtsTest() {
 // ---------------------------------------------------------------------------
 
 /** C4：后端表单 DOM → settingsCache.subagentBackend（argv JSON 非法时
- * toast 提示且不写缓存——不发坏段）。 */
+ * toast 提示且不写缓存——不发坏段；acp 空 command 自动填便携自带
+ * acp-echo.cjs——**用户实测：静默拒保存曾让改动看起来"没有保存功能"**）。 */
 function persistSubagentBackend() {
   const backend = document.getElementById("subagent-backend-select").value;
   if (backend !== "acp") {
@@ -2661,12 +2662,17 @@ function persistSubagentBackend() {
     markDirty("subagentBackend");
     return;
   }
-  const rawCommand = document.getElementById("subagent-backend-command").value.trim();
+  const commandInput = document.getElementById("subagent-backend-command");
+  const rawCommand = commandInput.value.trim();
+  if (rawCommand === "") {
+    // 空 command = 自动填便携自带 echo agent（保存即可用——不静默拒绝）
+    commandInput.value = JSON.stringify(["node", "acp-echo.cjs", "--provider", "echo"]);
+  }
   let command;
   try {
-    command = JSON.parse(rawCommand);
+    command = JSON.parse(commandInput.value.trim());
   } catch {
-    toast("ACP 启动命令行须为合法 JSON 数组（如 [\"node\", \"acp-main.js\"]）", "warn");
+    toast("ACP 启动命令行须为合法 JSON 数组（如 [\"node\", \"acp-echo.cjs\"]）——已保留你的改动，修正后自动保存", "warn");
     return;
   }
   if (!Array.isArray(command) || command.length === 0 || command.some((c) => typeof c !== "string" || c.trim() === "")) {
