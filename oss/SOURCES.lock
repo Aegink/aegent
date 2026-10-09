@@ -1,28 +1,28 @@
 # 上游参考仓库快照
 
-> 由 `tools/snapshot.sh` 于 2026-09-28 生成，**请勿手改**。刷新：`bash tools/snapshot.sh`
+> 由 `tools/snapshot.sh` 于 2026-10-09 生成，**请勿手改**。刷新：`bash tools/snapshot.sh`
 >
 > 调研报告中引用代码或行为时，必须能对应到下表 commit，否则结论不可复现。
 
 | 目录 | 仓库 | Commit | 上游提交日 | 许可 | 体积 |
 |------|------|--------|-----------|------|------|
-| agentscope | modelscope/agentscope | `083cbd1` | 2026-09-23 | Apache-2.0 [LICENSE] | 27M |
-| cc-switch | farion1231/cc-switch | `f2537fd` | 2026-09-23 | MIT [LICENSE] | 79M |
-| codex | openai/codex | `40eac3c` | 2026-09-23 | Apache-2.0 [LICENSE] | 119M |
-| deepseek-harness | deepseek-ai/deepseek-harness | `0010283` | 2026-09-22 | MIT [LICENSE] | 162M |
-| grok-build | xai-org/grok-build | `07e35a3` | 2026-09-22 | Apache-2.0 [LICENSE] | 103M |
-| hermes-agent | NousResearch/hermes-agent | `54c5530` | 2026-09-23 | MIT [LICENSE] | 285M |
-| kimi-code | MoonshotAI/kimi-code | `32000d0` | 2026-09-23 | MIT [LICENSE] | 101M |
+| agentscope | modelscope/agentscope | `a833ab9` | 2026-10-09 | Apache-2.0 [LICENSE] | 28M |
+| cc-switch | farion1231/cc-switch | `c261126` | 2026-10-09 | MIT [LICENSE] | 102M |
+| codex | openai/codex | `64335d1a` | 2026-10-09 | Apache-2.0 [LICENSE] | 155M |
+| deepseek-harness | deepseek-ai/deepseek-harness | `d743267388` | 2026-10-09 | MIT [LICENSE] | 427M |
+| grok-build | xai-org/grok-build | `2bdd1d6` | 2026-09-29 | Apache-2.0 [LICENSE] | 118M |
+| hermes-agent | NousResearch/hermes-agent | `e0550c97bb` | 2026-10-09 | MIT [LICENSE] | 1.2G |
+| kimi-code | MoonshotAI/kimi-code | `419aced` | 2026-10-09 | MIT [LICENSE] | 106M |
 | mini-agent | MiniMax-AI/Mini-Agent | `d76a4f6` | 2026-02-14 | MIT [LICENSE] | 16M |
 | mini-swe-agent | SWE-agent/mini-swe-agent | `04d809c` | 2026-09-03 | MIT [LICENSE.md] | 2.9M |
-| opencode | anomalyco/opencode | `18ef3cc` | 2026-09-23 | MIT [LICENSE] | 219M |
-| pi-desktop | vastsa/PI-Desktop | `a634b68` | 2026-09-23 | LGPL (Version 3) [LICENSE] | 78M |
-| pi-mono | lue-labs/pi-mono | `8ca1d23` | 2026-09-22 | MIT [LICENSE] | 41M |
-| pi | earendil-works/pi | `b313731` | 2026-09-23 | MIT [LICENSE] | 37M |
-| pideck | ayuayue/PiDeck | `d1bd0c9` | 2026-09-23 | MIT [LICENSE] | 54M |
-| qwen-code | QwenLM/qwen-code | `40ef07a` | 2026-09-23 | Apache-2.0 [LICENSE] | 279M |
-| zcode | zai-org/ZCode | `872ad96` | 2026-09-21 | Apache-2.0 [LICENSE] | 122M |
-| claude-official | anthropics/claude-code | `56f3653` | 2026-09-22 | PROPRIETARY (保留所有权利，不可复制) [LICENSE.md] | 28M |
+| opencode | anomalyco/opencode | `3884062` | 2026-10-08 | MIT [LICENSE] | 215M |
+| pi-desktop | vastsa/PI-Desktop | `7949d6ff6` | 2026-10-09 | LGPL (Version 3) [LICENSE] | 163M |
+| pi-mono | lue-labs/pi-mono | `76ebd2336` | 2026-10-07 | MIT [LICENSE] | 109M |
+| pi | earendil-works/pi | `f1b2e77` | 2026-10-09 | MIT [LICENSE] | 42M |
+| pideck | ayuayue/PiDeck | `3b934683` | 2026-10-09 | MIT [LICENSE] | 149M |
+| qwen-code | QwenLM/qwen-code | `e3c5360e` | 2026-10-09 | Apache-2.0 [LICENSE] | 334M |
+| zcode | zai-org/ZCode | `29628c9` | 2026-09-24 | Apache-2.0 [LICENSE] | 127M |
+| claude-official | anthropics/claude-code | `e47cc82` | 2026-10-08 | PROPRIETARY (保留所有权利，不可复制) [LICENSE.md] | 30M |
 
 ## 许可分级（决定能否摘代码）
 
