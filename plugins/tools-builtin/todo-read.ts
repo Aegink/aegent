@@ -9,7 +9,7 @@
  */
 
 import { toolError } from "../../src/kernel/tools/builtin/util.js";
-import type { ToolDef } from "../../src/core/primitives/tools/registry.js";
+import type { ToolDef } from "../../src/core/index.js";
 
 export interface ProjectionTodo {
   content: string;

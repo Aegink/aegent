@@ -5,7 +5,7 @@
  */
 
 import { toolError } from "../../src/kernel/tools/builtin/util.js";
-import type { ToolDef } from "../../src/core/primitives/tools/registry.js";
+import type { ToolDef } from "../../src/core/index.js";
 
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"] as const;
 

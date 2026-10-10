@@ -13,7 +13,7 @@
  * 参数校验 fail-closed：形状坏 / 超上限返回 isError 回喂（模型可自修）。
  */
 
-import type { ToolDef } from "../../src/core/primitives/tools/registry.js";
+import type { ToolDef } from "../../src/core/index.js";
 import { toolError } from "../../src/kernel/tools/builtin/util.js";
 
 const TODO_STATUS_VALUES = ["pending", "in_progress", "completed"] as const;

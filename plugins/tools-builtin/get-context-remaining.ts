@@ -9,8 +9,8 @@
  * （turn 首次模型调用前 monitor 无历史——诚实降级而非 0）。
  */
 
-import type { ToolDef } from "../../src/core/primitives/tools/registry.js";
-import type { ToolExecutionResult } from "../../src/core/primitives/loop/loop.js";
+import type { ToolDef } from "../../src/core/index.js";
+import type { ToolExecutionResult } from "../../src/core/index.js";
 
 /** 上下文用量快照（装配注入——PressureMonitor 最后一条压力记录的投影）。 */
 export interface ContextUsageSnapshot {

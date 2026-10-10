@@ -7,8 +7,8 @@
  * 关键词检索不做——F12 最小面按名索取，检索式延迟加载是 F12 的扩展位）。
  */
 
-import type { ToolDef } from "../../src/core/primitives/tools/registry.js";
-import type { ToolRegistry } from "../../src/core/primitives/tools/registry.js";
+import type { ToolDef } from "../../src/core/index.js";
+import type { ToolRegistry } from "../../src/core/index.js";
 import { toolError } from "../../src/kernel/tools/builtin/util.js";
 
 export function createToolLoadTool(options: { registry: ToolRegistry }): ToolDef {

@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import type { SessionEvent } from "../../src/kernel/events.js";
 import { createTodoUpdateEmitter } from "../../src/kernel/assembly.js";
-import { ToolRegistry } from "../../src/core/primitives/tools/registry.js";
+import { ToolRegistry } from "../../src/core/index.js";
 import { createTodoWriteTool } from "./todo.js";
 import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../../src/session/store.js";
 import { project } from "../../src/session/project.js";

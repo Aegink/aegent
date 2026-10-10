@@ -26,3 +26,4 @@ export * from "./primitives/session/reference.js";
 export type { AgentLoopDeps, DecideTurn, StepRecord, ToolExecutionMode, TurnDecision } from "./primitives/loop/loop.js";
 export { createLoop, registerLoopImplementation, type LoopImplementation } from "./primitives/loop/factory.js";
 export { installConsoleRedirect } from "./primitives/process/console-redirect.js";
+export { ToolRegistry } from "./primitives/tools/registry.js";

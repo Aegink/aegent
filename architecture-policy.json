@@ -67,6 +67,7 @@
       "managed": true,
       "requires": [
         "core",
+        "kernel",
         "attachments",
         "context",
         "lsp",

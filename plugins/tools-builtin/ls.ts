@@ -10,7 +10,7 @@ import { readdir } from "node:fs/promises";
 import * as path from "node:path";
 
 import { toolError } from "../../src/kernel/tools/builtin/util.js";
-import type { ToolDef } from "../../src/core/primitives/tools/registry.js";
+import type { ToolDef } from "../../src/core/index.js";
 
 /** 条目数上限（pi ls 同款双保险的条数半边）。 */
 const MAX_ENTRIES = 500;
