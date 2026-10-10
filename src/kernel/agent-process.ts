@@ -46,10 +46,12 @@ import {
   PROTOCOL_VERSION,
   ProtocolHandshakeError,
   type ServerHello,
+  createLineSplitter,
   decodeClientHello,
   decodeMessage,
   decodeRequest,
   decodeServerHello,
+  encodeFrame,
 } from "./agent-protocol.js";
 import type { ApprovalAnnouncement } from "../policy/pending.js";
 import type { ChatRequest, ModelProvider } from "../models/provider.js";
@@ -279,7 +281,7 @@ export async function runAgentChildStdio(
   const input = options.input ?? process.stdin;
 
   const send = (message: AgentMessage): void => {
-    output.write(`${JSON.stringify(message)}\n`);
+    output.write(encodeFrame(message));
   };
 
   // 事件出进程的唯一通道：append 返回的已提交事件逐条转发为协议 event 行
@@ -2017,7 +2019,6 @@ export function spawnAgentProcess(options: SpawnAgentOptions): AgentProcess {
     });
   }
   const queue = new MessageQueue();
-  let buffer = "";
   // EP-9 握手（T1-3）：首个 stdout 行必须是 ClientHello——通过前业务帧不入队、
   // 消费者 send 的请求缓冲（保证 ServerHello 是子侧读到的首行）。
   let helloDone = false;
@@ -2035,44 +2036,39 @@ export function spawnAgentProcess(options: SpawnAgentOptions): AgentProcess {
   };
 
   child.stdout!.setEncoding("utf-8");
-  child.stdout!.on("data", (chunk: string) => {
-    buffer += chunk;
-    for (;;) {
-      const nl = buffer.indexOf("\n");
-      if (nl < 0) break;
-      const line = buffer.slice(0, nl);
-      buffer = buffer.slice(nl + 1);
-      if (line.trim() === "") continue;
-      if (!helloDone) {
-        // 首帧强制 hello（fail-closed）：版本不匹配 / 旧版子进程（不发 hello）/
-        // 坏形状一律类型化拒绝并杀进程——不降级兼容
-        try {
-          const hello = decodeClientHello(line);
-          if (hello.protocolVersion !== PROTOCOL_VERSION) {
-            throw new ProtocolHandshakeError(
-              "PROTOCOL_VERSION_MISMATCH",
-              `协议版本不匹配：父进程期望 ${PROTOCOL_VERSION}，子进程声明 ${hello.protocolVersion}`,
-              PROTOCOL_VERSION,
-              hello.protocolVersion,
-            );
-          }
-        } catch (e) {
-          failHandshake(e);
-          return;
-        }
-        helloDone = true;
-        child.stdin!.write(`${JSON.stringify({ type: "hello-ack", protocolVersion: PROTOCOL_VERSION } satisfies ServerHello)}\n`);
-        for (const r of pendingRequests) child.stdin!.write(`${JSON.stringify(r)}\n`);
-        pendingRequests.length = 0;
-        continue;
-      }
+  // 行分帧走 framing 层原语（T1-4 换传输替换点：跨 chunk 行不裂的状态机）
+  const feedLine = createLineSplitter((line) => {
+    if (line.trim() === "") return;
+    if (!helloDone) {
+      // 首帧强制 hello（fail-closed）：版本不匹配 / 旧版子进程（不发 hello）/
+      // 坏形状一律类型化拒绝并杀进程——不降级兼容
       try {
-        queue.push(decodeMessage(line));
-      } catch {
-        // 子进程产出非协议行：父进程不该假装没看见，但也不该崩——丢弃并继续
+        const hello = decodeClientHello(line);
+        if (hello.protocolVersion !== PROTOCOL_VERSION) {
+          throw new ProtocolHandshakeError(
+            "PROTOCOL_VERSION_MISMATCH",
+            `协议版本不匹配：父进程期望 ${PROTOCOL_VERSION}，子进程声明 ${hello.protocolVersion}`,
+            PROTOCOL_VERSION,
+            hello.protocolVersion,
+          );
+        }
+      } catch (e) {
+        failHandshake(e);
+        return;
       }
+      helloDone = true;
+      child.stdin!.write(encodeFrame({ type: "hello-ack", protocolVersion: PROTOCOL_VERSION } satisfies ServerHello));
+      for (const r of pendingRequests) child.stdin!.write(encodeFrame(r));
+      pendingRequests.length = 0;
+      return;
+    }
+    try {
+      queue.push(decodeMessage(line));
+    } catch {
+      // 子进程产出非协议行：父进程不该假装没看见，但也不该崩——丢弃并继续
     }
   });
+  child.stdout!.on("data", (chunk: string) => feedLine(chunk));
   child.stdout!.on("close", () => queue.finish());
   child.on("close", () => queue.finish());
   // 子进程退出后父进程仍可能补发请求（收尾竞态）——stdin 对端已关触发
@@ -2087,7 +2083,7 @@ export function spawnAgentProcess(options: SpawnAgentOptions): AgentProcess {
         pendingRequests.push(request);
         return;
       }
-      child.stdin!.write(`${JSON.stringify(request)}\n`);
+      child.stdin!.write(encodeFrame(request));
     },
     messages: {
       [Symbol.asyncIterator]() {

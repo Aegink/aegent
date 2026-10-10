@@ -386,8 +386,8 @@
       "reason": "T1-2 搬迁记档（2026-10-10）：事件词汇表 935 行——kernel 时代为 warning（managed:false），进 core（managed:true）触线即 error。事件类型是内核单一词汇源（31 类事件 + StreamChunk/JsonValue 等），拆分需按事件族分文件且改动全部消费面 import，超出 T1-2 纯搬迁范围；豁免带上限（后续按事件族拆分列为批 3/T8 候选，届时删本豁免）。"
     },
     {
-      "path": "src/core/skeleton/protocol.ts",
-      "reason": "T1-2 搬迁记档（2026-10-10）：agent-protocol 本体 1095 行（同事件词汇源问题；T1-3/T1-4 将在其上加版本握手与 framing/payload 分层——分层时按协议段拆文件，届时删本豁免）。"
+      "path": "src/core/skeleton/protocol-payload.ts",
+      "reason": "T1-2 搬迁记档（2026-10-10）：agent-protocol 本体 1095 行（事件词汇源同款问题）；T1-4 分层后为 protocol-payload.ts（业务载荷 schema，1092 行）——decodeRequest/decodeMessage 是逐字段严格校验面，拆分需按请求/响应族分文件且全部消费面跟随，超出本批纯搬迁/分层范围；豁免带上限（按消息族拆分列 T8 候选，届时删本豁免）。"
     },
     {
       "path": "src/core/skeleton/hooks.test.ts",
