@@ -10,4 +10,6 @@ export * from "./contracts/models.js";
 export * from "./contracts/policy.js";
 export * from "./contracts/sandbox.js";
 export * from "./contracts/session.js";
+export * from "./contracts/env.js";
+export * from "./contracts/tools.js";
 export * from "./primitives/session/reference.js";

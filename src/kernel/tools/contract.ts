@@ -17,22 +17,12 @@
  * （ContractResult）；registry.dispatch 统一识别并投影。
  */
 
-import type { JsonRecord, JsonValue } from "../events.js";
+// T2-4 依赖倒置：ContractResult 契约下沉 core/contracts/tools.ts——本文件
+// 保留投影实现（isContractResult/projectResult）。
+export type { ContractResult } from "../../core/index.js";
+import type { ContractResult } from "../../core/index.js";
+import type { JsonRecord } from "../events.js";
 import type { ToolExecutionResult } from "../loop.js";
-
-/** 执行期富值契约：value 是工具的真实产物，render 是唯一入流通道。 */
-export interface ContractResult<V = unknown> {
-  value: V;
-  /**
-   * 显式投影：把富值渲染成模型可见、可持久化的 content 字符串。
-   * 只见 args 与 value——不暴露 ctx / store / 进程对象。
-   */
-  render(args: JsonRecord, value: V): string | Promise<string>;
-  /** 工具私有展示载荷（与 ToolExecutionResult.meta 同形状）。 */
-  meta?: JsonValue;
-  isError?: boolean;
-  error?: { name: string; code: string; reason?: string };
-}
 
 /** 结构识别：返回值是契约富值还是已投影的 ToolExecutionResult。 */
 export function isContractResult(r: unknown): r is ContractResult {

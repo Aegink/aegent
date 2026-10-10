@@ -41,16 +41,10 @@ export interface SandboxSpawnRequest {
   readonly timeoutMs?: number;
 }
 
-/**
- * 结算结果（与 tools/env 的 ExecResult 同形——契约自包含，避免契约反向依赖
- * 实现域；两处形状一致性由 sandbox/backend 的类型别名绑定锚定）。
- */
-export interface SandboxSpawnResult {
-  /** shell 退出码（0 = 成功；非 0 由调用方按失败语义处理）。 */
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-}
+import type { ExecResult } from "./env.js";
+
+/** 结算结果（T2-4 起直接复用 env 契约的 ExecResult——单源，不再内联同形）。 */
+export type SandboxSpawnResult = ExecResult;
 
 export interface SandboxBackend {
   /** 当前后端可强制的模式集合（能力自述，消费方可据此预检）。 */

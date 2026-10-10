@@ -137,13 +137,9 @@ export interface ToolCallPayload {
 }
 
 /** toolCall 点位的产物（形状 = ToolResultEvent 的消息侧载荷）。 */
-export interface ToolExecutionResult {
-  content: string;
-  isError?: boolean;
-  error?: { name: string; code: string; reason?: string };
-  /** 工具私有展示载荷，对内核不透明；append 时由 assertJsonSafe 兜底（C14）。 */
-  meta?: JsonValue;
-}
+// T2-4 依赖倒置：ToolExecutionResult 契约下沉 core/contracts/tools.ts（re-export 保兼容）。
+export type { ToolExecutionResult } from "../core/index.js";
+import type { ToolExecutionResult } from "../core/index.js";
 
 /**
  * B20/T-P1-62 输出 token 触顶的 finishReason 闭集（zcode OUTPUT_LIMIT_RAW_

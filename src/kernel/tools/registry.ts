@@ -27,105 +27,18 @@ import type { ToolExecutionResult } from "../loop.js";
 import { TOOL_TIMEOUT, TimeoutError } from "../timeout.js";
 import { Deadline, withDeadline } from "../deadline.js";
 import { isContractResult, projectResult, type ContractResult } from "./contract.js";
-import type { ToolContext } from "./context.js";
 import type { ExecutionEnv } from "./env.js";
 import { DEFAULT_SPILL_DIR, boundedOutput } from "./truncate.js";
 import { DEFAULT_SPILL_MAX_FILES, enforceSpillQuota } from "./spill-gc.js";
 
 /** 工具执行体的两种返回：已投影值，或契约富值（B12，dispatch 统一投影）。 */
-export type ToolExecution =
-  | ToolExecutionResult
-  | ContractResult;
+// T2-4 依赖倒置：ToolExecution/ToolDef 契约下沉 core/contracts/tools.ts（re-export 保兼容）。
+export type { ToolDef, ToolDispatchCall, ToolExecution, ToolGuardOutcome } from "../../core/index.js";
+import type { ToolContext, ToolDef, ToolDispatchCall, ToolExecution, ToolGuardOutcome } from "../../core/index.js";
 
-/** 一个工具的注册定义：执行体在此，描述在 descriptions/<name>.txt（B2）。 */
-export interface ToolDef {
-  /** 工具名：模型调用名，同时是描述文件名。 */
-  name: string;
-  /**
-   * JSON Schema 形状的参数描述（原样透传厂商）。缺省给空 object schema——
-   * ChatTool.parameters 对 wire 是必填的。
-   */
-  parameters?: JsonValue;
-  /**
-   * 执行体：已解析的参数对象 + 执行上下文（ToolContext，D4——进程能力只在
-   * ctx.env 实现层）。不需要 ctx 的工具可以少收参数（TS 方法兼容）。
-   * 返回纯投影值或契约富值（B12：{value, render}，富值经 render 投影落盘）。
-   */
-  execute(
-    args: JsonRecord,
-    ctx: ToolContext,
-  ): ToolExecution | Promise<ToolExecution>;
+// ToolGuardOutcome/ToolDispatchCall 契约已下沉 core/contracts/tools.ts。
 
-  /**
-   * B17 并行声明：true = 只读类工具，声明后才可在 parallel 模式（B6）下
-   * 与其他执行并发（持读锁）；**缺省 false = 排他**（未声明即不可并行，
-   * fail-closed——持写锁与一切互斥）。写类工具与有状态工具一律缺省。
-   */
-  parallel?: boolean;
 
-  /**
-   * F12 延迟加载声明：true = 该工具的**真参数 schema 不进默认工具清单**，
-   * wire 上只出现占位（name + 延迟标记描述 + 空 schema）；模型经 tool_load
-   * 按名索取后，后续请求的清单才出现真 schema。缺省 false = 全量进清单
-   * （P0 行为）。F14 纪律：占位首请求即声明（位置稳定），其他工具的增减
-   * 不动已声明占位——前缀稳定（pi-mono cache scar 的位置性追加同款）。
-   */
-  deferrable?: boolean;
-
-  /**
-   * M6 工具级超时预算（毫秒）：声明后 dispatch 层武装 deadline——超时以
-   * 结构化 isError 结果（code=TOOL_TIMEOUT）返回，**工具 promise 不被抛弃**
-   * （dsh timeout-policy "without racing or abandoning the tool promise"：
-   * 迟到的自然结算被静默丢弃，零 unhandled rejection）。缺省 undefined =
-   * 不武装（零行为变化）。工具内部的细粒度超时（如 bash env 层 kill）不受
-   * 此影响——本预算是外层兜底，与内层机制经 J22 code 作用域判据互不误读。
-   */
-  timeoutMs?: number;
-
-  /**
-   * I3/T-P1-64：内联描述（MCP 工具用——描述随协议 tools/list 到达，没有
-   * descriptions/<name>.txt 文件）。提供时 description() 优先读它；缺省
-   * 走 B2 的按名读文件路径（builtin 行为不变）。
-   */
-  descriptionText?: string;
-}
-
-/** 工具执行前置守卫（C57 执行点重算的接线面）：政策层实现，registry 在
- * 解析参数后、执行前调用。拒绝即不执行。 */
-export interface ToolGuardOutcome {
-  readonly allowed: boolean;
-  /** 放行时给回（可能已剥除决策标记）的执行参数。 */
-  readonly args: JsonRecord;
-  readonly reason?: string;
-  readonly code?: string;
-}
-
-/** dispatch 的入参（与 tool/call 事件载荷、loop 的 executeTool 入参同源）。 */
-export interface ToolDispatchCall {
-  callId: string;
-  name: string;
-  /** 模型产出的原始 arguments JSON 串，unparsed（B12）。 */
-  arguments: string;
-  /**
-   * B7 进度上报通道（T-P1-16）：loop 按调用注入（闭包内记 seqInCall 与
-   * 条数上限），registry 原样转进 ToolContext.reportProgress——只有正在
-   * 执行的工具拿得到。缺省 undefined = 该调用无进度通道（零新事件）。
-   */
-  report?: (message: string) => void;
-  /**
-   * T-P1-43 取消信号（A7/T-P1-16 同款通道纪律）：loop 按调用注入本 turn
-   * 的 AbortSignal，registry 原样转进 ToolContext.signal——只有正在执行的
-   * 工具拿得到。缺省 undefined = 该调用无取消信号（工具自行决定是否消费）。
-   */
-  signal?: AbortSignal;
-  /**
-   * B16/T-P1-59：本 step 的执行策略快照（loop 从 step 开始时的声明固化）。
-   * 提供时 timeoutMs 以快照为准（在途 step 用 advertise 它们的那一步的
-   * 声明，中途 registerTool 替换不影响）；缺省 undefined = 按 def 现值
-   * （零行为变化）。
-   */
-  runtimeMeta?: { parallel?: boolean; timeoutMs?: number };
-}
 
 export class ToolRegistry {
   private readonly defs = new Map<string, ToolDef>();
