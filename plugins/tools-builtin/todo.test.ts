@@ -6,13 +6,13 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { SessionEvent } from "../../../kernel/events.js";
-import { createTodoUpdateEmitter } from "../../../kernel/assembly.js";
-import { ToolRegistry } from "../registry.js";
+import type { SessionEvent } from "../../src/kernel/events.js";
+import { createTodoUpdateEmitter } from "../../src/kernel/assembly.js";
+import { ToolRegistry } from "../../src/core/primitives/tools/registry.js";
 import { createTodoWriteTool } from "./todo.js";
-import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../../../session/store.js";
-import { project } from "../../../session/project.js";
-import { registerBuiltinTools } from "./index.js";
+import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../../src/session/store.js";
+import { project } from "../../src/session/project.js";
+import { registerBuiltinTools } from "../../src/kernel/tools/builtin/index.js";
 
 /** 带 store 落流出口的 registry（生产接线同款：createTodoUpdateEmitter）。 */
 function makeRegistry(store: SessionStore, sessionId = "s0"): ToolRegistry {
