@@ -4,7 +4,7 @@ import {
   decodeMessage,
   decodeRequest,
   ProtocolError,
-} from "./agent-protocol.js";
+} from "./protocol.js";
 const expectMalformed = (fn: () => unknown): void => {
   try {
     fn();

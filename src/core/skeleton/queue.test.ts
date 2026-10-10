@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { DecideTurn } from "./loop.js";
+import type { DecideTurn } from "../../kernel/loop.js";
 import { PromptQueue, QueueFullError } from "./queue.js";
-import { ScriptedProvider, makeLoop } from "./loop.test-utils.js";
+import { ScriptedProvider, makeLoop } from "../../kernel/loop.test-utils.js";
 
 describe("PromptQueue —— A9 turn 只能入队", () => {
   it("入队即收执：同步返回 {messageId}，多次入队 id 互异", () => {

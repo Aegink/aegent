@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { ToolResultEvent } from "./events.js";
-import { ScriptedProvider, makeLoop } from "./loop.test-utils.js";
+import { ScriptedProvider, makeLoop } from "../../kernel/loop.test-utils.js";
 import { BudgetExceededError, DEFAULT_MAX_TOOL_CALLS, ParseBudget } from "./budget.js";
-import { expectPaired, expectTurnScoped } from "../test-support/event-asserts.js";
+import { expectPaired, expectTurnScoped } from "../../test-support/event-asserts.js";
 
 describe("ParseBudget（B14 双轴：tick 计数+双查，progress 只查时）", () => {
   it("tick 超数量 throw（BUDGET_TICKS_EXCEEDED），上限内不抛", () => {

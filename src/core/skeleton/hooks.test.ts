@@ -22,10 +22,10 @@ import {
   type ToolCallPayload,
   type ToolExecutionResult,
   type TurnEndPayload,
-} from "./loop.js";
-import { ScriptedProvider, makeLoop } from "./loop.test-utils.js";
-import { createChildAssembly } from "./assembly.js";
-import { InMemoryEventStorage, SessionStore } from "../session/store.js";
+} from "../../kernel/loop.js";
+import { ScriptedProvider, makeLoop } from "../../kernel/loop.test-utils.js";
+import { createChildAssembly } from "../../kernel/assembly.js";
+import { InMemoryEventStorage, SessionStore } from "../../session/store.js";
 
 const identity = { provider: "mock", modelId: "m-1" };
 

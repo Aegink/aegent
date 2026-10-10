@@ -21,12 +21,12 @@ import {
   type GoalAction,
   type GoalState,
 } from "./goal.js";
-import { Projector, project } from "../session/project.js";
+import { Projector, project } from "../../session/project.js";
 import {
   createChildAssembly,
   type ChildAssembly,
-} from "./assembly.js";
-import { InMemoryEventStorage, SessionStore } from "../session/store.js";
+} from "../../kernel/assembly.js";
+import { InMemoryEventStorage, SessionStore } from "../../session/store.js";
 
 describe("状态机（invariant 自校验：迁移守卫纯函数）", () => {
   const from = (status: "active" | "achieved" | "abandoned") => ({

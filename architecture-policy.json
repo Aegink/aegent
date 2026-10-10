@@ -239,6 +239,7 @@
       ],
       "managed": false,
       "requires": [
+        "core",
         "kernel"
       ],
       "publicEntrypoints": [
@@ -380,6 +381,18 @@
     "forbidDeepImports": true
   },
   "exceptions": [
+    {
+      "path": "src/core/skeleton/events.ts",
+      "reason": "T1-2 搬迁记档（2026-10-10）：事件词汇表 935 行——kernel 时代为 warning（managed:false），进 core（managed:true）触线即 error。事件类型是内核单一词汇源（31 类事件 + StreamChunk/JsonValue 等），拆分需按事件族分文件且改动全部消费面 import，超出 T1-2 纯搬迁范围；豁免带上限（后续按事件族拆分列为批 3/T8 候选，届时删本豁免）。"
+    },
+    {
+      "path": "src/core/skeleton/protocol.ts",
+      "reason": "T1-2 搬迁记档（2026-10-10）：agent-protocol 本体 1095 行（同事件词汇源问题；T1-3/T1-4 将在其上加版本握手与 framing/payload 分层——分层时按协议段拆文件，届时删本豁免）。"
+    },
+    {
+      "path": "src/core/skeleton/hooks.test.ts",
+      "reason": "T1-2 搬迁记档（2026-10-10）：hooks 端到端测试 455 行——测试文件行数豁免有先例（diagnostics/live-p2.test.ts）；拆分收益低于共享 fixture 的可读性。"
+    },
     {
       "path": "src/diagnostics/live-p2.test.ts",
       "reason": "U3/T-P3-105 收口记档：P2 15e 的真实端点联调端到端测试（427 行）——脚本化场景内聚在一个文件，拆分降低可读性；豁免只限测试文件，产品代码仍受上限约束（文件拆分列为后续重构候选）。"

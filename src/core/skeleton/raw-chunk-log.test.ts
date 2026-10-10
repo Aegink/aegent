@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { RawChunkLog } from "./raw-chunk-log.js";
-import { buildChatMessages } from "../session/messages.js";
+import { buildChatMessages } from "../../session/messages.js";
 import type { SessionEvent, TimedStreamChunk } from "./events.js";
 
 let dir: string;
@@ -105,7 +105,8 @@ describe("RawChunkLog（E14/T-P1-90 原始分片诊断日志）", () => {
     expect(messages.some((m) => m.role === "assistant" && m.content === "组装后的答案")).toBe(true);
     expect(JSON.stringify(messages)).not.toContain("分片里的旧答案");
     // 分片日志缺失零影响：派生面（messages/project）的 import 无 raw-chunk-log
-    const sessionDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "session");
+    // （T1-2 本测试随 raw-chunk-log.ts 迁入 core/skeleton——被检源码仍在 src/session）
+    const sessionDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "session");
     const messagesSource = readFileSync(path.join(sessionDir, "messages.ts"), "utf8");
     const projectSource = readFileSync(path.join(sessionDir, "project.ts"), "utf8");
     expect(messagesSource).not.toContain("raw-chunk-log");

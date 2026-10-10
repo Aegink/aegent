@@ -4,4 +4,7 @@
  * 核内文件间相对 import 不经此。随批次下沉逐段补 re-export，
  * 最终语义面 = 0 骨架 + 1 装配入口。
  */
+export * from "./skeleton/events.js";
 export * from "./contracts/attachments.js";
+export * from "./contracts/models.js";
+export * from "./primitives/session/reference.js";

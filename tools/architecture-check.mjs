@@ -130,6 +130,30 @@ const isTestFile = (f) => {
 };
 
 /**
+ * 纯 re-export 垫片判定（T1-2）：搬迁期兼容层（唯一内容是 export * from /
+ * export {..} from 转发语句的文件）豁免 deep-import——垫片的性质就是把旧
+ * 路径转发到新本体（本体在 core/skeleton 深路径是垫片的职能本身）；requires
+ * 白名单检查保留（垫片所在域仍须声明对目标域的依赖）。批 8 删垫片后本
+ * 判定自然失效，无规则残留。
+ */
+const shimCache = new Map();
+function isReexportShim(file) {
+  if (!shimCache.has(file)) {
+    const lines = fs
+      .readFileSync(file, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .split("\n")
+      .map((l) => l.replace(/\/\/.*$/, "").trim())
+      .filter(Boolean);
+    shimCache.set(
+      file,
+      lines.length > 0 && lines.every((l) => /^export\s+(\*|\{[^}]*\})\s*from\s*["']/.test(l)),
+    );
+  }
+  return shimCache.get(file);
+}
+
+/**
  * 契约公开方法计数（T0-4，zcode maxPublicMethods 同语义）。
  * 实现记档：原计划照抄 zcode 的 typescript AST 实现，但本仓 node_modules/typescript
  * 已是 7.x 原生包（lib/ 只剩 getExePath，JS API 面移入 unstable/* 且形状未定）——
@@ -294,10 +318,10 @@ export function checkArchitecture(policy, opts = {}) {
       if (!(mod.requires ?? []).includes(toId)) {
         fail(managed, `[requires] ${rel(file)} import ${rel(target)}（模块 ${toId}）——未在模块 ${fromId} 的 requires 白名单声明`);
       }
-      // 深导入：目标域声明了 entrypoints 才激活
+      // 深导入：目标域声明了 entrypoints 才激活（纯 re-export 垫片豁免——见 isReexportShim）
       const targetMod = policy.modules.find((m) => m.id === toId);
       const entries = targetMod?.publicEntrypoints ?? [];
-      if (policy.global?.forbidDeepImports && entries.length > 0) {
+      if (policy.global?.forbidDeepImports && entries.length > 0 && !isReexportShim(file)) {
         const entryAbs = entries.map((e) => path.resolve(repoRoot, e).replaceAll("\\", "/"));
         if (!entryAbs.includes(target.replaceAll("\\", "/"))) {
           fail(managed, `[deep-import] ${rel(file)} import ${rel(target)}——模块 ${toId} 公开入口之外（深导入）`);

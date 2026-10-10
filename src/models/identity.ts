@@ -1,12 +1,11 @@
 /**
  * 模型身份（J4）——身份键永远是 `{provider, modelId}` 二元组，绝不用裸 model 名
  * （形状取 pi·agent-harness.ts 的 ModelIdentity：同名模型跨厂商可区分）。
+ * T1-2 契约下沉：接口本体在 core/contracts/models.ts——本文件是构造/键化实现面。
  */
 
-export interface ModelIdentity {
-  provider: string;
-  modelId: string;
-}
+export type { ModelIdentity } from "../core/index.js";
+import type { ModelIdentity } from "../core/index.js";
 
 /** 构造身份；字段必须是非空字符串（外部输入校验，启动期即失败） */
 export function modelIdentity(provider: string, modelId: string): ModelIdentity {
