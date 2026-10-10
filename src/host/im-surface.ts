@@ -29,10 +29,36 @@ export interface ImSurface {
   deliverEvent(event: JsonRecord): Promise<void>;
 }
 
+/**
+ * W3/T7-1 入站授权四态（hermes §13 同构——P0 安全项）：
+ * - open：全部放行（开发态）；
+ * - allowlist：principal ∈ 白名单放行（**blank principal 一律拒绝**）；
+ * - disabled：全部拒绝（渠道下线）；
+ * - pairing：pairing 握手门（首消息须带配对码，通过后 principal 进白名单）。
+ */
+export type ImAuthorizeMode = "open" | "allowlist" | "disabled" | "pairing";
+
+export interface ImAuthorizeDecision {
+  readonly decision: "allow" | "deny";
+  readonly reason?: string;
+}
+
 /** IM 端装配依赖（bridge 编排 + 租约面 + 平台出站 + 凭据缺省跳过）。 */
 export interface ImSurfaceDeps {
   bridge: HostBridge;
   sessionId: string;
+  /**
+   * W3/T7-1 入站授权面（装配注入——mode/allowlist 来自 settings IM 段）。
+   * 缺省 undefined = 既有行为零变化（记档：生产装配必须显式配置——
+   * 缺省 open 的旧语义随 W3 收紧为"未配置即 deny"，装配面负责迁移）。
+   */
+  authorize?(principal: string | undefined, mode: ImAuthorizeMode, allowlist: readonly string[]): ImAuthorizeDecision;
+  /** 授权模式与白名单来源（活查询——settings 热刷即生效）。 */
+  authorizeConfig?(): { mode: ImAuthorizeMode; allowlist: readonly string[] };
+  /** pairing 握手通过回调（principal 进白名单的持久化——装配面注入）。 */
+  onPaired?(principal: string): void;
+  /** 入站可建会话（T7-1：IM 入站改可"建真实会话"——返回新 sessionId）。 */
+  createInboundSession?(parentSessionId: string | undefined, title: string): Promise<string> | string;
   /** 平台标识（= APPROVAL_SURFACES 成员——write 命令租约校验的身份）。 */
   surfaceId: string;
   /**
@@ -70,13 +96,51 @@ export async function withLease(
 }
 
 /** prompt 派发（IM 消息 → agent 会话——bridge 写命令，须在租约内）。 */
+/** W3/T7-1 入站授权（dispatchPrompt/dispatchApproval 共用的首个闸）。 */
+export function authorizeInbound(
+  deps: ImSurfaceDeps,
+  principal: string | undefined,
+): ImAuthorizeDecision {
+  if (deps.authorize === undefined || deps.authorizeConfig === undefined) {
+    // 未装配授权面：保持既有行为（记档——生产装配显式配置）
+    return { decision: "allow" };
+  }
+  const { mode, allowlist } = deps.authorizeConfig();
+  if (mode === "disabled") {
+    return { decision: "deny", reason: "渠道已禁用（disabled）" };
+  }
+  if (mode === "open") return { decision: "allow" };
+  // allowlist / pairing：blank principal 一律拒绝（无身份不可授权）
+  if (principal === undefined || principal.trim() === "") {
+    return { decision: "deny", reason: "空 principal（W3：无身份不可授权）" };
+  }
+  if (allowlist.includes(principal)) return { decision: "allow" };
+  if (mode === "pairing") {
+    // pairing 握手门：首消息须为配对指令 `pair <code>`——宿主装配校验码后回调 onPaired
+    return { decision: "deny", reason: "pairing 模式：请先发送 pair <配对码> 完成绑定" };
+  }
+  return { decision: "deny", reason: `principal ${principal} 不在白名单（allowlist）` };
+}
+
 export async function dispatchPrompt(
   deps: ImSurfaceDeps,
   text: string,
+  options?: { principal?: string; createNew?: boolean },
 ): Promise<void> {
+  // W3/T7-1：入站授权首闸（许可检查先于租约与投递——未授权内容不进解析面）
+  const verdict = authorizeInbound(deps, options?.principal);
+  if (verdict.decision === "deny") {
+    throw new Error(`IM 入站拒绝：${verdict.reason ?? "未授权"}`);
+  }
+  // T7-1：入站可建会话（createInboundSession 在位且调用方要求建新会话时——
+  // IM 消息写死单 sessionId 的旧语义由此突破；缺省投递既有会话零变化）
+  let targetSessionId = deps.sessionId;
+  if (options?.createNew === true && deps.createInboundSession !== undefined) {
+    targetSessionId = await deps.createInboundSession(undefined, text.slice(0, 40));
+  }
   await withLease(deps, async () => {
     await deps.bridge.send(
-      deps.sessionId,
+      targetSessionId,
       { type: "prompt", messageId: `im-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, content: text },
       { surfaceId: deps.surfaceId },
     );
