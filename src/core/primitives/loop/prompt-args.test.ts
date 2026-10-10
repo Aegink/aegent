@@ -5,7 +5,7 @@ import {
   parseSlashInvocation,
   substituteArgs,
   templatePlaceholders,
-} from "./prompt-args.js";
+} from "../../../kernel/prompt-args.js";
 
 describe("斜杠调用解析（parseSlashInvocation）", () => {
   it("首 token = 名，其余行并入参数原文", () => {

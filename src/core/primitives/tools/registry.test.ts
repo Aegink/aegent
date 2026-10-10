@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ToolRegistry, type ToolDef } from "./registry.js";
-import { withTimeout } from "../timeout.js";
-import { createToolLoadTool } from "./builtin/tool-load.js";
+import { withTimeout } from "../../skeleton/timeout.js";
+import { createToolLoadTool } from "../../../kernel/tools/builtin/tool-load.js";
 
 const tmpDirs: string[] = [];
 afterEach(() => {

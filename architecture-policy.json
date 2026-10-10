@@ -396,6 +396,22 @@
       "reason": "T1-2 搬迁记档（2026-10-10）：hooks 端到端测试 455 行——测试文件行数豁免有先例（diagnostics/live-p2.test.ts）；拆分收益低于共享 fixture 的可读性。"
     },
     {
+      "path": "src/core/primitives/loop/loop.ts",
+      "reason": "T3-2 搬迁记档（2026-10-10）：loop 驱动本体 1572 行（W7 拆出 guards/watchdog 后残余驱动+决策+链面）——runTurn/runStep 是单块控制流（与事件落盘点强耦合），进一步拆分在 T3-2 六文件分流后由 T8 收口评估；豁免带上限（再增逻辑必须先拆）。"
+    },
+    {
+      "path": "src/core/primitives/loop/loop.test.ts",
+      "reason": "T3-2 搬迁记档（2026-10-10）：loop 主测试 1453 行（G10 护栏断言载体——53 用例含 maxSteps/mutation/OUTPUT/watchdog 专项）——测试文件行数豁免有先例（hooks.test/diagnostics live-p2）；拆分收益低于共享 fixture 的可读性。"
+    },
+    {
+      "path": "src/core/primitives/loop/model-switch.test.ts",
+      "reason": "T3-2 搬迁记档（2026-10-10）：model-switch 集成测试 874 行（真 stdio spawn 链路）——测试文件豁免先例同上。"
+    },
+    {
+      "path": "src/core/primitives/session/project.ts",
+      "reason": "T3-3 搬迁记档（2026-10-10）：投影器本体 851 行（kernel 时代为 warning，managed core 触线即 error）——E16 投影校验是 G1/G2 护栏面，拆分需按事件族分文件且 loop/watchdog 消费面跟随，超出纯搬迁范围；豁免带上限（拆分列 T8 候选）。"
+    },
+    {
       "path": "src/diagnostics/live-p2.test.ts",
       "reason": "U3/T-P3-105 收口记档：P2 15e 的真实端点联调端到端测试（427 行）——脚本化场景内聚在一个文件，拆分降低可读性；豁免只限测试文件，产品代码仍受上限约束（文件拆分列为后续重构候选）。"
     },

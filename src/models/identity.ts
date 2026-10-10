@@ -23,6 +23,5 @@ export function modelIdentity(provider: string, modelId: string): ModelIdentity 
  * 边界：provider/modelId 含 ":" 时键有歧义，因此机器匹配一律做对象字段相等，
  * 绝不从 key 反解析身份（P0 不做转义；真出现含 ":" 的厂商 ID 再升级）。
  */
-export function identityKey(id: ModelIdentity): string {
-  return `${id.provider}:${id.modelId}`;
-}
+// T2-6 依赖倒置：identityKey 下沉 core/contracts/models.ts（re-export 保兼容）。
+export { identityKey } from "../core/index.js";

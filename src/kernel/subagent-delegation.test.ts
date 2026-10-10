@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { StreamChunk } from "./events.js";
 import {SessionEventStore, type SessionStore} from "../session/store.js";
-import { ScriptedProvider } from "./loop.test-utils.js";
+import { ScriptedProvider } from "../core/primitives/loop/loop.test-utils.js";
 import { ToolRegistry } from "./tools/registry.js";
 import { registerBuiltinTools } from "./tools/builtin/index.js";
 import { createSubagentRunner } from "./subagent.js";

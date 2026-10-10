@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { SessionEvent, StreamChunk } from "./events.js";
+import type { SessionEvent, StreamChunk } from "../../../kernel/events.js";
 import {
   AgentLoop,
   type AgentLoopDeps,
@@ -9,14 +9,14 @@ import {
   type ToolExecutionResult,
   type TurnDecision,
 } from "./loop.js";
-import { PromptQueue } from "./queue.js";
-import { MutationRetryBudget } from "./tools/mutation-budget.js";
-import { ToolRegistry, type ToolDef } from "./tools/registry.js";
+import { PromptQueue } from "../../../kernel/queue.js";
+import { MutationRetryBudget } from "../tools/mutation-budget.js";
+import { ToolRegistry, type ToolDef } from "../../../kernel/tools/registry.js";
 import { ScriptedProvider, makeLoop } from "./loop.test-utils.js";
-import { RwLock } from "./rw-lock.js";
-import type { PrefixChange } from "../context/prefix-anchor.js";
-import { expectPaired, expectSingleTerminal, expectTurnScoped } from "../test-support/event-asserts.js";
-import type { ChatTool, ModelProvider } from "../models/provider.js";
+import { RwLock } from "../../../kernel/rw-lock.js";
+import type { PrefixChange } from "../../../context/prefix-anchor.js";
+import { expectPaired, expectSingleTerminal, expectTurnScoped } from "../../../test-support/event-asserts.js";
+import type { ChatTool, ModelProvider } from "../../../models/provider.js";
 
 /**
  * 前置说明（A6 措辞映射，卡面要求写明）：本文件的 "step" 是 l0-events 三级
@@ -946,8 +946,14 @@ describe("循环护栏（A14/T-P1-50）", () => {
     expect(end.reason.kind).toBe("aborted");
     expect(end.reason.cause).toEqual({ kind: "user" });
     expectSingleTerminal(events, 1);
-    // 迟到结果闸门：tool/result 未落盘
-    expect(events.some((e) => e.type === "tool/result")).toBe(false);
+    // T3-2 dsh 合成语义：在途调用（tool/call 已落、真实结果未到）在强制收轮
+    // 时补合成 isError 结果——终态事实由合成承担（replay 配平）；真实迟到
+    // 结果仍被闸门丢弃（其内容"迟到的结果"不出现）。
+    const results = events.filter((e) => e.type === "tool/result");
+    expect(results).toHaveLength(1);
+    expect(results[0]!.message.isError).toBe(true);
+    expect(results[0]!.error?.code).toBe("TOOL_ABORTED");
+    expect(events.some((e) => e.type === "tool/result" && e.message.content === "迟到的结果")).toBe(false);
     // 看门狗 warn 已留痕
     expect(warns.some((w) => w.msg.includes("看门狗"))).toBe(true);
     // 收尾：放行在途工具 → 自然路径撞 forcedClosed 闸 → 不 double terminal
@@ -955,7 +961,8 @@ describe("循环护栏（A14/T-P1-50）", () => {
     await done;
     const eventsAfter = store.load("s1");
     expectSingleTerminal(eventsAfter, 1);
-    expect(eventsAfter.some((e) => e.type === "tool/result")).toBe(false);
+    // 合成结果恰一条（真实迟到结果仍被丢弃，不追加第二条）
+    expect(eventsAfter.filter((e) => e.type === "tool/result")).toHaveLength(1);
     // 迟到丢弃 warn
     expect(warns.some((w) => w.msg.includes("迟到"))).toBe(true);
   });

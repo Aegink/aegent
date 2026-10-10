@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizePromptVerdict, type PromptGateVerdict } from "./prompt-gate.js";
+import { normalizePromptVerdict, type PromptGateVerdict } from "../../../kernel/prompt-gate.js";
 
 /**
  * A13/T-P1-48 入队闸门三态——形状取 kimi·machine.ts:57 PromptGateVerdict，

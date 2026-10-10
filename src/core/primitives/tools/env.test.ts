@@ -2,8 +2,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, expectTypeOf, it } from "vitest";
-import type { AssertNever } from "../events.js";
-import { TimeoutError } from "../timeout.js";
+import type { AssertNever } from "../../skeleton/events.js";
+import { TimeoutError } from "../../skeleton/timeout.js";
 import type { ToolContext } from "./context.js";
 import { NodeExecutionEnv } from "./env.js";
 

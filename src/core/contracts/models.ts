@@ -114,3 +114,32 @@ export interface ModelProvider {
   /** 单次流式调用：一次连接、顺序产出 StreamChunk，done 后终止。 */
   streamChat(req: ChatRequest): AsyncIterable<StreamChunk>;
 }
+
+/** 响应头阶段失败（非 2xx）——T-2-03 重试层的分类判据（T2-6 自 models/provider 下沉：
+ * loop 流失败分类 instanceof 消费；models 域重试层同一类源）。 */
+export class ProviderHttpError extends Error {
+  readonly code = "MODEL_HTTP_ERROR";
+  readonly status: number;
+  /** 服务端 Retry-After 头原文（秒数或 HTTP 日期）；无则 undefined */
+  readonly retryAfter?: string;
+  readonly bodyPreview?: string;
+
+  constructor(
+    status: number,
+    message: string,
+    opts?: { retryAfter?: string; bodyPreview?: string },
+  ) {
+    super(message);
+    this.name = "ProviderHttpError";
+    this.status = status;
+    this.retryAfter = opts?.retryAfter;
+    this.bodyPreview = opts?.bodyPreview;
+  }
+}
+
+/** 序列化键 `provider:modelId`——只用于日志/显示/临时 Map 键（J4：机器匹配一律
+ * 做对象字段相等，绝不从 key 反解析身份——P0 不做转义，真出现含 ":" 的厂商
+ * ID 再升级；T2-6 自 models/identity 下沉，model-switch 跨域消费）。 */
+export function identityKey(id: ModelIdentity): string {
+  return `${id.provider}:${id.modelId}`;
+}

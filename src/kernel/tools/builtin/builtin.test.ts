@@ -866,8 +866,8 @@ describe("C12/C13 · 编辑前必须先读（可选装配）", () => {
 // Q2/T-P2-105 会话查询工具（session_query / session_get）
 // ---------------------------------------------------------------------------
 
-import { ScriptedProvider } from "../../loop.test-utils.js";
-import { AgentLoop } from "../../loop.js";
+import { ScriptedProvider } from "../../../core/primitives/loop/loop.test-utils.js";
+import { AgentLoop } from "../../../core/primitives/loop/loop.js";
 import {SessionEventStore, type SessionStore} from "../../../session/store.js";
 import { SqliteEventStorage } from "../../../session/db.js";
 import type { StreamChunk } from "../../events.js";

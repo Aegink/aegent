@@ -19,7 +19,7 @@ import { builtinRuleMatchers } from "./matchers.js";
 import { loadedRuleMatch, loadedRuleText, loadRules } from "./rule-loader.js";
 import { createRuleSetModule } from "./rules.js";
 import type { ChainNext } from "../kernel/chain.js";
-import type { ToolCallPayload, ToolExecutionResult } from "../kernel/loop.js";
+import type { ToolCallPayload, ToolExecutionResult } from "../core/primitives/loop/loop.js";
 import { createChildAssembly } from "../kernel/assembly.js";
 import {SessionEventStore, type SessionStore} from "../session/store.js";
 import type { Logger } from "../kernel/logger.js";

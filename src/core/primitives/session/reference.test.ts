@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../../skeleton/events.js";
 import {
   MAX_REF_CHARS,
   MAX_REF_HEAD_EVENTS,
@@ -12,7 +12,7 @@ import {
   refsOfEvents,
   validateSessionRefs,
 } from "./reference.js";
-import {SessionEventStore, type SessionStore} from "./store.js";
+import {SessionEventStore, type SessionStore} from "../../../session/store.js";
 
 function userEvent(seq: number, content: string, refs?: Array<{ sessionId: string; upToSeq?: number }>): SessionEvent {
   return {

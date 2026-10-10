@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 
 import { PendingApprovals } from "../policy/pending.js";
 import { createPlanModeService } from "../kernel/plan-mode.js";
-import { ModelNotRegisteredError, ModelSwitchService } from "../kernel/model-switch.js";
+import { ModelNotRegisteredError, ModelSwitchService } from "../core/primitives/loop/model-switch.js";
 import type { ModelIdentity } from "../models/identity.js";
 import type { ModelProvider } from "../models/provider.js";
 import { ToolRegistry } from "../kernel/tools/registry.js";

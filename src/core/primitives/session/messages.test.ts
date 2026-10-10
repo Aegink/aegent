@@ -4,9 +4,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../../skeleton/events.js";
 import { buildChatMessages } from "./messages.js";
-import type { AttachmentRef } from "../attachments/types.js";
+import type { AttachmentRef } from "../../../attachments/types.js";
 
 const ref: AttachmentRef = {
   attachmentId: "00000000-0000-4000-8000-000000000001",

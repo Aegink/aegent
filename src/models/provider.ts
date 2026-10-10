@@ -44,26 +44,8 @@ export const THINKING_BUDGET: Readonly<Record<string, number>> = {
   max: 32768,
 };
 
-/** 响应头阶段失败（非 2xx）——T-2-03 重试层的分类判据。 */
-export class ProviderHttpError extends Error {
-  readonly code = "MODEL_HTTP_ERROR";
-  readonly status: number;
-  /** 服务端 Retry-After 头原文（秒数或 HTTP 日期）；无则 undefined */
-  readonly retryAfter?: string;
-  readonly bodyPreview?: string;
-
-  constructor(
-    status: number,
-    message: string,
-    opts?: { retryAfter?: string; bodyPreview?: string },
-  ) {
-    super(message);
-    this.name = "ProviderHttpError";
-    this.status = status;
-    this.retryAfter = opts?.retryAfter;
-    this.bodyPreview = opts?.bodyPreview;
-  }
-}
+// T2-6 依赖倒置：ProviderHttpError 下沉 core/contracts/models.ts（re-export 保兼容）。
+export { ProviderHttpError } from "../core/index.js";
 
 /** usage 计数缺失/非法时的兜底值——厂商计量残缺不是致命错误。 */
 export function toTokenUsage(raw: {

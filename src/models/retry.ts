@@ -36,9 +36,7 @@ export interface RetryObservation {
 }
 
 /** kimi·retry.ts 同款枚举：显式清单之外的 status 一律不重试。 */
-export const RETRYABLE_STATUS_CODES: readonly number[] = [
-  408, 409, 429, 500, 502, 503, 504, 529,
-];
+// T2-6：RETRYABLE_STATUS_CODES 迁 core/primitives/loop/retry-after.js（isRetryableStatus 依赖闭包）
 
 export const DEFAULT_MAX_ATTEMPTS = 10;
 
@@ -60,9 +58,8 @@ export interface RetryOptions {
   onRetry?: (observation: RetryObservation) => void;
 }
 
-export function isRetryableStatus(status: number): boolean {
-  return RETRYABLE_STATUS_CODES.includes(status);
-}
+// T2-6 依赖倒置：isRetryableStatus 迁 core/primitives/loop/retry-after.js
+export { isRetryableStatus } from "../core/primitives/loop/retry-after.js";
 
 /**
  * 第 attempt 次失败（0-based）后的默认退避：min(500·2^attempt, 32s) + U(0,25%)·base。
@@ -78,22 +75,9 @@ export function backoffDelayMs(attempt: number, rand: number = Math.random()): n
  * 缺失/非法/非正值返回 undefined（回落默认退避），语义对齐 kimi 的
  * readRetryAfterMs（仅 >0 生效）。
  */
-export function parseRetryAfterMs(
-  value: string | undefined | null,
-  now: number,
-): number | undefined {
-  if (value === undefined || value === null) return undefined;
-  const trimmed = value.trim();
-  if (trimmed === "") return undefined;
-  if (/^\d+$/.test(trimmed)) {
-    const sec = Number(trimmed);
-    return sec > 0 ? sec * 1000 : undefined;
-  }
-  const date = Date.parse(trimmed);
-  if (Number.isNaN(date)) return undefined;
-  const delta = date - now;
-  return delta > 0 ? delta : undefined;
-}
+// T3-2 依赖倒置：parseRetryAfterMs 本体迁 core/primitives/loop/retry-after.ts
+export { parseRetryAfterMs } from "../core/primitives/loop/retry-after.js";
+import { isRetryableStatus, parseRetryAfterMs } from "../core/primitives/loop/retry-after.js";
 
 /**
  * 给 provider 套上显式分类重试。只认"响应头阶段的 ProviderHttpError 且

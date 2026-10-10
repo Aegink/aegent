@@ -7,8 +7,8 @@ import {
     type HookBridge,
 } from "./hook-compat.js";
 import { HookRegistry } from "../kernel/hooks.js";
-import type { ToolCallPayload } from "../kernel/loop.js";
-import type { ToolExecutionResult } from "../kernel/loop.js";
+import type { ToolCallPayload } from "../core/primitives/loop/loop.js";
+import type { ToolExecutionResult } from "../core/primitives/loop/loop.js";
 
 /** 真实生态脚本样本（claude-code hooks.json 的 hooks 键形态）。 */
 const CC_CONFIG = {

@@ -17,7 +17,7 @@ import { PathGuard } from "../../../sandbox/path-guard.js";
 import { createNetworkGuard } from "../../../sandbox/network.js";
 import { InMemoryAttachmentStore } from "../../../attachments/store.js";
 import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../../../session/store.js";
-import { ScriptedProvider, makeLoop } from "../../loop.test-utils.js";
+import { ScriptedProvider, makeLoop } from "../../../core/primitives/loop/loop.test-utils.js";
 import { registerBuiltinTools, builtinToolParamNames } from "./index.js";
 import { BackgroundShellRegistry, MAX_BACKGROUND_TASKS } from "../background-shell.js";
 import {

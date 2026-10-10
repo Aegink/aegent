@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import type { ChainNext } from "../kernel/chain.js";
-import type { ToolCallPayload, ToolExecutionResult } from "../kernel/loop.js";
+import type { ToolCallPayload, ToolExecutionResult } from "../core/primitives/loop/loop.js";
 import type { JsonRecord } from "../kernel/events.js";
-import { makeLoop, ScriptedProvider } from "../kernel/loop.test-utils.js";
+import { makeLoop, ScriptedProvider } from "../core/primitives/loop/loop.test-utils.js";
 import { expectPaired } from "../test-support/event-asserts.js";
 import { DenyPermissionBroker, ManualPermissionBroker } from "./broker.js";
 import { PendingApprovals, PermissionTimeout, type ApprovalAnnouncement } from "./pending.js";

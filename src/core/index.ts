@@ -23,3 +23,5 @@ export * from "./contracts/schedule.js";
 export * from "./contracts/telemetry.js";
 export * from "./contracts/subagent.js";
 export * from "./primitives/session/reference.js";
+export type { AgentLoopDeps, DecideTurn, StepRecord, ToolExecutionMode, TurnDecision } from "./primitives/loop/loop.js";
+export { createLoop, registerLoopImplementation, type LoopImplementation } from "./primitives/loop/factory.js";

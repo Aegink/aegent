@@ -27,22 +27,22 @@ import {
   type RegisteredModel,
 } from "./model-switch.js";
 import { AgentLoop } from "./loop.js";
-import { createChildAssembly, type ChildAssembly } from "./assembly.js";
-import type { LlmFailure, SessionEvent } from "./events.js";
-import { runAgentChildStdio, type AgentChildOptions } from "./agent-process.js";
+import { createChildAssembly, type ChildAssembly } from "../../../kernel/assembly.js";
+import type { LlmFailure, SessionEvent } from "../../../kernel/events.js";
+import { runAgentChildStdio, type AgentChildOptions } from "../../../kernel/agent-process.js";
 import {
   decodeMessage,
   type AgentMessage,
   type AgentRequest,
-} from "./agent-protocol.js";
-import type { ModelProvider } from "../models/provider.js";
-import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../session/store.js";
+} from "../../../kernel/agent-protocol.js";
+import type { ModelProvider } from "../../../models/provider.js";
+import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../../../session/store.js";
 import { project } from "../session/project.js";
 import {
   drainUntil,
   expectTurnScoped,
   recvWithTimeout,
-} from "../test-support/event-asserts.js";
+} from "../../../test-support/event-asserts.js";
 
 const identityA = { provider: "p", modelId: "m1" };
 const identityB = { provider: "p", modelId: "m2" };
@@ -726,11 +726,11 @@ describe("model/switch 协议命令 —— agent-process 全链", () => {
 // 模型目录与选择器（J12 / T-P1-22）：去重 + 每厂商上限 + discovery 兜底
 // ---------------------------------------------------------------------------
 
-import { buildModelCatalog, MAX_MODELS_PER_PROVIDER } from "../models/catalog.js";
-import { discoverOpenAiCompatModels } from "../models/openai-compat.js";
-import { parseProviderConfig } from "../models/config.js";
-import { HttpMock } from "../test-support/http-mock.js";
-import { identityKey } from "../models/identity.js";
+import { buildModelCatalog, MAX_MODELS_PER_PROVIDER } from "../../../models/catalog.js";
+import { discoverOpenAiCompatModels } from "../../../models/openai-compat.js";
+import { parseProviderConfig } from "../../../models/config.js";
+import { HttpMock } from "../../../test-support/http-mock.js";
+import { identityKey } from "../../../models/identity.js";
 
 describe("模型目录与选择器（J12 / T-P1-22）", () => {
   const id = (provider: string, modelId: string) => ({ provider, modelId });

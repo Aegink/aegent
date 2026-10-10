@@ -298,7 +298,7 @@ describe("tokensBefore 来源与有效视窗", () => {
 // ---------------------------------------------------------------------------
 
 import type { SessionEvent } from "../kernel/events.js";
-import { ScriptedProvider } from "../kernel/loop.test-utils.js";
+import { ScriptedProvider } from "../core/primitives/loop/loop.test-utils.js";
 import {
   createLlmSummarizer,
   parseSummaryOutput,

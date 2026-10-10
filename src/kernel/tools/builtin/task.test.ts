@@ -12,8 +12,8 @@ import { project } from "../../../session/project.js";
 import { PathGuard } from "../../../sandbox/path-guard.js";
 import { ToolRegistry } from "../registry.js";
 import { registerBuiltinTools } from "./index.js";
-import { ScriptedProvider } from "../../loop.test-utils.js";
-import { AgentLoop } from "../../loop.js";
+import { ScriptedProvider } from "../../../core/primitives/loop/loop.test-utils.js";
+import { AgentLoop } from "../../../core/primitives/loop/loop.js";
 import { createSubagentRunner, SubagentDepthError } from "../../subagent.js";
 import type { ModelIdentity } from "../../../models/identity.js";
 

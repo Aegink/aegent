@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { RunState } from "./run-state.js";
-import { ScriptedProvider, makeLoop } from "../../kernel/loop.test-utils.js";
+import { ScriptedProvider, makeLoop } from "../primitives/loop/loop.test-utils.js";
 
 /**
  * A3 运行态独立于 loop —— 服务只靠生命周期通知（markBusy / markIdle），

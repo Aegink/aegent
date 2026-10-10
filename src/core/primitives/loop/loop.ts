@@ -1,0 +1,1571 @@
+/**
+ * agent 主循环（A1/A6）——三级生命周期的中段：turn（用户轮）→ step（一次
+ * 模型调用 + 其工具执行）→ message。**pi 的 "turn"（一次 assistant 回复 + 其
+ * 工具调用）在我方叫 step**（l0-events.md §2.1 决定 1），A6 的验收措辞
+ * "一个 turn = 一次 assistant 回复 + 其工具调用"按此映射到 step。
+ *
+ * A1 纪律：停不停由 DecideTurn **显式**给出（pi types.ts:143 的
+ * AgentTurnDecision 形状），loop 自己绝不推断"没有 toolCall 就停"——
+ * 有专用测试钉死：无 toolCall 且 DecideTurn 给 continue 时 loop 必须继续。
+ *
+ * 链接线（Q14 / T-3-01 的三点位决定）：loop 按链写，三个点位全部走到——
+ *   modelRequest  包住"组装请求 → request/header → 消费流"整段（阶段 7 上下文
+ *                 装配层在此换载荷 next(e2)；截断 = 不放行请求，turn 以 blocked 终止）；
+ *   toolCall      包住"单次工具执行"（阶段 5 权限层在此截断 = 拒绝执行）；
+ *   turnEnd       包住"落 turn/end"（阶段 7 压缩层在此作业）。
+ *
+ * 事件真相（不变量 1）：loop 不养第二份会话历史——每步的模型请求消息从
+ * store.load() 投影重建（遵循最新 session/revert 标记的有效视窗）；loop 只写
+ * 事件。compaction 的窗口重建属阶段 7，P0 逐条直读。
+ *
+ * 模型调用直接消费 T-2-02 的 ModelProvider/StreamChunk；重试由装配处套
+ * T-2-03 的 withRetry（ProviderHttpError 只在响应头阶段抛、流产出后不重试，
+ * 该语义已钉死在 retry.test）——loop 内不设第二条重试路径。模型身份每
+ * turn 启动捕获一次（J6/J7 的 modelForTurn，T-P1-04）：在途换模生效点在
+ * 新 turn，本 turn 全程用捕获值跑完。
+ */
+
+import type { ModelIdentity } from "../../index.js";
+import { parseRetryAfterMs } from "./retry-after.js";
+import * as path from "node:path";
+import { performance } from "node:perf_hooks";
+import {
+  type ChatMessage,
+  type ChatTool,
+  type ModelProvider,
+  ProviderHttpError,
+} from "../../index.js";
+import type { AttachmentRef, AttachmentStore } from "../../../core/index.js";
+import { buildChatMessages, effectiveEvents } from "../session/messages.js";
+import { buildReferenceExcerpt } from "../session/reference.js";
+import { Projector } from "../session/project.js";
+import type { SessionStore } from "../../index.js";
+import { computeCacheAnchor, type PrefixChange } from "../session/prefix-anchor.js";
+import { trimToolResultMessages, type ResultTrimRules } from "../session/result-trim.js";
+import { BudgetExceededError, ParseBudget } from "../../skeleton/budget.js";
+import {
+  classifyStreamFailure,
+  retryErrorFieldsOf,
+  StreamRecoveryBlockedError,
+  type StreamRecoveryPolicy,
+} from "./stream-recovery.js";
+import { normalizePromptVerdict, type PromptGate } from "./prompt-gate.js";
+import {
+  isOutputTokenLimitHit,
+  LoopOutputContinuation,
+  maxStepsExceeded,
+  MutationOutcomeGuard,
+  MUTATION_RETRY_BUDGET_EXHAUSTED,
+  OUTPUT_TOKEN_CONTINUE_PROMPT,
+  OUTPUT_TOKEN_LIMIT_FINISH_REASONS,
+} from "./guards.js";
+import type { MutationRetryBudget } from "../tools/mutation-budget.js";
+import { settleAbandonedToolCalls, TurnWatchdog } from "./watchdog.js";
+import type { Logger } from "../../skeleton/logger.js";
+import type { ModelRequestOptions } from "./model-switch.js";
+import type { RawChunkLog } from "../../skeleton/raw-chunk-log.js";
+import {
+  type ChainExecutor,
+  type ChainLayer,
+  composeChain,
+} from "../../skeleton/chain.js";
+import type {
+  CancelCause,
+  JsonValue,
+  LlmFailure,
+  NewSessionEvent,
+  SessionRef,
+  TimedStreamChunk,
+  TokenUsage,
+  TurnEndReason,
+} from "../../skeleton/events.js";
+import { TimeoutError } from "../../skeleton/timeout.js";
+import { RwLock } from "../../skeleton/rw-lock.js";
+import { type PromptQueue } from "../../skeleton/queue.js";
+import { type RunState } from "../../skeleton/run-state.js";
+
+// ---------------------------------------------------------------------------
+// 链点位的载荷 / 产物类型（T-3-01 卡定形的三个点的具体形状）
+// ---------------------------------------------------------------------------
+
+/** 链上下文（P0 最小面；阶段 5/7 需要服务时扩此接口，不开泛型）。 */
+
+/** modelRequest 点位：包住"这次模型请求"。 */
+export interface ModelRequestPayload {
+  turn: number;
+  step: number;
+  identity: ModelIdentity;
+  messages: ChatMessage[];
+  tools?: ChatTool[];
+}
+
+/** modelRequest 点位的产物：流消费完毕后的装配结果。 */
+export interface ModelStepOutput {
+  content: string;
+  toolCalls: { id: string; name: string; arguments: string }[];
+  usage?: TokenUsage;
+  /** 无损定时流记录——assistant/message.stream 与 assistant/attempt.stream 的来源。 */
+  timed: TimedStreamChunk[];
+  /** A7：流中途被取消——内容是已交付前缀，其后不再消费。 */
+  interrupted?: true;
+  /** B19/T-P1-61：本次模型请求的耗时面（首 chunk 延迟 + 流总时长）。 */
+  timing?: { firstTokenLatencyMs: number; streamDurationMs: number };
+  /** B19/T-P1-61：本次模型请求的关联 id（`r<序数>` 会话内单调）。 */
+  traceId?: string;
+  /** B20/T-P1-62：厂商 finishReason（done chunk 透传——触顶续跑判定面）。 */
+  finishReason?: string;
+}
+
+/** toolCall 点位：包住"单次工具执行"（载荷与 tool/call 事件同源）。 */
+
+/** toolCall 点位的产物（形状 = ToolResultEvent 的消息侧载荷）。 */
+// T2-4/T2-6 依赖倒置：ToolExecutionResult/LoopContext/ToolCallPayload 契约
+// 下沉 core/contracts/tools.ts（re-export 保兼容）。
+export type { LoopContext, ToolCallPayload, ToolExecutionResult } from "../../../core/index.js";
+import type { LoopContext, ToolCallPayload, ToolExecutionResult } from "../../../core/index.js";
+
+// T3-1/W7：输出触顶续跑常量拆 guards.ts（re-export 保兼容消费面）。
+export {
+  MAX_OUTPUT_TOKEN_CONTINUATIONS,
+  OUTPUT_TOKEN_CONTINUE_PROMPT,
+  OUTPUT_TOKEN_LIMIT_FINISH_REASONS,
+} from "./guards.js";
+
+/** turnEnd 点位：包住"落 turn/end"。reason 由 loop 定，层只观察（P0）。 */
+export interface TurnEndPayload {
+  turn: number;
+  reason: TurnEndReason;
+}
+
+// ---------------------------------------------------------------------------
+// A1：显式停止条件
+// ---------------------------------------------------------------------------
+
+/** A1 显式停止决策（pi AgentTurnDecision 同形状）——停止是返回的决策，不是循环推断。 */
+export type TurnDecision = { action: "continue" } | { action: "end" };
+
+/**
+ * B6 工具执行模式（pi ToolExecutionMode 同名两档）："sequential" = 逐个
+ * 执行到底（P0 行为）；"parallel" = preflight 顺序、执行并发（pi types.ts:307
+ * "preflight tool calls sequentially, then execute allowed tools concurrently"
+ * 同款）——tool/call 事件按提交序落流，tool/result 按完成序落流。
+ */
+export type ToolExecutionMode = "sequential" | "parallel";
+
+/**
+ * B7/T-P1-16：单调用进度条数上限（卡内定形）——报告次数超过后静默丢弃。
+ * 10 条 × 每条几十字节是常量级流量，"进度不撑爆事件流"由构造保证。
+ */
+export const MAX_TOOL_PROGRESS_PER_CALL = 10;
+
+/** 一个 step 的完整结果——DecideTurn 的全部决策依据。 */
+export interface StepRecord {
+  turn: number;
+  step: number;
+  /** assistant 文本（只有 toolCall 时为空串）。 */
+  content: string;
+  toolCalls: { id: string; name: string; arguments: string }[];
+  toolResults: { callId: string; content: string; isError?: boolean }[];
+  usage?: TokenUsage;
+}
+
+export type DecideTurn = (
+  record: StepRecord,
+) => TurnDecision | Promise<TurnDecision>;
+
+// ---------------------------------------------------------------------------
+// 循环本体
+// ---------------------------------------------------------------------------
+
+export interface AgentLoopDeps {
+  sessionId: string;
+  store: SessionStore;
+  /**
+   * 附件存储（P1/T-P1-124）：缺省 undefined = 附件能力未启用——prompt 带
+   * 附件由进程编排面（agent-process）类型化拒绝，loop 投影零变化。
+   * 在位时 buildMessages 注入 resolveImage（store 读 → ChatImage），
+   * user/message 的 attachments 引用展开进模型请求。
+   */
+  attachmentStore?: AttachmentStore;
+  /**
+   * 已在装配处套好 withRetry 的 provider（组合点在 T-3-06 的进程装配）；
+   * loop 只认 ModelProvider 接口，不重复包重试。
+   */
+  provider: ModelProvider;
+  identity: ModelIdentity;
+  /** 本次请求可用的工具清单（阶段 4 注册表接入前可空）。 */
+  tools?: ChatTool[];
+  /**
+   * F12/F14/T-P1-17 每请求工具清单源：模型按名索取（tool_load）后 deferrable
+   * 工具的真 schema 才出现——装配传注册表的 toChatTools() 闭包，loop 每次
+   * callModel 现取。缺省 undefined = 固定用 tools（P0 零行为变化）。
+   */
+  toolsProvider?: () => ChatTool[];
+  /** 工具执行终端（阶段 4 = 注册表分发；测试注入假实现）。 */
+  executeTool(call: {
+    callId: string;
+    name: string;
+    arguments: string;
+    /** B7 进度上报通道（T-P1-16）：registry 转进 ToolContext.reportProgress。 */
+    report?: (message: string) => void;
+  }): Promise<ToolExecutionResult>;
+  decideTurn: DecideTurn;
+  /**
+   * prompt 队列（A2/A9，T-3-03 接线）：step 边界按 QueueMode 排空注入。
+   * 空闲期（两轮之间）入队的消息会在下一个 step 边界一并进入请求；
+   * 从队列开启新 turn 属进程编排（T-3-06），不在 loop 内。
+   */
+  queue?: PromptQueue;
+  /**
+   * 运行态服务（A3，T-3-05 接线）：runTurn 开始 markBusy，turn/end 落盘成功
+   * 后（closeTurn 尾部，唯一通知点）markIdle。崩溃路径到不了 markIdle——
+   * busy 由恢复路径归位（宁可误报 busy，绝不误报 idle）。
+   */
+  runState?: RunState;
+  /**
+   * 工具循环的双轴预算（B14，T-4-08 接入）：缺省启用默认上限
+   * （DEFAULT_MAX_TOOL_CALLS / DEFAULT_TOOL_LOOP_TIMEOUT_MS），传 Infinity
+   * 显式禁轴。预算耗尽 = 停止派发，未派发的调用缺席（与取消同语义，
+   * 配平不变量不受影响）。parallel 模式（T-P1-15）下 tick 照常逐调用
+   * 计数（并行批内累加），progress 不再调用——批内全部派发后没有剩余
+   * 派发点，时间轴的实际闸门是下一步的 tick。
+   */
+  toolBudget?: { maxTicks?: number; timeoutMs?: number };
+  /**
+   * B6/T-P1-15 工具执行模式（pi ToolExecutionMode 同名两档）：缺省
+   * "sequential"（P0 行为零变化）。"parallel" = preflight（取消/预算检查 +
+   * tool/call 落流）顺序、执行并发（pi types.ts:307 "preflight tool calls
+   * sequentially, then execute allowed tools concurrently" 同款）——tool/call
+   * 事件按提交序落流，tool/result 按完成序落流；并发纪律走 isParallelTool
+   * 声明 + 一把 RwLock（B17：读=并行、写=排他）。
+   */
+  toolExecution?: ToolExecutionMode;
+  /**
+   * B17 并行声明查询：工具名 → 是否声明了可并行（只读类）。未注册/未声明
+   * 一律 false = 排他（未声明即不可并行，fail-closed）。缺省 undefined 时
+   * parallel 模式下所有工具都排他（与 sequential 等效但事件序不同）。
+   */
+  isParallelTool?(name: string): boolean;
+  /**
+   * F6/F13/T-P1-19 缓存锚变化通知（逐请求检测）：锚 = system + tools 字节
+   * 序（computeCacheAnchor）。identical 静默；appended（位置性追加，F13
+   * 允许）与 rewritten（前缀作废——换模时 rewritten 即违背 F13，装配侧
+   * 据此告警）。缺省 undefined = 不检测通知（锚计算本身零开销）。
+   */
+  onCacheAnchorChange?(change: PrefixChange): void;
+  /** 三个点位的层。P0 恒空数组；阶段 5/7 的权限/上下文/压缩层从这里进。 */
+  layers?: {
+    toolCall?: ReadonlyArray<
+      ChainLayer<LoopContext, ToolCallPayload, ToolExecutionResult>
+    >;
+    modelRequest?: ReadonlyArray<
+      ChainLayer<LoopContext, ModelRequestPayload, ModelStepOutput>
+    >;
+    turnEnd?: ReadonlyArray<ChainLayer<LoopContext, TurnEndPayload, void>>;
+  };
+  /**
+   * J6/J7 每轮模型解析（T-P1-04 装配接线）：turn 启动时调用一次，返回值
+   * 即本 turn 全程的 provider 与 identity——在途换模只改装配侧 configured，
+   * 本 turn 用启动时捕获值跑完（生效点在新 turn，pi 的 captured/configured
+   * 分离同款）。缺省 undefined = 固定用 provider/identity（P0 单模型装配
+   * 零行为变化）。
+   */
+  modelForTurn?(turn: number): {
+    provider: ModelProvider;
+    identity: ModelIdentity;
+    /** T-P3-137 三轮：模型级思考档/联网搜索（RegisteredModel 透传）。 */
+    options?: ModelRequestOptions;
+  };
+  /**
+   * T-P3-161：会话思考档覆盖读取（turn 捕获时取一次——档位/"omit"/undefined
+   * 跟模型默认）。装配由 thinking/set 命令写入（内存态，与换模生命周期同款）。
+   */
+  thinkingOverrideForTurn?: () => string | undefined;
+  /**
+   * J11 换模事务（T-P1-05 装配接线）：turn 以 error 终止时通知装配——
+   * 装配处据此驱动 ModelSwitchService.reportRequestFailure（不兼容判据
+   * 命中 → 回滚 prev）。同 beforeFirstModelRequest 先例：显式时点 hook，
+   * 不是链点位；纯通知，loop 不关心返回。
+   */
+  onTurnError?(turn: number, failure: LlmFailure): void;
+  /**
+   * PreTurn 压缩挂点（T-8 装配，zcode PreRequest 同款）：本 turn 的
+   * turn/start + user/message 已落盘（新 prompt 已入流）、首次模型请求尚未
+   * 发出时调用——装配处在此跑本地溢出判定与 PreTurn 相位压缩（F9/F21）。
+   * 压缩不挂 modelRequest 链（T-3-01 排除项：与上下文装配互踩），这个显式
+   * 时点是 loop 提供给装配的唯一合法入口。
+   */
+  beforeFirstModelRequest?(turn: number): Promise<void>;
+  /**
+   * 一个含工具调用的 step 完成后回调（T-8 装配：RapidRefillGuard 的
+   * recordCompletedToolStep 记账——真实干活会拉高 toolTurnsSinceCompact，
+   * 解锁抖动断路器）。纯通知，loop 不关心返回。
+   */
+  onToolStepCompleted?(turn: number, step: number): void;
+  /**
+   * A13/T-P1-48 prompt 入队闸门：step 边界注入前逐条裁决（kimi
+   * promptGateActor 出队裁决同构）——放行进历史 / 拦截不落流（warn 留痕）/
+   * 改写放行。缺省 undefined = 全放行（P0 行为零变化）。gate 抛错沿
+   * runTurn 的 catch 走 failTurn 收轮（装配钩子异常与 hook 崩溃同轨）。
+   */
+  promptGate?: PromptGate;
+  /** A13 拦截留痕（结构化 warn 可检索）；缺省 undefined = 不打日志。 */
+  logger?: Logger;
+  /** E14/T-P1-90 原始分片诊断日志（装配注入；缺省不写——旁路通道）。 */
+  rawChunkLog?: RawChunkLog;
+  /**
+   * A14/T-P1-50 护栏一：单 turn 内最大 step 数（模型一直 continue 不停的
+   * 强制收束）。缺省 0 = 不限（kimi configSection maxStepsPerTurn optional
+   * 同构）。超限 → logger.warn + turn/end{blocked}（显式护栏终止，非
+   * completed——模型没说完成；与 B14 工具预算轴语义不同：B14 数工具调用
+   * 且跨 turn 持续，本护栏数 step 且每 turn 重置）。
+   */
+  maxStepsPerTurn?: number;
+  /**
+   * F18/T-P1-102 流中断恢复策略：提供时 callModel 对"流已产出增量后失败"
+   * 走有界恢复重试（从锚点重建重发整 step；不可重试失败 → 类型化标记 →
+   * runStep 以 turn/end{blocked} 显式收轮）；缺省 undefined = 不恢复（现状
+   * turn/end{error} 语义）。agent-process 装配缺省注入 { maxRetries: 2 }。
+   */
+  streamRecovery?: StreamRecoveryPolicy;
+  /**
+   * F8/T-P1-104 工具结果历史裁剪规则：提供时 buildMessages 在请求面把陈旧
+   * 超长的 tool result 换占位符（事件流不改写、配对保持、尾部 keepLast
+   * 原文保留）；缺省 undefined = 不裁剪（零行为变化）。
+   */
+  resultTrim?: ResultTrimRules;
+  /**
+   * B16/T-P1-59：工具执行策略快照源（装配注入 registry.runtimeMeta 同名
+   * 包装）——loop 在 step 开始按广告清单固化声明。缺省 undefined = parallel
+   * 判定落回 isParallelTool 现查、timeoutMs 用 def 现值（零行为变化）。
+   */
+  toolRuntimeMeta?: (name: string) => { parallel: boolean; timeoutMs: number | undefined } | undefined;
+  /**
+   * B13/T-P1-57 mutation 重试预算（prompt × path 双作用域）：edit/apply_patch
+   * 失败结果（meta.mutationPaths）按当前 promptId 上报记账，同一路径第 3 次
+   * 计数失败 → 本 step 收尾 turn/end{blocked}（显式护栏终止）。缺省 undefined
+   * = 不启用（零行为变化）。
+   */
+  mutationBudget?: MutationRetryBudget;
+  /**
+   * A14/T-P1-50 护栏二：取消后等待在途工作收尾的超时（kimi machine.ts:428
+   * `abortTimeout: abortTimeoutMs ?? 10_000` 同构，缺省 10_000）。超时 →
+   * 强制收轮：补闭合未闭合 step + turn/end{aborted} 落盘 + runState 归位 +
+   * 迟到结果闸门（在途工具结算后其结果不再落盘）。协作式纪律不变——看门狗
+   * **不弃在途 promise**（runTurn 的调用栈仍等工具自然结算），强制的只是
+   * 事件流终态与状态归位（LIMITATIONS 记档：挂死的外部进程需 OS 级干预）。
+   * 未配置 = 无看门狗（P0 行为零变化）。
+   */
+  abortTimeoutMs?: number;
+}
+
+export class AgentLoop {
+  private readonly $: LoopContext;
+  /**
+   * A7 取消槽：运行时 cause，**绝不冻结**（undici 会对 abort reason 赋 stack，
+   * 冻结让真因变 TypeError）；落盘时经 copyCause 只拷声明字段。
+   * 每个 turn 一份新信号：runTurn 开始时重置，turn/end 发布前清槽。
+   */
+  private cancelCause: CancelCause | null = null;
+  /**
+   * A7 信号联动（T-P1-43）：per-turn 的 AbortController——cancel() 置槽
+   * 同时 abort 信号，已派发工具可经 ToolContext.signal 观察取消（协作式：
+   * 工具自行决定如何响应；task 工具用它联动子循环取消，dsh activation
+   * stop 传播 / opencode ctx.abort.addEventListener 同构）。每个 turn
+   * 一份新 controller：runTurn 开始替换（idle 期迟到取消 abort 的是旧
+   * controller，无消费者——"迟到的取消不武装后续工作"的信号面同构）。
+   */
+  private cancelController: AbortController | null = null;
+  /**
+   * 本 turn 的捕获值（J7）：runTurn 启动时从 modelForTurn 取（缺省退化为
+   * 固定 provider/identity），本 turn 全程不变——runStep/callModel 只读它，
+   * 不回读 deps.provider/identity。
+   */
+  private turnModel: {
+    provider: ModelProvider;
+    identity: ModelIdentity;
+    /** T-P3-137 三轮：模型级思考档/联网搜索（RegisteredModel.options 捕获透传）。 */
+    options?: ModelRequestOptions;
+  };
+  private readonly toolChain: ChainExecutor<
+    LoopContext,
+    ToolCallPayload,
+    ToolExecutionResult
+  >;
+  private readonly modelChain: ChainExecutor<
+    LoopContext,
+    ModelRequestPayload,
+    ModelStepOutput
+  >;
+  private readonly turnEndChain: ChainExecutor<LoopContext, TurnEndPayload, void>;
+
+  constructor(private readonly deps: AgentLoopDeps) {
+    this.watchdog = new TurnWatchdog(
+      {
+        store: deps.store,
+        sessionId: deps.sessionId,
+        ...(deps.logger !== undefined ? { logger: deps.logger } : {}),
+        ...(deps.runState !== undefined ? { runState: deps.runState } : {}),
+        ...(deps.abortTimeoutMs !== undefined ? { abortTimeoutMs: deps.abortTimeoutMs } : {}),
+      },
+      {
+        getCancelCause: () => this.cancelCause,
+        getActiveTurn: () => this.activeTurnNumber,
+        clearActiveTurn: () => {
+          this.activeTurnNumber = null;
+        },
+      },
+    );
+    this.mutationGuard = new MutationOutcomeGuard(deps.mutationBudget);
+    this.$ = { sessionId: deps.sessionId };
+    // A12/T-P1-53 关联 id 计数器：从流重建（恢复路径不重号）——已有
+    // user/message 数即下一枚的序数基线。
+    this.promptCounter = deps.store
+      .load(deps.sessionId)
+      .filter((e) => e.type === "user/message").length;
+    this.traceCounter = deps.store
+      .load(deps.sessionId)
+      .filter((e) => e.type === "request/header").length;
+    // 缺省捕获 = 固定 provider/identity（P0 行为）；runTurn 启动时按
+    // modelForTurn 覆盖（J7）。
+    this.turnModel = { provider: deps.provider, identity: deps.identity };
+    this.toolChain = composeChain({
+      point: "toolCall",
+      layers: deps.layers?.toolCall ?? [],
+      terminal: (_$, e) => this.deps.executeTool(e),
+    });
+    this.modelChain = composeChain({
+      point: "modelRequest",
+      layers: deps.layers?.modelRequest ?? [],
+      terminal: (_$, e) => this.callModel(e),
+    });
+    this.turnEndChain = composeChain({
+      point: "turnEnd",
+      layers: deps.layers?.turnEnd ?? [],
+      terminal: (_$, e) => {
+        // E18/T-P1-94：回合结局与产出一起结算——produced 由 loop（机器）
+        // 在收轮时点自报，消费者免事后反推"哪些 assistant 消息属于本回合"。
+        // abort 轮照报已产出部分（kimi turnSettled {outcome, produced} 同构）。
+        const produced = this.deps.store
+          .load(this.deps.sessionId)
+          .filter((ev) => ev.type === "assistant/message" && ev.turn === e.turn)
+          .map((ev) => ev.seq);
+        this.deps.store.append(this.deps.sessionId, [
+          {
+            type: "turn/end",
+            turn: e.turn,
+            reason: e.reason,
+            ...(produced.length > 0 ? { produced } : {}),
+          },
+        ]);
+      },
+    });
+  }
+
+  /**
+   * A7：取消当前 turn（first-wins，重复调用只认第一次）。
+   * 协作式纪律：取消只是置槽，loop 在每个 await 边界检查，绝不 Promise.race
+   * 弃掉在途的 adapter/工具 promise（未协作的工作自然结算后才收轮）。
+   * 无活动 turn 时调用是无害 no-op——槽在下一次 runTurn 开始时重置，
+   * 迟到的取消不武装后续工作（DSH："does not arm later work"）。
+   */
+  cancel(cause: CancelCause): void {
+    if (this.cancelCause) return;
+    this.cancelCause = cause;
+    // T-P1-43 信号联动：已派发工具经 ctx.signal 观察取消（协作式——
+    // 工具自行决定如何响应；task 用它联动子循环）。
+    this.cancelController?.abort();
+    // A14/T-P1-50：取消后武装看门狗（未配置 abortTimeoutMs 则无看门狗）
+    this.watchdog.arm();
+  }
+
+  /**
+   * A10（T-P1-47）steer 准入的权威面：当前在途轮号；idle 时 null。
+   * runTurn 开始置位、closeTurn 清位（T-3-05"尾部唯一归位点"——completed/
+   * blocked/aborted/error 全路径必经，收尾阶段的 steer 自然落"无活动轮"拒绝）。
+   */
+  private activeTurnNumber: number | null = null;
+  get activeTurn(): number | null {
+    return this.activeTurnNumber;
+  }
+
+  /** B19/T-P1-61：当前 step 号只读面（retrying 事件落流读取；idle 时 undefined）。 */
+  private currentStepNumber: number | undefined;
+  get currentStep(): number | undefined {
+    return this.currentStepNumber;
+  }
+
+  /**
+   * A14/T-P1-50 看门狗（T3-1 拆 watchdog.ts——句柄/强制收轮标记/forceCloseTurn
+   * 全在 TurnWatchdog）。forcedClosed 置位后：closeTurn 直接返回（终态已由
+   * 看门狗落盘，防 double terminal）、迟到的工具结果不再落盘（事件流不变量
+   * 优先于结果保全）。随 runTurn 开始复位（与 cancelCause 同步）。
+   */
+  private readonly watchdog: TurnWatchdog;
+
+  /** A12/T-P1-53 关联 id 分配（会话内单调 p1、p2…；构造时从流重建基线）。 */
+  private promptCounter: number;
+
+  /**
+   * B13/T-P1-57：当前 prompt 的关联 id（nextPromptId 分配即更新——"当前
+   * prompt" = 最新落盘的 user/message）。mutation 预算的计数作用域键。
+   */
+  private currentPromptId: string | undefined;
+
+  /** B16/T-P1-59：当前 step 的工具执行策略快照（runStep 开始时固化）。 */
+  private stepToolMeta = new Map<string, { parallel: boolean; timeoutMs?: number }>();
+
+  /** B20/T-P1-62：本 turn 的输出触顶续跑计数（T3-1 拆 guards.ts，每 turn 重置）。 */
+  private readonly outputContinuation = new LoopOutputContinuation();
+
+  /** B13/T-P1-57：mutation 预算上报护栏（T3-1 拆 guards.ts——reportOutcome/终止事实）。 */
+  private readonly mutationGuard: MutationOutcomeGuard;
+
+  private nextPromptId(): string {
+    this.promptCounter += 1;
+    this.currentPromptId = `p${this.promptCounter}`;
+    return this.currentPromptId;
+  }
+
+  /** B19/T-P1-61 模型请求关联 id（`r<序数>` 会话内单调；request/header 数即基线）。 */
+  private traceCounter: number;
+
+  private nextTraceId(): string {
+    this.traceCounter += 1;
+    return `r${this.traceCounter}`;
+  }
+
+  /**
+   * 跑一个用户轮：turn/start → user/message → N 个 step → turn/end。
+   * 返回结束原因（硬退出的 error 也不抛——终态在事件流里，pi 同款
+   * "error responses remain hard exits"）。
+   * T-P3-146 A/H 扩展位：command = 模板调用原文（落 user/message 的 chip
+   * 字段）；model = 命令级模型覆盖（frontmatter model——优先于 modelForTurn，
+   * 仅本 turn 生效）。
+   */
+  async runTurn(
+    prompt: string,
+    attachments?: readonly AttachmentRef[],
+    sessionRefs?: readonly SessionRef[],
+    extras?: {
+      command?: string;
+      model?: { provider: ModelProvider; identity: ModelIdentity };
+    },
+  ): Promise<TurnEndReason> {
+    const { store, sessionId } = this.deps;
+    // A3：turn 尝试开始即 busy（先于任何校验与落盘）——若本 turn 半途崩溃，
+    // busy 停留，由恢复路径归位。
+    this.deps.runState?.markBusy(sessionId);
+    const turn = this.nextTurnNumber();
+    // A10（T-P1-47）：steer 准入权威面置位（closeTurn 清位）
+    this.activeTurnNumber = turn;
+    // A14/T-P1-50：新 turn 复位强制收轮标记与残留看门狗（与 cancelCause 同步）
+    this.watchdog.resetForNewTurn();
+    // B13/T-P1-57：新 turn 复位预算耗尽标记（计数作用域按 promptId，本就
+    // 不会跨 prompt 生效——此处清的是异常半途残留）
+    this.mutationGuard.consumeTerminate();
+    // B20/T-P1-62：新 turn 复位输出触顶续跑计数
+    this.outputContinuation.reset();
+    // 新 turn 一份新信号：丢弃 idle 期迟到的取消（不武装本 turn 之前的工作）
+    this.cancelCause = null;
+    this.cancelController = new AbortController();
+    // J7 捕获：turn 启动即定本 turn 的模型（此后在途换模只影响后续 turn）。
+    // 捕获在 turn/start 落盘前——装配侧坏状态在此爆出，不污染事件流。
+    // T-P3-146 H：命令级覆盖（frontmatter model）优先于 modelForTurn。
+    const captured: {
+      provider: ModelProvider;
+      identity: ModelIdentity;
+      options?: ModelRequestOptions;
+    } = extras?.model
+      ? extras.model
+      : this.deps.modelForTurn
+        ? this.deps.modelForTurn(turn)
+        : { provider: this.deps.provider, identity: this.deps.identity };
+    // T-P3-161：会话思考档覆盖（thinking/set）——用户显式意图最高优先，
+    // 叠加进捕获 options（turn 内一致；命令级 extras.model 的思考档同被
+    // 覆盖——思考档与模型选择正交、以最后显式动作为准）。
+    const thinkingOverride = this.deps.thinkingOverrideForTurn?.();
+    this.turnModel =
+      thinkingOverride === undefined && captured.options === undefined
+        ? captured
+        : {
+            ...captured,
+            ...(captured.options !== undefined || thinkingOverride !== undefined
+              ? {
+                  options: {
+                    ...(captured.options ?? {}),
+                    ...(thinkingOverride !== undefined ? { reasoningEffort: thinkingOverride } : {}),
+                  },
+                }
+              : {}),
+          };
+    store.append(sessionId, [
+      {
+        type: "turn/start",
+        turn,
+      },
+      {
+        type: "user/message",
+        turn,
+        message: { content: prompt },
+        source: "user",
+        promptId: this.nextPromptId(),
+        // P1/T-P1-124：附件引用随消息落流（流存引用不存字节）；无附件零变化
+        ...(attachments !== undefined && attachments.length > 0 ? { attachments: [...attachments] } : {}),
+        // E9/T-P2-107：会话引用随消息落流（流存引用不存内容）；无引用零变化
+        ...(sessionRefs !== undefined && sessionRefs.length > 0 ? { sessionRefs: [...sessionRefs] } : {}),
+        // T-P3-146 A：模板调用原文随消息落流（transcript chip 数据源）
+        ...(extras?.command !== undefined ? { command: extras.command } : {}),
+      },
+    ]);
+    try {
+      // PreTurn 压缩挂点（T-8 装配）：新 prompt 已入流、首次模型请求前。
+      // 必须在 try 内：hook 抛错走 failTurn 闭合（turn/start 已落盘——不能
+      // 把悬挂 turn 丢给进程级崩溃路径）。
+      if (this.deps.beforeFirstModelRequest) {
+        await this.deps.beforeFirstModelRequest(turn);
+      }
+      // A17/T-P1-46：await 后显式检查（zcode·turn-loop 每 await 后
+      // throwIfTurnAborted 同款时点）——挂点（PreTurn 压缩/goal 提醒）执行
+      // 期间到达的取消在首步前收轮，不留到 step 边界才兜底。
+      if (this.cancelCause) {
+        return await this.abortTurn(turn);
+      }
+      for (let step = 1; ; step++) {
+        // A7 边界检查：step 开始前
+        if (this.cancelCause) break;
+        // A14/T-P1-50 护栏：maxStepsPerTurn（缺省 0 = 不限）——超限强制
+        // 收束为 blocked（显式护栏终止，非 completed；模型一直 continue
+        // 不停是 A14 点名的失控面）
+        const maxSteps = this.deps.maxStepsPerTurn ?? 0;
+        if (maxSteps > 0 && step > maxSteps) {
+          this.deps.logger?.warn("maxStepsPerTurn 护栏触发——强制收束", {
+            turn,
+            maxSteps,
+          });
+          await this.closeTurn(turn, { kind: "blocked" });
+          return { kind: "blocked" };
+        }
+        // A2：step 边界是注入点——按 QueueMode 排空队列（含第一步前），
+        // steer 消息落 user/message 后经投影自然进入本次请求。
+        await this.drainQueue(turn);
+        const result = await this.runStep(turn, step);
+        if (result.kind === "blocked") return { kind: "blocked" };
+        if (result.kind === "cancelled") break;
+        // B20/T-P1-62：输出触顶续跑——内核护栏行为（不受 decideTurn 裁决，
+        // 否则默认"无工具即 end"会立即终结轮——正是 B20 要防的"结束回合"），
+        // 直接进下一 step（续跑指令已作为 injected user/message 入流）。
+        if (result.kind === "continue") continue;
+        // A1：end 必须由 DecideTurn 显式给出；continue 则同轮进下一个 step。
+        const decision = await this.deps.decideTurn(result.record);
+        // A17/T-P1-46：decideTurn await 后显式检查——取消发生在裁决之后
+        // 不得以 completed 收轮（取消优先于正常终态；decideTurn 期间到达
+        // 的取消此前会被 end 分支的 completed 吞掉）。
+        if (this.cancelCause) break;
+        if (decision.action === "end") {
+          await this.closeTurn(turn, { kind: "completed" });
+          return { kind: "completed" };
+        }
+      }
+      return await this.abortTurn(turn);
+    } catch (e) {
+      return this.failTurn(turn, e);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // step：step/start → 模型调用 → 工具分发 → step/end
+  // -------------------------------------------------------------------------
+
+  /**
+   * step 边界注入（A2）：排空队列、按序落 user/message（不丢不重）。
+   * A13/T-P1-48：注入前逐条过入队闸门（缺省不装配 = 全放行）——拦截不落流
+   * （warn 留痕）、改写落改写后内容、放行原样进历史。
+   */
+  private async drainQueue(turn: number): Promise<void> {
+    const queue = this.deps.queue;
+    if (!queue) return;
+    const drained = queue.drain();
+    if (drained.length === 0) return;
+    const gate = this.deps.promptGate;
+    const admitted: typeof drained = [];
+    for (const p of drained) {
+      if (!gate) {
+        admitted.push(p);
+        continue;
+      }
+      const verdict = normalizePromptVerdict(await gate(p));
+      if (verdict.block) {
+        // 拦截：不进模型历史 = 不落盘（A9 纪律自洽）；拦截事实 warn 留痕
+        // （D14 告警先例——内容不进日志，只带 messageId 与理由）
+        this.deps.logger?.warn("prompt 入队闸门拦截", {
+          messageId: p.messageId,
+          ...(verdict.message !== undefined ? { reason: verdict.message } : {}),
+        });
+        continue;
+      }
+      admitted.push(verdict.message !== undefined ? { ...p, content: verdict.message } : p);
+    }
+    if (admitted.length === 0) return;
+    this.deps.store.append(
+      this.deps.sessionId,
+      admitted.map(
+        (p): NewSessionEvent => ({
+          type: "user/message",
+          turn,
+          message: { content: p.content },
+          source: "user",
+          // A12/T-P1-53：steer 注入的每条输入各得一枚关联 id（新输入）
+          promptId: this.nextPromptId(),
+          // E9/T-P2-107：引用随 steer 消息落流（流存引用不存内容）
+          ...(p.sessionRefs !== undefined && p.sessionRefs.length > 0
+            ? { sessionRefs: [...p.sessionRefs] }
+            : {}),
+        }),
+      ),
+    );
+  }
+
+  private async runStep(
+    turn: number,
+    step: number,
+  ): Promise<
+    { kind: "completed"; record: StepRecord }
+    | { kind: "blocked" }
+    | { kind: "cancelled" }
+    | { kind: "continue" }
+  > {
+    const { store, sessionId } = this.deps;
+    this.currentStepNumber = step;
+    store.append(sessionId, [{ type: "step/start", turn, step }]);
+    const payload: ModelRequestPayload = {
+      turn,
+      step,
+      identity: this.turnModel.identity,
+      messages: this.buildMessages(),
+      ...(this.deps.tools ? { tools: this.deps.tools } : {}),
+    };
+    let outcome;
+    try {
+      outcome = await this.modelChain.run(this.$, payload);
+    } catch (e) {
+      // F18/T-P1-102：不可重试流失败 → **显式终态 blocked**（TurnEndReason
+      // 既有槽位零扩展——与 C10/B14 同族的护栏终态）+ 结构化 warn 留因
+      // （D14 先例；不重试——auth/quota/4xx 重试无意义）。step 照 mutation
+      // 终态先例直接 closeTurn（turnEnd 链收轮）。
+      if (e instanceof StreamRecoveryBlockedError) {
+        const status = e.original instanceof ProviderHttpError ? e.original.status : undefined;
+        this.deps.logger?.warn("流中断恢复：不可重试失败，显式 blocked 收轮", {
+          turn,
+          step,
+          blockedReason: "non_retryable_failure",
+          ...(status !== undefined ? { status } : {}),
+          userContent: e.original instanceof Error ? e.original.message : String(e.original),
+        });
+        await this.closeTurn(turn, { kind: "blocked" });
+        return { kind: "blocked" };
+      }
+      throw e;
+    }
+    if (outcome.truncated) {
+      // modelRequest 层不放行请求（P0 无层；真实语义阶段 7 定）：step 空过、
+      // turn 以 blocked 终止——不放行还继续循环没有意义。（无模型请求发生
+      // ——B19 的 timing/traceId 缺省，step/end 裸落。）
+      store.append(sessionId, [{ type: "step/end", turn, step }]);
+      await this.closeTurn(turn, { kind: "blocked" });
+      return { kind: "blocked" };
+    }
+    const output = outcome.value;
+    if (output.interrupted) {
+      // A7 流中断：已交付前缀以 interrupted 标记落盘（中断是写入时记录的事实，
+      // 不是读取时的推导，l0-events §2.3）；无文本前缀但流有内容则按
+      // "未产出可见消息"落 assistant/attempt；未派发的工具调用缺席（DSH 同款）。
+      store.append(sessionId, [
+        ...(output.content !== ""
+          ? [
+              {
+                type: "assistant/message" as const,
+                turn,
+                step,
+                message: { content: output.content },
+                stream: output.timed,
+                interrupted: true as const,
+              },
+            ]
+          : output.timed.length > 0
+            ? [
+                {
+                  type: "assistant/attempt" as const,
+                  turn,
+                  step,
+                  stream: output.timed,
+                },
+              ]
+            : []),
+        {
+          type: "step/end",
+          turn,
+          step,
+          ...(output.timing ? { timing: output.timing } : {}),
+          ...(output.traceId ? { traceId: output.traceId } : {}),
+        },
+      ]);
+      return { kind: "cancelled" };
+    }
+    store.append(sessionId, [
+      {
+        type: "assistant/message",
+        turn,
+        step,
+        message: { content: output.content },
+        stream: output.timed,
+        ...(output.usage ? { usage: output.usage } : {}),
+      },
+    ]);
+    // B20/T-P1-62：输出 token 触顶可续跑——纯文本（无工具调用）且
+    // finishReason ∈ 触顶闭集且本 turn 续跑未达上限 → 落固定续跑指令
+    // （user/message source="injected"，注入上下文既有语义——零新事件），
+    // 下一 step 继续请求；触顶不终结轮（"可续跑事件"不是回合终态）。
+    if (isOutputTokenLimitHit(output) && this.outputContinuation.tryContinue()) {
+      store.append(sessionId, [
+        {
+          type: "user/message",
+          turn,
+          message: { content: OUTPUT_TOKEN_CONTINUE_PROMPT },
+          source: "injected",
+          promptId: this.nextPromptId(),
+        },
+        { type: "step/end", turn, step, ...(output.timing ? { timing: output.timing } : {}), ...(output.traceId ? { traceId: output.traceId } : {}) },
+      ]);
+      return { kind: "continue" };
+    }
+    const toolResults: StepRecord["toolResults"] = [];
+    // B14：每个 step 的工具分发循环一份预算（tick=派发、progress=执行完回环）
+    const budget = new ParseBudget(this.deps.toolBudget ?? {});
+    const parallel = this.deps.toolExecution === "parallel";
+    // B16/T-P1-59：本 step 的执行策略快照——模型响应里广告的工具在 step
+    // 开始时固化声明（parallel 判定 + M6 超时预算），step 进行中 registry
+    // 动态注册/替换不影响在途 step（codex "retain the step whose tool list
+    // advertised them" 同构）。
+    const toolMeta = new Map<string, { parallel: boolean; timeoutMs?: number }>();
+    for (const call of output.toolCalls) {
+      if (toolMeta.has(call.name)) continue;
+      const meta = this.deps.toolRuntimeMeta?.(call.name);
+      toolMeta.set(call.name, {
+        parallel: meta !== undefined ? meta.parallel : this.deps.isParallelTool?.(call.name) === true,
+        ...(meta?.timeoutMs !== undefined ? { timeoutMs: meta.timeoutMs } : {}),
+      });
+    }
+    this.stepToolMeta = toolMeta;
+    // preflight（取消/预算检查 + tool/call 落流）两种模式共用，顺序执行；
+    // sequential 在此内联执行到底（P0 原路径，逐字节行为不变），
+    // parallel 收集派发批、循环结束后并发执行（pi "preflight … then execute
+    // allowed tools concurrently"）。
+    const dispatched: { id: string; name: string; arguments: string }[] = [];
+    // L9/T-P2-513：本 step 的工具执行累计墙钟（segments.toolsMs 的来源）
+    let toolExecMs = 0;
+    for (const call of output.toolCalls) {
+      // A7 边界检查：已派发/已执行工具的结果照落盘（事实），未派发的缺席
+      if (this.cancelCause) break;
+      try {
+        budget.tick();
+      } catch (e) {
+        // B14 预算耗尽：本调用与其后调用不再派发（缺席语义 = 取消同款）；
+        // step 正常闭合，模型从部分结果 + 缺席中感知收束
+        if (!(e instanceof BudgetExceededError)) throw e;
+        break;
+      }
+      store.append(sessionId, [
+        {
+          type: "tool/call",
+          turn,
+          step,
+          callId: call.id,
+          name: call.name,
+          arguments: call.arguments,
+        },
+      ]);
+      dispatched.push(call);
+      if (parallel) continue;
+      // L9/T-P2-513：工具段计时——执行墙钟逐调用累计（perf_hooks 单调时钟）
+      const toolT0 = performance.now();
+      const result = await this.dispatchTool(turn, step, call);
+      toolExecMs += performance.now() - toolT0;
+      // A14/T-P1-50 迟到结果闸门：看门狗已强制收轮——结算回来的结果不再
+      // 落盘（事件流终态已闭合，append 会破坏 single-terminal/配平不变量）
+      if (this.watchdog.forcedClosed) {
+        this.deps.logger?.warn("看门狗强制收轮后迟到的工具结果被丢弃", {
+          turn,
+          step,
+          callId: call.id,
+        });
+        break;
+      }
+      toolResults.push({
+        callId: call.id,
+        content: result.content,
+        ...(result.isError ? { isError: true as const } : {}),
+      });
+      store.append(sessionId, [
+        {
+          type: "tool/result",
+          turn,
+          step,
+          callId: call.id,
+          message: {
+            content: result.content,
+            ...(result.isError ? { isError: true as const } : {}),
+          },
+          ...(result.error ? { error: result.error } : {}),
+          ...(result.meta !== undefined ? { meta: result.meta } : {}),
+        },
+      ]);
+      // T-P3-174 批次 1：view_image 的图片注入（tool/result 之后追加
+      // injected user/message——wire 序 assistant(tool_calls)→tool→user(image)）
+      this.appendImageAttachmentIfAny(turn, step, result);
+      // 执行完回环时只查时间轴（不计数）——防单件慢工具绕过数量轴
+      try {
+        budget.progress();
+      } catch (e) {
+        if (!(e instanceof BudgetExceededError)) throw e;
+        break;
+      }
+    }
+    if (parallel && dispatched.length > 0) {
+      const parallelT0 = performance.now();
+      await this.runParallelTools(turn, step, dispatched, toolResults);
+      toolExecMs += performance.now() - parallelT0;
+    }
+    // dsh 语义（T3-2）：被跳过（未派发）的调用补合成 tool/call+result 对——
+    // 模型意图以 isError 结果回喂不丢失，replay 配平（"synthetic error results
+    // for skipped calls"）。正常完结 dispatched === toolCalls，此段 no-op。
+    {
+      const dispatchedIds = new Set(dispatched.map((c) => c.id));
+      const skipped = output.toolCalls.filter((c) => !dispatchedIds.has(c.id));
+      if (skipped.length > 0) {
+        store.append(
+          sessionId,
+          skipped.flatMap((c) => [
+            {
+              type: "tool/call" as const,
+              turn,
+              step,
+              callId: c.id,
+              name: c.name,
+              arguments: c.arguments,
+            },
+            {
+              type: "tool/result" as const,
+              turn,
+              step,
+              callId: c.id,
+              message: { content: "", isError: true as const },
+              error: {
+                name: "LoopError",
+                code: "TOOL_ABORTED",
+                reason: this.cancelCause !== null
+                  ? "调用因 turn 中止未启动"
+                  : "调度预算耗尽，调用未派发",
+              },
+            },
+          ]),
+        );
+      }
+    }
+    store.append(sessionId, [
+      {
+        type: "step/end",
+        turn,
+        step,
+        // L9/T-P2-513：分段计时——modelMs = 模型流时长（B19 streamDurationMs
+        // 同源），toolsMs = 本 step 工具执行累计墙钟（0 也如实落——"无工具"是
+        // 有价值事实）。载荷扩展走 #27 立案（#9 前向兼容同款）。
+        ...(output.timing
+          ? {
+              timing: {
+                ...output.timing,
+                segments: { modelMs: output.timing.streamDurationMs, toolsMs: Math.round(toolExecMs) },
+              },
+            }
+          : {}),
+        ...(output.traceId ? { traceId: output.traceId } : {}),
+      },
+    ]);
+    // T-8 装配通知：含工具调用的 step 完成记一笔（RapidRefillGuard 的干活记账）。
+    if (output.toolCalls.length > 0) {
+      this.deps.onToolStepCompleted?.(turn, step);
+    }
+    // B13/T-P1-57：mutation 预算在本 step 内耗尽 → blocked 收轮（显式护栏
+    // 终止非 completed，T-P1-50 同款）。已派发工具照常结算落盘（A11 纪律），
+    // 收轮判定在 step 收尾统一做。
+    {
+      const hit = this.mutationGuard.consumeTerminate();
+      if (hit !== null) {
+        this.deps.logger?.warn("mutation 重试预算耗尽——强制收束", {
+          turn,
+          step,
+          path: hit.path,
+          errorCode: hit.errorCode,
+          code: MUTATION_RETRY_BUDGET_EXHAUSTED,
+        });
+        await this.closeTurn(turn, { kind: "blocked" });
+        return { kind: "blocked" };
+      }
+    }
+    if (this.cancelCause) return { kind: "cancelled" };
+    return {
+      kind: "completed",
+      record: {
+        turn,
+        step,
+        content: output.content,
+        toolCalls: output.toolCalls,
+        toolResults,
+        ...(output.usage ? { usage: output.usage } : {}),
+      },
+    };
+  }
+
+  /**
+   * B7/T-P1-16 进度发射器（每调用一个闭包）：seqInCall 从 1 起单调递增，
+   * 单调用条数上限 MAX_TOOL_PROGRESS_PER_CALL（卡内定形——高频工具的进度
+   * 不撑爆事件流；超限后的 report 静默丢弃，进度是 best-effort 通道，
+   * 不反压工具执行）。
+   */
+  private createProgressReporter(
+    turn: number,
+    step: number,
+    callId: string,
+  ): (message: string) => void {
+    let seq = 0;
+    return (message: string) => {
+      if (seq >= MAX_TOOL_PROGRESS_PER_CALL) return;
+      seq += 1;
+      this.deps.store.append(this.deps.sessionId, [
+        { type: "tool/progress", turn, step, callId, seqInCall: seq, message },
+      ]);
+    };
+  }
+
+  /** 工具分发过 toolCall 链；基础设施崩溃也落成 isError 结果（配平不变量）。 */
+  /**
+   * T-P3-174 批次 1：view_image 的图片注入（codex 同款行为——工具调用后
+   * 模型能看到图片）。meta.imageAttachment（AttachmentRef 形状）在位时，
+   * tool/result 落流**之后**追加 source=injected 的 user/message（字节在
+   * AttachmentStore，流存引用——附件链既有纪律）；投影层经 resolveImage
+   * 展开为 image_url 块。注入失败只 warn 不打断（工具结果已闭合，配平
+   * 不变量不能被注入路径破坏）。
+   */
+  private appendImageAttachmentIfAny(
+    turn: number,
+    step: number,
+    result: ToolExecutionResult,
+  ): void {
+    if (result.meta === null || typeof result.meta !== "object" || Array.isArray(result.meta)) {
+      return;
+    }
+    const ref = (result.meta as Record<string, unknown>)["imageAttachment"];
+    if (ref === null || typeof ref !== "object" || Array.isArray(ref)) return;
+    const candidate = ref as Record<string, unknown>;
+    if (
+      typeof candidate["attachmentId"] !== "string" ||
+      typeof candidate["mediaType"] !== "string"
+    ) {
+      return;
+    }
+    try {
+      this.deps.store.append(this.deps.sessionId, [
+        {
+          type: "user/message",
+          turn,
+          step,
+          message: {
+            content: `[view_image] 图片已注入：${typeof candidate["name"] === "string" ? candidate["name"] : "image"}`,
+          },
+          source: "injected",
+          attachments: [ref as import("../../../attachments/types.js").AttachmentRef],
+        },
+      ]);
+    } catch (e) {
+      this.deps.logger?.warn("view_image 图片注入落流失败（工具结果不受影响）", {
+        userContent: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  private async dispatchTool(
+    turn: number,
+    step: number,
+    call: { id: string; name: string; arguments: string },
+  ): Promise<ToolExecutionResult> {
+    try {
+      const outcome = await this.toolChain.run(this.$, {
+        turn,
+        step,
+        callId: call.id,
+        name: call.name,
+        arguments: call.arguments,
+        report: this.createProgressReporter(turn, step, call.id),
+        // T-P1-43：本 turn 的取消信号（A7 槽位的 AbortSignal 面）——
+        // 工具可选消费；链层 spread 载荷时保留。
+        ...(this.cancelController
+          ? { signal: this.cancelController.signal }
+          : {}),
+        // B16/T-P1-59：本 step 的执行策略快照（超时预算在途 step 固化）
+        ...(this.stepToolMeta.has(call.name)
+          ? { runtimeMeta: this.stepToolMeta.get(call.name) }
+          : {}),
+      });
+      // B13/T-P1-57：mutation 工具的成败上报预算（结果 meta.mutationPaths
+      // 是工具声明的目标路径——isError 计账、成功清历史）。
+      this.mutationGuard.reportOutcome(outcome.value, this.currentPromptId);
+      return outcome.value;
+    } catch (e) {
+      return {
+        content: e instanceof Error ? e.message : String(e),
+        isError: true,
+        error: { name: "ToolError", code: "TOOL_EXECUTE_FAILED" },
+      };
+    }
+  }
+
+  /**
+   * B17/T-P1-15 parallel 模式的并发执行：一把读写锁（本 loop 一个实例），
+   * isParallelTool 声明为真的只读工具持读锁互相并发，其余持写锁与一切互斥
+   * （codex parallel.rs:191 `supports_parallel ? read : write` 的对应物）。
+   * 事件序：tool/result 按完成序落流（pi 同款）；StepRecord.toolResults 按
+   * 提交序回填（pi "tool-result message artifacts … in assistant source order"
+   * 同款）。取消语义不变：已派发（tool/call 已落流）的执行照完成、结果照落盘。
+   */
+  private readonly toolLock = new RwLock();
+
+  /** F6/F13/T-P1-19：上一次请求的缓存锚与身份（onCacheAnchorChange 在位时才维护）。 */
+  private lastAnchor: { anchor: string; identity: ModelIdentity } | null = null;
+
+  private async runParallelTools(
+    turn: number,
+    step: number,
+    calls: ReadonlyArray<{ id: string; name: string; arguments: string }>,
+    toolResults: StepRecord["toolResults"],
+  ): Promise<void> {
+    const byCallId = new Map<string, ToolExecutionResult>();
+    await Promise.all(
+      calls.map(async (call) => {
+        // B16/T-P1-59：并行判定用 step 快照（step 中途声明替换不影响在途 step）
+        const release = await (this.stepToolMeta.get(call.name)?.parallel === true
+          ? this.toolLock.read()
+          : this.toolLock.write());
+        try {
+          const result = await this.dispatchTool(turn, step, call);
+          byCallId.set(call.id, result);
+          // A14/T-P1-50 迟到结果闸门：强制收轮后不落盘（与 sequential 同闸）
+          if (this.watchdog.forcedClosed) {
+            this.deps.logger?.warn("看门狗强制收轮后迟到的工具结果被丢弃", {
+              turn,
+              step,
+              callId: call.id,
+            });
+            return;
+          }
+          this.deps.store.append(this.deps.sessionId, [
+            {
+              type: "tool/result",
+              turn,
+              step,
+              callId: call.id,
+              message: {
+                content: result.content,
+                ...(result.isError ? { isError: true as const } : {}),
+              },
+              ...(result.error ? { error: result.error } : {}),
+              ...(result.meta !== undefined ? { meta: result.meta } : {}),
+            },
+          ]);
+          // T-P3-174 批次 1：parallel 路径同款图片注入（顺序面：result 按完
+          // 成序落流，注入消息跟在对应 result 之后——投影按流序展开）
+          this.appendImageAttachmentIfAny(turn, step, result);
+        } finally {
+          release();
+        }
+      }),
+    );
+    for (const call of calls) {
+      const result = byCallId.get(call.id);
+      if (result === undefined) continue;
+      toolResults.push({
+        callId: call.id,
+        content: result.content,
+        ...(result.isError ? { isError: true as const } : {}),
+      });
+    }
+  }
+
+  /**
+   * 模型调用终端：落 request/header（层换完载荷之后，记录的是真正发出去的
+   * 设置）→ 消费流 → 装配。失败时本次尝试以 assistant/attempt 落盘
+   * （不为记录失败而伪造模型消息，l0-events.md §2.2），再作硬退出上抛。
+   */
+  private async callModel(payload: ModelRequestPayload): Promise<ModelStepOutput> {
+    const { store, sessionId } = this.deps;
+    // F12/F14：toolsProvider 在位时每请求现取（deferrable 工具索取后真
+    // schema 才进清单）；缺省回落固定 tools（P0 零行为变化）
+    const tools = this.deps.toolsProvider?.() ?? this.deps.tools;
+    // F6/F13/T-P1-19：逐请求缓存锚检测——system + tools 字节序。identical
+    // 静默；appended/rewritten 通知装配观测（换模 + rewritten = 违背 F13
+    // "中途改动不得作废已缓存前缀"的告警信号）。
+    if (this.deps.onCacheAnchorChange) {
+      const systemContent = payload.messages.find((m) => m.role === "system")
+        ?.content;
+      const anchor = computeCacheAnchor(systemContent, tools);
+      const last = this.lastAnchor;
+      if (last !== null && anchor !== last.anchor) {
+        this.deps.onCacheAnchorChange({
+          from: last.anchor,
+          to: anchor,
+          kind: anchor.startsWith(last.anchor) ? "appended" : "rewritten",
+          modelSwitched:
+            payload.identity.provider !== last.identity.provider ||
+            payload.identity.modelId !== last.identity.modelId,
+        });
+      }
+      this.lastAnchor = { anchor, identity: payload.identity };
+    }
+    // F18/T-P1-102：恢复重试循环——每次尝试都是一次真实模型请求（独立
+    // request/header + traceId + 流计时）；失败 attempt 以 assistant/attempt
+    // 落盘后按判定走恢复 / blocked / 上抛三路（见 catch 块内注释）。
+    const recovery = this.deps.streamRecovery;
+    let recoveryAttempt = 0;
+    for (;;) {
+      // 每次尝试都是一次真实模型请求——request/header 逐次落盘（J7 捕获值
+      // 的证据面；reason: payload.step === 1 ? "initial" : "series" 同前）。
+      store.append(sessionId, [
+        {
+          type: "request/header",
+          turn: payload.turn,
+          step: payload.step,
+          config: {
+            provider: payload.identity.provider,
+            modelId: payload.identity.modelId,
+          },
+          // ChatTool 是 interface（无隐式索引签名），展开成匿名字面量过 JsonValue
+          ...(tools
+            ? {
+                tools: tools.map((t) => ({
+                  name: t.name,
+                  description: t.description,
+                  parameters: t.parameters,
+                })),
+              }
+            : {}),
+          reason: payload.step === 1 ? "initial" : "series",
+        },
+      ]);
+      const timed: TimedStreamChunk[] = [];
+      let content = "";
+      const calls = new Map<string, { id: string; name: string; arguments: string }>();
+      let usage: TokenUsage | undefined;
+      // B19/T-P1-61：traceId 分配 + 流计时（首 chunk 延迟 / 流总时长）——
+      // 每次尝试一枚（失败尝试的序号消耗后留空档，单调不密——traceId 是
+      // 关联键不是计数器）
+      const traceId = this.nextTraceId();
+      const streamStart = Date.now();
+      let firstChunkAt: number | undefined;
+      let finishReason: string | undefined;
+      try {
+        for await (const chunk of this.turnModel.provider.streamChat({
+          identity: payload.identity,
+          messages: payload.messages,
+          ...(tools ? { tools } : {}),
+          // T-P3-137 三轮：模型级思考档/联网搜索随 turn 捕获透传（RegisteredModel.options）
+          ...(this.turnModel.options !== undefined ? { ...this.turnModel.options } : {}),
+        })) {
+          if (firstChunkAt === undefined) firstChunkAt = Date.now();
+          timed.push({ time: Date.now(), chunk });
+          switch (chunk.type) {
+            case "text-delta":
+              content += chunk.text;
+              break;
+            case "reasoning-delta":
+              break; // 只进流记录，P0 不进 content（摘要属压缩，阶段 7）
+            case "tool-call-delta": {
+              const entry =
+                calls.get(chunk.id) ?? { id: chunk.id, name: "", arguments: "" };
+              if (chunk.name) entry.name = chunk.name;
+              entry.arguments += chunk.argsDelta;
+              calls.set(chunk.id, entry);
+              break;
+            }
+            case "usage":
+              usage = chunk.usage;
+              break;
+            case "done":
+              finishReason = chunk.finishReason;
+              break;
+          }
+          // A7 协作式中断：已到达的 chunk 已如实记录，其后不再消费
+          // （break 会经 generator .return() 关闭流，不弃 promise 不赛跑）
+          if (this.cancelCause) break;
+        }
+      } catch (e) {
+        store.append(sessionId, [
+          {
+            type: "assistant/attempt",
+            turn: payload.turn,
+            step: payload.step,
+            stream: timed,
+          },
+        ]);
+        // E14：provider 异常路径的已到达分片同样落诊断日志（保真不分顺逆）
+        this.deps.rawChunkLog?.write({
+          ts: Date.now(),
+          sessionId,
+          turn: payload.turn,
+          step: payload.step,
+          identity: payload.identity,
+          chunks: timed,
+        });
+        // 取消是权威结局——恢复不启动（abort 路径按取消收轮）
+        if (this.cancelCause) throw e;
+        // D15 流边界的 loop 级补全（F18）：首 chunk 前的失败仍是 provider
+        // 级 withRetry 的域（它已按同分类决定重试或上抛）——loop 不接手，
+        // 现状语义（turn/end{error}）不变。
+        if (timed.length === 0) throw e;
+        // 流已产出增量后失败——恢复判定三路：
+        // ①不可重试（auth/quota/4xx 终态）→ 类型化标记，runStep 以
+        //   turn/end{blocked} 显式收轮（零重试——重试无意义）；
+        // ②重试耗尽 / 未配恢复策略 → 上抛（现状 turn/end{error}——
+        //   "耗尽 ≠ blocked"：zcode blocked 词表亦无 exhausted）；
+        // ③可恢复且有剩余额度 → assistant/retrying 落流 + 从锚点重建
+        //   重发整 step（失败 attempt 的 tool calls 从未派发——calls
+        //   随 throw 丢弃，无副作用歧义；chunk 级重试必然重复产出，
+        //   整 step 重发才是 D15 边界的正确补全粒度）。
+        if (classifyStreamFailure(e) === "non-retryable") {
+          throw new StreamRecoveryBlockedError(e);
+        }
+        if (recovery === undefined || recoveryAttempt >= recovery.maxRetries) {
+          throw e;
+        }
+        store.append(sessionId, [
+          {
+            type: "assistant/retrying",
+            turn: payload.turn,
+            step: payload.step,
+            attempt: recoveryAttempt,
+            delayMs: 0, // 立即重发（provider 级退避在 withRetry 域；卡内定形）
+            error: retryErrorFieldsOf(e),
+          },
+        ]);
+        this.deps.logger?.warn("流中断恢复重试", {
+          turn: payload.turn,
+          step: payload.step,
+          attempt: recoveryAttempt,
+          maxRetries: recovery.maxRetries,
+          errorName: e instanceof Error ? e.name : typeof e,
+          userContent: e instanceof Error ? e.message : String(e),
+        });
+        recoveryAttempt += 1;
+        // 锚点重建：请求消息从事件流现算（失败尝试不进历史——buildMessages
+        // 只读已提交事实），结构上保证"从锚点重发"。
+        payload = { ...payload, messages: this.buildMessages() };
+        continue;
+      }
+      // E14/T-P1-90：请求完成后分片序列落诊断日志（旁路通道——热路径零等待）
+      this.deps.rawChunkLog?.write({
+        ts: Date.now(),
+        sessionId,
+        turn: payload.turn,
+        step: payload.step,
+        identity: payload.identity,
+        chunks: timed,
+      });
+      return {
+        content,
+        toolCalls: [...calls.values()],
+        ...(usage ? { usage } : {}),
+        timed,
+        ...(firstChunkAt !== undefined
+          ? {
+              timing: {
+                firstTokenLatencyMs: firstChunkAt - streamStart,
+                streamDurationMs: Date.now() - streamStart,
+              },
+            }
+          : {}),
+        traceId,
+        ...(finishReason !== undefined ? { finishReason } : {}),
+        ...(this.cancelCause ? { interrupted: true as const } : {}),
+      };
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // turn 收尾（turnEnd 点位）与失败路径
+  // -------------------------------------------------------------------------
+
+  /**
+   * A7 中断收尾：**清槽先行**——turn/end 发布前到达的取消是 idle 取消
+   * （DSH："terminal publication ... remain outside its authority"），
+   * 落盘的 cause 是声明字段拷贝，不是运行期对象。
+   */
+  private async abortTurn(turn: number): Promise<TurnEndReason> {
+    const cause = this.cancelCause;
+    this.cancelCause = null;
+    if (!cause) {
+      // 不可达（break 前必有 cause）；防御兜底：无因不当中断处理
+      await this.closeTurn(turn, { kind: "completed" });
+      return { kind: "completed" };
+    }
+    const reason: TurnEndReason = { kind: "aborted", cause: copyCause(cause) };
+    await this.closeTurn(turn, reason);
+    return reason;
+  }
+
+  private async closeTurn(turn: number, reason: TurnEndReason): Promise<void> {
+    // A14/T-P1-50：强制收轮已落 turn/end（看门狗）——自然收尾路径到此
+    // 直接返回，防 double terminal（事件流不变量优先）。
+    if (this.watchdog.forcedClosed) return;
+    // dsh 语义（T3-2）：abort 收轮前对在途调用补合成 isError 结果（replay
+    // 配平；正常收轮 no-op）。 settlements 事件在 turnEnd 链之前落盘。
+    {
+      const proj = Projector.fold(this.deps.store.load(this.deps.sessionId)).projection;
+      settleAbandonedToolCalls(this.deps.store, this.deps.sessionId, proj);
+    }
+    // A10（T-P1-47）：steer 准入权威面在收轮开始即清位——turn/end 事件
+    // 转发先于收尾完成（flush/turnEnd 链还在跑），此窗口内的 steer 不能
+    // 再被受理（终态已落盘，无可重定向的在途工作）。
+    this.activeTurnNumber = null;
+    // A14/T-P1-50：正常收轮先到 → 拆看门狗（迟到的看门狗不得触发）
+    this.watchdog.disarm();
+    const outcome = await this.turnEndChain.run(this.$, { turn, reason });
+    if (outcome.truncated) {
+      // turnEnd 截断 = turn/end 没落盘，turn 保持未闭合（与崩溃残留同待遇）。
+      // P0 没有合法的截断消费方（压缩只观察不拦截）——大声失败，不静默。
+      throw new Error(
+        `turnEnd 链被截断（turn=${turn}）——P0 无合法消费方，turn 保持未闭合`,
+      );
+    }
+    // E13 turn 末 flush 检查点（T-8 装配接线）：flush 本体在内、注册的 hook
+    // 在外（拿到的都是"已持久化"时点）。落库失败向上抛——存储故障时进程
+    // 该退出，而不是假装轮已收尾。
+    await this.deps.store.runFlushPoint("turnEnd", this.deps.sessionId);
+    // A3：turn/end 成功落盘才归位 idle——这是 run-state 的唯一归位点；
+    // 到不了这里（崩溃/截断）的 turn 停在 busy，等恢复路径。
+    this.deps.runState?.markIdle(this.deps.sessionId);
+  }
+
+  /** 硬退出：闭合仍开着的 step → turnEnd 链落 turn/end{error}。 */
+  private async failTurn(turn: number, e: unknown): Promise<TurnEndReason> {
+    const { store, sessionId } = this.deps;
+    const reason: TurnEndReason = { kind: "error", error: toLlmFailure(e) };
+    // J11 换模事务：失败事实先给装配（回滚判据的消费点），再闭合 turn。
+    this.deps.onTurnError?.(turn, reason.error);
+    // 出错时当前 step 可能仍开着（流中途抛）；decideTurn 等晚段错误的 step
+    // 已闭合——按投影判断，绝不二次闭合。
+    const proj = Projector.fold(store.load(sessionId)).projection;
+    const openStep = [...proj.openSteps][0];
+    if (openStep !== undefined) {
+      store.append(sessionId, [{ type: "step/end", turn, step: openStep }]);
+    }
+    await this.closeTurn(turn, reason);
+    return reason;
+  }
+
+  // -------------------------------------------------------------------------
+  // 事件投影：轮号与模型消息序列（不变量 1——不养第二份状态）
+  // -------------------------------------------------------------------------
+
+  private nextTurnNumber(): number {
+    const proj = Projector.fold(this.deps.store.load(this.deps.sessionId))
+      .projection;
+    if (proj.openTurn) {
+      throw new Error(
+        `会话存在未闭合 turn ${proj.openTurn.turn}（崩溃残留）——` +
+          "P0 runTurn 拒绝叠加新 turn，闭合属恢复路径（T-8）",
+      );
+    }
+    return proj.turnCount + 1;
+  }
+
+  /**
+   * 从事件流重建模型请求的消息序列（T-8 接线：内嵌实现换成
+   * src/session/messages.ts 的公共 helper——压缩/新窗口重建消费同一实现，
+   * 三处各写一遍必然漂移）。有效视窗遵循最新 session/revert 标记（E4）；
+   * assistant/attempt 不进模型历史；tool/call 挂回同 step 的 assistant 消息。
+   * 压缩后的新窗口重建（摘要/developer 注入）在 modelRequest 链的装配层经
+   * startNewContextWindow 换载荷完成，loop 不感知压缩。
+   */
+  private buildMessages(): ChatMessage[] {
+    const events = effectiveEvents(this.deps.store.load(this.deps.sessionId));
+    // P1/T-P1-124：附件 store 在位时注入 resolver（ref → ChatImage）——
+    // 投影函数保持纯函数，store 读取在装配边界
+    const store = this.deps.attachmentStore;
+    const messages = buildChatMessages(events, {
+      ...(store
+        ? {
+            resolveImage: (ref) => {
+              const att = store.read(ref.attachmentId);
+              return att ? { mediaType: att.mediaType, data: att.data } : null;
+            },
+            // T-P3-149 E1：音频 resolver（同 store 面——wav/mp3 进 input_audio）
+            resolveAudio: (ref) => {
+              const att = store.read(ref.attachmentId);
+              return att && (att.mediaType === "audio/wav" || att.mediaType === "audio/mpeg")
+                ? { mediaType: att.mediaType, data: att.data }
+                : null;
+            },
+          }
+        : {}),
+      // E9/T-P2-107：会话引用 resolver——被引会话从 store 内存序读取
+      // （读不到返回 null 不注入），快照构建有界（reference.ts 纯函数；
+      // 流存引用不存内容——内容只在此处现算进请求面）
+      resolveSessionRef: (ref) => {
+        const referenced = this.deps.store.load(ref.sessionId);
+        if (referenced.length === 0) return null;
+        return buildReferenceExcerpt(referenced, ref);
+      },
+    });
+    // F8/T-P1-104：投影级裁剪（请求面视图变换——事件流不改写，因果链不破）
+    return this.deps.resultTrim !== undefined
+      ? trimToolResultMessages(messages, this.deps.resultTrim)
+      : messages;
+  }
+}
+
+/**
+ * cause 落盘前只拷贝声明字段（DSH："copies the declared fields where the
+ * cause becomes durable data"）——运行期 transport 可能给原对象附加 stack 等
+ * 不稳定细节（undici 对 abort reason 的行为），durable 事件绝不带它们（C14）。
+ */
+function copyCause(cause: CancelCause): CancelCause {
+  switch (cause.kind) {
+    case "hook":
+      return {
+        kind: "hook",
+        reason: cause.reason,
+        ...(cause.message !== undefined ? { message: cause.message } : {}),
+      };
+    case "user":
+    case "parent":
+    case "disposed":
+    case "legacy":
+      return { kind: cause.kind };
+  }
+}
+
+/** 任意失败 → LlmFailure（C14 的结构化事实：code 判据 + message 展示）。 */
+function toLlmFailure(e: unknown): LlmFailure {
+  if (e instanceof ProviderHttpError) {
+    const failure: LlmFailure = { code: "MODEL_HTTP_ERROR", message: e.message };
+    if (typeof e.status === "number") failure.status = e.status;
+    const retryAfterMs = parseRetryAfterMs(e.retryAfter, Date.now());
+    if (retryAfterMs !== undefined) failure.providerRetryAfterMs = retryAfterMs;
+    return failure;
+  }
+  if (e instanceof TimeoutError) {
+    return { code: e.code, message: e.message };
+  }
+  return {
+    code: "MODEL_UNKNOWN_ERROR",
+    message: e instanceof Error ? e.message : String(e),
+  };
+}

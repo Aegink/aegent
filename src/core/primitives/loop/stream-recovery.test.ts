@@ -13,11 +13,11 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { ProviderHttpError, type ModelProvider } from "../models/provider.js";
-import { isRetryableStatus, withRetry } from "../models/retry.js";
-import { classifyStreamFailure, StreamRecoveryBlockedError } from "./stream-recovery.js";
+import { ProviderHttpError, type ModelProvider } from "../../../models/provider.js";
+import { isRetryableStatus, withRetry } from "../../../models/retry.js";
+import { classifyStreamFailure, StreamRecoveryBlockedError } from "../../../kernel/stream-recovery.js";
 import { makeLoop, type Harness } from "./loop.test-utils.js";
-import type { StreamChunk } from "./events.js";
+import type { StreamChunk } from "../../../kernel/events.js";
 
 /** 可编程 provider：每个剧本 = chunk 序列 + 可选中途抛错；记录每次请求。 */
 function flakyProvider(

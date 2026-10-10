@@ -11,8 +11,8 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ToolRegistry } from "./registry.js";
 import type { ExecutionEnv } from "./env.js";
-import type { ToolExecutionResult } from "../loop.js";
-import { TimeoutError } from "../timeout.js";
+import type { ToolExecutionResult } from "../loop/loop.js";
+import { TimeoutError } from "../../skeleton/timeout.js";
 import {
   RETRY_REFUSED_MESSAGE,
   RETRY_REFUSED_STARTED,
@@ -20,8 +20,8 @@ import {
   isSpawnFailure,
   markStarted,
 } from "./bash-retry-guard.js";
-import { createBashTool } from "./builtin/bash.js";
-import { PathGuard } from "../../sandbox/path-guard.js";
+import { createBashTool } from "../../../kernel/tools/builtin/bash.js";
+import { PathGuard } from "../../../sandbox/path-guard.js";
 
 const tmpDirs: string[] = [];
 afterEach(() => {

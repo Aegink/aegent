@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { ChatMessage } from "../models/provider.js";
+import type { ChatMessage } from "../../../models/provider.js";
 import {
   DEFAULT_RESULT_TRIM_RULES,
   trimToolResultMessages,

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { SessionEvent, StreamChunk } from "../kernel/events.js";
-import { AgentLoop } from "../kernel/loop.js";
-import { ScriptedProvider } from "../kernel/loop.test-utils.js";
+import { AgentLoop } from "../core/primitives/loop/loop.js";
+import { ScriptedProvider } from "../core/primitives/loop/loop.test-utils.js";
 import {SessionEventStore, type SessionStore} from "../session/store.js";
 import { stableStringify } from "./normalize.js";
 import type { ChatRequest, ModelProvider } from "../models/provider.js";

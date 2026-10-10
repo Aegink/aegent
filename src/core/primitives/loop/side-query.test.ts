@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { runSideQuery, SideQueryError } from "./side-query.js";
-import { ProviderHttpError } from "../models/provider.js";
-import type { ModelProvider } from "../models/provider.js";
+import { runSideQuery, SideQueryError } from "../../../kernel/side-query.js";
+import { ProviderHttpError } from "../../../models/provider.js";
+import type { ModelProvider } from "../../../models/provider.js";
 
 /** fake provider：按脚本产出 text-delta/usage/done 或抛错。 */
-import type { StreamChunk } from "../kernel/events.js";
+import type { StreamChunk } from "../../../kernel/events.js";
 type FakeChunk = Extract<StreamChunk, { type: "text-delta" | "usage" | "done" }>;
 function scriptedProvider(script: () => Generator<FakeChunk>): ModelProvider {
   return {

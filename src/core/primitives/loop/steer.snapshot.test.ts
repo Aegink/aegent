@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AgentLoopDeps, DecideTurn } from "./loop.js";
-import { PromptQueue } from "./queue.js";
+import { PromptQueue } from "../../../kernel/queue.js";
 import { ScriptedProvider, makeLoop } from "./loop.test-utils.js";
 
 /**

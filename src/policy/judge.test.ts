@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ChainNext } from "../kernel/chain.js";
-import type { ToolCallPayload, ToolExecutionResult } from "../kernel/loop.js";
+import type { ToolCallPayload, ToolExecutionResult } from "../core/primitives/loop/loop.js";
 import type { JsonRecord, StreamChunk, TokenUsage } from "../kernel/events.js";
 import type { ChatRequest, ModelProvider } from "../models/provider.js";
 import { assemblePolicyChain } from "./chain.js";

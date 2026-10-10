@@ -21,7 +21,8 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 
 import type { CancelCause, SessionRef, TurnEndReason } from "./events.js";
-import { AgentLoop, type AgentLoopDeps, type ToolExecutionMode } from "./loop.js";
+import { type AgentLoopDeps, type ToolExecutionMode } from "../kernel/loop.js";
+import { createLoop } from "../core/index.js";
 import { PromptQueue, QueueFullError } from "./queue.js";
 import { BackgroundShellRegistry } from "./tools/background-shell.js";
 import { validateAttachments, AttachmentLimitError } from "../attachments/limits.js";
@@ -869,7 +870,7 @@ const executionEnv = new NodeExecutionEnv({
     // = 附件能力未启用
     ...(options.attachmentStore ? { attachmentStore: options.attachmentStore } : {}),
   };
-  const loop = new AgentLoop(loopDeps);
+  const loop = createLoop(loopDeps);
   // J27/T-P1-61：retrying 一等事件落流（provider 层的中间失败尝试对事件流
   // 可见——attempt/delayMs/错误三字段，kimi retrying 同构最小面）。turn/step
   // 从 loop 当前状态读取（provider 自身不知 loop 状态）；idle 时的防御性

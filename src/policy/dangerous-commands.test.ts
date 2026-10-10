@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { ToolCallPayload } from "../kernel/loop.js";
-import { makeLoop, ScriptedProvider } from "../kernel/loop.test-utils.js";
+import type { ToolCallPayload } from "../core/primitives/loop/loop.js";
+import { makeLoop, ScriptedProvider } from "../core/primitives/loop/loop.test-utils.js";
 import { assemblePolicyChain, type PolicyCall } from "./chain.js";
 import {
   BUILTIN_DANGEROUS_PATTERNS,

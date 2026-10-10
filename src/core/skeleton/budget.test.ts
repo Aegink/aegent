@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ToolResultEvent } from "./events.js";
-import { ScriptedProvider, makeLoop } from "../../kernel/loop.test-utils.js";
+import { ScriptedProvider, makeLoop } from "../primitives/loop/loop.test-utils.js";
 import { BudgetExceededError, DEFAULT_MAX_TOOL_CALLS, ParseBudget } from "./budget.js";
 import { expectPaired, expectTurnScoped } from "../../test-support/event-asserts.js";
 
@@ -100,7 +100,7 @@ describe("工具循环接入（B14 + B9 配平断言，经真实 loop 事件流�
     expect(results.map((r) => r.message.content)).toEqual(["ok-call-1", "ok-call-2", "ok-call-3"]);
   });
 
-  it("预算耗尽：已派发的照落，其后缺席（无孤儿 call/result），step 正常闭合", async () => {
+  it("预算耗尽：已派发的照落；未派发补合成对（dsh replay 语义，T3-2）——turn 显式收束", async () => {
     const provider = mountToolCalls(5);
     const harness = makeLoop(provider, {
       toolBudget: { maxTicks: 2, timeoutMs: Infinity },
@@ -113,9 +113,12 @@ describe("工具循环接入（B14 + B9 配平断言，经真实 loop 事件流�
     expectPaired(events, "tool/call");
     const calls = events.filter((e) => e.type === "tool/call");
     const results = events.filter((e) => e.type === "tool/result");
-    expect(calls).toHaveLength(2); // call-3/4/5 未派发 = 缺席（取消同款语义）
-    expect(results).toHaveLength(2);
-    // 配平 + 缺席后 turn 仍显式收束（DecideTurn 拿到部分结果照常决策）
+    expect(calls).toHaveLength(5); // call-3/4/5 未派发 → 合成 tool/call+result 对（模型可见 + replay 配平）
+    expect(results).toHaveLength(5);
+    // 合成对的结构化事实：isError + 预算耗尽 reason
+    const synth = results.slice(2).map((r) => (r as { error?: { code?: string } }).error?.code);
+    for (const code of synth) expect(code).toBe("TOOL_ABORTED");
+    // 配平后 turn 仍显式收束（DecideTurn 拿到部分结果照常决策）
     const turnEnd = events.find((e) => e.type === "turn/end");
     expect(turnEnd && turnEnd.type === "turn/end" ? turnEnd.reason.kind : "").toBe("completed");
   });

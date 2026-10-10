@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ToolResultEvent } from "../events.js";
-import { ScriptedProvider, makeLoop } from "../loop.test-utils.js";
+import type { ToolResultEvent } from "../../skeleton/events.js";
+import { ScriptedProvider, makeLoop } from "../loop/loop.test-utils.js";
 import { ToolRegistry, type ToolDef } from "./registry.js";
 import { isContractResult, projectResult } from "./contract.js";
 

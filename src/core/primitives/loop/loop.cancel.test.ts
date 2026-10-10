@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import type { CancelCause } from "./events.js";
+import type { CancelCause } from "../../../kernel/events.js";
 import type { AgentLoop } from "./loop.js";
 import { ScriptedProvider, makeLoop } from "./loop.test-utils.js";
-import { expectSingleTerminal } from "../test-support/event-asserts.js";
-import type { ModelProvider } from "../models/provider.js";
+import { expectSingleTerminal } from "../../../test-support/event-asserts.js";
+import type { ModelProvider } from "../../../models/provider.js";
 
 /**
  * A7 取消/中断 —— 语义取 dsh·explicit-turn-cancellation：
@@ -188,7 +188,7 @@ describe("AgentLoop.cancel —— A7 取消 / 中断当前 turn", () => {
     expect(reason2).toEqual({ kind: "completed" });
   });
 
-  it("工具间取消：已派发工具的结果照落盘，未派发的调用缺席", async () => {
+  it("工具间取消：已派发工具的结果照落盘；未派发的调用补合成 tool/call+result 对（dsh replay 语义，T3-2 行为增强）", async () => {
     const provider = new ScriptedProvider();
     provider.mount([
       { type: "tool-call-delta", id: "c1", name: "bash", argsDelta: "{}" },
@@ -216,13 +216,19 @@ describe("AgentLoop.cancel —— A7 取消 / 中断当前 turn", () => {
       "step/start",
       "request/header",
       "assistant/message",
-      "tool/call",
+      "tool/call", // c1 走完（事实照落）
+      "tool/result",
+      "tool/call", // c2 未派发 → 合成对（模型意图以 isError 结果回喂，不丢失）
       "tool/result",
       "step/end",
       "turn/end",
     ]);
-    // c1 走完（事实照落），c2 从未派发
-    expect(events.filter((e) => e.type === "tool/call")).toHaveLength(1);
+    const results = events.filter((e) => e.type === "tool/result");
+    expect(results).toHaveLength(2);
+    const c2 = results[1]!;
+    expect(c2.message.isError).toBe(true);
+    expect(c2.error?.code).toBe("TOOL_ABORTED");
+    expect((c2 as { callId?: string }).callId).toBe("c2");
   });
 
   it("回归注释：冻结的 cause 会让 undici 式 transport 抛 TypeError 取代真因——cancel 绝不冻结", async () => {

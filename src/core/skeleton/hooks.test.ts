@@ -22,8 +22,8 @@ import {
   type ToolCallPayload,
   type ToolExecutionResult,
   type TurnEndPayload,
-} from "../../kernel/loop.js";
-import { ScriptedProvider, makeLoop } from "../../kernel/loop.test-utils.js";
+} from "../primitives/loop/loop.js";
+import { ScriptedProvider, makeLoop } from "../primitives/loop/loop.test-utils.js";
 import { createChildAssembly } from "../../kernel/assembly.js";
 import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../../session/store.js";
 

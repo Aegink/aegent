@@ -4,11 +4,11 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ToolRegistry } from "./registry.js";
-import { createEditTool } from "./builtin/edit.js";
-import { createWriteTool } from "./builtin/write.js";
-import { registerBuiltinTools } from "./builtin/index.js";
+import { createEditTool } from "../../../kernel/tools/builtin/edit.js";
+import { createWriteTool } from "../../../kernel/tools/builtin/write.js";
+import { registerBuiltinTools } from "../../../kernel/tools/builtin/index.js";
 import { WriteQueue } from "./write-queue.js";
-import { PathGuard } from "../../sandbox/path-guard.js";
+import { PathGuard } from "../../../sandbox/path-guard.js";
 
 const tmpDirs: string[] = [];
 afterEach(() => {

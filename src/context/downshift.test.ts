@@ -148,7 +148,7 @@ describe("验收：压缩先于切换（次序断言）+ 事件 reason=model_dow
 // ---------------------------------------------------------------------------
 
 import { createLlmSummarizer } from "./llm-summarizer.js";
-import { ModelSwitchService } from "../kernel/model-switch.js";
+import { ModelSwitchService } from "../core/primitives/loop/model-switch.js";
 import type { ModelProvider } from "../models/provider.js";
 
 /** 剧本 provider：吐一段文本即收（摘要副调用的 wire 桩）。 */

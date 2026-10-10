@@ -232,7 +232,7 @@ describe("多次压缩与 revert", () => {
 // 缓存锚与前缀保真（F6/F13/F15 / T-P1-19）：换模锚不变 + 压缩 cache-safe
 // ---------------------------------------------------------------------------
 
-import { ScriptedProvider, makeLoop } from "../kernel/loop.test-utils.js";
+import { ScriptedProvider, makeLoop } from "../core/primitives/loop/loop.test-utils.js";
 import {
   computeCacheAnchor,
   type PrefixChange,
