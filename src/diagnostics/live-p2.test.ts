@@ -31,7 +31,7 @@ import {
 import type { ModelProvider } from "../models/provider.js";
 import { createOpenAiCompatProvider } from "../models/openai-compat.js";
 import { SqliteEventStorage } from "../session/db.js";
-import { SessionStore } from "../session/store.js";
+import {SessionEventStore, type SessionStore} from "../session/store.js";
 import { querySessions } from "../session/query.js";
 import { archiveSession, listArchivedSessions } from "../session/archive.js";
 import { cleanupSessions } from "../session/cleanup.js";
@@ -134,7 +134,7 @@ async function makeLive(opts: {
   const dbPath = join(dir, "events.sqlite");
   const db = SqliteEventStorage.open({ path: dbPath });
   openStorages.push(db);
-  const store = new SessionStore(db);
+  const store = new SessionEventStore(db);
   const workspaceRoot = tempDir();
   const inner = createOpenAiCompatProvider({
     name: "live",

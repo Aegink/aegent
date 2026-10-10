@@ -9,7 +9,7 @@ import { NotificationHub, NOTIFICATION_KINDS, type NotificationPayload } from ".
 import { HostBridge, type AgentChannel } from "./bridge.js";
 import { HostRegistry } from "./registry.js";
 import type { AgentMessage, AgentRequest } from "../kernel/agent-protocol.js";
-import { InMemoryEventStorage, SessionStore } from "../session/store.js";
+import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../session/store.js";
 
 describe("NOTIFICATION_KINDS", () => {
     it("五类分型闭集（…+surface_changed+computer_operation——K9/T-P2-409）", () => {
@@ -136,7 +136,7 @@ describe("HostBridge × N5 三类归类集成", () => {
         const bridge = new HostBridge({
             host: new HostRegistry().register({ sessionId: "s1" }),
             agent,
-            store: new SessionStore(new InMemoryEventStorage()),
+            store: new SessionEventStore(new InMemoryEventStorage()),
             notifyHub: hub,
         });
         const notified: Array<{ type?: string; name?: string }> = [];
@@ -169,7 +169,7 @@ describe("HostBridge × N5 三类归类集成", () => {
         const bridge = new HostBridge({
             host: new HostRegistry().register({ sessionId: "s1" }),
             agent,
-            store: new SessionStore(new InMemoryEventStorage()),
+            store: new SessionEventStore(new InMemoryEventStorage()),
             notifyHub: hub,
         });
         agent.emit({
@@ -190,7 +190,7 @@ describe("HostBridge × N5 三类归类集成", () => {
         const bridge = new HostBridge({
             host: new HostRegistry().register({ sessionId: "s1" }),
             agent,
-            store: new SessionStore(new InMemoryEventStorage()),
+            store: new SessionEventStore(new InMemoryEventStorage()),
             notifyHub: hub,
         });
         const handle = bridge.connectSurface({
@@ -209,7 +209,7 @@ describe("HostBridge × N5 三类归类集成", () => {
         const bridge = new HostBridge({
             host: new HostRegistry().register({ sessionId: "s1" }),
             agent,
-            store: new SessionStore(new InMemoryEventStorage()),
+            store: new SessionEventStore(new InMemoryEventStorage()),
         });
         agent.emit({
             type: "event",
@@ -226,7 +226,7 @@ describe("HostBridge × N5 三类归类集成", () => {
         const bridge = new HostBridge({
             host: new HostRegistry().register({ sessionId: "s1" }),
             agent,
-            store: new SessionStore(new InMemoryEventStorage()),
+            store: new SessionEventStore(new InMemoryEventStorage()),
             notifyHub: hub,
         });
         const notified: Array<{ type?: string; name?: string; payload?: { kind?: string; data?: { turn?: number } } }> = [];

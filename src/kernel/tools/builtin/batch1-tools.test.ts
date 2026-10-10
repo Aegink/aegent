@@ -16,7 +16,7 @@ import { NodeExecutionEnv } from "../env.js";
 import { PathGuard } from "../../../sandbox/path-guard.js";
 import { createNetworkGuard } from "../../../sandbox/network.js";
 import { InMemoryAttachmentStore } from "../../../attachments/store.js";
-import { InMemoryEventStorage, SessionStore } from "../../../session/store.js";
+import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../../../session/store.js";
 import { ScriptedProvider, makeLoop } from "../../loop.test-utils.js";
 import { registerBuiltinTools, builtinToolParamNames } from "./index.js";
 import { BackgroundShellRegistry, MAX_BACKGROUND_TASKS } from "../background-shell.js";
@@ -957,7 +957,7 @@ describe("批次 1 装配面", () => {
 
   it("InMemoryEventStorage 面不回归：注册表带 sessionId 装配（Q13 身份缺省面）", async () => {
     const dir = tempDir();
-    const store = new SessionStore(new InMemoryEventStorage());
+    const store = new SessionEventStore(new InMemoryEventStorage());
     expect(store).toBeDefined();
     const registry = toolsWith(dir, { env: new NodeExecutionEnv() });
     expect(registry.names()).toContain("task_output");

@@ -19,7 +19,7 @@ import {
 } from "./boot-maintenance.js";
 import { Projector } from "./project.js";
 import { SqliteEventStorage } from "./db.js";
-import { SessionStore } from "./store.js";
+import {SessionEventStore, type SessionStore} from "./store.js";
 
 let dir: string;
 
@@ -37,7 +37,7 @@ afterEach(() => {
 
 describe("reconcileBootState（T-8-04 · Q5）", () => {
   it("崩溃态（孤儿 step + 孤儿 turn）→ 对账全闭合且错误码按类型细分", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     // 崩溃残留：turn 1 开了、step 1 开着（assistant 消息落了一半）——进程死亡
     store.append("s0", [
       { type: "turn/start", turn: 1 },
@@ -65,7 +65,7 @@ describe("reconcileBootState（T-8-04 · Q5）", () => {
   });
 
   it("干净启动是 no-op（零追加、零错误码）", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append("s0", [
       { type: "turn/start", turn: 1 },
       { type: "user/message", turn: 1, message: { content: "hi" }, source: "user" },
@@ -83,7 +83,7 @@ describe("reconcileBootState（T-8-04 · Q5）", () => {
   });
 
   it("多个未闭合 step 逐一闭合、每步一个细分码", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append("s0", [
       { type: "turn/start", turn: 1 },
       { type: "user/message", turn: 1, message: { content: "hi" }, source: "user" },
@@ -102,7 +102,7 @@ describe("reconcileBootState（T-8-04 · Q5）", () => {
   });
 
   it("幂等：对账后再跑一遍是 no-op", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append("s0", [
       { type: "turn/start", turn: 1 },
       { type: "user/message", turn: 1, message: { content: "hi" }, source: "user" },
@@ -118,7 +118,7 @@ describe("reconcileBootState（T-8-04 · Q5）", () => {
   it("杀进程重启：restore（seq 断层即抛的路径）→ 对账 → 新 prompt 开新轮不续跑旧任务", async () => {
     // "上一个进程"：塞崩溃态 + flush 落库
     const storage = SqliteEventStorage.open({ path: path.join(dir, "events.db") });
-    const crashed = new SessionStore(storage);
+    const crashed = new SessionEventStore(storage);
     crashed.append("s0", [
       { type: "turn/start", turn: 1 },
       { type: "user/message", turn: 1, message: { content: "旧进程没跑完的指令" }, source: "user" },
@@ -129,7 +129,7 @@ describe("reconcileBootState（T-8-04 · Q5）", () => {
 
     // "新进程"：重开同一库 → restore（含 seq 连续性校验）→ 对账
     const storage2 = SqliteEventStorage.open({ path: path.join(dir, "events.db") });
-    const store = new SessionStore(storage2);
+    const store = new SessionEventStore(storage2);
     await store.restore("s0");
     const report = reconcileBootState(store, "s0");
     expect(report.codes).toEqual([STEP_INTERRUPTED_CODE, TURN_INTERRUPTED_CODE]);
@@ -162,7 +162,7 @@ describe("reconcileBootState（T-8-04 · Q5）", () => {
 
     // "上一个进程"：plan 会话（checkpoint 记 artifact 路径）+ 崩溃孤儿 turn
     const storage = SqliteEventStorage.open({ path: path.join(dir, "plan-events.db") });
-    const crashed = new SessionStore(storage);
+    const crashed = new SessionEventStore(storage);
     crashed.append("s0", [
       { type: "checkpoint", turn: 0, provider: "plan", ref: { path: artifactPath } },
       { type: "turn/start", turn: 1 },
@@ -174,7 +174,7 @@ describe("reconcileBootState（T-8-04 · Q5）", () => {
 
     // "新进程"：restore → 对账 → 计划可见、旧工作不重放
     const storage2 = SqliteEventStorage.open({ path: path.join(dir, "plan-events.db") });
-    const store = new SessionStore(storage2);
+    const store = new SessionEventStore(storage2);
     await store.restore("s0");
     const report = reconcileBootState(store, "s0");
     expect(report.codes).toEqual([STEP_INTERRUPTED_CODE, TURN_INTERRUPTED_CODE]);
@@ -232,7 +232,7 @@ describe("findInterruptedTurn（M3/T-P1-86 崩溃续跑定位）", () => {
   };
 
   it("对账后的最新 interrupted 轮 → 返回该轮原始输入（turn/content/promptId）", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     seed(store, "s0");
     const info = findInterruptedTurn(store, "s0");
     expect(info).not.toBeNull();
@@ -242,7 +242,7 @@ describe("findInterruptedTurn（M3/T-P1-86 崩溃续跑定位）", () => {
   });
 
   it("多条 user/message（step 注入在后）取首条 = 崩溃前的输入", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     // 崩溃前缀（同 seed）+ 崩溃前最后一刻的 steer 注入（同轮第二条 user/message）
     seed(store, "s0", { skipReconcile: true });
     store.append("s0", [
@@ -258,7 +258,7 @@ describe("findInterruptedTurn（M3/T-P1-86 崩溃续跑定位）", () => {
   });
 
   it("最新轮已正常收束 → 旧 interrupted 轮过期，返回 null", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     seed(store, "s0");
     // 用户重启后继续对话：turn 2 正常完成
     store.append("s0", [
@@ -270,7 +270,7 @@ describe("findInterruptedTurn（M3/T-P1-86 崩溃续跑定位）", () => {
   });
 
   it("空流 / 从无崩溃 → null", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     expect(findInterruptedTurn(store, "s0")).toBeNull();
     store.append("s0", [
       { type: "turn/start", turn: 1 },

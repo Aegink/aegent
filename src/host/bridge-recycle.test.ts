@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AgentMessage, AgentRequest } from "../kernel/agent-protocol.js";
-import { SessionStore } from "../session/store.js";
+import {SessionEventStore, type SessionStore} from "../session/store.js";
 import { HostBridge } from "./bridge.js";
 import { setStructuralReload, STRUCTURAL_HOT_RELOAD_SECTIONS, tryPluginSettingsOp } from "./settings-plugin-ops.js";
 
@@ -46,7 +46,7 @@ function eventMessage(type: string, turn: number): { type: "event"; event: Recor
 }
 
 function makeBridge() {
-  const store = new SessionStore();
+  const store = new SessionEventStore();
   const main = makeChannel();
   const factoryMade: { sessionId: string; handle: ReturnType<typeof makeChannel> }[] = [];
   const bridge = new HostBridge({

@@ -10,7 +10,7 @@ import type { SessionEvent } from "../../../kernel/events.js";
 import { createTodoUpdateEmitter } from "../../../kernel/assembly.js";
 import { ToolRegistry } from "../registry.js";
 import { createTodoWriteTool } from "./todo.js";
-import { InMemoryEventStorage, SessionStore } from "../../../session/store.js";
+import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../../../session/store.js";
 import { project } from "../../../session/project.js";
 import { registerBuiltinTools } from "./index.js";
 
@@ -58,7 +58,7 @@ describe("参数校验（fail-closed 回喂，emit 不被调）", () => {
   });
 
   it("超上限（>50 项 / content>500 字符）拒绝且不落流", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const registry = makeRegistry(store);
     const tooMany = await registry.dispatch({
       callId: "c1",
@@ -84,7 +84,7 @@ describe("参数校验（fail-closed 回喂，emit 不被调）", () => {
 
 describe("落流（验收①：todo/update 事件 + 投影可查）", () => {
   it("合法调用落 todo/update：seq 连续、items 整值、投影 todos 尾=当前值", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const registry = makeRegistry(store);
     const result = await registry.dispatch({
       callId: "c1",
@@ -116,7 +116,7 @@ describe("落流（验收①：todo/update 事件 + 投影可查）", () => {
   });
 
   it("turn 归属：空流兜 0；有流挂最后轮（会话级元事件纪律）", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append("s0", [
       { type: "turn/start", turn: 1 },
       { type: "turn/end", turn: 1, reason: { kind: "completed" } },
@@ -130,7 +130,7 @@ describe("落流（验收①：todo/update 事件 + 投影可查）", () => {
     });
     expect(todoUpdateEvents(store.load("s0"))[0]!.turn).toBe(2);
 
-    const empty = new SessionStore();
+    const empty = new SessionEventStore();
     const emptyRegistry = makeRegistry(empty, "fresh");
     await emptyRegistry.dispatch({
       callId: "c1",
@@ -141,7 +141,7 @@ describe("落流（验收①：todo/update 事件 + 投影可查）", () => {
   });
 
   it("整值提交：第二次调用当前值被覆盖，两次更新都留历史（E12）", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const registry = makeRegistry(store);
     await registry.dispatch({
       callId: "c1",

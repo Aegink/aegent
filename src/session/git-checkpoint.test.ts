@@ -11,7 +11,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { SessionStore } from "./store.js";
+import {SessionEventStore, type SessionStore} from "./store.js";
 import {
   GitCheckpointService,
   createGitRunner,
@@ -38,7 +38,7 @@ afterEach(() => {
 
 /** 组装 service + 把"一轮"的最小合法事件流落进 store（checkpoint 由 capture 落）。 */
 function makeService(runGit = createGitRunner(repo)) {
-  const store = new SessionStore();
+  const store = new SessionEventStore();
   const service = new GitCheckpointService({
     sessionId: "s0",
     store,
@@ -100,7 +100,7 @@ describe("GitCheckpointService（T-8-02 · E11）", () => {
 
   it("非 git 目录明确拒绝打点并提示（首次 warn 后静默），不做隐式 git init", async () => {
     const warnings: string[] = [];
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const fakeRunner = async () => ({
       stdout: "",
       stderr: "fatal: not a git repository (or any of the parent directories): .git",

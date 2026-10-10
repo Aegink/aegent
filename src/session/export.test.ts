@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { exportSession, parseSessionExport } from "./export.js";
 import { listSessionIndex, rebuildSessionIndex } from "./session-index.js";
 import { CURRENT_SCHEMA_VERSION, SqliteEventStorage } from "./db.js";
-import { SessionStore } from "./store.js";
+import {SessionEventStore, type SessionStore} from "./store.js";
 import { renderTranscript } from "./transcript.js";
 
 let dir: string;
@@ -28,7 +28,7 @@ afterEach(() => {
 /** 建一个含 2 会话各 1 完整轮的 v2 库（Q1 迁移已自动执行）。 */
 function seedTwoSessions(dbPath: string): SessionStore {
   const storage = SqliteEventStorage.open({ path: dbPath });
-  const store = new SessionStore(storage);
+  const store = new SessionEventStore(storage);
   for (const sessionId of ["sA", "sB"]) {
     store.append(sessionId, [
       { type: "turn/start", turn: 1 },

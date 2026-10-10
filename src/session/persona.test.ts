@@ -10,7 +10,7 @@ import {
 } from "./persona.js";
 import { createChildAssembly } from "../kernel/assembly.js";
 import { composeChain } from "../kernel/chain.js";
-import { SessionStore } from "./store.js";
+import {SessionEventStore, type SessionStore} from "./store.js";
 
 describe("resolvePersona —— 预设选择", () => {
     it("undefined = 未选择（返回 undefined——装配零变化，不注入人格段）", () => {
@@ -65,7 +65,7 @@ describe("renderPersona —— 模板渲染", () => {
 
 describe("装配消费面 —— 人格段进首落 system/message", () => {
     function make(root: string, personaId?: string) {
-        const store = new SessionStore();
+        const store = new SessionEventStore();
         const asm = createChildAssembly({
             sessionId: "s0",
             store,
@@ -116,7 +116,7 @@ describe("装配消费面 —— 人格段进首落 system/message", () => {
 
     it("未知 personaId → 装配期 PersonaError（启动即败，不静默跳过）", async () => {
         const root = mkdtempSync(join(tmpdir(), "persona-"));
-        const store = new SessionStore();
+        const store = new SessionEventStore();
         expect(() =>
             createChildAssembly({
                 sessionId: "s0",

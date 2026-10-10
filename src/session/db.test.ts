@@ -6,7 +6,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import type { NewSessionEvent, SessionEvent } from "../kernel/events.js";
 import { CURRENT_SCHEMA_VERSION, SqliteEventStorage } from "./db.js";
-import { SessionStore } from "./store.js";
+import {SessionEventStore, type SessionStore} from "./store.js";
 
 const dirs: string[] = [];
 
@@ -51,7 +51,7 @@ describe("SqliteEventStorage（E2）", () => {
   it("验收：建库 → append 1000 事件 → 重开连接 → 逐条读回 seq 连续且 payload 相等", async () => {
     const path = tempDbPath();
     const storage = SqliteEventStorage.open({ path });
-    const store = new SessionStore(storage);
+    const store = new SessionEventStore(storage);
 
     // 25 批 × 5 turn × 8 事件/turn = 1000 事件（每 turn 覆盖 8 种事件类型）
     const appended: SessionEvent[] = [];
@@ -73,7 +73,7 @@ describe("SqliteEventStorage（E2）", () => {
     // 重开连接：新进程视角，走 restore 路径读回
     const storage2 = SqliteEventStorage.open({ path });
     try {
-      const store2 = new SessionStore(storage2);
+      const store2 = new SessionEventStore(storage2);
       const restored = await store2.restore("s-long");
 
       expect(restored).toHaveLength(1000);
@@ -107,7 +107,7 @@ describe("SqliteEventStorage（E2）", () => {
 
   it("readAll 对空会话返回空数组；未 flush 的事件不可见", async () => {
     const storage = SqliteEventStorage.open({ path: tempDbPath() });
-    const store = new SessionStore(storage);
+    const store = new SessionEventStore(storage);
     store.append("s-quiet", [
       { type: "turn/start", turn: 1 },
       { type: "user/message", turn: 1, message: { content: "x" }, source: "user" },

@@ -10,7 +10,7 @@ import {
   legacyShapeStream,
 } from "./migration-asserts.js";
 import { SqliteEventStorage } from "../session/db.js";
-import { SessionStore, type EventStorage } from "../session/store.js";
+import {SessionEventStore, type SessionStore, type EventStorage} from "../session/store.js";
 import { project } from "../session/project.js";
 import { goalFromEvents } from "../kernel/goal.js";
 import type { SessionEvent } from "../kernel/events.js";
@@ -30,7 +30,7 @@ function tempRoot(): string {
 describe("前向兼容（O19「旧字段不再被读」的对应面）", () => {
   it("旧形状流（全部可选字段缺席）restore 后消息/投影语义完整（验收①）", async () => {
     const result = await assertForwardCompatibleStream(async (events) => {
-      const store = new SessionStore(preloadedStorage(events));
+      const store = new SessionEventStore(preloadedStorage(events));
       await store.restore("s-legacy");
       return { events: store.load("s-legacy"), projection: project(events) };
     });

@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { NewSessionEvent, StreamChunk } from "../../../kernel/events.js";
 import type { RuleSource } from "../../../policy/rule-loader.js";
 import { isWriteExecuteTool } from "../../../policy/protected-paths.js";
-import { SessionStore } from "../../../session/store.js";
+import {SessionEventStore, type SessionStore} from "../../../session/store.js";
 import { project } from "../../../session/project.js";
 import { PathGuard } from "../../../sandbox/path-guard.js";
 import { ToolRegistry } from "../registry.js";
@@ -43,7 +43,7 @@ function makeFixture(options?: {
   scripts?: StreamChunk[][];
 }) {
   const root = makeTmpRoot();
-  const store = new SessionStore();
+  const store = new SessionEventStore();
   const provider = new ScriptedProvider();
   for (const script of options?.scripts ?? []) provider.mount(script);
   const runner = createSubagentRunner({
@@ -331,7 +331,7 @@ describe("task 工具与子代理 runner（H1/H4/T-P1-42）", () => {
 
   it("T-P1-43 取消联动（运行中）：父取消 → 子轮 CancelCause=parent 收轮 aborted → cancelled 结算 + 子流已 flush", async () => {
     const root = makeTmpRoot();
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     // GatedProvider：首次模型调用挂起等放行——测试在挂起期间注入取消
     class GatedProvider {
       readonly requests: number[] = [];
@@ -395,7 +395,7 @@ describe("task 工具与子代理 runner（H1/H4/T-P1-42）", () => {
 
   it("T-P1-43 端到端：父 loop cancel → ctx.signal abort → 子轮 parent 取消 → 父流 isError result 落盘后父轮 aborted（原子并入栅栏全链）", async () => {
     const root = makeTmpRoot();
-    const store = new SessionStore();
+    const store = new SessionEventStore();
 
     // 子 provider：挂起等放行（时序控制点）
     class GatedProvider {

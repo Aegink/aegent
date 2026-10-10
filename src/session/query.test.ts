@@ -16,7 +16,7 @@ import {
   querySessions,
   querySessionsDb,
 } from "./query.js";
-import { SessionStore } from "./store.js";
+import {SessionEventStore, type SessionStore} from "./store.js";
 
 const dirs: string[] = [];
 
@@ -45,7 +45,7 @@ function turnEvents(turn: number, text: string): NewSessionEvent[] {
 async function seedDb(dbPath: string): Promise<{ tsBase: number }> {
   const storage = SqliteEventStorage.open({ path: dbPath });
   try {
-    const store = new SessionStore(storage);
+    const store = new SessionEventStore(storage);
     store.append("s-alpha", turnEvents(1, "hello world"));
     store.append("s-beta", [...turnEvents(1, "first beta question"), ...turnEvents(2, "second beta question")]);
     await store.flush("s-alpha");

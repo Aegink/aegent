@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { StreamChunk } from "./events.js";
-import { SessionStore } from "../session/store.js";
+import {SessionEventStore, type SessionStore} from "../session/store.js";
 import { ScriptedProvider } from "./loop.test-utils.js";
 import { ToolRegistry } from "./tools/registry.js";
 import { registerBuiltinTools } from "./tools/builtin/index.js";
@@ -39,7 +39,7 @@ function turnScript(text: string): StreamChunk[] {
 
 function makeFixture(scripts?: StreamChunk[][]) {
   const root = makeTmpRoot();
-  const store = new SessionStore();
+  const store = new SessionEventStore();
   const provider = new ScriptedProvider();
   for (const script of scripts ?? []) provider.mount(script);
   const runtime = createSubagentRunner({
@@ -160,7 +160,7 @@ describe("后台委托生命周期（T-P3-145 G）", () => {
 describe("C4：外部后端分派（opts.backend 消费）", () => {
   it("命中 externalBackends：经注入函数出闸（不 fork 子循环——store 无子会话），结果原样结算", async () => {
     const root = makeTmpRoot();
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const provider = new ScriptedProvider();
     const spawned: { prompt: string; description: string }[] = [];
     const runtime = createSubagentRunner({
@@ -201,7 +201,7 @@ describe("C4：外部后端分派（opts.backend 消费）", () => {
     const root = makeTmpRoot();
     const runtime = createSubagentRunner({
       parentSessionId: "s0",
-      store: new SessionStore(),
+      store: new SessionEventStore(),
       provider: new ScriptedProvider(),
       identity,
       workspaceRoot: root,

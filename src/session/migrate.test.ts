@@ -17,7 +17,7 @@ import {
   MigrationChainBrokenError,
   planMigrationChain,
 } from "./migrate.js";
-import { SessionStore } from "./store.js";
+import {SessionEventStore, type SessionStore} from "./store.js";
 import {
   assertMigrationAtomic,
   assertSchemaVersionGate,
@@ -81,7 +81,7 @@ describe("迁移链（Q1/T-P1-89）", () => {
     seedV1Db(dbPath, 5);
 
     const storage = SqliteEventStorage.open({ path: dbPath });
-    const store = new SessionStore(storage);
+    const store = new SessionEventStore(storage);
     const events = await store.restore("s0");
     expect(events).toHaveLength(6); // turn/start + 5 条 user/message
     expect(events[0]).toMatchObject({ seq: 1, type: "turn/start" });
@@ -169,7 +169,7 @@ describe("迁移链（Q1/T-P1-89）", () => {
 
   it("v2 索引随写维护：flush 落库后索引行与流事实恒等（write-behind 契约）", async () => {
     const storage = SqliteEventStorage.open({ path: path.join(dir, "live.db") });
-    const store = new SessionStore(storage);
+    const store = new SessionEventStore(storage);
     store.append("s0", [
       { type: "turn/start", turn: 1 },
       { type: "user/message", turn: 1, message: { content: "hi" }, source: "user" },
@@ -198,7 +198,7 @@ describe("迁移链（Q1/T-P1-89）", () => {
       db.close();
     }
     const storage = SqliteEventStorage.open({ path: dbPath });
-    const store = new SessionStore(storage);
+    const store = new SessionEventStore(storage);
     await expect(store.restore("s0")).rejects.toThrow(/未知事件类型 ghost\/future/);
     storage.close();
   });

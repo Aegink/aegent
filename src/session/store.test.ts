@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { NewSessionEvent, SessionEvent } from "../kernel/events.js";
-import { InMemoryEventStorage, SessionStore, type EventStorage } from "./store.js";
+import {InMemoryEventStorage, SessionEventStore, type SessionStore, type EventStorage} from "./store.js";
 
 function userMsg(content: string, turn = 1): NewSessionEvent {
   return { type: "user/message", turn, message: { content }, source: "user" };
@@ -17,7 +17,7 @@ function turnEnd(turn: number): NewSessionEvent {
 
 describe("SessionStore.append（E1/E13）", () => {
   it("验收①：append 返回后 load() 立即可见，seq/ts 由 store 分配且单调", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const a = store.append("s1", [turnStart(1), userMsg("hi")]);
     // 同步返回——此刻事件已在内存序，无需任何 await
     expect(store.load("s1")).toHaveLength(2);
@@ -30,7 +30,7 @@ describe("SessionStore.append（E1/E13）", () => {
   });
 
   it("调用方给不出权威 seq：多给也会被 store 分配的值覆盖（纪律 4）", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const bad = { ...userMsg("x"), seq: 99 } as unknown as NewSessionEvent;
     store.append("s1", [turnStart(1), bad]);
     const committed = store.load("s1")[1]!;
@@ -38,7 +38,7 @@ describe("SessionStore.append（E1/E13）", () => {
   });
 
   it("任一事件非法（C14）则整批拒绝，内存序无残迹", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const bad = {
       type: "user/message",
       turn: 1,
@@ -57,14 +57,14 @@ describe("SessionStore.append（E1/E13）", () => {
 describe("write-behind 与崩溃恢复（E13）", () => {
   it("验收②：未 flush 的事件死在 buffer，已 flush 的序完整存活且连续", async () => {
     const storage = new InMemoryEventStorage();
-    const store = new SessionStore(storage);
+    const store = new SessionEventStore(storage);
     store.append("s1", [turnStart(1), userMsg("a")]);
     await store.flush("s1");
     store.append("s1", [userMsg("b"), userMsg("c")]); // 只进 buffer，不 flush
     expect(store.pendingCount("s1")).toBe(2);
 
     // 崩溃模拟：换一个 store 读同一 storage（等价杀进程重启），旧 buffer 随进程消失
-    const after = new SessionStore(storage);
+    const after = new SessionEventStore(storage);
     await after.restore("s1");
     const rows = after.load("s1");
     expect(rows.map((e) => e.seq)).toEqual([1, 2]); // 已 flush 的序，连续
@@ -73,11 +73,11 @@ describe("write-behind 与崩溃恢复（E13）", () => {
 
   it("restore 后新 append 接着已落库的 seq 继续，不重号", async () => {
     const storage = new InMemoryEventStorage();
-    const first = new SessionStore(storage);
+    const first = new SessionEventStore(storage);
     first.append("s1", [turnStart(1), userMsg("a")]);
     await first.flush("s1");
 
-    const second = new SessionStore(storage);
+    const second = new SessionEventStore(storage);
     await second.restore("s1");
     const fresh = second.append("s1", [userMsg("after-crash")]); // turn 1 恢复后仍开着
     expect(fresh[0]!.seq).toBe(3);
@@ -85,20 +85,20 @@ describe("write-behind 与崩溃恢复（E13）", () => {
 
   it("seq 断层的存储在 restore 时拒绝重建（带病重建是事故放大器）", async () => {
     const storage = new InMemoryEventStorage();
-    const store = new SessionStore(storage);
+    const store = new SessionEventStore(storage);
     store.append("s1", [turnStart(1), userMsg("x")]);
     await store.flush("s1");
     // 手工凿掉一条，制造断层
     const raw = (storage as unknown as { rows: Map<string, SessionEvent[]> }).rows.get("s1")!;
     raw.splice(0, 1);
-    await expect(new SessionStore(storage).restore("s1")).rejects.toThrow(/seq 不连续/);
+    await expect(new SessionEventStore(storage).restore("s1")).rejects.toThrow(/seq 不连续/);
   });
 });
 
 describe("turn 末 flush 检查点（E13）", () => {
   it("runFlushPoint('turnEnd') 先排空 buffer，再执行注册的 hook", async () => {
     const storage = new InMemoryEventStorage();
-    const store = new SessionStore(storage);
+    const store = new SessionEventStore(storage);
     const order: string[] = [];
     const original = InMemoryEventStorage.prototype.appendBatch;
     storage.appendBatch = (sid, events) => {
@@ -121,7 +121,7 @@ describe("turn 末 flush 检查点（E13）", () => {
 describe("快照前必须 flush（E10）", () => {
   it("验收③：snapshot() 内部先 flush——storage 必然覆盖到 snapshotSeq（防回归）", async () => {
     const storage = new InMemoryEventStorage();
-    const store = new SessionStore(storage);
+    const store = new SessionEventStore(storage);
     store.append("s1", [turnStart(1), userMsg("a")]);
     // 关键：**没有**手动 flush，直接快照
     const snap = await store.snapshot("s1");
@@ -134,7 +134,7 @@ describe("快照前必须 flush（E10）", () => {
   });
 
   it("空会话快照 seq 为 0", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const snap = await store.snapshot("empty");
     expect(snap.snapshotSeq).toBe(0);
     expect(snap.events).toHaveLength(0);
@@ -158,7 +158,7 @@ describe("flush 串行化与失败语义", () => {
       readAll: () => persisted,
     };
 
-    const store = new SessionStore(storage);
+    const store = new SessionEventStore(storage);
     store.append("s1", [turnStart(1), userMsg("a")]);
     store.append("s1", [userMsg("b")]);
     await expect(store.flush("s1")).rejects.toThrow("disk on fire");
@@ -176,7 +176,7 @@ describe("flush 串行化与失败语义", () => {
       batchCount.n += 1;
       original.call(storage, sid, events);
     };
-    const store = new SessionStore(storage);
+    const store = new SessionEventStore(storage);
     store.append("s1", [turnStart(1), userMsg("a")]);
     await Promise.all([store.flush("s1"), store.flush("s1")]);
     expect(batchCount.n).toBe(1);
@@ -187,7 +187,7 @@ describe("flush 串行化与失败语义", () => {
 describe("已知会话清单（E6/T-P2-106 只读消费面）", () => {
   it("sessionIds 返回内存序键集（append/fork/restore 后随事实更新；只读不改流）", async () => {
     const storage = new InMemoryEventStorage();
-    const store = new SessionStore(storage);
+    const store = new SessionEventStore(storage);
     expect(store.sessionIds()).toEqual([]);
 
     store.append("s-a", [turnStart(1), userMsg("q"), { type: "turn/end", turn: 1, reason: { kind: "completed" } }]);
@@ -199,7 +199,7 @@ describe("已知会话清单（E6/T-P2-106 只读消费面）", () => {
     expect(store.sessionIds().sort()).toEqual(["s-a", "s-a-child", "s-b"]);
 
     await store.flush("s-a");
-    const fresh = new SessionStore(storage);
+    const fresh = new SessionEventStore(storage);
     await fresh.restore("s-a");
     expect(fresh.sessionIds()).toEqual(["s-a"]); // 键集随 restore 装载
   });

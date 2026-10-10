@@ -26,7 +26,7 @@ import {
   createChildAssembly,
   type ChildAssembly,
 } from "../../kernel/assembly.js";
-import { InMemoryEventStorage, SessionStore } from "../../session/store.js";
+import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../../session/store.js";
 
 describe("状态机（invariant 自校验：迁移守卫纯函数）", () => {
   const from = (status: "active" | "achieved" | "abandoned") => ({
@@ -106,7 +106,7 @@ describe("落流与跨轮保持（验收①④）", () => {
   });
 
   it("验收④：goalFromEvents 按流重建——重启后 goal 仍在（流内最新为准）", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const service = createGoalService({
       emit: (s) => {
         const events = store.load("s0");
@@ -231,7 +231,7 @@ describe("装配接线（验收②注入位 + 重启不重复落初始事实）"
   }
 
   it("新会话：初始 goal 落流 + beforeFirstModelRequest 每轮注入提醒", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const assembly = makeAssembly(store);
     store.append("s-goal", [{ type: "turn/start", turn: 1 }]);
     await assembly.beforeFirstModelRequest(1);
@@ -257,7 +257,7 @@ describe("装配接线（验收②注入位 + 重启不重复落初始事实）"
   });
 
   it("已有 goal 事实的会话：按流重建，不重复落初始 goal/set", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const first = makeAssembly(store);
     store.append("s-goal", [{ type: "turn/start", turn: 1 }]);
     await first.beforeFirstModelRequest(1);

@@ -19,7 +19,7 @@ import { createSkillLoadTool } from "./tools/builtin/skill.js";
 import { ToolRegistry } from "./tools/registry.js";
 import { assembleSystemPrompt } from "../context/system-prompt.js";
 import { createChildAssembly } from "./assembly.js";
-import { InMemoryEventStorage, SessionStore } from "../session/store.js";
+import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../session/store.js";
 import { PathGuard } from "../sandbox/path-guard.js";
 import { composeChain } from "./chain.js";
 
@@ -272,7 +272,7 @@ describe("装配接线：contextLayer 首落 system/message 带技能清单", ()
       ".zcode/skills/broken/SKILL.md": "没 frontmatter\n",
     });
     const warnings: string[] = [];
-    const store = new SessionStore(new InMemoryEventStorage());
+    const store = new SessionEventStore(new InMemoryEventStorage());
     const asm = createChildAssembly({
       sessionId: "s0",
       store,

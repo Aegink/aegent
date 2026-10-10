@@ -8,7 +8,7 @@ import type { NewSessionEvent } from "../kernel/events.js";
 import { readArchivedSession } from "./archive.js";
 import { cleanupSessions, recordAudit, recordTaskRun } from "./cleanup.js";
 import { SqliteEventStorage } from "./db.js";
-import { SessionStore } from "./store.js";
+import {SessionEventStore, type SessionStore} from "./store.js";
 
 const DAY = 24 * 3600 * 1000;
 const NOW = 1_800_000_000_000;
@@ -44,7 +44,7 @@ function sampleTurn(turn: number): NewSessionEvent[] {
 async function seedDb(dbPath: string): Promise<void> {
   const storage = SqliteEventStorage.open({ path: dbPath });
   try {
-    const store = new SessionStore(storage);
+    const store = new SessionEventStore(storage);
     for (const id of ["s-old1", "s-old2", "s-new"]) {
       store.append(id, sampleTurn(1));
       await store.flush(id);

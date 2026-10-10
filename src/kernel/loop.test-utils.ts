@@ -13,7 +13,7 @@ import {
 import type { ChatRequest, ModelProvider } from "../models/provider.js";
 import type { PromptQueue } from "./queue.js";
 import type { RunState } from "./run-state.js";
-import { SessionStore } from "../session/store.js";
+import {SessionEventStore, type SessionStore} from "../session/store.js";
 
 /** 剧本化假 provider：每次模型调用吃一份 StreamChunk 脚本，记录收到的请求。 */
 export class ScriptedProvider implements ModelProvider {
@@ -78,7 +78,7 @@ export function makeLoop(
     toolRuntimeMeta?: AgentLoopDeps["toolRuntimeMeta"];
   },
 ): Harness {
-  const store = new SessionStore();
+  const store = new SessionEventStore();
   const decideCalls: StepRecord[] = [];
   // 默认决策（真实语义的占位）：有 toolCall 继续、没有则 end——注意 loop
   // 本体不看 toolCall，继续/停止完全来自这里。

@@ -34,7 +34,7 @@ import { spawnAgentProcess } from "../kernel/agent-process.js";
 import { agentStderrSink, channelLogger, reconfigureLogging } from "./logging-ops.js";
 import { createSessionId, isValidSessionId } from "../session/session-id.js";
 import { SqliteEventStorage } from "../session/db.js";
-import { InMemoryEventStorage, SessionStore, type EventStorage } from "../session/store.js";
+import {InMemoryEventStorage, SessionEventStore, type SessionStore, type EventStorage} from "../session/store.js";
 import { loadSettings, resolveChildLaunchArgv, defaultSettingsPath } from "../session/settings.js";
 import { createBackupTicker } from "./settings-backup-ops.js";
 import { createCredentialStore } from "../session/credentials.js";
@@ -116,7 +116,7 @@ export class HostServer {
     }
     const registry = new HostRegistry();
     const host = registry.register({ sessionId });
-    const store = new SessionStore(this.options.storage ?? new InMemoryEventStorage());
+    const store = new SessionEventStore(this.options.storage ?? new InMemoryEventStorage());
     // T-P3-164：镜像 store 回注 settings 网关——project-tasks 的 turn 中
     // 内存权威源（write-behind 库滞后：turn 进行中读库恒空，活跃会话永远
     // 不进任务清单——用户"对话了但任务列表不出现"的根因修）。

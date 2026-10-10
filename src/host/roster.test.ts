@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { SessionEvent } from "../kernel/events.js";
 import { buildChatMessages } from "../session/messages.js";
-import { InMemoryEventStorage, SessionStore } from "../session/store.js";
+import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../session/store.js";
 import { HostRegistry } from "./registry.js";
 import { activeRoster } from "./roster.js";
 
@@ -71,7 +71,7 @@ describe("N8/T-P1-114 host 连接生命周期落流面", () => {
   it("connect → surface/attach 落流、close → surface/detach 落流（store.append 分配 seq/ts）", () => {
     const registry = new HostRegistry();
     const host = registry.register({ sessionId: "s-a" });
-    const store = new SessionStore(new InMemoryEventStorage());
+    const store = new SessionEventStore(new InMemoryEventStorage());
     // 落流面：装配方订阅 registry 分发 → append（生产面同构）
     registry.subscribe((sessionId, event) => {
       const { seq: _s, ts: _t, ...rest } = event as SessionEvent & { seq: number; ts: number };
@@ -101,7 +101,7 @@ describe("N8/T-P1-114 host 连接生命周期落流面", () => {
   it("roster 从 host 落流重建：连接两枚 + 断开一枚 → 在册一枚（端到端）", () => {
     const registry = new HostRegistry();
     const host = registry.register({ sessionId: "s-a" });
-    const store = new SessionStore(new InMemoryEventStorage());
+    const store = new SessionEventStore(new InMemoryEventStorage());
     registry.subscribe((sessionId, event) => {
       const { seq: _s, ts: _t, ...rest } = event as SessionEvent & { seq: number; ts: number };
       store.append(sessionId, [rest as never]);
@@ -128,7 +128,7 @@ describe("N8/T-P1-114 log-only 纪律与校验面", () => {
   });
 
   it("project 校验：非法 deliveryKind / 空 surfaceId 拒绝（append 即拦）", () => {
-    const store = new SessionStore(new InMemoryEventStorage());
+    const store = new SessionEventStore(new InMemoryEventStorage());
     expect(() =>
       store.append("s-a", [{ type: "surface/attach", turn: 0, surfaceId: "x", deliveryKind: "carrier" } as never]),
     ).toThrowError(/deliveryKind 非法/);

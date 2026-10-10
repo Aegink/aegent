@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import type { NewSessionEvent, SessionEvent } from "../kernel/events.js";
 import { ForkTree, ForkTreeError } from "./fork-tree.js";
-import { ForkError, SessionStore } from "./store.js";
+import {ForkError, SessionEventStore, type SessionStore} from "./store.js";
 
 const thisDir = path.dirname(fileURLToPath(new URL(import.meta.url)));
 
@@ -20,7 +20,7 @@ function turnEvents(turn: number, text: string): NewSessionEvent[] {
 
 /** 三层树：root → mid → leaf（E5 的 fork 写血统标记；E6 只读重建）。 */
 function buildThreeLevel(): SessionStore {
-  const store = new SessionStore();
+  const store = new SessionEventStore();
   store.append("s-root", turnEvents(1, "root question"));
   const mid = store.fork("s-root", { target: "s-mid" });
   expect(mid.eventCount).toBe(4); // 3 事件 + 血统标记

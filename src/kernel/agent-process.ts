@@ -56,7 +56,7 @@ import {
 import type { ApprovalAnnouncement } from "../policy/pending.js";
 import type { ChatRequest, ModelProvider } from "../models/provider.js";
 import type { ModelIdentity } from "../models/identity.js";
-import { ForkError, InMemoryEventStorage, type EventStorage, SessionStore } from "../session/store.js";
+import {ForkError, InMemoryEventStorage, type EventStorage, SessionEventStore, type SessionStore} from "../session/store.js";
 import { InvalidSessionIdError, isValidSessionId } from "../session/session-id.js";
 import { Projector, ProjectError } from "../session/project.js";
 import { findInterruptedTurn, reconcileBootState } from "../session/boot-maintenance.js";
@@ -286,7 +286,7 @@ export async function runAgentChildStdio(
 
   // 事件出进程的唯一通道：append 返回的已提交事件逐条转发为协议 event 行
   // （C14 已在 append 兜底，转发值必为 JSON 安全）
-  const store = new (class ForwardingStore extends SessionStore {
+  const store = new (class ForwardingStore extends SessionEventStore {
     override append(
       sessionId: string,
       events: readonly import("./events.js").NewSessionEvent[],

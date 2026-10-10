@@ -15,17 +15,25 @@
 
 import { assertJsonSafe, type NewSessionEvent, type SessionEvent } from "../kernel/events.js";
 import { Projector } from "./project.js";
-
-/**
- * 持久化后端接口。T-1-03 由 SQLite 实现；P0 语义约定：
- * appendBatch 必须批量原子——进程崩溃后要么整批都在，要么整批都不在，
- * 不允许出现半批（否则"已 flush 的序"失去意义）。
- */
-export interface EventStorage {
-  appendBatch(sessionId: string, events: readonly SessionEvent[]): void | Promise<void>;
-  /** 读回某会话已落库的全部事件（按 seq 升序返回）。 */
-  readAll(sessionId: string): SessionEvent[] | Promise<SessionEvent[]>;
-}
+// T2-3 依赖倒置：EventStorage/SessionSnapshot/FlushPoint*/ForkOptions/SessionStore
+// 端口契约下沉 core/contracts/session.ts——本文件是 session 域实现面
+//（SessionEventStore + InMemoryEventStorage），契约 re-export 保兼容消费面。
+export type {
+  EventStorage,
+  FlushPointPhase,
+  FlushPointHook,
+  ForkOptions,
+  SessionSnapshot,
+  SessionStore,
+} from "../core/index.js";
+import type {
+  EventStorage,
+  FlushPointPhase,
+  FlushPointHook,
+  ForkOptions,
+  SessionSnapshot,
+  SessionStore,
+} from "../core/index.js";
 
 /** 内存后端：单测与"不落盘的内存会话"用；readAll/appendBatch 都是同步原子。 */
 export class InMemoryEventStorage implements EventStorage {
@@ -46,18 +54,7 @@ export class InMemoryEventStorage implements EventStorage {
   }
 }
 
-/** 快照产物：flush 已保证 storage 覆盖到 snapshotSeq（E10 的不变量）。 */
-export interface SessionSnapshot {
-  sessionId: string;
-  /** 快照时刻内存序的最后 seq（此后事件不属于本快照）。 */
-  snapshotSeq: number;
-  events: readonly SessionEvent[];
-}
-
-export type FlushPointPhase = "turnEnd";
-export type FlushPointHook = (sessionId: string) => void | Promise<void>;
-
-export class SessionStore {
+export class SessionEventStore implements SessionStore {
   private readonly events = new Map<string, SessionEvent[]>();
   private readonly buffer = new Map<string, SessionEvent[]>();
   private readonly lastSeq = new Map<string, number>();
@@ -340,11 +337,4 @@ export class ForkError extends Error {
 }
 
 /** fork 的调用方选项（切点语义见 SessionStore.fork 注释）。 */
-export interface ForkOptions {
-  /** 新会话 id（调用方指定——会话 id 用户可见；不得与源/既有会话冲突）。 */
-  target: string;
-  /** "before"=切点前缀（不含 atSeq）、"after"=含 atSeq；缺省 "after"。 */
-  position?: "before" | "after";
-  /** 切点参照 seq（1..源流最后 seq）；缺省 = 源流最新。 */
-  atSeq?: number;
-}
+// ForkOptions 已下沉 core/contracts/session.ts（文件头部 re-export）。

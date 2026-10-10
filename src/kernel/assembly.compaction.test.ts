@@ -13,7 +13,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createChildAssembly } from "./assembly.js";
 import type { SessionEvent } from "./events.js";
-import { SessionStore } from "../session/store.js";
+import {SessionEventStore, type SessionStore} from "../session/store.js";
 import {
   compactionFingerprint,
   DEFAULT_RETAINED_FROM_END,
@@ -69,7 +69,7 @@ function seedCompaction(store: SessionStore, compHash?: string): void {
 
 describe("装配 PreTurn 指纹触发（F26 接线位）", () => {
   it("指纹变化 → comp_hash_changed 压缩落流且带当前指纹", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     seedCompaction(store, "deadbeef");
     const assembly = makeAssembly(store);
     await assembly.beforeFirstModelRequest(2);
@@ -81,7 +81,7 @@ describe("装配 PreTurn 指纹触发（F26 接线位）", () => {
   });
 
   it("指纹相同 → 零触发", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     seedCompaction(store, defaultFingerprint());
     const assembly = makeAssembly(store);
     await assembly.beforeFirstModelRequest(2);
@@ -91,7 +91,7 @@ describe("装配 PreTurn 指纹触发（F26 接线位）", () => {
   });
 
   it("旧流无指纹 → 零触发（双值齐备纪律的装配面）", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     seedCompaction(store, undefined);
     const assembly = makeAssembly(store);
     await assembly.beforeFirstModelRequest(2);

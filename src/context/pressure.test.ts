@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { ProviderHttpError, type ChatMessage } from "../models/provider.js";
 import { composeChain } from "../kernel/chain.js";
 import type { TurnEndReason } from "../kernel/events.js";
-import { SessionStore } from "../session/store.js";
+import {SessionEventStore, type SessionStore} from "../session/store.js";
 import { expectTurnScoped } from "../test-support/event-asserts.js";
 import { CompactionEngine, type CompactionResult } from "./compaction.js";
 import { CONTEXT_WINDOW_EXCEEDED_CODE } from "./overflow.js";
@@ -137,7 +137,7 @@ describe("验收②：恢复失败不吞原始错误（F10）", () => {
 
 describe("F9：压缩发生在 turn 边界（turnEnd 点位）——次序断言", () => {
   it("turnEnd 链压缩层在 next 前作业 → compaction 事件先于 turn/end 落盘", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, [
       { type: "turn/start", turn: 1 },
       { type: "user/message", turn: 1, message: { content: "旧问题" }, source: "user" },

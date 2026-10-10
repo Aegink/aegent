@@ -14,7 +14,7 @@ import {
 } from "./subagent-backend.js";
 import { createSubagentRunner } from "../kernel/subagent.js";
 import { ScriptedProvider } from "../kernel/loop.test-utils.js";
-import { SessionStore } from "./store.js";
+import {SessionEventStore, type SessionStore} from "./store.js";
 import type { ModelIdentity } from "../models/identity.js";
 
 const identity: ModelIdentity = { provider: "scripted", modelId: "script-1" };
@@ -22,7 +22,7 @@ const identity: ModelIdentity = { provider: "scripted", modelId: "script-1" };
 /** 进程内后端夹具：剧本 provider 直接产出最终答复（一轮完成）。 */
 function makeInProcess(): SubagentBackend {
     const root = mkdtempSync(join(tmpdir(), "backend-"));
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const provider = new ScriptedProvider();
     provider.mount([{ type: "text-delta", text: "整理结果：事件流是唯一真相" }, { type: "done" }]);
     const runner = createSubagentRunner({

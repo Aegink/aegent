@@ -21,7 +21,7 @@ import { createRuleSetModule } from "./rules.js";
 import type { ChainNext } from "../kernel/chain.js";
 import type { ToolCallPayload, ToolExecutionResult } from "../kernel/loop.js";
 import { createChildAssembly } from "../kernel/assembly.js";
-import { SessionStore } from "../session/store.js";
+import {SessionEventStore, type SessionStore} from "../session/store.js";
 import type { Logger } from "../kernel/logger.js";
 
 const call = (tool: string): PolicyCall => ({ tool, args: {} });
@@ -173,7 +173,7 @@ describe("C49/C45 · assembly 装配接线（T-P1-03）", () => {
   function baseAssemblyOptions(logger?: Logger) {
     return {
       sessionId: "s-assemble",
-      store: new SessionStore(),
+      store: new SessionEventStore(),
       workspaceRoot: mkdtempSync(join(tmpdir(), "aegent-assemble-")),
       contextWindow: 200_000,
       approvalTimeoutMs: 5_000,

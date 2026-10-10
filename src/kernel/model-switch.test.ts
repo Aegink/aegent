@@ -36,7 +36,7 @@ import {
   type AgentRequest,
 } from "./agent-protocol.js";
 import type { ModelProvider } from "../models/provider.js";
-import { InMemoryEventStorage, SessionStore } from "../session/store.js";
+import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../session/store.js";
 import { project } from "../session/project.js";
 import {
   drainUntil,
@@ -151,7 +151,7 @@ describe("J7 loop 接线 —— 每轮启动捕获、在途换模不串轮（验
         { identity: identityB, provider: providerB },
       ],
     });
-    const store = new SessionStore(new InMemoryEventStorage());
+    const store = new SessionEventStore(new InMemoryEventStorage());
     const loop = new AgentLoop({
       sessionId: "s0",
       store,
@@ -192,7 +192,7 @@ describe("J7 loop 接线 —— 每轮启动捕获、在途换模不串轮（验
   });
 
   it("回归：无 modelForTurn 时 loop 用固定 provider/identity（P0 行为不变）", async () => {
-    const store = new SessionStore(new InMemoryEventStorage());
+    const store = new SessionEventStore(new InMemoryEventStorage());
     const loop = new AgentLoop({
       sessionId: "s0",
       store,
@@ -348,7 +348,7 @@ describe("J11 装配与 loop 接线 —— 失败观测到回滚的闭环", () =
   it("装配级：onTurnError（不兼容判据命中）→ 下一 turn 捕获 prev；无关失败不回滚", () => {
     const workspaceRoot = mkdtempSync(path.join(tmpdir(), "model-switch-"));
     tmpRoots.push(workspaceRoot);
-    const store = new SessionStore(new InMemoryEventStorage());
+    const store = new SessionEventStore(new InMemoryEventStorage());
     const a = createChildAssembly({
       sessionId: "s0",
       store,
@@ -373,7 +373,7 @@ describe("J11 装配与 loop 接线 —— 失败观测到回滚的闭环", () =
 
   it("loop 级：turn 失败时 onTurnError 收到类型化 LlmFailure（观测点在 failTurn）", async () => {
     const failures: LlmFailure[] = [];
-    const store = new SessionStore(new InMemoryEventStorage());
+    const store = new SessionEventStore(new InMemoryEventStorage());
     const loop = new AgentLoop({
       sessionId: "s0",
       store,
@@ -424,7 +424,7 @@ const isModelSwitch = (
 
 describe("J9 换模进事件流（T-P1-06 验收①）", () => {
   it("受理与回滚都落 model/switch 事件：seq 连续、可投影、事实源可查", () => {
-    const store = new SessionStore(new InMemoryEventStorage());
+    const store = new SessionEventStore(new InMemoryEventStorage());
     const service = new ModelSwitchService({
       initial: identityA,
       models: [
@@ -497,7 +497,7 @@ describe("J10/J14 两存储位分离与回放保护（T-P1-06 验收②③）", 
 
   it("验收②：会话级选择存在时全局默认变更不改变本会话（保留用户选择）", () => {
     // 上一会话的用户选择：A → B（落流）
-    const store = new SessionStore(new InMemoryEventStorage());
+    const store = new SessionEventStore(new InMemoryEventStorage());
     store.append("s0", [
       { type: "model/switch", turn: 0, from: identityA, to: identityB, reason: "user" },
     ]);
@@ -507,7 +507,7 @@ describe("J10/J14 两存储位分离与回放保护（T-P1-06 验收②③）", 
   });
 
   it("验收③：杀进程重启（restore 同 store 重建装配）后模型仍是用户选的那个", () => {
-    const store = new SessionStore(new InMemoryEventStorage());
+    const store = new SessionEventStore(new InMemoryEventStorage());
     store.append("s0", [
       { type: "model/switch", turn: 0, from: identityA, to: identityC, reason: "user" },
     ]);
@@ -519,13 +519,13 @@ describe("J10/J14 两存储位分离与回放保护（T-P1-06 验收②③）", 
 
   it("对照：无流内选择时回退装配初始身份；流内选择不在注册表 → 装配失败不静默", () => {
     // 无事件 → initialIdentity（缺省注册表首项）
-    const empty = assemblyWith(new SessionStore(new InMemoryEventStorage()), {
+    const empty = assemblyWith(new SessionEventStore(new InMemoryEventStorage()), {
       initialIdentity: identityB,
     });
     expect(empty.modelForTurn!(1)!.identity).toEqual(identityB);
 
     // 流内选择不在本次装配的注册表 → fail-closed（绝不静默回退全局默认）
-    const stale = new SessionStore(new InMemoryEventStorage());
+    const stale = new SessionEventStore(new InMemoryEventStorage());
     stale.append("s0", [
       {
         type: "model/switch",

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import type { NewSessionEvent, SessionEvent } from "../kernel/events.js";
 import { effectiveApproval, Projector, project, ProjectError, supersessionChain } from "./project.js";
-import { SessionStore } from "./store.js";
+import {SessionEventStore, type SessionStore} from "./store.js";
 
 /** 一轮完整 turn 的 8 个事件（turn → user → step → assistant → tool 对 → step 闭 → turn 闭）。 */
 function oneTurn(turn: number, seq0: number): SessionEvent[] {
@@ -357,7 +357,7 @@ describe("与 SessionStore 的接线（E16 写入前校验）", () => {
   });
 
   it("store.append 对非法流抛 ProjectError，内存序零提交", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append("s1", [
       { type: "turn/start", turn: 1 },
       { type: "user/message", turn: 1, message: { content: "hi" }, source: "user" },

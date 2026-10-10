@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { project } from "./project.js";
-import { ForkError, InMemoryEventStorage, SessionStore } from "./store.js";
+import {ForkError, InMemoryEventStorage, SessionEventStore, type SessionStore} from "./store.js";
 import { SqliteEventStorage } from "./db.js";
 
 /** 两个完整 turn 的源流（每轮 8 事件，见 project.test 的 oneTurn 同构）。 */
@@ -35,7 +35,7 @@ afterAll(() => {
 
 describe("SessionStore.fork（E5/T-P1-40）", () => {
   it("验收①：fork 后新会话事件与父流前缀逐字节等价（seq 重编号、ts 保留）且投影一致", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     seedSource(store, "s1");
     const before = store.load("s1").map((e) => ({ ...e }));
 
@@ -61,7 +61,7 @@ describe("SessionStore.fork（E5/T-P1-40）", () => {
   });
 
   it("验收②：before/after 切点语义正确（before=atSeq 前缀不含、after=含）", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     seedSource(store, "s1");
 
     // after atSeq=6：新流复制 seq 1..6（第一个 turn 完整）+ lineage 标记
@@ -84,7 +84,7 @@ describe("SessionStore.fork（E5/T-P1-40）", () => {
   });
 
   it("验收③：原会话零影响（事件数、seq、投影都不变）", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     seedSource(store, "s1");
     const before = store.load("s1").map((e) => ({ ...e }));
 
@@ -101,7 +101,7 @@ describe("SessionStore.fork（E5/T-P1-40）", () => {
     try {
       const dbPath = join(dir, "events.db");
       const storage = SqliteEventStorage.open({ path: dbPath });
-      const store = new SessionStore(storage);
+      const store = new SessionEventStore(storage);
       seedSource(store, "s1");
       store.fork("s1", { target: "s1-fork", position: "after", atSeq: 6 });
       await store.flush("s1-fork");
@@ -110,7 +110,7 @@ describe("SessionStore.fork（E5/T-P1-40）", () => {
 
       // 重启等价：新 store restore 新会话——lineage 标记随流恢复可查
       const storage2 = SqliteEventStorage.open({ path: dbPath });
-      const store2 = new SessionStore(storage2);
+      const store2 = new SessionEventStore(storage2);
       const restored = await store2.restore("s1-fork");
       const mark = restored.find((e): e is Extract<typeof e, { type: "session/fork" }> => e.type === "session/fork");
       expect(mark).toBeDefined();
@@ -129,7 +129,7 @@ describe("SessionStore.fork（E5/T-P1-40）", () => {
   });
 
   it("验收⑤：未闭合 turn 拒绝（FORK_SOURCE_BUSY）+ atSeq 非法类型化错误（FORK_BAD_ATSEQ）+ 目标冲突（FORK_TARGET_EXISTS/FORK_BAD_TARGET）", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     seedSource(store, "s1");
 
     // 未闭合 turn：追加 turn/start 不闭合 → fork 拒绝
@@ -178,7 +178,7 @@ describe("SessionStore.fork（E5/T-P1-40）", () => {
   });
 
   it("验收⑥：fork 出的新会话可独立继续对话（append/投影正常，与源会话互不影响）", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     seedSource(store, "s1");
     store.fork("s1", { target: "f1", position: "after", atSeq: 6 });
 

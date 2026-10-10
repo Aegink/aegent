@@ -106,10 +106,10 @@ describe("增量配平状态机", () => {
 
 describe("验收①：切点自动回退到配平位置（接入压缩切点选择）", () => {
   it("流尾悬挂 call 时,压缩 retainedTail 回退到 call 之前的配平位置;切点前子流过 expectPaired", async () => {
-    const { SessionStore } = await import("../session/store.js");
+    const { SessionEventStore } = await import("../session/store.js");
     const { CompactionEngine } = await import("./compaction.js");
     const SESSION = "s-pairing";
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     // turn 1 完整(含配对块);turn 2 开头落了一个 call 后"崩溃"——result 永远没来
     store.append(SESSION, [
       { type: "turn/start", turn: 1 },
@@ -159,10 +159,10 @@ describe("验收①：切点自动回退到配平位置（接入压缩切点选�
   });
 
   it("悬挂 call 落在候选边界之前 → retainedTail 回退到该 call 之前(少摘要不劈对)", async () => {
-    const { SessionStore } = await import("../session/store.js");
+    const { SessionEventStore } = await import("../session/store.js");
     const { CompactionEngine } = await import("./compaction.js");
     const SESSION = "s-pairing2";
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     // 同一 turn 内:assistant 落了 call,没有 result(崩溃残留);下一个 user
     // 直接入流(user/message 只要求轮开启)——悬挂 call 落在候选边界之前
     store.append(SESSION, [

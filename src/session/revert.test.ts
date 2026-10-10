@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { NewSessionEvent } from "../kernel/events.js";
-import { InMemoryEventStorage, SessionStore } from "./store.js";
+import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "./store.js";
 import { RevertService } from "./revert.js";
 
 /** 恰 5 个事件的合法流（turn 1 留开）。 */
@@ -23,7 +23,7 @@ function fiveEvents(): NewSessionEvent[] {
 }
 
 function setup(): { store: SessionStore; revert: RevertService } {
-  const store = new SessionStore(new InMemoryEventStorage());
+  const store = new SessionEventStore(new InMemoryEventStorage());
   store.append("s1", fiveEvents());
   return { store, revert: new RevertService(store) };
 }
@@ -67,7 +67,7 @@ describe("RevertService（E4）", () => {
     const { revert } = setup();
     expect(() => revert.revert("s1", 99)).toThrow(/越界/);
     expect(() => revert.revert("s1", -1)).toThrow(/越界/);
-    const empty = new RevertService(new SessionStore(new InMemoryEventStorage()));
+    const empty = new RevertService(new SessionEventStore(new InMemoryEventStorage()));
     expect(() => empty.revert("ghost", 1)).toThrow(/空会话/);
   });
 

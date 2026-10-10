@@ -20,7 +20,7 @@ import type { NewSessionEvent, SessionEvent } from "../kernel/events.js";
 import { project } from "./project.js";
 import { buildChatMessages } from "./messages.js";
 import { SqliteEventStorage } from "./db.js";
-import { SessionStore } from "./store.js";
+import {SessionEventStore, type SessionStore} from "./store.js";
 import { querySessions } from "./query.js";
 
 const LINEAR_RATIO_CEILING = 4; // 线性理论比值 2 的 2× 余量——超出即复杂度退化嫌疑
@@ -72,7 +72,7 @@ async function seedQueryDb(turnCount: number): Promise<string> {
   dirs.push(dir);
   const dbPath = join(dir, "events.sqlite");
   const storage = SqliteEventStorage.open({ path: dbPath });
-  const store = new SessionStore(storage);
+  const store = new SessionEventStore(storage);
   for (let turn = 1; turn <= turnCount; turn++) {
     store.append("s-perf", oneTurn(turn, (turn - 1) * 6 + 1).map((e) => ({ ...e, ts: 1_700_000_000_000 + turn })));
   }

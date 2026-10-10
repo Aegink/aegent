@@ -25,7 +25,7 @@ import {
 } from "../../kernel/loop.js";
 import { ScriptedProvider, makeLoop } from "../../kernel/loop.test-utils.js";
 import { createChildAssembly } from "../../kernel/assembly.js";
-import { InMemoryEventStorage, SessionStore } from "../../session/store.js";
+import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../../session/store.js";
 
 const identity = { provider: "mock", modelId: "m-1" };
 
@@ -398,7 +398,7 @@ describe("装配接线（I1 hooks → gate → terminal）", () => {
   it("hooks 传入时三层首位是 hooks 层；未注册点位不挂层；不传时零行为变化", () => {
     const workspaceRoot = mkdtempSync(path.join(tmpdir(), "hooks-asm-"));
     tmpRoots.push(workspaceRoot);
-    const store = new SessionStore(new InMemoryEventStorage());
+    const store = new SessionEventStore(new InMemoryEventStorage());
     const registry = new HookRegistry();
     const passthrough = async (_$: LoopContext, e: unknown, next: (x: unknown) => unknown) =>
       next(e);

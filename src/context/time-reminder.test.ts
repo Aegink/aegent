@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createChildAssembly } from "../kernel/assembly.js";
-import { SessionStore } from "../session/store.js";
+import {SessionEventStore, type SessionStore} from "../session/store.js";
 import {
   DEFAULT_TIME_REMINDER_INTERVAL_SECONDS,
   TIME_REMINDER_PREFIX,
@@ -71,7 +71,7 @@ function injectedMessages(store: SessionStore): Array<{ content: string; ts: num
 
 describe("time-reminder（F7 时间上下文）", () => {
   it("验收①：启用后首轮注入一条，内容含 TIME_REMINDER_PREFIX 与日期", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const assembly = makeAssembly(store, {});
     openTurn(store, 1, "第一问");
     await assembly.beforeFirstModelRequest(1);
@@ -84,7 +84,7 @@ describe("time-reminder（F7 时间上下文）", () => {
   });
 
   it("验收②③：interval 内零注入；超 interval 再注入且时间文本更新", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const assembly = makeAssembly(store, { intervalSeconds: 60 });
     openTurn(store, 1, "第一问");
     await assembly.beforeFirstModelRequest(1);
@@ -96,7 +96,7 @@ describe("time-reminder（F7 时间上下文）", () => {
     closeTurn(store, 2);
     expect(injectedMessages(store)).toHaveLength(1);
     // 模拟时间流逝：改写流内注入消息的 ts（事件源即状态——ts 后移 61 秒）
-    const store2 = new SessionStore();
+    const store2 = new SessionEventStore();
     store2.append(SESSION, [
       { type: "turn/start", turn: 1 },
       { type: "user/message", turn: 1, message: { content: "问" }, source: "user" },
@@ -114,7 +114,7 @@ describe("time-reminder（F7 时间上下文）", () => {
   });
 
   it("验收④：压缩后新窗立即再注入（新窗必送——窗口身份消费）", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const assembly = makeAssembly(store, { intervalSeconds: 3_600 });
     openTurn(store, 1, "第一问");
     await assembly.beforeFirstModelRequest(1); // 注入 1（首轮）
@@ -140,7 +140,7 @@ describe("time-reminder（F7 时间上下文）", () => {
   });
 
   it("验收⑤：重启后状态从流重建——同流两次判定恒等（流即状态）", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const assembly = makeAssembly(store, {});
     openTurn(store, 1, "问");
     await assembly.beforeFirstModelRequest(1);
@@ -165,7 +165,7 @@ describe("time-reminder（F7 时间上下文）", () => {
 
 describe("装配缺省（未启用 F7）", () => {
   it("验收⑥：未配 timeReminder → 零注入零行为变化", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const assembly = makeAssembly(store);
     openTurn(store, 1, "问");
     await assembly.beforeFirstModelRequest(1);

@@ -6,7 +6,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { EVENT_TYPES, type NewSessionEvent, type SessionEvent } from "../kernel/events.js";
 import { SqliteEventStorage } from "../session/db.js";
-import { SessionStore } from "../session/store.js";
+import {SessionEventStore, type SessionStore} from "../session/store.js";
 import { DEFAULT_IDLE_TIMEOUT_MS, IdleReaper, type SessionReapedNotice } from "./idle-reaper.js";
 import { HostRegistry } from "./registry.js";
 
@@ -136,7 +136,7 @@ describe("会话空闲回收（M4/T-P2-104）", () => {
     const dir = mkdtempSync(join(tmpdir(), "aegent-reaper-"));
     dirs.push(dir);
     const storage = SqliteEventStorage.open({ path: join(dir, "events.sqlite") });
-    const store = new SessionStore(storage);
+    const store = new SessionEventStore(storage);
     store.append("s-child", sampleTurn(1));
     await store.flush("s-child");
 

@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import type { NewSessionEvent, TokenUsage } from "../kernel/events.js";
 import { buildChatMessages, effectiveEvents } from "../session/messages.js";
-import { SessionStore } from "../session/store.js";
+import {SessionEventStore, type SessionStore} from "../session/store.js";
 import { expectPaired, expectTurnScoped } from "../test-support/event-asserts.js";
 import { compactionStats } from "../obs/compaction-stats.js";
 import { Projector } from "../session/project.js";
@@ -78,7 +78,7 @@ const localOverflowRequest: CompactionRunInput["request"] = {
 
 describe("验收①：压缩产生 compaction 事件（载荷对齐词汇表 §3.2#11）", () => {
   it("压缩落盘 compaction 事件：summary/retainedTail/tokensBefore 整值载荷；事件流不变量不破", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, turnEvents(1, "第一轮问题", "第一轮回答", {
       inputTokens: 700,
       outputTokens: 100,
@@ -117,7 +117,7 @@ describe("验收①：压缩产生 compaction 事件（载荷对齐词汇表 §3
   });
 
   it("tool 调用块整块保留或整块摘要（user/system 边界切点不劈开配平）", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, [
       { type: "turn/start", turn: 1 },
       { type: "user/message", turn: 1, message: { content: "跑个命令" }, source: "user" },
@@ -153,7 +153,7 @@ describe("验收①：压缩产生 compaction 事件（载荷对齐词汇表 §3
 
 describe("验收②：hook 可中止（中止后无新窗口）", () => {
   it("pre hook abort → 无 compaction 事件、summarizer 不被调、结果 aborted", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, turnEvents(1, "q", "a"));
     let summarizerCalled = false;
     const engine = new CompactionEngine({
@@ -172,7 +172,7 @@ describe("验收②：hook 可中止（中止后无新窗口）", () => {
   });
 
   it("post hook 观察结算事实（summary/retainedTail/seq = compaction 事件 seq）", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, turnEvents(1, "q", "a", { inputTokens: 10, outputTokens: 5 }));
     const seen: CompactionSettled[] = [];
     const engine = new CompactionEngine({
@@ -204,7 +204,7 @@ describe("验收③：相位（Q13 两相位）与 MidTurn 的 step 边界触发
   });
 
   it("MidTurn 压缩在 step 边界触发：turn 进行中（未闭合）落盘且 invocation.phase 可断言", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     // turn 1 完整闭合；turn 2 进行中：step 1 已闭合、step 2 开着（step 边界 = step1.end 与 step2 之间）
     store.append(SESSION, turnEvents(1, "历史问题", "历史回答", { inputTokens: 1000, outputTokens: 200 }));
     store.append(SESSION, [
@@ -235,7 +235,7 @@ describe("验收③：相位（Q13 两相位）与 MidTurn 的 step 边界触发
   });
 
   it("PreTurn 压缩（turn 边界触发面）：invocation.phase === PreTurn", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, turnEvents(1, "q", "a"));
     const phases: string[] = [];
     const engine = new CompactionEngine({
@@ -254,7 +254,7 @@ describe("验收③：相位（Q13 两相位）与 MidTurn 的 step 边界触发
 
 describe("tokensBefore 来源与有效视窗", () => {
   it("无 usage 的流 → 本地估算兜底（保守系数方向见 overflow.ts）", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, turnEvents(1, "问题内容", "回答内容"));
     const engine = new CompactionEngine({
       sessionId: SESSION,
@@ -274,7 +274,7 @@ describe("tokensBefore 来源与有效视窗", () => {
   });
 
   it("revert 有效视窗：被 revert 的内容不进摘要覆盖区间", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, turnEvents(1, "被撤销的问题", "被撤销的回答"));
     store.append(SESSION, [
       { type: "session/revert", turn: 1, targetSeq: 1, phase: "revert" }, // 只留 turn/start
@@ -310,7 +310,7 @@ describe("真 LLM 摘要器（F5 / T-P1-18）", () => {
     provider: ScriptedProvider;
     warns: string[];
   } {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, turnEvents(1, "第一轮问题", "第一轮回答", {
       inputTokens: 700,
       outputTokens: 100,
@@ -386,7 +386,7 @@ describe("真 LLM 摘要器（F5 / T-P1-18）", () => {
   });
 
   it("标题只在首摘要记录：第二次压缩的标题被忽略（会话级元事实，首摘要定名）", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, turnEvents(1, "一", "答一", { inputTokens: 700, outputTokens: 100, totalTokens: 800 }));
     store.append(SESSION, turnEvents(2, "二", "答二"));
     const provider = new ScriptedProvider();
@@ -453,7 +453,7 @@ describe("真 LLM 摘要器（F5 / T-P1-18）", () => {
 
 describe("L8 六维度量（T-P1-92）：压缩载荷带六面 + 值域闭集", () => {
   it("压缩落流载荷含 trigger/phase/implementation/strategy/status（引擎 auto 填充）", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, turnEvents(1, "第一轮问题", "第一轮回答", {
       inputTokens: 700,
       outputTokens: 100,
@@ -484,7 +484,7 @@ describe("L8 六维度量（T-P1-92）：压缩载荷带六面 + 值域闭集", 
   });
 
   it("project 校验：六维字段透传垃圾值 → 显式拒绝（E16 校验面）；合法六维放行", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     expect(() =>
       store.append(SESSION, [
         {
@@ -519,7 +519,7 @@ describe("L8 六维度量（T-P1-92）：压缩载荷带六面 + 值域闭集", 
 
 describe("E17 中间态进事件流（T-P1-93）：投影不猜压缩中间态", () => {
   it("started 先于 completed 落流（摘要调用前的事实）；失败路径落 failed 且异常照抛", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, turnEvents(1, "第一轮问题", "第一轮回答", {
       inputTokens: 700,
       outputTokens: 100,
@@ -553,7 +553,7 @@ describe("E17 中间态进事件流（T-P1-93）：投影不猜压缩中间态",
   });
 
   it("started 残留（模拟崩溃窗口）→ restore 后投影可见未完成压缩；新窗口不切换", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, turnEvents(1, "第一轮问题", "第一轮回答", {
       inputTokens: 700,
       outputTokens: 100,
@@ -589,7 +589,7 @@ describe("E17 中间态进事件流（T-P1-93）：投影不猜压缩中间态",
 
 describe("F26 压缩指纹（T-P1-100）：compHash 载荷 + 双值齐备触发", () => {
   it("engine 接 compHash getter → started/failed/completed 三次落盘同值", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, turnEvents(1, "问题", "回答"));
     let calls = 0;
     const engine = new CompactionEngine({
@@ -619,7 +619,7 @@ describe("F26 压缩指纹（T-P1-100）：compHash 载荷 + 双值齐备触发"
   });
 
   it("engine 未接 compHash getter → 事件无 compHash 字段（零行为变化）", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, turnEvents(1, "问题", "回答"));
     const engine = new CompactionEngine({
       sessionId: SESSION,
@@ -657,7 +657,7 @@ describe("F26 压缩指纹（T-P1-100）：compHash 载荷 + 双值齐备触发"
   });
 
   it("compHashChangeRequest：双值齐备且不等才触发；旧流缺值/同值/未接指纹均不触发", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, turnEvents(1, "问题", "回答"));
     // 带旧指纹的已结算压缩
     store.append(SESSION, [
@@ -679,7 +679,7 @@ describe("F26 压缩指纹（T-P1-100）：compHash 载荷 + 双值齐备触发"
     // 当前指纹缺失（装配未接）→ 不触发
     expect(compHashChangeRequest(events, undefined)).toBeNull();
     // 旧流（压缩无 compHash）→ 不触发（"缺值不提供足够信息"）
-    const store2 = new SessionStore();
+    const store2 = new SessionEventStore();
     store2.append(SESSION, turnEvents(1, "问题", "回答"));
     store2.append(SESSION, [
       {
@@ -694,7 +694,7 @@ describe("F26 压缩指纹（T-P1-100）：compHash 载荷 + 双值齐备触发"
   });
 
   it("started/failed 残留不作为指纹对拍基准（切换权威同口径）", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, turnEvents(1, "问题", "回答"));
     // 只有 started（崩溃残留）+ failed——无已结算压缩
     store.append(SESSION, [
@@ -754,7 +754,7 @@ describe("F11 三级兜底验收（有界重试 / 近期窗口 / 分块 / manual
   }
 
   function twoTurnStore(): SessionStore {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, turnEvents(1, "第一轮问题", "第一轮回答"));
     store.append(SESSION, turnEvents(2, "第二轮问题", "第二轮回答"));
     return store;

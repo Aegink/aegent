@@ -20,7 +20,7 @@ import { ForkTree, ForkTreeError } from "./fork-tree.js";
 import { buildChatMessages } from "./messages.js";
 import { querySessions } from "./query.js";
 import { ReferenceError, assertNoReferenceCycle, buildReferenceExcerpt, refsOfEvents } from "./reference.js";
-import { SessionStore } from "./store.js";
+import {SessionEventStore, type SessionStore} from "./store.js";
 
 const dirs: string[] = [];
 
@@ -49,7 +49,7 @@ describe("批次 15a 快照即规格（会话数据与生命周期全链）", ()
   it("fork 三层树 → 引用注入 → SQL 检索 → 归档 → 清理候选：一条链上的接缝一致", async () => {
     const dbPath = tempDbPath();
     const storage = SqliteEventStorage.open({ path: dbPath });
-    const store = new SessionStore(storage);
+    const store = new SessionEventStore(storage);
 
     // ① 三个会话：root 为源，mid/leaf 逐层 fork（E5 写血统；E6 只读重建）
     store.append("s-root", turn(1, "根会话的原始内容 ROOT-NEEDLE"));

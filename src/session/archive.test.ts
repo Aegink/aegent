@@ -13,7 +13,7 @@ import {
   readArchivedSession,
 } from "./archive.js";
 import { SessionArchivedError, SqliteEventStorage } from "./db.js";
-import { SessionStore } from "./store.js";
+import {SessionEventStore, type SessionStore} from "./store.js";
 
 const dirs: string[] = [];
 
@@ -42,7 +42,7 @@ function sampleTurn(turn: number): NewSessionEvent[] {
 async function seedDb(path: string): Promise<void> {
   const storage = SqliteEventStorage.open({ path });
   try {
-    const store = new SessionStore(storage);
+    const store = new SessionEventStore(storage);
     store.append("s-live", sampleTurn(1));
     store.append("s-arch", [...sampleTurn(1), ...sampleTurn(2)]);
     await store.flush("s-live");
@@ -177,7 +177,7 @@ describe("会话归档（Q8/T-P2-102）", () => {
     // 模拟"标记已落但归档未完成"的中间态（崩溃重试前的残留）
     const storage = SqliteEventStorage.open({ path: dbPath });
     try {
-      const store = new SessionStore(storage);
+      const store = new SessionEventStore(storage);
       await store.restore("s-arch");
       store.append("s-arch", [{ type: "session/archive", turn: 2, reason: "retention" }]);
       await store.flush("s-arch");

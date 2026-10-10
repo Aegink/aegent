@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import { modelIdentity } from "../models/identity.js";
-import { SessionStore } from "../session/store.js";
+import {SessionEventStore, type SessionStore} from "../session/store.js";
 import { Projector } from "../session/project.js";
 import { startNewContextWindow } from "./new-window.js";
 import { CompactionEngine } from "./compaction.js";
@@ -46,7 +46,7 @@ function engineFor(store: SessionStore, log?: string[]): CompactionEngine {
 
 describe("验收：压缩先于切换（次序断言）+ 事件 reason=model_downshift", () => {
   it("超限投影 → maybeDownshift 内压缩完成 resolve 后,调用方才执行切换", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     appendTurn(store, 1, "长问题", "长回答");
     // 投影带 lastUsage：totalTokens=9000 > 目标窗口 8000
     const projection = Projector.fold(store.load(SESSION)).projection;
@@ -84,7 +84,7 @@ describe("验收：压缩先于切换（次序断言）+ 事件 reason=model_dow
   });
 
   it("目标窗口装得下当前内容 → 不压缩直接切换（needsCompaction=false,零事件）", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     appendTurn(store, 1, "短问题", "短回答");
     const projection = Projector.fold(store.load(SESSION)).projection;
     projection.lastUsage = { inputTokens: 100, outputTokens: 10, totalTokens: 110 };
@@ -105,7 +105,7 @@ describe("验收：压缩先于切换（次序断言）+ 事件 reason=model_dow
   });
 
   it("无 lastUsage 的投影 → 本地估算兜底判定（保守方向）", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     // 大量内容:估算 > 500
     store.append(SESSION, []);
     appendTurn(store, 1, "x".repeat(2000), "y".repeat(2000));
@@ -125,7 +125,7 @@ describe("验收：压缩先于切换（次序断言）+ 事件 reason=model_dow
   });
 
   it("边界:恰好装下（tokens == window）不压（严格大于判定）", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     appendTurn(store, 1, "q", "a");
     const projection = Projector.fold(store.load(SESSION)).projection;
     projection.lastUsage = { inputTokens: 1000, outputTokens: 0, totalTokens: 1000 };
@@ -163,7 +163,7 @@ function oneShotProvider(text: string): ModelProvider {
 
 describe("F29 断言链：压缩跑旧模型 → 切换 → 后续跑新模型", () => {
   it("压缩副调用头 identity=旧模型；switch 受理后新 turn 捕获=目标身份", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     appendTurn(store, 1, "长问题", "长回答");
     const projection = Projector.fold(store.load(SESSION)).projection;
     projection.lastUsage = { inputTokens: 8900, outputTokens: 100, totalTokens: 9000 };

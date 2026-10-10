@@ -139,9 +139,9 @@ describe("settings subagents 段（parseSettingsShape）", () => {
 describe("runner 集成：预设身份段与工具集收窄（U23 消费面）", () => {
   it("subagent_type 未知/停用 → failed 结算带类型化错误；停用名单不进可用清单", async () => {
     const { createSubagentRunner } = await import("../kernel/subagent.js");
-    const { InMemoryEventStorage, SessionStore } = await import("../session/store.js");
+    const { InMemoryEventStorage, SessionEventStore } = await import("../session/store.js");
     const { echoProvider } = await import("../kernel/agent-process.js");
-    const store = new SessionStore(new InMemoryEventStorage());
+    const store = new SessionEventStore(new InMemoryEventStorage());
     const runner = createSubagentRunner({
       parentSessionId: "s-parent",
       store,
@@ -173,9 +173,9 @@ describe("runner 集成：预设身份段与工具集收窄（U23 消费面）",
 
   it("预设身份段进子系统提示（extraPrompt——session/message 落流）", async () => {
     const { createSubagentRunner } = await import("../kernel/subagent.js");
-    const { InMemoryEventStorage, SessionStore } = await import("../session/store.js");
+    const { InMemoryEventStorage, SessionEventStore } = await import("../session/store.js");
     const { echoProvider } = await import("../kernel/agent-process.js");
-    const store = new SessionStore(new InMemoryEventStorage());
+    const store = new SessionEventStore(new InMemoryEventStorage());
     const runner = createSubagentRunner({
       parentSessionId: "s-p2",
       store,

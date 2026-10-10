@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { SessionStore } from "../session/store.js";
+import {SessionEventStore, type SessionStore} from "../session/store.js";
 import { CompactionEngine } from "./compaction.js";
 import {
   MAX_CONSECUTIVE_RAPID_REFILLS,
@@ -100,7 +100,7 @@ describe("状态机单元（zcode 同构语义）", () => {
 
 describe("验收：接入压缩入口的硬失败", () => {
   it("连续 3 次零进展压缩 → 第 4 次入口硬失败,错误含全计数", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     appendTurn(store, 1, "q1", "a1");
     const guard = new RapidRefillGuard();
     const engine = churningEngine(store, guard);
@@ -127,7 +127,7 @@ describe("验收：接入压缩入口的硬失败", () => {
   });
 
   it("干活解锁:熔断后记录足够工具步骤 → 压缩放行", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     appendTurn(store, 1, "q1", "a1");
     const guard = new RapidRefillGuard(2); // 低阈值快速熔断
     const engine = churningEngine(store, guard);
@@ -157,7 +157,7 @@ describe("验收：接入压缩入口的硬失败", () => {
     // 熔断那次(evaluate 拟算 3)抛错,状态不前进
     const engine = new CompactionEngine({
       sessionId: SESSION,
-      store: new SessionStore(),
+      store: new SessionEventStore(),
       summarizer: async () => "不该被调",
       rapidRefillGuard: guard,
     });

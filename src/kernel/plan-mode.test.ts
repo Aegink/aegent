@@ -39,7 +39,7 @@ import { ToolRegistry } from "./tools/registry.js";
 import { createNetworkGuard } from "../sandbox/network.js";
 import { PendingApprovals } from "../policy/pending.js";
 import { createChildAssembly } from "./assembly.js";
-import { InMemoryEventStorage, SessionStore } from "../session/store.js";
+import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../session/store.js";
 import {
   GitCheckpointService,
   createGitRunner,
@@ -315,7 +315,7 @@ describe("G4 · 计划 artifact（T-P1-13）", () => {
   }
 
   it("验收①：plan_exit 批准提交计划 → artifact 落盘 + checkpoint 事件，重启后可读", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const artifactDir = mkdtempSync(path.join(tmpdir(), "aegent-plan-dir-"));
     tmpRoots.push(artifactDir);
     const { registry } = makePlanHarness(store, artifactDir);
@@ -337,7 +337,7 @@ describe("G4 · 计划 artifact（T-P1-13）", () => {
   });
 
   it("无 planArtifactDir：plan 参数不落盘（仅随工具结果可见），不记 plan checkpoint", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const workspaceRoot = mkdtempSync(path.join(tmpdir(), "aegent-planart-"));
     tmpRoots.push(workspaceRoot);
     const assembly = createChildAssembly({
@@ -373,7 +373,7 @@ describe("G4 · 计划 artifact（T-P1-13）", () => {
     );
     const artifactDir = mkdtempSync(path.join(tmpdir(), "aegent-plan-dir-"));
     tmpRoots.push(artifactDir);
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const checkpoint = new GitCheckpointService({
       sessionId: "s-plan-git",
       store,

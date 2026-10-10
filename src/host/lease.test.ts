@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { PendingApprovals, type ApprovalAnnouncement } from "../policy/pending.js";
 import { LeaseBusyError, NotLeaseHolderError, OwnerCommandPort } from "../session/owner-port.js";
-import { InMemoryEventStorage, SessionStore } from "../session/store.js";
+import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../session/store.js";
 import { HostRegistry } from "./registry.js";
 import { parseDeliveryKind } from "./lease.js";
 
@@ -87,7 +87,7 @@ describe("N7+N3/T-P1-113 surface 连接与 run 租约", () => {
     const registry = new HostRegistry();
     const host = registry.register({ sessionId: "s-a" });
     const storage = new InMemoryEventStorage();
-    const store = new SessionStore(storage);
+    const store = new SessionEventStore(storage);
     host.surfaces.connect("cli", "push");
     host.surfaces.connect("feishu", "poll");
     const cliLease = host.surfaces.acquireRunLease("cli");

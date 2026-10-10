@@ -10,7 +10,7 @@ import { decodeMessage, type AgentMessage, type AgentRequest } from "../kernel/a
 import type { SessionEvent } from "../kernel/events.js";
 import type { ModelProvider } from "../models/provider.js";
 import { runAgentChildStdio, type AgentChildOptions } from "../kernel/agent-process.js";
-import { InMemoryEventStorage, SessionStore } from "../session/store.js";
+import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../session/store.js";
 import { HostRegistry } from "./registry.js";
 import { HostBridge } from "./bridge.js";
 import type { ServerEnvelope } from "./protocol.js";
@@ -129,7 +129,7 @@ async function startRig(
   });
   const registry = new HostRegistry();
   const host = registry.register({ sessionId: "s-a" });
-  const store = new SessionStore(new InMemoryEventStorage()); // host 侧 roster 流
+  const store = new SessionEventStore(new InMemoryEventStorage()); // host 侧 roster 流
   const bridge = new HostBridge({ host, agent, store, ...(extra.agentFactory !== undefined ? { agentFactory: extra.agentFactory } : {}) });
   return {
     bridge,

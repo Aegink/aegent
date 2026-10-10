@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { NewSessionEvent } from "../kernel/events.js";
-import { SessionStore } from "../session/store.js";
+import {SessionEventStore, type SessionStore} from "../session/store.js";
 import {
   CompactionEngine,
   COMPACTION_PHASES,
@@ -56,7 +56,7 @@ const requests: Record<(typeof REQUEST_REASONS)[number], CompactionRunInput["req
 
 /** 四相位夹具：三 reason 的 compacted + pre-hook aborted。 */
 async function compactedSnapshot(reason: (typeof REQUEST_REASONS)[number]): Promise<string> {
-  const store = new SessionStore();
+  const store = new SessionEventStore();
   store.append(SESSION, turnEvents(1, "第一轮问题", "第一轮回答"));
   store.append(SESSION, turnEvents(2, "第二轮问题", "第二轮回答"));
   const engine = new CompactionEngine({
@@ -77,7 +77,7 @@ async function compactedSnapshot(reason: (typeof REQUEST_REASONS)[number]): Prom
 }
 
 async function abortedSnapshot(): Promise<string> {
-  const store = new SessionStore();
+  const store = new SessionEventStore();
   store.append(SESSION, turnEvents(1, "问题", "回答"));
   const engine = new CompactionEngine({
     sessionId: SESSION,
@@ -153,7 +153,7 @@ describe("compaction 相位快照（O22：每相位/每原因一条）", () => {
 
 describe("compaction 三态全链快照（T-P1-98 收口⑦：E17 started/completed/failed 即规格）", () => {
   it("started → completed 全链：中间态与结算同流可读，切换权威只认 completed", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, turnEvents(1, "第一轮问题", "第一轮回答"));
     store.append(SESSION, turnEvents(2, "第二轮问题", "第二轮回答"));
     const engine = new CompactionEngine({
@@ -184,7 +184,7 @@ describe("compaction 三态全链快照（T-P1-98 收口⑦：E17 started/comple
   });
 
   it("failed 对照：摘要抛错 → started + failed 落流且异常照抛（投影不猜失败）", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, turnEvents(1, "问题", "回答"));
     const engine = new CompactionEngine({
       sessionId: SESSION,

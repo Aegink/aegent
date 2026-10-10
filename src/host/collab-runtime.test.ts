@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AgentMessage, AgentRequest } from "../kernel/agent-protocol.js";
-import { SessionStore } from "../session/store.js";
+import {SessionEventStore, type SessionStore} from "../session/store.js";
 import { CollaborationError } from "../session/collaboration.js";
 import { SqliteEventStorage } from "../session/db.js";
 import { HostBridge } from "./bridge.js";
@@ -57,7 +57,7 @@ function makeEvent(type: "assistant/message" | "turn/end" | "step/start" | "step
 }
 
 function makeFixture() {
-  const store = new SessionStore();
+  const store = new SessionEventStore();
   const main = makeFakeChannel();
   const target = makeFakeChannel();
   const factoryCalls: string[] = [];

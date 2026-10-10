@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { effectiveApproval, Projector, project, ProjectError, supersessionChain } from "./project.js";
-import { SessionStore } from "./store.js";
+import {SessionEventStore, type SessionStore} from "./store.js";
 import type { SessionEvent } from "../kernel/events.js";
 
 describe("approval/superseded 取代链（I10 / T-P2-306 #23）", () => {
@@ -70,7 +70,7 @@ describe("approval/superseded 取代链（I10 / T-P2-306 #23）", () => {
 
   it("log-only 纪律：turn 0 可落（不要求开合上下文）+ revert 切点切割", () => {
     // turn 0 落流合法（expectTurnScoped 豁免——同 session/archive 纪律）
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     expect(() => store.append("s-i10", [sup(1, "A", "B")])).not.toThrow();
     // revert 切割：取代事件在切点后则有效投影不含（链回到切前状态）
     const s = project([sup(1, "A", "B")]);

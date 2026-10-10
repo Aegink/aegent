@@ -11,7 +11,7 @@ import { JobRegistry } from "../kernel/jobs.js";
 import { NotificationHub } from "../host/notify.js";
 import { HostBridge, type AgentChannel } from "../host/bridge.js";
 import { HostRegistry } from "../host/registry.js";
-import { InMemoryEventStorage, SessionStore } from "../session/store.js";
+import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../session/store.js";
 import { WebhookEndpoint } from "./webhook.js";
 import { createFeishuSurface, type FeishuConfig } from "../host/im-feishu.js";
 import { computerExecute } from "./computer.js";
@@ -96,7 +96,7 @@ describe("批次 15d 快照：webhook 入站 → job 派发 → 会话审批 →
         const bridgeReal = new HostBridge({
             host: new HostRegistry().register({ sessionId: "s1" }),
             agent,
-            store: new SessionStore(new InMemoryEventStorage()),
+            store: new SessionEventStore(new InMemoryEventStorage()),
             notifyHub: hub,
         });
         void bridge;

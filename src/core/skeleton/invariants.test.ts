@@ -13,7 +13,7 @@ import {
 // re-export 面（T-P1-30 偏离②）：测试既有 import 面零改动
 import { expectTurnScoped } from "../../test-support/event-asserts.js";
 import { createChildAssembly } from "../../kernel/assembly.js";
-import { SessionStore } from "../../session/store.js";
+import {SessionEventStore, type SessionStore} from "../../session/store.js";
 
 /** 合法两轮流：轮 1 带 tool 配平、轮 2 纯文本（服务内建的好流样例）。 */
 function goodStream(): SessionEvent[] {
@@ -144,7 +144,7 @@ describe("InvariantRegistry（O12）", () => {
 describe("装配接线（T-P1-30：显式启用检查既有流，缺省零行为变化）", () => {
   function makeStore(): { store: SessionStore; root: string } {
     const root = mkdtempSync(join(tmpdir(), "aegent-invariants-"));
-    return { store: new SessionStore(), root };
+    return { store: new SessionEventStore(), root };
   }
 
   it("未启用（缺省）：装配零行为变化（好流也无任何检查副作用）", () => {

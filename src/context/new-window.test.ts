@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { NewSessionEvent } from "../kernel/events.js";
-import { SessionStore } from "../session/store.js";
+import {SessionEventStore, type SessionStore} from "../session/store.js";
 import { buildChatMessages } from "../session/messages.js";
 import { CompactionEngine } from "./compaction.js";
 import { DEFAULT_DEVELOPER_BUDGET_TOKENS, startNewContextWindow } from "./new-window.js";
@@ -17,7 +17,7 @@ import { DEFAULT_DEVELOPER_BUDGET_TOKENS, startNewContextWindow } from "./new-wi
 const SESSION = "s-new-window";
 
 function run() {
-  return new SessionStore();
+  return new SessionEventStore();
 }
 
 /** 组一条完整 turn；allowInjected 控制是否插入 injected user 消息。 */

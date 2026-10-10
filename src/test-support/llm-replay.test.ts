@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { SessionEvent, StreamChunk } from "../kernel/events.js";
 import { AgentLoop } from "../kernel/loop.js";
 import { ScriptedProvider } from "../kernel/loop.test-utils.js";
-import { SessionStore } from "../session/store.js";
+import {SessionEventStore, type SessionStore} from "../session/store.js";
 import { stableStringify } from "./normalize.js";
 import type { ChatRequest, ModelProvider } from "../models/provider.js";
 import {
@@ -119,7 +119,7 @@ describe("ReplayProvider（O15：first-call 序回放 + 序漂移可读失败 + 
 describe("录制→回放等价（O15 验收①：避免手写 mock 漂移）", () => {
   it("同一 loop 分别跑真 provider 与 ReplayProvider（回放其录制），事件流逐字节相等", async () => {
     async function runTurn(provider: ModelProvider): Promise<readonly SessionEvent[]> {
-      const store = new SessionStore();
+      const store = new SessionEventStore();
       const loop = new AgentLoop({
         sessionId: "s-replay",
         store,

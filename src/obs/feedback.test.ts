@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import { EVENT_TYPES } from "../kernel/events.js";
-import { InMemoryEventStorage, SessionStore } from "../session/store.js";
+import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../session/store.js";
 import {
     FeedbackValidationError,
     MAX_FEEDBACK_TEXT_LENGTH,
@@ -14,7 +14,7 @@ import {
 } from "./feedback.js";
 
 function makeStore(): SessionStore {
-    return new SessionStore(new InMemoryEventStorage());
+    return new SessionEventStore(new InMemoryEventStorage());
 }
 
 /** 预置一条真实流（turn/start → user/message → turn/end——seq 由 store 分配）。 */

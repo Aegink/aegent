@@ -12,7 +12,7 @@ import {
   refsOfEvents,
   validateSessionRefs,
 } from "./reference.js";
-import { SessionStore } from "./store.js";
+import {SessionEventStore, type SessionStore} from "./store.js";
 
 function userEvent(seq: number, content: string, refs?: Array<{ sessionId: string; upToSeq?: number }>): SessionEvent {
   return {
@@ -140,7 +140,7 @@ describe("会话引用（E9/T-P2-107）", () => {
   });
 
   it("流存引用不存内容：user/message 载荷只有指针（引用方流零被引内容字节）", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append("s-ref", [
       { type: "turn/start", turn: 1 },
       { type: "user/message", turn: 1, message: { content: "被引会话的私密内容 SECRET-NEEDLE" }, source: "user" },

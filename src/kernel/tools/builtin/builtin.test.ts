@@ -868,14 +868,14 @@ describe("C12/C13 · 编辑前必须先读（可选装配）", () => {
 
 import { ScriptedProvider } from "../../loop.test-utils.js";
 import { AgentLoop } from "../../loop.js";
-import { SessionStore } from "../../../session/store.js";
+import {SessionEventStore, type SessionStore} from "../../../session/store.js";
 import { SqliteEventStorage } from "../../../session/db.js";
 import type { StreamChunk } from "../../events.js";
 
 async function seedQueryDb(dbPath: string): Promise<void> {
   const storage = SqliteEventStorage.open({ path: dbPath });
   try {
-    const store = new SessionStore(storage);
+    const store = new SessionEventStore(storage);
     store.append("s-old", [
       { type: "turn/start", turn: 1 },
       { type: "step/start", turn: 1, step: 1 },
@@ -953,7 +953,7 @@ describe("会话查询工具（Q2/T-P2-105）", () => {
     ];
     provider.mount(script);
 
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const loop = new AgentLoop({
       sessionId: "s-cur",
       store,

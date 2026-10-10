@@ -12,7 +12,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { SqliteEventStorage } from "../session/db.js";
-import { SessionStore } from "../session/store.js";
+import {SessionEventStore, type SessionStore} from "../session/store.js";
 import {
   type UsageRow,
   ensureUsageView,
@@ -51,7 +51,7 @@ async function makeFixture(
 ): Promise<Fixture> {
   const storage = SqliteEventStorage.open({ path: path.join(dir, "events.db") });
   const db = storage.db;
-  const store = new SessionStore(storage);
+  const store = new SessionEventStore(storage);
   for (let turn = 1; turn <= turns; turn++) {
     const usage =
       opts?.skipUsageOnTurn === turn
@@ -139,7 +139,7 @@ describe("usage_rollup（T-8-03 · L3）", () => {
     const storage = SqliteEventStorage.open({ path: path.join(dir, "multi.db") });
     try {
       const db = storage.db;
-      const store = new SessionStore(storage);
+      const store = new SessionEventStore(storage);
       for (const sessionId of ["s-a", "s-b"]) {
         store.append(sessionId, [
           { type: "turn/start", turn: 1 },
@@ -193,7 +193,7 @@ describe("usage_rollup（T-8-03 · L3）", () => {
     const storage = SqliteEventStorage.open({ path: path.join(dir, "zero.db") });
     try {
       const db = storage.db;
-      const store = new SessionStore(storage);
+      const store = new SessionEventStore(storage);
       store.append("s-zero", [
         { type: "turn/start", turn: 1 },
         { type: "user/message", turn: 1, message: { content: "hi" }, source: "user" },

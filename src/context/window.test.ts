@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { NewSessionEvent } from "../kernel/events.js";
-import { SessionStore } from "../session/store.js";
+import {SessionEventStore, type SessionStore} from "../session/store.js";
 import { currentWindow } from "./window.js";
 
 const SESSION = "s-window";
@@ -40,14 +40,14 @@ function compaction(status?: "started" | "completed" | "failed"): NewSessionEven
 
 describe("currentWindow（F25 窗口编号化）", () => {
   it("无压缩 → 初始窗 {number:0, currentId:0}（验收①）", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, filler(1));
     const w = currentWindow(store.load(SESSION));
     expect(w).toEqual({ number: 0, currentId: 0 });
   });
 
   it("N 次已结算压缩 → number=N、三元组 = 各压缩事件 seq（验收②）", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, filler(1));
     const seqs: number[] = [];
     for (let i = 0; i < 3; i++) {
@@ -63,7 +63,7 @@ describe("currentWindow（F25 窗口编号化）", () => {
   });
 
   it("started/failed 不计数、不占三元组（验收③——切换权威同口径）", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, filler(1));
     const [settled] = store.append(SESSION, compaction("completed"));
     store.append(SESSION, filler(2));
@@ -74,14 +74,14 @@ describe("currentWindow（F25 窗口编号化）", () => {
   });
 
   it("status 缺省 = 旧流兼容口径（completed 同权）", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     const [legacy] = store.append(SESSION, compaction(undefined));
     const w = currentWindow(store.load(SESSION));
     expect(w).toEqual({ number: 1, currentId: legacy!.seq, firstId: legacy!.seq });
   });
 
   it("revert 掉压缩 → 窗口身份回退（验收④——有效视窗口径）", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, filler(1));
     const [c1] = store.append(SESSION, compaction());
     store.append(SESSION, filler(2));
@@ -95,7 +95,7 @@ describe("currentWindow（F25 窗口编号化）", () => {
   });
 
   it("恢复恒等：同流两次推导逐字段相等（验收⑤——流即状态）", () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     store.append(SESSION, filler(1));
     store.append(SESSION, compaction("completed"));
     store.append(SESSION, compaction("started"));

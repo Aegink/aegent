@@ -12,7 +12,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import type { Database } from "better-sqlite3";
 
 import { SqliteEventStorage } from "../session/db.js";
-import { SessionStore } from "../session/store.js";
+import {SessionEventStore, type SessionStore} from "../session/store.js";
 import { costOfUsage, costRollup, findPricing, type PricingTable } from "./cost.js";
 
 const dirs: string[] = [];
@@ -78,7 +78,7 @@ describe("成本核算（J21）", () => {
     dirs.push(dir);
     const dbPath = join(dir, "events.sqlite");
     const storage = SqliteEventStorage.open({ path: dbPath });
-    const store = new SessionStore(storage);
+    const store = new SessionEventStore(storage);
     store.append("s-a", turnEvents(1, { inputTokens: 1_000_000, outputTokens: 500_000, cacheReadTokens: 800_000 }));
     store.append("s-a", turnEvents(2, { inputTokens: 1_000_000, outputTokens: 0 }));
     store.append("s-b", turnEvents(1, { inputTokens: 2_000_000, outputTokens: 250_000 }));
@@ -104,7 +104,7 @@ describe("成本核算（J21）", () => {
     dirs.push(dir);
     const dbPath = join(dir, "events.sqlite");
     const storage = SqliteEventStorage.open({ path: dbPath });
-    const store = new SessionStore(storage);
+    const store = new SessionEventStore(storage);
     store.append("s-c", turnEvents(1, { inputTokens: 1_000, outputTokens: 1_000 }));
     await store.flush("s-c");
     // 换一个未配置价格的模型身份（s-d 走 request/header 的另一个 modelId）

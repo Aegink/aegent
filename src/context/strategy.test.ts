@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { NewSessionEvent, SessionEvent } from "../kernel/events.js";
-import { SessionStore } from "../session/store.js";
+import {SessionEventStore, type SessionStore} from "../session/store.js";
 import { startNewContextWindow } from "./new-window.js";
 import {
   CompactionEngine,
@@ -56,7 +56,7 @@ const overflowRequest = {
 
 describe("压缩策略具名（F27）", () => {
   it("prefix_window 往返：摘要只覆盖更早区间，近期原文保留在新窗口（活前缀）", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     // 12 轮：prefix 窗口 8 条边界 → 摘要只覆盖前 4 轮；full（缺省 1 条）→ 覆盖前 11 轮
     for (let t = 1; t <= 12; t++) store.append(SESSION, turnEvents(t, `问题${t}`));
     const enginePrefix = engine(store, "prefix_window");
@@ -77,7 +77,7 @@ describe("压缩策略具名（F27）", () => {
   });
 
   it("full_summary（缺省）零行为变化：策略缺席时切点用 DEFAULT_RETAINED_FROM_END=1", async () => {
-    const store = new SessionStore();
+    const store = new SessionEventStore();
     for (let t = 1; t <= 5; t++) store.append(SESSION, turnEvents(t, `问题${t}`));
     const result = await engine(store).run({ turn: 5, phase: "PreTurn", request: overflowRequest });
     const events = store.load(SESSION);
