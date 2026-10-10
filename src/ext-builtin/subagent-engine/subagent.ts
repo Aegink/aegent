@@ -136,13 +136,13 @@ export interface SubagentRunnerDeps {
    * 由 resolveSubagent 兜底；此处传用户覆盖/自定义清单）。缺省 undefined
    * = 仅内置预设（无自定义面）。
    */
-  readonly subagentDefs?: import("../session/subagents-config.js").SubagentDefinition[];
+  readonly subagentDefs?: import("../../session/subagents-config.js").SubagentDefinition[];
   /**
    * U23/T-P3-126：预设独立模型解析闭包（装配面注入——agent-child 按
    * resolveSubagentModel 链解析为 RegisteredModel；未解析出 = 回退父模型）。
    */
   readonly resolveSubagentModel?: (
-    subagent: import("../session/subagents-config.js").ResolvedSubagent,
+    subagent: import("../../session/subagents-config.js").ResolvedSubagent,
   ) => { provider: ModelProvider; identity: ModelIdentity } | undefined;
   /**
    * J6/J7 捕获闭包透传（父装配的 modelForTurn）：子 turn 启动时捕获

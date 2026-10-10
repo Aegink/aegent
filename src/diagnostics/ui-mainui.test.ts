@@ -99,7 +99,7 @@ describe("T-P3-156 · 主界面重构（布局批 A~W + 功能批 K~I）", () =>
     expect(app).toContain("pasted-"); // M：大文本粘贴转附件命名
     expect(app).toContain("text/plain"); // M：附件链文本通道
     expect(read("pane-tree.js")).toContain("session/fork"); // J：血统数据源
-    const subagentSrc = readFileSync(path.resolve(import.meta.dirname, "..", "..", "src", "kernel", "subagent.ts"), "utf8");
+    const subagentSrc = readFileSync(path.resolve(import.meta.dirname, "..", "..", "src", "ext-builtin", "subagent-engine", "subagent.ts"), "utf8");
     expect(subagentSrc).toContain(".aegent/isolated"); // V：轻隔离写路径约束（裁决 5b）
     expect(read("keymap.js")).toContain("terminal:"); // X：终端开合注册表动作
     const srcTauri = readFileSync(path.resolve(import.meta.dirname, "..", "..", "src-tauri", "src", "browser.rs"), "utf8");
