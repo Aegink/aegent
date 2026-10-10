@@ -237,7 +237,7 @@ describe("createBrowserTools（工具族形状）", () => {
         expect(tools.every((t) => t.parallel !== true)).toBe(true);
         // NOTICE 风险标注在描述文件（B2 描述与代码分离）
         for (const name of ["browser_navigate", "browser_screenshot", "browser_extract"]) {
-            const text = readFileSync(join("src/kernel/tools/descriptions", `${name}.txt`), "utf8");
+            const text = readFileSync(join("plugins/tools-builtin/descriptions", `${name}.txt`), "utf8");
             expect(text).toContain("NOTICE");
         }
     });

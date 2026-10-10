@@ -80,9 +80,8 @@ export class ToolRegistry {
     /** C12/C13 读记账服务（可选装配，T-P1-71）；缺省不启用。 */
     readGate?: import("../../../policy/read-gate.js").ReadGateService;
   }) {
-    // T3-4：本体迁 core/primitives/tools 后，descriptions 仍在 kernel/tools
-    //（批 6 随工具迁 plugins/tools-builtin/descriptions）——缺省解析改指回
-    // kernel/tools/descriptions（编译产物同构：dist/src/{core/primitives/tools,kernel/tools}）。
+    // T6-7：descriptions 随 39 工具迁 plugins/tools-builtin/descriptions
+    //（编译产物 dist/plugins/tools-builtin/descriptions——copy-assets 同步）。
     this.descriptionsDir =
       options?.descriptionsDir ??
       path.join(
@@ -90,8 +89,9 @@ export class ToolRegistry {
         "..",
         "..",
         "..",
-        "kernel",
-        "tools",
+        "..",
+        "plugins",
+        "tools-builtin",
         "descriptions",
       );
     this.env = options?.env;

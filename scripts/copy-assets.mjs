@@ -15,8 +15,8 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 const assets = [
   {
-    src: path.join(root, "src", "kernel", "tools", "descriptions"),
-    out: path.join(root, "dist", "src", "kernel", "tools", "descriptions"),
+    src: path.join(root, "plugins", "tools-builtin", "descriptions"),
+    out: path.join(root, "dist", "plugins", "tools-builtin", "descriptions"),
     label: "工具描述",
   },
   {

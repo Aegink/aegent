@@ -44,7 +44,7 @@ describe("操作闭集与工具族形状", () => {
         // eslint 不适用；直接同步读（测试环境）
         const { readFileSync } = require("node:fs") as typeof import("node:fs");
         const { join } = require("node:path") as typeof import("node:path");
-        return readFileSync(join("src/kernel/tools/descriptions", `${name}.txt`), "utf8");
+        return readFileSync(join("plugins/tools-builtin/descriptions", `${name}.txt`), "utf8");
     }
 });
 
