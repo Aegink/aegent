@@ -188,3 +188,47 @@ export function summarizeEvent(event: JsonRecord): string | null {
   }
   return null;
 }
+
+/**
+ * W12/T7-3 渠道注册面（EP-6）：渠道实现（feishu/slack）以 Channel 注册——
+ * host 装配经此挂载/卸载；**关渠道（不注册）= 无该渠道入站面**（可裁剪）。
+ * 凭据经插件/装配设置注入（不落代码）。
+ */
+export interface ChannelRegistration {
+  readonly channelId: string;
+  /** webhook 路径前缀（host 路由表键——如 /webhook/feishu）。 */
+  readonly routePath: string;
+  /** 入站处理（ImSurface.handleWebhook 的注册形态）。 */
+  handleWebhook(headers: Record<string, string>, body: string): Promise<boolean>;
+  /** 出站摘要投递。 */
+  deliverEvent(event: JsonRecord): Promise<void>;
+  /** 凭据注入（settings 段 → 平台 token——装配面在注册前调用）。 */
+  configureCredentials(credentials: Record<string, string>): void;
+}
+
+/** 渠道注册表（host 装配持有——路由表数据源；可裁剪语义的载体）。 */
+export class ChannelRegistry {
+  private readonly channels = new Map<string, ChannelRegistration>();
+
+  register(channel: ChannelRegistration): this {
+    this.channels.set(channel.channelId, channel);
+    return this;
+  }
+
+  unregister(channelId: string): boolean {
+    return this.channels.delete(channelId);
+  }
+
+  /** webhook 路由解析（host 按路径分型转发——未注册路径 = 不归任何渠道）。 */
+  byRoutePath(pathname: string): ChannelRegistration | undefined {
+    return [...this.channels.values()].find((c) => pathname.startsWith(c.routePath));
+  }
+
+  get(channelId: string): ChannelRegistration | undefined {
+    return this.channels.get(channelId);
+  }
+
+  ids(): readonly string[] {
+    return [...this.channels.keys()];
+  }
+}
