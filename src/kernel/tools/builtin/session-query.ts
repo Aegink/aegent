@@ -37,6 +37,19 @@ export interface SessionQueryToolDeps {
   dbPath: string;
   /** 工具面分页上限（缺省 MAX_QUERY_LIMIT；调试面可收窄）。 */
   maxLimit?: number;
+  /**
+   * T5-3/EP-3 跨会话只读授权（宿主装配注入——dsh §15：目标 cwd 与调用者
+   * 完全一致才授权；调用者无 cwd 只能读自身）。**授权下推为 SQL 过滤**
+   * （allowedSessionIds 集合进 WHERE IN——非读后过滤）。缺省 undefined =
+   * 未装配授权面（既有行为零变化，记档）。
+   */
+  authorizeRead?: (caller: { sessionId: string; cwd?: string; targetSessionId?: string }) => {
+    allowed: boolean;
+    allowedSessionIds?: readonly string[];
+    reason?: string;
+  };
+  /** 调用者身份（child 会话 id + cwd——装配注入）。 */
+  caller?: { sessionId: string; cwd?: string };
 }
 
 function formatRow(row: SessionQueryRow): string {
@@ -99,7 +112,18 @@ export function createSessionQueryTool(deps: SessionQueryToolDeps): ToolDef {
         return toolError("SessionQueryError", "INVALID_ARGUMENTS", "types 须为字符串数组");
       }
       try {
+        // T5-3/EP-3：授权下推（宿主 authorize 产物 → SQL IN 白名单；未装配
+        // 授权面 = 既有行为零变化）
+        let allowedSessionIds: readonly string[] | undefined;
+        if (deps.authorizeRead !== undefined && deps.caller !== undefined) {
+          const verdict = deps.authorizeRead(deps.caller);
+          if (!verdict.allowed) {
+            return toolError("SessionQueryError", "SESSION_READ_DENIED", verdict.reason ?? "跨会话读取未授权");
+          }
+          allowedSessionIds = verdict.allowedSessionIds;
+        }
         const result = querySessions(deps.dbPath, {
+          ...(allowedSessionIds !== undefined ? { sessionIds: allowedSessionIds } : {}),
           ...(args.sessionIdPrefix !== undefined
             ? { sessionIdPrefix: args.sessionIdPrefix as string }
             : {}),
@@ -147,6 +171,14 @@ export function createSessionGetTool(deps: SessionQueryToolDeps): ToolDef {
       const sessionId = args.sessionId;
       if (typeof sessionId !== "string" || sessionId === "") {
         return toolError("SessionQueryError", "INVALID_ARGUMENTS", "session_get 需要 sessionId 非空字符串");
+      }
+      // T5-3/EP-3：单点授权（宿主 authorize——目标 cwd 与调用者一致才放行；
+      // 未装配授权面 = 既有行为零变化）
+      if (deps.authorizeRead !== undefined && deps.caller !== undefined) {
+        const verdict = deps.authorizeRead({ ...deps.caller, targetSessionId: sessionId });
+        if (!verdict.allowed) {
+          return toolError("SessionQueryError", "SESSION_READ_DENIED", verdict.reason ?? `会话 ${sessionId} 读取未授权`);
+        }
       }
       try {
         const read = getSessionEvents(deps.dbPath, sessionId, {

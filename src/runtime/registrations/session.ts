@@ -28,6 +28,8 @@ export interface SessionPrimitivesDeps {
   inheritPermission?(sessionId: string, mode: PermissionMode): void;
   /** 会话工作目录解析（EP-3 cwd 授权边界的数据源；缺省 undefined）。 */
   cwdOf?(sessionId: string): string | undefined;
+  /** 全部会话 id（EP-3 全库检索授权的枚举源；缺省空）。 */
+  allSessionIds?(): readonly string[];
 }
 
 export interface SessionCreateRequest {
@@ -62,6 +64,15 @@ export interface SessionRegistration {
   sessionOpen(sessionId: string): Promise<boolean>;
   /** 已打开会话清单（观测面）。 */
   openSessions(): readonly string[];
+  /**
+   * EP-3 跨会话只读授权（dsh §15）：目标 cwd 与调用者 cwd **完全一致**才
+   * 授权；调用者无 cwd 只能读自身。授权结果下推为 allowedSessionIds
+   * （SQL IN 白名单——非读后过滤）。targetSessionId 缺省 = 全库检索授权
+   * （返回与 caller 同 cwd 的全部会话）。
+   */
+  authorizeRead(
+    caller: { sessionId: string; cwd?: string; targetSessionId?: string },
+  ): { allowed: boolean; allowedSessionIds?: readonly string[]; reason?: string };
   /**
    * EP-2 会话投递（带授权边界）：目标必须已 sessionOpen——未打开的
    * sessionId 拒绝（防未导航会话被任意写入；ADR 0239 授权边界）。
@@ -111,6 +122,33 @@ export function registerSessionPrimitives(deps: SessionPrimitivesDeps): SessionR
 
     openSessions(): readonly string[] {
       return [...open];
+    },
+
+    authorizeRead(
+      caller: { sessionId: string; cwd?: string; targetSessionId?: string },
+    ): { allowed: boolean; allowedSessionIds?: readonly string[]; reason?: string } {
+      const callerCwd = caller.cwd ?? deps.cwdOf?.(caller.sessionId);
+      // 调用者无 cwd = 只能读自身（dsh §15 的最小授权面）
+      if (callerCwd === undefined) {
+        if (caller.targetSessionId !== undefined && caller.targetSessionId !== caller.sessionId) {
+          return { allowed: false, reason: "调用者无工作目录——只允许读取自身会话（EP-3 边界）" };
+        }
+        return { allowed: true, allowedSessionIds: [caller.sessionId] };
+      }
+      // 有 cwd：与目标一致才授权；全库检索时下推同 cwd 集合
+      const sameCwd = (id: string): boolean => {
+        const targetCwd = deps.cwdOf?.(id);
+        return targetCwd === callerCwd;
+      };
+      if (caller.targetSessionId !== undefined) {
+        if (caller.targetSessionId === caller.sessionId) return { allowed: true, allowedSessionIds: [caller.sessionId] };
+        return sameCwd(caller.targetSessionId)
+          ? { allowed: true, allowedSessionIds: [caller.targetSessionId] }
+          : { allowed: false, reason: `目标会话工作目录与调用者不一致（EP-3：仅同 cwd 可跨读）` };
+      }
+      // 全库检索授权：白名单由宿主枚举（cwdOf 逐会话解析——SQL IN 下推的集合源）
+      const allowed = [...deps.allSessionIds?.() ?? []].filter(sameCwd);
+      return { allowed: true, allowedSessionIds: [...allowed, caller.sessionId] };
     },
 
     async sessionDeliver(

@@ -56,6 +56,12 @@ export class SessionQueryError extends Error {
 export interface SessionQueryCriteria {
   /** 会话 id 前缀匹配（缺省不限——全库检索）。 */
   sessionIdPrefix?: string;
+  /**
+   * T5-3/EP-3 授权下推：允许读取的会话 id 白名单（宿主 authorize 产物）——
+   * SQL 层 IN 子句（参数绑定，注入安全）；缺省 undefined = 不过滤
+   * （宿主未装配授权面 = 既有行为零变化）。
+   */
+  sessionIds?: readonly string[];
   /** 事件时间下界（含界，epoch 毫秒）。 */
   fromTs?: number;
   /** 事件时间上界（含界）。 */
@@ -152,6 +158,17 @@ interface BuiltWhere {
 function buildWhere(criteria: SessionQueryCriteria): BuiltWhere {
   const clauses: string[] = [];
   const params: unknown[] = [];
+  if (criteria.sessionIds !== undefined) {
+    if (!Array.isArray(criteria.sessionIds) || criteria.sessionIds.length === 0) {
+      throw new TypeError("sessionIds 须为非空字符串数组");
+    }
+    const placeholders = criteria.sessionIds.map((id) => {
+      if (typeof id !== "string" || id === "") throw new TypeError("sessionIds 成员须为非空字符串");
+      params.push(id);
+      return "?";
+    });
+    clauses.push(`session_id IN (${placeholders.join(", ")})`);
+  }
   if (criteria.sessionIdPrefix !== undefined) {
     if (typeof criteria.sessionIdPrefix !== "string" || criteria.sessionIdPrefix === "") {
       throw new TypeError("sessionIdPrefix 须为非空字符串");
