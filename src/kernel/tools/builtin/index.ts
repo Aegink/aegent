@@ -15,7 +15,7 @@ import { createPlanModeService } from "../../plan-mode.js";
 import { ToolRegistry } from "../registry.js";
 import { WriteQueue } from "../write-queue.js";
 import { BackgroundShellRegistry } from "../background-shell.js";
-import type { AttachmentStore } from "../../../attachments/store.js";
+import type { AttachmentStore } from "../../../core/index.js";
 import { createApplyPatchTool } from "./apply-patch.js";
 import { createBashTool } from "./bash.js";
 import { createEditTool } from "./edit.js";

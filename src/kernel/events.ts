@@ -851,7 +851,7 @@ export interface ThinkingSetEvent extends EventBase {
   level: string;
 }
 
-import type { AttachmentRef } from "../attachments/types.js";
+import type { AttachmentRef } from "../core/index.js";
 
 export type SessionEvent =
   | TurnStartEvent

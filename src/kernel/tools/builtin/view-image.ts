@@ -15,7 +15,7 @@
 
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import type { AttachmentStore } from "../../../attachments/store.js";
+import type { AttachmentStore } from "../../../core/index.js";
 import { PathGuard, PathGuardError } from "../../../sandbox/path-guard.js";
 import type { ToolDef } from "../registry.js";
 import type { ToolExecutionResult } from "../../loop.js";

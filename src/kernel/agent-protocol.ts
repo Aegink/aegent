@@ -38,7 +38,7 @@ import {
   type SessionEvent,
   type SessionRef,
 } from "./events.js";
-import type { IncomingAttachment } from "../attachments/types.js";
+import type { IncomingAttachment } from "../core/index.js";
 import { validateSessionRefs } from "../session/reference.js";
 
 /** 父 → 子。 */

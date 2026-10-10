@@ -35,8 +35,7 @@ import {
   type ModelProvider,
   ProviderHttpError,
 } from "../models/provider.js";
-import type { AttachmentRef } from "../attachments/types.js";
-import type { AttachmentStore } from "../attachments/store.js";
+import type { AttachmentRef, AttachmentStore } from "../core/index.js";
 import { buildChatMessages, effectiveEvents } from "../session/messages.js";
 import { buildReferenceExcerpt } from "../session/reference.js";
 import { Projector } from "../session/project.js";

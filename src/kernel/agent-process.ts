@@ -26,8 +26,7 @@ import { PromptQueue, QueueFullError } from "./queue.js";
 import { BackgroundShellRegistry } from "./tools/background-shell.js";
 import { validateAttachments, AttachmentLimitError } from "../attachments/limits.js";
 import { base64ByteLength } from "../attachments/store.js";
-import type { AttachmentRef } from "../attachments/types.js";
-import type { AttachmentStore } from "../attachments/store.js";
+import type { AttachmentRef, AttachmentStore } from "../core/index.js";
 import { offloadOldestImages } from "../attachments/offload.js";
 import { effectiveEvents } from "../session/messages.js";
 import {

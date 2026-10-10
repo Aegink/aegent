@@ -19,7 +19,7 @@
  * 下一次模型请求。
  */
 
-import type { AttachmentRef } from "../attachments/types.js";
+import type { AttachmentRef } from "../core/index.js";
 import type { SessionRef } from "./events.js";
 
 export type QueueMode = "all" | "one-at-a-time";

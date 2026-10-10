@@ -83,6 +83,7 @@
       ],
       "managed": true,
       "requires": [
+        "core",
         "kernel"
       ],
       "publicEntrypoints": [],
@@ -174,7 +175,9 @@
         "src/kernel"
       ],
       "managed": false,
-      "requires": [],
+      "requires": [
+        "core"
+      ],
       "publicEntrypoints": [
         "src/kernel/events.ts",
         "src/kernel/agent-protocol.ts",

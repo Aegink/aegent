@@ -9,15 +9,11 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import type { AttachmentRef, IncomingAttachment } from "./types.js";
+// T1-1 依赖倒置：类型契约下沉 core/contracts——实现域反向 import core 公开入口
+import type { AttachmentRef, AttachmentStore } from "../core/index.js";
+import type { IncomingAttachment } from "./types.js";
 
-/** 附件存储接口（可插：本地 / 内存 / 远端随部署）。 */
-export interface AttachmentStore {
-  /** 保存字节，返回落流引用面（attachmentId 由 store 分配——全局唯一）。 */
-  save(input: IncomingAttachment): AttachmentRef;
-  /** 按 id 取回原始字节与元数据；未知 id 返回 null（不抛——读面容错）。 */
-  read(attachmentId: string): { mediaType: string; name?: string; size: number; data: string } | null;
-}
+export type { AttachmentStore } from "../core/index.js";
 
 /** 内存实现（测试 + 未配置部署面）。 */
 export class InMemoryAttachmentStore implements AttachmentStore {
