@@ -191,7 +191,14 @@ export function checkArchitecture(policy, opts = {}) {
   const managedOf = (id) => policy.modules.find((m) => m.id === id)?.managed ?? false;
   const fail = (managed, msg) => (managed ? errors.push(msg) : warnings.push(msg));
 
-  const graph = scanImports(path.join(repoRoot, "src"));
+  // 扫描根：src/ + plugins/（T0-2 记档——plugins 域（tools-builtin）物理位置在仓库根 plugins/，
+  // 若只扫 src/ 则该域完全不受检，requires 白名单形同虚设；故扫描根随 policy 模块扩展）
+  const graph = new Map();
+  for (const rootDir of ["src", "plugins"]) {
+    const abs = path.join(repoRoot, rootDir);
+    if (!fs.existsSync(abs)) continue; // 扫描根可缺省（检查器单测的临时仓库只造 src/）
+    for (const [f, targets] of scanImports(abs)) graph.set(f, targets);
+  }
   const rel = (abs) => abs.replaceAll("\\", "/").slice(repoRoot.replaceAll("\\", "/").length + 1);
 
   // 实际模块依赖边（仅非测试文件出边——测试可以 import 任何被测面，
