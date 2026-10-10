@@ -68,6 +68,9 @@ export function createSessionQueryTool(deps: SessionQueryToolDeps): ToolDef {
   const maxLimit = deps.maxLimit ?? MAX_QUERY_LIMIT;
   return {
     name: "session_query",
+    // W5/T3-6 工具契约元数据（声明优先——gate/调度/审批三处共读；缺声明从严）
+    sideEffectScope: "none",
+    readOnly: true,
     parallel: true, // B17：纯读，声明可并行（parallel 模式持读锁）
     parameters: {
       type: "object",

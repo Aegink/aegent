@@ -440,6 +440,7 @@ describe("C33 · 无人值守模式：ASK→DENY 转换（T-P1-77）", () => {
   function makeModeHarness(
     entries: ReadonlyArray<readonly [Action, string]>,
     approvalMode: (() => string | undefined) | undefined,
+    toolMetadata?: (name: string) => import("../core/index.js").ToolMetadata | undefined,
   ) {
     const pending = new PendingApprovals();
     const broker = new ManualPermissionBroker(pending, 5_000);
@@ -448,6 +449,7 @@ describe("C33 · 无人值守模式：ASK→DENY 转换（T-P1-77）", () => {
       broker,
       sessionId: "s1",
       ...(approvalMode !== undefined ? { approvalMode } : {}),
+      ...(toolMetadata !== undefined ? { toolMetadata } : {}),
     });
     const received: ToolCallPayload[] = [];
     const next = makeNext(async (e2) => {
@@ -456,6 +458,55 @@ describe("C33 · 无人值守模式：ASK→DENY 转换（T-P1-77）", () => {
     });
     return { layer, next, received, pending };
   }
+
+  // ---- W5/T3-6 工具契约元数据（声明优先 + 按名兜底 fail-closed 双读）----
+
+  it("W5 声明优先：声明 sideEffectScope=none 的 bash 在 read-only 模式放行（声明替代按名兜底）", async () => {
+    const harness = makeModeHarness(
+      [["ask", "bash(*)"]],
+      () => "read-only",
+      (name) => (name === "bash" ? { sideEffectScope: "none", readOnly: true } : undefined),
+    );
+    // 声明 none → read-only 分支不拒（未被误杀）；ask 规则照常走审批挂起
+    void Promise.resolve(harness.layer({ sessionId: "s1" }, payload({ command: "ls" }), harness.next)).catch(() => ({}));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(harness.pending.listPending()).toHaveLength(1); // 挂起而非 deny = 声明生效
+  });
+
+  it("W5 缺声明兜底：未声明的 bash 在 read-only 模式仍按名拒绝（绝不因缺声明放行）", async () => {
+    const harness = makeModeHarness([["ask", "bash(*)"]], () => "read-only", () => undefined);
+    const denied = await harness.layer({ sessionId: "s1" }, payload({ command: "rm -rf /tmp/x" }), harness.next);
+    expect(denied.isError).toBe(true);
+    expect(denied.content).toContain("只读模式");
+  });
+
+  it("W5 反例：声明 readOnly 的工具不能绕过审批——ask 规则仍挂起（声明不短路审批链）", async () => {
+    const harness = makeModeHarness(
+      [["ask", "read_secret(*)"]],
+      undefined, // 无 approvalMode——走正常 ask 分流
+      (name) => (name === "read_secret" ? { sideEffectScope: "none", readOnly: true } : undefined),
+    );
+    void Promise.resolve(
+      harness.layer({ sessionId: "s1" }, payload({ path: "/etc/passwd" }, "c-ro", "read_secret"), harness.next),
+    ).catch(() => ({}));
+    await new Promise((r) => setTimeout(r, 10));
+    // 声明 readOnly 不放行——ask 规则照常挂起等人工
+    expect(harness.pending.listPending()).toHaveLength(1);
+  });
+
+  it("W5 accept-edits：声明 sideEffectScope=system 的工具不获编辑豁免（从严）", async () => {
+    const harness = makeModeHarness(
+      [["ask", "deploy(*)"]],
+      () => "accept-edits",
+      (name) => (name === "deploy" ? { sideEffectScope: "system" } : undefined),
+    );
+    void Promise.resolve(
+      harness.layer({ sessionId: "s1" }, payload({ env: "prod" }, "c-dep", "deploy"), harness.next),
+    ).catch(() => ({}));
+    await new Promise((r) => setTimeout(r, 10));
+    // system 面不走 EDIT 豁免——挂起等人工
+    expect(harness.pending.listPending()).toHaveLength(1);
+  });
 
   it("审批模式 auto：ask 全部放行（全自动——deny 规则与内置保护仍在链上先于此）", async () => {
     const { layer, next, received, pending } = makeModeHarness(

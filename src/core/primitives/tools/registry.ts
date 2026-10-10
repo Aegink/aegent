@@ -123,6 +123,26 @@ export class ToolRegistry {
     return this.defs.has(name);
   }
 
+  /**
+   * W5/T3-6 单向投影：声明即契约（toContracts）——执行/调度/审批三处共读
+   * 的元数据面。缺省字段 = 未声明（从严：消费方按名兜底回落闭集）。
+   */
+  toContracts() {
+    const META_KEYS = ["readOnly", "destructive", "sideEffectScope", "needsApproval", "riskLevel", "maxOutputBytes", "concurrentSafe", "stopTurnOnSuccess"] as const;
+    return [...this.defs.values()].map((def) => ({
+      name: def.name,
+      ...(def.descriptionText !== undefined ? { description: def.descriptionText } : {}),
+      ...Object.fromEntries(META_KEYS.filter((k) => def[k] !== undefined).map((k) => [k, def[k]])),
+    }));
+  }
+
+  /** W5/T3-6：按名取元数据声明（未注册/未声明 = undefined——消费方从严兜底）。 */
+  metadataOf(name: string) {
+    const META_KEYS = ["readOnly", "destructive", "sideEffectScope", "needsApproval", "riskLevel", "maxOutputBytes", "concurrentSafe", "stopTurnOnSuccess"] as const;
+    const def = this.defs.get(name);
+    if (def === undefined) return undefined;
+    return Object.fromEntries(META_KEYS.filter((k) => def[k] !== undefined).map((k) => [k, def[k]]));
+  }
   names(): string[] {
     return [...this.defs.keys()];
   }

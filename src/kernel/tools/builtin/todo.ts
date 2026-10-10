@@ -29,6 +29,9 @@ export function createTodoWriteTool(options: {
 }): ToolDef {
   return {
     name: "todo_write",
+    // W5/T3-6 工具契约元数据（声明优先——gate/调度/审批三处共读；缺声明从严）
+    sideEffectScope: "none",
+    readOnly: true,
     parameters: {
       type: "object",
       properties: {

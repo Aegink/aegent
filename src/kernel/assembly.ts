@@ -233,6 +233,12 @@ function resolveInitialIdentity(
 }
 
 export interface ChildAssemblyOptions {
+  /**
+   * W5/T3-6 工具契约元数据查询（lazy——registry 晚于装配构造创建，回调
+   * 运行时解引用）。gate 层 fail-closed 双读的声明源；缺省 undefined =
+   * 全部按名兜底（零行为变化）。
+   */
+  toolMetadata?: (name: string) => import("../core/index.js").ToolMetadata | undefined;
   sessionId: string;
   store: SessionStore;
   /** 工作区根：PathGuard 边界 + 系统提示的 AGENTS.md 收集起点。 */
@@ -1115,6 +1121,9 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
   const toolGateEvalOptions: ToolPolicyEvalOptions = {
     chain: policyChain,
     sessionId,
+    // W5/T3-6：工具契约元数据注入（声明优先 + 按名兜底 fail-closed 双读；
+    // lazy 回调——registry 由装配调用方持有）
+    ...(options.toolMetadata !== undefined ? { toolMetadata: options.toolMetadata } : {}),
     ...(ceiling !== undefined ? { ceiling } : {}),
     ...(planModeService ? { planMode: () => planModeService.isActive } : {}),
     // C11：未信任项目写/执行类出口降权（规则不得授权），缺省零行为变化

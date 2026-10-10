@@ -58,6 +58,9 @@ export interface TaskToolDeps {
 export function createTaskTool(deps: TaskToolDeps): ToolDef {
   return {
     name: "task",
+    // W5/T3-6 工具契约元数据（声明优先——gate/调度/审批三处共读；缺声明从严）
+    sideEffectScope: "system",
+    destructive: true,
     // T-P1-15：task 内部串行起子循环并 await 结算——排他（缺省 false）
     parallel: false,
     parameters: {

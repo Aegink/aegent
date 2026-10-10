@@ -356,6 +356,8 @@ export function createApplyPatchTool(options: {
   const guard = options.pathGuard;
   return {
     name: "apply_patch",
+    // W5/T3-6 工具契约元数据（声明优先——gate/调度/审批三处共读；缺声明从严）
+    sideEffectScope: "workspace",
     parameters: {
       type: "object",
       properties: {

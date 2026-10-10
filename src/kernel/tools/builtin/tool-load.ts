@@ -14,6 +14,9 @@ import { toolError } from "./util.js";
 export function createToolLoadTool(options: { registry: ToolRegistry }): ToolDef {
   return {
     name: "tool_load",
+    // W5/T3-6 工具契约元数据（声明优先——gate/调度/审批三处共读；缺声明从严）
+    sideEffectScope: "none",
+    readOnly: true,
     parameters: {
       type: "object",
       properties: {

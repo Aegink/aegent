@@ -434,11 +434,15 @@ const executionEnv = new NodeExecutionEnv({
   } = { commands: [], skillDirs: [], mcpServers: [], loaded: false };
 
 
+  // W5/T3-6：registry late-binding ref（registry 创建在装配构造之后——
+  // gate 的 metadata 回调运行时解引用）
+  let toolRegistryRef: import("./tools/registry.js").ToolRegistry | undefined; // W5/T3-6：registry 创建后回填
   const assembly: ChildAssembly | undefined = options.assembly
     ? createChildAssembly({
         sessionId,
         store,
         ...options.assembly,
+        toolMetadata: (name: string) => toolRegistryRef?.metadataOf(name),
         onApprovalAnnouncement: forwardApprovalAnnouncement,
         // C33：无人值守活查询接 SessionConfigStore（config/refresh 通道
         // 切换即生效；store getter 缺省 undefined → === true 为 false）
@@ -548,6 +552,7 @@ const executionEnv = new NodeExecutionEnv({
       ? { readGate: options.assembly.readGate }
       : {}),
   });
+  toolRegistryRef = toolRegistry; // W5/T3-6：gate metadata 回调的声明源回填
   // T-P3-174 批次 1：后台 shell 注册表（bash/pwsh/task_output 共享；会话
   // 收尾 finish 统一 kill）+ shell spill 目录（<workspace>/.aegent/scratch）
   const backgroundRegistry = new BackgroundShellRegistry();

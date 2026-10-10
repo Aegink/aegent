@@ -12,6 +12,9 @@ const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"] as const;
 export function createCurrentTimeTool(): ToolDef {
   return {
     name: "current_time",
+    // W5/T3-6 工具契约元数据（声明优先——gate/调度/审批三处共读；缺声明从严）
+    sideEffectScope: "none",
+    readOnly: true,
     descriptionText: "获取当前的日期、时间、时区与星期。查询时效性内容前后调用可对齐时间锚点。",
     parallel: true,
     parameters: {

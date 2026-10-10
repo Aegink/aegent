@@ -109,6 +109,27 @@ export interface ToolDef {
    * 走 B2 的按名读文件路径（builtin 行为不变）。
    */
   descriptionText?: string;
+
+  // ---- W5/T3-6 工具契约元数据（zcode 形状，ToolMetadata 并入——声明只写
+  // 一处，执行/调度/审批三处共读；全部可选：**缺声明 = 从严 fail-closed**，
+  // 按名兜底回落现闭集，绝不默认放行）。字段语义详见 ToolMetadata。 ----
+
+  /** true = 只读（无文件效果）。 */
+  readOnly?: boolean;
+  /** true = 破坏性操作（不可逆）。 */
+  destructive?: boolean;
+  /** 副作用范围闭集。 */
+  sideEffectScope?: "none" | "workspace" | "system";
+  /** true = 执行前需要用户审批。 */
+  needsApproval?: boolean;
+  /** 风险档。 */
+  riskLevel?: "low" | "medium" | "high";
+  /** 单次输出字节上限（声明级收紧面）。 */
+  maxOutputBytes?: number;
+  /** true = 并发安全（能力声明，与 parallel 调度声明互补）。 */
+  concurrentSafe?: boolean;
+  /** true = 成功即终态工具（executor 读取）。 */
+  stopTurnOnSuccess?: boolean;
 }
 
 /**

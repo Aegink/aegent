@@ -22,6 +22,9 @@ export interface LsArgs {
 export function createLsTool(): ToolDef {
   return {
     name: "ls",
+    // W5/T3-6 工具契约元数据（声明优先——gate/调度/审批三处共读；缺声明从严）
+    sideEffectScope: "none",
+    readOnly: true,
     parallel: true, // B17：纯读
     parameters: {
       type: "object",

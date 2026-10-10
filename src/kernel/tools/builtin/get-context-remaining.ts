@@ -25,6 +25,9 @@ export function createGetContextRemainingTool(options: {
 }): ToolDef {
   return {
     name: "get_context_remaining",
+    // W5/T3-6 工具契约元数据（声明优先——gate/调度/审批三处共读；缺声明从严）
+    sideEffectScope: "none",
+    readOnly: true,
     parallel: true, // B17：纯读（monitor 只读投影）
     parameters: {
       type: "object",

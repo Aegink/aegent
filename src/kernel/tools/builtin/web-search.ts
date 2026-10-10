@@ -40,6 +40,9 @@ export function createWebSearchTool(options: { guard: NetworkGuard }): ToolDef {
     `回答时须在结尾附 "Sources:" 来源列表。`;
   return {
     name: "web_search",
+    // W5/T3-6 工具契约元数据（声明优先——gate/调度/审批三处共读；缺声明从严）
+    sideEffectScope: "none",
+    readOnly: true,
     descriptionText,
     parallel: true, // B17：网络读无本地副作用
     parameters: {

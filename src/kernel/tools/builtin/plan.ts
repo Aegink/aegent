@@ -22,6 +22,9 @@ import { toolError } from "./util.js";
 export function createPlanEnterTool(options: { planMode: PlanModeService }): ToolDef {
   return {
     name: "plan_enter",
+    // W5/T3-6 工具契约元数据（声明优先——gate/调度/审批三处共读；缺声明从严）
+    sideEffectScope: "none",
+    readOnly: true,
     async execute() {
       const wasActive = options.planMode.isActive;
       options.planMode.enter();

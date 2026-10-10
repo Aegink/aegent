@@ -204,6 +204,9 @@ function webfetchOk(content: string, meta: JsonRecord): ToolExecutionResult {
 export function createWebfetchTool(options: { guard: NetworkGuard }): ToolDef {
   return {
     name: "webfetch",
+    // W5/T3-6 工具契约元数据（声明优先——gate/调度/审批三处共读；缺声明从严）
+    sideEffectScope: "none",
+    readOnly: true,
     parallel: true, // B17：只读（网络读无本地副作用），声明可并行
     parameters: {
       type: "object",

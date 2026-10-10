@@ -86,6 +86,13 @@ export const TOOL_NOT_ACTIVE = "TOOL_NOT_ACTIVE";
 export interface ToolPolicyEvalOptions {
   /** 权威策略链（模块组装：规则集、危险库、会话批准历史……）。 */
   readonly chain: PolicyChain;
+  /**
+   * W5/T3-6 工具契约元数据查询（装配注入 registry.metadataOf——gate 在
+   * policy 域不 import registry）。**fail-closed 双读**：声明优先，缺声明
+   * 按名兜底回落现闭集——绝不默认放行。缺省 undefined = 全部走按名兜底
+   * （零行为变化）。
+   */
+  readonly toolMetadata?: (name: string) => import("../core/index.js").ToolMetadata | undefined;
   /** 会话权威标识（C57：装配处取当前值）。 */
   readonly sessionId: string;
   /** 调用来源，缺省 model。 */
@@ -287,7 +294,13 @@ export function createToolGateLayer(
     if (approvalMode === "auto") {
       return next({ ...e, arguments: JSON.stringify(args) }); // 全自动放行
     }
-    if (approvalMode === "read-only" && WRITE_CLASS_TOOLS.has(e.name)) {
+    // W5/T3-6 fail-closed 双读：声明 sideEffectScope 非 none = 写面（workspace/
+    // system 都拒）；缺声明按名兜底现闭集（绝不因缺声明而放行）。
+    const meta = options.toolMetadata?.(e.name);
+    const isWriteLike = meta?.sideEffectScope !== undefined
+      ? meta.sideEffectScope !== "none"
+      : WRITE_CLASS_TOOLS.has(e.name);
+    if (approvalMode === "read-only" && isWriteLike) {
       return {
         content: `只读模式：${e.name} 的写类调用已拒绝`,
         isError: true,
@@ -298,7 +311,13 @@ export function createToolGateLayer(
         },
       };
     }
-    if (approvalMode === "accept-edits" && EDIT_CLASS_TOOLS.has(e.name)) {
+    // W5/T3-6：编辑类自动放行——声明 sideEffectScope=workspace 优先；
+    // 缺声明按名兜底 EDIT_CLASS 闭集。声明 sideEffectScope=system 不放行
+    // （accept-edits 只豁免工作区写，不豁免系统面——从严）。
+    const isEditLike = meta?.sideEffectScope !== undefined
+      ? meta.sideEffectScope === "workspace"
+      : EDIT_CLASS_TOOLS.has(e.name);
+    if (approvalMode === "accept-edits" && isEditLike) {
       return next({ ...e, arguments: JSON.stringify(args) }); // 编辑类自动放行
     }
     // C56 判官复核（T-P1-80，ask 分支内——C42"贵路径修正便宜路径"的
