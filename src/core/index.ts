@@ -27,3 +27,4 @@ export type { AgentLoopDeps, DecideTurn, StepRecord, ToolExecutionMode, TurnDeci
 export { createLoop, registerLoopImplementation, type LoopImplementation } from "./primitives/loop/factory.js";
 export { installConsoleRedirect } from "./primitives/process/console-redirect.js";
 export { ToolRegistry } from "./primitives/tools/registry.js";
+export { WriteQueue } from "./primitives/tools/write-queue.js";

@@ -2,16 +2,16 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { ToolRegistry } from "../registry.js";
-import { registerBuiltinTools } from "./index.js";
-import { PathGuard } from "../../../sandbox/path-guard.js";
+import { ToolRegistry } from "../../src/core/index.js";
+import { registerBuiltinTools } from "../../src/kernel/tools/builtin/index.js";
+import { PathGuard } from "../../src/sandbox/path-guard.js";
 import {
   PatchParseError,
   deriveUpdatedLines,
   parsePatchText,
 } from "./apply-patch.js";
-import { extractPatchWritePaths } from "../../../policy/protected-paths.js";
-import { findProtectedMetadataSegment } from "../../../policy/protected-names.js";
+import { extractPatchWritePaths } from "../../src/policy/protected-paths.js";
+import { findProtectedMetadataSegment } from "../../src/policy/protected-names.js";
 
 const tmpDirs: string[] = [];
 afterEach(() => {

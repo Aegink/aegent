@@ -2,9 +2,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { ToolRegistry } from "../registry.js";
-import { registerBuiltinTools } from "./index.js";
-import { PathGuard } from "../../../sandbox/path-guard.js";
+import { ToolRegistry } from "../../src/core/index.js";
+import { registerBuiltinTools } from "../../src/kernel/tools/builtin/index.js";
+import { PathGuard } from "../../src/sandbox/path-guard.js";
 
 /**
  * apply_patch 两阶段验证快照（O21/O22 反哺，T-P1-65）——批次 7 工具纪律的
