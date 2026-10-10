@@ -37,3 +37,44 @@ export interface MemoryProvider {
  * 注册面允许**至多一个非 builtin** provider，冲突 fail-closed（T7-2）。
  */
 export type MemoryProviderOrigin = "builtin" | "external";
+
+/**
+ * T7-2/EP-5 注册面（W4）：provider 注册表——**单外部约束**（sentinel 闭集：
+ * builtin 至多一个 + external 至多一个，冲突 fail-closed）。装配层经
+ * registerMemoryProvider 注册；system-prompt 的记忆段消费
+ * systemPromptBlock（G6 独立段纪律不变）。
+ */
+export class MemoryProviderRegistry {
+  private readonly providers = new Map<MemoryProviderOrigin, MemoryProvider>();
+
+  register(origin: MemoryProviderOrigin, provider: MemoryProvider): this {
+    if (this.providers.has(origin)) {
+      throw new Error(
+        origin === "external"
+          ? "记忆 provider 单外部约束：至多一个 external provider（冲突 fail-closed——多 provider 会抢 systemPromptBlock 独立段）"
+          : "记忆 provider 重复注册：builtin 已在位",
+      );
+    }
+    this.providers.set(origin, provider);
+    return this;
+  }
+
+  get(origin: MemoryProviderOrigin): MemoryProvider | undefined {
+    return this.providers.get(origin);
+  }
+
+  /** 生效的记忆段（external 优先——外部 provider 覆盖内建 MEMORY.md 段）。 */
+  systemPromptBlock(): string | undefined {
+    return (this.providers.get("external") ?? this.providers.get("builtin"))?.systemPromptBlock();
+  }
+
+  /** 全部工具贡献（provider.tools——save_memory 由内建 provider 声明）。 */
+  tools(): ToolDef[] {
+    return [...this.providers.values()].flatMap((p) => p.tools?.() ?? []);
+  }
+
+  async shutdown(): Promise<void> {
+    for (const p of this.providers.values()) await p.shutdown();
+    this.providers.clear();
+  }
+}
