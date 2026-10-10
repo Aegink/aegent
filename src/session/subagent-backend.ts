@@ -47,6 +47,12 @@ export interface SubagentBackend {
   readonly name: string;
   /** 派发并等结算（never-reject：失败面转 SubagentRunResult，不上抛）。 */
   spawn(request: SubagentSpawnRequest): Promise<SubagentRunResult>;
+  /**
+   * T5-4/EP-4 能力位：true = 子会话事件流可重建（resume 语义可用——
+   * W9/T9-2 的 task resume 前置）。缺省 false = 该后端的委托不可续
+   * （in-process = true；acp 视传输能力声明）。未声明从严（fail-closed）。
+   */
+  readonly continuable?: boolean;
 }
 
 /** 未知/重名后端的类型化拒绝。 */
@@ -76,6 +82,7 @@ export function createInProcessBackend(
 ): SubagentBackend {
   return {
     name,
+    continuable: true, // EP-4：in-process 子会话事件流可重建（W9 resume 前置）
     spawn: async (request) => {
       const outcome = await runner.run(request.prompt, request.description, {
         ...(request.signal !== undefined ? { signal: request.signal } : {}),
