@@ -55,6 +55,12 @@ export interface JobSpec {
   kind: string;
   /** 执行体：resolve 为正常结算（completed）；reject 为 failed。 */
   run: (ctx: JobRunContext) => Promise<void>;
+  /**
+   * T7-5/dsh §13：作业属启动它的会话（owner 维度——观测面按 owner 过滤，
+   * 跨会话不可见；完成通知落 owner 会话）。缺省 undefined = host 面作业
+   * （webhook/cron 注册表不挂会话）。
+   */
+  ownerSessionId?: string;
 }
 
 export class UnknownJobError extends Error {
@@ -65,6 +71,8 @@ export class UnknownJobError extends Error {
 }
 
 interface JobRecord {
+  /** T7-5：作业属启动它的会话（owner 维度——跨会话不可见）。 */
+  ownerSessionId?: string;
   view: JobView;
   ring: JobChunk[];
   ringBytes: number;
@@ -78,6 +86,12 @@ interface JobRecord {
 }
 
 export interface JobRegistryOptions {
+  /**
+   * T7-5 owner 过滤（list/snapshot 面按 ownerSessionId 过滤——跨会话不可见）。
+   * 提供时 start 强制 spec.ownerSessionId 必填（缺 = owner 域作业混入的风险面）。
+   * 缺省 undefined = 不过滤（既有调用零变化）。
+   */
+  ownerFilter?: string;
   /** ring 容量上限（字节，UTF-8 口径）；缺省 64KB，超出丢最旧整条。 */
   maxRingBytes?: number;
   now?: () => number;
@@ -89,16 +103,18 @@ export interface JobRegistryOptions {
 const DEFAULT_RING_BYTES = 64 * 1024;
 
 export class JobRegistry {
-  private readonly jobs = new Map<string, JobRecord>();
+  private readonly jobs = new Map<string, JobRecord & { ownerSessionId?: string }>();
   private readonly maxRingBytes: number;
   private readonly now: () => number;
   private readonly epoch?: string;
+  private readonly ownerFilter?: string;
   private counter = 0;
 
   constructor(options: JobRegistryOptions = {}) {
     this.maxRingBytes = options.maxRingBytes ?? DEFAULT_RING_BYTES;
     this.now = options.now ?? (() => Date.now());
     this.epoch = options.epoch;
+    this.ownerFilter = options.ownerFilter;
   }
 
   /**
@@ -106,9 +122,14 @@ export class JobRegistry {
    * 执行体的异步失败被注册表接住落 failed，绝不外抛毒化调用方。
    */
   start(spec: JobSpec): string {
+    // T7-5：owner 过滤域下 start 强制 owner（缺 = 混入风险面，fail-closed）
+    if (this.ownerFilter !== undefined && spec.ownerSessionId === undefined) {
+      throw new Error(`job ${spec.kind} 缺 ownerSessionId（owner 过滤域强制——T7-5）`);
+    }
     const localId = `${spec.kind}-${++this.counter}`;
     const id = this.epoch ? encodeEpochScopedId(this.epoch, localId) : localId;
     const record: JobRecord = {
+      ownerSessionId: spec.ownerSessionId,
       view: { id, kind: spec.kind, status: "running", createdAt: this.now(), totalChunks: 0 },
       ring: [],
       ringBytes: 0,
@@ -146,7 +167,11 @@ export class JobRegistry {
   }
 
   list(): JobView[] {
-    return [...this.jobs.values()].map((r) => ({ ...r.view }));
+    // T7-5：owner 过滤（ownerFilter 域下只见本会话作业——跨会话不可见）
+    const visible = this.ownerFilter !== undefined
+      ? [...this.jobs.values()].filter((r) => r.ownerSessionId === this.ownerFilter || r.ownerSessionId === undefined)
+      : [...this.jobs.values()];
+    return visible.map((r) => ({ ...r.view }));
   }
 
   get(id: string): JobView {

@@ -154,3 +154,30 @@ describe("JobRegistry（M1 后台 job + M2 状态可查可取消）", () => {
     expect(second).toBe("a-2");
   });
 });
+
+describe("T7-5 jobs owner 会话隔离（dsh §13）", () => {
+  it("owner 过滤域：list 只见本会话作业（跨会话不可见）；缺 owner 的 host 面作业保持可见", async () => {
+    const { JobRegistry } = await import("./jobs.js");
+    const registry = new JobRegistry({ ownerFilter: "session-A" });
+    registry.start({ kind: "task", ownerSessionId: "session-A", run: async () => {} });
+    registry.start({ kind: "cron", run: async () => {} }); // host 面作业（无 owner）
+    let threw = false;
+    try {
+      registry.start({ kind: "smuggled", run: async () => {} }); // owner 域缺 owner = fail-closed
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(true);
+    const kinds = registry.list().map((v) => v.kind);
+    expect(kinds).toContain("task");
+    expect(kinds).toContain("cron");
+  });
+
+  it("无 owner 过滤域（host 面注册表）：既有行为零变化", async () => {
+    const { JobRegistry } = await import("./jobs.js");
+    const registry = new JobRegistry();
+    registry.start({ kind: "a", run: async () => {} });
+    registry.start({ kind: "b", ownerSessionId: "other", run: async () => {} });
+    expect(registry.list()).toHaveLength(2);
+  });
+});
