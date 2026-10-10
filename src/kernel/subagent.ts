@@ -1,4 +1,28 @@
 import { mkdirSync } from "node:fs";
+
+// T2-6 依赖倒置：子代理端口类型（Delegation*/Subagent*）下沉
+// core/contracts/subagent.ts——本文件保留实现面（createSubagentRunner 与
+// SubagentRunnerDeps 装配参数），契约 re-export 保兼容消费面。
+export type {
+  DelegationSnapshot,
+  DelegationStatus,
+  DelegationsApi,
+  SubagentBackgroundStart,
+  SubagentRunOutcome,
+  SubagentRunResult,
+  SubagentStopReason,
+  SubagentRunner,
+} from "../core/index.js";
+import type {
+  DelegationSnapshot,
+  DelegationStatus,
+  DelegationsApi,
+  SubagentBackgroundStart,
+  SubagentRunOutcome,
+  SubagentRunResult,
+  SubagentStopReason,
+  SubagentRunner,
+} from "../core/index.js";
 import path from "node:path";
 /**
  * 子代理运行面（H1/H4，T-P1-42）——"内核起子循环"的装配层封装。
@@ -52,68 +76,28 @@ export class SubagentDepthError extends Error {
 }
 
 /** 结算词汇（dsh run-settlement 的 runOutcome 同构映射，收敛三值）。 */
-export type SubagentStopReason = "completed" | "failed" | "cancelled";
 
-export interface SubagentRunResult {
-  /** 子会话 id（父会话可见的 lineage——经 tool result meta 回喂）。 */
-  readonly sessionId: string;
-  readonly stopReason: SubagentStopReason;
-  /** 子代理最终 assistant 文本（成功时即产出；失败时可能是残段或空）。 */
-  readonly output: string;
-  /** 失败/取消时的可读详情（isError 回喂模型可自修）。 */
-  readonly error?: string;
-}
+
+
 
 // ---------------------------------------------------------------------------
 // T-P3-145 G：后台委托（run_in_background——pi-desktop Task 生命周期同构收敛面）
 // ---------------------------------------------------------------------------
 
 /** 后台委托状态机（running → completed|failed|cancelled|stopped 终态一次）。 */
-export type DelegationStatus = "running" | "completed" | "failed" | "cancelled" | "stopped";
+
 
 /** 委托快照（task_list / task_wait 的数据面）。 */
-export interface DelegationSnapshot {
-  readonly id: string;
-  readonly childSessionId: string;
-  /** 子代理预设名（通用子代理 = "general"）。 */
-  readonly agentName: string;
-  readonly description: string;
-  readonly status: DelegationStatus;
-  readonly startedAt: number;
-  readonly settledAt?: number;
-  /** 最终报告（结算后；12K 头尾截断）。 */
-  readonly report?: string;
-  readonly error?: string;
-}
+
 
 /** 后台启动回执（task 工具 run_in_background 的返回形状）。 */
-export interface SubagentBackgroundStart {
-  readonly kind: "background";
-  readonly delegationId: string;
-  readonly childSessionId: string;
-}
+
 
 /** runSubagent 的返回：前台 = 完整结算（既有语义）；后台 = 启动收执。 */
-export type SubagentRunOutcome = { kind: "foreground"; result: SubagentRunResult } | SubagentBackgroundStart;
+
 
 /** 注册表面（task_wait/task_list/task_stop 与主 loop 收敛钩子共用）。 */
-export interface DelegationsApi {
-  list(): DelegationSnapshot[];
-  hasRunning(): boolean;
-  /**
-   * 等待收敛（task_wait 执行体）：ids 缺省 = 全部在途；mode "any" = 任一
-   * 终态即返 / "all"（缺省）= 目标全部终态；min_completed 为 any 的加强
-   * 条件；timeoutMs 兜底（超时返回当前快照——不杀委托）。
-   */
-  wait(opts?: {
-    ids?: readonly string[];
-    mode?: "any" | "all";
-    minCompleted?: number;
-    timeoutMs?: number;
-  }): Promise<DelegationSnapshot[]>;
-  /** 停止指定委托（cancel 子 loop → 结算 stopped）；未知 id 返回 false。 */
-  stop(id: string): boolean;
-}
+
 
 export interface SubagentRunnerDeps {
   /** 发起派发的会话 id（子会话 id 从它派生，lineage 可读）。 */
@@ -204,19 +188,7 @@ export interface SubagentRunnerDeps {
  * opts.signal 取消联动**（后台语义——父轮取消不杀后台委托；父会话收尾
  * 才是终止点，dispose 纪律）。
  */
-export function createSubagentRunner(deps: SubagentRunnerDeps): {
-  run: (
-    prompt: string,
-    description: string,
-    opts?: {
-      signal?: AbortSignal;
-      backend?: string;
-      subagentType?: string;
-      background?: boolean;
-    },
-  ) => Promise<SubagentRunOutcome>;
-  delegations: DelegationsApi;
-} {
+export function createSubagentRunner(deps: SubagentRunnerDeps): SubagentRunner {
   let counter = 0;
   let delegationSeq = 0;
   const maxDepth = deps.maxDepth ?? 1;

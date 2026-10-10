@@ -180,3 +180,29 @@ export interface ToolDispatchCall {
    */
   runtimeMeta?: { parallel?: boolean; timeoutMs?: number };
 }
+
+/** loop 执行上下文（hook 载荷与工具链共用的最小会话标识）。 */
+export interface LoopContext {
+  sessionId: string;
+}
+
+/** toolCall 点位载荷（policy 链与工具执行共读——B12 arguments unparsed）。 */
+export interface ToolCallPayload {
+  turn: number;
+  step: number;
+  callId: string;
+  name: string;
+  /** 模型产出的原始 arguments JSON 串，unparsed（B12）。 */
+  arguments: string;
+  /**
+   * B7 进度上报通道（T-P1-16）：loop 在进入链前按调用注入（createProgress
+   * Reporter 闭包——seqInCall 单调、条数有上限），经 terminal 流进
+   * ToolContext.reportProgress。链层替换载荷时丢失即无进度（best-effort）。
+   */
+  report?: (message: string) => void;
+  /**
+   * T-P1-43：本 turn 的取消信号（A7 槽位的 AbortSignal 面）——工具可选
+   * 消费（task 用它联动子循环取消）；经 registry 转进 ToolContext.signal。
+   */
+  signal?: AbortSignal;
+}

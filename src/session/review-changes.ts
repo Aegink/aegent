@@ -27,7 +27,7 @@
  * "新增或覆盖"从流不可分，统称写入，记档）。
  */
 
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 import { collaborationsFromEvents, type CollaborationRecord } from "./collaboration.js";
 
 /** 文件级变更条目（按路径聚合后的末态）。 */

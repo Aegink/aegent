@@ -22,7 +22,7 @@
 
 import { spawn } from "node:child_process";
 import { DEFAULT_HELPER_PATH } from "./win32-backend.js";
-import { TimeoutError, TOOL_TIMEOUT } from "../kernel/timeout.js";
+import { TimeoutError, TOOL_TIMEOUT } from "../core/index.js";
 
 /** 沙箱账户密码的 DPAPI 加密存储位置（D8 机器级——跨进程可解密）。 */
 export const CREDENTIAL_FILE = "config/sandbox-account.json.enc";

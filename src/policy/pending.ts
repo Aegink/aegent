@@ -14,7 +14,7 @@
  *     宣告——不宣告的超时与静默放行同罪。
  */
 
-import type { JsonRecord } from "../kernel/events.js";
+import type { JsonRecord } from "../core/index.js";
 import type { Verdict } from "./decision.js";
 
 // ---------------------------------------------------------------------------

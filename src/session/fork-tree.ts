@@ -32,7 +32,7 @@
  * fromStreams）。
  */
 
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 import type { SessionStore } from "./store.js";
 
 export type ForkTreeErrorCode = "UNKNOWN_SESSION";

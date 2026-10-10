@@ -26,8 +26,8 @@
  */
 
 import { execFile } from "node:child_process";
-import { Deadline, withDeadline, TimeoutError } from "../kernel/deadline.js";
-import type { ExecOptions, ExecResult, ExecutionEnv } from "../kernel/tools/env.js";
+import { Deadline, withDeadline, TimeoutError } from "../core/index.js";
+import type { ExecOptions, ExecResult, ExecutionEnv } from "../core/index.js";
 
 /** ssh 自身错误的退出码（OpenSSH 契约：连接/认证失败的统一码）。 */
 export const SSH_SELF_ERROR_EXIT = 255;

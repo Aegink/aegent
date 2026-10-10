@@ -19,7 +19,7 @@
  * SANDBOX_UNAVAILABLE——"local 后端先跑通，接口不写死"（D5 验收要点）。
  */
 
-import type { ExecOptions, ExecutionEnv } from "../kernel/tools/env.js";
+import type { ExecOptions, ExecutionEnv } from "../core/index.js";
 // T2-2 依赖倒置：SandboxMode/SandboxSpawnRequest/SandboxSpawnResult/SandboxBackend
 // 等契约下沉 core/contracts/sandbox.ts——本文件是 sandbox 域实现面（local 后端），
 // 契约 re-export 保兼容消费面。

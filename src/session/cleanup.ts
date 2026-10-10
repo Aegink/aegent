@@ -28,7 +28,7 @@
 
 import type Database from "better-sqlite3";
 
-import type { JsonValue } from "../kernel/events.js";
+import type { JsonValue } from "../core/index.js";
 import { archiveSession, type ArchiveReceipt } from "./archive.js";
 import { SqliteEventStorage } from "./db.js";
 import { MS_PER_DAY, resolveRetentionPolicy, retentionCutoff, type RetentionCutoff, type RetentionPolicy } from "./retention.js";

@@ -25,7 +25,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { locateJsonError } from "../models/config.js";
-import { LOG_LEVELS } from "../kernel/logger.js";
+import { LOG_LEVELS } from "../core/index.js";
 import { SANDBOX_MODES, type SandboxMode } from "../sandbox/backend.js";
 import { isValidSubagentSlug, type SubagentDefinition } from "./subagents-config.js";
 

@@ -20,7 +20,7 @@
  *      than a manual approval"）。
  */
 
-import type { JsonRecord } from "../kernel/events.js";
+import type { JsonRecord } from "../core/index.js";
 
 // ---------------------------------------------------------------------------
 // 请求 / 裁决闭集

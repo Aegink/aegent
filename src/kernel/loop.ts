@@ -79,9 +79,6 @@ import { type RunState } from "./run-state.js";
 // ---------------------------------------------------------------------------
 
 /** 链上下文（P0 最小面；阶段 5/7 需要服务时扩此接口，不开泛型）。 */
-export interface LoopContext {
-  sessionId: string;
-}
 
 /** modelRequest 点位：包住"这次模型请求"。 */
 export interface ModelRequestPayload {
@@ -110,36 +107,12 @@ export interface ModelStepOutput {
 }
 
 /** toolCall 点位：包住"单次工具执行"（载荷与 tool/call 事件同源）。 */
-export interface ToolCallPayload {
-  turn: number;
-  step: number;
-  callId: string;
-  name: string;
-  /** 模型产出的原始 arguments JSON 串，unparsed（B12）。 */
-  arguments: string;
-  /**
-   * B7 进度上报通道（T-P1-16）：loop 在进入链前按调用注入（createProgress
-   * Reporter 闭包——seqInCall 单调、条数有上限），经 terminal 流进
-   * ToolContext.reportProgress。链层替换载荷时丢失即无进度（best-effort）。
-   */
-  report?: (message: string) => void;
-  /**
-   * T-P1-43：本 turn 的取消信号（A7 槽位的 AbortSignal 面）——工具可选
-   * 消费（task 用它联动子循环取消）；经 registry 转进 ToolContext.signal。
-   */
-  signal?: AbortSignal;
-  /**
-   * B16/T-P1-59：本 step 的执行策略快照（step 开始时固化的 parallel 声明
-   * 与 M6 超时预算）——经链透传到 registry.dispatch，提供时 timeoutMs 以
-   * 快照为准（在途 step 用 advertise 它们的那一步的声明）。
-   */
-  runtimeMeta?: { parallel?: boolean; timeoutMs?: number };
-}
 
 /** toolCall 点位的产物（形状 = ToolResultEvent 的消息侧载荷）。 */
-// T2-4 依赖倒置：ToolExecutionResult 契约下沉 core/contracts/tools.ts（re-export 保兼容）。
-export type { ToolExecutionResult } from "../core/index.js";
-import type { ToolExecutionResult } from "../core/index.js";
+// T2-4/T2-6 依赖倒置：ToolExecutionResult/LoopContext/ToolCallPayload 契约
+// 下沉 core/contracts/tools.ts（re-export 保兼容）。
+export type { LoopContext, ToolCallPayload, ToolExecutionResult } from "../core/index.js";
+import type { LoopContext, ToolCallPayload, ToolExecutionResult } from "../core/index.js";
 
 /**
  * B20/T-P1-62 输出 token 触顶的 finishReason 闭集（zcode OUTPUT_LIMIT_RAW_

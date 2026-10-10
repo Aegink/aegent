@@ -14,7 +14,7 @@
  * owner，不在端口层吞掉或改写。
  */
 
-import { assertNever, type JsonRecord } from "../kernel/events.js";
+import { assertNever, type JsonRecord } from "../core/index.js";
 import type { ModelIdentity } from "../models/identity.js";
 import type { ApprovalReply } from "../policy/pending.js";
 

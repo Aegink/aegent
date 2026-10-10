@@ -17,7 +17,7 @@
  */
 
 import type { ChatMessage } from "./provider.js";
-import type { TokenUsage } from "../kernel/events.js";
+import type { TokenUsage } from "../core/index.js";
 
 /** 逐请求缓存统计样本。 */
 export interface CacheHealthSample {

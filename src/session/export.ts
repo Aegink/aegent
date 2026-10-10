@@ -12,7 +12,7 @@
  */
 
 import { CURRENT_SCHEMA_VERSION } from "./db.js";
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 import type { SessionStore } from "./store.js";
 
 export interface SessionExport {

@@ -26,7 +26,7 @@
 
 import type Database from "better-sqlite3";
 
-import { EVENT_TYPES, type SessionEvent, type SessionEventType } from "../kernel/events.js";
+import { EVENT_TYPES, type SessionEvent, type SessionEventType } from "../core/index.js";
 import { isValidSessionId } from "./session-id.js";
 import { SessionArchivedError, SqliteEventStorage } from "./db.js";
 

@@ -8,7 +8,7 @@
  * 振荡、前缀不可重建）。
  */
 
-import type { ImageOffloadTarget, SessionEvent } from "../kernel/events.js";
+import type { ImageOffloadTarget, SessionEvent } from "../core/index.js";
 
 /**
  * 选出最老的 N 个未卸载图片出现（dsh "oldest retained in current surface

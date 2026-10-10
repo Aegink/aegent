@@ -32,13 +32,9 @@
  * 完成，链上的会话批准历史模块据此在后续调用免问。
  */
 
-import type { ChainLayer } from "../kernel/chain.js";
-import type {
-  LoopContext,
-  ToolCallPayload,
-  ToolExecutionResult,
-} from "../kernel/loop.js";
-import type { JsonRecord } from "../kernel/events.js";
+import type { ChainLayer } from "../core/index.js";
+import type { LoopContext, ToolCallPayload, ToolExecutionResult } from "../core/index.js";
+import type { JsonRecord } from "../core/index.js";
 import type { PolicyCall, PolicyChain } from "./chain.js";
 import type { Verdict } from "./decision.js";
 import { buildDenial, renderDenial } from "./denial.js";

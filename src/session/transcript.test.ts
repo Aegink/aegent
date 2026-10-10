@@ -112,8 +112,9 @@ describe("renderTranscript（E7/T-P1-96 会话记录检视面）", () => {
     expect(renderTranscript([])).toEqual([]);
     const source = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "transcript.ts"), "utf8");
     const imports = source.match(/from "[^"]+"/g) ?? [];
-    // 入边只有词汇表类型（kernel/events）——零 store/loop/agent-process 依赖
-    expect(imports).toEqual(['from "../kernel/events.js"']);
+    // 入边只有词汇表类型（core/index——T2-6 起事件词汇经 core 公开入口）
+    // ——零 store/loop/agent-process 依赖（结构保证不变）
+    expect(imports).toEqual(['from "../core/index.js"']);
   });
 });
 

@@ -20,7 +20,7 @@
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import type { ProviderConfig } from "./config.js";
-import { redactSecrets } from "../kernel/logger.js";
+import { redactSecrets } from "../core/index.js";
 
 /** 健康状态闭集（cc-switch HealthStatus 的我方对位：unreachable 替代 failed——语义更准）。 */
 export type HealthStatus = "operational" | "degraded" | "unreachable";

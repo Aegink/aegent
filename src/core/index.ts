@@ -5,6 +5,10 @@
  * 最终语义面 = 0 骨架 + 1 装配入口。
  */
 export * from "./skeleton/events.js";
+export * from "./skeleton/logger.js";
+export * from "./skeleton/chain.js";
+export * from "./skeleton/timeout.js";
+export * from "./skeleton/deadline.js";
 export * from "./contracts/attachments.js";
 export * from "./contracts/models.js";
 export * from "./contracts/policy.js";
@@ -17,4 +21,5 @@ export * from "./contracts/memory.js";
 export * from "./contracts/channel.js";
 export * from "./contracts/schedule.js";
 export * from "./contracts/telemetry.js";
+export * from "./contracts/subagent.js";
 export * from "./primitives/session/reference.js";

@@ -21,7 +21,7 @@ import {
   type SessionEvent,
   type TodoStatus,
   type TokenUsage,
-} from "../kernel/events.js";
+} from "../core/index.js";
 import { THINKING_LEVELS } from "./settings.js";
 
 /** todo 项（投影面形状；与事件载荷 items 同构——E12 整值语义）。 */

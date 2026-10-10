@@ -23,7 +23,7 @@
  * cache_control 标记面不落（F6 锚检测在位，随 §6.2 真实厂商联调，记档）。
  */
 
-import type { StreamChunk, TokenUsage } from "../kernel/events.js";
+import type { StreamChunk, TokenUsage } from "../core/index.js";
 import type { ModelIdentity } from "./identity.js";
 import type { ModelProfile, ThinkingLevel } from "../core/index.js";
 import { ProviderConfigError, parseExtraHeaders, type ProviderConfig } from "./config.js";

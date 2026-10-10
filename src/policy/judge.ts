@@ -36,7 +36,7 @@
 
 import type { ModelIdentity } from "../models/identity.js";
 import type { ChatMessage, ModelProvider } from "../models/provider.js";
-import type { TokenUsage } from "../kernel/events.js";
+import type { TokenUsage } from "../core/index.js";
 import {
   type JudgeRequest,
   type JudgeVerdict,

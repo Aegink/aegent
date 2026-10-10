@@ -14,7 +14,7 @@
  * 补报的拒绝语义必须在完整流上判定，coalesce 只服务读取加速。
  */
 
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 import { Projector } from "./project.js";
 
 export interface CoalesceRule {

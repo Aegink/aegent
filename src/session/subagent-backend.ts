@@ -31,9 +31,8 @@
  *     联调列人工确认）。
  */
 
-import { Deadline, withDeadline, TimeoutError } from "../kernel/deadline.js";
-import type { SubagentRunResult, SubagentStopReason } from "../kernel/subagent.js";
-import type { createSubagentRunner } from "../kernel/subagent.js";
+import { Deadline, withDeadline, TimeoutError } from "../core/index.js";
+import type { SubagentRunResult, SubagentRunner, SubagentStopReason } from "../core/index.js";
 
 /** 一次子代理派发请求（后端无关的输入面——E5/H2 的 run 参数形状）。 */
 export interface SubagentSpawnRequest {
@@ -72,7 +71,7 @@ export const IN_PROCESS_BACKEND = "in-process";
  * 后端——零逻辑复制：深度检查/降级规则/取消联动全在 runner 内。
  */
 export function createInProcessBackend(
-  runner: ReturnType<typeof createSubagentRunner>,
+  runner: SubagentRunner,
   name: string = IN_PROCESS_BACKEND,
 ): SubagentBackend {
   return {

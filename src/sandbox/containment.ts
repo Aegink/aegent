@@ -16,7 +16,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_HELPER_PATH, Win32SandboxBackend } from "./win32-backend.js";
 import { createLocalBackend, type SandboxBackend, type SandboxSpawnRequest } from "./backend.js";
-import type { ExecutionEnv } from "../kernel/tools/env.js";
+import type { ExecutionEnv } from "../core/index.js";
 
 export { Win32SandboxBackend };
 

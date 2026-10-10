@@ -29,7 +29,7 @@ import type {
   CollabPermissionCeiling,
   CollabStatus,
   SessionEvent,
-} from "../kernel/events.js";
+} from "../core/index.js";
 
 export type { CollabKind, CollabPermissionCeiling, CollabStatus };
 

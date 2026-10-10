@@ -24,7 +24,7 @@
  * ——reconcileBootState 消费它们。调用次序：restore → reconcile → 服务。
  */
 
-import type { NewSessionEvent } from "../kernel/events.js";
+import type { NewSessionEvent } from "../core/index.js";
 import { Projector } from "./project.js";
 import type { SessionStore } from "./store.js";
 

@@ -8,7 +8,7 @@
 
 import type { AttachmentRef } from "../attachments/types.js";
 import type { ChatAudio, ChatImage, ChatMessage } from "../models/provider.js";
-import type { SessionEvent, SessionRef } from "../kernel/events.js";
+import type { SessionEvent, SessionRef } from "../core/index.js";
 import { coalesceEvents } from "./coalescer.js";
 
 export interface BuildMessagesOptions {

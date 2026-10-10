@@ -10,7 +10,7 @@
 
 import Database from "better-sqlite3";
 
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 import type { EventStorage } from "./store.js";
 import { isValidSessionId } from "./session-id.js";
 import { MIGRATIONS, planMigrationChain } from "./migrate.js";

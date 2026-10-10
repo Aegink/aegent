@@ -11,7 +11,7 @@
  */
 
 import { createGitRunner, type GitRunner } from "./git-checkpoint.js";
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 
 export interface CheckpointTimelineItem {
   /** 检查点事件 seq（回退目标定位键）。 */

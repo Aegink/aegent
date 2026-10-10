@@ -13,7 +13,7 @@
  *   session/daemon_recovery.rs:2`）——写成 API 形状：snapshot() 内部先 flush。
  */
 
-import { assertJsonSafe, type NewSessionEvent, type SessionEvent } from "../kernel/events.js";
+import { assertJsonSafe, type NewSessionEvent, type SessionEvent } from "../core/index.js";
 import { Projector } from "./project.js";
 // T2-3 依赖倒置：EventStorage/SessionSnapshot/FlushPoint*/ForkOptions/SessionStore
 // 端口契约下沉 core/contracts/session.ts——本文件是 session 域实现面

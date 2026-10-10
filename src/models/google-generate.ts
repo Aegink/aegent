@@ -18,7 +18,7 @@
  * L1 纪律同源：本文件只解释 wire，不写任何第二份轨迹存储。
  */
 
-import type { StreamChunk, TokenUsage } from "../kernel/events.js";
+import type { StreamChunk, TokenUsage } from "../core/index.js";
 import { ProviderHttpError, THINKING_BUDGET, type ChatMessage, type ChatRequest, type ChatTool, type ModelProvider } from "./provider.js";
 import type { ModelProfile, ThinkingLevel } from "../core/index.js";
 import { ProviderConfigError, parseExtraHeaders, type ProviderConfig } from "./config.js";

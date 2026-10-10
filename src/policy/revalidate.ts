@@ -20,7 +20,7 @@
  * isError 结果，不执行、不产生工具输出（与权限层截断语义一致）。
  */
 
-import type { JsonRecord } from "../kernel/events.js";
+import type { JsonRecord } from "../core/index.js";
 import type { PolicyChain } from "./chain.js";
 import type { Verdict } from "./decision.js";
 import { enforceProtectedPaths } from "./protected-paths.js";

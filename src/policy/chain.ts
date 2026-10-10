@@ -16,7 +16,7 @@
  * fail-open（崩一个模块就全放行）是不可接受的，宁可让调用方拿到错误。
  */
 
-import type { JsonRecord } from "../kernel/events.js";
+import type { JsonRecord } from "../core/index.js";
 import type { DenialShape } from "./denial.js";
 import { abstainVerdict, verdictFromOutcome, type Verdict } from "./decision.js";
 

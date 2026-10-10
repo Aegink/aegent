@@ -27,7 +27,7 @@ import {
   type SandboxSpawnResult,
 } from "./backend.js";
 import { canonicalize, tempWriteSid, workspaceWriteSid } from "./workspace-sid.js";
-import { TimeoutError, TOOL_TIMEOUT } from "../kernel/timeout.js";
+import { TimeoutError, TOOL_TIMEOUT } from "../core/index.js";
 
 /** helper exe 的仓库内约定位置（npm run build:sandbox-helper 的产物）。 */
 export const DEFAULT_HELPER_PATH =

@@ -15,7 +15,7 @@
  * project / user / managed 三档作用域只在枚举里占位，持久化随 C22 P1。
  */
 
-import type { JsonRecord } from "../kernel/events.js";
+import type { JsonRecord } from "../core/index.js";
 import type { PolicyCall, PolicyModule } from "./chain.js";
 import type { RuleMatchable } from "./matchers.js";
 
