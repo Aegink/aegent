@@ -50,6 +50,7 @@
       "requires": [
         "core",
         "kernel",
+        "models",
         "mcp",
         "policy",
         "session"
@@ -177,7 +178,8 @@
       ],
       "managed": false,
       "requires": [
-        "core"
+        "core",
+        "ext-builtin"
       ],
       "publicEntrypoints": [
         "src/kernel/events.ts",
@@ -416,6 +418,10 @@
     {
       "path": "src/ext-builtin/plugin-runtime/plugin-manifest-contributes.ts",
       "reason": "T4-1 搬迁记档（2026-10-10）：贡献声明校验面 545 行（六类 contributes 的逐类形状校验——校验器内聚面）——kernel 时代为 warning，ext-builtin（managed）触线即 error；拆分按 contributes 类别分文件列 T8 候选，届时删本豁免。"
+    },
+    {
+      "path": "src/ext-builtin/prompt-defaults/plan-mode.test.ts",
+      "reason": "T4-2 搬迁记档（2026-10-10）：plan 模式测试 404 行——测试文件行数豁免先例（hooks.test 等）；拆分收益低。"
     },
     {
       "path": "src/diagnostics/live-p2.test.ts",

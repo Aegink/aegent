@@ -20,30 +20,30 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { NewSessionEvent, SessionEvent } from "./events.js";
+import type { NewSessionEvent, SessionEvent } from "../../kernel/events.js";
 import {
   createPlanModeService,
   planArtifactFromEvents,
   planModeFromEvents,
   savePlanArtifact,
-} from "./plan-mode.js";
-import { enforcePlanMode } from "../policy/plan-guard.js";
-import { assemblePolicyChain, type PolicyCall } from "../policy/chain.js";
-import { createToolGateLayer, TOOL_POLICY_DENIED } from "../policy/gate.js";
-import { DenyPermissionBroker } from "../policy/broker.js";
-import { builtinRuleMatchers } from "../policy/matchers.js";
-import { loadedRuleMatch, loadedRuleText, loadRules } from "../policy/rule-loader.js";
-import { createRuleSetModule } from "../policy/rules.js";
-import { BUILTIN_TOOL_NAMES, registerBuiltinTools } from "./tools/builtin/index.js";
-import { ToolRegistry } from "./tools/registry.js";
-import { createNetworkGuard } from "../sandbox/network.js";
-import { PendingApprovals } from "../policy/pending.js";
-import { createChildAssembly } from "./assembly.js";
-import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../session/store.js";
+} from "../../kernel/plan-mode.js";
+import { enforcePlanMode } from "../../policy/plan-guard.js";
+import { assemblePolicyChain, type PolicyCall } from "../../policy/chain.js";
+import { createToolGateLayer, TOOL_POLICY_DENIED } from "../../policy/gate.js";
+import { DenyPermissionBroker } from "../../policy/broker.js";
+import { builtinRuleMatchers } from "../../policy/matchers.js";
+import { loadedRuleMatch, loadedRuleText, loadRules } from "../../policy/rule-loader.js";
+import { createRuleSetModule } from "../../policy/rules.js";
+import { BUILTIN_TOOL_NAMES, registerBuiltinTools } from "../../kernel/tools/builtin/index.js";
+import { ToolRegistry } from "../../kernel/tools/registry.js";
+import { createNetworkGuard } from "../../sandbox/network.js";
+import { PendingApprovals } from "../../policy/pending.js";
+import { createChildAssembly } from "../../kernel/assembly.js";
+import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../../session/store.js";
 import {
   GitCheckpointService,
   createGitRunner,
-} from "../session/git-checkpoint.js";
+} from "../../session/git-checkpoint.js";
 
 const mk = (event: NewSessionEvent, seq: number): SessionEvent =>
   ({ ...event, seq, ts: 0 } as SessionEvent);

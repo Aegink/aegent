@@ -14,14 +14,14 @@ import {
   loadSkillsFromRoots,
   parseSkillFrontmatter,
   skillBody,
-} from "./skills.js";
-import { createSkillLoadTool } from "./tools/builtin/skill.js";
-import { ToolRegistry } from "./tools/registry.js";
-import { assembleSystemPrompt } from "../context/system-prompt.js";
-import { createChildAssembly } from "./assembly.js";
-import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../session/store.js";
-import { PathGuard } from "../sandbox/path-guard.js";
-import { composeChain } from "./chain.js";
+} from "../../kernel/skills.js";
+import { createSkillLoadTool } from "../../kernel/tools/builtin/skill.js";
+import { ToolRegistry } from "../../kernel/tools/registry.js";
+import { assembleSystemPrompt } from "../../context/system-prompt.js";
+import { createChildAssembly } from "../../kernel/assembly.js";
+import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../../session/store.js";
+import { PathGuard } from "../../sandbox/path-guard.js";
+import { composeChain } from "../../kernel/chain.js";
 
 const tmpRoots: string[] = [];
 afterEach(() => {

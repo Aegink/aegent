@@ -91,6 +91,7 @@ import { type BudgetConfig, RolloutBudget } from "../context/budget.js";
 import { assembleSystemPrompt } from "../context/system-prompt.js";
 import { renderPersona, resolvePersona } from "../session/persona.js";
 import { loadSkillsFromRoots } from "./skills.js";
+import { buildSkillsContent } from "../ext-builtin/prompt-defaults/skills.js";
 import {
   type ApprovalAnnouncement,
   PendingApprovals,
@@ -885,6 +886,10 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
       for (const d of skillLoad.diagnostics) {
         logger?.warn(`skill-lint: [${d.code}] ${d.path} —— ${d.message}`);
       }
+      // T4-2：技能段预算裁剪（zcode §23——超限 names-only 降级），预构建
+      // 段经 skillsSectionPrebuilt 注入（内联渲染兜底 = 零行为变化的缺省）。
+      const skillsSectionPrebuilt =
+        skillLoad.skills.length > 0 ? buildSkillsContent(skillLoad.skills).lines.join(String.fromCharCode(10)) : undefined;
       const prompt = await assembleSystemPrompt({
         approvalTier: "on_request",
         describeWritableRoots: () => pathGuard.describeWritableRoots(),
@@ -892,6 +897,7 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
         ...(options.globalAgentsPath !== undefined ? { globalAgentsPath: options.globalAgentsPath } : {}),
         ...(options.memoryIndexPath !== undefined ? { memoryPath: options.memoryIndexPath } : {}),
         ...(skillLoad.skills.length > 0 ? { skills: skillLoad.skills } : {}),
+        ...(skillsSectionPrebuilt !== undefined ? { skillsSectionPrebuilt } : {}),
         ...(planModeService ? { planMode: true } : {}),
         ...(options.delegation ? { delegation: true } : {}),
         ...(options.outputLanguage !== undefined ? { outputLanguage: options.outputLanguage } : {}),

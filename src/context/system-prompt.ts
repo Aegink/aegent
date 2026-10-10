@@ -149,6 +149,12 @@ export interface SystemPromptDeps {
    */
   skills?: readonly { name: string; description: string }[];
   /**
+   * T4-2 预构建技能段（ext-builtin/prompt-defaults 的 buildSkillsContent
+   * 产出——预算裁剪在装配层做）。在位时优先于 deps.skills 的内联渲染；
+   * 缺省 undefined = 内联渲染（零行为变化）。
+   */
+  skillsSectionPrebuilt?: string;
+  /**
    * plan 模式启用（G1/T-P1-11）：渲染计划模式机制说明段（工具用法与硬关
    * 语义——模式状态本身经 tool/result 即时可见，本段只说明机制）；缺省
    * 不加段（零行为变化）。
@@ -220,7 +226,8 @@ ${memoryContent}`;
 
   // 4. 技能清单尾段（I2/T-P1-08）：名+描述列给模型，正文按名经 skill_load
   //    读取；空清单不加段。
-  const skillsSection = renderSkillsSection(deps.skills);
+  // T4-2：预构建段优先（装配层预算裁剪）；缺省内联渲染（零行为变化）
+  const skillsSection = deps.skillsSectionPrebuilt ?? renderSkillsSection(deps.skills);
   // 5. plan 模式机制段（G1/T-P1-11）：启用才渲染（零行为变化）
   const planSection = deps.planMode ? renderPlanSection() : "";
 
