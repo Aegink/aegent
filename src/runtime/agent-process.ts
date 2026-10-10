@@ -2000,8 +2000,15 @@ export function spawnAgentProcess(options: SpawnAgentOptions): AgentProcess {
   diag(
     `[agent] spawn: ${JSON.stringify([process.execPath, options.entryPath, ...(options.args ?? [])])}`,
   );
+  // §18/T5-5：stderr 尾 40 行环形缓冲 + 退出归因（code/signal + stderr 尾巴）。
+  const stderrTail: string[] = [];
+  const STDERR_TAIL_LINES = 40;
   child.on("exit", (code, signal) => {
-    diag(`[agent] child exited: code=${String(code)} signal=${String(signal)}`);
+    const tail = stderrTail.slice(-STDERR_TAIL_LINES).join(" | ");
+    diag(
+      `[agent] child exited: code=${String(code)} signal=${String(signal)}` +
+        (tail !== "" ? ` stderr_tail=${tail}` : ""),
+    );
   });
   child.on("error", (e) => {
     diag(`[agent] child spawn error: ${e.message}`);
@@ -2010,6 +2017,7 @@ export function spawnAgentProcess(options: SpawnAgentOptions): AgentProcess {
     // 行缓冲转发（跨 chunk 行不裂——pi-desktop flushChild 同款纪律）
     let errBuf = "";
     child.stderr.setEncoding("utf-8");
+    // §18/T5-5：stderr 行进尾 40 行环形缓冲（退出归因数据源）再转发 sink。
     child.stderr.on("data", (chunk: string) => {
       errBuf += chunk;
       for (;;) {
@@ -2017,7 +2025,11 @@ export function spawnAgentProcess(options: SpawnAgentOptions): AgentProcess {
         if (nl < 0) break;
         const line = errBuf.slice(0, nl).trimEnd();
         errBuf = errBuf.slice(nl + 1);
-        if (line.trim() !== "") options.stderrSink?.(line);
+        if (line.trim() !== "") {
+          stderrTail.push(line);
+          if (stderrTail.length > STDERR_TAIL_LINES) stderrTail.shift();
+          options.stderrSink?.(line);
+        }
       }
     });
     child.stderr.on("end", () => {

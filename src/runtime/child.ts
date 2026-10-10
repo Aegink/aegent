@@ -691,6 +691,13 @@ async function main(): Promise<void> {
   });
 }
 
+// §18/T5-5 进程可诊断：console 全族重定向 stderr（原语见
+// core/primitives/process/console-redirect.ts）——process.stdout 只承载
+// 协议帧（JSON 行），任何库/代码的 console.log 不得污染 RPC 流（G8 输出
+// 面纪律；宿主侧 stderr 尾 40 行环形缓冲 + 退出归因消费这些诊断）。
+import { installConsoleRedirect } from "../core/index.js";
+installConsoleRedirect((line) => process.stderr.write(`[child] ${line}`));
+
 void main().catch((e: unknown) => {
   // 装配期失败（配置坏 / 库打不开）：子进程无法服务，协议错误行 + 退出
   process.stdout.write(

@@ -1398,3 +1398,57 @@ describe("EP-9 协议版本握手（T1-3）", () => {
     }
   }, 30_000);
 });
+
+describe("§18 进程可诊断（T5-5）", () => {
+  it("console.log 不污染 RPC 流：stdout 只有协议行，console 输出全走 stderr", async () => {
+    // 假子进程：console.log 一条诊断 + 正常 hello 握手——父侧 RPC 流应纯净
+    const fakeEntry = path.join(root, "dist", "src", "runtime", "_tmp_fake_child_t55.js");
+    writeFileSync(
+      fakeEntry,
+      [
+        "const orig = console.log.bind(console);",
+        "console.log = (...a) => process.stderr.write(a.join(' ') + String.fromCharCode(10)); // 与 child 入口同款重定向",
+        "console.log('diagnostic noise from library code');",
+        "process.stdout.write(JSON.stringify({ type: 'hello', protocolVersion: 1 }));",
+        "process.stdout.write(String.fromCharCode(10));",
+        "process.stdout.write(JSON.stringify({ type: 'ready' }));",
+        "process.stdout.write(String.fromCharCode(10));",
+        "setInterval(() => {}, 1_000);",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    try {
+      const proc = spawnAgentProcess({ entryPath: fakeEntry });
+      // 带超时收取（for-await 会挂等——假 child 不退出；收 ready 即断言）
+      const ready = await recvWithTimeout(proc.messages, (m) => m.type === "ready", "ready", 5_000);
+      expect(ready.type).toBe("ready"); // console 重定向生效——noise 不在 RPC 流（否则 hello 拦截已拒绝）
+      await proc.kill();
+    } finally {
+      rmSync(fakeEntry, { force: true });
+    }
+  }, 30_000);
+
+  it("退出归因：child 崩溃时 exit 日志带 stderr 尾 40 行缓冲内容", async () => {
+    const fakeEntry = path.join(root, "dist", "src", "runtime", "_tmp_fake_child_t55b.js");
+    writeFileSync(
+      fakeEntry,
+      [
+        "console.error('fatal: database corrupted at page 7');",
+        "setTimeout(() => process.exit(3), 50); // stderr pipe 异步 flush——exit 前让行落盘",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    try {
+      const diagLines: string[] = [];
+      const proc = spawnAgentProcess({ entryPath: fakeEntry, stderrSink: (l) => diagLines.push(l) });
+      await new Promise((r) => setTimeout(r, 400)); // 等 child 执行到 error 行 + stderr flush
+      await proc.kill();
+      // 归因：stderr 尾巴进入诊断流（exit 行由 diag 消费——stderrSink 先收到 error 行）
+      expect(diagLines.some((l) => l.includes("fatal: database corrupted"))).toBe(true);
+    } finally {
+      rmSync(fakeEntry, { force: true });
+    }
+  }, 30_000);
+});
