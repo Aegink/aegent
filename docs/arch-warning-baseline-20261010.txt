@@ -1,0 +1,198 @@
+# arch check warning 基线（T0-3，2026-10-10，HEAD 于 T0-3 提交点）
+# 口径：node tools/architecture-check.mjs 全量输出；共 192 warning / 0 error。
+# 构成：原基线 42 条（kernel managed=false 时代的存量记档）+ kernel.requires 清空后的存量出边债务 150 条（T0-2 治理动作——kernel 全部跨域 import 记档为待清债务，随批 1~5 向 core 迁移逐条消减）。
+# 规则：后续任务 warning 不得超过本清单条数（新增 warning 必须同任务内消减）；清单随阶段闸重新生成。
+
+[warn] [maxFileLines] src/cli/cli.test.ts 1108 行 > 上限 400（模块 cli）
+[warn] [maxFileLines] src/cli/repl.ts 458 行 > 上限 400（模块 cli）
+[warn] [requires] src/cli/replay.ts import src/obs/replay.ts（模块 obs）——未在模块 cli 的 requires 白名单声明
+[warn] [requires] src/cli/sync.ts import src/sync/coordinator.ts（模块 sync）——未在模块 cli 的 requires 白名单声明
+[warn] [requires] src/cli/sync.ts import src/sync/merge.ts（模块 sync）——未在模块 cli 的 requires 白名单声明
+[warn] [requires] src/cli/sync.ts import src/sync/store.ts（模块 sync）——未在模块 cli 的 requires 白名单声明
+[warn] [requires] src/cli/sync.ts import src/host/webdav-transfer.ts（模块 host）——未在模块 cli 的 requires 白名单声明
+[warn] [maxFileLines] src/context/compaction.test.ts 992 行 > 上限 400（模块 context）
+[warn] [maxFileLines] src/context/compaction.ts 664 行 > 上限 400（模块 context）
+[warn] [requires] src/kernel/agent-child-config.ts import src/policy/rule-loader.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-child-config.ts import src/session/settings.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-child-config.ts import src/session/subagents-config.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [maxFileLines] src/kernel/agent-child.ts 753 行 > 上限 400（模块 kernel）
+[warn] [requires] src/kernel/agent-child.ts import src/session/session-id.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-child.ts import src/session/settings.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-child.ts import src/session/credentials.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-child.ts import src/models/config.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-child.ts import src/models/openai-compat.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-child.ts import src/models/auth.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-child.ts import src/models/google-generate.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-child.ts import src/models/anthropic-messages.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-child.ts import src/models/retry.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-child.ts import src/sandbox/backend.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-child.ts import src/attachments/store.ts（模块 attachments）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-child.ts import src/session/settings.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [maxFileLines] src/kernel/agent-process.test.ts 1346 行 > 上限 400（模块 kernel）
+[warn] [maxFileLines] src/kernel/agent-process.ts 2034 行 > 上限 400（模块 kernel）
+[warn] [requires] src/kernel/agent-process.ts import src/attachments/limits.ts（模块 attachments）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-process.ts import src/attachments/store.ts（模块 attachments）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-process.ts import src/attachments/types.ts（模块 attachments）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-process.ts import src/attachments/store.ts（模块 attachments）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-process.ts import src/attachments/offload.ts（模块 attachments）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-process.ts import src/session/messages.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-process.ts import src/session/reference.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-process.ts import src/policy/protected-paths.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-process.ts import src/models/retry.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-process.ts import src/policy/pending.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-process.ts import src/models/provider.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-process.ts import src/models/identity.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-process.ts import src/session/store.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-process.ts import src/session/session-id.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-process.ts import src/session/project.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-process.ts import src/session/boot-maintenance.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-process.ts import src/policy/gate.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-process.ts import src/scheduler/browser.ts（模块 scheduler）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-process.ts import src/scheduler/browser-panel.ts（模块 scheduler）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-process.ts import src/scheduler/computer.ts（模块 scheduler）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-process.ts import src/scheduler/computer-win32.ts（模块 scheduler）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-process.ts import src/mcp/registry-bridge.ts（模块 mcp）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-process.ts import src/session/settings.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [maxFileLines] src/kernel/agent-protocol.ts 1095 行 > 上限 400（模块 kernel）
+[warn] [requires] src/kernel/agent-protocol.ts import src/attachments/types.ts（模块 attachments）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/agent-protocol.ts import src/session/reference.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [maxFileLines] src/kernel/assembly.ts 1361 行 > 上限 400（模块 kernel）
+[warn] [requires] src/kernel/assembly.ts import src/context/prefix-anchor.ts（模块 context）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/sandbox/network.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/sandbox/containment.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/sandbox/workspace-sid.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/session/store.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/session/revert.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/session/git-checkpoint.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/session/messages.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/context/compaction.ts（模块 context）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/context/new-window.ts（模块 context）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/context/pressure.ts（模块 context）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/context/overflow.ts（模块 context）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/context/rapid-refill.ts（模块 context）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/context/window.ts（模块 context）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/context/time-reminder.ts（模块 context）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/context/budget.ts（模块 context）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/context/system-prompt.ts（模块 context）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/session/persona.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/policy/pending.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/policy/broker.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/policy/chain.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/policy/rules.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/policy/rule-loader.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/policy/matchers.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/policy/shell-semantics.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/policy/intersect.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/policy/linter.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/policy/review-decision.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/policy/gate.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/policy/audit-fields.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/policy/meta-ops.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/sandbox/path-guard.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/models/identity.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/context/llm-summarizer.ts（模块 context）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/policy/judge.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/policy/judge-port.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/assembly.ts import src/context/llm-summarizer.ts（模块 context）——未在模块 kernel 的 requires 白名单声明
+[warn] [maxFileLines] src/kernel/events.ts 935 行 > 上限 400（模块 kernel）
+[warn] [requires] src/kernel/events.ts import src/attachments/types.ts（模块 attachments）——未在模块 kernel 的 requires 白名单声明
+[warn] [maxFileLines] src/kernel/hooks.test.ts 455 行 > 上限 400（模块 kernel）
+[warn] [requires] src/kernel/jobs.ts import src/session/epoch.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [maxFileLines] src/kernel/loop.test.ts 1446 行 > 上限 400（模块 kernel）
+[warn] [maxFileLines] src/kernel/loop.ts 1644 行 > 上限 400（模块 kernel）
+[warn] [requires] src/kernel/loop.ts import src/models/identity.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/loop.ts import src/models/retry.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/loop.ts import src/models/provider.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/loop.ts import src/attachments/types.ts（模块 attachments）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/loop.ts import src/attachments/store.ts（模块 attachments）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/loop.ts import src/session/messages.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/loop.ts import src/session/reference.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/loop.ts import src/session/project.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/loop.ts import src/session/store.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/loop.ts import src/context/prefix-anchor.ts（模块 context）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/loop.ts import src/context/result-trim.ts（模块 context）——未在模块 kernel 的 requires 白名单声明
+[warn] [maxFileLines] src/kernel/model-switch.test.ts 874 行 > 上限 400（模块 kernel）
+[warn] [requires] src/kernel/model-switch.ts import src/models/identity.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/model-switch.ts import src/models/provider.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [maxFileLines] src/kernel/plan-mode.test.ts 404 行 > 上限 400（模块 kernel）
+[warn] [requires] src/kernel/plugin-contributions.ts import src/session/settings.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/plugin-loader.ts import src/mcp/plugin-sdk.ts（模块 mcp）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/plugin-loader.ts import src/mcp/ws-plugin.ts（模块 mcp）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/plugin-loader.ts import src/session/settings.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [maxFileLines] src/kernel/plugin-manifest-contributes.ts 545 行 > 上限 400（模块 kernel）
+[warn] [requires] src/kernel/prompt-polish.ts import src/models/identity.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/prompt-polish.ts import src/models/provider.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/queue.ts import src/attachments/types.ts（模块 attachments）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/session-config.ts import src/sandbox/backend.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/side-query.ts import src/models/identity.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/side-query.ts import src/models/provider.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/side-query.ts import src/models/provider.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/side-query.ts import src/models/retry.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/stream-recovery.ts import src/models/provider.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/stream-recovery.ts import src/models/retry.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [maxFileLines] src/kernel/subagent.ts 643 行 > 上限 400（模块 kernel）
+[warn] [requires] src/kernel/subagent.ts import src/models/identity.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/subagent.ts import src/models/provider.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/subagent.ts import src/session/subagents-config.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/subagent.ts import src/policy/broker.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/subagent.ts import src/policy/subagent-rules.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/subagent.ts import src/policy/rule-loader.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/subagent.ts import src/session/store.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/subagent.ts import src/session/project.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [maxFileLines] src/kernel/tools/builtin/apply-patch.ts 592 行 > 上限 400（模块 kernel）
+[warn] [requires] src/kernel/tools/builtin/apply-patch.ts import src/sandbox/path-guard.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/apply-patch.ts import src/policy/read-gate.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/bash.ts import src/policy/shell-semantics.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/bash.ts import src/sandbox/path-guard.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/bash.ts import src/sandbox/escalation.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/bash.ts import src/sandbox/backend.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/bash.ts import src/sandbox/backend.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/bash.ts import src/policy/pending.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [maxFileLines] src/kernel/tools/builtin/batch1-tools.test.ts 969 行 > 上限 400（模块 kernel）
+[warn] [maxFileLines] src/kernel/tools/builtin/builtin.test.ts 1073 行 > 上限 400（模块 kernel）
+[warn] [requires] src/kernel/tools/builtin/edit.ts import src/sandbox/path-guard.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/edit.ts import src/policy/read-gate.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [maxFileLines] src/kernel/tools/builtin/index.ts 416 行 > 上限 400（模块 kernel）
+[warn] [requires] src/kernel/tools/builtin/index.ts import src/sandbox/path-guard.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/index.ts import src/sandbox/backend.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/index.ts import src/policy/pending.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/index.ts import src/sandbox/network.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/index.ts import src/attachments/store.ts（模块 attachments）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/index.ts import src/sandbox/network.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/lsp.ts import src/sandbox/path-guard.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/lsp.ts import src/lsp/client.ts（模块 lsp）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/notebook-edit.ts import src/sandbox/path-guard.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/plugin-define.ts import src/mcp/plugin-sdk.ts（模块 mcp）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/pwsh.ts import src/policy/shell-semantics.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/pwsh.ts import src/sandbox/path-guard.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/pwsh.ts import src/sandbox/backend.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/question.ts import src/policy/pending.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/question.ts import src/policy/pending.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/question.ts import src/policy/decision.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/read.ts import src/sandbox/path-guard.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/session-query.ts import src/session/query.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/session-query.ts import src/session/db.ts（模块 session）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/skill.ts import src/sandbox/path-guard.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [maxFileLines] src/kernel/tools/builtin/task.test.ts 607 行 > 上限 400（模块 kernel）
+[warn] [requires] src/kernel/tools/builtin/view-image.ts import src/attachments/store.ts（模块 attachments）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/view-image.ts import src/sandbox/path-guard.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/web-search.ts import src/sandbox/network.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/web-search.ts import src/sandbox/network.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [maxFileLines] src/kernel/tools/builtin/webfetch.ts 416 行 > 上限 400（模块 kernel）
+[warn] [requires] src/kernel/tools/builtin/webfetch.ts import src/sandbox/network.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/webfetch.ts import src/sandbox/network.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/write.ts import src/sandbox/path-guard.ts（模块 sandbox）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/builtin/write.ts import src/policy/read-gate.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [requires] src/kernel/tools/context.ts import src/policy/read-gate.ts（模块 policy）——未在模块 kernel 的 requires 白名单声明
+[warn] [maxFileLines] src/kernel/tools/env.ts 431 行 > 上限 400（模块 kernel）
+[warn] [maxFileLines] src/kernel/tools/registry.ts 451 行 > 上限 400（模块 kernel）
+[warn] [requires] src/kernel/tools/registry.ts import src/models/provider.ts（模块 models）——未在模块 kernel 的 requires 白名单声明
+[warn] [maxFileLines] src/models/anthropic-messages.ts 467 行 > 上限 400（模块 models）
+[warn] [maxFileLines] src/policy/gate.test.ts 1159 行 > 上限 400（模块 policy）
+[warn] [maxFileLines] src/policy/gate.ts 433 行 > 上限 400（模块 policy）
+[warn] [maxFileLines] src/policy/shell-semantics.ts 463 行 > 上限 400（模块 policy）
+[warn] [maxFileLines] src/session/project.ts 851 行 > 上限 400（模块 session）
+[warn] [maxFileLines] src/session/settings.test.ts 722 行 > 上限 400（模块 session）
+[warn] [maxFileLines] src/session/settings.ts 2081 行 > 上限 400（模块 session）
+[warn] [cycle] 模块依赖环：attachments -> context -> diagnostics -> host -> kernel -> lsp -> mcp -> models -> obs -> policy -> sandbox -> scheduler -> session -> attachments（含存量域——渐进收紧路线）
+architecture:check —— 0 error / 192 warning
