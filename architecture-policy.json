@@ -460,6 +460,10 @@
   },
   "exceptions": [
     {
+      "path": "plugins/tools-builtin/bash.ts",
+      "reason": "T6-4 搬迁记档（2026-10-10）：bash 工具 402 行（真机 shell 语义/沙箱/重试护栏装配面）——超限 2 行；拆分列 T8 候选，届时删本豁免。"
+    },
+    {
       "path": "plugins/tools-builtin/apply-patch.ts",
       "reason": "T6-3 搬迁记档（2026-10-10）：apply_patch 工具 594 行（补丁解析/应用/校验一体——算法内聚面）；拆分列 T8 候选（按 parse/apply/verify 三段），届时删本豁免。"
     },

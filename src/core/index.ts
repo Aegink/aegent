@@ -28,3 +28,6 @@ export { createLoop, registerLoopImplementation, type LoopImplementation } from 
 export { installConsoleRedirect } from "./primitives/process/console-redirect.js";
 export { ToolRegistry } from "./primitives/tools/registry.js";
 export { WriteQueue } from "./primitives/tools/write-queue.js";
+export { BackgroundShellRegistry } from "./primitives/tools/background-shell.js";
+export * from "./primitives/tools/shell-output.js";
+export * from "./primitives/tools/bash-retry-guard.js";
