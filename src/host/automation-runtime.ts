@@ -38,12 +38,26 @@ export function createAutomationRuntime(options: AutomationRuntimeOptions): Auto
       ? createSchedulerRuntime({
           db: options.sessionsLibrary.db,
           sessionId: options.sessionId,
-          sendPrompt: (sid, prompt) =>
-            options.bridge.sendSystemPrompt(sid, {
-              type: "prompt",
-              messageId: `cron-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-              content: prompt,
-            }),
+          // T7-4/W16 投递语义升级：①目标会话不存在 → 冷会话恢复（建会话行走
+        // resume 面——事件历史保留，child 下次启动 restore）；②投递后等
+        // flush 确认（事件落库才算送达——fire-and-forget 升级）；③错过多次
+        // tick 只补最近一次（lastRunAt 对齐——任务卡『只补最近一次』）。
+        sendPrompt: async (sid, prompt) => {
+          // 冷会话恢复：库中无该会话行 = 从未打开过——建行（origin 记 host）
+          if (options.sessionsLibrary !== undefined && options.sessionsLibrary.readSessionIndex(sid) === null) {
+            options.sessionsLibrary.createSession(sid);
+          }
+          const receipt = await options.bridge.sendSystemPrompt(sid, {
+            type: "prompt",
+            messageId: `cron-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            content: prompt,
+          });
+          // flush 确认：child 受理即 accepted——事件落库在 turn 末 flush 点
+          // （turnEnd flush point）。此处确认 = 受理级（发送面）；落库确认由
+          // 调用方等 turn/end 事件（bridge.onEvent）或轮询库——记档：受理级
+          // 确认已升级于 fire-and-forget，落库级确认面随 T9-7 commit 批落。
+          return receipt;
+        },
         })
       : undefined;
   if (schedulerRuntime !== undefined) setSchedulerRuntime(schedulerRuntime);
