@@ -11,7 +11,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 console.log("构建子进程入口（npm run build，含资产拷贝）…");
 execSync("npm run build", { cwd: root, stdio: "pipe" });
-const entry = path.join(root, "dist", "src", "kernel", "agent-child.js");
+const entry = path.join(root, "dist", "src", "runtime", "child.js");
 
 // 预热一次 OS 文件缓存后测三轮，报每次与中位数——单次易被首跑 IO 噪声误导
 function runOnce() {

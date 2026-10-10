@@ -2,7 +2,7 @@
 /**
  * aegent CLI 入口（K1，T-8-01）——`node dist/src/cli/index.js [--smoke] [子进程参数]`。
  *
- * 本文件是壳：连接生产（spawnAgentProcess → dist/src/kernel/agent-child.js）、
+ * 本文件是壳：连接生产（spawnAgentProcess → dist/src/runtime/child.js）、
  * 输入（stdin 行流：管道喂入 = --smoke 脚本化会话；TTY = 交互 REPL）、输出
  * （stdout）。逻辑在 repl.ts（runCli，测试经内存桥直连）。
  *
@@ -25,7 +25,7 @@ import { runSyncCommand } from "./sync.js";
 import { runCli } from "./repl.js";
 import { attachReverseSearch } from "./editor.js";
 
-/** 编译产物旁的子进程入口（dist/src/cli/index.js → dist/src/kernel/agent-child.js）。 */
+/** 编译产物旁的子进程入口（dist/src/cli/index.js → dist/src/runtime/child.js）。 */
 export function defaultChildEntryPath(): string {
   return path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),

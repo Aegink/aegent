@@ -22,6 +22,7 @@
       "managed": true,
       "requires": [
         "core",
+        "kernel",
         "ext-builtin",
         "plugins",
         "attachments",

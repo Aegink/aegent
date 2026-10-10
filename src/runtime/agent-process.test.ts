@@ -6,14 +6,14 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { decodeMessage, type AgentMessage } from "./agent-protocol.js";
-import { runAgentChildStdio, spawnAgentProcess } from "./agent-process.js";
+import { decodeMessage, type AgentMessage } from "../kernel/agent-protocol.js";
+import { runAgentChildStdio, spawnAgentProcess } from "../runtime/agent-process.js";
 import { InMemoryAttachmentStore } from "../attachments/store.js";
 import { drainUntil, recvWithTimeout } from "../test-support/event-asserts.js";
 import { createStrictPump } from "../test-support/event-pump.js";
 import type { ModelProvider } from "../models/provider.js";
 const root = fileURLToPath(new URL("../..", import.meta.url));
-const entryPath = path.join(root, "dist", "src", "kernel", "agent-child.js");
+const entryPath = path.join(root, "dist", "src", "runtime", "child.js");
 
 describe("agent-process —— T9 agent 出进程", () => {
   beforeAll(() => {
@@ -868,10 +868,10 @@ describe("config/refresh 协议链（B21/T-P1-63）", () => {
 
 import { findInterruptedTurn, reconcileBootState } from "../session/boot-maintenance.js";
 import { InMemoryEventStorage } from "../session/store.js";
-import type { NewSessionEvent } from "./events.js";
-import type { AgentChildOptions } from "./agent-process.js";
+import type { NewSessionEvent } from "../kernel/events.js";
+import type { AgentChildOptions } from "../runtime/agent-process.js";
 import type { ChatRequest } from "../models/provider.js";
-import type { SessionEvent } from "./events.js";
+import type { SessionEvent } from "../kernel/events.js";
 
 describe("session/resume（M3/T-P1-86）", () => {
   const letSeq = (start: number, events: NewSessionEvent[]): SessionEvent[] =>
@@ -1347,7 +1347,7 @@ process.stdin.on("data", (c) => {
 describe("EP-9 协议版本握手（T1-3）", () => {
   it("版本不匹配：父侧类型化拒绝（PROTOCOL_VERSION_MISMATCH）→ error 行 + 流结束 + 进程被杀", async () => {
     // 假子进程入口：声明错误版本后挂住（不进业务循环）——真 spawn、真管道
-    const fakeEntry = path.join(root, "dist", "src", "kernel", "_tmp_fake_child_t13.js");
+    const fakeEntry = path.join(root, "dist", "src", "runtime", "_tmp_fake_child_t13.js");
     writeFileSync(
       fakeEntry,
       [
@@ -1375,7 +1375,7 @@ describe("EP-9 协议版本握手（T1-3）", () => {
   }, 30_000);
 
   it("首帧缺失（旧版子进程不发 hello）：同样类型化拒绝，不降级兼容", async () => {
-    const fakeEntry = path.join(root, "dist", "src", "kernel", "_tmp_fake_child_t13b.js");
+    const fakeEntry = path.join(root, "dist", "src", "runtime", "_tmp_fake_child_t13b.js");
     writeFileSync(
       fakeEntry,
       [

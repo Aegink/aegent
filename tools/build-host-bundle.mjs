@@ -9,7 +9,7 @@
  *   node.exe（当前 node 运行时原样拷贝）
  *   host.cjs（esbuild CJS bundle：dist/src/host/server.js——bin 守卫经
  *     import.meta.url shim 原生成立；唯一 external = better-sqlite3）
- *   agent-child.cjs（同款 bundle：dist/src/kernel/agent-child.js——壳/
+ *   agent-child.cjs（同款 bundle：dist/src/runtime/child.js——壳/
  *     便携运行器经 --agent-entry 传给 host）
  *   node_modules/better-sqlite3（原生模块解引用拷贝）
  *   ui/（静态资产——Tauri 壳与便携 node 模式共用）
@@ -43,7 +43,7 @@ const du = (p) => {
 const mb = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 
 // 1) tsc 产物必须先在位（npm run build 先行——脚本只做打包与布局）
-for (const rel of ["dist/src/host/server.js", "dist/src/kernel/agent-child.js"]) {
+for (const rel of ["dist/src/host/server.js", "dist/src/runtime/child.js"]) {
   if (!existsSync(path.join(repoRoot, rel))) {
     console.error(`缺 ${rel}——先跑 npm run build`);
     process.exit(1);
@@ -74,7 +74,7 @@ const bundle = (entry, outfile) => {
   );
 };
 bundle("dist/src/host/server.js", "host.cjs");
-bundle("dist/src/kernel/agent-child.js", "agent-child.cjs");
+bundle("dist/src/runtime/child.js", "agent-child.cjs");
 // T-P3-174 批次 6 G1：本地转写 worker（host spawn 的独立入口——原生件 external）
 bundle("dist/src/host/local-stt-worker.js", "local-stt-worker.cjs");
 // C4：ACP echo agent 独立入口（子代理 acp 后端 spawn 的外部 agent 进程——
