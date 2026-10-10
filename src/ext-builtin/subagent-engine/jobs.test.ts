@@ -160,7 +160,7 @@ describe("T7-5 jobs owner 会话隔离（dsh §13）", () => {
     const { JobRegistry } = await import("./jobs.js");
     const registry = new JobRegistry({ ownerFilter: "session-A" });
     registry.start({ kind: "task", ownerSessionId: "session-A", run: async () => {} });
-    registry.start({ kind: "cron", run: async () => {} }); // host 面作业（无 owner）
+    registry.start({ kind: "cron", hostOwned: true, run: async () => {} }); // host 面作业（显式声明）
     let threw = false;
     try {
       registry.start({ kind: "smuggled", run: async () => {} }); // owner 域缺 owner = fail-closed

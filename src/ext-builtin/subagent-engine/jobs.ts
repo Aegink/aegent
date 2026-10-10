@@ -61,6 +61,8 @@ export interface JobSpec {
    * （webhook/cron 注册表不挂会话）。
    */
   ownerSessionId?: string;
+  /** T7-5：host 面作业标记（owner 过滤域下无 owner 的 host 作业显式声明）。 */
+  hostOwned?: boolean;
 }
 
 export class UnknownJobError extends Error {
@@ -72,6 +74,7 @@ export class UnknownJobError extends Error {
 
 interface JobRecord {
   /** T7-5：作业属启动它的会话（owner 维度——跨会话不可见）。 */
+  hostOwned?: boolean;
   ownerSessionId?: string;
   view: JobView;
   ring: JobChunk[];
