@@ -2,6 +2,8 @@
 # 口径：node tools/architecture-check.mjs 全量输出；共 192 warning / 0 error。
 # 构成：原基线 42 条（kernel managed=false 时代的存量记档）+ kernel.requires 清空后的存量出边债务 150 条（T0-2 治理动作——kernel 全部跨域 import 记档为待清债务，随批 1~5 向 core 迁移逐条消减）。
 # 规则：后续任务 warning 不得超过本清单条数（新增 warning 必须同任务内消减）；清单随阶段闸重新生成。
+# T0-4 口径补记：kernel/session/models 三域 publicEntrypoints 激活（清单=现状被跨域 import 文件全集反推，
+# 零新增 warning）；maxContractLines(300)/maxPublicMethods(12) 契约面双规则上线（现状零触发——tools/contract.ts 63 行 1 方法）。
 
 [warn] [maxFileLines] src/cli/cli.test.ts 1108 行 > 上限 400（模块 cli）
 [warn] [maxFileLines] src/cli/repl.ts 458 行 > 上限 400（模块 cli）

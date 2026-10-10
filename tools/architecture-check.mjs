@@ -129,6 +129,53 @@ const isTestFile = (f) => {
   return base.endsWith(".test.ts") || base.endsWith(".test-utils.ts");
 };
 
+/**
+ * 契约公开方法计数（T0-4，zcode maxPublicMethods 同语义）。
+ * 实现记档：原计划照抄 zcode 的 typescript AST 实现，但本仓 node_modules/typescript
+ * 已是 7.x 原生包（lib/ 只剩 getExePath，JS API 面移入 unstable/* 且形状未定）——
+ * 故按同语义零依赖实现：数 interface/class 体内的方法签名 / 方法实现 / 调用签名行
+ * （与 AST 版一致只数声明体直接成员；嵌套类型成员不计）。契约文件受本仓风格约束
+ * （成员一行一个签名、interface/class 声明单行），误判面可忽略。
+ */
+export function countPublicMethods(source) {
+  const SIG = /^\s*(?:export\s+)?(?:readonly\s+)?(?:async\s+)?(?:[A-Za-z_$][\w$]*\s*(?:<[^<>]*>)?\s*)?\(/;
+  const DECL = /^\s*(?:export\s+)?(?:declare\s+)?(?:default\s+)?(?:abstract\s+)?(?:interface|class)\s/;
+  let count = 0;
+  let depth = 0;
+  const scopeStack = []; // 各层 interface/class 的体 depth（该层直接成员行所处的深度）
+  const lines = source.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    line = line.replace(/\/\/.*$/, "").replace(/\/\*.*?\*\//g, "").replace(/(["'`]).*?\1/g, '""');
+    if (line.includes("/*")) {
+      // 跨行块注释：终点前整段忽略，终点行余部并入本行继续处理
+      let merged = line.slice(0, line.indexOf("/*"));
+      let j = i + 1;
+      for (; j < lines.length; j++) {
+        if (lines[j].includes("*/")) { merged += lines[j].slice(lines[j].indexOf("*/") + 2); break; }
+      }
+      line = merged;
+      i = j;
+    }
+    // 成员判定在括号循环前：方法实现行自带的 `{` 会使行后 depth 已下潜一层
+    if (
+      scopeStack.length > 0 &&
+      depth === scopeStack[scopeStack.length - 1] &&
+      SIG.test(line) &&
+      /[;{]\s*$/.test(line.trim())
+    ) {
+      count += 1;
+    }
+    for (const ch of line) {
+      if (ch === "{" || ch === "(" || ch === "[") depth++;
+      else if (ch === "}" || ch === ")" || ch === "]") depth--;
+    }
+    if (DECL.test(line) && line.includes("{")) scopeStack.push(depth);
+    while (scopeStack.length > 0 && depth < scopeStack[scopeStack.length - 1]) scopeStack.pop();
+  }
+  return count;
+}
+
 // ---------------------------------------------------------------------------
 // 环检测（模块级 DFS）
 // ---------------------------------------------------------------------------
@@ -220,6 +267,19 @@ export function checkArchitecture(policy, opts = {}) {
       const lines = fs.readFileSync(file, "utf8").split("\n").length;
       if (lines > maxLines) {
         fail(managed, `[maxFileLines] ${rel(file)} ${lines} 行 > 上限 ${maxLines}（模块 ${fromId}）`);
+      }
+      // 契约面双规则（T0-4，zcode 形状）：contract.* 文件行数上限；
+      // contract.ts 公开方法上限——契约面膨胀直接违规
+      const maxContract = policy.global?.maxContractLines ?? 300;
+      const maxMethods = policy.global?.maxPublicMethods ?? 12;
+      if (path.basename(file).startsWith("contract.") && lines > maxContract) {
+        fail(managed, `[maxContractLines] ${rel(file)} 契约 ${lines} 行 > 上限 ${maxContract}（模块 ${fromId}）`);
+      }
+      if (path.basename(file) === "contract.ts") {
+        const methods = countPublicMethods(fs.readFileSync(file, "utf8"));
+        if (methods > maxMethods) {
+          fail(managed, `[maxPublicMethods] ${rel(file)} 契约公开方法 ${methods} > 上限 ${maxMethods}（模块 ${fromId}）`);
+        }
       }
     }
 

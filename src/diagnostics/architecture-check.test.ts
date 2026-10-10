@@ -100,6 +100,30 @@ describe("architecture-check 检查器", () => {
     expect(check(noEntries, { repoRoot: root }).errors).toHaveLength(0);
   });
 
+  it("maxContractLines：contract.* 文件行数超限违规；managed 决定 error/warning", () => {
+    const big = "export const x = 1;\n".repeat(310);
+    writeModule({
+      "src/a/contract.api.ts": big,
+      "src/b/contract.api.ts": big,
+    });
+    const r = check(policyOf(twoModules()), { repoRoot: root });
+    expect(r.errors.some((e) => /\[maxContractLines\].*src\/a\/contract\.api\.ts/.test(e))).toBe(true);
+    expect(r.warnings.some((w) => /\[maxContractLines\].*src\/b\/contract\.api\.ts/.test(w))).toBe(true);
+  });
+
+  it("maxPublicMethods：contract.ts 公开方法超上限违规", () => {
+    const methods = Array.from({ length: 13 }, (_, i) => `  m${i}(): void;`).join("\n");
+    writeModule({
+      "src/a/contract.ts": `export interface Big {\n${methods}\n}\n`,
+    });
+    const r = check(policyOf(twoModules()), { repoRoot: root });
+    expect(r.errors.some((e) => /\[maxPublicMethods\].*src\/a\/contract\.ts/.test(e))).toBe(true);
+    // 12 个方法 = 恰在上限内 → 无违规
+    const ok = Array.from({ length: 12 }, (_, i) => `  m${i}(): void;`).join("\n");
+    writeModule({ "src/a/contract.ts": `export interface Ok {\n${ok}\n}\n` });
+    expect(check(policyOf(twoModules()), { repoRoot: root }).errors).toHaveLength(0);
+  });
+
   it("环检测：模块互依成环；全 managed 环是 error，含存量域是 warning", () => {
     writeModule({
       "src/a/index.ts": `import { b } from "../b/index.js";\nexport const a = b;\n`,

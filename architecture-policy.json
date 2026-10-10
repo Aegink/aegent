@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "comment": "架构即代码策略（T1/T-P1-121；T0-2 内核重构治理扩展）。规则语义见 tools/architecture-check.mjs 头注。渐进采用：managed=false 的存量域违规降级为警告（首次全量跑的警告清单即收紧路线基线）；managed=true 域硬失败。requires 白名单首轮从现状 import 反推（现状即事实——先声明后收紧：新增未声明依赖即违规）。publicEntrypoints 缺省为空 = 该域深导入检查未激活（随入口收敛逐域补）。T0-2（内核重构批 0/W1）：新增 core（managed:true 硬约束 + requires:[] + publicEntrypoints，零跨域出边是本重构的达成交付物）/ runtime（批 5 装配搬入，requires 按『可预见装配面』预声明：core + ext-builtin/plugins + 装配线各业务域；不含 host/acp/cli——host→runtime 单向、acp/cli 为前端面）/ ext-builtin（批 4 三内置扩展包搬入，requires=core+过渡期 mcp/policy/session，批 4 后收紧）/ plugins（批 6 内置工具搬入，requires=core+工具现状跨域）；kernel 过渡期保留 managed:false 但 requires 收紧为 []——kernel 全部存量出边记档为警告债务，新增依赖即告警，配合向 core 迁移直至 kernel 域清空删除。",
+  "comment": "架构即代码策略（T1/T-P1-121；T0-2 内核重构治理扩展；T0-4 深导入激活 + 契约面双规则）。规则语义见 tools/architecture-check.mjs 头注。渐进采用：managed=false 的存量域违规降级为警告（首次全量跑的警告清单即收紧路线基线）；managed=true 域硬失败。requires 白名单首轮从现状 import 反推（现状即事实——先声明后收紧：新增未声明依赖即违规）。publicEntrypoints：kernel/session/models 三域清单为 T0-4 现状被跨域 import 的文件全集反推（激活 forbidDeepImports——新文件被深导入即违规，冻结增量；清单随批 1~8 搬迁同步维护，core 单入口 src/core/index.ts 为最终形状）。maxContractLines/maxPublicMethods 为 zcode 形状契约面双规则（contract.* 行数 ≤300；contract.ts 公开方法 ≤12）。T0-2（内核重构批 0/W1）：新增 core（managed:true 硬约束 + requires:[] + publicEntrypoints，零跨域出边是本重构的达成交付物）/ runtime（批 5 装配搬入，requires 按『可预见装配面』预声明：core + ext-builtin/plugins + 装配线各业务域；不含 host/acp/cli——host→runtime 单向、acp/cli 为前端面）/ ext-builtin（批 4 三内置扩展包搬入，requires=core+过渡期 mcp/policy/session，批 4 后收紧）/ plugins（批 6 内置工具搬入，requires=core+工具现状跨域）；kernel 过渡期保留 managed:false 但 requires 收紧为 []——kernel 全部存量出边记档为警告债务，新增依赖即告警，配合向 core 迁移直至 kernel 域清空删除。",
   "modules": [
     {
       "id": "core",
@@ -175,7 +175,33 @@
       ],
       "managed": false,
       "requires": [],
-      "publicEntrypoints": [],
+      "publicEntrypoints": [
+        "src/kernel/events.ts",
+        "src/kernel/agent-protocol.ts",
+        "src/kernel/jobs.ts",
+        "src/kernel/logger.ts",
+        "src/kernel/plugin-manifest.ts",
+        "src/kernel/timeout.ts",
+        "src/kernel/loop.ts",
+        "src/kernel/deadline.ts",
+        "src/kernel/skills.ts",
+        "src/kernel/tools/registry.ts",
+        "src/kernel/tools/env.ts",
+        "src/kernel/agent-process.ts",
+        "src/kernel/chain.ts",
+        "src/kernel/subagent.ts",
+        "src/kernel/tools/builtin/index.ts",
+        "src/kernel/session-config.ts",
+        "src/kernel/plugin-compat.ts",
+        "src/kernel/prompts.ts",
+        "src/kernel/plugin-manifest-contributes.ts",
+        "src/kernel/plugin-contributions.ts",
+        "src/kernel/admission.ts",
+        "src/kernel/plugin-scaffold.ts",
+        "src/kernel/side-query.ts",
+        "src/kernel/hooks.ts",
+        "src/kernel/invariants.ts"
+      ],
       "owner": "wangh"
     },
     {
@@ -212,7 +238,18 @@
       "requires": [
         "kernel"
       ],
-      "publicEntrypoints": [],
+      "publicEntrypoints": [
+        "src/models/provider.ts",
+        "src/models/identity.ts",
+        "src/models/retry.ts",
+        "src/models/config.ts",
+        "src/models/oauth.ts",
+        "src/models/health.ts",
+        "src/models/anthropic-messages.ts",
+        "src/models/google-generate.ts",
+        "src/models/openai-compat.ts",
+        "src/models/auth.ts"
+      ],
       "owner": "wangh"
     },
     {
@@ -279,7 +316,30 @@
         "policy",
         "sandbox"
       ],
-      "publicEntrypoints": [],
+      "publicEntrypoints": [
+        "src/session/settings.ts",
+        "src/session/db.ts",
+        "src/session/store.ts",
+        "src/session/credentials.ts",
+        "src/session/session-id.ts",
+        "src/session/messages.ts",
+        "src/session/project.ts",
+        "src/session/subagents-config.ts",
+        "src/session/query.ts",
+        "src/session/reference.ts",
+        "src/session/owner-port.ts",
+        "src/session/settings-transfer.ts",
+        "src/session/git-checkpoint.ts",
+        "src/session/cleanup.ts",
+        "src/session/collaboration.ts",
+        "src/session/review-changes.ts",
+        "src/session/db-export.ts",
+        "src/session/checkpoint-timeline.ts",
+        "src/session/boot-maintenance.ts",
+        "src/session/revert.ts",
+        "src/session/persona.ts",
+        "src/session/epoch.ts"
+      ],
       "owner": "wangh"
     },
     {
@@ -311,6 +371,8 @@
   ],
   "global": {
     "maxFileLines": 400,
+    "maxContractLines": 300,
+    "maxPublicMethods": 12,
     "forbidCycles": true,
     "forbidDeepImports": true
   },
