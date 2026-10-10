@@ -125,14 +125,16 @@ export class JobRegistry {
    * 执行体的异步失败被注册表接住落 failed，绝不外抛毒化调用方。
    */
   start(spec: JobSpec): string {
-    // T7-5：owner 过滤域下 start 强制 owner（缺 = 混入风险面，fail-closed）
-    if (this.ownerFilter !== undefined && spec.ownerSessionId === undefined) {
-      throw new Error(`job ${spec.kind} 缺 ownerSessionId（owner 过滤域强制——T7-5）`);
+    // T7-5：owner 过滤域下，无 owner 的作业须显式 hostOwned 标记（缺标记 =
+    // 混入风险面，fail-closed）——host 面作业保持可见，拒绝的是静默混入。
+    if (this.ownerFilter !== undefined && spec.ownerSessionId === undefined && spec.hostOwned !== true) {
+      throw new Error(`job ${spec.kind} 缺 ownerSessionId（owner 过滤域下需声明归属或 hostOwned: true——T7-5）`);
     }
     const localId = `${spec.kind}-${++this.counter}`;
     const id = this.epoch ? encodeEpochScopedId(this.epoch, localId) : localId;
     const record: JobRecord = {
       ownerSessionId: spec.ownerSessionId,
+      hostOwned: spec.hostOwned === true,
       view: { id, kind: spec.kind, status: "running", createdAt: this.now(), totalChunks: 0 },
       ring: [],
       ringBytes: 0,
