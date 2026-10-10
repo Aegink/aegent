@@ -45,6 +45,12 @@ export interface CollabRuntimeOptions {
   getPermissionMode?: () => Promise<PermissionMode | undefined>;
   /** 单次执行预算（缺省 10 分钟——目标会话挂死可回收）。 */
   executorTimeoutMs?: number;
+  /**
+   * T5-2/EP-1 宿主会话原语（runtime/registrations/session——createNew 经
+   * 原语创建 + 权限继承宿主侧解析）。缺省 undefined = 走内联旧路径
+   * （零行为变化；EP-1 原语为编排方向盘 T9-1 的前置落点）。
+   */
+  sessionPrimitives?: import("../runtime/registrations/session.js").SessionRegistration;
 }
 
 export interface CollabRuntime {
@@ -58,6 +64,11 @@ export interface CollabRuntime {
      * 项目继承源会话、血统落 session_origins（任务栏"子会话"标志数据源）、
      * 标题秒级可读；targetSessionId 届时仅作占位被替换。 */
     createNew?: boolean;
+    /**
+     * T5-2/EP-1：权限继承源（宿主持锁读该会话档固化——**调用者不能传
+     * mode**）。缺省 = 继承 sourceSessionId。
+     */
+    inheritPermissionFromSessionId?: string;
   }): Promise<string>;
   cancel(collabId: string): boolean;
 }
@@ -159,7 +170,19 @@ export function createCollabRuntime(options: CollabRuntimeOptions): CollabRuntim
       // 不破：service 继续只认已存在目标，"因协作而创建"是装配层的有意例外）。
       let targetSessionId = request.targetSessionId;
       if (request.createNew === true) {
-        targetSessionId = createOrchestrationSession(options, request.sourceSessionId, request.content);
+        // T5-2/EP-1：原语在位走注册面（权限继承宿主侧解析）；缺省走内联旧路径
+        if (options.sessionPrimitives !== undefined) {
+          targetSessionId = (
+            await options.sessionPrimitives.sessionCreate({
+              parentSessionId: request.sourceSessionId,
+              inheritPermissionFromSessionId:
+                request.inheritPermissionFromSessionId ?? request.sourceSessionId,
+              title: `协作：${request.content.split(String.fromCharCode(10))[0]?.slice(0, 40) ?? ""}`,
+            })
+          ).sessionId;
+        } else {
+          targetSessionId = createOrchestrationSession(options, request.sourceSessionId, request.content);
+        }
       }
       const mode = options.getPermissionMode !== undefined ? await options.getPermissionMode() : undefined;
       const collabId = service.dispatch({
