@@ -17,7 +17,7 @@ import { ModelNotRegisteredError, ModelSwitchService } from "../core/primitives/
 import type { ModelIdentity } from "../models/identity.js";
 import type { ModelProvider } from "../models/provider.js";
 import { ToolRegistry } from "../kernel/tools/registry.js";
-import { BUILTIN_TOOL_NAMES, registerBuiltinTools } from "../kernel/tools/builtin/index.js";
+import { BUILTIN_TOOL_NAMES, registerBuiltinTools } from "../../plugins/tools-builtin/index.js";
 import { createNetworkGuard } from "../sandbox/network.js";
 
 const providerStub: ModelProvider = {

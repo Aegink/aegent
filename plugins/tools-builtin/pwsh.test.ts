@@ -2,12 +2,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NodeExecutionEnv } from "./env.js";
-import { createPwshTool } from "./builtin/pwsh.js";
-import { PathGuard } from "../../sandbox/path-guard.js";
-import { isWriteExecuteTool } from "../../policy/protected-paths.js";
-import { BUILTIN_TOOL_NAMES } from "./builtin/index.js";
-import { ToolRegistry } from "./registry.js";
+import { NodeExecutionEnv } from "../../src/core/index.js";
+import { createPwshTool } from "./pwsh.js";
+import { PathGuard } from "../../src/sandbox/path-guard.js";
+import { isWriteExecuteTool } from "../../src/policy/protected-paths.js";
+import { BUILTIN_TOOL_NAMES } from "./index.js";
+import { ToolRegistry } from "../../src/core/index.js";
 
 const tmpDirs: string[] = [];
 afterEach(() => {

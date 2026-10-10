@@ -22,7 +22,7 @@ import {
   doctorReportToJson,
   runRuntimeDoctorChecks,
 } from "../diagnostics/doctor.js";
-import { BUILTIN_TOOL_NAMES } from "../kernel/tools/builtin/index.js";
+import { BUILTIN_TOOL_NAMES } from "../../plugins/tools-builtin/index.js";
 
 /** 双域报告合并（checks 拼接、error/warning 计数求和）。 */
 export function mergeReports(sandbox: DoctorReport, runtime: DoctorReport): DoctorReport {

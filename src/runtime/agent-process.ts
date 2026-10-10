@@ -73,7 +73,7 @@ import {
 import { evaluateToolPolicy } from "../policy/gate.js";
 import { ModelNotRegisteredError } from "../kernel/model-switch.js";
 import { createSubagentRunner } from "../kernel/subagent.js";
-import { registerBuiltinTools } from "../kernel/tools/builtin/index.js";
+import { registerBuiltinTools } from "../../plugins/tools-builtin/index.js";
 import { createBrowserTools } from "../scheduler/browser.js";
 import { connectPanelBrowser, panelDataDir } from "../scheduler/browser-panel.js";
 import { createComputerTools } from "../scheduler/computer.js";

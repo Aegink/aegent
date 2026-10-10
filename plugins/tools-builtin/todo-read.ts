@@ -8,7 +8,7 @@
  * 只读（B17 parallel）。
  */
 
-import { toolError } from "../../src/kernel/tools/builtin/util.js";
+import { toolError } from "./util.js";
 import type { ToolDef } from "../../src/core/index.js";
 
 export interface ProjectionTodo {

@@ -2,14 +2,14 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { ToolRegistry } from "../registry.js";
-import { NodeExecutionEnv } from "../env.js";
-import { PathGuard } from "../../../sandbox/path-guard.js";
-import { seedTextFile } from "../../../test-support/tmp-fs.js";
+import { ToolRegistry } from "../../src/core/index.js";
+import { NodeExecutionEnv } from "../../src/core/index.js";
+import { PathGuard } from "../../src/sandbox/path-guard.js";
+import { seedTextFile } from "../../src/test-support/tmp-fs.js";
 import { registerBuiltinTools } from "./index.js";
-import { ReadGateService } from "../../../policy/read-gate.js";
-import { PendingApprovals } from "../../../policy/pending.js";
-import { createPlanModeService } from "../../plan-mode.js";
+import { ReadGateService } from "../../src/policy/read-gate.js";
+import { PendingApprovals } from "../../src/policy/pending.js";
+import { createPlanModeService } from "../../src/ext-builtin/prompt-defaults/plan-mode.js";
 
 const tmpDirs: string[] = [];
 afterEach(() => {
@@ -384,7 +384,7 @@ describe("内置工具注册入口", () => {
 // ---------------------------------------------------------------------------
 
 import { createServer, type Server } from "node:http";
-import { createNetworkGuard } from "../../../sandbox/network.js";
+import { createNetworkGuard } from "../../src/sandbox/network.js";
 
 /** 起一个真端口 HTTP 服务（返回 body 后关闭由调用方负责）。 */
 function httpServer(body: string, contentType = "text/plain; charset=utf-8"): Promise<{
@@ -735,7 +735,7 @@ describe("bash 沙箱升级（B15/T-P1-58）", () => {
 // ---------------------------------------------------------------------------
 
 describe("C12/C13 · 编辑前必须先读（可选装配）", () => {
-  function readGateTools(dir: string): { registry: ToolRegistry; gate: import("../../../policy/read-gate.js").ReadGateService } {
+  function readGateTools(dir: string): { registry: ToolRegistry; gate: import("../../src/policy/read-gate.js").ReadGateService } {
     const gate = new ReadGateService();
     const registry = new ToolRegistry({ readGate: gate });
     registerBuiltinTools(registry, { pathGuard: PathGuard.forWorkspace(dir) });
@@ -866,11 +866,11 @@ describe("C12/C13 · 编辑前必须先读（可选装配）", () => {
 // Q2/T-P2-105 会话查询工具（session_query / session_get）
 // ---------------------------------------------------------------------------
 
-import { ScriptedProvider } from "../../../core/primitives/loop/loop.test-utils.js";
-import { AgentLoop } from "../../../core/primitives/loop/loop.js";
-import {SessionEventStore, type SessionStore} from "../../../session/store.js";
-import { SqliteEventStorage } from "../../../session/db.js";
-import type { StreamChunk } from "../../events.js";
+import { ScriptedProvider } from "../../src/core/primitives/loop/loop.test-utils.js";
+import { AgentLoop } from "../../src/core/index.js";
+import {SessionEventStore, type SessionStore} from "../../src/session/store.js";
+import { SqliteEventStorage } from "../../src/session/db.js";
+import type { StreamChunk } from "../../src/core/index.js";
 
 async function seedQueryDb(dbPath: string): Promise<void> {
   const storage = SqliteEventStorage.open({ path: dbPath });

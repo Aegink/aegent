@@ -9,14 +9,14 @@
  * 不上抛——注册表错误分层）。
  */
 
-import { PathGuard, PathGuardError } from "../../../sandbox/path-guard.js";
-import type { ToolDef } from "../registry.js";
+import { PathGuard, PathGuardError } from "../../src/sandbox/path-guard.js";
+import type { ToolDef } from "../../src/core/index.js";
 import { toolError } from "./util.js";
 import {
   formatSkillInvocation,
   loadSkillsFromRoots,
   skillBody,
-} from "../../skills.js";
+} from "../../src/ext-builtin/prompt-defaults/skills.js";
 
 export function createSkillLoadTool(options: {
   pathGuard: PathGuard;

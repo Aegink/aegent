@@ -11,21 +11,21 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createServer, type Server } from "node:http";
-import { ToolRegistry } from "../registry.js";
-import { NodeExecutionEnv } from "../env.js";
-import { PathGuard } from "../../../sandbox/path-guard.js";
-import { createNetworkGuard } from "../../../sandbox/network.js";
-import { InMemoryAttachmentStore } from "../../../attachments/store.js";
-import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../../../session/store.js";
-import { ScriptedProvider, makeLoop } from "../../../core/primitives/loop/loop.test-utils.js";
+import { ToolRegistry } from "../../src/core/index.js";
+import { NodeExecutionEnv } from "../../src/core/index.js";
+import { PathGuard } from "../../src/sandbox/path-guard.js";
+import { createNetworkGuard } from "../../src/sandbox/network.js";
+import { InMemoryAttachmentStore } from "../../src/attachments/store.js";
+import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../../src/session/store.js";
+import { ScriptedProvider, makeLoop } from "../../src/core/primitives/loop/loop.test-utils.js";
 import { registerBuiltinTools, builtinToolParamNames } from "./index.js";
-import { BackgroundShellRegistry, MAX_BACKGROUND_TASKS } from "../background-shell.js";
+import { BackgroundShellRegistry, MAX_BACKGROUND_TASKS } from "../../src/core/index.js";
 import {
   formatShellOutput,
   SHELL_BUDGET_BYTES,
   SHELL_BUDGET_LINES,
   MAX_LINE_CHARS,
-} from "../shell-output.js";
+} from "../../src/core/index.js";
 import {
   resetWebfetchCacheForTests,
   rewriteGitHubBlobUrl,

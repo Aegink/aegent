@@ -9,7 +9,7 @@
 
 import type { ToolDef } from "../../src/core/index.js";
 import type { ToolRegistry } from "../../src/core/index.js";
-import { toolError } from "../../src/kernel/tools/builtin/util.js";
+import { toolError } from "./util.js";
 
 export function createToolLoadTool(options: { registry: ToolRegistry }): ToolDef {
   return {

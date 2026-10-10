@@ -15,7 +15,7 @@ import {
   parseSkillFrontmatter,
   skillBody,
 } from "../../kernel/skills.js";
-import { createSkillLoadTool } from "../../kernel/tools/builtin/skill.js";
+import { createSkillLoadTool } from "../../../plugins/tools-builtin/skill.js";
 import { ToolRegistry } from "../../kernel/tools/registry.js";
 import { assembleSystemPrompt } from "../../context/system-prompt.js";
 import { createChildAssembly } from "../../kernel/assembly.js";

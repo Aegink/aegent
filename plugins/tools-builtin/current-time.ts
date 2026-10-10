@@ -4,7 +4,7 @@
  * 零依赖零副作用（连时间都是只读）。
  */
 
-import { toolError } from "../../src/kernel/tools/builtin/util.js";
+import { toolError } from "./util.js";
 import type { ToolDef } from "../../src/core/index.js";
 
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"] as const;

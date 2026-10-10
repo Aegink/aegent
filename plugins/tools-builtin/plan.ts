@@ -15,8 +15,8 @@
  * checkpoint，绝不产生指向不存在文件的引用）。
  */
 
-import type { ToolDef } from "../registry.js";
-import type { PlanModeService } from "../../plan-mode.js";
+import type { ToolDef } from "../../src/core/index.js";
+import type { PlanModeService } from "../../src/ext-builtin/prompt-defaults/plan-mode.js";
 import { toolError } from "./util.js";
 
 export function createPlanEnterTool(options: { planMode: PlanModeService }): ToolDef {

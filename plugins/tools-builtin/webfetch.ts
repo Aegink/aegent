@@ -26,7 +26,7 @@
 import type { NetworkGuard } from "../../src/sandbox/network.js";
 import { NetworkDeniedError, NetworkImdsDeniedError } from "../../src/sandbox/network.js";
 import { TimeoutError } from "../../src/kernel/timeout.js";
-import { toolError } from "../../src/kernel/tools/builtin/util.js";
+import { toolError } from "./util.js";
 import type { ToolDef } from "../../src/core/index.js";
 import type { JsonRecord } from "../../src/kernel/events.js";
 import type { ToolExecutionResult } from "../../src/kernel/loop.js";

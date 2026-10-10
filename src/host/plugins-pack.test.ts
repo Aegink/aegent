@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildStoreZip, collectPluginFiles, packPlugin } from "./plugins-pack.js";
 import { claudeToAegentManifest, discoverManifestPath } from "../kernel/plugin-compat.js";
 import { validateManifest } from "../kernel/plugin-manifest.js";
-import { createPluginDefineTool } from "../kernel/tools/builtin/plugin-define.js";
+import { createPluginDefineTool } from "../../plugins/tools-builtin/plugin-define.js";
 import { ToolRegistry } from "../kernel/tools/registry.js";
 
 const CAPS = ["registerTool", "subscribe", "hooks"];

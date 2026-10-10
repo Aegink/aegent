@@ -19,7 +19,7 @@ import type { AttachmentStore } from "../../src/core/index.js";
 import { PathGuard, PathGuardError } from "../../src/sandbox/path-guard.js";
 import type { ToolDef } from "../../src/core/index.js";
 import type { ToolExecutionResult } from "../../src/kernel/loop.js";
-import { toolError } from "../../src/kernel/tools/builtin/util.js";
+import { toolError } from "./util.js";
 
 /** 图片字节上限（20MB）。 */
 export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;

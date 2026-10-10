@@ -9,17 +9,17 @@
  * 注册条件：装配面在位（agent-process 传 toolRegistry + 动态句柄汇）。
  */
 
-import type { ToolDef } from "../registry.js";
+import type { ToolDef } from "../../src/core/index.js";
 import { toolError } from "./util.js";
-import { loadPlugin, PluginSdkError, type PluginHandle } from "../../../mcp/plugin-sdk.js";
-import { PLUGIN_RUNTIME_CAPABILITIES, registerPluginTools } from "../../../kernel/plugin-loader.js";
-import { PLUGIN_NAME_SHAPE } from "../../plugin-manifest-contributes.js";
+import { loadPlugin, PluginSdkError, type PluginHandle } from "../../src/mcp/plugin-sdk.js";
+import { PLUGIN_RUNTIME_CAPABILITIES, registerPluginTools } from "../../src/kernel/plugin-loader.js";
+import { PLUGIN_NAME_SHAPE } from "../../src/ext-builtin/plugin-runtime/plugin-manifest-contributes.js";
 
 /** 动态插件源码上限（256KB——现场定义不是应用分发）。 */
 const MAX_CODE_BYTES = 256 * 1024;
 
 export function createPluginDefineTool(options: {
-  toolRegistry: import("../registry.js").ToolRegistry;
+  toolRegistry: import("../../src/core/index.js").ToolRegistry;
   handles: { dispose(): Promise<void> }[];
 }): ToolDef {
   return {

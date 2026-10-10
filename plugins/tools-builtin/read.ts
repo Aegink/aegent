@@ -14,7 +14,7 @@
 import * as path from "node:path";
 import { PathGuard, PathGuardError } from "../../src/sandbox/path-guard.js";
 import type { ToolDef } from "../../src/core/index.js";
-import { contentHash, toolError } from "../../src/kernel/tools/builtin/util.js";
+import { contentHash, toolError } from "./util.js";
 
 export interface ReadArgs {
   path: string;

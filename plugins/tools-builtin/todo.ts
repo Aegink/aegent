@@ -14,7 +14,7 @@
  */
 
 import type { ToolDef } from "../../src/core/index.js";
-import { toolError } from "../../src/kernel/tools/builtin/util.js";
+import { toolError } from "./util.js";
 
 const TODO_STATUS_VALUES = ["pending", "in_progress", "completed"] as const;
 type TodoStatusValue = (typeof TODO_STATUS_VALUES)[number];

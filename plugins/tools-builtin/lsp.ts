@@ -15,7 +15,7 @@ import { PathGuard, PathGuardError } from "../../src/sandbox/path-guard.js";
 import type { LspClient } from "../../src/lsp/client.js";
 import type { ToolExecutionResult } from "../../src/kernel/loop.js";
 import type { ToolDef } from "../../src/core/index.js";
-import { toolError } from "../../src/kernel/tools/builtin/util.js";
+import { toolError } from "./util.js";
 
 /** LSP 操作闭集（opencode operations 同构，冻结只追加）。 */
 export const LSP_OPERATIONS = [

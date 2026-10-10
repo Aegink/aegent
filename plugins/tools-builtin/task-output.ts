@@ -14,12 +14,12 @@
  * 注册（无后台任务时调用得到类型化错误 + 可用 id 清单，模型可自修）。
  */
 
-import type { ToolDef } from "../registry.js";
-import type { ToolExecutionResult } from "../../loop.js";
-import type { ToolContext } from "../context.js";
-import type { BackgroundOutput } from "../env.js";
-import { BackgroundShellRegistry, type BackgroundTaskRecord } from "../background-shell.js";
-import { formatShellOutput } from "../shell-output.js";
+import type { ToolDef } from "../../src/core/index.js";
+import type { ToolExecutionResult } from "../../src/core/index.js";
+import type { ToolContext } from "../../src/core/index.js";
+import type { BackgroundOutput } from "../../src/core/index.js";
+import { BackgroundShellRegistry, type BackgroundTaskRecord } from "../../src/core/index.js";
+import { formatShellOutput } from "../../src/core/index.js";
 import { toolError } from "./util.js";
 
 const MAX_WAIT_SECONDS = 300;

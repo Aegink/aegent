@@ -34,7 +34,7 @@ import { DenyPermissionBroker } from "../../policy/broker.js";
 import { builtinRuleMatchers } from "../../policy/matchers.js";
 import { loadedRuleMatch, loadedRuleText, loadRules } from "../../policy/rule-loader.js";
 import { createRuleSetModule } from "../../policy/rules.js";
-import { BUILTIN_TOOL_NAMES, registerBuiltinTools } from "../../kernel/tools/builtin/index.js";
+import { BUILTIN_TOOL_NAMES, registerBuiltinTools } from "../../../plugins/tools-builtin/index.js";
 import { ToolRegistry } from "../../kernel/tools/registry.js";
 import { createNetworkGuard } from "../../sandbox/network.js";
 import { PendingApprovals } from "../../policy/pending.js";

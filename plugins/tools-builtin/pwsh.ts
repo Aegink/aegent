@@ -29,7 +29,7 @@ import { SandboxUnavailableError } from "../../src/core/index.js";
 import { isSpawnFailure, markStarted } from "../../src/core/index.js";
 import type { ToolContext } from "../../src/core/index.js";
 import type { ToolDef } from "../../src/core/index.js";
-import { toolError } from "../../src/kernel/tools/builtin/util.js";
+import { toolError } from "./util.js";
 import { MAX_TIMEOUT_SECONDS, toResult } from "./bash.js";
 import type { BashArgs } from "./bash.js";
 import { BackgroundShellRegistry } from "../../src/core/index.js";

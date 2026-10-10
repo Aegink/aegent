@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ToolRegistry, type ToolDef } from "./registry.js";
 import { withTimeout } from "../../skeleton/timeout.js";
-import { createToolLoadTool } from "../../../kernel/tools/builtin/tool-load.js";
+import { createToolLoadTool } from "../../../../plugins/tools-builtin/tool-load.js";
 
 const tmpDirs: string[] = [];
 afterEach(() => {

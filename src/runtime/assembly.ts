@@ -115,7 +115,7 @@ import {
   type PermissionSourceProfile,
 } from "../policy/intersect.js";
 import { lintRules } from "../policy/linter.js";
-import { BUILTIN_TOOL_NAMES, builtinToolParamNames } from "../kernel/tools/builtin/index.js";
+import { BUILTIN_TOOL_NAMES, builtinToolParamNames } from "../../plugins/tools-builtin/index.js";
 import {
   ApprovalScopeCache,
   createSessionApprovalModule,
@@ -377,7 +377,7 @@ export interface ChildAssemblyOptions {
    * 注册到工具面）——agent-process 传 registerBuiltinTools。缺省 undefined
    * = 无持久库的装配无历史查询面（零行为变化）。
    */
-  sessionQuery?: import("../kernel/tools/builtin/session-query.js").SessionQueryToolDeps;
+  sessionQuery?: import("../../plugins/tools-builtin/session-query.js").SessionQueryToolDeps;
   /**
    * U22/T-P3-125 技能面（settings skills 段装配消费）：disabled = 停用名单
    * （loadSkills 过滤——系统提示清单/skill_load/ready 补全三处统一收口）；
@@ -626,7 +626,7 @@ export interface ChildAssembly {
    * 的只读投影——最后一条压力记录 = 最近一次模型调用的已用/窗口；无记录
    * 返回 null 诚实降级）。
    */
-  contextUsage?: () => import("../kernel/tools/builtin/get-context-remaining.js").ContextUsageSnapshot | null;
+  contextUsage?: () => import("../../plugins/tools-builtin/get-context-remaining.js").ContextUsageSnapshot | null;
   /** 工具注册的面（PathGuard 由装配定形，注册处必收）。 */
   pathGuard: PathGuard;
   /** 审批挂起注册表（C2 浏览器工具接线——每导航审批复用同一实例）。 */

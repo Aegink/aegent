@@ -11,7 +11,7 @@
 
 import path from "node:path";
 
-import type { ToolDef } from "../registry.js";
+import type { ToolDef } from "../../src/core/index.js";
 import { toolError } from "./util.js";
 import {
   PLUGIN_TEMPLATE_IDS,
@@ -19,7 +19,7 @@ import {
   scaffoldPlugin,
   upsertDevMarketplace,
   type PluginTemplateId,
-} from "../../plugin-scaffold.js";
+} from "../../src/ext-builtin/plugin-runtime/plugin-scaffold.js";
 
 export function createPluginCreateTool(options: { workspaceRoot: string }): ToolDef {
   return {

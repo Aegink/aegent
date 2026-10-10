@@ -10,9 +10,9 @@
  */
 
 import { toolError } from "./util.js";
-import type { ToolDef } from "../registry.js";
-import type { ToolExecutionResult } from "../../loop.js";
-import type { DelegationSnapshot, DelegationsApi } from "../../subagent.js";
+import type { ToolDef } from "../../src/core/index.js";
+import type { ToolExecutionResult } from "../../src/core/index.js";
+import type { DelegationSnapshot, DelegationsApi } from "../../src/ext-builtin/subagent-engine/subagent.js";
 
 /** 单委托的结算渲染（task_wait 与收敛钩子共用同一形状）。 */
 export function renderDelegationReport(d: DelegationSnapshot): string {

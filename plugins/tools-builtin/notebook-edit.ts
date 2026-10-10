@@ -24,7 +24,7 @@ import { PathGuard, PathGuardError } from "../../src/sandbox/path-guard.js";
 import type { WriteQueue } from "../../src/core/index.js";
 import type { ToolDef } from "../../src/core/index.js";
 import type { ToolExecutionResult } from "../../src/kernel/loop.js";
-import { toolError } from "../../src/kernel/tools/builtin/util.js";
+import { toolError } from "./util.js";
 
 export type NotebookCellType = "code" | "markdown";
 export type NotebookEditMode = "replace" | "insert" | "delete";

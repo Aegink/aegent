@@ -12,7 +12,7 @@ import { ToolRegistry } from "../../src/core/index.js";
 import { createTodoWriteTool } from "./todo.js";
 import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../../src/session/store.js";
 import { project } from "../../src/session/project.js";
-import { registerBuiltinTools } from "../../src/kernel/tools/builtin/index.js";
+import { registerBuiltinTools } from "./index.js";
 
 /** 带 store 落流出口的 registry（生产接线同款：createTodoUpdateEmitter）。 */
 function makeRegistry(store: SessionStore, sessionId = "s0"): ToolRegistry {

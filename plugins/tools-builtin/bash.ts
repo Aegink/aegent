@@ -41,7 +41,7 @@ import { BackgroundShellRegistry } from "../../src/core/index.js";
 import { formatShellOutput } from "../../src/core/index.js";
 import type { ToolContext } from "../../src/core/index.js";
 import type { ToolDef } from "../../src/core/index.js";
-import { toolError } from "../../src/kernel/tools/builtin/util.js";
+import { toolError } from "./util.js";
 
 export interface BashArgs {
   command: string;

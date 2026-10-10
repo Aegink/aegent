@@ -1,7 +1,7 @@
 /** 内置工具共用的小件：可预期失败的统一落法。 */
 
 import { createHash } from "node:crypto";
-import type { ToolExecutionResult } from "../../loop.js";
+import type { ToolExecutionResult } from "../../src/core/index.js";
 
 /**
  * 内置工具的可预期失败（路径不存在、参数坏等）一律返回 isError 结果回喂

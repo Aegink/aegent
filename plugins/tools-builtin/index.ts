@@ -7,15 +7,15 @@
  * 只读且 P0 读面不限，不接守卫（见 path-guard 头注释 LIMITATIONS #5）。
  */
 
-import { PathGuard } from "../../../sandbox/path-guard.js";
-import type { SandboxBackend, SandboxMode } from "../../../core/index.js";
-import { PendingApprovals } from "../../../policy/pending.js";
-import { createNetworkGuard } from "../../../sandbox/network.js";
-import { createPlanModeService } from "../../plan-mode.js";
-import { ToolRegistry } from "../registry.js";
-import { WriteQueue } from "../write-queue.js";
-import { BackgroundShellRegistry } from "../background-shell.js";
-import type { AttachmentStore } from "../../../core/index.js";
+import { PathGuard } from "../../src/sandbox/path-guard.js";
+import type { SandboxBackend, SandboxMode } from "../../src/core/index.js";
+import { PendingApprovals } from "../../src/policy/pending.js";
+import { createNetworkGuard } from "../../src/sandbox/network.js";
+import { createPlanModeService } from "../../src/ext-builtin/prompt-defaults/plan-mode.js";
+import { ToolRegistry } from "../../src/core/index.js";
+import { WriteQueue } from "../../src/core/index.js";
+import { BackgroundShellRegistry } from "../../src/core/index.js";
+import type { AttachmentStore } from "../../src/core/index.js";
 import { createApplyPatchTool } from "./apply-patch.js";
 import { createBashTool } from "./bash.js";
 import { createEditTool } from "./edit.js";
@@ -54,8 +54,8 @@ import { createWebfetchTool } from "./webfetch.js";
 import { createWriteTool } from "./write.js";
 import { createLsTool } from "./ls.js";
 import { createCurrentTimeTool } from "./current-time.js";
-import type { PlanModeService } from "../../plan-mode.js";
-import type { NetworkGuard } from "../../../sandbox/network.js";
+import type { PlanModeService } from "../../src/ext-builtin/prompt-defaults/plan-mode.js";
+import type { NetworkGuard } from "../../src/sandbox/network.js";
 
 
 /** 内置工具名清单（C45 linter 的 unknown-tool 判定缺省面；与
@@ -118,7 +118,7 @@ export function registerBuiltinTools(
      * 进程内插件；缺省不注册——无装配面无动态定义）。
      */
     pluginDefine?: {
-      toolRegistry: import("../registry.js").ToolRegistry;
+      toolRegistry: import("../../src/core/index.js").ToolRegistry;
       handles: { dispose(): Promise<void> }[];
     };
     /** G2 todo 落流出口（装配注入）；缺省不注册 todo_write——没有落流

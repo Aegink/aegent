@@ -4,18 +4,18 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { NewSessionEvent, StreamChunk } from "../../../kernel/events.js";
-import type { RuleSource } from "../../../policy/rule-loader.js";
-import { isWriteExecuteTool } from "../../../policy/protected-paths.js";
-import {SessionEventStore, type SessionStore} from "../../../session/store.js";
-import { project } from "../../../session/project.js";
-import { PathGuard } from "../../../sandbox/path-guard.js";
-import { ToolRegistry } from "../registry.js";
+import type { NewSessionEvent, StreamChunk } from "../../src/kernel/events.js";
+import type { RuleSource } from "../../src/policy/rule-loader.js";
+import { isWriteExecuteTool } from "../../src/policy/protected-paths.js";
+import {SessionEventStore, type SessionStore} from "../../src/session/store.js";
+import { project } from "../../src/session/project.js";
+import { PathGuard } from "../../src/sandbox/path-guard.js";
+import { ToolRegistry } from "../../src/core/index.js";
 import { registerBuiltinTools } from "./index.js";
-import { ScriptedProvider } from "../../../core/primitives/loop/loop.test-utils.js";
-import { AgentLoop } from "../../../core/primitives/loop/loop.js";
-import { createSubagentRunner, SubagentDepthError } from "../../subagent.js";
-import type { ModelIdentity } from "../../../models/identity.js";
+import { ScriptedProvider } from "../../src/core/primitives/loop/loop.test-utils.js";
+import { AgentLoop } from "../../src/core/index.js";
+import { createSubagentRunner, SubagentDepthError } from "../../src/ext-builtin/subagent-engine/subagent.js";
+import type { ModelIdentity } from "../../src/models/identity.js";
 
 const tmpRoots: string[] = [];
 afterEach(() => {

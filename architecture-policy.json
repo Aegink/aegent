@@ -54,7 +54,8 @@
         "models",
         "mcp",
         "policy",
-        "session"
+        "session",
+        "plugins"
       ],
       "publicEntrypoints": [],
       "owner": "kernel"
@@ -75,7 +76,8 @@
         "models",
         "policy",
         "sandbox",
-        "session"
+        "session",
+        "ext-builtin"
       ],
       "publicEntrypoints": [],
       "owner": "kernel"
@@ -459,6 +461,22 @@
     "forbidDeepImports": true
   },
   "exceptions": [
+    {
+      "path": "plugins/tools-builtin/task.test.ts",
+      "reason": "T6-6 搬迁记档（2026-10-10）：task 工具测试 607 行——测试豁免先例。"
+    },
+    {
+      "path": "plugins/tools-builtin/index.ts",
+      "reason": "T6-6 搬迁记档（2026-10-10）：工具清单单一事实源 416 行（39 工具注册+参数名单——BUILTIN_TOOL_NAMES 单源）；拆分破坏单源语义，列 T8 评估。"
+    },
+    {
+      "path": "plugins/tools-builtin/builtin.test.ts",
+      "reason": "T6-6 搬迁记档（2026-10-10）：builtin 聚合测试 1073 行（39 工具全注册回归）——测试豁免先例。"
+    },
+    {
+      "path": "plugins/tools-builtin/batch1-tools.test.ts",
+      "reason": "T6-6 搬迁记档（2026-10-10）：batch1 工具集成测试 969 行——测试豁免先例。"
+    },
     {
       "path": "plugins/tools-builtin/webfetch.ts",
       "reason": "T6-5 搬迁记档（2026-10-10）：webfetch 419 行（URL 校验/协议门/HTML→文本/截断一体——wire 内聚面）；拆分列 T8 候选（按 fetch/convert 两段），届时删本豁免。"

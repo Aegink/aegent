@@ -58,7 +58,7 @@ import type { SessionStore } from "../../session/store.js";
 import { project } from "../../session/project.js";
 import { NodeExecutionEnv } from "../../kernel/tools/env.js";
 import { ToolRegistry } from "../../kernel/tools/registry.js";
-import { registerBuiltinTools } from "../../kernel/tools/builtin/index.js";
+import { registerBuiltinTools } from "../../../plugins/tools-builtin/index.js";
 import type { TurnEndReason } from "../../kernel/events.js";
 
 /** 深度超限（dsh SubagentDepthError 同构）：attempted = childDepth。 */

@@ -20,7 +20,7 @@ import {
   isSpawnFailure,
   markStarted,
 } from "./bash-retry-guard.js";
-import { createBashTool } from "../../../kernel/tools/builtin/bash.js";
+import { createBashTool } from "../../../../plugins/tools-builtin/bash.js";
 import { PathGuard } from "../../../sandbox/path-guard.js";
 
 const tmpDirs: string[] = [];

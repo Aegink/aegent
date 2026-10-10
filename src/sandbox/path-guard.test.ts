@@ -15,10 +15,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { analyzeShellCommand } from "../policy/shell-semantics.js";
 import type { ExecutionEnv } from "../kernel/tools/env.js";
 import { ToolRegistry } from "../kernel/tools/registry.js";
-import { createBashTool } from "../kernel/tools/builtin/bash.js";
-import { createEditTool } from "../kernel/tools/builtin/edit.js";
-import { createReadTool } from "../kernel/tools/builtin/read.js";
-import { createWriteTool } from "../kernel/tools/builtin/write.js";
+import { createBashTool } from "../../plugins/tools-builtin/bash.js";
+import { createEditTool } from "../../plugins/tools-builtin/edit.js";
+import { createReadTool } from "../../plugins/tools-builtin/read.js";
+import { createWriteTool } from "../../plugins/tools-builtin/write.js";
 import {
   PATH_GUARD_LIMITATIONS,
   PathGuard,

@@ -17,7 +17,7 @@ import type { JsonValue } from "../../src/kernel/events.js";
 import type { ToolExecutionResult } from "../../src/kernel/loop.js";
 import type { ToolDef } from "../../src/core/index.js";
 import type { WriteQueue } from "../../src/core/index.js";
-import { contentHash, toolError } from "../../src/kernel/tools/builtin/util.js";
+import { contentHash, toolError } from "./util.js";
 
 export interface EditArgs {
   path: string;

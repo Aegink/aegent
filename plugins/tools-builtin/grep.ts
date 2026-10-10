@@ -15,8 +15,8 @@ import { readFile, stat } from "node:fs/promises";
 import * as path from "node:path";
 import type { ToolDef } from "../../src/core/index.js";
 import type { ToolContext } from "../../src/core/index.js";
-import { globToRegExp, walkFiles } from "../../src/kernel/tools/builtin/patterns.js";
-import { toolError } from "../../src/kernel/tools/builtin/util.js";
+import { globToRegExp, walkFiles } from "./patterns.js";
+import { toolError } from "./util.js";
 
 export interface GrepArgs {
   pattern: string;

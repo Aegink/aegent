@@ -18,9 +18,9 @@
  */
 
 import { toolError } from "./util.js";
-import type { ToolDef } from "../registry.js";
-import type { ToolExecutionResult } from "../../loop.js";
-import { SubagentDepthError, type SubagentRunResult } from "../../subagent.js";
+import type { ToolDef } from "../../src/core/index.js";
+import type { ToolExecutionResult } from "../../src/core/index.js";
+import { SubagentDepthError, type SubagentRunResult } from "../../src/ext-builtin/subagent-engine/subagent.js";
 
 /** task 成功结算的文本（opencode renderOutput 的 `<task_result>` 同构）。 */
 function renderTaskOutput(result: SubagentRunResult): string {

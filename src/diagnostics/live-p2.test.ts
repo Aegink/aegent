@@ -21,7 +21,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createLogger, type LogSink } from "../kernel/logger.js";
 import { AgentLoop, type AgentLoopDeps } from "../core/primitives/loop/loop.js";
 import { ToolRegistry } from "../kernel/tools/registry.js";
-import { registerBuiltinTools } from "../kernel/tools/builtin/index.js";
+import { registerBuiltinTools } from "../../plugins/tools-builtin/index.js";
 import { NodeExecutionEnv } from "../kernel/tools/env.js";
 import {
   createChildAssembly,

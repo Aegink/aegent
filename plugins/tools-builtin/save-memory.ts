@@ -13,7 +13,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { homedir } from "node:os";
-import type { ToolDef } from "../registry.js";
+import type { ToolDef } from "../../src/core/index.js";
 import { toolError } from "./util.js";
 
 /** 单条记忆的字符上限（索引行不是正文）。 */
