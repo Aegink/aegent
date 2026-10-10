@@ -98,7 +98,7 @@ describe("submitFeedback", () => {
 
 describe("词汇表基线（#24 立案）", () => {
     it("EVENT_TYPES 28→29（feedback/note 入册）", () => {
-        expect(EVENT_TYPES).toHaveLength(31);
+        expect(EVENT_TYPES).toHaveLength(33); // T3-7 批次边界两事件入册
         expect(EVENT_TYPES).toContain("feedback/note");
     });
 });

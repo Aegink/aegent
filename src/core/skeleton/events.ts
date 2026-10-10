@@ -410,6 +410,20 @@ export interface ToolProgressEvent extends EventBase {
   message: string;
 }
 
+/**
+ * 工具批次边界（T3-7/W6 调度器可观测面，zcode batch-runner 同构）：并行组
+ * 的开始/完成边界进事件流（批次内 callId 清单）。**log-only**——不进模型
+ * 历史（buildChatMessages 忽略，与 attempt/compaction 同族）；只作诊断
+ * 与调度行为审计。
+ */
+export interface ToolBatchEvent extends EventBase {
+  type: "tool/batch_started" | "tool/batch_completed";
+  /** 批次序号（step 内单调，0 起）。 */
+  batch: number;
+  /** 本批 callId 清单（完成事件与开始事件一一对应）。 */
+  callIds: readonly string[];
+}
+
 export interface CompactionEvent extends EventBase {
   type: "compaction";
   /** 压缩摘要文本（P0 由假 provider 剧本生成；摘要质量属 F5 P1）。 */
@@ -866,6 +880,7 @@ export type SessionEvent =
   | ToolCallEvent
   | ToolResultEvent
   | ToolProgressEvent
+  | ToolBatchEvent
   | CompactionEvent
   | CheckpointEvent
   | RequestHeaderEvent
@@ -900,6 +915,8 @@ export const EVENT_TYPES = [
   "tool/call",
   "tool/result",
   "tool/progress",
+  "tool/batch_started",
+  "tool/batch_completed",
   "compaction",
   "checkpoint",
   "request/header",

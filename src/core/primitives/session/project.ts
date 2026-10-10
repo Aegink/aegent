@@ -345,6 +345,19 @@ export class Projector {
           throw new ProjectError(`tool/progress 的 callId=${event.callId} 没有前置未闭合的 tool/call`);
         }
         break;
+      case "tool/batch_started":
+      case "tool/batch_completed":
+        // T3-7 批次边界（log-only——不进模型历史；校验载荷形状：batch 非负
+        // 整数 + callIds 非空字符串数组——透传垃圾值拒绝）
+        this.requireOpenTurn(turn);
+        this.requireOpenStep(turn, step);
+        if (!Number.isInteger(event.batch) || event.batch < 0) {
+          throw new ProjectError(`tool/batch_* 的 batch 须为非负整数，收到：${String(event.batch)}`);
+        }
+        if (!Array.isArray(event.callIds) || event.callIds.length === 0 || event.callIds.some((c) => typeof c !== "string" || c === "")) {
+          throw new ProjectError("tool/batch_* 的 callIds 须为非空字符串数组");
+        }
+        break;
       case "compaction":
         // L8/T-P1-92 六维载荷值域闭集（透传垃圾值拒绝——E12/E16 校验面）；
         // 全部可选（旧流缺省兼容——status 缺省读作 completed）。
@@ -687,6 +700,9 @@ export class Projector {
         });
         s.openToolCalls.delete(event.callId);
         break;
+      case "tool/batch_started":
+      case "tool/batch_completed":
+        break; // T3-7 批次边界（log-only——投影不聚值，批次事实留在事件流）
       case "assistant/attempt":
         break; // 无可见消息；失败事实留在事件流本身（F10 压力测量读它）
       case "assistant/retrying":

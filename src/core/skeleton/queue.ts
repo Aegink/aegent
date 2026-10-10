@@ -24,6 +24,16 @@ import type { SessionRef } from "./events.js";
 
 export type QueueMode = "all" | "one-at-a-time";
 
+/**
+ * T3-7 三档注入优先级（zcode §20 同构）：now = 立即（下一注入点最先出队）、
+ * next = 正常（缺省，FIFO）、later = 延后批（老龄化提升防饿死——LATER_AGE_
+ * PROMOTE 次入队后自动升 next）。
+ */
+export type QueuePriority = "now" | "next" | "later";
+
+/** later 档的老龄化提升阈值（按后续入队条数计——超过即升 next，防饿死）。 */
+export const LATER_AGE_PROMOTE = 8;
+
 /** 入队收执：只有 messageId——没有完成句柄（A9）。 */
 export interface EnqueueReceipt {
   messageId: string;
@@ -32,6 +42,10 @@ export interface EnqueueReceipt {
 export interface QueuedPrompt {
   messageId: string;
   content: string;
+  /** T3-7 注入优先级（缺省 next——既有调用零行为变化）。 */
+  priority?: QueuePriority;
+  /** 入队序（老龄化提升的计数基准）。 */
+  enqueuedAt?: number;
   /**
    * 附件引用（P1/T-P1-124）：编排面（agent-process）已校验限额并落 store
    * 后的 ref 列表，随 prompt 穿队列到 runTurn 落流；无附件缺省缺字段
@@ -49,7 +63,11 @@ export interface QueuedPrompt {
    * model = 命令级模型覆盖（frontmatter model——runTurn 的 turn 级生效）。
    * 缺省缺字段 = 普通输入零变化。
    */
-  meta?: { command?: string; model?: { provider: import("../contracts/models.js").ModelProvider; identity: import("../contracts/models.js").ModelIdentity } };
+  meta?: { command?: string; model?: { provider: import("../contracts/models.js").ModelProvider; identity: import("../contracts/models.js").ModelIdentity   /** T3-7 注入优先级（缺省 next——既有调用零行为变化）。 */
+  priority?: QueuePriority;
+  /** 入队序（老龄化提升的计数基准）。 */
+  enqueuedAt?: number;
+} };
 }
 
 /** M9/T-P1-48 有限队列：超限入队类型化拒绝（fail-closed 不静默丢）。 */
@@ -89,19 +107,86 @@ export class PromptQueue {
     attachments?: readonly AttachmentRef[],
     sessionRefs?: readonly SessionRef[],
     meta?: QueuedPrompt["meta"],
+    priority?: QueuePriority,
   ): EnqueueReceipt {
     if (this.items.length >= this.maxSize) {
       throw new QueueFullError(this.maxSize, this.mode);
     }
     const messageId = `q${++this.counter}`;
-    this.items.push({
+    const item: QueuedPrompt = {
       messageId,
+      priority,
+      enqueuedAt: ++this.enqueueCounter,
       content,
       ...(attachments !== undefined && attachments.length > 0 ? { attachments: [...attachments] } : {}),
       ...(sessionRefs !== undefined && sessionRefs.length > 0 ? { sessionRefs: [...sessionRefs] } : {}),
       ...(meta !== undefined ? { meta } : {}),
-    });
+    };
+    this.promoteAgedLater(); // 老龄化提升随入队推进（later 不能只等出队时才检查）
+    // now 档插队（紧随既有 now 档之后、next 之前）；next/later 按 FIFO 尾插
+    if (item.priority === "now") {
+      const firstNonNow = this.items.findIndex((i) => i.priority !== "now");
+      if (firstNonNow < 0) this.items.push(item);
+      else this.items.splice(firstNonNow, 0, item);
+    } else {
+      this.items.push(item);
+    }
     return { messageId };
+  }
+
+  private enqueueCounter = 0;
+
+  /**
+   * 老龄化提升（防饿死，T3-7）：later 档在其后有 ≥ LATER_AGE_PROMOTE 条
+   * 更新的入队时升为 next——延后批不能永远饿死。
+   */
+  private promoteAgedLater(): void {
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      const item = this.items[i]!;
+      if (item.priority !== "later") continue;
+      const younger = this.items.length - 1 - i;
+      if (younger >= LATER_AGE_PROMOTE) {
+        item.priority = "next";
+      }
+    }
+  }
+
+  /**
+   * T3-7 优先级出队批：now 档全量 → 老龄化提升后的 next 档按 mode 出队 →
+   * later 不出（延后批只在老龄化提升后参与）。缺省调用（无 now/later）与
+   * 既有 drain 语义一致（零行为变化）。
+   */
+  dequeueNextBatch(): QueuedPrompt[] {
+    this.promoteAgedLater();
+    const now = this.items.filter((i) => i.priority === "now");
+    if (now.length > 0) {
+      const ids = new Set(now.map((i) => i.messageId));
+      for (let i = this.items.length - 1; i >= 0; i--) {
+        if (ids.has(this.items[i]!.messageId)) this.items.splice(i, 1);
+      }
+      return now;
+    }
+    // next 档出队（later 留队——延后批只在老龄化提升后参与）：
+    // all = 全部非 later；one-at-a-time = 最旧非 later。
+    const isNext = (i: QueuedPrompt) => i.priority !== "later";
+    if (this.mode === "all") {
+      const out = this.items.filter(isNext);
+      for (let i = this.items.length - 1; i >= 0; i--) {
+        if (isNext(this.items[i]!)) this.items.splice(i, 1);
+      }
+      return out;
+    }
+    const idx = this.items.findIndex(isNext);
+    return idx < 0 ? [] : this.items.splice(idx, 1);
+  }
+
+  /** T3-7 观测：当前最高优先级档（now > next > later；空队列 undefined）。 */
+  getByMaxPriority(): QueuePriority | undefined {
+    if (this.items.length === 0) return undefined;
+    if (this.items.some((i) => i.priority === "now")) return "now";
+    // 缺省 priority（undefined）视作 next——既有调用零行为变化的语义锚
+    if (this.items.some((i) => i.priority === "next" || i.priority === undefined)) return "next";
+    return "later";
   }
 
   /** 在注入点排空：all 一次全量（FIFO）；one-at-a-time 只出最旧一条。 */

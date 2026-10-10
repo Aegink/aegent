@@ -199,3 +199,50 @@ describe("step 边界注入 —— A2 steer 节奏（loop 接线）", () => {
     ]);
   });
 });
+
+describe("T3-7 三档注入优先级（zcode §20 同构）", () => {
+  it("now 档插队：下一注入点最先出队（先于既有 next 档）", () => {
+    const q = new PromptQueue("all", 64);
+    q.enqueue("常规一");
+    q.enqueue("常规二");
+    q.enqueue("紧急", undefined, undefined, undefined, "now");
+    const batch = q.dequeueNextBatch();
+    expect(batch.map((i) => i.content)).toEqual(["紧急"]);
+    expect(q.getByMaxPriority()).toBe("next");
+  });
+
+  it("缺省档零行为变化：无 now/later 时 dequeueNextBatch === drain 语义", () => {
+    const q = new PromptQueue("all", 64);
+    q.enqueue("a");
+    q.enqueue("b");
+    expect(q.dequeueNextBatch().map((i) => i.content)).toEqual(["a", "b"]);
+  });
+
+  it("later 档老龄化提升：≥ 8 条更新入队后升 next（防饿死）", () => {
+    const q = new PromptQueue("all", 64);
+    q.enqueue("延后任务", undefined, undefined, undefined, "later");
+    expect(q.getByMaxPriority()).toBe("later");
+    for (let i = 0; i < 8; i++) q.enqueue(`常规${i}`);
+    expect(q.getByMaxPriority()).toBe("next"); // later 已提升
+    const batch = q.dequeueNextBatch();
+    expect(batch.map((i) => i.content)).toContain("延后任务");
+  });
+
+  it("later 档未老龄化时不出队（延后语义保持）", () => {
+    const q = new PromptQueue("all", 64);
+    q.enqueue("延后任务", undefined, undefined, undefined, "later");
+    q.enqueue("常规");
+    const batch = q.dequeueNextBatch();
+    expect(batch.map((i) => i.content)).toEqual(["常规"]);
+    expect(q.size).toBe(1); // later 仍在队列
+  });
+
+  it("now 档多条保序插队（FIFO within now）", () => {
+    const q = new PromptQueue("all", 64);
+    q.enqueue("常规");
+    q.enqueue("急一", undefined, undefined, undefined, "now");
+    q.enqueue("急二", undefined, undefined, undefined, "now");
+    const batch = q.dequeueNextBatch();
+    expect(batch.map((i) => i.content)).toEqual(["急一", "急二"]);
+  });
+});

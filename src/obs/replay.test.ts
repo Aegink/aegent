@@ -119,7 +119,7 @@ describe("replaySession（L4/T-P1-126）", () => {
 
   it("事件计数（T-P3-174 批次 4 #31 后 31）：replay 纯读面零扩展复核", async () => {
     const { EVENT_TYPES } = await import("../kernel/events.js");
-    expect(EVENT_TYPES).toHaveLength(31);
+    expect(EVENT_TYPES).toHaveLength(33); // T3-7 批次边界两事件入册
   });
 });
 

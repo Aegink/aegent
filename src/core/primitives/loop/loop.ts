@@ -61,6 +61,7 @@ import {
 } from "./guards.js";
 import type { MutationRetryBudget } from "../tools/mutation-budget.js";
 import { settleAbandonedToolCalls, TurnWatchdog } from "./watchdog.js";
+import { executeSchedule } from "../tools/scheduler.js";
 import type { Logger } from "../../skeleton/logger.js";
 import type { ModelRequestOptions } from "./model-switch.js";
 import type { RawChunkLog } from "../../skeleton/raw-chunk-log.js";
@@ -80,7 +81,6 @@ import type {
   TurnEndReason,
 } from "../../skeleton/events.js";
 import { TimeoutError } from "../../skeleton/timeout.js";
-import { RwLock } from "../../skeleton/rw-lock.js";
 import { type PromptQueue } from "../../skeleton/queue.js";
 import { type RunState } from "../../skeleton/run-state.js";
 
@@ -1130,17 +1130,14 @@ export class AgentLoop {
   }
 
   /**
-   * B17/T-P1-15 parallel 模式的并发执行：一把读写锁（本 loop 一个实例），
-   * isParallelTool 声明为真的只读工具持读锁互相并发，其余持写锁与一切互斥
-   * （codex parallel.rs:191 `supports_parallel ? read : write` 的对应物）。
+   * B17/T-P1-15 parallel 模式的并发执行（T3-7/W6 改造）：并发控制由
+   * scheduler 接管（拓扑/分组/上限/批次边界——RwLock 路径删除）。
    * 事件序：tool/result 按完成序落流（pi 同款）；StepRecord.toolResults 按
-   * 提交序回填（pi "tool-result message artifacts … in assistant source order"
-   * 同款）。取消语义不变：已派发（tool/call 已落流）的执行照完成、结果照落盘。
+   * 提交序回填（scheduler 保模型序不变量）。取消语义不变：已派发（tool/call
+   * 已落流）的执行照完成、结果照落盘；迟到闸门照在（A14）。
    */
-  private readonly toolLock = new RwLock();
-
   /** F6/F13/T-P1-19：上一次请求的缓存锚与身份（onCacheAnchorChange 在位时才维护）。 */
-  private lastAnchor: { anchor: string; identity: ModelIdentity } | null = null;
+  private lastAnchor: { anchor: string; identity: import("../../index.js").ModelIdentity } | null = null;
 
   private async runParallelTools(
     turn: number,
@@ -1148,31 +1145,41 @@ export class AgentLoop {
     calls: ReadonlyArray<{ id: string; name: string; arguments: string }>,
     toolResults: StepRecord["toolResults"],
   ): Promise<void> {
-    const byCallId = new Map<string, ToolExecutionResult>();
-    await Promise.all(
-      calls.map(async (call) => {
-        // B16/T-P1-59：并行判定用 step 快照（step 中途声明替换不影响在途 step）
-        const release = await (this.stepToolMeta.get(call.name)?.parallel === true
-          ? this.toolLock.read()
-          : this.toolLock.write());
-        try {
-          const result = await this.dispatchTool(turn, step, call);
-          byCallId.set(call.id, result);
+    const metaOf = (toolName: string) => {
+      const meta = this.stepToolMeta.get(toolName);
+      return {
+        ...(meta?.parallel !== undefined ? { parallel: meta.parallel } : {}),
+        ...(meta?.parallel === undefined && this.deps.isParallelTool !== undefined
+          ? { parallel: this.deps.isParallelTool(toolName) }
+          : {}),
+      };
+    };
+    let batchSeq = 0;
+    const results = await executeSchedule(
+      calls.map((c) => ({ callId: c.id, toolName: c.name, arguments: c.arguments })),
+      metaOf,
+      {
+        runOne: async (c) => {
+          const result = await this.dispatchTool(turn, step, {
+            id: c.callId,
+            name: c.toolName,
+            arguments: c.arguments,
+          });
           // A14/T-P1-50 迟到结果闸门：强制收轮后不落盘（与 sequential 同闸）
           if (this.watchdog.forcedClosed) {
             this.deps.logger?.warn("看门狗强制收轮后迟到的工具结果被丢弃", {
               turn,
               step,
-              callId: call.id,
+              callId: c.callId,
             });
-            return;
+            return result;
           }
           this.deps.store.append(this.deps.sessionId, [
             {
               type: "tool/result",
               turn,
               step,
-              callId: call.id,
+              callId: c.callId,
               message: {
                 content: result.content,
                 ...(result.isError ? { isError: true as const } : {}),
@@ -1184,16 +1191,40 @@ export class AgentLoop {
           // T-P3-174 批次 1：parallel 路径同款图片注入（顺序面：result 按完
           // 成序落流，注入消息跟在对应 result 之后——投影按流序展开）
           this.appendImageAttachmentIfAny(turn, step, result);
-        } finally {
-          release();
-        }
-      }),
+          return result;
+        },
+        observer: {
+          onBatchStart: (batch) => {
+            this.deps.store.append(this.deps.sessionId, [
+              {
+                type: "tool/batch_started",
+                turn,
+                step,
+                batch: batchSeq,
+                callIds: batch.calls.map((c) => c.callId),
+              },
+            ]);
+          },
+          onBatchComplete: (batch) => {
+            this.deps.store.append(this.deps.sessionId, [
+              {
+                type: "tool/batch_completed",
+                turn,
+                step,
+                batch: batchSeq++,
+                callIds: batch.calls.map((c) => c.callId),
+              },
+            ]);
+          },
+        },
+      },
     );
-    for (const call of calls) {
-      const result = byCallId.get(call.id);
-      if (result === undefined) continue;
+    // 保模型序回填（dsh 不变量——scheduler 按输入序返回）
+    for (let i = 0; i < calls.length; i++) {
+      const result = results[i]!;
+      if (this.watchdog.forcedClosed) continue; // 迟到闸门已丢弃的调用不回填
       toolResults.push({
-        callId: call.id,
+        callId: calls[i]!.id,
         content: result.content,
         ...(result.isError ? { isError: true as const } : {}),
       });

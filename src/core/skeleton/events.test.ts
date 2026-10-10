@@ -193,15 +193,17 @@ const SAMPLES: NewSessionEvent[] = [
     turn: 0,
     level: "high",
   },
+  { type: "tool/batch_started", turn: 1, step: 1, batch: 0, callIds: ["c1"] },
+  { type: "tool/batch_completed", turn: 1, step: 1, batch: 0, callIds: ["c1"] },
 ];
 
 describe("事件词汇表（l0-events.md §3 定稿）", () => {
-  it("联合成员恰 31 个（… + feedback/note + thinking/set——T-P3-174 批次 4 #31），且与 EVENT_TYPES 严格一致（验收①：Exclude 遍历断言的运行时面）", () => {
-    expect(EVENT_TYPES).toHaveLength(31);
+  it("联合成员恰 33 个（… + feedback/note + thinking/set——T-P3-174 批次 4 #31），且与 EVENT_TYPES 严格一致（验收①：Exclude 遍历断言的运行时面）", () => {
+    expect(EVENT_TYPES).toHaveLength(33); // T3-7 批次边界两事件入册
     const declared = new Set<string>(EVENT_TYPES);
     // 每个联合成员都能按其必填载荷构造，且 type 互不相同、并集等于 EVENT_TYPES。
     const constructed = SAMPLES.map((e) => e.type);
-    expect(new Set(constructed)).toHaveLength(31);
+    expect(new Set(constructed)).toHaveLength(33);
     expect(new Set(constructed)).toEqual(declared);
     // 编译期等价断言在 events.ts 的 _EVENT_TYPES_EXACT（tsc --noEmit 时生效）。
   });
