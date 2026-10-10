@@ -17,22 +17,14 @@
  * 无法整体丢弃策略）。
  */
 
-/**
- * 编辑前必须先读的错误码（工具层 isError 回喂，模型可自修：先 read 再改）。
- */
-export type ReadGateErrorCode = "EDIT_WITHOUT_READ" | "EDIT_STALE_READ";
+// T2-2 依赖倒置：错误码/错误类/端口契约下沉 core/contracts/policy.ts——
+// 本文件是 policy 域实现（内存记账），工具层经 core 公开入口消费契约。
+export type { ReadGateErrorCode, ReadGatePort } from "../core/index.js";
+export { ReadGateError } from "../core/index.js";
+import { ReadGateError, type ReadGatePort } from "../core/index.js";
 
-export class ReadGateError extends Error {
-  constructor(
-    readonly code: ReadGateErrorCode,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-/** 会话内观察态记账（path → 最近一次观察到的内容哈希）。 */
-export class ReadGateService {
+/** 会话内观察态记账（path → 最近一次观察到的内容哈希）——ReadGatePort 实现。 */
+export class ReadGateService implements ReadGatePort {
   private readonly observed = new Map<string, string>();
 
   /**

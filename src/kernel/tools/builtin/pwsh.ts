@@ -25,7 +25,7 @@ import type { ToolExecutionResult } from "../../loop.js";
 import { TimeoutError } from "../../timeout.js";
 import { analyzeShellCommand } from "../../../policy/shell-semantics.js";
 import { PathGuard, PathGuardError } from "../../../sandbox/path-guard.js";
-import { SandboxUnavailableError } from "../../../sandbox/backend.js";
+import { SandboxUnavailableError } from "../../../core/index.js";
 import { isSpawnFailure, markStarted } from "../bash-retry-guard.js";
 import type { ToolContext } from "../context.js";
 import type { ToolDef } from "../registry.js";

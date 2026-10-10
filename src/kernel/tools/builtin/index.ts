@@ -8,7 +8,7 @@
  */
 
 import { PathGuard } from "../../../sandbox/path-guard.js";
-import type { SandboxBackend, SandboxMode } from "../../../sandbox/backend.js";
+import type { SandboxBackend, SandboxMode } from "../../../core/index.js";
 import { PendingApprovals } from "../../../policy/pending.js";
 import { createNetworkGuard } from "../../../sandbox/network.js";
 import { createPlanModeService } from "../../plan-mode.js";

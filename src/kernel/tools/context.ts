@@ -17,7 +17,7 @@
  */
 
 import type { ExecutionEnv } from "./env.js";
-import type { ReadGateService } from "../../policy/read-gate.js";
+import type { ReadGatePort } from "../../core/index.js";
 
 export interface ToolContext {
   readonly env?: ExecutionEnv;
@@ -30,5 +30,5 @@ export interface ToolContext {
    * ——缺省 undefined = 不启用（C13 整体丢弃，工具照常用）；提供时
    * read 记账、edit/write/apply_patch 校验。
    */
-  readonly readGate?: ReadGateService;
+  readonly readGate?: ReadGatePort;
 }

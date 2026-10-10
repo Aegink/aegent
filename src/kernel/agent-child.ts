@@ -35,7 +35,7 @@ import type { AuthResolver } from "../models/auth.js";
 import { createGoogleGenerateProvider } from "../models/google-generate.js";
 import { createAnthropicMessagesProvider } from "../models/anthropic-messages.js";
 import { withRetry, type RetryObservation } from "../models/retry.js";
-import { SANDBOX_MODES, type SandboxMode } from "../sandbox/backend.js";
+import { SANDBOX_MODES, type SandboxMode } from "../core/index.js";
 import { LocalFileAttachmentStore } from "../attachments/store.js";
 import type { RegisteredModel } from "./model-switch.js";
 import {

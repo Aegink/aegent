@@ -33,8 +33,8 @@ import {
   resolveEscalatedMode,
   validateEscalationArgs,
 } from "../../../sandbox/escalation.js";
-import type { SandboxMode } from "../../../sandbox/backend.js";
-import { SandboxUnavailableError } from "../../../sandbox/backend.js";
+import type { SandboxMode } from "../../../core/index.js";
+import { SandboxUnavailableError } from "../../../core/index.js";
 import type { PendingApprovals } from "../../../policy/pending.js";
 import { isSpawnFailure, markStarted } from "../bash-retry-guard.js";
 import { BackgroundShellRegistry } from "../background-shell.js";

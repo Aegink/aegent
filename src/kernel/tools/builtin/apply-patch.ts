@@ -29,7 +29,7 @@
 
 import * as path from "node:path";
 import { PathGuard, PathGuardError } from "../../../sandbox/path-guard.js";
-import { ReadGateError } from "../../../policy/read-gate.js";
+import { ReadGateError } from "../../../core/index.js";
 import type { ToolExecutionResult } from "../../loop.js";
 import type { ToolDef } from "../registry.js";
 import type { WriteQueue } from "../write-queue.js";

@@ -17,7 +17,7 @@
  */
 
 import type { JsonRecord } from "./events.js";
-import type { SandboxMode } from "../sandbox/backend.js";
+import type { SandboxMode } from "../core/index.js";
 
 /**
  * 权限预设目录（C8，T-P1-73）——**闭集**：readonly / workspace / yolo。

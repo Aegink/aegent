@@ -19,59 +19,18 @@
  * SANDBOX_UNAVAILABLE——"local 后端先跑通，接口不写死"（D5 验收要点）。
  */
 
-import type { ExecOptions, ExecResult, ExecutionEnv } from "../kernel/tools/env.js";
-
-/** 命令允许的文件效果档位（dsh sandbox 契约词汇，冻结只追加）。 */
-export type SandboxMode = "read-only" | "workspace-write" | "danger-full-access";
-
-/** 模式闭集（parse/CLI/UI 共用的单一来源——词汇行业收敛，见调研报告 §一.2）。 */
-export const SANDBOX_MODES: readonly SandboxMode[] = [
-  "read-only",
-  "workspace-write",
-  "danger-full-access",
-];
-
-export const SANDBOX_UNAVAILABLE = "SANDBOX_UNAVAILABLE";
-
-/** 请求的模式无法被当前后端强制时抛出（绝不降级为不受限运行）。 */
-export class SandboxUnavailableError extends Error {
-  override readonly name = "SandboxUnavailableError";
-  readonly code = SANDBOX_UNAVAILABLE;
-  constructor(
-    readonly mode: SandboxMode,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-export interface SandboxSpawnRequest {
-  /** 命令行（语义与 ExecutionEnv.exec 的 command 一致，由后端决定宿主 shell）。 */
-  readonly command: string;
-  /** 本命令允许的文件效果档位。 */
-  readonly mode: SandboxMode;
-  /** 工作目录（缺省进程 cwd）。 */
-  readonly cwd?: string;
-  /** 超时毫秒（超时行为由后端实现决定；local 直通 env.exec 的 kill 语义）。 */
-  readonly timeoutMs?: number;
-}
-
-/** 结算结果与 ExecResult 同形（管辖/配额等扩展位在 meta，D13 卡定形）。 */
-export type SandboxSpawnResult = ExecResult;
-
-/**
- * 子进程执行面的约束契约（dsh ctx.sandbox 的对应物）：实现方声明自己能
- * 强制哪些模式；不能强制的模式在 spawn 前显式报错。
- */
-export interface SandboxBackend {
-  /** 当前后端可强制的模式集合（能力自述，消费方可据此预检）。 */
-  readonly supportedModes: readonly SandboxMode[];
-  /**
-   * 在请求的 mode 约束下执行命令。mode 不可强制 → 抛 SandboxUnavailableError
-   * （真实命令**零执行**）；可强制 → 按 mode 约束运行并结算。
-   */
-  spawn(request: SandboxSpawnRequest): Promise<SandboxSpawnResult>;
-}
+import type { ExecOptions, ExecutionEnv } from "../kernel/tools/env.js";
+// T2-2 依赖倒置：SandboxMode/SandboxSpawnRequest/SandboxSpawnResult/SandboxBackend
+// 等契约下沉 core/contracts/sandbox.ts——本文件是 sandbox 域实现面（local 后端），
+// 契约 re-export 保兼容消费面。
+export type {
+  SandboxBackend,
+  SandboxMode,
+  SandboxSpawnRequest,
+  SandboxSpawnResult,
+} from "../core/index.js";
+export { SANDBOX_MODES, SANDBOX_UNAVAILABLE, SandboxUnavailableError } from "../core/index.js";
+import { SandboxUnavailableError, type SandboxBackend, type SandboxMode, type SandboxSpawnRequest, type SandboxSpawnResult } from "../core/index.js";
 
 export interface LocalBackendOptions {
   /** 底层执行环境（D4：spawn 只在 env 实现层）。 */
