@@ -23,7 +23,7 @@ describe("goal 自主续跑驱动（T7-6，dsh §13）", () => {
 
   it("配额耗尽 → blocker（不 kick；宿主落事实）", async () => {
     const kicks: string[] = [];
-    const goal = { current: { text: "任务", active: true } };
+    const goal = { current: { text: "任务", status: "active" } };
     const driver = createGoalRoundDriver({ goal: goal as never, kick: async (p) => { kicks.push(p); }, quota: 1 });
     await driver.onIdle(); // 消耗 1/1
     const blocker = await driver.onIdle(); // 耗尽
