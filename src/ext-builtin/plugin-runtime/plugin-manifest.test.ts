@@ -6,8 +6,8 @@
 
 import { describe, expect, it } from "vitest";
 
-import { composeChain } from "./chain.js";
-import { HookRegistry } from "./hooks.js";
+import { composeChain } from "../../kernel/chain.js";
+import { HookRegistry } from "../../kernel/hooks.js";
 import {
   PluginManifestError,
   installPlugin,

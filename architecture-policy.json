@@ -49,6 +49,7 @@
       "managed": true,
       "requires": [
         "core",
+        "kernel",
         "mcp",
         "policy",
         "session"
@@ -202,6 +203,7 @@
         "src/kernel/admission.ts",
         "src/kernel/plugin-scaffold.ts",
         "src/kernel/side-query.ts",
+        "src/kernel/prompt-args.ts",
         "src/kernel/hooks.ts",
         "src/kernel/invariants.ts"
       ],
@@ -410,6 +412,10 @@
     {
       "path": "src/core/primitives/session/project.ts",
       "reason": "T3-3 搬迁记档（2026-10-10）：投影器本体 851 行（kernel 时代为 warning，managed core 触线即 error）——E16 投影校验是 G1/G2 护栏面，拆分需按事件族分文件且 loop/watchdog 消费面跟随，超出纯搬迁范围；豁免带上限（拆分列 T8 候选）。"
+    },
+    {
+      "path": "src/ext-builtin/plugin-runtime/plugin-manifest-contributes.ts",
+      "reason": "T4-1 搬迁记档（2026-10-10）：贡献声明校验面 545 行（六类 contributes 的逐类形状校验——校验器内聚面）——kernel 时代为 warning，ext-builtin（managed）触线即 error；拆分按 contributes 类别分文件列 T8 候选，届时删本豁免。"
     },
     {
       "path": "src/diagnostics/live-p2.test.ts",

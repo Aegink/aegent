@@ -10,7 +10,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { resolvePluginContributions } from "./plugin-contributions.js";
-import { loadSkillsFromRoots } from "./skills.js";
+import { loadSkillsFromRoots } from "../../kernel/skills.js";
 import type { PluginManifest } from "./plugin-manifest.js";
 
 const dirs: string[] = [];
