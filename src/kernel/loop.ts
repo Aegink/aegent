@@ -50,7 +50,17 @@ import {
   type StreamRecoveryPolicy,
 } from "./stream-recovery.js";
 import { normalizePromptVerdict, type PromptGate } from "./prompt-gate.js";
-import { MUTATION_RETRY_BUDGET_EXHAUSTED, type MutationRetryBudget } from "./tools/mutation-budget.js";
+import {
+  isOutputTokenLimitHit,
+  LoopOutputContinuation,
+  maxStepsExceeded,
+  MutationOutcomeGuard,
+  MUTATION_RETRY_BUDGET_EXHAUSTED,
+  OUTPUT_TOKEN_CONTINUE_PROMPT,
+  OUTPUT_TOKEN_LIMIT_FINISH_REASONS,
+} from "./guards.js";
+import type { MutationRetryBudget } from "./tools/mutation-budget.js";
+import { TurnWatchdog } from "./watchdog.js";
 import type { Logger } from "./logger.js";
 import type { ModelRequestOptions } from "./model-switch.js";
 import type { RawChunkLog } from "./raw-chunk-log.js";
@@ -114,23 +124,12 @@ export interface ModelStepOutput {
 export type { LoopContext, ToolCallPayload, ToolExecutionResult } from "../core/index.js";
 import type { LoopContext, ToolCallPayload, ToolExecutionResult } from "../core/index.js";
 
-/**
- * B20/T-P1-62 输出 token 触顶的 finishReason 闭集（zcode OUTPUT_LIMIT_RAW_
- * REASONS 同构，冻结只追加——C10 先例）：纯文本被截断且无工具调用时判定
- * "可续跑"。
- */
-export const OUTPUT_TOKEN_LIMIT_FINISH_REASONS: ReadonlySet<string> = new Set([
-  "length",
-  "max_tokens",
-  "max_output_tokens",
-]);
-
-/** B20/T-P1-62 续跑指令（zcode OUTPUT_TOKEN_CONTINUE_PROMPT 同款语义）。 */
-export const OUTPUT_TOKEN_CONTINUE_PROMPT =
-  "Output token limit hit. Resume directly — no apology, no recap of what you were doing. Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces.";
-
-/** B20/T-P1-62 每 turn 续跑上限（zcode MAX_OUTPUT_TOKEN_CONTINUATIONS=3 同值）。 */
-export const MAX_OUTPUT_TOKEN_CONTINUATIONS = 3;
+// T3-1/W7：输出触顶续跑常量拆 guards.ts（re-export 保兼容消费面）。
+export {
+  MAX_OUTPUT_TOKEN_CONTINUATIONS,
+  OUTPUT_TOKEN_CONTINUE_PROMPT,
+  OUTPUT_TOKEN_LIMIT_FINISH_REASONS,
+} from "./guards.js";
 
 /** turnEnd 点位：包住"落 turn/end"。reason 由 loop 定，层只观察（P0）。 */
 export interface TurnEndPayload {
@@ -401,6 +400,23 @@ export class AgentLoop {
   private readonly turnEndChain: ChainExecutor<LoopContext, TurnEndPayload, void>;
 
   constructor(private readonly deps: AgentLoopDeps) {
+    this.watchdog = new TurnWatchdog(
+      {
+        store: deps.store,
+        sessionId: deps.sessionId,
+        ...(deps.logger !== undefined ? { logger: deps.logger } : {}),
+        ...(deps.runState !== undefined ? { runState: deps.runState } : {}),
+        ...(deps.abortTimeoutMs !== undefined ? { abortTimeoutMs: deps.abortTimeoutMs } : {}),
+      },
+      {
+        getCancelCause: () => this.cancelCause,
+        getActiveTurn: () => this.activeTurnNumber,
+        clearActiveTurn: () => {
+          this.activeTurnNumber = null;
+        },
+      },
+    );
+    this.mutationGuard = new MutationOutcomeGuard(deps.mutationBudget);
     this.$ = { sessionId: deps.sessionId };
     // A12/T-P1-53 关联 id 计数器：从流重建（恢复路径不重号）——已有
     // user/message 数即下一枚的序数基线。
@@ -460,7 +476,7 @@ export class AgentLoop {
     // 工具自行决定如何响应；task 用它联动子循环）。
     this.cancelController?.abort();
     // A14/T-P1-50：取消后武装看门狗（未配置 abortTimeoutMs 则无看门狗）
-    this.armAbortWatchdog();
+    this.watchdog.arm();
   }
 
   /**
@@ -480,13 +496,12 @@ export class AgentLoop {
   }
 
   /**
-   * A14/T-P1-50 看门狗句柄与强制收轮标记。forcedClosed 置位后：
-   * closeTurn 直接返回（终态已由看门狗落盘，防 double terminal）、
-   * 迟到的工具结果不再落盘（事件流不变量优先于结果保全）。
-   * 随 runTurn 开始复位（与 cancelCause 同步）。
+   * A14/T-P1-50 看门狗（T3-1 拆 watchdog.ts——句柄/强制收轮标记/forceCloseTurn
+   * 全在 TurnWatchdog）。forcedClosed 置位后：closeTurn 直接返回（终态已由
+   * 看门狗落盘，防 double terminal）、迟到的工具结果不再落盘（事件流不变量
+   * 优先于结果保全）。随 runTurn 开始复位（与 cancelCause 同步）。
    */
-  private abortWatchdog: ReturnType<typeof setTimeout> | null = null;
-  private forcedClosed = false;
+  private readonly watchdog: TurnWatchdog;
 
   /** A12/T-P1-53 关联 id 分配（会话内单调 p1、p2…；构造时从流重建基线）。 */
   private promptCounter: number;
@@ -497,14 +512,14 @@ export class AgentLoop {
    */
   private currentPromptId: string | undefined;
 
-  /** B13/T-P1-57：本 step 内 mutation 预算耗尽的命中记录（收尾统一检查）。 */
-  private mutationTerminate: { path: string; errorCode: string } | null = null;
-
   /** B16/T-P1-59：当前 step 的工具执行策略快照（runStep 开始时固化）。 */
   private stepToolMeta = new Map<string, { parallel: boolean; timeoutMs?: number }>();
 
-  /** B20/T-P1-62：本 turn 的输出触顶续跑计数（每 turn 重置，上限 3）。 */
-  private outputTokenContinuations = 0;
+  /** B20/T-P1-62：本 turn 的输出触顶续跑计数（T3-1 拆 guards.ts，每 turn 重置）。 */
+  private readonly outputContinuation = new LoopOutputContinuation();
+
+  /** B13/T-P1-57：mutation 预算上报护栏（T3-1 拆 guards.ts——reportOutcome/终止事实）。 */
+  private readonly mutationGuard: MutationOutcomeGuard;
 
   private nextPromptId(): string {
     this.promptCounter += 1;
@@ -518,67 +533,6 @@ export class AgentLoop {
   private nextTraceId(): string {
     this.traceCounter += 1;
     return `r${this.traceCounter}`;
-  }
-
-  private armAbortWatchdog(): void {
-    const ms = this.deps.abortTimeoutMs;
-    if (ms === undefined || this.abortWatchdog !== null) return;
-    this.abortWatchdog = setTimeout(() => {
-      this.abortWatchdog = null;
-      // 正常路径已收轮（abortTurn 清槽）→ 迟到的看门狗不触发
-      if (this.cancelCause === null) return;
-      this.deps.logger?.warn("abortTimeoutMs 看门狗超时——强制收轮", {
-        timeoutMs: ms,
-        turn: this.activeTurnNumber,
-      });
-      this.forcedClosed = true;
-      this.forceCloseTurn();
-    }, ms);
-    // 看门狗不阻止进程自然退出
-    this.abortWatchdog.unref?.();
-  }
-
-  private disarmAbortWatchdog(): void {
-    if (this.abortWatchdog !== null) {
-      clearTimeout(this.abortWatchdog);
-      this.abortWatchdog = null;
-    }
-  }
-
-  /**
-   * 看门狗超时的强制闭合：补闭合未闭合 step + turn/end{aborted} 落盘 +
-   * turnEnd flush + runState 归位（failTurn 骨架的最小版——不经 turnEnd
-   * 链：压缩层对"工具还挂在途"的轮无合法消费面，大声语义由 warn 承担）。
-   * turn 已闭合（正常收轮先到）则 no-op。
-   */
-  private forceCloseTurn(): void {
-    const { store, sessionId } = this.deps;
-    const cause = this.cancelCause;
-    if (!cause) return;
-    const proj = Projector.fold(store.load(sessionId)).projection;
-    if (!proj.openTurn) return; // 已闭合（竞态防御）
-    const turn = proj.openTurn.turn;
-    const openStep = [...proj.openSteps][0];
-    // E18/T-P1-94：强制收轮路径同口径自报 produced（abort 部分产出照报）
-    const produced = store
-      .load(sessionId)
-      .filter((ev) => ev.type === "assistant/message" && ev.turn === turn)
-      .map((ev) => ev.seq);
-    const events: NewSessionEvent[] = [
-      ...(openStep !== undefined
-        ? [{ type: "step/end" as const, turn, step: openStep }]
-        : []),
-      {
-        type: "turn/end" as const,
-        turn,
-        reason: { kind: "aborted" as const, cause: copyCause(cause) },
-        ...(produced.length > 0 ? { produced } : {}),
-      },
-    ];
-    store.append(sessionId, events);
-    void store.runFlushPoint("turnEnd", sessionId).catch(() => undefined);
-    this.deps.runState?.markIdle(sessionId);
-    this.activeTurnNumber = null;
   }
 
   /**
@@ -606,13 +560,12 @@ export class AgentLoop {
     // A10（T-P1-47）：steer 准入权威面置位（closeTurn 清位）
     this.activeTurnNumber = turn;
     // A14/T-P1-50：新 turn 复位强制收轮标记与残留看门狗（与 cancelCause 同步）
-    this.forcedClosed = false;
-    this.disarmAbortWatchdog();
+    this.watchdog.resetForNewTurn();
     // B13/T-P1-57：新 turn 复位预算耗尽标记（计数作用域按 promptId，本就
     // 不会跨 prompt 生效——此处清的是异常半途残留）
-    this.mutationTerminate = null;
+    this.mutationGuard.consumeTerminate();
     // B20/T-P1-62：新 turn 复位输出触顶续跑计数
-    this.outputTokenContinuations = 0;
+    this.outputContinuation.reset();
     // 新 turn 一份新信号：丢弃 idle 期迟到的取消（不武装本 turn 之前的工作）
     this.cancelCause = null;
     this.cancelController = new AbortController();
@@ -873,13 +826,7 @@ export class AgentLoop {
     // finishReason ∈ 触顶闭集且本 turn 续跑未达上限 → 落固定续跑指令
     // （user/message source="injected"，注入上下文既有语义——零新事件），
     // 下一 step 继续请求；触顶不终结轮（"可续跑事件"不是回合终态）。
-    if (
-      output.toolCalls.length === 0 &&
-      output.finishReason !== undefined &&
-      OUTPUT_TOKEN_LIMIT_FINISH_REASONS.has(output.finishReason) &&
-      this.outputTokenContinuations < MAX_OUTPUT_TOKEN_CONTINUATIONS
-    ) {
-      this.outputTokenContinuations += 1;
+    if (isOutputTokenLimitHit(output) && this.outputContinuation.tryContinue()) {
       store.append(sessionId, [
         {
           type: "user/message",
@@ -946,7 +893,7 @@ export class AgentLoop {
       toolExecMs += performance.now() - toolT0;
       // A14/T-P1-50 迟到结果闸门：看门狗已强制收轮——结算回来的结果不再
       // 落盘（事件流终态已闭合，append 会破坏 single-terminal/配平不变量）
-      if (this.forcedClosed) {
+      if (this.watchdog.forcedClosed) {
         this.deps.logger?.warn("看门狗强制收轮后迟到的工具结果被丢弃", {
           turn,
           step,
@@ -1015,18 +962,19 @@ export class AgentLoop {
     // B13/T-P1-57：mutation 预算在本 step 内耗尽 → blocked 收轮（显式护栏
     // 终止非 completed，T-P1-50 同款）。已派发工具照常结算落盘（A11 纪律），
     // 收轮判定在 step 收尾统一做。
-    if (this.mutationTerminate !== null) {
-      const hit = this.mutationTerminate;
-      this.mutationTerminate = null;
-      this.deps.logger?.warn("mutation 重试预算耗尽——强制收束", {
-        turn,
-        step,
-        path: hit.path,
-        errorCode: hit.errorCode,
-        code: MUTATION_RETRY_BUDGET_EXHAUSTED,
-      });
-      await this.closeTurn(turn, { kind: "blocked" });
-      return { kind: "blocked" };
+    {
+      const hit = this.mutationGuard.consumeTerminate();
+      if (hit !== null) {
+        this.deps.logger?.warn("mutation 重试预算耗尽——强制收束", {
+          turn,
+          step,
+          path: hit.path,
+          errorCode: hit.errorCode,
+          code: MUTATION_RETRY_BUDGET_EXHAUSTED,
+        });
+        await this.closeTurn(turn, { kind: "blocked" });
+        return { kind: "blocked" };
+      }
     }
     if (this.cancelCause) return { kind: "cancelled" };
     return {
@@ -1134,7 +1082,7 @@ export class AgentLoop {
       });
       // B13/T-P1-57：mutation 工具的成败上报预算（结果 meta.mutationPaths
       // 是工具声明的目标路径——isError 计账、成功清历史）。
-      this.reportMutationOutcome(outcome.value);
+      this.mutationGuard.reportOutcome(outcome.value, this.currentPromptId);
       return outcome.value;
     } catch (e) {
       return {
@@ -1142,36 +1090,6 @@ export class AgentLoop {
         isError: true,
         error: { name: "ToolError", code: "TOOL_EXECUTE_FAILED" },
       };
-    }
-  }
-
-  /**
-   * B13/T-P1-57：把 mutation 工具的结果上报预算。isError → 逐路径 record
-   * （第 3 次计数失败置 mutationTerminate，本 step 收尾收轮）；成功 → 逐
-   * 路径 clear（ADR "a successful mutation clears that path's failure
-   * history"）。路径规范化 = resolve + 小写折叠（Windows 大小写不敏感）。
-   */
-  private reportMutationOutcome(result: ToolExecutionResult): void {
-    const budget = this.deps.mutationBudget;
-    const meta = result.meta;
-    if (budget === undefined || this.currentPromptId === undefined) return;
-    if (meta === null || typeof meta !== "object" || Array.isArray(meta)) return;
-    const paths = (meta as { [key: string]: JsonValue }).mutationPaths;
-    if (!Array.isArray(paths) || paths.length === 0) return;
-    for (const raw of paths) {
-      if (typeof raw !== "string" || raw === "") continue;
-      const normalized = path.resolve(raw).toLowerCase();
-      if (result.isError === true) {
-        const verdict = budget.record(this.currentPromptId, normalized, result.error?.code);
-        if (verdict.terminate) {
-          this.mutationTerminate = {
-            path: raw,
-            errorCode: result.error?.code ?? "UNKNOWN",
-          };
-        }
-      } else {
-        budget.clear(this.currentPromptId, normalized);
-      }
     }
   }
 
@@ -1205,7 +1123,7 @@ export class AgentLoop {
           const result = await this.dispatchTool(turn, step, call);
           byCallId.set(call.id, result);
           // A14/T-P1-50 迟到结果闸门：强制收轮后不落盘（与 sequential 同闸）
-          if (this.forcedClosed) {
+          if (this.watchdog.forcedClosed) {
             this.deps.logger?.warn("看门狗强制收轮后迟到的工具结果被丢弃", {
               turn,
               step,
@@ -1469,13 +1387,13 @@ export class AgentLoop {
   private async closeTurn(turn: number, reason: TurnEndReason): Promise<void> {
     // A14/T-P1-50：强制收轮已落 turn/end（看门狗）——自然收尾路径到此
     // 直接返回，防 double terminal（事件流不变量优先）。
-    if (this.forcedClosed) return;
+    if (this.watchdog.forcedClosed) return;
     // A10（T-P1-47）：steer 准入权威面在收轮开始即清位——turn/end 事件
     // 转发先于收尾完成（flush/turnEnd 链还在跑），此窗口内的 steer 不能
     // 再被受理（终态已落盘，无可重定向的在途工作）。
     this.activeTurnNumber = null;
     // A14/T-P1-50：正常收轮先到 → 拆看门狗（迟到的看门狗不得触发）
-    this.disarmAbortWatchdog();
+    this.watchdog.disarm();
     const outcome = await this.turnEndChain.run(this.$, { turn, reason });
     if (outcome.truncated) {
       // turnEnd 截断 = turn/end 没落盘，turn 保持未闭合（与崩溃残留同待遇）。
