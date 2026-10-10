@@ -460,6 +460,10 @@
   },
   "exceptions": [
     {
+      "path": "plugins/tools-builtin/webfetch.ts",
+      "reason": "T6-5 搬迁记档（2026-10-10）：webfetch 419 行（URL 校验/协议门/HTML→文本/截断一体——wire 内聚面）；拆分列 T8 候选（按 fetch/convert 两段），届时删本豁免。"
+    },
+    {
       "path": "plugins/tools-builtin/bash.ts",
       "reason": "T6-4 搬迁记档（2026-10-10）：bash 工具 402 行（真机 shell 语义/沙箱/重试护栏装配面）——超限 2 行；拆分列 T8 候选，届时删本豁免。"
     },

@@ -2,10 +2,10 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { ToolRegistry } from "../registry.js";
-import { registerBuiltinTools } from "./index.js";
-import { PathGuard } from "../../../sandbox/path-guard.js";
-import { LspClient, createMemoryTransport, encodeFrame } from "../../../lsp/client.js";
+import { ToolRegistry } from "../../src/core/index.js";
+import { registerBuiltinTools } from "../../src/kernel/tools/builtin/index.js";
+import { PathGuard } from "../../src/sandbox/path-guard.js";
+import { LspClient, createMemoryTransport, encodeFrame } from "../../src/lsp/client.js";
 import { toLspPosition, buildLspRequest } from "./lsp.js";
 
 const tmpDirs: string[] = [];
