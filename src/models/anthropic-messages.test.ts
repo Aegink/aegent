@@ -200,6 +200,29 @@ describe("anthropic-messages 流式适配 —— J5/T-P1-108", () => {
     expect(tools).toEqual([{ type: "web_search_20250305", name: "web_search", max_uses: 3 }]); // server 工具与 function tools 并列
   });
 
+  it("T2-1 声明式思考档（pi §16）：thinkingLevelMap 映射档名、profile maxTokens 优先于卡内定形", async () => {
+    mock.mountSseSequence([{ events: [anthropicEvents.messageStart, anthropicEvents.messageStop] }]);
+    const provider = makeProvider(mock);
+    // high → 声明映射为别名档 "claude-extended"（内建预算表无此名 → 不带 thinking）；
+    // off 档声明 maxTokens=3000 → max_tokens 取 3000（无 budget 抬底）
+    await collect(provider, {
+      ...makeReq(),
+      reasoningEffort: "high",
+      profile: {
+        thinkingLevelMap: { high: "claude-extended" },
+        samplingParamsByThinkingLevel: { off: { maxTokens: 3000 } },
+      },
+    });
+    const body = JSON.parse(mock.requests()[0]!.body) as Record<string, unknown>;
+    expect(body["thinking"]).toBeUndefined(); // 映射后的别名不在内建预算表 → 不带 thinking
+    expect(body["max_tokens"]).toBe(8192); // 无 budget 抬底 → 卡内定形
+    // off 档声明：不带 reasoningEffort（缺省 off）→ max_tokens 走声明 3000
+    mock.mountSseSequence([{ events: [anthropicEvents.messageStart, anthropicEvents.messageStop] }]);
+    await collect(provider, { ...makeReq(), profile: { samplingParamsByThinkingLevel: { off: { maxTokens: 3000 } } } });
+    const body2 = JSON.parse(mock.requests()[1]!.body) as Record<string, unknown>;
+    expect(body2["max_tokens"]).toBe(3000);
+  });
+
   it("流中 error 事件帧 → 类型化抛出（T-P1-102 预留 blocked 判据的真实面）", async () => {
     mock.mountSseSequence([
       {

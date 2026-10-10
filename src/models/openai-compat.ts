@@ -16,7 +16,7 @@
  * status/Retry-After）；200 之后流中途的畸形帧是 wire 契约破坏，直接抛不重试。
  */
 
-import type { StreamChunk } from "../kernel/events.js";
+import type { StreamChunk, ThinkingLevel } from "../core/index.js";
 import type { ModelIdentity } from "./identity.js";
 import { ProviderConfigError, parseExtraHeaders, type ProviderConfig } from "./config.js";
 import type { AuthMaterial, AuthResolver } from "./auth.js";
@@ -58,6 +58,19 @@ export function parseOpenAiCompatSettings(config: ProviderConfig): OpenAiCompatS
     throw new ProviderConfigError("openai-compat 配置缺少非空字符串字段 apiKey");
   }
   return { baseUrl: baseUrl.replace(/\/+$/, ""), apiKey, ...parseExtraHeaders(rec) };
+}
+
+/**
+ * T2-1 声明式采样覆盖（pi §16）：当前档位的 profile 声明 → wire 字段
+ * （声明才带——缺省不带随服务端默认；显式 req.maxTokens 在调用处更高优先）。
+ */
+function openaiProfileParams(req: ChatRequest): { temperature?: number; top_p?: number } | undefined {
+  const params = req.profile?.samplingParamsByThinkingLevel?.[(req.reasoningEffort ?? "off") as ThinkingLevel];
+  if (params === undefined) return undefined;
+  return {
+    ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
+    ...(params.topP !== undefined ? { top_p: params.topP } : {}),
+  };
 }
 
 /**
@@ -106,9 +119,11 @@ async function* streamChatOpenAi(
       // off/omit/缺省不带——严格端点对未知参数报错，off 语义即"不启用"，
       // omit 为 T-P3-145 子代理显式抹档哨兵）
       ...(req.reasoningEffort !== undefined && req.reasoningEffort !== "off" && req.reasoningEffort !== "omit"
-        ? { reasoning_effort: req.reasoningEffort }
+        ? { reasoning_effort: req.profile?.thinkingLevelMap?.[req.reasoningEffort as ThinkingLevel] ?? req.reasoningEffort }
         : {}),
-      // T-P3-145：单次响应输出上限（子代理 maxTokens——缺省不带随服务端默认）
+      // T-P3-145：单次响应输出上限（子代理 maxTokens——缺省不带随服务端默认；
+      // T2-1 声明优先：profile.samplingParamsByThinkingLevel 覆盖，显式 req.maxTokens 最高）
+      ...(openaiProfileParams(req) ?? {}),
       ...(req.maxTokens !== undefined ? { max_tokens: req.maxTokens } : {}),
       stream: true,
       stream_options: { include_usage: true },

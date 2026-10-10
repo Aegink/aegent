@@ -20,6 +20,7 @@
 
 import type { StreamChunk, TokenUsage } from "../kernel/events.js";
 import { ProviderHttpError, THINKING_BUDGET, type ChatMessage, type ChatRequest, type ChatTool, type ModelProvider } from "./provider.js";
+import type { ModelProfile, ThinkingLevel } from "../core/index.js";
 import { ProviderConfigError, parseExtraHeaders, type ProviderConfig } from "./config.js";
 import type { AuthMaterial, AuthResolver } from "./auth.js";
 import type { ModelIdentity } from "./identity.js";
@@ -151,13 +152,26 @@ function toGoogleTools(tools: readonly ChatTool[]): unknown {
   };
 }
 
-/** 档位 → thinkingConfig.thinkingBudget（共享 THINKING_BUDGET 映射；off/未知档不带）。 */
-function googleThinking(level: string | undefined): { generationConfig: { thinkingConfig: { thinkingBudget: number } } } | undefined {
+/** 档位 → thinkingConfig.thinkingBudget（共享 THINKING_BUDGET 映射；off/未知档不带）。
+ * T2-1：档位先经 profile.thinkingLevelMap 声明映射（缺省原样）。 */
+function googleThinking(level: string | undefined, profile?: ModelProfile): { generationConfig: { thinkingConfig: { thinkingBudget: number } } } | undefined {
   if (level === undefined || level === "off") return undefined;
-  const budget = THINKING_BUDGET[level];
+  const budget = THINKING_BUDGET[profile?.thinkingLevelMap?.[level as ThinkingLevel] ?? level];
   return budget === undefined
     ? undefined
     : { generationConfig: { thinkingConfig: { thinkingBudget: budget } } };
+}
+
+/** T2-1 声明式采样覆盖：当前档位 profile 声明 → google generationConfig（声明才带）。 */
+function googleProfileGenerationConfig(req: ChatRequest): { generationConfig: { temperature?: number; topP?: number } } | undefined {
+  const params = req.profile?.samplingParamsByThinkingLevel?.[(req.reasoningEffort ?? "off") as ThinkingLevel];
+  if (params === undefined || (params.temperature === undefined && params.topP === undefined)) return undefined;
+  return {
+    generationConfig: {
+      ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
+      ...(params.topP !== undefined ? { topP: params.topP } : {}),
+    },
+  };
 }
 
 async function* streamChatGoogle(
@@ -184,7 +198,8 @@ async function* streamChatGoogle(
       ...(req.tools && req.tools.length > 0 ? { tools: [toGoogleTools(req.tools)] } : {}),
       // T-P3-137 三轮：模型级思考档真实消费（google thinkingConfig.thinkingBudget
       // 档位映射；off/omit/缺省不带。google 装配暂缓记档——provider-test/直连场景可用）
-      ...(googleThinking(req.reasoningEffort) ?? {}),
+      ...(googleThinking(req.reasoningEffort, req.profile) ?? {}),
+      // T2-1 声明式采样覆盖：当前档位 profile 声明（maxTokens 显式 req 更高）
       // T-P3-145：单次响应输出上限（子代理 maxTokens）
       ...(req.maxTokens !== undefined ? { generationConfig: { maxOutputTokens: req.maxTokens } } : {}),
     }),

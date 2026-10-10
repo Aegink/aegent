@@ -21,7 +21,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import type { ChatTool } from "../../models/provider.js";
+import type { ChatTool } from "../../core/index.js";
 import type { JsonRecord, JsonValue } from "../events.js";
 import type { ToolExecutionResult } from "../loop.js";
 import { TOOL_TIMEOUT, TimeoutError } from "../timeout.js";

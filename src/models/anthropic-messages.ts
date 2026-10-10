@@ -25,6 +25,7 @@
 
 import type { StreamChunk, TokenUsage } from "../kernel/events.js";
 import type { ModelIdentity } from "./identity.js";
+import type { ModelProfile, ThinkingLevel } from "../core/index.js";
 import { ProviderConfigError, parseExtraHeaders, type ProviderConfig } from "./config.js";
 import type { AuthMaterial, AuthResolver } from "./auth.js";
 import {
@@ -186,18 +187,22 @@ function toAnthropicTool(t: ChatTool): unknown {
 
 // ——— T-P3-137 三轮：模型级思考档 / 原生联网搜索的 wire 映射 ———
 
-function anthropicThinking(level: string | undefined): { thinking: { type: string; budget_tokens: number } } | undefined {
+function anthropicThinking(level: string | undefined, profile?: ModelProfile): { thinking: { type: string; budget_tokens: number } } | undefined {
   if (level === undefined || level === "off") return undefined;
-  const budget = THINKING_BUDGET[level];
+  // T2-1 声明式映射（pi §16）：档位 → wire 档名（缺省原样），再查内建预算表
+  const budget = THINKING_BUDGET[profile?.thinkingLevelMap?.[level as ThinkingLevel] ?? level];
   return budget === undefined
     ? undefined
     : { thinking: { type: "enabled", budget_tokens: budget } };
 }
 
-/** anthropic 硬规则：max_tokens 必须大于 budget_tokens——开思考时抬底。 */
-function anthropicMaxTokens(base: number, level: string | undefined): number {
-  const budget = anthropicThinking(level)?.thinking.budget_tokens;
-  return budget !== undefined ? Math.max(base, budget + 1024) : base;
+/** anthropic 硬规则：max_tokens 必须大于 budget_tokens——开思考时抬底。
+ * T2-1 优先级：显式 req.maxTokens（explicit）> profile 声明（declared）> base（settings/卡内定形）。 */
+function anthropicMaxTokens(base: number, level: string | undefined, profile?: ModelProfile, explicit?: number): number {
+  const declared = profile?.samplingParamsByThinkingLevel?.[(level ?? "off") as ThinkingLevel]?.maxTokens;
+  const chosen = explicit ?? declared ?? base;
+  const budget = anthropicThinking(level, profile)?.thinking.budget_tokens;
+  return budget !== undefined ? Math.max(chosen, budget + 1024) : chosen;
 }
 
 /** web_search server 工具（与 function tools 并列；端点不支持/未开通时报错上抛）。 */
@@ -245,15 +250,17 @@ async function* streamChatAnthropic(
       model: req.identity.modelId,
       // T-P3-145：单次响应输出上限（子代理 maxTokens）优先于模型级/缺省
       max_tokens: anthropicMaxTokens(
-        req.maxTokens ?? settings.maxTokens ?? DEFAULT_MAX_TOKENS,
+        settings.maxTokens ?? DEFAULT_MAX_TOKENS,
         req.reasoningEffort,
+        req.profile,
+        req.maxTokens,
       ),
       ...(system !== undefined ? { system } : {}),
       messages,
       ...(req.tools && req.tools.length > 0 ? { tools: req.tools.map(toAnthropicTool) } : {}),
       // T-P3-137 三轮：模型级思考档真实消费（anthropic 扩展思考——budget_tokens
       // 档位映射；off/omit/缺省不带。规则：max_tokens 必须大于 budget_tokens）
-      ...(anthropicThinking(req.reasoningEffort) ?? {}),
+      ...(anthropicThinking(req.reasoningEffort, req.profile) ?? {}),
       // 原生联网搜索（server 工具——webSearch 模型级开关真实附 web_search；
       // 与 function tools 并列，计费/支持度由端点裁决）
       ...(req.webSearch ? { tools: anthropicWebSearchTools(req.tools) } : {}),

@@ -11,6 +11,33 @@
 
 import type { JsonValue, StreamChunk } from "../skeleton/events.js";
 
+/**
+ * 思考档键域（T2-1，pi §16 声明式思考档）——与 session/settings.ts 的
+ * THINKING_LEVELS 同值同序（core 不 import session，此处按字符串闭集声明，
+ * 两处一致性由 settings 校验与 wire 消费共同锚定）。
+ */
+export const THINKING_LEVEL_KEYS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export type ThinkingLevel = (typeof THINKING_LEVEL_KEYS)[number];
+
+/** 采样参数声明（pi SamplingParams 子集——wire 层映射各厂商字段名）。 */
+export interface SamplingParams {
+  temperature?: number;
+  topP?: number;
+  maxTokens?: number;
+}
+
+/**
+ * provider 画像声明表（pi §16：思考档映射与采样参数数据化——provider 画像
+ * 本就是数据，声明优先、缺省回落 wire 层内建预算/缺省；随 ChatRequest 请求级
+ * 携带，由承载方从 provider 配置填充）。
+ */
+export interface ModelProfile {
+  /** 档位 → wire 档名映射（缺省 = 档位名原样透传给厂商）。 */
+  thinkingLevelMap?: Partial<Record<ThinkingLevel, string>>;
+  /** 档位 → 采样参数覆盖（声明优先；maxTokens 只覆盖输出上限，思考预算仍走 wire 层内建表）。 */
+  samplingParamsByThinkingLevel?: Partial<Record<ThinkingLevel, SamplingParams>>;
+}
+
 /** 模型身份（J4）——身份键永远是 {provider, modelId} 二元组，绝不用裸 model 名
  * （形状取 pi·agent-harness.ts 的 ModelIdentity：同名模型跨厂商可区分）。 */
 export interface ModelIdentity {
@@ -76,6 +103,11 @@ export interface ChatRequest {
    * 跟随模型/服务端默认。各适配层自行映射 wire 字段）。
    */
   maxTokens?: number;
+  /**
+   * provider 画像（T2-1 声明式思考档，pi §16）——承载方填充，适配层消费：
+   * thinkingLevelMap 映射 wire 档名、samplingParamsByThinkingLevel 覆盖采样。
+   */
+  profile?: ModelProfile;
 }
 
 export interface ModelProvider {
