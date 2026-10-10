@@ -1343,3 +1343,58 @@ process.stdin.on("data", (c) => {
     rmSync(dir, { recursive: true, force: true });
   }, 30_000);
 });
+
+describe("EP-9 协议版本握手（T1-3）", () => {
+  it("版本不匹配：父侧类型化拒绝（PROTOCOL_VERSION_MISMATCH）→ error 行 + 流结束 + 进程被杀", async () => {
+    // 假子进程入口：声明错误版本后挂住（不进业务循环）——真 spawn、真管道
+    const fakeEntry = path.join(root, "dist", "src", "kernel", "_tmp_fake_child_t13.js");
+    writeFileSync(
+      fakeEntry,
+      [
+        "process.stdout.write(JSON.stringify({ type: 'hello', protocolVersion: 999 }));",
+        "process.stdout.write(String.fromCharCode(10));",
+        "setInterval(() => {}, 1_000); // 挂住等父侧处置",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    try {
+      const proc = spawnAgentProcess({ entryPath: fakeEntry });
+      const messages: AgentMessage[] = [];
+      for await (const m of proc.messages) messages.push(m);
+      // 拒绝是终态：恰一条类型化 error，然后流结束（queue.finish）
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toMatchObject({
+        type: "error",
+        code: "PROTOCOL_VERSION_MISMATCH",
+      });
+      await proc.kill(); // 子进程已被父侧杀掉——kill 幂等收尾
+    } finally {
+      rmSync(fakeEntry, { force: true });
+    }
+  }, 30_000);
+
+  it("首帧缺失（旧版子进程不发 hello）：同样类型化拒绝，不降级兼容", async () => {
+    const fakeEntry = path.join(root, "dist", "src", "kernel", "_tmp_fake_child_t13b.js");
+    writeFileSync(
+      fakeEntry,
+      [
+        "process.stdout.write(JSON.stringify({ type: 'ready' }));",
+        "process.stdout.write(String.fromCharCode(10));",
+        "setInterval(() => {}, 1_000);",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    try {
+      const proc = spawnAgentProcess({ entryPath: fakeEntry });
+      const messages: AgentMessage[] = [];
+      for await (const m of proc.messages) messages.push(m);
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toMatchObject({ type: "error", code: "PROTOCOL_HELLO_MISSING" });
+      await proc.kill();
+    } finally {
+      rmSync(fakeEntry, { force: true });
+    }
+  }, 30_000);
+});

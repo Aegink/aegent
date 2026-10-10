@@ -41,9 +41,15 @@ import type { RetryObservation } from "../models/retry.js";
 import {
   type AgentMessage,
   type AgentRequest,
+  EXIT_PROTOCOL_MISMATCH,
   ProtocolError,
+  PROTOCOL_VERSION,
+  ProtocolHandshakeError,
+  type ServerHello,
+  decodeClientHello,
   decodeMessage,
   decodeRequest,
+  decodeServerHello,
 } from "./agent-protocol.js";
 import type { ApprovalAnnouncement } from "../policy/pending.js";
 import type { ChatRequest, ModelProvider } from "../models/provider.js";
@@ -1840,11 +1846,38 @@ const executionEnv = new NodeExecutionEnv({
       ...(readyPromptCatalog !== undefined ? { prompts: readyPromptCatalog } : {}),
     });
   };
+  // EP-9 握手（T1-3）：真 stdio 模式（未注入流——进程边界真实存在）启动即发
+  // ClientHello，父侧校验版本后回 ServerHello，业务帧在父侧握手通过后才放行。
+  // 进程内注入流（测试 rig / repl / 进程内单测——同进程同版本）跳过握手：
+  // 版本协商只对跨进程边界有意义，记档。
+  const realStdio = options.input === undefined;
+  if (realStdio) {
+    output.write(
+      `${JSON.stringify({ type: "hello", protocolVersion: PROTOCOL_VERSION } satisfies import("./agent-protocol.js").ClientHello)}\n`,
+    );
+  }
   await sendReady();
   const rl = createInterface({ input, crlfDelay: Infinity });
   const closed = new Promise<void>((resolve) => rl.on("close", resolve));
+  let helloAcked = !realStdio;
   rl.on("line", (line: string) => {
     if (line.trim() === "") return;
+    if (!helloAcked) {
+      // 首行强制 ServerHello（fail-closed）：版本不匹配 / 坏形状 = stderr 归因 +
+      // 类型化 exit 码（78）自退——不进业务循环，绝不带病服务
+      try {
+        decodeServerHello(line);
+      } catch (e) {
+        const hse = e as { code?: string; expected?: number; received?: number };
+        process.stderr.write(
+          `[agent-child] 协议握手失败：${hse?.code ?? "PROTOCOL_HELLO_MALFORMED"} ${e instanceof Error ? e.message : String(e)}\n`,
+        );
+        exit(EXIT_PROTOCOL_MISMATCH);
+        return;
+      }
+      helloAcked = true;
+      return;
+    }
     let req: AgentRequest;
     try {
       req = decodeRequest(line);
@@ -1985,6 +2018,21 @@ export function spawnAgentProcess(options: SpawnAgentOptions): AgentProcess {
   }
   const queue = new MessageQueue();
   let buffer = "";
+  // EP-9 握手（T1-3）：首个 stdout 行必须是 ClientHello——通过前业务帧不入队、
+  // 消费者 send 的请求缓冲（保证 ServerHello 是子侧读到的首行）。
+  let helloDone = false;
+  const pendingRequests: AgentRequest[] = [];
+  const failHandshake = (e: unknown): void => {
+    const hse = e as { code?: string };
+    queue.push({
+      type: "error",
+      code: hse?.code ?? "PROTOCOL_HELLO_MALFORMED",
+      message: e instanceof Error ? e.message : String(e),
+    });
+    queue.finish();
+    diag(`[agent] 握手失败（杀进程）：${e instanceof Error ? e.message : String(e)}`);
+    child.kill();
+  };
 
   child.stdout!.setEncoding("utf-8");
   child.stdout!.on("data", (chunk: string) => {
@@ -1995,6 +2043,29 @@ export function spawnAgentProcess(options: SpawnAgentOptions): AgentProcess {
       const line = buffer.slice(0, nl);
       buffer = buffer.slice(nl + 1);
       if (line.trim() === "") continue;
+      if (!helloDone) {
+        // 首帧强制 hello（fail-closed）：版本不匹配 / 旧版子进程（不发 hello）/
+        // 坏形状一律类型化拒绝并杀进程——不降级兼容
+        try {
+          const hello = decodeClientHello(line);
+          if (hello.protocolVersion !== PROTOCOL_VERSION) {
+            throw new ProtocolHandshakeError(
+              "PROTOCOL_VERSION_MISMATCH",
+              `协议版本不匹配：父进程期望 ${PROTOCOL_VERSION}，子进程声明 ${hello.protocolVersion}`,
+              PROTOCOL_VERSION,
+              hello.protocolVersion,
+            );
+          }
+        } catch (e) {
+          failHandshake(e);
+          return;
+        }
+        helloDone = true;
+        child.stdin!.write(`${JSON.stringify({ type: "hello-ack", protocolVersion: PROTOCOL_VERSION } satisfies ServerHello)}\n`);
+        for (const r of pendingRequests) child.stdin!.write(`${JSON.stringify(r)}\n`);
+        pendingRequests.length = 0;
+        continue;
+      }
       try {
         queue.push(decodeMessage(line));
       } catch {
@@ -2011,6 +2082,11 @@ export function spawnAgentProcess(options: SpawnAgentOptions): AgentProcess {
 
   return {
     send(request: AgentRequest): void {
+      if (!helloDone) {
+        // 握手未完成：缓冲（ack 回写后按序 flush——ServerHello 保证是子侧首行）
+        pendingRequests.push(request);
+        return;
+      }
       child.stdin!.write(`${JSON.stringify(request)}\n`);
     },
     messages: {
