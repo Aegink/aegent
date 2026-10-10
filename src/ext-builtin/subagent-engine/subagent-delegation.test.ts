@@ -2,13 +2,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { StreamChunk } from "./events.js";
-import {SessionEventStore, type SessionStore} from "../session/store.js";
-import { ScriptedProvider } from "../core/primitives/loop/loop.test-utils.js";
-import { ToolRegistry } from "./tools/registry.js";
-import { registerBuiltinTools } from "./tools/builtin/index.js";
-import { createSubagentRunner } from "./subagent.js";
-import type { ModelIdentity } from "../models/identity.js";
+import type { StreamChunk } from "../../kernel/events.js";
+import {SessionEventStore, type SessionStore} from "../../session/store.js";
+import { ScriptedProvider } from "../../core/primitives/loop/loop.test-utils.js";
+import { ToolRegistry } from "../../kernel/tools/registry.js";
+import { registerBuiltinTools } from "../../kernel/tools/builtin/index.js";
+import { createSubagentRunner } from "../../kernel/subagent.js";
+import type { ModelIdentity } from "../../models/identity.js";
 
 const tmpRoots: string[] = [];
 afterEach(() => {

@@ -207,7 +207,8 @@
         "src/kernel/side-query.ts",
         "src/kernel/prompt-args.ts",
         "src/kernel/hooks.ts",
-        "src/kernel/invariants.ts"
+        "src/kernel/invariants.ts",
+        "src/kernel/assembly.ts"
       ],
       "owner": "wangh"
     },
@@ -387,6 +388,10 @@
     "forbidDeepImports": true
   },
   "exceptions": [
+    {
+      "path": "src/ext-builtin/subagent-engine/subagent.ts",
+      "reason": "T4-3 搬迁记档（2026-10-10）：子代理引擎 615 行（runner 装配 + 委托生命周期 + 后台收尾——行为内聚面）——kernel 时代为 warning，ext-builtin（managed）触线即 error；拆分列 T8 候选（按 runner/委托/后台三段），届时删本豁免。"
+    },
     {
       "path": "src/core/skeleton/events.ts",
       "reason": "T1-2 搬迁记档（2026-10-10）：事件词汇表 935 行——kernel 时代为 warning（managed:false），进 core（managed:true）触线即 error。事件类型是内核单一词汇源（31 类事件 + StreamChunk/JsonValue 等），拆分需按事件族分文件且改动全部消费面 import，超出 T1-2 纯搬迁范围；豁免带上限（后续按事件族拆分列为批 3/T8 候选，届时删本豁免）。"

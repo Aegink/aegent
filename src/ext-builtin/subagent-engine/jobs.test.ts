@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isTerminal, JobRegistry, UnknownJobError, type JobRunContext } from "./jobs.js";
+import { isTerminal, JobRegistry, UnknownJobError, type JobRunContext } from "../../kernel/jobs.js";
 
 /** 受控 deferred：测试精确控制执行体何时结束（消固定 sleep 竞态——T-5-05 先例）。 */
 function deferred<T = void>(): { promise: Promise<T>; resolve: (v: T) => void; reject: (e: unknown) => void } {
