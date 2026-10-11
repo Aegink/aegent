@@ -37,14 +37,22 @@
 - **质量基建**：1800+ vitest 用例（含 XSS 渲染十例、协议 e2e、live 端点门控）、
   架构检查（行数/依赖环/域边界）、文档链接校验、功能计数对账。
 
-## 当前状态（2026-10-10）
+## 当前状态（2026-10-11）：内核已重构
 
-开发主线转入**内核战略期**——目标「越轻越好：0 底座 + 万物可插件」（道生一/一生二/二生三/三生万物：
-0=骨架、一=循环+会话原语、二=工具/子代理/编排/渠道、三=全部插件）。已交付内核全面调研三路分报告与
-总报告 [`docs/20261010_内核架构对比与改造建议.md`](docs/20261010_内核架构对比与改造建议.md)
-（10 域 × 10 参考仓对照矩阵、0 底座定义、扩展点清单、W1~W17 分级方案），以及施工蓝图
-[`docs/20261010_内核重构总体方案.md`](docs/20261010_内核重构总体方案.md)
-（新建 `src/core/` 纯内核 + 逐文件归属表 + 8 个实施批次），**待裁决后进入分批实施**。
+**内核重构已完成**——按「越轻越好：0 底座 + 万物可插件」完成全部 60 任务（11 阶段闸全过）：
+
+- **`src/core/` 纯内核**：单一公开入口 `src/core/index.ts`（0 骨架 + 循环/会话/工具原语 + 契约面），
+  跨域深导入禁令（forbidDeepImports）+ core 零出边（`scratch/_tmp_kernel_edges.cjs` 显式验证）。
+- **装配与进程外置**：`src/runtime/`（assembly + agent-process + child 入口——agent-child 正式入口位
+  `dist/src/runtime/child.js`）；**能力面外置**：`src/ext-builtin/`（plugin-runtime / prompt-defaults /
+  subagent-engine）、`plugins/tools-builtin/`（内置工具包，可裁剪注册）。
+- **能力补齐**（W2 编排方向盘 collab 工具 / W9 task resume+task_send / W13 审批竞速+规则写回 /
+  W15 插件能力分片+权限闭集+常驻服务+总线+Telemetry / W9 存储 commit 原子批+ignorable 信封+
+  trace 家族）——逐项依据见
+  [`docs/20261010_内核重构全自动任务计划.md`](docs/20261010_内核重构全自动任务计划.md) 与
+  [`docs/20261010_内核重构度量报告.md`](docs/20261010_内核重构度量报告.md)。
+- **架构治理**：`architecture-policy.json` 20 域白名单（kernel 域已删）+ `tools/architecture-check.mjs`
+  0 error 纪律；全量测试 2390+ 用例绿。
 
 ## 构建与运行
 
