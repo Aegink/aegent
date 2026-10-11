@@ -52,7 +52,12 @@
   [`docs/20261010_内核重构全自动任务计划.md`](docs/20261010_内核重构全自动任务计划.md) 与
   [`docs/20261010_内核重构度量报告.md`](docs/20261010_内核重构度量报告.md)。
 - **架构治理**：`architecture-policy.json` 20 域白名单（kernel 域已删）+ `tools/architecture-check.mjs`
-  0 error 纪律；全量测试 2390+ 用例绿。
+  0 error 纪律；全量测试 2400+ 用例绿。
+- **W16 全面排查**（2026-10-11，[`docs/20261011_内核重构W16全面排查报告.md`](docs/20261011_内核重构W16全面排查报告.md)）：
+  九新面深检修复 2 P0（SQLite 跳痕写链断裂 / JSONC 校验洞）+ 15 P1（flush 换桶、
+  取消竞态、steer 假收执、三贡献可用集、闭集单一事实源等）+ 治理收敛
+  （scheduler requires 6→2、core 针孔消除、schedule 四工具接线）；便携三哈希
+  齐新重打 + 便携真机冒烟 OK。
 
 ## 构建与运行
 
