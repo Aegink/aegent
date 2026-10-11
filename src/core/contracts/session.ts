@@ -10,12 +10,25 @@
  * 以事实为准记档）。
  */
 
-import type { SessionEvent, NewSessionEvent } from "../skeleton/events.js";
+import type { SessionEvent, NewSessionEvent, JsonValue } from "../skeleton/events.js";
+
+/**
+ * W15b/T9-7 原子批写入单元（§10——pi Storage.commit 形状）：事件 / 标题 /
+ * 协作账本（血统）/ 插件文档四类——一次 commit 同批落库（原子界见
+ * SqliteEventStorage.commit）。
+ */
+export type StorageWrite =
+  | { kind: "events"; sessionId: string; events: readonly SessionEvent[] }
+  | { kind: "title"; sessionId: string; title: string; source: "generated" | "custom" }
+  | { kind: "origin"; sessionId: string; originSessionId: string }
+  | { kind: "doc"; collection: string; docId: string; body: JsonValue };
 
 /** 持久端口：事件批落库 / 全量回读（write-behind 的对端；实现=InMemory/Sqlite）。 */
 export interface EventStorage {
   appendBatch(sessionId: string, events: readonly SessionEvent[]): void | Promise<void>;
   readAll(sessionId: string): SessionEvent[] | Promise<SessionEvent[]>;
+  /** W15b/T9-7：原子批（多类写入同一事务——marker 未落 = 整批不可见）。 */
+  commit?(writes: readonly StorageWrite[]): void | Promise<void>;
 }
 
 export interface SessionSnapshot {
@@ -44,6 +57,12 @@ export interface ForkOptions {
 export interface SessionStore {
   /** 同步追加（分配 seq/ts → JSON 安全校验 → 投影校验 → 内存序 + buffer），绝不 await I/O。 */
   append(sessionId: string, events: readonly NewSessionEvent[]): SessionEvent[];
+  /**
+   * W15b/T9-7：commit 原子批（§10）——events 走 append 同一校验路径进
+   * 内存序与 write-behind buffer；title/origin/doc 直达 storage 同事务。
+   * 热路径不 await I/O（buffer 经既有 flush 链落库）。
+   */
+  commit(writes: readonly StorageWrite[]): Promise<{ seq: number }>;
   /** 内存序读取（同步）。 */
   load(sessionId: string): readonly SessionEvent[];
   /** 已知会话 id 清单。 */

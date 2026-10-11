@@ -10,12 +10,17 @@
 
 import Database from "better-sqlite3";
 
-import type { SessionEvent } from "../core/index.js";
+import {
+  EventEnvelopeError,
+  validateEventEnvelope,
+  type SessionEvent,
+  type StorageWrite,
+} from "../core/index.js";
 import type { EventStorage } from "./store.js";
 import { isValidSessionId } from "./session-id.js";
 import { MIGRATIONS, planMigrationChain } from "./migrate.js";
 
-export const CURRENT_SCHEMA_VERSION = 9;
+export const CURRENT_SCHEMA_VERSION = 10;
 
 /** 归档后从主库读该会话的 fail-closed 拒绝（Q8/T-P2-102）——归档 ≠ 删除，
  * 数据在归档档（archive.ts 的 readArchivedSession 可查），主库读路径必须
@@ -166,7 +171,74 @@ export class SqliteEventStorage implements EventStorage {
       throw new SessionArchivedError(sessionId);
     }
     const rows = this.selectAll.all(sessionId) as Array<{ payload: string }>;
-    return rows.map((row) => JSON.parse(row.payload) as SessionEvent);
+    // §4/T9-7 信封校验：闭集外事件 ignorable → 跳过；否则 fail-closed 拒读
+    const out: SessionEvent[] = [];
+    for (const row of rows) {
+      const event = JSON.parse(row.payload) as SessionEvent;
+      const verdict = validateEventEnvelope(event);
+      if (verdict === "skip") continue;
+      if (verdict === "reject") throw new EventEnvelopeError(event.type);
+      out.push(event);
+    }
+    return out;
+  }
+
+  /**
+   * W15b/T9-7 commit 原子批（§10——pi Storage.commit 形状）：事件 + 标题 +
+   * 协作账本（session_origins）+ 插件文档（plugin_documents）**同一事务**
+   * 落库。崩溃点语义 = "marker 未落 = 整批不可见"（pi sidecar→marker 的
+   * 我方结构等价：sqlite 单事务即原子界——事务中止全批回滚；sidecar 两
+   * 阶段文件不采用，记档最优评估 §10 的条件采纳条款）。
+   */
+  commit(writes: readonly StorageWrite[]): void {
+    this.db.transaction(() => {
+      for (const write of writes) {
+        switch (write.kind) {
+          case "events": {
+            if (write.events.length === 0) break;
+            this.ensureSession.run(write.sessionId, write.events[0]!.ts);
+            for (const event of write.events) {
+              this.insertEvent.run(write.sessionId, event.seq, event.type, JSON.stringify(event), event.ts);
+            }
+            this.upsertIndex(write.sessionId);
+            break;
+          }
+          case "title": {
+            this.db
+              .prepare(
+                `INSERT INTO session_titles (session_id, title, source, generated_ts) VALUES (?, ?, ?, ?)
+                 ON CONFLICT(session_id) DO UPDATE SET title = excluded.title, source = excluded.source, generated_ts = excluded.generated_ts
+                 WHERE excluded.source = 'custom' OR session_titles.source != 'custom'`,
+              )
+              .run(write.sessionId, write.title, write.source, Date.now());
+            break;
+          }
+          case "origin": {
+            this.db
+              .prepare("INSERT OR IGNORE INTO session_origins (session_id, parent_session_id, created_ts) VALUES (?, ?, ?)")
+              .run(write.sessionId, write.originSessionId, Date.now());
+            break;
+          }
+          case "doc": {
+            this.db
+              .prepare(
+                `INSERT INTO plugin_documents (collection, doc_id, body, updated_ts) VALUES (?, ?, ?, ?)
+                 ON CONFLICT(collection, doc_id) DO UPDATE SET body = excluded.body, updated_ts = excluded.updated_ts`,
+              )
+              .run(write.collection, write.docId, JSON.stringify(write.body), Date.now());
+            break;
+          }
+        }
+      }
+    })();
+  }
+
+  /** 插件文档读面（commit 的 doc 写侧对偶——同 collection 按更新时间分页）。 */
+  readPluginDocuments(collection: string, limit = 50): Array<{ docId: string; body: unknown; updatedTs: number }> {
+    const rows = this.db
+      .prepare("SELECT doc_id, body, updated_ts FROM plugin_documents WHERE collection = ? ORDER BY updated_ts DESC LIMIT ?")
+      .all(collection, limit) as Array<{ doc_id: string; body: string; updated_ts: number }>;
+    return rows.map((r) => ({ docId: r.doc_id, body: JSON.parse(r.body) as unknown, updatedTs: r.updated_ts }));
   }
 
   /**

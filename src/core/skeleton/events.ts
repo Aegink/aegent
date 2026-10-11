@@ -208,6 +208,13 @@ export interface EventBase {
   ts: number;
   /** 所属用户轮。 */
   turn: number;
+  /**
+   * W15b/T9-7（§4 ignorable——dsh known-event-types 白名单式）：信封标记
+   * "本事件可被未知版本的读面跳过"。读路径遇到闭集外事件类型时只允许
+   * ignorable → 跳过，否则 fail-closed 拒读（新版本写入的未知事件由
+   * 写侧标注；旧版本读面据此降级而非崩读）。
+   */
+  ignorable?: true;
   /** 仅 step 作用域事件携带（step 作用域事件在其接口里重声明为必填）。 */
   step?: number;
 }
@@ -949,3 +956,25 @@ void _EVENT_TYPES_EXACT;
 
 /** append 的入参形状：seq / ts 由 store 分配，调用方不给（pi NewEntry 纪律，l0-events.md §3.1）。 */
 export type NewSessionEvent = DistributiveOmit<SessionEvent, "seq" | "ts">;
+
+/** 信封校验裁决（§4 白名单式——闭集外只允许 ignorable → 跳过）。 */
+export type EnvelopeVerdict = "ok" | "skip" | "reject";
+
+/**
+ * 事件信封校验（§4/T9-7——dsh known-event-types 同构）：闭集内 = ok；
+ * 闭集外且 ignorable === true = skip（跨版本前向兼容的唯一通道）；
+ * 其余 = reject（fail-closed 拒读——静默丢事件是数据事故）。
+ */
+export function validateEventEnvelope(event: { type: string; ignorable?: true }): EnvelopeVerdict {
+  if ((EVENT_TYPES as readonly string[]).includes(event.type)) return "ok";
+  return event.ignorable === true ? "skip" : "reject";
+}
+
+/** 闭集外且不可跳过的事件（读路径 fail-closed 的类型化拒绝面）。 */
+export class EventEnvelopeError extends Error {
+  override readonly name = "EventEnvelopeError";
+  constructor(readonly type: string) {
+    super(`闭集外事件类型且未标注 ignorable——拒绝读取：${type}（§4 白名单式信封校验）`);
+    this.name = "EventEnvelopeError";
+  }
+}

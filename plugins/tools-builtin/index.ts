@@ -34,6 +34,7 @@ import {
   createSessionQueryTool,
   type SessionQueryToolDeps,
 } from "./session-query.js";
+import { createSessionTraceTools, type SessionTraceDeps } from "./session-trace.js";
 import { createSkillLoadTool } from "./skill.js";
 import { createPluginCreateTool } from "./plugin-create.js";
 import { createPluginDefineTool } from "./plugin-define.js";
@@ -167,6 +168,9 @@ export function registerBuiltinTools(
      * 缺省不注册（无编排运行时的装配零新工具——"可裁剪插件"纪律）。
      */
     collab?: CollabToolDeps;
+    /** W15b/T9-7：trace 家族（session_trace/event_trace/event_read——
+     * dbPath 提供时才注册，与 session_query 同面）。 */
+    sessionTrace?: SessionTraceDeps;
     /** B18/T-P1-55 bash 超时三档的默认档（秒）；缺省无默认超时（pi 同款）。 */
     bash?: { defaultTimeoutSeconds?: number };
     /** B15/T-P1-58 沙箱装配（backend + 会话默认模式 + 升级审批通道）；
@@ -327,6 +331,8 @@ export function registerBuiltinTools(
     ...(options.sessionQuery !== undefined
       ? [createSessionQueryTool(options.sessionQuery), createSessionGetTool(options.sessionQuery)]
       : []),
+    // W15b/T9-7：trace 家族（只读类——授权边界与 session_query 同源）
+    ...(options.sessionTrace !== undefined ? createSessionTraceTools(options.sessionTrace) : []),
     // T-P3-148 I：插件创建工具（工作区装配在位才注册——写面收敛
     // `<workspace>/plugins/<slug>`；生成不自动装载，走插件中心审批链）
     ...(options.pluginCreate !== undefined ? [createPluginCreateTool(options.pluginCreate)] : []),

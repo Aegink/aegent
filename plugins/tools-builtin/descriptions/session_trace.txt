@@ -1,0 +1,1 @@
+查询某会话的血统与编排投影：createdBySession（因谁创建——fork/编排派生来源）、createdSessions（派生了谁）、forkedFrom（fork 父会话）。用于跨会话任务溯源（"这个子会话从哪来的"）。目标会话须在授权边界内（EP-3——与调用者同 cwd/项目才可跨读）。

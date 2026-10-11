@@ -174,6 +174,21 @@ CREATE TABLE IF NOT EXISTS session_origins (
 );
 `;
 
+/**
+ * v9→v10：插件文档表（W15b/T9-7 commit 原子批的"插件文档同批落"承载面
+ * ——事件+标题+协作账本+插件文档同一事务）。collection/id 二级键，
+ * body JSON 整值（upsert 语义——同 id 覆盖）。
+ */
+export const SCHEMA_V10_PLUGIN_DOCS_DDL = `
+CREATE TABLE IF NOT EXISTS plugin_documents (
+    collection TEXT NOT NULL,
+    doc_id     TEXT NOT NULL,
+    body       TEXT NOT NULL,
+    updated_ts INTEGER NOT NULL,
+    PRIMARY KEY (collection, doc_id)
+);
+`;
+
 export const MIGRATIONS: readonly SchemaMigration[] = [
   { from: 0, to: 1, apply: applyBaseSchema },
   {
@@ -243,6 +258,13 @@ export const MIGRATIONS: readonly SchemaMigration[] = [
     to: 9,
     apply: (db) => {
       db.exec(SCHEMA_V9_ORIGINS_DDL);
+    },
+  },
+  {
+    from: 9,
+    to: 10,
+    apply: (db) => {
+      db.exec(SCHEMA_V10_PLUGIN_DOCS_DDL);
     },
   },
 ];

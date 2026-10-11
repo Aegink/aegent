@@ -1,0 +1,1 @@
+查询某事件的直接关系：sessionRefs 引用者（本会话内哪些事件引用了它——E9 流存引用不存内容）、overriddenBy（其后首个 revert/compaction 覆盖标记）。用于核对"这条事件被谁引用/是否已被回退覆盖"。

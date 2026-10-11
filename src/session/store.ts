@@ -13,7 +13,15 @@
  *   session/daemon_recovery.rs:2`）——写成 API 形状：snapshot() 内部先 flush。
  */
 
-import { assertJsonSafe, type NewSessionEvent, type SessionEvent } from "../core/index.js";
+export { InMemoryEventStorage } from "./store-memory.js";
+import { InMemoryEventStorage } from "./store-memory.js";
+import {
+  assertJsonSafe,
+  EventEnvelopeError,
+  type NewSessionEvent,
+  type SessionEvent,
+} from "../core/index.js";
+import { partitionByEnvelope } from "./store-envelope.js";
 import { Projector } from "./project.js";
 // T2-3 依赖倒置：EventStorage/SessionSnapshot/FlushPoint*/ForkOptions/SessionStore
 // 端口契约下沉 core/contracts/session.ts——本文件是 session 域实现面
@@ -33,26 +41,8 @@ import type {
   ForkOptions,
   SessionSnapshot,
   SessionStore,
+  StorageWrite,
 } from "../core/index.js";
-
-/** 内存后端：单测与"不落盘的内存会话"用；readAll/appendBatch 都是同步原子。 */
-export class InMemoryEventStorage implements EventStorage {
-  private readonly rows = new Map<string, SessionEvent[]>();
-
-  appendBatch(sessionId: string, events: readonly SessionEvent[]): void {
-    if (events.length === 0) return;
-    let list = this.rows.get(sessionId);
-    if (!list) {
-      list = [];
-      this.rows.set(sessionId, list);
-    }
-    list.push(...events);
-  }
-
-  readAll(sessionId: string): SessionEvent[] {
-    return [...(this.rows.get(sessionId) ?? [])].sort((a, b) => a.seq - b.seq);
-  }
-}
 
 export class SessionEventStore implements SessionStore {
   private readonly events = new Map<string, SessionEvent[]>();
@@ -60,6 +50,8 @@ export class SessionEventStore implements SessionStore {
   private readonly lastSeq = new Map<string, number>();
   private readonly lastFlushedSeq = new Map<string, number>();
   private readonly flushChains = new Map<string, Promise<void>>();
+  /** W15b/T9-7：commit 非事件写排队（flush 同事务窗口）。 */
+  private readonly pendingExtraWrites = new Map<string, StorageWrite[]>();
   private readonly flushPoints = new Map<FlushPointPhase, FlushPointHook[]>();
   private nextSeqBySession = new Map<string, number>();
   /** 每会话一个投影器（E16）：append 前用它校验"已有流+新事件"。 */
@@ -67,10 +59,8 @@ export class SessionEventStore implements SessionStore {
 
   constructor(private readonly storage: EventStorage = new InMemoryEventStorage()) {}
 
-  /**
-   * 同步追加：分配 seq/ts → assertJsonSafe（C14）→ 入内存序与 write-behind buffer。
-   * 绝不 await I/O。全部事件先校验后提交——任一非法则整批拒绝，内存序不留残迹。
-   */
+  /** 同步追加：seq/ts 分配 → C14 JSON 安全 → E16 投影校验 → 内存序 +
+   * buffer。绝不 await I/O；任一非法整批拒绝（内存序不留残迹）。 */
   append(sessionId: string, events: readonly NewSessionEvent[]): SessionEvent[] {
     const prepared: SessionEvent[] = [];
     let nextSeq = this.nextSeqBySession.get(sessionId) ?? 1;
@@ -101,6 +91,58 @@ export class SessionEventStore implements SessionStore {
     return prepared;
   }
 
+  /** 内存后端的 extras 即置（doc 面——title/origin 由事件流承载，记档）。 */
+  private applyInMemoryExtras(extras: readonly StorageWrite[]): void {
+    for (const write of extras) {
+      if (write.kind === "doc") {
+        (this.storage as InMemoryEventStorage).putDocument(write.collection, write.docId, write.body);
+      }
+    }
+  }
+
+
+  /** W15b/T9-7 commit 原子批（§10）：events 走 append 校验路径；
+   * title/origin/doc 排队进受影响会话 flush 链同事务落库（sqlite 单事务
+   * 即"marker 未落 = 整批不可见"——sidecar 记档 §10 条款）。 */
+  async commit(writes: readonly StorageWrite[]): Promise<{ seq: number }> {
+    let maxSeq = 0;
+    const affected = new Set<string>();
+    const extra = new Map<string, StorageWrite[]>();
+    for (const write of writes) {
+      if (write.kind === "events") {
+        const committed = this.append(write.sessionId, write.events);
+        if (committed.length > 0) {
+          maxSeq = Math.max(maxSeq, committed[committed.length - 1]!.seq);
+          affected.add(write.sessionId);
+        }
+        continue;
+      }
+      // 非事件写：doc 无会话身份——跟随第一个受影响会话；无受影响会话则直落
+      const sessionId =
+        write.kind === "doc" ? (affected.values().next().value ?? "") : write.sessionId;
+      const bucket = extra.get(sessionId) ?? [];
+      bucket.push(write);
+      extra.set(sessionId, bucket);
+      if (write.kind !== "doc") affected.add(write.sessionId);
+    }
+    // 排队进各会话的 flush 链（同事务窗口）
+    for (const [sessionId, writesForSession] of extra) {
+      if (sessionId === "") continue;
+      const pending = this.pendingExtraWrites.get(sessionId) ?? [];
+      pending.push(...writesForSession);
+      this.pendingExtraWrites.set(sessionId, pending);
+    }
+    // 直落面：无受影响会话的纯 doc 批（独立事务；内存后端即置）
+    const orphans = extra.get("") ?? [];
+    if (orphans.length > 0) {
+      if (typeof this.storage.commit === "function") await this.storage.commit(orphans);
+      else this.applyInMemoryExtras(orphans);
+      extra.delete("");
+    }
+    for (const sessionId of affected) await this.flush(sessionId);
+    return { seq: maxSeq };
+  }
+
   private projectorFor(sessionId: string): Projector {
     let projector = this.projectors.get(sessionId);
     if (!projector) {
@@ -115,11 +157,7 @@ export class SessionEventStore implements SessionStore {
     return this.events.get(sessionId) ?? [];
   }
 
-  /**
-   * 已知会话 id 清单（内存序的键集快照——只读消费方用，如 fork-tree 的
-   * 谱系重建 fromStore）。**不是**"全部落库会话"（落库但本进程未安装的
-   * 会话不在列——那要走库面查询 Q2）。
-   */
+  /** 已知会话 id（内存序键集——落库但本进程未安装的不在列，走 Q2 库查）。 */
   sessionIds(): string[] {
     return [...this.events.keys()];
   }
@@ -129,21 +167,48 @@ export class SessionEventStore implements SessionStore {
     return this.buffer.get(sessionId)?.length ?? 0;
   }
 
-  /**
-   * write-behind 排空：把该会话 buffer 整批交给 storage。
-   * 同一会话的 flush 串行化（promise 链），保证后端看到的批次顺序与内存序一致。
-   */
+  /** write-behind 排空：buffer 整批交 storage（同会话 promise 链串行化——
+   * 后端批次顺序与内存序一致，G1）。 */
   async flush(sessionId: string): Promise<void> {
     const tail = this.flushChains.get(sessionId) ?? Promise.resolve();
     const run = tail.then(async () => {
       const batch = this.buffer.get(sessionId);
-      if (!batch || batch.length === 0) return;
-      await this.storage.appendBatch(sessionId, batch);
-      const maxSeq = batch[batch.length - 1]!.seq;
-      const prev = this.lastFlushedSeq.get(sessionId) ?? 0;
-      if (maxSeq <= prev) throw new Error(`flush 语义错误：seq 未前进（${maxSeq} <= ${prev}）`);
-      this.lastFlushedSeq.set(sessionId, maxSeq);
-      this.buffer.set(sessionId, []);
+      const extras = this.pendingExtraWrites.get(sessionId);
+      if ((!batch || batch.length === 0) && (!extras || extras.length === 0)) return;
+      // W15b/T9-7：commit 的非事件写与 buffer 事件同一事务（storage.commit
+      // 在位时）——"事件+标题+账本+插件文档同批落"；无 extras 走既有
+      // appendBatch 快路径（零行为变化）。
+      if (extras !== undefined && extras.length > 0) {
+        if (typeof this.storage.commit === "function") {
+          const writes: StorageWrite[] = [];
+          if (batch !== undefined && batch.length > 0) {
+            writes.push({ kind: "events", sessionId, events: batch });
+          }
+          writes.push(...extras);
+          await this.storage.commit(writes);
+        } else {
+          if (batch !== undefined && batch.length > 0) await this.storage.appendBatch(sessionId, batch);
+          this.applyInMemoryExtras(extras);
+        }
+        this.pendingExtraWrites.delete(sessionId);
+      } else if (batch !== undefined && batch.length > 0) {
+        await this.storage.appendBatch(sessionId, batch);
+      } else {
+        // 仅 extras（无事件批）：commit 在位走同事务；内存后端即置 doc 面
+        if (typeof this.storage.commit === "function") {
+          await this.storage.commit(extras ?? []);
+        } else {
+          this.applyInMemoryExtras(extras ?? []);
+        }
+        this.pendingExtraWrites.delete(sessionId);
+      }
+      if (batch !== undefined && batch.length > 0) {
+        const maxSeq = batch[batch.length - 1]!.seq;
+        const prev = this.lastFlushedSeq.get(sessionId) ?? 0;
+        if (maxSeq <= prev) throw new Error(`flush 语义错误：seq 未前进（${maxSeq} <= ${prev}）`);
+        this.lastFlushedSeq.set(sessionId, maxSeq);
+        this.buffer.set(sessionId, []);
+      }
     });
     // 失败也要清链，否则后续 flush 永远拿到 rejected tail；错误仍由本次调用方收到。
     this.flushChains.set(
@@ -156,10 +221,7 @@ export class SessionEventStore implements SessionStore {
     return run;
   }
 
-  /**
-   * turn 末 flush 检查点（E13）。loop 在每个 turn 结束时 await 本方法；
-   * flush 本体内置在前，注册的 hook 在其后（拿到的是"已持久化"的时点）。
-   */
+  /** turn 末 flush 检查点（E13）——hook 拿到"已持久化"时点。 */
   registerFlushPoint(phase: FlushPointPhase, hook: FlushPointHook): void {
     const hooks = this.flushPoints.get(phase) ?? [];
     hooks.push(hook);
@@ -173,10 +235,7 @@ export class SessionEventStore implements SessionStore {
     }
   }
 
-  /**
-   * 快照（E10）：先 flush 再取内存序——storage 必然覆盖到 snapshotSeq，
-   * 结构上排除"快照说做了 / 事件说没做"。
-   */
+  /** 快照（E10）：先 flush 再取内存序——storage 必然覆盖到 snapshotSeq。 */
   async snapshot(sessionId: string): Promise<SessionSnapshot> {
     await this.flush(sessionId);
     const events = this.load(sessionId);
@@ -187,30 +246,39 @@ export class SessionEventStore implements SessionStore {
     };
   }
 
-  /**
-   * 崩溃恢复：从 storage 重放已落库事件到内存（杀进程重启路径）。
-   * 三级降级（T-P3-172——child 启动恢复的可用性阶梯）：
-   *   strict（缺省）：seq 断续/语义坏 → 抛错（快照/对账面语义不变）；
-   *   lenient：seq 断续容忍（按库实际 seq 灌内存、nextSeq=maxSeq+1 接续），
-   *     fold 仍失败 → 自动降 discard；
-   *   discard：旧流不进内存（恢复视图经库读面仍然完整可见），投影弃用——
-   *     后续 append 自动 fresh 新投影，新事件从 maxSeq+1 干净续写。
-   * 旧版本缺陷可能留下带洞/缺 turn 边界的流——**可用性优先**，历史内容
-   * 永不删除（库行原样保留）。
-   */
+  /** 崩溃恢复（G2/T-P3-172 三级降级）：strict 断续/语义坏抛错；lenient
+   * 断续容忍（fold 仍失败降 discard）；discard 旧流不进内存（投影弃用、
+   * 新事件从 maxSeq+1 续写）。可用性优先——历史内容永不删除。 */
   async restore(sessionId: string, options: { lenient?: boolean } = {}): Promise<readonly SessionEvent[]> {
-    const rows = await this.storage.readAll(sessionId);
+    const raw = await this.storage.readAll(sessionId);
+    // §4/T9-7 信封校验（分区/槽位纪律在 store-envelope.ts——行数纪律拆分位）
+    const { rows, skippedIdx } = partitionByEnvelope(raw);
     if (options.lenient !== true) {
-      for (let i = 0; i < rows.length; i++) {
-        if (rows[i]!.seq !== i + 1) {
-          throw new Error(`存储损坏：seq 不连续（位置 ${i} 期望 ${i + 1}，实际 ${rows[i]!.seq}）`);
+      for (let i = 0; i < raw.length; i++) {
+        if (skippedIdx.has(i)) continue; // ignorable 未知——seq 槽位合法消费
+        if (raw[i]!.seq !== i + 1) {
+          throw new Error(`存储损坏：seq 不连续（位置 ${i} 期望 ${i + 1}，实际 ${raw[i]!.seq}）`);
         }
       }
     }
-    const maxSeq = rows.length > 0 ? rows[rows.length - 1]!.seq : 0;
+    const maxSeq = raw.length > 0 ? raw[raw.length - 1]!.seq : 0;
     let folded = false;
     try {
-      this.projectors.set(sessionId, Projector.fold(rows));
+      if (skippedIdx.size > 0) {
+        // ignorable 跳痕容忍折叠：seq 断档处 skipTo 桥接（strict 预检已保证
+        // 每个断档都对应被跳过的槽位——E16 纪律不破；无跳过时走原 fold——
+        // G2 lenient 语义零变化）
+        const bridged = Projector.fresh();
+        for (const row of rows) {
+          if (row.seq !== bridged.projection.lastSeq + 1) {
+            bridged.skipTo(row.seq - 1);
+          }
+          bridged.append([row]);
+        }
+        this.projectors.set(sessionId, bridged);
+      } else {
+        this.projectors.set(sessionId, Projector.fold(rows));
+      }
       folded = true;
     } catch (e) {
       // strict：原样上抛（E16 读路径闸门——未知类型/开合不配对的具体原因
@@ -238,18 +306,8 @@ export class SessionEventStore implements SessionStore {
   // fork 分支会话（E5，T-P1-40）
   // -------------------------------------------------------------------------
 
-  /**
-   * fork 分支会话（E5/T-P1-40）：把源会话已完结历史复制到新 sessionId
-   * （seq 从 1 重编号；ts 保留原值——复制的是历史事实，不是新事件），
-   * 紧随落一条 `session/fork` lineage 标记（子流头部，log-only 不进模型
-   * 历史）。切点语义（pi·fork-policy selectBranchFork 同构）：
-   * position "after"（缺省）= 新流含 atSeq 处的事件，"before" = 不含
-   * （cutSeq = atSeq - 1）；cutSeq = 0 即空分支。
-   *
-   * fail-closed 拒绝面：目标 id 非法/已存在、源会话不存在、源会话有
-   * 未闭合 turn（只从 idle 会话分叉——Q5 对账口径）、atSeq 非法。
-   * 新流的 write-behind buffer 立即待 flush（fork 是持久操作）。
-   */
+  /** fork 分支（E5/T-P1-40）：历史复制到新 id（seq 重编号）+ lineage 标记。
+   * fail-closed：目标非法/已存在、源缺失/忙（未闭合 turn）、atSeq 非法。 */
   fork(
     sourceId: string,
     options: ForkOptions,

@@ -663,6 +663,21 @@ const executionEnv = new NodeExecutionEnv({
             ...(options.assembly?.sessionQuery
               ? { sessionQuery: options.assembly.sessionQuery }
               : {}),
+            // W15b/T9-7：trace 家族（与 session_query 同库同授权面——
+            // authorizeRead 经 assembly 会话查询授权闭包，闭包缺省 = 全放行））
+            ...(options.assembly?.sessionQuery
+              ? {
+                  sessionTrace: {
+                    dbPath: options.assembly.sessionQuery.dbPath,
+                    caller: {
+                      sessionId,
+                      ...(options.assembly?.workspaceRoot !== undefined
+                        ? { cwd: options.assembly.workspaceRoot }
+                        : {}),
+                    },
+                  },
+                }
+              : {}),
           }
         : {}),
       // H1/H4/T-P1-42：task 工具（subagent 选项提供时注册；runner 自带

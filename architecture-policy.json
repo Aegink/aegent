@@ -397,6 +397,7 @@
       "managed": false,
       "requires": [
         "attachments",
+        "core",
         "kernel",
         "models",
         "policy",

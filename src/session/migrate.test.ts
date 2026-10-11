@@ -199,7 +199,10 @@ describe("迁移链（Q1/T-P1-89）", () => {
     }
     const storage = SqliteEventStorage.open({ path: dbPath });
     const store = new SessionEventStore(storage);
-    await expect(store.restore("s0")).rejects.toThrow(/未知事件类型 ghost\/future/);
+    // W15b/T9-7：信封校验（§4）先行——同一 fail-closed 纪律的更精确拒绝面
+    await expect(store.restore("s0")).rejects.toThrow(
+      /未知事件类型 ghost\/future|闭集外事件类型且未标注 ignorable——拒绝读取：ghost\/future/,
+    );
     storage.close();
   });
 });
