@@ -456,6 +456,18 @@
     {
       "path": "src/ext-builtin/plugin-runtime/plugin-manifest-contributes.ts",
       "reason": "清单贡献校验 644 行（六类贡献形状 + W15b services/bus/telemetry 三类）。"
+    },
+    {
+      "path": "src/session/collaboration.ts",
+      "reason": "协作账本服务 416 行（状态机/环检测/流投影——T9-1 载体）；W16 排查 P1-1/P1-2 增量（cancelledDuringRun 取消闸 + collabId 时间戳防撞）。"
+    },
+    {
+      "path": "src/session/settings-line-edit.ts",
+      "reason": "配置行级写回 444 行（LineEdit/diffRecords/planEdits——T9-4 载体）；W16 排查 P0/P1 增量（JSONC 结构校验 + locateKeyRange 值型收口 + 重复键/TOCTOU 防线）。"
+    },
+    {
+      "path": "src/session/store.ts",
+      "reason": "SessionStore 418 行（write-behind/restore 三级降级——G1/G2 载体）；W16 排查 P0-1/P1-3 增量（尾桥 + flush 换桶回塞）。"
     }
   ]
 }

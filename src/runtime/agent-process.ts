@@ -861,9 +861,16 @@ const executionEnv = new NodeExecutionEnv({
     serviceBroker,
     bus: pluginBus,
   };
-  // OTLP/插件导出通道挂载（装载期物化的 sink——诊断能力面；重载后重挂）
+  // OTLP/插件导出通道挂载（装载期物化的 sink——诊断能力面；重载后重挂）。
+  // W16 排查 F3：endpoint 幂等（Set 去重）——初始装载与每次热重载都调
+  // attachTelemetrySinks，router.addSink 是纯 push；不去重则 N 次重载后同
+  // 一 endpoint 挂 N 个 OTLP sink、每条事件导出 N 份。endpoint 变更时旧
+  // sink 保留（router 无 removeSink 面——跨 endpoint 清理记档 W16-P2）。
+  const attachedTelemetryEndpoints = new Set<string>();
   const attachTelemetrySinks = (): void => {
     for (const endpoint of pluginLoad.telemetryEndpoints) {
+      if (attachedTelemetryEndpoints.has(endpoint)) continue;
+      attachedTelemetryEndpoints.add(endpoint);
       telemetryRouter.addSink(createOtlpTelemetrySink({ endpoint }));
     }
   };

@@ -60,7 +60,8 @@ describe("权限闭集与分片（W15a/T9-5）", () => {
   });
 
   it("声明未实现即拒装：manifest 声明宿主未装配的分片 → 拒绝", () => {
-    // 宿主只装配了基线（无 net/session.read 依赖）
+    // 宿主只装配了基线（无 net/session.read 依赖；telemetry.export 恒在——
+    // telemetry router 宿主恒装配；services/bus 随 W16 F1 装配传参出现）
     const available = assembledCapabilityShards({});
     expect(available).toEqual([
       "registerTool",
@@ -72,6 +73,7 @@ describe("权限闭集与分片（W15a/T9-5）", () => {
       "view.register",
       "mcp.register",
       "settings.schema",
+      "telemetry.export",
     ]);
     const result = validateManifest(
       { name: "acme", trust: "untrusted", capabilities: ["session.read"] },
@@ -79,6 +81,14 @@ describe("权限闭集与分片（W15a/T9-5）", () => {
     );
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors[0]).toContain("session.read");
+    // W16 F1 回归：serviceBroker/bus 装配传参 → services/bus 分片进入可用集
+    // （contributes.services/bus/telemetry 三类贡献的绑定权限可授予——
+    // 修复前可用集缺这三者，W15b 三贡献装载面永拒）
+    const full = assembledCapabilityShards({ serviceBroker: {}, bus: {} });
+    expect(full).toContain("services");
+    expect(full).toContain("bus");
+    expect(validateManifest({ name: "acme", trust: "trusted", capabilities: ["services", "bus", "telemetry.export"] }, full).ok).toBe(true);
+    expect(validateManifest({ name: "acme", trust: "trusted", capabilities: ["services"] }, available).ok).toBe(false);
     // 闭集外声明同样拒绝
     const outside = validateManifest(
       { name: "acme", trust: "untrusted", capabilities: ["time-travel"] },

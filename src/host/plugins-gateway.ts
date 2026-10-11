@@ -14,10 +14,18 @@ import path from "node:path";
 
 import { validateManifest, type PluginManifest } from "../ext-builtin/plugin-runtime/plugin-manifest.js";
 import { claudeToAegentManifest, discoverManifestPath } from "../ext-builtin/plugin-runtime/plugin-compat.js";
+import { baselineCapabilityShards } from "../ext-builtin/plugin-runtime/capability-ceiling.js";
 import type { SettingsShape } from "../session/settings.js";
 
-/** 宿主已实现能力清单（I9：声明未实现能力即拒绝——与装配面同一闭集）。 */
-export const PLUGIN_AVAILABLE_CAPABILITIES = ["registerTool", "subscribe", "hooks"] as const;
+/**
+ * 宿主已实现能力清单（I9：声明未实现能力即拒绝）。W16 排查 F2：单一事实
+ * 源——从子进程装配面基线派生（assembledCapabilityShards 恒定段 + 恒装配
+ * 的 ServiceBroker/PluginBus/telemetry 出口），消除"安装面 3 项 vs 装载面
+ * 9-13 项"漂移（漂移后果：scaffold/claude 兼容产物装得进市场却装不进
+ * 运行时，或反向）。条件分片（net/session.read/inject）随子进程装配出现
+ * ——host 预检不拒，装载面守卫兜底。
+ */
+export const PLUGIN_AVAILABLE_CAPABILITIES: readonly string[] = baselineCapabilityShards();
 
 /** inprocess 插件的清单文件名与入口约定。 */
 export const PLUGIN_MANIFEST_FILENAME = "plugin.json";

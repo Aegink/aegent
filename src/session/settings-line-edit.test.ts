@@ -118,6 +118,38 @@ describe("diffRecords / planEditsForRecords（sectionDiff）", () => {
     expect(parsed.locale).toBe("zh-CN");
   });
 
+  it("W16 G 回归：末键为标量值的文件——changed/added 不吞根收括号", () => {
+    // 修复前：locateKeyRange 对标量末键（无尾逗号）继续扫描 → 区间吞根 }
+    // （替换丢根括号；added 锚点取根括号行 → 新键插到根括号外）
+    const scalarTail = '{\n  "a": 1,\n  "auto": false\n}\n';
+    const afterChanged = '{\n  "a": 1,\n  "auto": true\n}\n';
+    const r1 = applyLineEdits(scalarTail, planEditsForRecords(scalarTail, scalarTail, afterChanged));
+    expect(() => JSON.parse(r1.content)).not.toThrow();
+    expect(JSON.parse(r1.content)).toMatchObject({ auto: true });
+    const afterAdded = '{\n  "a": 1,\n  "auto": false,\n  "locale": "zh-CN"\n}\n';
+    const r2 = applyLineEdits(scalarTail, planEditsForRecords(scalarTail, scalarTail, afterAdded));
+    expect(JSON.parse(r2.content)).toMatchObject({ auto: false, locale: "zh-CN" });
+  });
+
+  it("W16 G 回归：删除最后一个顶层键（对象值/标量值/唯一键）产出合法 JSON", () => {
+    // 修复前：悬挂逗号修复条件 range.end >= lines.length 恒假 → 尾逗号坏 JSON
+    const objTail = '{\n  "a": 1,\n  "plugins": {\n    "allowTools": true\n  }\n}\n';
+    const r1 = applyLineEdits(objTail, planEditsForRecords(objTail, objTail, '{\n  "a": 1\n}\n'));
+    expect(JSON.parse(r1.content)).toEqual({ a: 1 });
+    const scalarTail = '{\n  "a": 1,\n  "auto": false\n}\n';
+    const r2 = applyLineEdits(scalarTail, planEditsForRecords(scalarTail, scalarTail, '{\n  "a": 1\n}\n'));
+    expect(JSON.parse(r2.content)).toEqual({ a: 1 });
+    const only = '{\n  "auto": false\n}\n';
+    const r3 = applyLineEdits(only, planEditsForRecords(only, only, '{}\n'));
+    expect(JSON.parse(r3.content)).toEqual({});
+  });
+
+  it("W16 G 回归：重复顶层键 → 类型化拒绝（解析取后值 vs 行编辑改首处的静默错写防线）", () => {
+    const dup = '{\n  "model": "a",\n  "nested": 1,\n  "model": "b"\n}\n';
+    expect(() => diffRecords(dup, dup)).toThrow(/重复顶层键/);
+    expect(() => planEditsForRecords(dup, dup, dup)).toThrow(/重复顶层键/);
+  });
+
   it("stale 基线：before 声称的键不在原文件 → 类型化拒绝（防错写）", () => {
     const original = '{\n  "x": 1\n}';
     const before = '{"y": 9, "x": 1}';
@@ -175,5 +207,34 @@ describe("createSettingsLineEditWriteback（写回服务）", () => {
     const text = readFileSync(path, "utf-8");
     expect(text).toContain('"first": true');
     expect(text).toContain('"second": true');
+  });
+
+  it("W16 G 回归：JSONC 基线坏编辑被结构校验拦截（丢根括号/悬挂逗号零落盘）", async () => {
+    // 修复前：非 JSON 基线的默认校验是空操作——坏编辑直达磁盘
+    const path = makeSettingsPath();
+    writeFileSync(path, COMMENT_SAMPLE, "utf-8");
+    const wb = createSettingsLineEditWriteback({ settingsPath: path });
+    // 坏编辑：删掉根收括号行
+    await expect(
+      wb.applyEdits([{ kind: "remove", startLine: 10, endLine: 10 }]),
+    ).rejects.toThrow(/结构校验失败/);
+    expect(readFileSync(path, "utf-8")).toBe(COMMENT_SAMPLE); // 原文件完好
+    // 坏编辑：删末键造成悬挂逗号（"theme": "dark", 的尾逗号失去后键）。
+    // hangTail 本身是合法 JSON → 走 JSON.parse 校验分支拦截；JSONC 基线
+    // （含注释）走结构检查分支拦同款坏形状（两分支都零落盘）。
+    const hangTail = `{\n  "theme": "dark",\n  "locale": "zh"\n}`;
+    writeFileSync(path, hangTail, "utf-8");
+    const wb2 = createSettingsLineEditWriteback({ settingsPath: path });
+    await expect(
+      wb2.applyEdits([{ kind: "remove", startLine: 3, endLine: 3 }]),
+    ).rejects.toThrow();
+    expect(readFileSync(path, "utf-8")).toBe(hangTail);
+    // 合法 JSONC 编辑照常落盘（注释保留）
+    writeFileSync(path, COMMENT_SAMPLE, "utf-8");
+    const wb3 = createSettingsLineEditWriteback({ settingsPath: path });
+    await wb3.applyEdits([{ kind: "replace", startLine: 3, endLine: 3, text: '  "theme": "light",' }]);
+    const after = readFileSync(path, "utf-8");
+    expect(after).toContain('"theme": "light"');
+    expect(after).toContain("// 手写注释");
   });
 });

@@ -16,7 +16,7 @@
  * 冻结不动——本模块是 kimi 形状的行级通道，验收 = 本文件测试面）。
  */
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 /** 行级编辑（1 基行号；replace/remove 的区间含两端）。 */
@@ -87,14 +87,18 @@ export interface RecordDiff {
 /**
  * 顶层 JSON 对象段级差异（两侧都必须可解析为对象——否则类型化拒绝，
  * 不做半猜diff）。嵌套值整体比较（JSON.stringify 等价即 unchanged）。
+ * W16 排查 G（P1 修复）：before 含重复顶层键时拒绝——JSON.parse 语义取
+ * 后值，行级编辑按首处行号替换 → 写盘后语义值不变（静默错写且通过校验）。
  */
 export function diffRecords(before: string, after: string): RecordDiff {
   let parsedBefore: Record<string, unknown>;
   let parsedAfter: Record<string, unknown>;
   try {
+    assertNoDuplicateTopKeys(before);
     parsedBefore = JSON.parse(before) as Record<string, unknown>;
     parsedAfter = JSON.parse(after) as Record<string, unknown>;
   } catch (e) {
+    if (e instanceof SettingsLineEditError) throw e;
     throw new TypeError(
       `diffRecords 要求两侧都是合法 JSON 对象：${e instanceof Error ? e.message : String(e)}`,
     );
@@ -112,35 +116,69 @@ export function diffRecords(before: string, after: string): RecordDiff {
   return { added, removed, changed };
 }
 
-/** 定位顶层键的行区间（1 基、含两端——brace 深度扫描；字符串字面量内
- * 的括号不计数）。未找到 = null。 */
+/** 类型化拒绝面（stale 基线 / 重复键 / 结构坏——调用方按 message 呈现）。 */
+export class SettingsLineEditError extends TypeError {}
+
+/** 重复顶层键检测（W16 排查 G——JSON.parse 取后值 vs 行编辑改首处的静默
+ * 错写防线；2 空格顶层键形状扫描）。 */
+function assertNoDuplicateTopKeys(text: string): void {
+  const seen = new Set<string>();
+  const re = /^[ \t]{2}"([^"]+)"\s*:/gm;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const key = m[1]!;
+    if (seen.has(key)) {
+      throw new SettingsLineEditError(
+        `配置含重复顶层键 "${key}"——行级写回拒绝（语义歧义：解析取后值、行编辑改首处，请整文件保存）`,
+      );
+    }
+    seen.add(key);
+  }
+}
+
+/** 行内括号深度净变化（字符串字面量内的括号不计数——与区间扫描同一
+ * inString 语义）。 */
+function lineDepthDelta(line: string): number {
+  let depth = 0;
+  let inString = false;
+  for (let c = 0; c < line.length; c++) {
+    const ch = line[c]!;
+    if (ch === '"' && line[c - 1] !== "\\") inString = !inString;
+    if (inString) continue;
+    if (ch === "{" || ch === "[") depth += 1;
+    else if (ch === "}" || ch === "]") depth -= 1;
+  }
+  return depth;
+}
+
+/**
+ * 定位顶层键的行区间（1 基、含两端——2 空格顶层形状 + brace 深度扫描；
+ * 字符串字面量内的括号不计数）。未找到 = null。
+ *
+ * W16 排查 G（P1 修复）：区间尾由 start 行的值型决定——对象/数组值（start
+ * 行深度净变化 > 0）向后找深度归零行收口；标量值单行即收口。旧实现统一
+ * 用"深度归零 + 行尾 [,\]}]"判定，标量末键（无尾逗号）不满足 → 扫描吞进
+ * 根收括号行（替换丢根 }、删除坏 JSON、added 锚点插到根括号外）。
+ */
 function locateKeyRange(content: string, key: string): { start: number; end: number } | null {
   const lines = splitLines(content);
   const pattern = new RegExp(`^\\s{2}"${key.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}"\\s*:`);
   let start = -1;
-  let depth = 0;
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
-    if (start === -1 && pattern.test(line)) {
+    if (pattern.test(lines[i]!)) {
       start = i + 1;
-      depth = 0;
-    }
-    if (start !== -1) {
-      let inString = false;
-      for (let c = 0; c < line.length; c++) {
-        const ch = line[c]!;
-        if (ch === '"' && line[c - 1] !== "\\\\") inString = !inString;
-        if (inString) continue;
-        if (ch === "{" || ch === "[") depth += 1;
-        else if (ch === "}" || ch === "]") depth -= 1;
-      }
-      // 顶层键行结束：深度归零且本行以逗号或收括号结尾
-      if (depth <= 0 && /[,\]}]\s*$/.test(line)) {
-        return { start, end: i + 1 };
-      }
+      break;
     }
   }
-  return start === -1 ? null : { start, end: lines.length };
+  if (start === -1) return null;
+  const delta = lineDepthDelta(lines[start - 1]!);
+  if (delta <= 0) return { start, end: start }; // 标量值 / 单行空对象 {}
+  let depth = delta;
+  for (let i = start; i < lines.length; i++) {
+    depth += lineDepthDelta(lines[i]!);
+    if (depth <= 0) return { start, end: i + 1 };
+  }
+  return { start, end: lines.length };
 }
 
 /** 段序列化（2 空格缩进——settings.json 同款；单键包装为对象再剥壳）。 */
@@ -167,7 +205,7 @@ export function planEditsForRecords(
   for (const key of diff.changed) {
     const range = locateKeyRange(original, key);
     if (range === null) {
-      throw new TypeError(`段定位失败（stale 基线）：键 "${key}" 不在原文件中`);
+      throw new SettingsLineEditError(`段定位失败（stale 基线）：键 "${key}" 不在原文件中`);
     }
     const value = (JSON.parse(after) as Record<string, unknown>)[key];
     // 尾逗号后缀保留（中段键行以逗号收尾——序列化段不带逗号，补齐）
@@ -183,12 +221,15 @@ export function planEditsForRecords(
   for (const key of diff.removed) {
     const range = locateKeyRange(original, key);
     if (range === null) {
-      throw new TypeError(`段定位失败（stale 基线）：键 "${key}" 不在原文件中`);
+      throw new SettingsLineEditError(`段定位失败（stale 基线）：键 "${key}" 不在原文件中`);
     }
     edits.push({ kind: "remove", startLine: range.start, endLine: range.end });
     // 删的是最后一个顶层键时，前一键的收尾逗号成了悬挂逗号——剥掉
-    //（前一键的区间末行即本键首行的上一行）
-    if (range.end >= originalLines.length && range.start >= 2) {
+    // （W16 排查 G（P1 修复）：判定改为"区间之后只剩根收括号/空"——旧
+    // 条件 range.end >= lines.length 恒假（根 } 恒为最后一行），删除最后
+    // 一个顶层键必然产出悬挂逗号坏 JSON 被校验拦死、功能整体失效）
+    const rest = originalLines.slice(range.end).join("\n").trim();
+    if ((rest === "}" || rest === "") && range.start >= 2) {
       const prevLine = originalLines[range.start - 2] ?? "";
       if (/,\s*$/.test(prevLine)) {
         edits.push({
@@ -258,53 +299,128 @@ function isValidJson(text: string): boolean {
   }
 }
 
+/**
+ * JSONC 结构完整性检查（W16 排查 G（P0 修复）——非 JSON 基线（含注释的
+ * JSONC）的默认校验从"空操作"升级为最小结构防线）：括号配平（深度不为
+ * 负、结尾归零）+ 非字符串/注释上下文的尾逗号拒绝。语义面（schema 往返）
+ * 无 JSONC 解析器不可行——记档；本检查拦截的是行编辑最常见坏形状（丢根
+ * 收括号、悬挂逗号、删键残缺），配平即坏的编辑零落盘。
+ */
+function assertStructurallySoundJsonc(content: string): void {
+  let depth = 0;
+  let inString = false;
+  for (let i = 0; i < content.length; i++) {
+    const ch = content[i]!;
+    const prev = i > 0 ? content[i - 1] : undefined;
+    if (inString) {
+      if (ch === '"' && prev !== "\\") inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "/" && content[i + 1] === "/") {
+      while (i < content.length && content[i] !== "\n") i += 1;
+      continue;
+    }
+    if (ch === "/" && content[i + 1] === "*") {
+      i += 2;
+      while (i < content.length && !(content[i] === "*" && content[i + 1] === "/")) i += 1;
+      i += 1;
+      continue;
+    }
+    if (ch === "{" || ch === "[") depth += 1;
+    else if (ch === "}" || ch === "]") {
+      // 尾逗号检查：回溯跳过空白与行注释看前一有效字符
+      let j = i - 1;
+      while (j >= 0) {
+        const c = content[j]!;
+        if (/\s/.test(c)) {
+          j -= 1;
+          continue;
+        }
+        if (c === "/" && content[j - 1] === "/") {
+          j -= 2;
+          while (j >= 0 && content[j] !== "\n") j -= 1;
+          continue;
+        }
+        break;
+      }
+      if (content[j] === ",") {
+        throw new SettingsLineEditError(
+          "写后结构校验失败：收括号前悬挂逗号（JSONC 行级编辑坏形状——零落盘）",
+        );
+      }
+      depth -= 1;
+      if (depth < 0) {
+        throw new SettingsLineEditError("写后结构校验失败：括号深度为负（多余的收括号——零落盘）");
+      }
+    }
+  }
+  if (inString || depth !== 0) {
+    throw new SettingsLineEditError("写后结构校验失败：括号不配平或字符串未闭合（零落盘）");
+  }
+}
+
+function readSettingsFile(path: string): string {
+  try {
+    return readFileSync(path, "utf-8");
+  } catch {
+    return "";
+  }
+}
+
 export function createSettingsLineEditWriteback(options: {
   settingsPath: string;
-  /** 写后校验回调（缺省 = 基线语义：原文件是合法 JSON 则写后必须仍合法
-   * ——非 JSON 文件（含注释的 JSONC 等）只要求保真不坏。schema 校验挂点。 */
+  /** 写后校验回调（缺省 = 基线语义：原文件是合法 JSON 则写后必须仍可
+   * JSON.parse——非 JSON 基线（含注释的 JSONC）跑结构完整性检查（配平 +
+   * 尾逗号拒绝）。schema 校验挂点。 */
   validate?: (content: string) => void;
 }): SettingsLineEditWriteback {
   const path = options.settingsPath;
   let validate = options.validate;
   if (validate === undefined) {
-    let beforeValid: boolean | undefined;
     validate = (content: string) => {
-      if (beforeValid === undefined) {
-        let original = "";
-        try {
-          original = readFileSync(path, "utf-8");
-        } catch {
-          /* 缺文件 = 空基线 */
-        }
-        beforeValid = isValidJson(original) || original.trim() === "";
-      }
+      // 基线判定每次现读（W16 排查 G（P2 顺手修）——旧实现首调永久缓存，
+      // 文件从缺失/非法变合法后永不再校验）
+      const original = readSettingsFile(path);
+      const beforeValid = isValidJson(original) || original.trim() === "";
       if (beforeValid) JSON.parse(content);
+      else assertStructurallySoundJsonc(content);
     };
   }
+  /** 锁内执行体（TOCTOU 消除——读盘/校验/落盘同段；applyRecordDiff 的
+   * 读+plan 也在同一锁段，外部编辑不再插进读-改-写窗口）。 */
+  const runLocked = async (
+    edits: readonly SettingsLineEdit[],
+  ): Promise<{ applied: number; warnings: readonly string[] }> => {
+    const original = readSettingsFile(path);
+    const result = applyLineEdits(original, edits);
+    // 写后校验（不合法 = 类型化拒绝零落盘——半态防线）
+    validate(result.content);
+    mkdirSync(dirname(path), { recursive: true });
+    // W16 排查 G（P1 修复）：tmp 名加进程号 + 随机段——固定 `${path}.tmp`
+    // 在 host/cli 双进程并发行级写时互相覆盖（rename 竞速丢更新/ENOENT）
+    const tmp = `${path}.${process.pid}.${Math.random().toString(36).slice(2, 10)}.tmp`;
+    try {
+      writeFileSync(tmp, result.content, "utf-8");
+      renameSync(tmp, path);
+    } catch (e) {
+      try {
+        rmSync(tmp, { force: true });
+      } catch {
+        // 清理失败不掩盖主错误
+      }
+      throw new Error(
+        `配置行级写回失败：${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+    return { applied: result.applied, warnings: result.warnings };
+  };
   return {
     async applyEdits(edits) {
-      const run = editChain.then(async () => {
-        let original: string;
-        try {
-          original = readFileSync(path, "utf-8");
-        } catch {
-          original = "";
-        }
-        const result = applyLineEdits(original, edits);
-        // 写后校验（不合法 = 类型化拒绝零落盘——半态防线）
-        validate(result.content);
-        mkdirSync(dirname(path), { recursive: true });
-        const tmp = `${path}.tmp`;
-        try {
-          writeFileSync(tmp, result.content, "utf-8");
-          renameSync(tmp, path);
-        } catch (e) {
-          throw new Error(
-            `配置行级写回失败：${e instanceof Error ? e.message : String(e)}`,
-          );
-        }
-        return { applied: result.applied, warnings: result.warnings };
-      });
+      const run = editChain.then(() => runLocked(edits));
       editChain = run.then(
         () => undefined,
         () => undefined,
@@ -312,14 +428,16 @@ export function createSettingsLineEditWriteback(options: {
       return run;
     },
     async applyRecordDiff(after) {
-      let before: string;
-      try {
-        before = readFileSync(path, "utf-8");
-      } catch {
-        before = "";
-      }
-      const edits = planEditsForRecords(before, before, after);
-      return this.applyEdits(edits);
+      const run = editChain.then(async () => {
+        const before = readSettingsFile(path);
+        const edits = planEditsForRecords(before, before, after);
+        return runLocked(edits);
+      });
+      editChain = run.then(
+        () => undefined,
+        () => undefined,
+      );
+      return run;
     },
   };
 }

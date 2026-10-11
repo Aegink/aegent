@@ -224,31 +224,46 @@ async function loadInprocess(
   const toolCount = shouldRegisterTools ? registerPluginTools(registry, manifest.name, handle.tools) : 0;
   // B/D/E：贡献解析（文件读取面——路径已在清单校验收敛插件目录内）
   const contributions = resolvePluginContributions(manifest, dir, settingsValues);
-  // W15b/T9-6：常驻服务注册 + 总线声明（抽离 plugin-services.ts——行数纪律）
-  const serviceNames = manifest.contributes?.services !== undefined
-    ? await registerPluginServices(manifest.name, manifest.contributes.services, dir, options)
-    : [];
-  if (options.bus !== undefined && manifest.contributes?.bus !== undefined) {
-    options.bus.declareTopics(manifest.contributes.bus.topics);
-  }
-  // W15b/T9-6：telemetry 导出端点（sink 由装配面构造——loader 不依赖 diagnostics）
-  const telemetryEndpoints =
-    manifest.contributes?.telemetry !== undefined
-      ? [manifest.contributes.telemetry.endpoint]
+  // W16 排查 F4：注册后段（服务/总线声明）任一抛点 → 已注册工具即时注销
+  // 回滚——旧实现 toolNames 仅在 return 路径回传，中断时 agent-process 的
+  // 热重载注销名单缺名，孤儿工具滞留 ToolRegistry 直至进程重启。
+  const toolNames = shouldRegisterTools ? handle.tools.map((t) => `${manifest.name}__${t.def.name}`) : [];
+  try {
+    // W15b/T9-6：常驻服务注册 + 总线声明（抽离 plugin-services.ts——行数纪律）
+    const serviceNames = manifest.contributes?.services !== undefined
+      ? await registerPluginServices(manifest.name, manifest.contributes.services, dir, options)
       : [];
-  return {
-    handle,
-    toolCount,
-    /** 本插件注册的工具全名（热重载注销面——dispose 前收集）。 */
-    toolNames: shouldRegisterTools ? handle.tools.map((t) => `${manifest.name}__${t.def.name}`) : [],
-    commands: [...contributions.commands],
-    skillDirs: [...contributions.skillDirs],
-    skillNames: [...contributions.skillNames],
-    mcpServers: [...contributions.mcpServers],
-    warnings: compatWarnings,
-    serviceNames,
-    telemetryEndpoints,
-  };
+    if (options.bus !== undefined && manifest.contributes?.bus !== undefined) {
+      options.bus.declareTopics(manifest.contributes.bus.topics);
+    }
+    // W15b/T9-6：telemetry 导出端点（sink 由装配面构造——loader 不依赖 diagnostics）
+    const telemetryEndpoints =
+      manifest.contributes?.telemetry !== undefined
+        ? [manifest.contributes.telemetry.endpoint]
+        : [];
+    return {
+      handle,
+      toolCount,
+      /** 本插件注册的工具全名（热重载注销面——dispose 前收集）。 */
+      toolNames,
+      commands: [...contributions.commands],
+      skillDirs: [...contributions.skillDirs],
+      skillNames: [...contributions.skillNames],
+      mcpServers: [...contributions.mcpServers],
+      warnings: compatWarnings,
+      serviceNames,
+      telemetryEndpoints,
+    };
+  } catch (e) {
+    for (const name of toolNames) {
+      try {
+        registry.unregisterTool(name);
+      } catch {
+        // 逐名幂等注销（重名抛错的中途态——未注册名注销失败可吞）
+      }
+    }
+    throw e;
+  }
 }
 
 /** 入口模块必需性（与 gateway needsEntry 同判据——有代码才要求入口）。 */
