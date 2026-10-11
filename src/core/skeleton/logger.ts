@@ -55,6 +55,12 @@ export interface LogEntry {
   readonly channel?: string;
   /** 行级分类（调用方域标签——transfer/mcp/provider/...）。 */
   readonly category?: string;
+  /**
+   * W15b/T9-6：trace 关联 id（zcode formatLogPrefix 形状的关联字段——
+   * withTrace 子 logger 产出的行带本字段；与 TelemetryEvent.traceId 同源
+   * 串链，跨进程/跨会话归因）。
+   */
+  readonly trace?: string;
   readonly msg: string;
   readonly data?: Record<string, unknown>;
 }
@@ -192,6 +198,11 @@ export interface Logger {
   setLevel(level: LogLevel): void;
   /** 当前生效级别（设置面回显/健康自暴露——qwen getStatus 锚）。 */
   getLevel(): LogLevel;
+  /**
+   * W15b/T9-6：trace 关联子 logger（zcode traceContextToLogContext 同款
+   * ——本 logger 产出的每行带 trace 字段；级别/脱敏与父共享）。
+   */
+  withTrace(traceId: string): Logger;
 }
 
 export function createLogger(options: LoggerOptions = {}): Logger {
@@ -201,27 +212,46 @@ export function createLogger(options: LoggerOptions = {}): Logger {
   const sink = options.sink ?? defaultSink(options.logDir ?? "logs", now, channel, options.retentionDays ?? 14);
   const redactUser = options.redactUserContent ?? true;
   let minLevel = options.level ?? "debug";
-  const write = (level: LogLevel, msg: string, data?: Record<string, unknown>): void => {
+  const write = (
+    level: LogLevel,
+    msg: string,
+    data: Record<string, unknown> | undefined,
+    trace: string | undefined,
+  ): void => {
     if (levelRank(level) < levelRank(minLevel)) return;
     const entry: LogEntry = {
       ts: now().toISOString(),
       level,
       ...(channel !== "aegent" ? { channel } : {}),
       ...(category !== undefined ? { category } : {}),
+      ...(trace !== undefined ? { trace } : {}),
       msg,
       ...(data !== undefined ? { data: redactUserFields(data, redactUser) } : {}),
     };
     // 先序列化再过密钥正则：无论 key 藏在 msg 还是 data 的哪一层都掩得到
     sink.write(redactSecrets(JSON.stringify(entry)));
   };
-  return {
-    debug: (msg, data) => write("debug", msg, data),
-    info: (msg, data) => write("info", msg, data),
-    warn: (msg, data) => write("warn", msg, data),
-    error: (msg, data) => write("error", msg, data),
+  const logger: Logger = {
+    debug: (msg, data) => write("debug", msg, data, undefined),
+    info: (msg, data) => write("info", msg, data, undefined),
+    warn: (msg, data) => write("warn", msg, data, undefined),
+    error: (msg, data) => write("error", msg, data, undefined),
     setLevel: (level) => {
       minLevel = level;
     },
     getLevel: () => minLevel,
+    // W15b/T9-6：trace 关联子 logger（行带 trace 字段——级别与父共享）
+    withTrace: (traceId) => ({
+      debug: (msg, data) => write("debug", msg, data, traceId),
+      info: (msg, data) => write("info", msg, data, traceId),
+      warn: (msg, data) => write("warn", msg, data, traceId),
+      error: (msg, data) => write("error", msg, data, traceId),
+      setLevel: (level) => {
+        minLevel = level;
+      },
+      getLevel: () => minLevel,
+      withTrace: (nested) => logger.withTrace(`${traceId}>${nested}`),
+    }),
   };
+  return logger;
 }

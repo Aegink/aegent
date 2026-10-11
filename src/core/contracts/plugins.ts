@@ -60,6 +60,8 @@ export const PLUGIN_PERMISSIONS = [
   "view.register",
   "mcp.register",
   "settings.schema",
+  // W15b（T9-6）：OTLP 导出通道（contributes.telemetry 声明）
+  "telemetry.export",
 ] as const;
 
 export type PluginPermission = (typeof PLUGIN_PERMISSIONS)[number];
@@ -90,6 +92,7 @@ export const CONTRIBUTION_PERMISSION_BINDINGS: Readonly<
   subscriptions: "event.subscribe",
   services: "service.register",
   bus: "bus.subscribe",
+  telemetry: "telemetry.export",
 };
 
 /** 声明的 capability 集 → 授予的权限集合（分片展开 + 直接权限）。 */
@@ -118,6 +121,27 @@ export const PLUGIN_INJECTABLE_SERVICES = [
 ] as const;
 
 export type PluginInjectableService = (typeof PLUGIN_INJECTABLE_SERVICES)[number];
+
+// ---------------------------------------------------------------------------
+// W15b/T9-6 声明式 topic 总线形状（EP-12 契约面——实现在 ext-builtin
+// plugin-bus.ts，SDK 经此消费——内核外实现、契约内核持有）
+// ---------------------------------------------------------------------------
+
+/** 总线发布载荷（JSON 安全值——与事件面同纪律）。 */
+export type BusPayload = Record<string, unknown>;
+
+export interface BusPublishReport {
+  readonly ok: boolean;
+  readonly topic: string;
+  readonly delivered: number;
+  readonly error?: string;
+}
+
+/** 订阅句柄（退订函数 + 元数据）。 */
+export interface BusSubscription {
+  readonly topic: string;
+  unsubscribe(): void;
+}
 
 /**
  * EP-12 常驻服务 contributes 形状（W15/T9-6 接线；contributes.services

@@ -23,6 +23,22 @@ import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../../
 import { PathGuard } from "../../sandbox/path-guard.js";
 import { composeChain } from "../../kernel/chain.js";
 
+/** W15b/T9-6：Logger 桩（withTrace 返回同形子桩——接口对齐用）。 */
+function buildStubLogger(warnings: string[]): import("../../core/index.js").Logger {
+  const stub: import("../../core/index.js").Logger = {
+    debug: () => {},
+    info: () => {},
+    warn: (m: string) => {
+      warnings.push(m);
+    },
+    error: () => {},
+    setLevel: () => undefined,
+    getLevel: () => "info",
+    withTrace: () => stub,
+  };
+  return stub;
+}
+
 const tmpRoots: string[] = [];
 afterEach(() => {
   for (const dir of tmpRoots.splice(0)) {
@@ -279,14 +295,7 @@ describe("装配接线：contextLayer 首落 system/message 带技能清单", ()
       workspaceRoot: root,
       contextWindow: 100_000,
       approvalTimeoutMs: 5_000,
-      logger: {
-        debug: () => {},
-        info: () => {},
-        warn: (m: string) => warnings.push(m),
-        error: () => {},
-        setLevel: () => undefined,
-        getLevel: () => "info",
-      },
+      logger: buildStubLogger(warnings),
     });
     // 手动跑 modelRequest 链（contextLayer 是链上最后一层）——系统提示
     // 首次落流发生在该层，terminal 假实现只需要可返回的空输出

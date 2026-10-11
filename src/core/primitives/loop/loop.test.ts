@@ -716,6 +716,7 @@ describe("prompt 入队闸门（A13/T-P1-48）", () => {
       info() {},
       warn: (msg, data) => warns.push({ msg, data }),
       error() {},
+      withTrace: () => logger,
       setLevel: () => undefined,
       getLevel: () => "info",
     };
@@ -853,6 +854,7 @@ describe("循环护栏（A14/T-P1-50）", () => {
       info() {},
       warn: (msg, data) => warns.push({ msg, data }),
       error() {},
+      withTrace: () => logger,
       setLevel: () => undefined,
       getLevel: () => "info",
     };
@@ -1089,6 +1091,7 @@ describe("mutation 重试预算（B13/T-P1-57）", () => {
       info() {},
       warn: (msg, data) => warns.push({ msg, data }),
       error() {},
+      withTrace: () => logger,
       setLevel: () => undefined,
       getLevel: () => "info",
     };

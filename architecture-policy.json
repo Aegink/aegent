@@ -148,6 +148,7 @@
       ],
       "managed": true,
       "requires": [
+        "core",
         "sandbox",
         "session"
       ],

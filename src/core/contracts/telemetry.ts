@@ -10,6 +10,8 @@ export type TelemetryLevel = "debug" | "info" | "warn" | "error";
 export interface TelemetryEvent {
   level: TelemetryLevel;
   message: string;
+  /** 产生时间（epoch 毫秒——OTLP timeUnixNano 的数据源，W15b/T9-6）。 */
+  ts: number;
   /** 结构化字段（JSON 安全——遥测面不做运行时对象序列化）。 */
   fields?: Record<string, string | number | boolean>;
   /** trace 关联 id（zcode formatLogPrefix 同款——跨进程/跨会话串链）。 */

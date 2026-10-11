@@ -31,6 +31,9 @@
 import {
   expandGrantedPermissions,
   PLUGIN_INJECTABLE_SERVICES,
+  type BusPayload,
+  type BusPublishReport,
+  type BusSubscription,
   type PluginPermission,
 } from "../core/index.js";
 import { validateManifest, PluginManifestError, type PluginManifest } from "../kernel/plugin-manifest.js";
@@ -135,6 +138,12 @@ export interface PluginCapabilities {
     readonly services: {
         readonly get: (name: string) => unknown;
     };
+    /** W15b/T9-6：声明式 topic 总线（需 bus.publish/bus.subscribe 权限 +
+     * contributes.bus.topics 声明——限流/上限在宿主装配面参数化）。 */
+    readonly bus: {
+        readonly publish: (topic: string, payload: BusPayload) => Promise<BusPublishReport>;
+        readonly subscribe: (topic: string, handler: (payload: BusPayload) => void | Promise<void>) => BusSubscription;
+    };
 }
 
 /** 插件收到的只读事件快照（内核 SessionEvent 的深拷贝投影）。 */
@@ -197,6 +206,12 @@ export async function loadPlugin(
         readonly sessionRead?: (query: PluginSessionReadQuery) => Promise<PluginSessionReadResult>;
         /** W15a/T9-5：inject 服务的宿主注册表（服务名 → 实例）。 */
         readonly injectableServices?: Readonly<Record<string, unknown>>;
+        /** W15b/T9-6：宿主总线（声明式 topic——缺省 undefined = bus 面
+         * 类型化拒绝；权限 + topic 声明双闸）。 */
+        readonly bus?: {
+            readonly publish: (topic: string, payload: BusPayload, opts?: { source?: string }) => Promise<BusPublishReport>;
+            readonly subscribe: (topic: string, handler: (payload: BusPayload) => void | Promise<void>, opts?: { subscriber?: string }) => BusSubscription;
+        };
     },
 ): Promise<PluginHandle> {
     if (plugin === null || typeof plugin !== "object") {
@@ -228,6 +243,15 @@ export async function loadPlugin(
         }
     };
     const settingsValues = options.settingsValues ?? {};
+    // W15b/T9-6：声明式 topic 闭集（contributes.bus.topics——未声明拒绝）
+    const declaredTopics = new Set<string>((manifest.contributes as { bus?: { topics?: readonly string[] } } | undefined)?.bus?.topics ?? []);
+    const assertBusTopic = (topic: string): void => {
+        if (!declaredTopics.has(topic)) {
+            throw new PluginSdkError(
+                `topic 未声明：${topic}（contributes.bus.topics 先声明后用——声明式总线纪律）`,
+            );
+        }
+    };
     const caps: PluginCapabilities = {
         registerTool: (def) => {
             if (!active) throw new PluginSdkError(`插件「${manifest.name}」已收摊，不能再登记工具`);
@@ -283,6 +307,24 @@ export async function loadPlugin(
                     throw new PluginSdkError("宿主未装配 session.read 分片（会话查询面缺席）");
                 }
                 return options.sessionRead(query);
+            },
+        },
+        bus: {
+            publish: async (topic, payload) => {
+                assertPermission("bus.publish", "总线发布");
+                assertBusTopic(topic);
+                if (options.bus === undefined) {
+                    throw new PluginSdkError("宿主未装配总线（bus 面缺席）");
+                }
+                return options.bus.publish(topic, payload, { source: manifest.name });
+            },
+            subscribe: (topic, handler) => {
+                assertPermission("bus.subscribe", "总线订阅");
+                assertBusTopic(topic);
+                if (options.bus === undefined) {
+                    throw new PluginSdkError("宿主未装配总线（bus 面缺席）");
+                }
+                return options.bus.subscribe(topic, handler, { subscriber: manifest.name });
             },
         },
         services: {

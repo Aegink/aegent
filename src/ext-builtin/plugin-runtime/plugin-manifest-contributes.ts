@@ -119,6 +119,18 @@ export interface PluginContributes {
   readonly settings?: readonly PluginSettingContrib[];
   /** 事件订阅声明（G——SDK subscribe 的运行时白名单；⊆ EVENT_TYPES）。 */
   readonly subscriptions?: readonly SessionEventType[];
+  /** W15b/T9-6：常驻服务贡献（宿主 broker 管 start/stop/重启 ≤5 次退避）。 */
+  readonly services?: readonly PluginServiceContrib[];
+  /** W15b/T9-6：声明式 topic 总线（限流/上限参数化在宿主装配面）。 */
+  readonly bus?: { readonly topics: readonly string[] };
+  /** W15b/T9-6：telemetry 导出通道（OTLP endpoint——宿主构造 exporter sink）。 */
+  readonly telemetry?: { readonly endpoint: string };
+}
+
+/** 常驻服务贡献（name 命名空间 `<插件名>/<服务名>`；entry 插件目录内模块）。 */
+export interface PluginServiceContrib {
+  readonly name: string;
+  readonly entry: string;
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -161,7 +173,20 @@ export function validateContributes(input: unknown): ContributesResult {
   if (!isRecord(input)) {
     return { ok: false, errors: ["contributes 必须是对象"] };
   }
-  const allowed = ["commands", "skills", "views", "mcpServers", "settings", "subscriptions"];
+  const allowed = [
+    "commands",
+    "skills",
+    "views",
+    "mcpServers",
+    "settings",
+    "subscriptions",
+    // W15b/T9-6：常驻服务 / 声明式总线 / telemetry 导出通道
+    "services",
+    "bus",
+    "telemetry",
+  ];
+  const MAX_PLUGIN_SERVICES = 8;
+  const MAX_PLUGIN_BUS_TOPICS = 32;
   for (const key of Object.keys(input)) {
     if (!allowed.includes(key)) {
       errors.push(`contributes 闭集外子键：${key}（允许：${allowed.join(", ")}）`);
@@ -486,6 +511,77 @@ export function validateContributes(input: unknown): ContributesResult {
     }
   }
 
+  // —— services（W15b/T9-6 常驻服务贡献）——
+  let services: PluginServiceContrib[] | undefined;
+  const rawServices = input["services"];
+  if (rawServices !== undefined) {
+    if (!Array.isArray(rawServices)) {
+      errors.push("contributes.services 必须是数组");
+    } else {
+      if (rawServices.length > MAX_PLUGIN_SERVICES) {
+        errors.push(`contributes.services 超上限：${String(rawServices.length)} > ${MAX_PLUGIN_SERVICES}`);
+      }
+      const seen = new Set<string>();
+      const collected: PluginServiceContrib[] = [];
+      rawServices.forEach((entry, index) => {
+        const label = `contributes.services[${String(index)}]`;
+        if (!isRecord(entry)) {
+          errors.push(`${label} 必须是对象`);
+          return;
+        }
+        const name = entry["name"];
+        const entryPath = entry["entry"];
+        const nameOk = typeof name === "string" && name.trim() !== "";
+        if (!nameOk) errors.push(`${label}.name 必须是非空字符串`);
+        else if (seen.has(name)) errors.push(`${label} 服务名重复：${name}`);
+        else seen.add(name);
+        const entryOk = typeof entryPath === "string" && entryPath.endsWith(".js");
+        if (!entryOk) errors.push(`${label}.entry 须为 .js 相对模块名`);
+        else {
+          const pathErr = relativePathError(entryPath);
+          if (pathErr !== undefined) errors.push(`${label}.entry：${pathErr}`);
+        }
+        if (nameOk && entryOk && typeof entryPath === "string") {
+          collected.push({ name: name as string, entry: entryPath });
+        }
+      });
+      if (collected.length > 0) services = collected;
+    }
+  }
+
+  // —— bus（W15b/T9-6 声明式 topic 总线）——
+  let bus: { topics: string[] } | undefined;
+  const rawBus = input["bus"];
+  if (rawBus !== undefined) {
+    if (!isRecord(rawBus) || !Array.isArray(rawBus["topics"])) {
+      errors.push("contributes.bus 必须是 {topics: string[]}（可发布/订阅的 topic 闭集声明）");
+    } else {
+      const topics = rawBus["topics"] as unknown[];
+      if (topics.length > MAX_PLUGIN_BUS_TOPICS) {
+        errors.push(`contributes.bus.topics 超上限：${String(topics.length)} > ${MAX_PLUGIN_BUS_TOPICS}`);
+      }
+      const cleaned = topics.filter((t): t is string => typeof t === "string" && t.trim() !== "");
+      if (cleaned.length !== topics.length) errors.push("contributes.bus.topics 须为非空字符串数组");
+      else bus = { topics: cleaned };
+    }
+  }
+
+  // —— telemetry（W15b/T9-6 OTLP 导出通道）——
+  let telemetry: { endpoint: string } | undefined;
+  const rawTelemetry = input["telemetry"];
+  if (rawTelemetry !== undefined) {
+    if (!isRecord(rawTelemetry)) {
+      errors.push("contributes.telemetry 必须是 {endpoint} 对象");
+    } else {
+      const endpoint = rawTelemetry["endpoint"];
+      if (typeof endpoint !== "string" || !/^https?:\/\//.test(endpoint)) {
+        errors.push("contributes.telemetry.endpoint 须为 http(s) URL（OTLP/HTTP 导出端点）");
+      } else {
+        telemetry = { endpoint };
+      }
+    }
+  }
+
   if (errors.length > 0) return { ok: false, errors };
   return {
     ok: true,
@@ -496,6 +592,9 @@ export function validateContributes(input: unknown): ContributesResult {
       ...(mcpServers !== undefined ? { mcpServers } : {}),
       ...(settings !== undefined ? { settings } : {}),
       ...(subscriptions !== undefined ? { subscriptions } : {}),
+      ...(services !== undefined ? { services } : {}),
+      ...(bus !== undefined ? { bus } : {}),
+      ...(telemetry !== undefined ? { telemetry } : {}),
     },
   };
 }

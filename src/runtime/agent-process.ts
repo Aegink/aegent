@@ -89,6 +89,9 @@ import { sweepSessionSpill } from "../kernel/tools/spill-gc.js";
 import { connectAndRegister } from "../mcp/registry-bridge.js";
 import { loadConfiguredPlugins } from "../kernel/plugin-loader.js";
 import { querySessions } from "../session/query.js";
+import { createServiceBroker } from "../ext-builtin/plugin-runtime/service-broker.js";
+import { createPluginBus } from "../ext-builtin/plugin-runtime/plugin-bus.js";
+import { createTelemetryRouter, createOtlpTelemetrySink } from "../diagnostics/telemetry-sinks.js";
 import { loadSettings, THINKING_LEVELS } from "../session/settings.js";
 import { parseCommandArgs, parseSlashInvocation, substituteArgs } from "../kernel/prompt-args.js";
 import {
@@ -446,12 +449,29 @@ const executionEnv = new NodeExecutionEnv({
 
   // W5/T3-6：registry late-binding ref（registry 创建在装配构造之后——
   // gate 的 metadata 回调运行时解引用）
+  const telemetryRouter = createTelemetryRouter();
+  // W15b/T9-6：logger→telemetry 桥（warn/error 落遥测事件——诊断能力面；
+  // 脱敏已由 logger 层完成，本桥只透传结构化事件）
+  const telemetryBridgedLogger = options.logger
+    ? {
+        ...options.logger,
+        warn: (msg: string, data?: Record<string, unknown>) => {
+          options.logger!.warn(msg, data);
+          telemetryRouter.record({ level: "warn", message: msg, ts: Date.now(), source: "agent" });
+        },
+        error: (msg: string, data?: Record<string, unknown>) => {
+          options.logger!.error(msg, data);
+          telemetryRouter.record({ level: "error", message: msg, ts: Date.now(), source: "agent" });
+        },
+      }
+    : undefined;
   let toolRegistryRef: import("../kernel/tools/registry.js").ToolRegistry | undefined; // W5/T3-6：registry 创建后回填
   const assembly: ChildAssembly | undefined = options.assembly
     ? createChildAssembly({
         sessionId,
         store,
         ...options.assembly,
+        ...(telemetryBridgedLogger !== undefined ? { logger: telemetryBridgedLogger } : {}),
         toolMetadata: (name: string) => toolRegistryRef?.metadataOf(name),
         // W13a/T9-3：审批期预检面（registry 的函数型声明——只可收窄）
         prepareApprovalFor: (name: string) => toolRegistryRef?.prepareApprovalOf(name),
@@ -817,12 +837,25 @@ const executionEnv = new NodeExecutionEnv({
         }
       }
     : undefined;
+  // W15b/T9-6：常驻服务 broker + 声明式总线（宿主托管——收尾 stopAll）；
+  // telemetry router（缺省 noop 单 sink——OTLP/插件导出通道经 addSink 挂载）
+  const serviceBroker = createServiceBroker({ ...(options.logger ? { logger: options.logger } : {}) });
+  const pluginBus = createPluginBus({ ...(options.logger ? { logger: options.logger } : {}) });
   const pluginLoadOptions = {
     ...(options.logger ? { logger: options.logger } : {}),
     ...(pluginNetFetch !== undefined ? { netFetch: pluginNetFetch } : {}),
     ...(pluginSessionRead !== undefined ? { sessionRead: pluginSessionRead } : {}),
+    serviceBroker,
+    bus: pluginBus,
+  };
+  // OTLP/插件导出通道挂载（装载期物化的 sink——诊断能力面；重载后重挂）
+  const attachTelemetrySinks = (): void => {
+    for (const endpoint of pluginLoad.telemetryEndpoints) {
+      telemetryRouter.addSink(createOtlpTelemetrySink({ endpoint }));
+    }
   };
   let pluginLoad = await loadConfiguredPlugins(toolRegistry, options.plugins, pluginLoadOptions);
+  attachTelemetrySinks();
   const pluginMcpConnections: import("../mcp/registry-bridge.js").McpConnection[] = [];
   const connectPluginMcpServers = async (): Promise<void> => {
     for (const cfg of pluginContribBox.mcpServers) {
@@ -874,6 +907,7 @@ const executionEnv = new NodeExecutionEnv({
     const entries = (fresh.plugins ?? []).filter((p) => p.enabled !== false);
     pluginLoad = await loadConfiguredPlugins(toolRegistry, entries, pluginLoadOptions);
     applyPluginLoad();
+    attachTelemetrySinks();
     await connectPluginMcpServers();
     options.logger?.info(
       `[plugins] 热重载完成：${String(entries.length)} 条目 / 工具 ${String(toolRegistry.names().filter((n) => n.includes("__")).length)} 个`,
@@ -1043,6 +1077,7 @@ const executionEnv = new NodeExecutionEnv({
         }
       }
       await pluginLoad.disposeAll(); // T-P3-133：插件句柄收束
+      await serviceBroker.stopAll(); // W15b/T9-6：常驻服务收束（后启动先停）
       for (const handle of dynamicPluginHandles) {
         try {
           await handle.dispose();

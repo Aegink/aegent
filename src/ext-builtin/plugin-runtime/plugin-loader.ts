@@ -30,6 +30,14 @@ import { pathToFileURL } from "node:url";
 import path from "node:path";
 
 import { expandGrantedPermissions } from "../../core/index.js";
+import {
+  assembledCapabilityShards,
+  capabilityCeilingOf,
+  recordCapabilityCeiling,
+} from "./capability-ceiling.js";
+import { registerPluginServices } from "./plugin-services.js";
+import type { PluginBus } from "./plugin-bus.js";
+import type { ServiceBroker } from "./service-broker.js";
 import { loadPlugin, PluginSdkError, type AegentPlugin, type PluginHandle } from "../../mcp/plugin-sdk.js";
 import { connectWsPlugin, type WsPluginHandle } from "../../mcp/ws-plugin.js";
 import { validateManifest, type PluginManifest } from "./plugin-manifest.js";
@@ -47,46 +55,7 @@ import type { Logger } from "../../kernel/logger.js";
 /** 装载期可声明能力基线（与 host/plugins-gateway 的安装期闭集一致）。 */
 export const PLUGIN_RUNTIME_CAPABILITIES = ["registerTool", "subscribe", "hooks"] as const;
 
-/**
- * W15a/T9-5：宿主装配后的可用分片清单（基线恒在；net/session.read 分片
- * 随宿主依赖注入出现——声明未装配的片即拒装的"宿主已实现"判据源）。
- */
-export function assembledCapabilityShards(options: {
-  netFetch?: unknown;
-  sessionRead?: unknown;
-  injectableServices?: unknown;
-}): string[] {
-  return [
-    ...PLUGIN_RUNTIME_CAPABILITIES,
-    "settings.read",
-    // 贡献绑定权限（宿主恒实现——contributes 装配机制在位）
-    "command.register",
-    "skill.register",
-    "view.register",
-    "mcp.register",
-    "settings.schema",
-    // inject 服务面（随宿主注入注册表装配——T9-6 的 service.register/bus 随其实现）
-    ...(options.injectableServices !== undefined ? ["service.invoke"] : []),
-    ...(options.netFetch !== undefined ? ["net"] : []),
-    ...(options.sessionRead !== undefined ? ["session.read"] : []),
-  ];
-}
-
-/**
- * W15a/T9-5：能力上限快照（热重载"变宽即拒"——首次装载授予的权限集即
- * 本进程内该插件的上限；重载声明超集 = 类型化拒绝，fail-closed）。
- * 进程级 Map（卸载不放宽——pi-desktop 快照语义）。
- */
-const capabilityCeilings = new Map<string, ReadonlySet<string>>();
-
-export function capabilityCeilingOf(pluginName: string): ReadonlySet<string> | undefined {
-  return capabilityCeilings.get(pluginName);
-}
-
-/** 测试专用清空（生产进程内上限随进程生命周期）。 */
-export function resetCapabilityCeilings(): void {
-  capabilityCeilings.clear();
-}
+export { resetCapabilityCeilings } from "./capability-ceiling.js";
 
 /** 单条装载报告（never-fail——失败进报告不进启动路径）。 */
 export interface PluginLoadReport {
@@ -151,6 +120,10 @@ async function loadInprocess(
     ) => Promise<import("../../mcp/plugin-sdk.js").PluginSessionReadResult>;
     injectableServices?: Readonly<Record<string, unknown>>;
     logger?: Logger;
+    /** W15b/T9-6：宿主服务 broker（contributes.services 注册面）。 */
+    serviceBroker?: ServiceBroker;
+    /** W15b/T9-6：宿主总线（contributes.bus.topics 声明 + SDK bus 面）。 */
+    bus?: PluginBus;
   },
 ): Promise<{
   handle: PluginHandle;
@@ -161,6 +134,8 @@ async function loadInprocess(
   mcpServers: PluginMcpServerEntry[];
   warnings: string[];
   toolNames: string[];
+  serviceNames: string[];
+  telemetryEndpoints: readonly string[];
 }> {
   const dir = entry.source;
   // V：清单位置回退链 + claude 形状兼容转换（与 gateway 安装面同一管线）
@@ -193,7 +168,7 @@ async function loadInprocess(
   }
   // W15a/T9-5：上限快照（变宽即拒）——首次装载的权限授予集是本进程上限
   const granted = expandGrantedPermissions(manifest.capabilities);
-  const ceiling = capabilityCeilings.get(manifest.name);
+  const ceiling = capabilityCeilingOf(manifest.name);
   if (ceiling !== undefined) {
     const widened = [...granted].filter((p) => !ceiling.has(p));
     if (widened.length > 0) {
@@ -203,7 +178,7 @@ async function loadInprocess(
       );
     }
   } else {
-    capabilityCeilings.set(manifest.name, granted);
+    recordCapabilityCeiling(manifest.name, granted);
   }
   const entryPath = path.join(dir, "index.js");
   // S（T-P3-148——grok-build trust.rs 降级语义的登记面）：untrusted 插件的
@@ -237,6 +212,7 @@ async function loadInprocess(
       ...(options.injectableServices !== undefined
         ? { injectableServices: options.injectableServices }
         : {}),
+      ...(options.bus !== undefined ? { bus: options.bus } : {}),
     });
   } else {
     // 纯资源插件（无 capabilities/hooks——V claude 资源包同形态）：零入口
@@ -248,6 +224,18 @@ async function loadInprocess(
   const toolCount = shouldRegisterTools ? registerPluginTools(registry, manifest.name, handle.tools) : 0;
   // B/D/E：贡献解析（文件读取面——路径已在清单校验收敛插件目录内）
   const contributions = resolvePluginContributions(manifest, dir, settingsValues);
+  // W15b/T9-6：常驻服务注册 + 总线声明（抽离 plugin-services.ts——行数纪律）
+  const serviceNames = manifest.contributes?.services !== undefined
+    ? await registerPluginServices(manifest.name, manifest.contributes.services, dir, options)
+    : [];
+  if (options.bus !== undefined && manifest.contributes?.bus !== undefined) {
+    options.bus.declareTopics(manifest.contributes.bus.topics);
+  }
+  // W15b/T9-6：telemetry 导出端点（sink 由装配面构造——loader 不依赖 diagnostics）
+  const telemetryEndpoints =
+    manifest.contributes?.telemetry !== undefined
+      ? [manifest.contributes.telemetry.endpoint]
+      : [];
   return {
     handle,
     toolCount,
@@ -258,6 +246,8 @@ async function loadInprocess(
     skillNames: [...contributions.skillNames],
     mcpServers: [...contributions.mcpServers],
     warnings: compatWarnings,
+    serviceNames,
+    telemetryEndpoints,
   };
 }
 
@@ -268,8 +258,8 @@ function needsEntryModule(manifest: PluginManifest): boolean {
 
 /**
  * 装配装载入口（agent-process 调用）：enabled 条目逐条装载，never-fail；
- * 返回报告 + 贡献聚合 + dispose 回调集（装配收尾执行——进程退出路径）。
- * 跨插件贡献同名先到先得（装载序 = settings 数组序——用户可排序的优先序）。
+ * 返回报告 + 贡献聚合 + dispose 回调集（收尾执行）。跨插件贡献同名先到
+ * 先得（装载序 = settings 数组序——用户可排序的优先序）。
  */
 export async function loadConfiguredPlugins(
   registry: ToolRegistry,
@@ -287,10 +277,16 @@ export async function loadConfiguredPlugins(
     ) => Promise<import("../../mcp/plugin-sdk.js").PluginSessionReadResult>;
     /** W15a/T9-5：inject 服务的宿主注册表（服务名 → 实例）。 */
     injectableServices?: Readonly<Record<string, unknown>>;
+    /** W15b/T9-6：宿主服务 broker（contributes.services 注册面）。 */
+    serviceBroker?: ServiceBroker;
+    /** W15b/T9-6：宿主总线（contributes.bus.topics 声明 + SDK bus 面）。 */
+    bus?: PluginBus;
   },
 ): Promise<{
   reports: PluginLoadReport[];
   contributions: AggregatedContributions;
+  /** W15b/T9-6：装载期收集的 OTLP 导出端点（装配面构造 sink 挂 router）。 */
+  telemetryEndpoints: readonly string[];
   disposeAll: () => Promise<void>;
 }> {
   const reports: PluginLoadReport[] = [];
@@ -302,6 +298,7 @@ export async function loadConfiguredPlugins(
   const skillNames: string[] = [];
   const seenSkills = new Set<string>();
   const mcpServers: PluginMcpServerEntry[] = [];
+  const telemetryEndpoints: string[] = [];
   for (const entry of entries ?? []) {
     if (entry.enabled === false) {
       reports.push({ name: entry.name, transport: entry.transport ?? "inprocess", ok: true, toolCount: 0 });
@@ -321,12 +318,12 @@ export async function loadConfiguredPlugins(
         reports.push({ name: entry.name, transport, ok: true, toolCount });
       } else {
         const loaded = await loadInprocess(entry, registry, {
-          ...(options?.netFetch !== undefined ? { netFetch: options.netFetch } : {}),
-          ...(options?.sessionRead !== undefined ? { sessionRead: options.sessionRead } : {}),
-          ...(options?.injectableServices !== undefined
-            ? { injectableServices: options.injectableServices }
-            : {}),
-          ...(options?.logger !== undefined ? { logger: options.logger } : {}),
+          logger: options?.logger,
+          netFetch: options?.netFetch,
+          sessionRead: options?.sessionRead,
+          injectableServices: options?.injectableServices,
+          serviceBroker: options?.serviceBroker,
+          bus: options?.bus,
         });
         handles.push(loaded.handle);
         for (const cmd of loaded.commands) {
@@ -346,6 +343,7 @@ export async function loadConfiguredPlugins(
         }
         mcpServers.push(...loaded.mcpServers);
         registeredToolNames.push(...loaded.toolNames);
+        telemetryEndpoints.push(...loaded.telemetryEndpoints);
         reports.push({
           name: entry.name,
           transport,
@@ -363,6 +361,7 @@ export async function loadConfiguredPlugins(
   return {
     reports,
     contributions: { registeredToolNames, commands, skillDirs, skillNames, mcpServers },
+    telemetryEndpoints,
     disposeAll: async () => {
       for (const handle of handles) {
         try {

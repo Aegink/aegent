@@ -88,6 +88,7 @@ describe("loadPlugin —— 加载面校验（P1 地基复用）", () => {
             { availableCapabilities: CAPS },
         );
         expect(seen).toEqual([
+            "bus",
             "net",
             "pluginSettings",
             "registerTool",

@@ -17,11 +17,11 @@ import {
 } from "../../core/index.js";
 import { loadPlugin, PluginSdkError, type PluginCapabilities } from "../../mcp/plugin-sdk.js";
 import { validateManifest, PluginManifestError } from "./plugin-manifest.js";
+import { loadConfiguredPlugins } from "./plugin-loader.js";
 import {
   assembledCapabilityShards,
-  loadConfiguredPlugins,
   resetCapabilityCeilings,
-} from "./plugin-loader.js";
+} from "./capability-ceiling.js";
 import { ToolRegistry } from "../../core/index.js";
 
 const roots: string[] = [];

@@ -201,6 +201,7 @@ describe("C49/C45 · assembly 装配接线（T-P1-03）", () => {
       error: () => {},
       setLevel: () => undefined,
       getLevel: () => "info",
+      withTrace: () => logger,
     };
     const assembly = createChildAssembly({
       ...baseAssemblyOptions(logger),
