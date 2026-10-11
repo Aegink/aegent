@@ -222,6 +222,45 @@ afterEach(() => {
   }
 });
 
+
+describe("W18 上下文窗口捕获回调（模型目录 → 压缩阈值跟随）", () => {
+  it("captureForTurn 捕获带 contextWindow 的模型 → 回调窗口值；同窗口重复捕获静默", () => {
+    const windows: (number | undefined)[] = [];
+    const models: RegisteredModel[] = [
+      {
+        identity: { provider: "p", modelId: "big" },
+        provider: scriptedProvider("big"),
+        options: { contextWindow: 1_000_000 },
+      },
+      {
+        identity: { provider: "p", modelId: "small" },
+        provider: scriptedProvider("small"),
+        options: { contextWindow: 128_000 },
+      },
+      { identity: { provider: "p", modelId: "unknown" }, provider: scriptedProvider("unknown") },
+    ];
+    const service = new ModelSwitchService({
+      initial: models[0]!.identity,
+      models,
+      onContextWindowChange: (w) => windows.push(w),
+    });
+    // 首次捕获：通知 initial 模型窗口（装配静态值一致——幂等无害）
+    service.captureForTurn(1);
+    expect(windows).toEqual([1_000_000]);
+    // 同窗口重复捕获（同模型新 turn）→ 静默
+    service.captureForTurn(2);
+    expect(windows).toEqual([1_000_000]);
+    // 换模到不同窗口模型 → 新窗口
+    service.switch(models[1]!.identity);
+    service.captureForTurn(3);
+    expect(windows).toEqual([1_000_000, 128_000]);
+    // 换到无窗口信息模型 → undefined（装配回落初始窗口）
+    service.switch(models[2]!.identity);
+    service.captureForTurn(4);
+    expect(windows).toEqual([1_000_000, 128_000, undefined]);
+  });
+});
+
 describe("J8 迁移守卫 —— nextSwitchPhase 纯函数（验收①）", () => {
   it("四态各自可达（合法迁移逐条断言）", () => {
     // deferred：initial 且会话未建立时受理

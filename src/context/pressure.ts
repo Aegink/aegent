@@ -51,13 +51,28 @@ export interface PressureRecord {
 
 export class PressureMonitor {
   private readonly history_: PressureRecord[] = [];
+  /**
+   * 当前生效窗口（W18：换模到不同窗口的模型时由 model-switch 捕获回调
+   * 更新——压缩阈值跟随模型；undefined 回落构造值）。
+   */
+  private currentWindow: number;
 
   constructor(
     private readonly thresholds: {
       contextWindow: number;
       thresholdRatio?: number;
     },
-  ) {}
+  ) {
+    this.currentWindow = thresholds.contextWindow;
+  }
+
+  /**
+   * W18：更新生效窗口（换模回调面）。undefined = 新模型无窗口信息——回落
+   * 构造值（装配期的 initial/CLI 值仍是安全底）。同值幂等。
+   */
+  updateContextWindow(contextWindow: number | undefined): void {
+    this.currentWindow = contextWindow ?? this.thresholds.contextWindow;
+  }
 
   get history(): readonly PressureRecord[] {
     return this.history_;
@@ -116,9 +131,9 @@ export class PressureMonitor {
       turn: fields.turn,
       step: fields.step,
       tokens: fields.tokens,
-      contextWindow: this.thresholds.contextWindow,
+      contextWindow: this.currentWindow,
       source: fields.source,
-      overThreshold: fields.tokens >= this.thresholds.contextWindow * ratio,
+      overThreshold: fields.tokens >= this.currentWindow * ratio,
       ...(fields.usage ? { usage: fields.usage } : {}),
     };
     this.history_.push(record);

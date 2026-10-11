@@ -30,6 +30,7 @@ import {
 } from "../session/settings.js";
 import { createCredentialStore } from "../session/credentials.js";
 import { parseProviderConfig } from "../models/config.js";
+import { applyCatalogDefaults } from "../models/catalog.js";
 import { createOpenAiCompatProvider } from "../models/openai-compat.js";
 import type { AuthResolver } from "../models/auth.js";
 import { createGoogleGenerateProvider } from "../models/google-generate.js";
@@ -163,10 +164,13 @@ async function buildModelsRegistry(
       continue;
     }
     for (const spec of specs) {
+      // W18：内置目录缺省兜底（contextWindow/maxOutputTokens/reasoning/
+      // thinkingLevels/能力位——用户显式字段永远优先；未知模型零变化）
+      const effective = applyCatalogDefaults(spec);
       // 协议 → 会话装配映射（openai* → openai-compat〔responses 回退 chat
       // 端点，记档〕；anthropic → anthropic-messages；google → google-generate）
-      const adapter = adapterForAssembly(spec.adapter ?? entry.adapter ?? "openai");
-      const modelId = spec.id;
+      const adapter = adapterForAssembly(effective.adapter ?? entry.adapter ?? "openai");
+      const modelId = effective.id;
       const identity = { provider: adapter, modelId };
       const existing = models.find(
       (m) => m.identity.provider === identity.provider && m.identity.modelId === identity.modelId,
@@ -206,12 +210,15 @@ async function buildModelsRegistry(
           retryObserver?.(o);
         },
       }),
-      // T-P3-137 三轮：模型级思考档/联网搜索随装配注册（spec 透传——请求带）
-      ...(spec.reasoning !== undefined || spec.webSearch !== undefined
+      // T-P3-137 三轮：模型级思考档/联网搜索随装配注册（spec 透传——请求带）；
+      // W18：contextWindow 随模型注册（spec/内置目录兜底——换模捕获回调更新
+      // 压缩阈值，不在 wire 请求上透传）
+      ...(effective.reasoning !== undefined || effective.webSearch !== undefined || effective.contextWindow !== undefined
         ? {
             options: {
-              ...(spec.reasoning !== undefined ? { reasoningEffort: spec.reasoning } : {}),
-              ...(spec.webSearch !== undefined ? { webSearch: spec.webSearch } : {}),
+              ...(effective.reasoning !== undefined ? { reasoningEffort: effective.reasoning } : {}),
+              ...(effective.webSearch !== undefined ? { webSearch: effective.webSearch } : {}),
+              ...(effective.contextWindow !== undefined ? { contextWindow: effective.contextWindow } : {}),
             },
           }
         : {}),
@@ -291,6 +298,27 @@ async function buildModelsRegistry(
     };
   };
   return { models, initial, resolveTarget };
+}
+
+/**
+ * W18：默认条目模型的目录兜底窗口——defaultProvider 条目里 defaultModel
+ * 命中的模型（不命中取首模型）经内置目录兜底后的 contextWindow。用于
+ * assembly.contextWindow 的三级兜底中段（显式 CLI > 目录 > 200K 缺省）。
+ * 无默认条目/条目未启用/模型无窗口信息 = undefined。
+ */
+export function defaultEntryCatalogWindow(
+  settingsFile: import("../session/settings.js").SettingsShape,
+): number | undefined {
+  if (settingsFile.defaultProvider === undefined) return undefined;
+  const entry = settingsFile.providers.find((p) => p.name === settingsFile.defaultProvider);
+  if (entry === undefined || entry.enabled === false) return undefined;
+  const specs = entry.models ?? (entry.model !== undefined ? [{ id: entry.model }] : []);
+  const target =
+    (settingsFile.defaultModel !== undefined
+      ? specs.find((m) => m.id === settingsFile.defaultModel)
+      : undefined) ?? specs[0];
+  if (target === undefined) return undefined;
+  return applyCatalogDefaults(target).contextWindow;
 }
 
 /**
@@ -594,7 +622,15 @@ async function main(): Promise<void> {
             // E11：工作区即 git 仓时启用代码检查点（非 git 目录由
             // GitCheckpointService 首次打点时拒绝并提示，不中断轮）
             checkpointRepoRoot: resolveWorkspaceRoot(cli, settingsFile) ?? process.cwd(),
-            contextWindow: cli.contextWindow ?? 200_000,
+            // W18：窗口三级兜底——显式 CLI > 默认条目模型的目录值（spec/内置
+            // 目录）> 200K 安全缺省。目录命中让"换模型换压缩阈值"在装配期
+            // 就有正确的 initial 值（换模后的动态跟随走 model-switch 捕获
+            // 回调）。settings-only（零旗标）启动不构造 assembly——该路径
+            // 的窗口缺省记档 W18-P3。
+            contextWindow:
+              cli.contextWindow ??
+              defaultEntryCatalogWindow(settingsFile) ??
+              200_000,
             approvalTimeoutMs: cli.approvalTimeoutMs ?? 120_000,
             // T-P3-137 八轮 A：权限模式（--permission-mode 注入——configStore
             // 初始 approvalMode；会话内切换经 config/refresh 通道）

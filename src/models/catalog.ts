@@ -16,9 +16,48 @@
  */
 
 import { identityKey, type ModelIdentity } from "./identity.js";
+import { CATALOG_GENERATED } from "./catalog.generated.js";
+import type { BuiltinModelSpec } from "./catalog-data.js";
 
 /** 每厂商行数上限（hermes 同款；不是总量上限）。 */
 export const MAX_MODELS_PER_PROVIDER = 200;
+
+export type { BuiltinModelSpec } from "./catalog-data.js";
+export { CATALOG_DATA_OVERRIDES } from "./catalog-data.js";
+export { CATALOG_GENERATED } from "./catalog.generated.js";
+
+/**
+ * 内置目录查询（W18）：精确 id 优先，尾段兜底（split("/").pop()——中转
+ * 自定义前缀 `cline-pass/deepseek-v4.1-flash` 按尾段命中同名条目，与
+ * ui 设置页 catalogLookup 同语义）。未命中 = undefined（调用方零兜底）。
+ */
+export function lookupBuiltinModelSpec(modelId: string): BuiltinModelSpec | undefined {
+  const exact = CATALOG_GENERATED.find((e) => e.id === modelId);
+  if (exact !== undefined) return exact;
+  const tail = modelId.split("/").pop() ?? modelId;
+  if (tail === modelId) return undefined;
+  return CATALOG_GENERATED.find((e) => e.id === tail);
+}
+
+/**
+ * 内置目录缺省兜底（W18 运行时语义）：用户 settings models[] 条目的缺省
+ * 字段由目录补齐——**用户显式字段永远优先**（`spec.x ?? catalog.x` 逐字段）。
+ * adapter 不兜底（装配决策非模型知识）。未知模型零变化（原样返回）。
+ *
+ * 泛型入参对齐 ProviderModelSpec 形状（settings.ts）——models 域不 import
+ * session（requires=["core"]），字段集以结构类型约束。
+ */
+export function applyCatalogDefaults<T extends object>(spec: T): T {
+  const catalog = lookupBuiltinModelSpec(
+    typeof (spec as { id?: unknown }).id === "string" ? (spec as { id: string }).id : "",
+  );
+  if (catalog === undefined) return spec;
+  // verified 不兜底：目录的 verified 是"数据来源可信度"，settings 的
+  // verified 是"该用户真实发消息实测过"（provider-test 落档）——两个语义
+  // 同名不同义，冒充会让 UI 把未实测模型显示成已实测。
+  const { verified: _catalogVerified, ...defaults } = catalog;
+  return { ...defaults, ...spec } as T;
+}
 
 /** 目录条目：来源 declared（装配声明）/ discovered（/models 实时发现）。 */
 export interface ModelCatalogEntry {

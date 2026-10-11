@@ -21,6 +21,8 @@
     "doctor": "npm run build && node dist/src/cli/doctor.js",
     "maintenance": "npm run build && node dist/src/cli/maintenance.js",
     "architecture:check": "node tools/architecture-check.mjs",
+    "models:generate": "node tools/generate-model-catalog.mjs",
+    "models:check": "node tools/generate-model-catalog.mjs --check",
     "vocabulary:check": "node tools/vocabulary-check.mjs",
     "sandbox:provision": "npm run build && node dist/src/cli/provision.js",
     "mock:llm": "npm run build && node dist/src/cli/mock-llm-run.js",

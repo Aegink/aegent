@@ -58,6 +58,25 @@ export function isOutputTokenLimitHit(
   );
 }
 
+/** W17：触顶截断的 tool call 一律判失败的错误码（tool/result error.code）。 */
+export const OUTPUT_TRUNCATED_TOOL_CALL_CODE = "OUTPUT_TRUNCATED";
+
+/**
+ * W17（pi agent-loop length 截断纪律同构）：触顶（finishReason ∈ 触顶闭集）
+ * 且响应携带 tool call——tool call 的参数 JSON 可能恰在流中被 max_tokens
+ * 截断（残缺参数照常执行 = 幻觉行为风险）。与 isOutputTokenLimitHit 互补：
+ * 两者按 toolCalls 是否为空互斥覆盖"触顶"全集。
+ */
+export function isTruncatedToolCallBatch(
+  output: { toolCalls: unknown[]; finishReason?: string },
+): boolean {
+  return (
+    output.toolCalls.length > 0 &&
+    output.finishReason !== undefined &&
+    OUTPUT_TOKEN_LIMIT_FINISH_REASONS.has(output.finishReason)
+  );
+}
+
 /** B20 每 turn 续跑计数（runTurn 开始时 reset——计数作用域按 promptId 同理不跨轮）。 */
 export class LoopOutputContinuation {
   private count = 0;

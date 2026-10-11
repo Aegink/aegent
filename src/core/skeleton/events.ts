@@ -334,6 +334,20 @@ export interface SystemMessageEvent extends EventBase {
   type: "system/message";
   step: number;
   message: { content: string };
+  /**
+   * W17（pi declareToolChanges 同构）：本请求工具集相对转录内上次声明的
+   * 差量——loop 每次请求前现取工具清单，与上次声明比对，变更落本事件
+   * （转录即见，模型可见工具集变更）。首次声明 = toolsAdded 全集；载荷
+   * 扩展走立案纪律（事件计数不变）。缺省缺席 = 无差量语义（旧流兼容）。
+   */
+  toolsAdded?: readonly string[];
+  toolsRemoved?: readonly string[];
+  /**
+   * W17：系统消息类别（F22 首落判据的区分位——装配系统提示与 loop 工具
+   * 差量声明同为 system/message，判据必须只认前者）。缺省缺席 = "prompt"
+   * （旧流兼容：存量系统提示无 kind）。
+   */
+  kind?: "prompt" | "tool-declaration";
 }
 
 export interface AssistantMessageEvent extends EventBase {

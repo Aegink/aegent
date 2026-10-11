@@ -198,7 +198,11 @@ describe("runner 集成：预设身份段与工具集收窄（U23 消费面）",
     expect(system).toBeGreaterThanOrEqual(0);
     const childId = result.sessionId;
     const events = store.load(childId);
-    const sys = events.find((e) => e.type === "system/message");
+    // W17 后子流 system/message 有两条（loop 工具差量声明 + 系统提示）——
+    // 按内容精准取系统提示（kind:"prompt" 位）。
+    const sys = events.find(
+      (e) => e.type === "system/message" && e.kind !== "tool-declaration",
+    );
     expect(sys).toBeDefined();
     expect(JSON.stringify(sys)).toContain("你是探索者子代理：只读探索");
   });

@@ -904,7 +904,10 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
     // 系统提示首次落流：词汇表 system/message 要求开启的 turn+step（此刻
     // step/start 已落盘，合法）；落事件而非只注入载荷——F22 重建消费事件流。
     const effective = effectiveEvents(store.load(sessionId));
-    if (!effective.some((ev) => ev.type === "system/message")) {
+    // W17：判据只认"系统提示"（kind !== "tool-declaration"）——loop 的工具
+    // 差量声明同为 system/message，不得抢占首次落流（否则系统提示整体丢失：
+    // 委派声明/人格/技能段全不进转录）。
+    if (!effective.some((ev) => ev.type === "system/message" && ev.kind !== "tool-declaration")) {
       // I2 技能清单（T-P1-08）：扫描 .zcode/skills，坏技能诊断落日志不炸；
       // 清单定格在首落时点（改 SKILL.md 对新会话生效；正文经 skill_load
       // 每次直读、当前会话即时）。U22/T-P3-125：disabled 停用过滤 +
@@ -952,6 +955,7 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
           turn: e.turn,
           step: e.step,
           message: { content: withPersona },
+          kind: "prompt",
         },
       ]);
     }
@@ -1059,6 +1063,9 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
       ? new ModelSwitchService({
           initial: resolveInitialIdentity(options, store, sessionId, logger),
           models: options.models,
+          // W18：捕获模型的上下文窗口变化 → 压缩压力监视跟随（pi 模型目录
+          // 语义——换模型压缩阈值跟着换；同窗口重复捕获静默）。
+          onContextWindowChange: (window) => monitor.updateContextWindow(window),
           emit: (emission) => {
             // J9 落流：会话级元事件挂流内最后 turn（session/revert 同款），
             // 空流兜 0；经 ForwardingStore 自然转发为协议 event 行。

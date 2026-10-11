@@ -1367,21 +1367,48 @@ describe("输出 token 触顶可续跑（B20/T-P1-62）", () => {
     expect(injected).toHaveLength(3); // MAX_OUTPUT_TOKEN_CONTINUATIONS
   });
 
-  it("触顶但有工具调用 → 不续跑（工具调用是正常延展）；非触顶 finishReason 照常", async () => {
+  it("W17：触顶且带工具调用 → 整批判失败（OUTPUT_TRUNCATED 合成对）+ turn max-tokens 收束；不续跑", async () => {
+    // 旧语义（B20 原设计）"工具调用是正常延展"已按 pi length 截断纪律收口：
+    // 参数 JSON 可能恰在流中被 max_tokens 截断——残缺参数照常执行 = 幻觉
+    // 行为风险，整批判失败不派发。
     const provider = new ScriptedProvider();
     provider.mount([
-      { type: "tool-call-delta", id: "c1", name: "bash", argsDelta: "{}" },
+      { type: "tool-call-delta", id: "c1", name: "bash", argsDelta: '{"cmd":"ls' }, // 参数残缺（截断模拟）
       { type: "done", finishReason: "length" },
     ]);
     provider.mount([{ type: "text-delta", text: "完成" }, { type: "done" }]);
     const { loop, store } = makeLoop(provider);
 
-    expect(await loop.runTurn("工具轮")).toEqual({ kind: "completed" });
+    expect(await loop.runTurn("工具轮")).toEqual({ kind: "max-tokens" });
+    const events = store.load("s1");
     expect(
-      store
-        .load("s1")
-        .filter((e) => e.type === "user/message" && (e as { source: string }).source === "injected"),
-    ).toHaveLength(0);
+      events.filter((e) => e.type === "user/message" && (e as { source: string }).source === "injected"),
+    ).toHaveLength(0); // 不续跑
+    const call = events.find((e) => e.type === "tool/call") as { callId: string; arguments: string } | undefined;
+    expect(call?.arguments).toBe('{"cmd":"ls'); // 原样落流（事实不篡改）
+    const result = events.find((e) => e.type === "tool/result") as
+      | { callId: string; message: { isError?: boolean }; error?: { code: string; reason: string } }
+      | undefined;
+    expect(result?.callId).toBe("c1"); // 配平不变量：call/result 成对
+    expect(result?.message.isError).toBe(true);
+    expect(result?.error?.code).toBe("OUTPUT_TRUNCATED");
+    expect(result?.error?.reason).toContain("截断");
+  });
+
+  it("W17：非触顶 finishReason 照常（工具调用正常延展零变化）", async () => {
+    const provider = new ScriptedProvider();
+    provider.mount([
+      { type: "tool-call-delta", id: "c1", name: "bash", argsDelta: '{"cmd":"ls"}' },
+      { type: "done", finishReason: "tool_calls" },
+    ]);
+    provider.mount([{ type: "text-delta", text: "完成" }, { type: "done" }]);
+    const { loop, store } = makeLoop(provider);
+
+    expect(await loop.runTurn("工具轮")).toEqual({ kind: "completed" });
+    const result = store.load("s1").find((e) => e.type === "tool/result") as
+      | { isError?: boolean }
+      | undefined;
+    expect(result?.isError).toBeUndefined(); // 正常执行
   });
 });
 

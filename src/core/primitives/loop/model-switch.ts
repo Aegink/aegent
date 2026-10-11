@@ -58,6 +58,12 @@ export interface ModelRequestOptions {
   webSearch?: boolean;
   /** 单次响应输出上限 token（T-P3-145 子代理 maxTokens——缺省跟随模型）。 */
   maxTokens?: number;
+  /**
+   * W18：该模型的上下文窗口（settings spec 或内置目录兜底——pi 模型目录
+   * 语义）。装配期经 onContextWindowChange 通知压缩压力监视（换模 → 压缩
+   * 阈值跟随），不在 wire 请求上透传。
+   */
+  contextWindow?: number;
 }
 
 /** 一个 turn 的捕获值：该 turn 全程使用的 provider 与身份。 */
@@ -172,6 +178,13 @@ export interface ModelSwitchOptions {
     to: ModelIdentity;
     reason: "user" | "rollback";
   }) => void;
+  /**
+   * W18：捕获模型的上下文窗口变化通知（captureForTurn 生效确认点——换模
+   * 到不同窗口的模型时装配侧更新压缩压力监视）。undefined = 新模型无窗口
+   * 信息（装配侧回落初始窗口）。初始模型的窗口不通知（装配期静态传入
+   * PressureMonitor 构造，非"变化"）。
+   */
+  onContextWindowChange?: (contextWindow: number | undefined) => void;
 }
 
 export class ModelSwitchService {
@@ -183,6 +196,9 @@ export class ModelSwitchService {
   private currentSwitch: SwitchRecord | undefined;
   private currentRollback: ModelRollback | undefined;
   private readonly emit: ModelSwitchOptions["emit"];
+  private readonly onContextWindowChange?: ModelSwitchOptions["onContextWindowChange"];
+  /** W18：上次通知的窗口值（同窗口重复捕获静默的比对基准）。 */
+  private lastNotifiedContextWindow: number | undefined;
   /** 在途 turn 的捕获（单槽：同时至多一个在途 turn，语义见文件头）。 */
   private currentCapture: { turn: number; model: TurnModel } | undefined;
 
@@ -196,6 +212,7 @@ export class ModelSwitchService {
     }
     this.configuredId = initial.identity;
     this.emit = options.emit;
+    this.onContextWindowChange = options.onContextWindowChange;
   }
 
   /** configured 当前值：换模受理即更新（deferred 受理除外——见 switch）。 */
@@ -296,6 +313,13 @@ export class ModelSwitchService {
       ...(entry.options !== undefined ? { options: entry.options } : {}),
     };
     this.currentCapture = { turn, model };
+    // W18：捕获模型的窗口变化通知（换模 → 压缩阈值跟随；与上次通知值
+    // 不同才发——同窗口重复捕获静默）。
+    const window = entry.options?.contextWindow;
+    if (window !== this.lastNotifiedContextWindow) {
+      this.lastNotifiedContextWindow = window;
+      this.onContextWindowChange?.(window);
+    }
     return model;
   }
 

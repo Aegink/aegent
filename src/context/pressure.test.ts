@@ -196,3 +196,31 @@ describe("F9：压缩发生在 turn 边界（turnEnd 点位）——次序断言
     expectTurnScoped(events);
   });
 });
+
+
+
+/** W18 测试面：构造近 N tokens 的消息集（chars/4 估算语义）。 */
+function pressureMsgs(tokens: number): { role: "user"; content: string }[] {
+  return [{ role: "user", content: "x".repeat(tokens * 4) }];
+}
+
+describe("W18 updateContextWindow（换模 → 压缩阈值跟随）", () => {
+  it("更新后判定用新窗口；undefined 回落构造值；同值幂等", () => {
+    const monitor = new PressureMonitor({ contextWindow: 200_000, thresholdRatio: 0.8 });
+    // 更新到 1M：同 tokens 从超阈变未超
+    monitor.updateContextWindow(1_000_000);
+    const ok = monitor.recordSuccess({ turn: 1, step: 1, messages: pressureMsgs(150_000) });
+    expect(ok.overThreshold).toBe(false);
+    expect(ok.contextWindow).toBe(1_000_000);
+    // 回落 undefined = 构造值：10k 小消息对 200k 未超（数值稳健——估算器
+    // 有消息结构开销，不用贴近阈值的值断言）
+    monitor.updateContextWindow(undefined);
+    const back = monitor.recordSuccess({ turn: 1, step: 2, messages: pressureMsgs(10_000) });
+    expect(back.contextWindow).toBe(200_000);
+    expect(back.overThreshold).toBe(false);
+    // 超阈判定：150k > 100k×0.8
+    monitor.updateContextWindow(100_000);
+    const over = monitor.recordSuccess({ turn: 1, step: 3, messages: pressureMsgs(150_000) });
+    expect(over.overThreshold).toBe(true);
+  });
+});

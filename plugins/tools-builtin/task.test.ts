@@ -100,8 +100,12 @@ describe("task 工具与子代理 runner（H1/H4/T-P1-42）", () => {
     // 模型身份继承（子代理请求走 runner 注入的 provider/identity）
     expect(provider.requests.length).toBe(1);
     // T-P1-44 验收③：delegation 声明进子代理首请求 system（dsh
-    // SUBAGENT_DELEGATION_CONTEXT 同构——范围定死/审批自动拒绝/上报限制）
-    const systemMsg = provider.requests[0]!.messages.find((m) => m.role === "system");
+    // SUBAGENT_DELEGATION_CONTEXT 同构——范围定死/审批自动拒绝/上报限制）。
+    // W17 后子流 system/message 有两条（loop 工具差量声明 + 系统提示）——
+    // 按内容精准取系统提示。
+    const systemMsg = provider.requests[0]!.messages.find(
+      (m) => m.role === "system" && m.content.includes("委派子代理声明"),
+    );
     expect(systemMsg?.content).toContain("委派子代理声明");
     expect(systemMsg?.content).toContain("无法从本会话内部放宽");
     // 父会话提示零变化由 system-prompt.test 的缺省断言钉死（delegation 缺省不渲染）

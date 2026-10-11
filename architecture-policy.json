@@ -219,7 +219,9 @@
         "src/models/anthropic-messages.ts",
         "src/models/google-generate.ts",
         "src/models/openai-compat.ts",
-        "src/models/auth.ts"
+        "src/models/auth.ts",
+        "src/models/catalog.ts",
+        "src/models/catalog-data.ts"
       ],
       "owner": "wangh"
     },
@@ -464,6 +466,10 @@
     {
       "path": "src/session/store.ts",
       "reason": "SessionStore 418 行（write-behind/restore 三级降级——G1/G2 载体）；W16 排查 P0-1/P1-3 增量（尾桥 + flush 换桶回塞）。"
+    },
+    {
+      "path": "src/models/catalog.generated.ts",
+      "reason": "W18 模型目录生成产物 24,333 行（2647 条目数据冻结边界——tools/generate-model-catalog.mjs 产出，不手工编辑；行数即数据量，不承载逻辑）。"
     }
   ]
 }

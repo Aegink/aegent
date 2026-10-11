@@ -52,12 +52,14 @@ import {
 import { normalizePromptVerdict, type PromptGate } from "./prompt-gate.js";
 import {
   isOutputTokenLimitHit,
+  isTruncatedToolCallBatch,
   LoopOutputContinuation,
   maxStepsExceeded,
   MutationOutcomeGuard,
   MUTATION_RETRY_BUDGET_EXHAUSTED,
   OUTPUT_TOKEN_CONTINUE_PROMPT,
   OUTPUT_TOKEN_LIMIT_FINISH_REASONS,
+  OUTPUT_TRUNCATED_TOOL_CALL_CODE,
 } from "./guards.js";
 import type { MutationRetryBudget } from "../tools/mutation-budget.js";
 import { settleAbandonedToolCalls, TurnWatchdog } from "./watchdog.js";
@@ -513,6 +515,12 @@ export class AgentLoop {
   /** B16/T-P1-59：当前 step 的工具执行策略快照（runStep 开始时固化）。 */
   private stepToolMeta = new Map<string, { parallel: boolean; timeoutMs?: number }>();
 
+  /**
+   * W17：转录内已声明的工具名单（toolsProvider 在位时逐请求比对差量——
+   * system/message toolsAdded/toolsRemoved 的比对基准；undefined = 未声明过）。
+   */
+  private declaredToolNames: readonly string[] | undefined;
+
   /** B20/T-P1-62：本 turn 的输出触顶续跑计数（T3-1 拆 guards.ts，每 turn 重置）。 */
   private readonly outputContinuation = new LoopOutputContinuation();
 
@@ -650,6 +658,12 @@ export class AgentLoop {
         const result = await this.runStep(turn, step);
         if (result.kind === "blocked") return { kind: "blocked" };
         if (result.kind === "cancelled") break;
+        // W17：触顶截断的 tool call 批——整批判失败已落流（合成对），turn
+        // 以 max-tokens 收束（pi 同语义：length 消息的 tool call 一律不执行）。
+        if (result.kind === "truncated") {
+          await this.closeTurn(turn, { kind: "max-tokens" });
+          return { kind: "max-tokens" };
+        }
         // B20/T-P1-62：输出触顶续跑——内核护栏行为（不受 decideTurn 裁决，
         // 否则默认"无工具即 end"会立即终结轮——正是 B20 要防的"结束回合"），
         // 直接进下一 step（续跑指令已作为 injected user/message 入流）。
@@ -732,16 +746,49 @@ export class AgentLoop {
     | { kind: "blocked" }
     | { kind: "cancelled" }
     | { kind: "continue" }
+    | { kind: "truncated" }
   > {
     const { store, sessionId } = this.deps;
     this.currentStepNumber = step;
     store.append(sessionId, [{ type: "step/start", turn, step }]);
+    // W17（pi declareToolChanges 同构）+ F12 单次取：toolsProvider 在位（工具
+    // 集可变）时每 step 现取一次（本 step 内唯一取点——差量声明与请求共用
+    // 同一快照，带副作用/有状态的 toolsProvider 不会被调两次），与转录内
+    // 上次声明比对，差量落 system/message（toolsAdded/toolsRemoved + 模型
+    // 可读文本）——落流在 buildMessages 之前，本请求转录即见声明。首次声明
+    // = 全集（系统提示不含工具清单——转录内声明是唯一权威面；loop 重建后
+    // 重新声明 = 恢复对齐语义）。固定 tools（无 toolsProvider）不启用：工具
+    // 集不可变，转录形状零变化。
+    const stepTools = this.deps.toolsProvider?.() ?? this.deps.tools;
+    if (this.deps.toolsProvider !== undefined && stepTools !== undefined) {
+      const names = stepTools.map((t) => t.name);
+      const declared = this.declaredToolNames;
+      const added = declared === undefined ? names : names.filter((n) => !declared.includes(n));
+      const removed = declared === undefined ? [] : declared.filter((n) => !names.includes(n));
+      if (added.length > 0 || removed.length > 0) {
+        const parts: string[] = [];
+        if (added.length > 0) parts.push(`本次可用工具：${added.join("、")}`);
+        if (removed.length > 0) parts.push(`已移除工具（不再可用）：${removed.join("、")}`);
+        store.append(sessionId, [
+          {
+            type: "system/message",
+            turn,
+            step,
+            message: { content: `[工具集声明] ${parts.join("；")}。` },
+            kind: "tool-declaration",
+            ...(added.length > 0 ? { toolsAdded: added } : {}),
+            ...(removed.length > 0 ? { toolsRemoved: removed } : {}),
+          },
+        ]);
+        this.declaredToolNames = names;
+      }
+    }
     const payload: ModelRequestPayload = {
       turn,
       step,
       identity: this.turnModel.identity,
       messages: this.buildMessages(),
-      ...(this.deps.tools ? { tools: this.deps.tools } : {}),
+      ...(stepTools !== undefined ? { tools: stepTools } : {}),
     };
     let outcome;
     try {
@@ -836,6 +883,38 @@ export class AgentLoop {
         { type: "step/end", turn, step, ...(output.timing ? { timing: output.timing } : {}), ...(output.traceId ? { traceId: output.traceId } : {}) },
       ]);
       return { kind: "continue" };
+    }
+    // W17（pi agent-loop length 截断纪律同构）：触顶且响应携带 tool call——
+    // 参数 JSON 可能恰在流中被 max_tokens 截断，残缺参数照常执行 = 幻觉行为
+    // 风险。整批判失败：tool/call + isError tool/result 合成对落流（配平
+    // 不变量保持、模型意图不丢），不派发执行；turn 以 max-tokens 收束。
+    if (isTruncatedToolCallBatch(output)) {
+      store.append(sessionId, [
+        ...output.toolCalls.flatMap((c) => [
+          {
+            type: "tool/call" as const,
+            turn,
+            step,
+            callId: c.id,
+            name: c.name,
+            arguments: c.arguments,
+          },
+          {
+            type: "tool/result" as const,
+            turn,
+            step,
+            callId: c.id,
+            message: { content: "", isError: true as const },
+            error: {
+              name: "LoopError",
+              code: OUTPUT_TRUNCATED_TOOL_CALL_CODE,
+              reason: "输出在参数完整前被 max_tokens 截断——调用未执行（完整重发或拆小输出）",
+            },
+          },
+        ]),
+        { type: "step/end", turn, step, ...(output.timing ? { timing: output.timing } : {}), ...(output.traceId ? { traceId: output.traceId } : {}) },
+      ]);
+      return { kind: "truncated" };
     }
     const toolResults: StepRecord["toolResults"] = [];
     // B14：每个 step 的工具分发循环一份预算（tick=派发、progress=执行完回环）
@@ -1241,7 +1320,10 @@ export class AgentLoop {
     const { store, sessionId } = this.deps;
     // F12/F14：toolsProvider 在位时每请求现取（deferrable 工具索取后真
     // schema 才进清单）；缺省回落固定 tools（P0 零行为变化）
-    const tools = this.deps.toolsProvider?.() ?? this.deps.tools;
+    // W17/F12：runStep 已现取并经 payload.tools 传入（本 step 唯一取点——
+    // toolsProvider 不重复调用）；payload 无 tools（直接构造 payload 的
+    // 路径）回落逐请求现取（F12 原语义）。
+    const tools = payload.tools ?? this.deps.toolsProvider?.() ?? this.deps.tools;
     // F6/F13/T-P1-19：逐请求缓存锚检测——system + tools 字节序。identical
     // 静默；appended/rewritten 通知装配观测（换模 + rewritten = 违背 F13
     // "中途改动不得作废已缓存前缀"的告警信号）。
