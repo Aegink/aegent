@@ -149,7 +149,7 @@ if (nativeEntry !== undefined) {
 // registry descriptions / templates.js templates / system-prompt prompt /
 // dpapi index dpapi / migrate schema.sql——两个 bundle 同目录共用一份）。
 const assets = [
-  ["src/kernel/tools/descriptions", "descriptions"],
+  ["plugins/tools-builtin/descriptions", "descriptions"],
   ["src/sandbox/templates", "templates"],
   ["src/context/prompt", "prompt"],
   ["src/sandbox/dpapi", "dpapi"],
