@@ -18,7 +18,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import type { SessionEvent } from "../../kernel/events.js";
+import type { SessionEvent } from "../../core/index.js";
 
 export interface PlanModeService {
   /** plan 模式是否激活（gate/revalidate 出口每调用活查询）。 */

@@ -14,7 +14,7 @@
  * FNV-1a（T-P1-100 压缩指纹同款自算哈希，不引依赖）。
  */
 
-import type { JsonRecord } from "../kernel/events.js";
+import type { JsonRecord } from "../core/index.js";
 
 /** 同步实体：一个配置域内的一个可命名对象（provider/预设/键值组…）。 */
 export interface SyncEntity {

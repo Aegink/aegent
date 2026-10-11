@@ -9,7 +9,7 @@ import {
 } from "./containment.js";
 import { SANDBOX_UNAVAILABLE, type SandboxBackend } from "./backend.js";
 import { Win32SandboxBackend } from "./win32-backend.js";
-import { NodeExecutionEnv } from "../kernel/tools/env.js";
+import { NodeExecutionEnv } from "../core/index.js";
 
 const helperPath = fileURLToPath(new URL(`../../${"src/sandbox/win32-helper/target/release/win32-sandbox-helper.exe"}`, import.meta.url));
 const helperReady = existsSync(helperPath);

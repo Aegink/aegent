@@ -18,7 +18,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 import { CURRENT_SCHEMA_VERSION } from "../session/db.js";
 
 /**

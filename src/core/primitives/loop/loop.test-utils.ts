@@ -3,7 +3,7 @@
  * 组装 harness。只服务测试，不入运行时。
  */
 
-import type { StreamChunk } from "../../../kernel/events.js";
+import type { StreamChunk } from "../../skeleton/events.js";
 import {
   AgentLoop,
   type AgentLoopDeps,
@@ -11,8 +11,8 @@ import {
   type StepRecord,
 } from "./loop.js";
 import type { ChatRequest, ModelProvider } from "../../../models/provider.js";
-import type { PromptQueue } from "../../../kernel/queue.js";
-import type { RunState } from "../../../kernel/run-state.js";
+import type { PromptQueue } from "../../skeleton/queue.js";
+import type { RunState } from "../../skeleton/run-state.js";
 import {SessionEventStore, type SessionStore} from "../../../session/store.js";
 
 /** 剧本化假 provider：每次模型调用吃一份 StreamChunk 脚本，记录收到的请求。 */

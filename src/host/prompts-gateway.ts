@@ -23,10 +23,10 @@ import {
   PROMPTS_DIR,
   USER_PROMPTS_DIR,
   PROMPT_BODY_MAX_BYTES,
-} from "../kernel/prompts.js";
-import { validateManifest } from "../kernel/plugin-manifest.js";
-import { coerceSettingValues } from "../kernel/plugin-manifest-contributes.js";
-import { resolvePluginContributions } from "../kernel/plugin-contributions.js";
+} from "../ext-builtin/prompt-defaults/prompts.js";
+import { validateManifest } from "../ext-builtin/plugin-runtime/plugin-manifest.js";
+import { coerceSettingValues } from "../ext-builtin/plugin-runtime/plugin-manifest-contributes.js";
+import { resolvePluginContributions } from "../ext-builtin/plugin-runtime/plugin-contributions.js";
 import { readFileSync } from "node:fs";
 import { PLUGIN_AVAILABLE_CAPABILITIES } from "./plugins-gateway.js";
 import type { SettingsShape } from "../session/settings.js";

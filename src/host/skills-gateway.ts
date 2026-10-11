@@ -13,7 +13,7 @@ import {
   skillBody,
   SKILL_FILENAME,
   SKILLS_DIR,
-} from "../kernel/skills.js";
+} from "../ext-builtin/prompt-defaults/skills.js";
 import type { SettingsShape } from "../session/settings.js";
 
 /** 技能正文字节上限（pi-desktop·SkillEditorSheet MAX_SKILL_BYTES 同值）。 */

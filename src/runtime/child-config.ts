@@ -14,7 +14,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
-import type { RegisteredModel } from "../kernel/model-switch.js";
+import type { RegisteredModel } from "../core/index.js";
 import { parseRulesText } from "../policy/rule-loader.js";
 import type { SettingsShape } from "../session/settings.js";
 import {

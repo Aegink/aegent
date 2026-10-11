@@ -18,11 +18,11 @@ import { assemblePolicyChain } from "./chain.js";
 import { builtinRuleMatchers } from "./matchers.js";
 import { loadedRuleMatch, loadedRuleText, loadRules } from "./rule-loader.js";
 import { createRuleSetModule } from "./rules.js";
-import type { ChainNext } from "../kernel/chain.js";
-import type { ToolCallPayload, ToolExecutionResult } from "../core/primitives/loop/loop.js";
-import { createChildAssembly } from "../kernel/assembly.js";
+import type { ChainNext } from "../core/index.js";
+import type { ToolCallPayload, ToolExecutionResult } from "../core/index.js";
+import { createChildAssembly } from "../runtime/assembly.js";
 import {SessionEventStore, type SessionStore} from "../session/store.js";
-import type { Logger } from "../kernel/logger.js";
+import type { Logger } from "../core/index.js";
 
 const call = (tool: string): PolicyCall => ({ tool, args: {} });
 

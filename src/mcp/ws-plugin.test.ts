@@ -10,8 +10,8 @@ import {
     type WsPluginServerEnvelope,
     type WsPluginClientEnvelope,
 } from "./ws-plugin.js";
-import { TimeoutError } from "../kernel/deadline.js";
-import type { SessionEvent } from "../kernel/events.js";
+import { TimeoutError } from "../core/index.js";
+import type { SessionEvent } from "../core/index.js";
 
 /**
  * 真实 ws server 内存桥（随机端口）：插件进程由测试扮演——收信封、按

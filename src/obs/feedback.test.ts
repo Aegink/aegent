@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { EVENT_TYPES } from "../kernel/events.js";
+import { EVENT_TYPES } from "../core/index.js";
 import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../session/store.js";
 import {
     FeedbackValidationError,

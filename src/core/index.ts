@@ -25,10 +25,49 @@ export * from "./contracts/telemetry.js";
 export * from "./contracts/compaction.js";
 export * from "./contracts/subagent.js";
 export * from "./primitives/session/reference.js";
-export type { AgentLoopDeps, DecideTurn, StepRecord, ToolExecutionMode, TurnDecision } from "./primitives/loop/loop.js";
+export type {
+  AgentLoopDeps,
+  DecideTurn,
+  StepRecord,
+  ToolExecutionMode,
+  TurnDecision,
+  ModelRequestPayload,
+  ModelStepOutput,
+  TurnEndPayload,
+} from "./primitives/loop/loop.js";
 export { AgentLoop } from "./primitives/loop/loop.js";
 export { createLoop, registerLoopImplementation, type LoopImplementation } from "./primitives/loop/factory.js";
 export { installConsoleRedirect } from "./primitives/process/console-redirect.js";
+export * from "./skeleton/admission.js";
+export * from "./skeleton/budget.js";
+export * from "./skeleton/hooks.js";
+export * from "./skeleton/goal.js";
+export * from "./skeleton/invariants.js";
+export * from "./skeleton/protocol.js";
+export * from "./skeleton/protocol-payload.js";
+export * from "./skeleton/protocol-framing.js";
+export * from "./skeleton/run-state.js";
+export * from "./skeleton/rw-lock.js";
+export * from "./primitives/loop/guards.js";
+export * from "./primitives/loop/watchdog.js";
+export * from "./primitives/loop/prompt-args.js";
+export * from "./primitives/loop/prompt-gate.js";
+export * from "./primitives/loop/side-query.js";
+export * from "./primitives/loop/stream-recovery.js";
+export * from "./primitives/loop/model-switch.js";
+export * from "./primitives/loop/retry-after.js";
+export * from "./primitives/loop/goal-round-driver.js";
+export * from "./primitives/session/session-config.js";
+export * from "./primitives/session/project.js";
+export * from "./primitives/session/messages.js";
+export * from "./primitives/session/coalescer.js";
+export * from "./primitives/session/prefix-anchor.js";
+export * from "./primitives/session/result-trim.js";
+export * from "./primitives/session/reference.js";
+export * from "./primitives/tools/truncate.js";
+export * from "./primitives/tools/spill-gc.js";
+export * from "./primitives/tools/mutation-budget.js";
+export * from "./primitives/tools/scheduler.js";
 export { ToolRegistry } from "./primitives/tools/registry.js";
 export { WriteQueue } from "./primitives/tools/write-queue.js";
 export { BackgroundShellRegistry } from "./primitives/tools/background-shell.js";

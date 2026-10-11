@@ -22,7 +22,7 @@
  * 执行面）与装载期 loader 双防线完成。
  */
 
-import { EVENT_TYPES, type SessionEventType } from "../../kernel/events.js";
+import { EVENT_TYPES, type SessionEventType } from "../../core/index.js";
 
 /** 插件名 slug 形状（v2 清单强制；64 字节——命令/技能命名空间段同规则）。 */
 export const PLUGIN_NAME_SHAPE = /^[a-z0-9][a-z0-9._-]{0,63}$/;

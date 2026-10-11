@@ -10,7 +10,7 @@ import {
   loadPromptTemplatesFromRoots,
   lookupPromptTemplate,
   validatePromptName,
-} from "../../kernel/prompts.js";
+} from "./prompts.js";
 
 const tmpDirs: string[] = [];
 afterEach(() => {

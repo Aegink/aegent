@@ -19,7 +19,7 @@
  * 订阅闭集外类型类型化拒绝（fail-closed）；卸载后该插件零触达。
  */
 
-import { EVENT_TYPES, type SessionEvent, type SessionEventType } from "../kernel/events.js";
+import { EVENT_TYPES, type SessionEvent, type SessionEventType } from "../core/index.js";
 
 /** 宿主可见的一条治理建议（提醒/建议面——非强制，不携带任何决策权）。 */
 export interface GuardAdvice {

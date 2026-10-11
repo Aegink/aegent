@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { NewSessionEvent, SessionEvent } from "../kernel/events.js";
+import type { NewSessionEvent, SessionEvent } from "../core/index.js";
 import { expectPaired } from "../test-support/event-asserts.js";
 import {
   advancePairing,

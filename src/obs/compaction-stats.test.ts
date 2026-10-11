@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 import { compactionStats } from "./compaction-stats.js";
 
 let seq = 0;

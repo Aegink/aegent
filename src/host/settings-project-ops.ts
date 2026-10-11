@@ -253,7 +253,7 @@ import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { convertImportedSession } from "./projects-gateway.js";
 import type { ImportedMessage } from "./import-spec.js";
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 
 /** ImportedMessage → 我方事件序列（user/message 开新 turn；assistant 带
  * 空 stream；tool 配 callId 对）。E16 合法类型子集；seq/turn/step 单调。 */

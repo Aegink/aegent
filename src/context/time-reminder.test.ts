@@ -13,7 +13,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { createChildAssembly } from "../kernel/assembly.js";
+import { createChildAssembly } from "../runtime/assembly.js";
 import {SessionEventStore, type SessionStore} from "../session/store.js";
 import {
   DEFAULT_TIME_REMINDER_INTERVAL_SECONDS,

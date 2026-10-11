@@ -18,9 +18,9 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
-import { parseSkillFrontmatter, SKILL_FILENAME, type SkillSummary } from "../../kernel/skills.js";
-import { PROMPT_BODY_MAX_BYTES, validatePromptName, type PromptTemplateSummary } from "../../kernel/prompts.js";
-import { templatePlaceholders } from "../../kernel/prompt-args.js";
+import { parseSkillFrontmatter, SKILL_FILENAME, type SkillSummary } from "../prompt-defaults/skills.js";
+import { PROMPT_BODY_MAX_BYTES, validatePromptName, type PromptTemplateSummary } from "../prompt-defaults/prompts.js";
+import { templatePlaceholders } from "../../core/index.js";
 import type { McpServerEntry } from "../../session/settings.js";
 import type { PluginManifest } from "./plugin-manifest.js";
 import type {

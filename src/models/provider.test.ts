@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { assertJsonSafe, type StreamChunk } from "../kernel/events.js";
+import { assertJsonSafe, type StreamChunk } from "../core/index.js";
 import { parseProviderConfig, ProviderConfigError } from "./config.js";
 import { createOpenAiCompatProvider, parseOpenAiCompatSettings } from "./openai-compat.js";
 import { ProviderHttpError, type ChatRequest, type ModelProvider } from "./provider.js";

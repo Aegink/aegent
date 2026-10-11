@@ -5,7 +5,7 @@
  * 键表须与 protocol-settings 的 rejectUnknownKeys 白名单同源——漏拷即
  * dispatch 侧永远 undefined（反复踩的坑，各键注释保留原位语义）。
  */
-import type { JsonRecord } from "../kernel/events.js";
+import type { JsonRecord } from "../core/index.js";
 import type { SkillImportItem } from "./skill-import-op.js";
 import type { SkillSavePayload, PromptSavePayload } from "./settings-gateway-types.js";
 import type { SettingsCall } from "./settings-call-shape.js";

@@ -21,8 +21,8 @@
  */
 
 import type { ExecResult } from "../../src/core/index.js";
-import type { ToolExecutionResult } from "../../src/kernel/loop.js";
-import { TimeoutError } from "../../src/kernel/timeout.js";
+import type { ToolExecutionResult } from "../../src/core/index.js";
+import { TimeoutError } from "../../src/core/index.js";
 import { analyzeShellCommand } from "../../src/policy/shell-semantics.js";
 import { PathGuard, PathGuardError } from "../../src/sandbox/path-guard.js";
 import { SandboxUnavailableError } from "../../src/core/index.js";

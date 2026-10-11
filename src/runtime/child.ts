@@ -20,7 +20,7 @@
 import path from "node:path";
 import os from "node:os";
 
-import { runAgentChildStdio, type AgentChildOptions } from "../kernel/agent-process.js";
+import { runAgentChildStdio, type AgentChildOptions } from "./agent-process.js";
 import { InvalidSessionIdError, isValidSessionId } from "../session/session-id.js";
 import {
   adapterForAssembly,
@@ -37,7 +37,7 @@ import { createAnthropicMessagesProvider } from "../models/anthropic-messages.js
 import { withRetry, type RetryObservation } from "../models/retry.js";
 import { SANDBOX_MODES, type SandboxMode } from "../core/index.js";
 import { LocalFileAttachmentStore } from "../attachments/store.js";
-import type { RegisteredModel } from "../kernel/model-switch.js";
+import type { RegisteredModel } from "../core/index.js";
 import {
   globalAgentsFile,
   memoryIndexFile,
@@ -46,8 +46,8 @@ import {
   resolveSubagentAssembly,
 } from "./child-config.js";
 import { resolveEnhancementChain } from "../session/settings.js";
-import { createLogger } from "../kernel/logger.js";
-import { loadPromptTemplatesFromRoots, PROMPTS_DIR, USER_PROMPTS_DIR } from "../kernel/prompts.js";
+import { createLogger } from "../core/index.js";
+import { loadPromptTemplatesFromRoots, PROMPTS_DIR, USER_PROMPTS_DIR } from "../ext-builtin/prompt-defaults/prompts.js";
 
 /** A5/T-P1-51 重试留痕 logger（openai 装配专用，模块级单例避免句柄膨胀）。 */
 const retryWarnLogger = createLogger();
@@ -58,7 +58,6 @@ interface ChildCliArgs {
   session?: string;
   db?: string;
   /** E14/T-P1-90 原始分片日志目录（缺省不写——旁路通道按需开启）。 */
-  rawLogDir?: string;
   workspace?: string;
   contextWindow?: number;
   /** I8 人格预设（T-P2-305）：--persona <id>——装配期解析（未知 id 启动即败）。 */
@@ -92,7 +91,6 @@ function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv): ChildCliArg
     provider: env["AEGENT_PROVIDER"],
     session: env["AEGENT_SESSION"],
     db: env["AEGENT_DB"],
-    rawLogDir: env["AEGENT_RAW_LOG_DIR"],
     apiKey: env["AEGENT_API_KEY"],
     baseUrl: env["AEGENT_BASE_URL"],
     model: env["AEGENT_MODEL"],
@@ -102,7 +100,6 @@ function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv): ChildCliArg
     if (a === "--provider" && i + 1 < argv.length) args.provider = argv[++i];
     else if (a === "--session" && i + 1 < argv.length) args.session = argv[++i];
     else if (a === "--db" && i + 1 < argv.length) args.db = argv[++i];
-    else if (a === "--raw-log-dir" && i + 1 < argv.length) args.rawLogDir = argv[++i];
     else if (a === "--workspace" && i + 1 < argv.length) args.workspace = argv[++i];
     else if (a === "--context-window" && i + 1 < argv.length)
       args.contextWindow = Number(argv[++i]);
@@ -439,7 +436,7 @@ async function main(): Promise<void> {
   // C4：外部子代理后端装配——settings subagentBackend 段（缺省/缺段 =
   // undefined = 仅进程内 fork，既有行为零变化）。acp：spawn 命令行 stdio
   // 传输 → createAcpBackend；进程生命周期随单次派发（transport.close）。
-  let externalBackends: import("../kernel/subagent.js").SubagentRunnerDeps["externalBackends"];
+  let externalBackends: import("../ext-builtin/subagent-engine/subagent.js").SubagentRunnerDeps["externalBackends"];
   if (settingsFile.subagentBackend?.backend === "acp" && settingsFile.subagentBackend.acp !== undefined) {
     const acpSettings = settingsFile.subagentBackend.acp;
     const { spawnAcpTransport } = await import("../session/acp-transport.js");
@@ -472,7 +469,6 @@ async function main(): Promise<void> {
   const memoryIndexPath = memoryIndexFile(); // T-P3-151 C2 装配末层
   // J27/T-P1-61：retrying 事件落流观察者的 late-binding 槽（模块级声明）。
   const options: AgentChildOptions = {
-    ...(cli.rawLogDir ? { rawLogDir: cli.rawLogDir } : {}),
     sessionId,
     // T-P3-148 热加载：settings 路径透传（plugins/reload 现读最新清单）
     ...(cli.settingsPath ? { settingsPath: cli.settingsPath } : {}),

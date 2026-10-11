@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { StreamChunk } from "../kernel/events.js";
+import type { StreamChunk } from "../core/index.js";
 import { parseProviderConfig } from "./config.js";
 import { createOpenAiCompatProvider } from "./openai-compat.js";
 import type { ChatRequest, ModelProvider } from "./provider.js";

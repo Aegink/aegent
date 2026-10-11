@@ -1,7 +1,7 @@
 // U15/T-P3-117：变更评审提取纯函数——从流算变更清单/汇总/委派一览。
 // 事件构造走 SessionEvent 形状（seq/ts/turn 手工排布，与 store 无关——纯函数面）。
 import { beforeEach, describe, expect, it } from "vitest";
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 import {
   reviewChangesFromEvents,
   summarizeReviewChanges,

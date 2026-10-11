@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
 
-import type { NewSessionEvent, SessionEvent } from "../kernel/events.js";
+import type { NewSessionEvent, SessionEvent } from "../core/index.js";
 import {
   ARCHIVED_SESSIONS_SUBDIR,
   ArchiveError,

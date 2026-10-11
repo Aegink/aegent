@@ -13,8 +13,8 @@
 import * as path from "node:path";
 import { PathGuard, PathGuardError } from "../../src/sandbox/path-guard.js";
 import { ReadGateError } from "../../src/core/index.js";
-import type { JsonValue } from "../../src/kernel/events.js";
-import type { ToolExecutionResult } from "../../src/kernel/loop.js";
+import type { JsonValue } from "../../src/core/index.js";
+import type { ToolExecutionResult } from "../../src/core/index.js";
 import type { ToolDef } from "../../src/core/index.js";
 import type { WriteQueue } from "../../src/core/index.js";
 import { contentHash, toolError } from "./util.js";

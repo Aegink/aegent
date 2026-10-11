@@ -7,8 +7,8 @@ import {
     type AegentPlugin,
     type PluginCapabilities,
 } from "./plugin-sdk.js";
-import { PluginManifestError } from "../kernel/plugin-manifest.js";
-import { EVENT_TYPES, type SessionEvent } from "../kernel/events.js";
+import { PluginManifestError } from "../ext-builtin/plugin-runtime/plugin-manifest.js";
+import { EVENT_TYPES, type SessionEvent } from "../core/index.js";
 
 const CAPS = ["registerTool", "subscribe", "hooks", "settings.read"] as const;
 

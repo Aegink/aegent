@@ -14,7 +14,7 @@ import { createInterface } from "node:readline";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { spawnAgentProcess } from "../kernel/agent-process.js";
+import { spawnAgentProcess } from "../runtime/agent-process.js";
 import { InvalidSessionIdError, createSessionId, isValidSessionId } from "../session/session-id.js";
 import { createCredentialStore } from "../session/credentials.js";
 import { loadSettings, resolveChildLaunchArgv } from "../session/settings.js";

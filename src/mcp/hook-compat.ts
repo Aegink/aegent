@@ -25,11 +25,11 @@
  * 交付映射层与注册面，测试以 fake runner 驱动全表面（不做端到端联调）。
  */
 
-import { HookRegistry } from "../kernel/hooks.js";
-import type { ChainLayer } from "../kernel/chain.js";
-import type { JsonRecord } from "../kernel/events.js";
-import type { ToolExecutionResult } from "../kernel/loop.js";
-import type { LoopContext, ToolCallPayload } from "../kernel/loop.js";
+import { HookRegistry } from "../core/index.js";
+import type { ChainLayer } from "../core/index.js";
+import type { JsonRecord } from "../core/index.js";
+import type { ToolExecutionResult } from "../core/index.js";
+import type { LoopContext, ToolCallPayload } from "../core/index.js";
 
 /** 生态 hook 执行器注入面：命令 + stdin JSON → stdout/stderr/退出码。 */
 export type EcosystemHookRunner = (

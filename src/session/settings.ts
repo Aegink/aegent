@@ -364,7 +364,7 @@ export interface SettingsShape {
    */
   logging?: {
     rawLogDir?: string;
-    level?: import("../kernel/logger.js").LogLevel;
+    level?: import("../core/index.js").LogLevel;
     retentionDays?: number;
     logDir?: string;
   };
@@ -1062,7 +1062,7 @@ export function parseSettingsShape(raw: unknown): SettingsShape {
     const logDir = assertString((logging as Record<string, unknown>)["logDir"], "logging.logDir");
     out.logging = {
       ...(rawLogDir !== undefined ? { rawLogDir } : {}),
-      ...(logLevel !== undefined ? { level: logLevel as import("../kernel/logger.js").LogLevel } : {}),
+      ...(logLevel !== undefined ? { level: logLevel as import("../core/index.js").LogLevel } : {}),
       ...(retentionDays !== undefined ? { retentionDays } : {}),
       ...(logDir !== undefined ? { logDir } : {}),
     } as typeof out.logging;

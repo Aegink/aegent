@@ -22,7 +22,7 @@ import { createHash } from "node:crypto";
 
 import { loadSettings, saveSettings } from "../session/settings.js";
 import { withSettingsRmw } from "./settings-rmw.js";
-import { validateManifest } from "../kernel/plugin-manifest.js";
+import { validateManifest } from "../ext-builtin/plugin-runtime/plugin-manifest.js";
 import { gitCloneSource, makeStagingDir, pluginRootFromClone } from "./plugins-marketplace-git.js";
 import {
   marketplaceStorageRoot,

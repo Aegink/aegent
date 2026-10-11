@@ -18,7 +18,7 @@ import path from "node:path";
 import type { AttachmentStore } from "../../src/core/index.js";
 import { PathGuard, PathGuardError } from "../../src/sandbox/path-guard.js";
 import type { ToolDef } from "../../src/core/index.js";
-import type { ToolExecutionResult } from "../../src/kernel/loop.js";
+import type { ToolExecutionResult } from "../../src/core/index.js";
 import { toolError } from "./util.js";
 
 /** 图片字节上限（20MB）。 */

@@ -16,7 +16,7 @@ import {
   GitCheckpointService,
   createGitRunner,
 } from "./git-checkpoint.js";
-import type { NewSessionEvent } from "../kernel/events.js";
+import type { NewSessionEvent } from "../core/index.js";
 
 let repo: string;
 
@@ -154,10 +154,10 @@ describe("GitCheckpointService（T-8-02 · E11）", () => {
 
 import { PassThrough } from "node:stream";
 import { runCli } from "../cli/repl.js";
-import { runAgentChildStdio } from "../kernel/agent-process.js";
-import { decodeMessage } from "../kernel/agent-protocol.js";
+import { runAgentChildStdio } from "../runtime/agent-process.js";
+import { decodeMessage } from "../core/index.js";
 import type { AgentConnection } from "../cli/repl.js";
-import type { StreamChunk } from "../kernel/events.js";
+import type { StreamChunk } from "../core/index.js";
 
 describe("/revert 双回退（E4 对话态 + E11 代码态，场景①联测）", () => {
   it("审批放行 write 改文件 → /revert 到改前 → 文件与对话同时回退", async () => {

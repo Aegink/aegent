@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { NewSessionEvent, TokenUsage } from "../kernel/events.js";
+import type { NewSessionEvent, TokenUsage } from "../core/index.js";
 import { buildChatMessages, effectiveEvents } from "../session/messages.js";
 import {SessionEventStore, type SessionStore} from "../session/store.js";
 import { expectPaired, expectTurnScoped } from "../test-support/event-asserts.js";
@@ -297,7 +297,7 @@ describe("tokensBefore 来源与有效视窗", () => {
 // + 标题首摘要定名 + 截断回退
 // ---------------------------------------------------------------------------
 
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 import { ScriptedProvider } from "../core/primitives/loop/loop.test-utils.js";
 import {
   createLlmSummarizer,

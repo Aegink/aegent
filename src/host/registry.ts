@@ -16,8 +16,8 @@
 
 import { randomUUID } from "node:crypto";
 
-import type { SessionEvent } from "../kernel/events.js";
-import { ToolClassLimiter, type ToolClassLimits } from "../kernel/admission.js";
+import type { SessionEvent } from "../core/index.js";
+import { ToolClassLimiter, type ToolClassLimits } from "../core/index.js";
 import { isWriteExecuteTool } from "../policy/protected-paths.js";
 import { isValidSessionId } from "../session/session-id.js";
 import { SurfaceHub, type SurfaceLifecycleChange } from "./lease.js";

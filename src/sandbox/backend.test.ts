@@ -9,7 +9,7 @@ import {
   type SandboxBackend,
   type SandboxSpawnRequest,
 } from "./backend.js";
-import { NodeExecutionEnv, type ExecOptions, type ExecResult } from "../kernel/tools/env.js";
+import { NodeExecutionEnv, type ExecOptions, type ExecResult } from "../core/index.js";
 
 function makeFakeEnv(log: ExecOptions[], result?: Partial<ExecResult>) {
   return {

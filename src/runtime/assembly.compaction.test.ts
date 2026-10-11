@@ -11,8 +11,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { createChildAssembly } from "../kernel/assembly.js";
-import type { SessionEvent } from "../kernel/events.js";
+import { createChildAssembly } from "./assembly.js";
+import type { SessionEvent } from "../core/index.js";
 import {SessionEventStore, type SessionStore} from "../session/store.js";
 import {
   compactionFingerprint,

@@ -26,7 +26,7 @@ import {
   type SessionQueryRow,
 } from "../../src/session/query.js";
 import { SessionArchivedError } from "../../src/session/db.js";
-import { EVENT_TYPES } from "../../src/kernel/events.js";
+import { EVENT_TYPES } from "../../src/core/index.js";
 import { toolError } from "./util.js";
 
 /** 单条事件 JSON 在工具输出里的截断上限（模型可见输出有界）。 */

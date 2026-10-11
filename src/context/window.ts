@@ -17,7 +17,7 @@
  * （F25 零词汇表扩展——展卡核对结论 ①）。
  */
 
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 import { effectiveEvents } from "../session/messages.js";
 
 /** 窗口身份：编号 + 三元组（无压缩时 currentId = 0 表示初始窗）。 */

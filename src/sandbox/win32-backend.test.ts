@@ -11,7 +11,7 @@ import {
   SANDBOX_UNAVAILABLE,
   SandboxUnavailableError,
 } from "./backend.js";
-import { TimeoutError } from "../kernel/timeout.js";
+import { TimeoutError } from "../core/index.js";
 
 /** 真机集成前提：helper 已构建（npm run build:sandbox-helper）。 */
 const helperPath = fileURLToPath(new URL(`../../${DEFAULT_HELPER_PATH}`, import.meta.url));

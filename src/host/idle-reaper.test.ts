@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
 
-import { EVENT_TYPES, type NewSessionEvent, type SessionEvent } from "../kernel/events.js";
+import { EVENT_TYPES, type NewSessionEvent, type SessionEvent } from "../core/index.js";
 import { SqliteEventStorage } from "../session/db.js";
 import {SessionEventStore, type SessionStore} from "../session/store.js";
 import { DEFAULT_IDLE_TIMEOUT_MS, IdleReaper, type SessionReapedNotice } from "./idle-reaper.js";

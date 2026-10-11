@@ -5,8 +5,8 @@
  * 未决，无回执命令即 resolve）；polish（T-P3-146 I）requestId 关联旁路面。
  */
 
-import type { AgentMessage, AgentRequest } from "../kernel/agent-protocol.js";
-import type { SessionEvent } from "../kernel/events.js";
+import type { AgentMessage, AgentRequest } from "../core/index.js";
+import type { SessionEvent } from "../core/index.js";
 import { NotLeaseHolderError } from "../session/owner-port.js";
 import type { SessionStore } from "../session/store.js";
 import { SqliteEventStorage } from "../session/db.js";

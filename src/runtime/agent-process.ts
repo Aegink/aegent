@@ -20,11 +20,11 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-import type { CancelCause, SessionRef, TurnEndReason } from "../kernel/events.js";
-import { type AgentLoopDeps, type ToolExecutionMode } from "../kernel/loop.js";
+import type { CancelCause, SessionRef, TurnEndReason } from "../core/index.js";
+import { type AgentLoopDeps, type ToolExecutionMode } from "../core/index.js";
 import { createLoop } from "../core/index.js";
-import { PromptQueue, QueueFullError } from "../kernel/queue.js";
-import { BackgroundShellRegistry } from "../kernel/tools/background-shell.js";
+import { PromptQueue, QueueFullError } from "../core/index.js";
+import { BackgroundShellRegistry } from "../core/index.js";
 import { validateAttachments, AttachmentLimitError } from "../attachments/limits.js";
 import { base64ByteLength } from "../attachments/store.js";
 import type { AttachmentRef, AttachmentStore } from "../core/index.js";
@@ -35,9 +35,9 @@ import {
   assertNoReferenceCycle,
   refsOfEvents,
 } from "../session/reference.js";
-import { ToolClassLimiter, TurnAdmission } from "../kernel/admission.js";
+import { ToolClassLimiter, TurnAdmission } from "../core/index.js";
 import { isWriteExecuteTool } from "../policy/protected-paths.js";
-import { SessionConfigStore, type ApprovalMode, StaticConfigImmutableError } from "../kernel/session-config.js";
+import { SessionConfigStore, type ApprovalMode, StaticConfigImmutableError } from "../core/index.js";
 import type { RetryObservation } from "../models/retry.js";
 import {
   type AgentMessage,
@@ -53,7 +53,7 @@ import {
   decodeRequest,
   decodeServerHello,
   encodeFrame,
-} from "../kernel/agent-protocol.js";
+} from "../core/index.js";
 import type { ApprovalAnnouncement } from "../policy/pending.js";
 import type { ChatRequest, ModelProvider } from "../models/provider.js";
 import type { ModelIdentity } from "../models/identity.js";
@@ -61,18 +61,17 @@ import {ForkError, InMemoryEventStorage, type EventStorage, SessionEventStore, t
 import { InvalidSessionIdError, isValidSessionId } from "../session/session-id.js";
 import { Projector, ProjectError } from "../session/project.js";
 import { findInterruptedTurn, reconcileBootState } from "../session/boot-maintenance.js";
-import { RawChunkLog } from "../kernel/raw-chunk-log.js";
-import { loadSkillsFromRoots } from "../kernel/skills.js";
+import { loadSkillsFromRoots } from "../ext-builtin/prompt-defaults/skills.js";
 import {
   createChildAssembly,
   createTodoReadGetter,
   createTodoUpdateEmitter,
   type ChildAssembly,
   type ChildAssemblyOptions,
-} from "../kernel/assembly.js";
+} from "./assembly.js";
 import { evaluateToolPolicy } from "../policy/gate.js";
-import { ModelNotRegisteredError } from "../kernel/model-switch.js";
-import { createSubagentRunner } from "../kernel/subagent.js";
+import { ModelNotRegisteredError } from "../core/index.js";
+import { createSubagentRunner } from "../ext-builtin/subagent-engine/subagent.js";
 import {
   createLocalCollabRuntime,
   permissionCeilingFromMode,
@@ -82,26 +81,26 @@ import { createBrowserTools } from "../scheduler/browser.js";
 import { connectPanelBrowser, panelDataDir } from "../scheduler/browser-panel.js";
 import { createComputerTools } from "../scheduler/computer.js";
 import { createWin32ComputerRun } from "../scheduler/computer-win32.js";
-import { NodeExecutionEnv } from "../kernel/tools/env.js";
-import { ToolRegistry } from "../kernel/tools/registry.js";
-import { DEFAULT_SPILL_DIR } from "../kernel/tools/truncate.js";
-import { sweepSessionSpill } from "../kernel/tools/spill-gc.js";
+import { NodeExecutionEnv } from "../core/index.js";
+import { ToolRegistry } from "../core/index.js";
+import { DEFAULT_SPILL_DIR } from "../core/index.js";
+import { sweepSessionSpill } from "../core/index.js";
 import { connectAndRegister } from "../mcp/registry-bridge.js";
-import { loadConfiguredPlugins } from "../kernel/plugin-loader.js";
+import { loadConfiguredPlugins } from "../ext-builtin/plugin-runtime/plugin-loader.js";
 import { querySessions } from "../session/query.js";
 import { createServiceBroker } from "../ext-builtin/plugin-runtime/service-broker.js";
 import { createPluginBus } from "../ext-builtin/plugin-runtime/plugin-bus.js";
 import { createTelemetryRouter, createOtlpTelemetrySink } from "../diagnostics/telemetry-sinks.js";
 import { loadSettings, THINKING_LEVELS } from "../session/settings.js";
-import { parseCommandArgs, parseSlashInvocation, substituteArgs } from "../kernel/prompt-args.js";
+import { parseCommandArgs, parseSlashInvocation, substituteArgs } from "../core/index.js";
 import {
   BUILTIN_PROMPT_TEMPLATES,
   lookupPromptTemplate,
   expandShellInjections,
   expandFileReferences,
   type PromptTemplateSummary,
-} from "../kernel/prompts.js";
-import { runPromptPolish } from "../kernel/prompt-polish.js";
+} from "../ext-builtin/prompt-defaults/prompts.js";
+import { runPromptPolish } from "../ext-builtin/prompt-defaults/prompt-polish.js";
 
 // ---------------------------------------------------------------------------
 // echo provider（P0 子进程内置：回声最后一条 user 消息；协议与进程全真）
@@ -128,7 +127,6 @@ export function echoProvider(): ModelProvider {
 export interface AgentChildOptions {
   sessionId?: string;
   /** E14/T-P1-90 原始分片日志目录（缺省不写——旁路通道按需开启）。 */
-  rawLogDir?: string;
   /**
    * U17/T-P3-119：MCP server 清单（settings mcp 段 enabled 条目——agent-child
    * 传入）。装配期连接注册，工具名 `<server>__<tool>` 进注册表（与 builtin
@@ -162,7 +160,7 @@ export interface AgentChildOptions {
    * ——acp 后端经 spawnAcpTransport/createAcpBackend 构造后注入）。缺省
    * undefined = 仅进程内 fork（既有行为零变化）。
    */
-  externalBackends?: import("../kernel/subagent.js").SubagentRunnerDeps["externalBackends"];
+  externalBackends?: import("../ext-builtin/subagent-engine/subagent.js").SubagentRunnerDeps["externalBackends"];
   /**
    * S4：计算机使用门控（settings computerUse 段透传——**缺省关**）。开 =
    * computer_screenshot/click/type/key 四工具注册（审批三层纵深在
@@ -303,8 +301,8 @@ export async function runAgentChildStdio(
   const store = new (class ForwardingStore extends SessionEventStore {
     override append(
       sessionId: string,
-      events: readonly import("../kernel/events.js").NewSessionEvent[],
-    ): import("../kernel/events.js").SessionEvent[] {
+      events: readonly import("../core/index.js").NewSessionEvent[],
+    ): import("../core/index.js").SessionEvent[] {
       const committed = super.append(sessionId, events);
       for (const event of committed) send({ type: "event", event });
       return committed;
@@ -440,9 +438,9 @@ const executionEnv = new NodeExecutionEnv({
   // toolRegistry 之后、装配消费点（系统提示首落/skill_load/ready/MCP 连接）
   // 全部晚于装载完成——盒先声明、装载后回填，消费点经 getter 活读。
   const pluginContribBox: {
-    commands: import("../kernel/plugin-contributions.js").PluginCommandTemplate[];
+    commands: import("../ext-builtin/plugin-runtime/plugin-contributions.js").PluginCommandTemplate[];
     skillDirs: { dir: string; namePrefix: string }[];
-    mcpServers: import("../kernel/plugin-contributions.js").PluginMcpServerEntry[];
+    mcpServers: import("../ext-builtin/plugin-runtime/plugin-contributions.js").PluginMcpServerEntry[];
     loaded: boolean;
   } = { commands: [], skillDirs: [], mcpServers: [], loaded: false };
 
@@ -465,7 +463,7 @@ const executionEnv = new NodeExecutionEnv({
         },
       }
     : undefined;
-  let toolRegistryRef: import("../kernel/tools/registry.js").ToolRegistry | undefined; // W5/T3-6：registry 创建后回填
+  let toolRegistryRef: import("../core/index.js").ToolRegistry | undefined; // W5/T3-6：registry 创建后回填
   const assembly: ChildAssembly | undefined = options.assembly
     ? createChildAssembly({
         sessionId,
@@ -738,7 +736,7 @@ const executionEnv = new NodeExecutionEnv({
                     id: `browser-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                     sessionId,
                     tool: action.tool,
-                    args: (action.url !== undefined ? { url: action.url } : {}) as import("../kernel/events.js").JsonRecord,
+                    args: (action.url !== undefined ? { url: action.url } : {}) as import("../core/index.js").JsonRecord,
                     category: "tool",
                   },
                   { timeoutMs: approvalTimeoutMs },
@@ -770,7 +768,7 @@ const executionEnv = new NodeExecutionEnv({
                   id: `computer-${request.operation}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                   sessionId,
                   tool: `computer_${request.operation}`,
-                  args: request as unknown as import("../kernel/events.js").JsonRecord,
+                  args: request as unknown as import("../core/index.js").JsonRecord,
                   category: "tool",
                 },
                 { timeoutMs: options.assembly?.approvalTimeoutMs ?? 120_000 },
@@ -983,9 +981,6 @@ const executionEnv = new NodeExecutionEnv({
     // A13/T-P1-48：入队闸门与拦截留痕（缺省 undefined = 全放行零行为变化）
     ...(options.promptGate ? { promptGate: options.promptGate } : {}),
     ...(options.logger ? { logger: options.logger } : {}),
-    ...(options.rawLogDir
-      ? { rawChunkLog: new RawChunkLog({ logDir: options.rawLogDir }) }
-      : {}),
     // J6/J7：装配启用换模时，loop 每轮启动从捕获值取 provider/identity
     //（在途换模生效点在新 turn）；未启用时缺省固定 provider/identity。
     // J11：turn 失败通知 → 装配驱动换模回滚判据。
@@ -2011,7 +2006,7 @@ const executionEnv = new NodeExecutionEnv({
   const realStdio = options.input === undefined;
   if (realStdio) {
     output.write(
-      `${JSON.stringify({ type: "hello", protocolVersion: PROTOCOL_VERSION } satisfies import("../kernel/agent-protocol.js").ClientHello)}\n`,
+      `${JSON.stringify({ type: "hello", protocolVersion: PROTOCOL_VERSION } satisfies import("../core/index.js").ClientHello)}\n`,
     );
   }
   await sendReady();

@@ -22,7 +22,7 @@
  * 缺省部署时区——进程本地时区即业务时区，Intl 时区换算 YAGNI 记档）。
  */
 
-import type { JobRegistry, JobSpec } from "../kernel/jobs.js";
+import type { JobRegistry, JobSpec } from "../ext-builtin/subagent-engine/jobs.js";
 
 /** 闲时窗口（分钟数自 00:00 起；start > end 表示跨午夜段）。 */
 export interface OffPeakWindow {

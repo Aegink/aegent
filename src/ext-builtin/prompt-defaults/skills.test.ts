@@ -14,14 +14,14 @@ import {
   loadSkillsFromRoots,
   parseSkillFrontmatter,
   skillBody,
-} from "../../kernel/skills.js";
+} from "./skills.js";
 import { createSkillLoadTool } from "../../../plugins/tools-builtin/skill.js";
-import { ToolRegistry } from "../../kernel/tools/registry.js";
+import { ToolRegistry } from "../../core/index.js";
 import { assembleSystemPrompt } from "../../context/system-prompt.js";
-import { createChildAssembly } from "../../kernel/assembly.js";
+import { createChildAssembly } from "../../runtime/assembly.js";
 import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../../session/store.js";
 import { PathGuard } from "../../sandbox/path-guard.js";
-import { composeChain } from "../../kernel/chain.js";
+import { composeChain } from "../../core/index.js";
 
 /** W15b/T9-6：Logger 桩（withTrace 返回同形子桩——接口对齐用）。 */
 function buildStubLogger(warnings: string[]): import("../../core/index.js").Logger {

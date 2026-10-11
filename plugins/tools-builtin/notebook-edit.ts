@@ -23,7 +23,7 @@ import path from "node:path";
 import { PathGuard, PathGuardError } from "../../src/sandbox/path-guard.js";
 import type { WriteQueue } from "../../src/core/index.js";
 import type { ToolDef } from "../../src/core/index.js";
-import type { ToolExecutionResult } from "../../src/kernel/loop.js";
+import type { ToolExecutionResult } from "../../src/core/index.js";
 import { toolError } from "./util.js";
 
 export type NotebookCellType = "code" | "markdown";

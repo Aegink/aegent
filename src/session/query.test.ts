@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
 
-import type { NewSessionEvent } from "../kernel/events.js";
+import type { NewSessionEvent } from "../core/index.js";
 import { archiveSession } from "./archive.js";
 import { SessionArchivedError, SqliteEventStorage } from "./db.js";
 import {

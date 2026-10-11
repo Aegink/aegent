@@ -12,8 +12,8 @@ import {
 import { SqliteEventStorage } from "../session/db.js";
 import {SessionEventStore, type SessionStore, type EventStorage} from "../session/store.js";
 import { project } from "../session/project.js";
-import { goalFromEvents } from "../kernel/goal.js";
-import type { SessionEvent } from "../kernel/events.js";
+import { goalFromEvents } from "../core/index.js";
+import type { SessionEvent } from "../core/index.js";
 
 /** 预置旧事件的桩存储（restore 走 storage 路径——旧流形状就是写入时的合法形状）。 */
 function preloadedStorage(events: readonly SessionEvent[]): EventStorage {

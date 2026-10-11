@@ -7,7 +7,7 @@ import {
   type CompactionBackend,
   type CompactionBackendInput,
   type CompactionBackendOutput,
-} from "../core/contracts/compaction.js";
+} from "../core/index.js";
 import type { NewSessionEvent, SessionEvent } from "../core/index.js";
 
 /** 最小后端构造（替换/回落用例的桩）。 */

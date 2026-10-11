@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { SessionEvent, StreamChunk } from "../kernel/events.js";
-import { AgentLoop } from "../core/primitives/loop/loop.js";
+import type { SessionEvent, StreamChunk } from "../core/index.js";
+import { AgentLoop } from "../core/index.js";
 import { ScriptedProvider } from "../core/primitives/loop/loop.test-utils.js";
 import {SessionEventStore, type SessionStore} from "../session/store.js";
 import { stableStringify } from "./normalize.js";

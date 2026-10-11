@@ -14,7 +14,7 @@
  * 事实，丢弃只损失新鲜度，重注入即恢复。
  */
 
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 import { currentWindow } from "./window.js";
 
 /** 时间注入的固定前缀（与 goal/预算提醒措辞分域——模型侧可区分三类注入）。 */

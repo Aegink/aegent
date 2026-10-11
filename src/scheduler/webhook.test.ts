@@ -8,7 +8,7 @@ import { createHmac } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { JobRegistry } from "../kernel/jobs.js";
+import { JobRegistry } from "../ext-builtin/subagent-engine/jobs.js";
 import { WEBHOOK_PATH_PREFIX, WebhookEndpoint } from "./webhook.js";
 
 const TOKEN = "whsec-test-token-0123456789";

@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { ToolRegistry } from "../kernel/tools/registry.js";
+import { ToolRegistry } from "../core/index.js";
 import { McpClient, createMcpStdioTransport } from "./client.js";
 import { connectAndRegister, mcpToolRegistryName, validateServerName } from "./registry-bridge.js";
 

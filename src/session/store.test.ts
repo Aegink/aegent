@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { NewSessionEvent, SessionEvent } from "../kernel/events.js";
+import type { NewSessionEvent, SessionEvent } from "../core/index.js";
 import {InMemoryEventStorage, SessionEventStore, type SessionStore, type EventStorage} from "./store.js";
 
 function userMsg(content: string, turn = 1): NewSessionEvent {

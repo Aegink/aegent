@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveWorkspaceRoot } from "./agent-child.js";
+import { resolveWorkspaceRoot } from "./child.js";
 import type { SettingsShape } from "../session/settings.js";
 
 const base = { version: 1 as const, providers: [], permission: {}, sandbox: {}, appearance: { theme: "dark", language: "zh-CN" }, logging: {}, projects: [], prompts: [], mcp: [], profiles: [] };

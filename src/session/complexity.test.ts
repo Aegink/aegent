@@ -16,7 +16,7 @@ import { join } from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
 
-import type { NewSessionEvent, SessionEvent } from "../kernel/events.js";
+import type { NewSessionEvent, SessionEvent } from "../core/index.js";
 import { project } from "./project.js";
 import { buildChatMessages } from "./messages.js";
 import { SqliteEventStorage } from "./db.js";

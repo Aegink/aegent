@@ -18,16 +18,16 @@ import { join } from "node:path";
 
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { createLogger, type LogSink } from "../kernel/logger.js";
-import { AgentLoop, type AgentLoopDeps } from "../core/primitives/loop/loop.js";
-import { ToolRegistry } from "../kernel/tools/registry.js";
+import { createLogger, type LogSink } from "../core/index.js";
+import { AgentLoop, type AgentLoopDeps } from "../core/index.js";
+import { ToolRegistry } from "../core/index.js";
 import { registerBuiltinTools } from "../../plugins/tools-builtin/index.js";
-import { NodeExecutionEnv } from "../kernel/tools/env.js";
+import { NodeExecutionEnv } from "../core/index.js";
 import {
   createChildAssembly,
   createTodoUpdateEmitter,
   type ChildAssembly,
-} from "../kernel/assembly.js";
+} from "../runtime/assembly.js";
 import type { ModelProvider } from "../models/provider.js";
 import { createOpenAiCompatProvider } from "../models/openai-compat.js";
 import { SqliteEventStorage } from "../session/db.js";

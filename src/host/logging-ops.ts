@@ -13,7 +13,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { buildStoreZip, type PackedFile } from "./plugins-pack.js";
 import { collectRuntimeDoctorFacts, doctorReportToJson, runRuntimeDoctorChecks } from "../diagnostics/doctor.js";
-import { cleanExpiredLogs, createLogger, LOG_LEVELS, type LogLevel, type Logger } from "../kernel/logger.js";
+import { cleanExpiredLogs, createLogger, LOG_LEVELS, type LogLevel, type Logger } from "../core/index.js";
 import { LogLineCache, queryLogs, type LogQueryFilter } from "./log-query.js";
 import type { SettingsCall } from "./protocol-settings.js";
 import type { SettingsGateway } from "./settings-gateway-types.js";

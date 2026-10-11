@@ -24,7 +24,7 @@ import {
   type TurnEndPayload,
 } from "../primitives/loop/loop.js";
 import { ScriptedProvider, makeLoop } from "../primitives/loop/loop.test-utils.js";
-import { createChildAssembly } from "../../kernel/assembly.js";
+import { createChildAssembly } from "../../runtime/assembly.js";
 import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../../session/store.js";
 
 const identity = { provider: "mock", modelId: "m-1" };

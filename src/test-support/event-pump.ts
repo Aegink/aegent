@@ -11,7 +11,7 @@
  * 渐进接入：既有流式 fixture 按触碰顺序接线（全面切换随触碰记档——test-policy）。
  */
 
-import { EVENT_TYPES, type SessionEvent, type SessionEventType } from "../kernel/events.js";
+import { EVENT_TYPES, type SessionEvent, type SessionEventType } from "../core/index.js";
 
 /** 泵抛出的失败（message 含事件类型与序号——fail-loud 且可定位）。 */
 export class UnexpectedEventError extends Error {

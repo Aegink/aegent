@@ -129,10 +129,10 @@ export async function handleHostQuery(
   // 的活跃增量——child 重启恢复的历史在库；write-behind 反向滞后时镜像
   // 又比库新。两侧并读、库行为底镜像覆盖、seq 排序=恒完整的读面）。
   // 库未配置（InMemory 测试）= 镜像独源。
-  const mergedStream = ((): import("../kernel/events.js").SessionEvent[] => {
+  const mergedStream = ((): import("../core/index.js").SessionEvent[] => {
     const mirrored = [...(deps.store?.load(query.sessionId) ?? [])];
     if (deps.sessionsLibrary === undefined) return mirrored;
-    const bySeq = new Map<number, import("../kernel/events.js").SessionEvent>();
+    const bySeq = new Map<number, import("../core/index.js").SessionEvent>();
     for (const e of deps.sessionsLibrary.readAll(query.sessionId)) bySeq.set(e.seq, e);
     for (const e of mirrored) bySeq.set(e.seq, e);
     return [...bySeq.values()].sort((a, b) => a.seq - b.seq);

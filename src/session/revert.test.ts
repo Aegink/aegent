@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { NewSessionEvent } from "../kernel/events.js";
+import type { NewSessionEvent } from "../core/index.js";
 import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "./store.js";
 import { RevertService } from "./revert.js";
 

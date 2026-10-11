@@ -16,7 +16,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
-import { parseSkillFrontmatter } from "../../kernel/skills.js";
+import { parseSkillFrontmatter } from "./skills.js";
 
 /** 模板目录约定（相对工作区根；用户级 = ~/.aegent/prompts）。 */
 export const PROMPTS_DIR = ".zcode/prompts";

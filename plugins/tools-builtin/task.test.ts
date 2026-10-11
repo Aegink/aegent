@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { NewSessionEvent, StreamChunk } from "../../src/kernel/events.js";
+import type { NewSessionEvent, StreamChunk } from "../../src/core/index.js";
 import type { RuleSource } from "../../src/policy/rule-loader.js";
 import { isWriteExecuteTool } from "../../src/policy/protected-paths.js";
 import {SessionEventStore, type SessionStore} from "../../src/session/store.js";

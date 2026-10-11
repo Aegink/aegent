@@ -23,7 +23,7 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
-import { parseSkillFrontmatter, skillBody, SKILL_FILENAME } from "../kernel/skills.js";
+import { parseSkillFrontmatter, skillBody, SKILL_FILENAME } from "../ext-builtin/prompt-defaults/skills.js";
 
 /** 一个可导入候选（目录技能或单文件技能）。 */
 export interface SkillImportCandidate {

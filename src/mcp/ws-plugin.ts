@@ -22,8 +22,8 @@
 
 import { WebSocket } from "ws";
 import { PROTOCOL_VERSION } from "../host/protocol.js";
-import { Deadline, withDeadline, TimeoutError } from "../kernel/deadline.js";
-import { EVENT_TYPES, type SessionEvent, type JsonValue, type JsonRecord } from "../kernel/events.js";
+import { Deadline, withDeadline, TimeoutError } from "../core/index.js";
+import { EVENT_TYPES, type SessionEvent, type JsonValue, type JsonRecord } from "../core/index.js";
 import type { PluginToolDef, PluginToolEntry, PluginDeliveryReport } from "./plugin-sdk.js";
 
 /** 握手与工具调用的缺省预算：插件进程是不可信外部——挂死必须可回收。 */

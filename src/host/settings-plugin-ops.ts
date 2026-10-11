@@ -25,7 +25,7 @@ import {
   scaffoldPlugin,
   upsertDevMarketplace,
   type PluginTemplateId,
-} from "../kernel/plugin-scaffold.js";
+} from "../ext-builtin/plugin-runtime/plugin-scaffold.js";
 
 /** 域依赖（gateway 构造参数的投影——避免整网关注入）。 */
 export interface PluginOpsDeps {

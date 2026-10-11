@@ -6,7 +6,7 @@
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { LOG_LEVELS, levelRank, type LogLevel } from "../kernel/logger.js";
+import { LOG_LEVELS, levelRank, type LogLevel } from "../core/index.js";
 
 /** 单文件解析行数防御上限（pideck 20 万行同款——防超大文件拖垮查询）。 */
 export const LOG_MAX_LINES_PER_FILE = 200_000;

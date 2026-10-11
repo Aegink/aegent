@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { JsonRecord } from "../kernel/events.js";
+import type { JsonRecord } from "../core/index.js";
 import {
   assemblePolicyChain,
   POLICY_LAYERS,

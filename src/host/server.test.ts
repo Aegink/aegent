@@ -13,8 +13,8 @@ import path from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
 import WebSocket from "ws";
 
-import { echoProvider } from "../kernel/agent-process.js";
-import type { AgentRequest } from "../kernel/agent-protocol.js";
+import { echoProvider } from "../runtime/agent-process.js";
+import type { AgentRequest } from "../core/index.js";
 import { InMemoryEventStorage } from "../session/store.js";
 import { SqliteEventStorage } from "../session/db.js";
 import { FileSettingsGateway } from "./settings-gateway.js";

@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanTitle, createTitleService, TITLE_SYSTEM_PROMPT } from "./title-service.js";
 import { SqliteEventStorage } from "../session/db.js";
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 
 const closers: (() => void)[] = [];
 const tmpDirs: string[] = [];

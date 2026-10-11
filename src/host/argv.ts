@@ -87,13 +87,14 @@ export function defaultUiDir(): string {
   return path.resolve(here, "..", "..", "..", "ui");
 }
 
-/** 仓库根的 agent-child 编译产物位（dist/src/host 旁：../kernel）。 */
+/** 仓库根的 agent-child 编译产物位（T8-1：dist/src/runtime/child.js——
+ * src/kernel 垫片删除后的正式入口位）。 */
 export function defaultAgentChildEntry(): string {
   return path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
     "..",
-    "kernel",
-    "agent-child.js",
+    "runtime",
+    "child.js",
   );
 }
 

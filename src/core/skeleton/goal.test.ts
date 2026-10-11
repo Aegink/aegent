@@ -25,7 +25,7 @@ import { Projector, project } from "../../session/project.js";
 import {
   createChildAssembly,
   type ChildAssembly,
-} from "../../kernel/assembly.js";
+} from "../../runtime/assembly.js";
 import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../../session/store.js";
 
 describe("状态机（invariant 自校验：迁移守卫纯函数）", () => {

@@ -21,7 +21,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import type { JobRegistry } from "../kernel/jobs.js";
+import type { JobRegistry } from "../ext-builtin/subagent-engine/jobs.js";
 
 export const WEBHOOK_PATH_PREFIX = "/webhook/";
 

@@ -6,7 +6,7 @@ import { PassThrough } from "node:stream";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { decodeMessage, type AgentMessage } from "./agent-protocol.js";
+import { decodeMessage, type AgentMessage } from "../core/index.js";
 import { runAgentChildStdio } from "./agent-process.js";
 import { InMemoryEventStorage } from "../session/store.js";
 import { drainUntil } from "../test-support/event-asserts.js";

@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import { ProviderHttpError, type ModelProvider } from "../models/provider.js";
-import type { StreamChunk } from "../kernel/events.js";
+import type { StreamChunk } from "../core/index.js";
 import {
   compactionRequestFromProviderError,
   compactionRequestFromVerdict,

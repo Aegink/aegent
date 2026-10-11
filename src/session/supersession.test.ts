@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { effectiveApproval, Projector, project, ProjectError, supersessionChain } from "./project.js";
 import {SessionEventStore, type SessionStore} from "./store.js";
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 
 describe("approval/superseded 取代链（I10 / T-P2-306 #23）", () => {
   const sup = (seq: number, requestId: string, byRequestId: string, reason?: string) => ({

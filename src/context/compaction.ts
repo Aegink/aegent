@@ -23,7 +23,7 @@ import {
   estimateMessagesTokens,
   isContextWindowExceeded,
 } from "./overflow.js";
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 import { Projector } from "../session/project.js";
 import { type SessionStore } from "../session/store.js";
 import { buildChatMessages, effectiveEvents } from "../session/messages.js";
@@ -31,7 +31,7 @@ import { latestBalancedCutAtOrBefore } from "./tool-pairing.js";
 import { RapidRefillError, type RapidRefillGuard } from "./rapid-refill.js";
 import { SummaryGenerationError } from "./llm-summarizer.js";
 import type { ChatMessage } from "../models/provider.js";
-import type { TokenUsage } from "../kernel/events.js";
+import type { TokenUsage } from "../core/index.js";
 
 /** 压缩请求：溢出的两种来源（本地提前判定 / provider 拒绝）+ 换模压缩（F24）+ 指纹重压（F26）各自带齐上下文。 */
 export type CompactionRequest =

@@ -17,13 +17,13 @@
  *    在序列化时现算（T-1-06 已定形，本卡在真实 loop 流上复证）。
  */
 
-import { TimeoutError, withTimeout } from "../kernel/timeout.js";
+import { TimeoutError, withTimeout } from "../core/index.js";
 
 export {
   expectPaired,
   expectSingleTerminal,
   expectTurnScoped,
-} from "../kernel/invariants.js";
+} from "../core/index.js";
 
 // ---------------------------------------------------------------------------
 // O8：recv 超时 + 具名期望（对 AsyncIterable 事件源；也适用于进程协议流）

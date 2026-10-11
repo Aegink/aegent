@@ -26,7 +26,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 
 import { loadSettings, saveSettings } from "../session/settings.js";
-import { validateManifest, type PluginManifest } from "../kernel/plugin-manifest.js";
+import { validateManifest, type PluginManifest } from "../ext-builtin/plugin-runtime/plugin-manifest.js";
 import { PLUGIN_AVAILABLE_CAPABILITIES } from "./plugins-gateway.js";
 import {
   normalizeGitUrl,

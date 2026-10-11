@@ -7,7 +7,7 @@
  * +附件）；其遥测外发不取（本地落流——无上报，红线）。
  */
 
-import type { FeedbackNoteEvent } from "../kernel/events.js";
+import type { FeedbackNoteEvent } from "../core/index.js";
 import type { SessionStore } from "../session/store.js";
 
 /** 评语/摘要长度防呆（自由文本非判据——超长拒绝，防 payloads 撑流）。 */

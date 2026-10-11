@@ -28,8 +28,8 @@
 import {
   type AgentRequest,
   type AgentMessage,
-} from "../kernel/agent-protocol.js";
-import type { SessionEvent } from "../kernel/events.js";
+} from "../core/index.js";
+import type { SessionEvent } from "../core/index.js";
 import {
   bounded,
   parseClientEnvelope,
@@ -385,7 +385,7 @@ export { parseClientEnvelope, type ClientEnvelope } from "./protocol-parse.js";
  * 消息流（runAgentChildStdio 内存桥 / spawnAgentProcess.messages 消费端）。 */
 export interface AgentChannel {
   /** 发一条请求到 agent（agent-protocol 父→子行协议的发送面）。 */
-  send(request: import("../kernel/agent-protocol.js").AgentRequest): void;
+  send(request: import("../core/index.js").AgentRequest): void;
   /** agent → 父的消息流（runAgentChildStdio 内存桥 / spawnAgentProcess.messages）。 */
-  messages: AsyncIterable<import("../kernel/agent-protocol.js").AgentMessage>;
+  messages: AsyncIterable<import("../core/index.js").AgentMessage>;
 }

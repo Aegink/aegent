@@ -19,9 +19,9 @@
  *     结构（kind="computer_use"，与审批审计同表检索面）。
  */
 
-import type { ToolDef } from "../kernel/tools/registry.js";
-import type { JsonRecord, JsonValue } from "../kernel/events.js";
-import type { ToolExecutionResult } from "../kernel/loop.js";
+import type { ToolDef } from "../core/index.js";
+import type { JsonRecord, JsonValue } from "../core/index.js";
+import type { ToolExecutionResult } from "../core/index.js";
 
 export type ComputerOperation = "screenshot" | "click" | "type" | "key";
 

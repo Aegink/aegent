@@ -14,7 +14,7 @@
  */
 
 import type { HostBridge } from "./bridge.js";
-import type { JsonRecord } from "../kernel/events.js";
+import type { JsonRecord } from "../core/index.js";
 
 /** IM 端统一行为面（两平台实现同构——差异只在平台 HTTP API 层）。 */
 export interface ImSurface {

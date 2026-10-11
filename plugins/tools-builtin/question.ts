@@ -19,8 +19,8 @@ import { PermissionTimeout } from "../../src/policy/pending.js";
 import type { Verdict } from "../../src/policy/decision.js";
 import { toolError } from "./util.js";
 import type { ToolDef } from "../../src/core/index.js";
-import type { JsonRecord } from "../../src/kernel/events.js";
-import type { ToolExecutionResult } from "../../src/kernel/loop.js";
+import type { JsonRecord } from "../../src/core/index.js";
+import type { ToolExecutionResult } from "../../src/core/index.js";
 
 /** question 成功结算的结果（meta 记录问答事实，isError 缺席 = 正常答复）。 */
 function questionOk(content: string, meta: JsonRecord): ToolExecutionResult {

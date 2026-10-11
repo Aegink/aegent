@@ -8,8 +8,8 @@ import {
     renderPersona,
     resolvePersona,
 } from "./persona.js";
-import { createChildAssembly } from "../kernel/assembly.js";
-import { composeChain } from "../kernel/chain.js";
+import { createChildAssembly } from "../runtime/assembly.js";
+import { composeChain } from "../core/index.js";
 import {SessionEventStore, type SessionStore} from "./store.js";
 
 describe("resolvePersona —— 预设选择", () => {

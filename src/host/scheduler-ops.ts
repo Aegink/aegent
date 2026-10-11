@@ -16,7 +16,7 @@
  */
 
 import { CronScheduler, SqliteCronStore, type CronFiring } from "../scheduler/cron.js";
-import { JobRegistry } from "../kernel/jobs.js";
+import { JobRegistry } from "../ext-builtin/subagent-engine/jobs.js";
 import type Database from "better-sqlite3";
 import { channelLogger } from "./logging-ops.js";
 

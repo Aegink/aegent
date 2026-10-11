@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { Projector } from "../session/project.js";
 import { buildChatMessages } from "../session/messages.js";
-import type { NewSessionEvent, SessionEvent } from "../kernel/events.js";
+import type { NewSessionEvent, SessionEvent } from "../core/index.js";
 import { offloadOldestImages } from "./offload.js";
 import { effectiveEvents } from "../session/messages.js";
 import type { AttachmentRef } from "./types.js";
@@ -198,7 +198,7 @@ describe("buildChatMessages × 卸载投影（模型请求面事实）", () => {
   it("只进不退：卸载决策在流内不可逆（无恢复事件——词汇表无该形状）", () => {
     // 结构性断言：EVENT_TYPES 中不存在 image/restore 类事件（回取是
     // store.read 显式动作，不是投影回滚）
-    import("../kernel/events.js").then(({ EVENT_TYPES }) => {
+    import("../core/index.js").then(({ EVENT_TYPES }) => {
       expect(EVENT_TYPES.some((t) => t.startsWith("image/") && t !== "image/offload")).toBe(false);
     });
   });

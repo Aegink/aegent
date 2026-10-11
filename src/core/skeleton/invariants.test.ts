@@ -12,7 +12,7 @@ import {
 } from "./invariants.js";
 // re-export 面（T-P1-30 偏离②）：测试既有 import 面零改动
 import { expectTurnScoped } from "../../test-support/event-asserts.js";
-import { createChildAssembly } from "../../kernel/assembly.js";
+import { createChildAssembly } from "../../runtime/assembly.js";
 import {SessionEventStore, type SessionStore} from "../../session/store.js";
 
 /** 合法两轮流：轮 1 带 tool 配平、轮 2 纯文本（服务内建的好流样例）。 */

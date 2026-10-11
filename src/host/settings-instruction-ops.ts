@@ -12,7 +12,7 @@ import { mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { PolicyCall } from "../policy/chain.js";
-import type { JsonRecord } from "../kernel/events.js";
+import type { JsonRecord } from "../core/index.js";
 import { loadedRuleMatch } from "../policy/rule-match.js";
 import { builtinRuleMatchers } from "../policy/matchers.js";
 import { loadRules, parseRulesText } from "../policy/rule-loader.js";

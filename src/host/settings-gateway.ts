@@ -20,7 +20,7 @@ import {
   type ProviderModelsPayload,
   type ProviderTestPayload,
 } from "./settings-provider-ops.js";
-import type { JsonRecord } from "../kernel/events.js";
+import type { JsonRecord } from "../core/index.js";
 import type { CredentialStore } from "../session/credentials.js";
 import type { SqliteEventStorage } from "../session/db.js";
 import { probeServer } from "../mcp/registry-bridge.js";

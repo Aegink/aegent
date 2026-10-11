@@ -18,8 +18,8 @@
  * 依赖方向：acp → kernel 单向（协议与词汇同源——"内核协议自有 + ACP 适配"）。
  */
 
-import type { AgentMessage, AgentRequest } from "../kernel/agent-protocol.js";
-import type { SessionEvent } from "../kernel/events.js";
+import type { AgentMessage, AgentRequest } from "../core/index.js";
+import type { SessionEvent } from "../core/index.js";
 import { encodeNotification, encodeRequest, encodeResponse, type JsonRpcIncoming } from "./jsonrpc.js";
 
 /** ACP 端复用的 agent 通道（与 host/bridge 的 AgentChannel 同形状）。 */

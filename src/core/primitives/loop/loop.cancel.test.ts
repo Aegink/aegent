@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { CancelCause } from "../../../kernel/events.js";
+import type { CancelCause } from "../../skeleton/events.js";
 import type { AgentLoop } from "./loop.js";
 import { ScriptedProvider, makeLoop } from "./loop.test-utils.js";
 import { expectSingleTerminal } from "../../../test-support/event-asserts.js";

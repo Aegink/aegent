@@ -23,7 +23,7 @@ import type { ModelIdentity } from "../models/identity.js";
 import type { ChatMessage, ModelProvider } from "../models/provider.js";
 import { ProviderHttpError } from "../models/provider.js";
 import { isRetryableStatus } from "../models/retry.js";
-import type { TokenUsage } from "../kernel/events.js";
+import type { TokenUsage } from "../core/index.js";
 import type { SessionStore } from "../session/store.js";
 import { estimateMessagesTokens, estimateTextTokens } from "./overflow.js";
 import {

@@ -9,7 +9,7 @@ import { createServer, type Server } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createGoogleGenerateProvider } from "./google-generate.js";
-import type { StreamChunk } from "../kernel/events.js";
+import type { StreamChunk } from "../core/index.js";
 
 const servers: Server[] = [];
 const buffers: string[] = [];

@@ -16,7 +16,7 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
-import { parseSkillFrontmatter, skillBody } from "../kernel/skills.js";
+import { parseSkillFrontmatter, skillBody } from "../ext-builtin/prompt-defaults/skills.js";
 
 /** 一个可导入候选（模板 .md 文件——命名空间来自相对路径）。 */
 export interface PromptImportCandidate {

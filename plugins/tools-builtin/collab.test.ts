@@ -9,7 +9,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { StreamChunk } from "../../src/kernel/events.js";
+import type { StreamChunk } from "../../src/core/index.js";
 import { SessionEventStore } from "../../src/session/store.js";
 import { DEFAULT_COLLAB_LIMITS } from "../../src/session/collaboration.js";
 import {

@@ -9,7 +9,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { StreamChunk } from "../../src/kernel/events.js";
+import type { StreamChunk } from "../../src/core/index.js";
 import { SessionEventStore } from "../../src/session/store.js";
 import { ToolRegistry } from "../../src/core/index.js";
 import type { ModelIdentity } from "../../src/models/identity.js";

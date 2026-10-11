@@ -11,8 +11,8 @@ import path from "node:path";
 
 import WebSocket from "ws";
 
-import { decodeMessage, type AgentMessage, type AgentRequest } from "../kernel/agent-protocol.js";
-import { runAgentChildStdio, type AgentChildOptions } from "../kernel/agent-process.js";
+import { decodeMessage, type AgentMessage, type AgentRequest } from "../core/index.js";
+import { runAgentChildStdio, type AgentChildOptions } from "../runtime/agent-process.js";
 import { InMemoryEventStorage, type EventStorage } from "../session/store.js";
 import { HostServer, type HostServerHandle } from "./server.js";
 import type { AgentChannel } from "./bridge.js";

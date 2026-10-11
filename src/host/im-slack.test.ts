@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { createSlackSurface, type SlackConfig } from "./im-slack.js";
 import type { HostBridge } from "./bridge.js";
-import type { JsonRecord } from "../kernel/events.js";
+import type { JsonRecord } from "../core/index.js";
 
 const CONFIG: SlackConfig = { botToken: "xoxb-test", channelId: "C123" };
 

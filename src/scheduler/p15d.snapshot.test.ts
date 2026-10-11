@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { JobRegistry } from "../kernel/jobs.js";
+import { JobRegistry } from "../ext-builtin/subagent-engine/jobs.js";
 import { NotificationHub } from "../host/notify.js";
 import { HostBridge, type AgentChannel } from "../host/bridge.js";
 import { HostRegistry } from "../host/registry.js";
@@ -15,8 +15,8 @@ import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../ses
 import { WebhookEndpoint } from "./webhook.js";
 import { createFeishuSurface, type FeishuConfig } from "../host/im-feishu.js";
 import { computerExecute } from "./computer.js";
-import type { AgentMessage, AgentRequest } from "../kernel/agent-protocol.js";
-import type { JsonRecord } from "../kernel/events.js";
+import type { AgentMessage, AgentRequest } from "../core/index.js";
+import type { JsonRecord } from "../core/index.js";
 
 /** 可控 agent 通道（emit 注入协议行——bridge 泵消费）。 */
 class ScriptedAgent implements AgentChannel {

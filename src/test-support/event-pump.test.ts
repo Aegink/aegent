@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { NewSessionEvent, SessionEvent } from "../kernel/events.js";
+import type { NewSessionEvent, SessionEvent } from "../core/index.js";
 import { UnexpectedEventError, createStrictPump, isErrorFact } from "./event-pump.js";
 
 let seq = 0;

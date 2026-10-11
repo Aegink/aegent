@@ -8,7 +8,7 @@
  * 事实）；升级徽标与理由取自 tool/call 的原始 arguments JSON 串。
  */
 
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 
 /** 升级拒绝的错误码闭集（与 src/sandbox/escalation.ts 字面量同源——
  * 前端零构建链面，改动需两侧同步）。 */

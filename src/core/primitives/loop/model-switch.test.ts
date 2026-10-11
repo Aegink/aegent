@@ -27,14 +27,14 @@ import {
   type RegisteredModel,
 } from "./model-switch.js";
 import { AgentLoop } from "./loop.js";
-import { createChildAssembly, type ChildAssembly } from "../../../kernel/assembly.js";
-import type { LlmFailure, SessionEvent } from "../../../kernel/events.js";
-import { runAgentChildStdio, type AgentChildOptions } from "../../../kernel/agent-process.js";
+import { createChildAssembly, type ChildAssembly } from "../../../runtime/assembly.js";
+import type { LlmFailure, SessionEvent } from "../../skeleton/events.js";
+import { runAgentChildStdio, type AgentChildOptions } from "../../../runtime/agent-process.js";
 import {
   decodeMessage,
   type AgentMessage,
   type AgentRequest,
-} from "../../../kernel/agent-protocol.js";
+} from "../../skeleton/protocol.js";
 import type { ModelProvider } from "../../../models/provider.js";
 import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../../../session/store.js";
 import { project } from "../session/project.js";

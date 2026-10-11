@@ -16,7 +16,7 @@
  * "送达"语义由调用方的落盘动作闭合，本类只管记账）。
  */
 
-import type { TokenUsage } from "../kernel/events.js";
+import type { TokenUsage } from "../core/index.js";
 
 export interface BudgetConfig {
   /** 总预算（加权 token）。 */

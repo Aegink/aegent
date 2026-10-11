@@ -25,11 +25,11 @@
 
 import type { NetworkGuard } from "../../src/sandbox/network.js";
 import { NetworkDeniedError, NetworkImdsDeniedError } from "../../src/sandbox/network.js";
-import { TimeoutError } from "../../src/kernel/timeout.js";
+import { TimeoutError } from "../../src/core/index.js";
 import { toolError } from "./util.js";
 import type { ToolDef } from "../../src/core/index.js";
-import type { JsonRecord } from "../../src/kernel/events.js";
-import type { ToolExecutionResult } from "../../src/kernel/loop.js";
+import type { JsonRecord } from "../../src/core/index.js";
+import type { ToolExecutionResult } from "../../src/core/index.js";
 
 /** 响应体硬上限（opencode MAX_RESPONSE_SIZE 同款 5MB）——防无界读入内存。 */
 const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;

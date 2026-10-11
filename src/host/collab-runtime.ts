@@ -17,9 +17,9 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { CollabEvent } from "../kernel/events.js";
+import type { CollabEvent } from "../core/index.js";
 import { CollaborationService, type CollabExecutor } from "../session/collaboration.js";
-import type { CollabKind, CollabPermissionCeiling } from "../kernel/events.js";
+import type { CollabKind, CollabPermissionCeiling } from "../core/index.js";
 import type { SessionStore } from "../session/store.js";
 import type { SqliteEventStorage } from "../session/db.js";
 import type { HostBridge } from "./bridge.js";

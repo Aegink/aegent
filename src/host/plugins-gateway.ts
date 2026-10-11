@@ -12,8 +12,8 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
-import { validateManifest, type PluginManifest } from "../kernel/plugin-manifest.js";
-import { claudeToAegentManifest, discoverManifestPath } from "../kernel/plugin-compat.js";
+import { validateManifest, type PluginManifest } from "../ext-builtin/plugin-runtime/plugin-manifest.js";
+import { claudeToAegentManifest, discoverManifestPath } from "../ext-builtin/plugin-runtime/plugin-compat.js";
 import type { SettingsShape } from "../session/settings.js";
 
 /** 宿主已实现能力清单（I9：声明未实现能力即拒绝——与装配面同一闭集）。 */

@@ -6,10 +6,10 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { decodeMessage, type AgentMessage, type AgentRequest } from "../kernel/agent-protocol.js";
-import type { SessionEvent } from "../kernel/events.js";
+import { decodeMessage, type AgentMessage, type AgentRequest } from "../core/index.js";
+import type { SessionEvent } from "../core/index.js";
 import type { ModelProvider } from "../models/provider.js";
-import { runAgentChildStdio, type AgentChildOptions } from "../kernel/agent-process.js";
+import { runAgentChildStdio, type AgentChildOptions } from "../runtime/agent-process.js";
 import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../session/store.js";
 import { HostRegistry } from "./registry.js";
 import { HostBridge } from "./bridge.js";

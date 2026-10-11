@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { JobRegistry } from "../kernel/jobs.js";
+import { JobRegistry } from "../ext-builtin/subagent-engine/jobs.js";
 import {
     DEFAULT_OFF_PEAK_WINDOWS,
     isOffPeakWindow,

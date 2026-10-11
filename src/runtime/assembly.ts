@@ -26,7 +26,7 @@
  * 是一次性放行（once），会话级缓存需要规则审批面提供 scope 输入（P1）。
  */
 
-import type { Logger } from "../kernel/logger.js";
+import type { Logger } from "../core/index.js";
 import type {
   AgentLoopDeps,
   DecideTurn,
@@ -36,13 +36,13 @@ import type {
   ToolCallPayload,
   ToolExecutionResult,
   TurnEndPayload,
-} from "../kernel/loop.js";
+} from "../core/index.js";
 import {
   type ChainLayer,
   namedLayer,
-} from "../kernel/chain.js";
-import { type HookRegistry } from "../kernel/hooks.js";
-import type { JsonRecord, SessionEvent, LlmFailure } from "../kernel/events.js";
+} from "../core/index.js";
+import { type HookRegistry } from "../core/index.js";
+import type { JsonRecord, SessionEvent, LlmFailure } from "../core/index.js";
 import type { PrefixChange } from "../context/prefix-anchor.js";
 import { createNetworkGuard } from "../sandbox/network.js";
 import {
@@ -51,7 +51,7 @@ import {
   Win32SandboxBackend,
 } from "../sandbox/containment.js";
 import { canonicalize } from "../sandbox/workspace-sid.js";
-import { NodeExecutionEnv, type ExecutionEnv } from "../kernel/tools/env.js";
+import { NodeExecutionEnv, type ExecutionEnv } from "../core/index.js";
 import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -90,7 +90,7 @@ import {
 import { type BudgetConfig, RolloutBudget } from "../context/budget.js";
 import { assembleSystemPrompt } from "../context/system-prompt.js";
 import { renderPersona, resolvePersona } from "../session/persona.js";
-import { loadSkillsFromRoots } from "../kernel/skills.js";
+import { loadSkillsFromRoots } from "../ext-builtin/prompt-defaults/skills.js";
 import { buildSkillsContent } from "../ext-builtin/prompt-defaults/skills.js";
 import {
   type ApprovalAnnouncement,
@@ -133,15 +133,15 @@ import {
   ModelSwitchService,
   type RegisteredModel,
   type TurnModel,
-} from "../kernel/model-switch.js";
-import { createPlanModeService, savePlanArtifact, type PlanModeService } from "../kernel/plan-mode.js";
-import { createDefaultRegistry } from "../kernel/invariants.js";
+} from "../core/index.js";
+import { createPlanModeService, savePlanArtifact, type PlanModeService } from "../ext-builtin/prompt-defaults/plan-mode.js";
+import { createDefaultRegistry } from "../core/index.js";
 import {
   createGoalService,
   goalFromEvents,
   type GoalExpiryAction,
   type GoalService,
-} from "../kernel/goal.js";
+} from "../core/index.js";
 import type { ModelIdentity } from "../models/identity.js";
 import { createLlmSummarizer, truncatingSummarizer } from "../context/llm-summarizer.js";
 import { createLlmJudge } from "../policy/judge.js";

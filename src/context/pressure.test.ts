@@ -8,8 +8,8 @@
 
 import { describe, expect, it } from "vitest";
 import { ProviderHttpError, type ChatMessage } from "../models/provider.js";
-import { composeChain } from "../kernel/chain.js";
-import type { TurnEndReason } from "../kernel/events.js";
+import { composeChain } from "../core/index.js";
+import type { TurnEndReason } from "../core/index.js";
 import {SessionEventStore, type SessionStore} from "../session/store.js";
 import { expectTurnScoped } from "../test-support/event-asserts.js";
 import { CompactionEngine, type CompactionResult } from "./compaction.js";

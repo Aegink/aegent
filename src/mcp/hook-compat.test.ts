@@ -6,9 +6,9 @@ import {
     type EcosystemHookRunner,
     type HookBridge,
 } from "./hook-compat.js";
-import { HookRegistry } from "../kernel/hooks.js";
-import type { ToolCallPayload } from "../core/primitives/loop/loop.js";
-import type { ToolExecutionResult } from "../core/primitives/loop/loop.js";
+import { HookRegistry } from "../core/index.js";
+import type { ToolCallPayload } from "../core/index.js";
+import type { ToolExecutionResult } from "../core/index.js";
 
 /** 真实生态脚本样本（claude-code hooks.json 的 hooks 键形态）。 */
 const CC_CONFIG = {

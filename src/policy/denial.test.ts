@@ -5,9 +5,9 @@
  */
 import { describe, expect, it } from "vitest";
 
-import type { ChainNext } from "../kernel/chain.js";
-import type { ToolCallPayload, ToolExecutionResult } from "../core/primitives/loop/loop.js";
-import type { JsonRecord } from "../kernel/events.js";
+import type { ChainNext } from "../core/index.js";
+import type { ToolCallPayload, ToolExecutionResult } from "../core/index.js";
+import type { JsonRecord } from "../core/index.js";
 import { assemblePolicyChain } from "./chain.js";
 import { renderDenial, buildDenial } from "./denial.js";
 import { createToolGateLayer } from "./gate.js";

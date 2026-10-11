@@ -1,7 +1,7 @@
 // U27/T-P3-131：会话间协作——派发/排队/执行/回投全链 + 权限快照定死
 // （排队中改设置任务权限不变）+ 环/自派/目标不存在类型化拒绝 + 流投影重建。
 import { describe, expect, it } from "vitest";
-import type { CollabEvent, SessionEvent } from "../kernel/events.js";
+import type { CollabEvent, SessionEvent } from "../core/index.js";
 import {
   CollaborationService,
   collaborationsFromEvents,

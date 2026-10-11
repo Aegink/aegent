@@ -22,7 +22,7 @@ import type { AgentHost } from "./registry.js";
 import type { SessionStore } from "../session/store.js";
 import type { SqliteEventStorage } from "../session/db.js";
 import type { SettingsGateway } from "./settings-gateway.js";
-import type { AgentRequest } from "../kernel/agent-protocol.js";
+import type { AgentRequest } from "../core/index.js";
 import type { HostProtocolServerOptions } from "./protocol.js";
 
 /** buildSurfaceServerOptions 的依赖（bridge 私有面的显式投影）。 */

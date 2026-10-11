@@ -13,7 +13,7 @@
  * N8 卡风险栏定形）。
  */
 
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 
 export interface RosterEntry {
   readonly surfaceId: string;

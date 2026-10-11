@@ -15,7 +15,7 @@
  * 绝不劈开配对）。
  */
 
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 
 /** 增量配平状态：已扫描到 lastSeq（0 = 流起点之前），仍开着的 tool/call 数 inProgress。 */
 export interface PairingState {

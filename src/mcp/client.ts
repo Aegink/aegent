@@ -14,7 +14,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { TimeoutError, withTimeout } from "../kernel/timeout.js";
+import { TimeoutError, withTimeout } from "../core/index.js";
 
 /** MCP 请求默认上界（握手/列工具/调用共用；真 server 挂死兜底）。 */
 export const MCP_REQUEST_TIMEOUT_MS = 10_000;

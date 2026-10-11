@@ -24,11 +24,11 @@ import {
 } from "./repl.js";
 import { resolveChildSessionArgv } from "./index.js";
 import { InvalidSessionIdError } from "../session/session-id.js";
-import { runAgentChildStdio, type AgentChildOptions } from "../kernel/agent-process.js";
-import { decodeMessage } from "../kernel/agent-protocol.js";
+import { runAgentChildStdio, type AgentChildOptions } from "../runtime/agent-process.js";
+import { decodeMessage } from "../core/index.js";
 import type { ModelProvider } from "../models/provider.js";
 import { InMemoryEventStorage } from "../session/store.js";
-import type { StreamChunk } from "../kernel/events.js";
+import type { StreamChunk } from "../core/index.js";
 
 // ---------------------------------------------------------------------------
 // 内存桥：PassThrough 流 + 行分帧 + decodeMessage——与 spawnAgentProcess

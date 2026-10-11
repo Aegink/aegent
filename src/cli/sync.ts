@@ -88,7 +88,7 @@ export function collectSyncEntities(settingsFile: string): SyncEntity[] {
       domain: DOMAIN_SETTINGS,
       entityId: "settings.json",
       label: "设置（剔除同步/本地态段）",
-      payload: { settings: shared } as import("../kernel/events.js").JsonRecord,
+      payload: { settings: shared } as import("../core/index.js").JsonRecord,
     });
   }
   const rulesPath = path.join(home(), "rules.txt");

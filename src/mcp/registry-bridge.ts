@@ -8,8 +8,8 @@
  * 在 ToolDef 上声明、并行判定走注册表、step 快照保护在途 step）。
  */
 
-import type { JsonRecord } from "../kernel/events.js";
-import type { ToolDef, ToolRegistry } from "../kernel/tools/registry.js";
+import type { JsonRecord } from "../core/index.js";
+import type { ToolDef, ToolRegistry } from "../core/index.js";
 import { McpClient, createMcpStdioTransport, type McpPromptInfo, type McpToolInfo } from "./client.js";
 
 /** 一个 MCP server 的装配配置（stdio 命令 + 参数）。 */

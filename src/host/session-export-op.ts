@@ -6,7 +6,7 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 import type { SqliteEventStorage } from "../session/db.js";
 import type { ImportedMessage } from "./import-spec.js";
 import { importedMessagesToEvents } from "./settings-project-ops.js";

@@ -12,7 +12,7 @@
 import type { ToolDef } from "../../src/core/index.js";
 import { toolError } from "./util.js";
 import { loadPlugin, PluginSdkError, type PluginHandle } from "../../src/mcp/plugin-sdk.js";
-import { PLUGIN_RUNTIME_CAPABILITIES, registerPluginTools } from "../../src/kernel/plugin-loader.js";
+import { PLUGIN_RUNTIME_CAPABILITIES, registerPluginTools } from "../../src/ext-builtin/plugin-runtime/plugin-loader.js";
 import { PLUGIN_NAME_SHAPE } from "../../src/ext-builtin/plugin-runtime/plugin-manifest-contributes.js";
 
 /** 动态插件源码上限（256KB——现场定义不是应用分发）。 */

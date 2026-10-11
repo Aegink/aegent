@@ -30,7 +30,7 @@ import { fileURLToPath } from "node:url";
 
 import { WebSocketServer, type WebSocket } from "ws";
 
-import { spawnAgentProcess } from "../kernel/agent-process.js";
+import { spawnAgentProcess } from "../runtime/agent-process.js";
 import { agentStderrSink, channelLogger, reconfigureLogging } from "./logging-ops.js";
 import { createSessionId, isValidSessionId } from "../session/session-id.js";
 import { SqliteEventStorage } from "../session/db.js";

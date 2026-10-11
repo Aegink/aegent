@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resetPwshHostCacheForTests } from "../kernel/tools/env.js";
+import { resetPwshHostCacheForTests } from "../core/primitives/tools/env.js";
 import { serializeGlobal, withEnv, withEnvSerialized } from "./isolation.js";
 
 describe("serializeGlobal（O25：同名锁串行化 + 中毒不扩散）", () => {

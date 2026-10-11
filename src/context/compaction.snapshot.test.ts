@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { NewSessionEvent } from "../kernel/events.js";
+import type { NewSessionEvent } from "../core/index.js";
 import {SessionEventStore, type SessionStore} from "../session/store.js";
 import {
   CompactionEngine,

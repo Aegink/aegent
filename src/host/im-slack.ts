@@ -14,7 +14,7 @@ import {
   type ImSurface,
   type ImSurfaceDeps,
 } from "./im-surface.js";
-import type { JsonRecord } from "../kernel/events.js";
+import type { JsonRecord } from "../core/index.js";
 
 export interface SlackConfig {
   /** Slack bot token（xoxb-…——环境变量注入，零落盘）。 */

@@ -28,7 +28,7 @@ import { createAnthropicMessagesProvider } from "../models/anthropic-messages.js
 import { createGoogleGenerateProvider } from "../models/google-generate.js";
 import { createOpenAiCompatProvider } from "../models/openai-compat.js";
 import type { CredentialStore } from "../session/credentials.js";
-import { runSideQuery, SideQueryError } from "../kernel/side-query.js";
+import { runSideQuery, SideQueryError } from "../core/index.js";
 
 /** 标题缺省指令（pi session-title-summarize + zcode 强约束合成）。 */
 export const TITLE_SYSTEM_PROMPT = [
@@ -50,7 +50,7 @@ export interface TitleServiceDeps {
   /** 标题存取与去重（host 的 SQLite 库——未配置 = no-op 服务）。 */
   db?: SqliteEventStorage;
   /** 会话流读取（host 镜像 store.load——首条 user 消息的取材面）。 */
-  sessionStream: (sessionId: string) => readonly import("../kernel/events.js").SessionEvent[];
+  sessionStream: (sessionId: string) => readonly import("../core/index.js").SessionEvent[];
 }
 
 export interface TitleService {
@@ -181,7 +181,7 @@ export function cleanTitle(raw: string): string {
 export function createTitleServiceFromOptions(
   titleDeps: { settingsPath?: string; credentials: import("../session/credentials.js").CredentialStore } | undefined,
   sessionsLibrary: import("../session/db.js").SqliteEventStorage | undefined,
-  sessionStream: (sessionId: string) => readonly import("../kernel/events.js").SessionEvent[],
+  sessionStream: (sessionId: string) => readonly import("../core/index.js").SessionEvent[],
 ): TitleService | undefined {
   if (titleDeps === undefined) return undefined;
   return createTitleService({

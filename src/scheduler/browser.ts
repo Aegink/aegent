@@ -25,10 +25,10 @@ import { EventEmitter } from "node:events";
 
 import WebSocket from "ws";
 
-import { Deadline, withDeadline } from "../kernel/deadline.js";
-import type { ToolDef } from "../kernel/tools/registry.js";
-import type { JsonRecord } from "../kernel/events.js";
-import type { ToolExecutionResult } from "../kernel/loop.js";
+import { Deadline, withDeadline } from "../core/index.js";
+import type { ToolDef } from "../core/index.js";
+import type { JsonRecord } from "../core/index.js";
+import type { ToolExecutionResult } from "../core/index.js";
 
 export const BROWSER_DEADLINE_CODE = "BROWSER_DEADLINE";
 

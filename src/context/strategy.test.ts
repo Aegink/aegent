@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { NewSessionEvent, SessionEvent } from "../kernel/events.js";
+import type { NewSessionEvent, SessionEvent } from "../core/index.js";
 import {SessionEventStore, type SessionStore} from "../session/store.js";
 import { startNewContextWindow } from "./new-window.js";
 import {

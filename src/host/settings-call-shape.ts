@@ -5,7 +5,7 @@
  */
 
 import type { SettingsOp } from "./protocol-settings.js";
-import type { JsonRecord } from "../kernel/events.js";
+import type { JsonRecord } from "../core/index.js";
 import type { SkillImportItem } from "./skill-import-op.js";
 import type { PromptSavePayload, SkillSavePayload } from "./settings-gateway-types.js";
 

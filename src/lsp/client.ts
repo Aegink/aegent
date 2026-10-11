@@ -15,7 +15,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { TimeoutError, withTimeout } from "../kernel/timeout.js";
+import { TimeoutError, withTimeout } from "../core/index.js";
 
 /** LSP 请求默认上界（桩内不触发；真 server 挂死时的兜底，M6 同构）。 */
 export const LSP_REQUEST_TIMEOUT_MS = 10_000;

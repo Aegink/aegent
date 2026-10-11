@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import type { NewSessionEvent, SessionEvent } from "../kernel/events.js";
+import type { NewSessionEvent, SessionEvent } from "../core/index.js";
 import { ForkTree, ForkTreeError } from "./fork-tree.js";
 import {ForkError, SessionEventStore, type SessionStore} from "./store.js";
 

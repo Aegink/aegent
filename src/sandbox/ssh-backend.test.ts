@@ -6,8 +6,8 @@ import {
     SshExecutionEnv,
     type SshRunner,
 } from "./ssh-backend.js";
-import { TimeoutError } from "../kernel/deadline.js";
-import type { ExecResult, ExecutionEnv } from "../kernel/tools/env.js";
+import { TimeoutError } from "../core/index.js";
+import type { ExecResult, ExecutionEnv } from "../core/index.js";
 
 /** 命令注入 mock：记录 args、按 script 应答（无真实 sshd 的测试面）。 */
 function fakeRunner(

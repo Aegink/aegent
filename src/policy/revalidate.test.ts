@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { ToolRegistry } from "../kernel/tools/registry.js";
-import type { JsonRecord } from "../kernel/events.js";
+import { ToolRegistry } from "../core/index.js";
+import type { JsonRecord } from "../core/index.js";
 import { assemblePolicyChain, type PolicyCall } from "./chain.js";
 import { builtinRuleMatchers } from "./matchers.js";
 import { loadedRuleMatch, loadRules } from "./rule-loader.js";

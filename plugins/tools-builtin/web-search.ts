@@ -17,8 +17,8 @@ import type { NetworkGuard } from "../../src/sandbox/network.js";
 import { NetworkDeniedError, NetworkImdsDeniedError } from "../../src/sandbox/network.js";
 import { toolError } from "./util.js";
 import type { ToolDef } from "../../src/core/index.js";
-import type { JsonRecord } from "../../src/kernel/events.js";
-import type { ToolExecutionResult } from "../../src/kernel/loop.js";
+import type { JsonRecord } from "../../src/core/index.js";
+import type { ToolExecutionResult } from "../../src/core/index.js";
 
 /** 单次请求硬超时（opencode 25s 同款）。 */
 const REQUEST_TIMEOUT_MS = 25_000;

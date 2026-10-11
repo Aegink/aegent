@@ -48,9 +48,9 @@ import {
   type PluginCommandTemplate,
   type PluginMcpServerEntry,
 } from "./plugin-contributions.js";
-import type { ToolRegistry } from "../../kernel/tools/registry.js";
+import type { ToolRegistry } from "../../core/index.js";
 import type { PluginEntry } from "../../session/settings.js";
-import type { Logger } from "../../kernel/logger.js";
+import type { Logger } from "../../core/index.js";
 
 /** 装载期可声明能力基线（与 host/plugins-gateway 的安装期闭集一致）。 */
 export const PLUGIN_RUNTIME_CAPABILITIES = ["registerTool", "subscribe", "hooks"] as const;

@@ -5,7 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { renderTranscript, type TranscriptEntry } from "./transcript.js";
-import type { NewSessionEvent, SessionEvent } from "../kernel/events.js";
+import type { NewSessionEvent, SessionEvent } from "../core/index.js";
 
 let seq = 0;
 const ev = (e: NewSessionEvent): SessionEvent =>

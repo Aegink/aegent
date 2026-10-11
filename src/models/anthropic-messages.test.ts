@@ -8,7 +8,7 @@ import {
   parseAnthropicSettings,
 } from "./anthropic-messages.js";
 import type { ChatRequest, ModelProvider } from "./provider.js";
-import type { StreamChunk } from "../kernel/events.js";
+import type { StreamChunk } from "../core/index.js";
 import { modelIdentity } from "./identity.js";
 
 function makeProvider(mock: HttpMock, options?: { authResolver?: never }): ModelProvider {

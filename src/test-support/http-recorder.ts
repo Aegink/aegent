@@ -11,7 +11,7 @@
  * 与 http-mock 的既有回放基建对接（O2/O15 面）。
  */
 
-import { redactSecrets } from "../kernel/logger.js";
+import { redactSecrets } from "../core/index.js";
 import { parseSse, type MockScript, type SseScript, type RawScript } from "./http-mock.js";
 
 type RequestInfoLike = Parameters<typeof fetch>[0];

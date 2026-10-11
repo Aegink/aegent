@@ -59,7 +59,7 @@ export interface RetryOptions {
 }
 
 // T2-6 依赖倒置：isRetryableStatus 迁 core/primitives/loop/retry-after.js
-export { isRetryableStatus } from "../core/primitives/loop/retry-after.js";
+export { isRetryableStatus } from "../core/index.js";
 
 /**
  * 第 attempt 次失败（0-based）后的默认退避：min(500·2^attempt, 32s) + U(0,25%)·base。
@@ -76,8 +76,8 @@ export function backoffDelayMs(attempt: number, rand: number = Math.random()): n
  * readRetryAfterMs（仅 >0 生效）。
  */
 // T3-2 依赖倒置：parseRetryAfterMs 本体迁 core/primitives/loop/retry-after.ts
-export { parseRetryAfterMs } from "../core/primitives/loop/retry-after.js";
-import { isRetryableStatus, parseRetryAfterMs } from "../core/primitives/loop/retry-after.js";
+export { parseRetryAfterMs } from "../core/index.js";
+import { isRetryableStatus, parseRetryAfterMs } from "../core/index.js";
 
 /**
  * 给 provider 套上显式分类重试。只认"响应头阶段的 ProviderHttpError 且

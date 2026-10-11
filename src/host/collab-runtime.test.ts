@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { AgentMessage, AgentRequest } from "../kernel/agent-protocol.js";
+import type { AgentMessage, AgentRequest } from "../core/index.js";
 import {SessionEventStore, type SessionStore} from "../session/store.js";
 import { CollaborationError } from "../session/collaboration.js";
 import { SqliteEventStorage } from "../session/db.js";

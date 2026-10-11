@@ -54,16 +54,16 @@ import { resolveSubagent } from "../../session/subagents-config.js";
 import { DenyPermissionBroker } from "../../policy/broker.js";
 import { deriveSubagentRules } from "../../policy/subagent-rules.js";
 import type { RuleSource } from "../../policy/rule-loader.js";
-import { createChildAssembly, type ChildAssembly } from "../../kernel/assembly.js";
-import type { AgentLoopDeps } from "../../kernel/loop.js";
-import { AgentLoop } from "../../kernel/loop.js";
-import type { Logger } from "../../kernel/logger.js";
+import { createChildAssembly, type ChildAssembly } from "../../runtime/assembly.js";
+import type { AgentLoopDeps } from "../../core/index.js";
+import { AgentLoop } from "../../core/index.js";
+import type { Logger } from "../../core/index.js";
 import type { SessionStore } from "../../session/store.js";
 import { project } from "../../session/project.js";
-import { NodeExecutionEnv } from "../../kernel/tools/env.js";
-import { ToolRegistry } from "../../kernel/tools/registry.js";
+import { NodeExecutionEnv } from "../../core/index.js";
+import { ToolRegistry } from "../../core/index.js";
 import { registerBuiltinTools } from "../../../plugins/tools-builtin/index.js";
-import type { TurnEndReason } from "../../kernel/events.js";
+import type { TurnEndReason } from "../../core/index.js";
 
 /** 深度超限（dsh SubagentDepthError 同构）：attempted = childDepth。 */
 export class SubagentDepthError extends Error {

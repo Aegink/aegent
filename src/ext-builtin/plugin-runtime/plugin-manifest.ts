@@ -26,8 +26,8 @@ import {
   PLUGIN_INJECTABLE_SERVICES,
   PLUGIN_PERMISSIONS,
 } from "../../core/index.js";
-import { CHAIN_POINTS, type ChainLayer, type ChainPoint } from "../../kernel/chain.js";
-import type { HookRegistry, HookTrust } from "../../kernel/hooks.js";
+import { CHAIN_POINTS, type ChainLayer, type ChainPoint } from "../../core/index.js";
+import type { HookRegistry, HookTrust } from "../../core/index.js";
 import {
   PLUGIN_NAME_SHAPE,
   validateContributes,

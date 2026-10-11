@@ -16,7 +16,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { parseSkillFrontmatter, skillBody, SKILL_FILENAME } from "../kernel/skills.js";
+import { parseSkillFrontmatter, skillBody, SKILL_FILENAME } from "../ext-builtin/prompt-defaults/skills.js";
 import { extractZip, ZipFormatError, ZipUnsafeError, type ZipEntry } from "./zip-read.js";
 
 export interface SkillZipImportResult {

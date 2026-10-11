@@ -8,7 +8,7 @@
 import type { SettingsCall } from "./protocol-settings.js";
 import type { SettingsGateway, TransferDeps } from "./settings-gateway-types.js";
 import { withSettingsRmw } from "./settings-rmw.js";
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 import type { SqliteEventStorage } from "../session/db.js";
 import type { SessionStore } from "../session/store.js";
 import {

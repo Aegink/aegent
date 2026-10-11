@@ -12,11 +12,11 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { PendingApprovals } from "../policy/pending.js";
-import { createPlanModeService } from "../kernel/plan-mode.js";
-import { ModelNotRegisteredError, ModelSwitchService } from "../core/primitives/loop/model-switch.js";
+import { createPlanModeService } from "../ext-builtin/prompt-defaults/plan-mode.js";
+import { ModelNotRegisteredError, ModelSwitchService } from "../core/index.js";
 import type { ModelIdentity } from "../models/identity.js";
 import type { ModelProvider } from "../models/provider.js";
-import { ToolRegistry } from "../kernel/tools/registry.js";
+import { ToolRegistry } from "../core/index.js";
 import { BUILTIN_TOOL_NAMES, registerBuiltinTools } from "../../plugins/tools-builtin/index.js";
 import { createNetworkGuard } from "../sandbox/network.js";
 

@@ -1,9 +1,9 @@
 import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 import { runAgentChildStdio } from "./agent-process.js";
-import { decodeMessage, type AgentMessage } from "./agent-protocol.js";
-import type { PromptTemplateSummary } from "./prompts.js";
-import { runPromptPolish } from "./prompt-polish.js";
+import { decodeMessage, type AgentMessage } from "../core/index.js";
+import type { PromptTemplateSummary } from "../ext-builtin/prompt-defaults/prompts.js";
+import { runPromptPolish } from "../ext-builtin/prompt-defaults/prompt-polish.js";
 import type { ModelProvider } from "../models/provider.js";
 
 const disposables: (() => Promise<void> | void)[] = [];

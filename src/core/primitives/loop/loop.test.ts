@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { SessionEvent, StreamChunk } from "../../../kernel/events.js";
+import type { SessionEvent, StreamChunk } from "../../skeleton/events.js";
 import {
   AgentLoop,
   type AgentLoopDeps,
@@ -9,11 +9,11 @@ import {
   type ToolExecutionResult,
   type TurnDecision,
 } from "./loop.js";
-import { PromptQueue } from "../../../kernel/queue.js";
+import { PromptQueue } from "../../skeleton/queue.js";
 import { MutationRetryBudget } from "../tools/mutation-budget.js";
-import { ToolRegistry, type ToolDef } from "../../../kernel/tools/registry.js";
+import { ToolRegistry, type ToolDef } from "../tools/registry.js";
 import { ScriptedProvider, makeLoop } from "./loop.test-utils.js";
-import { RwLock } from "../../../kernel/rw-lock.js";
+import { RwLock } from "../../skeleton/rw-lock.js";
 import type { PrefixChange } from "../../../context/prefix-anchor.js";
 import { expectPaired, expectSingleTerminal, expectTurnScoped } from "../../../test-support/event-asserts.js";
 import type { ChatTool, ModelProvider } from "../../../models/provider.js";

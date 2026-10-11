@@ -7,7 +7,7 @@ import {
     GuardRegistry,
     type GuardAdvice,
 } from "./guard.js";
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 
 function call(seq: number, name: string, args: string): SessionEvent {
     return { type: "tool/call", seq, ts: seq, turn: 1, step: 1, callId: `c${String(seq)}`, name, arguments: args } as SessionEvent;

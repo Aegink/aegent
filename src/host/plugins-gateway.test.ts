@@ -10,8 +10,8 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { checkPluginDir, listPlugins } from "./plugins-gateway.js";
-import { loadConfiguredPlugins } from "../kernel/plugin-loader.js";
-import { ToolRegistry } from "../kernel/tools/registry.js";
+import { loadConfiguredPlugins } from "../ext-builtin/plugin-runtime/plugin-loader.js";
+import { ToolRegistry } from "../core/index.js";
 import { defaultSettings, parseSettingsShape } from "../session/settings.js";
 
 const tmpRoots: string[] = [];

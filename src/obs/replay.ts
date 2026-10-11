@@ -14,7 +14,7 @@
  */
 
 import type { ChatMessage } from "../models/provider.js";
-import type { TokenUsage, SessionEvent } from "../kernel/events.js";
+import type { TokenUsage, SessionEvent } from "../core/index.js";
 import { buildChatMessages } from "../session/messages.js";
 
 /** 一次模型请求的重放条目（request/header 的流内事实 → 请求/响应对）。 */

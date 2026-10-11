@@ -23,7 +23,7 @@
  */
 
 import type { ChatMessage } from "../models/provider.js";
-import type { TokenUsage } from "../kernel/events.js";
+import type { TokenUsage } from "../core/index.js";
 import { type CompactionResult } from "./compaction.js";
 import {
   estimateMessagesTokens,

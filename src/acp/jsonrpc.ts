@@ -10,7 +10,7 @@
  * 通知坏行丢弃）。行长度上限复用 agent-protocol 的 MAX_LINE_BYTES。
  */
 
-import { MAX_LINE_BYTES } from "../kernel/agent-protocol.js";
+import { MAX_LINE_BYTES } from "../core/index.js";
 
 export interface JsonRpcRequest {
   readonly kind: "request";

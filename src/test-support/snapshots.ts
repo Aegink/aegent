@@ -6,7 +6,7 @@
  * 不抄 kimi "只打名字"的做法（需求 §4 O 层负面发现）。
  */
 
-import type { JsonValue } from "../kernel/events.js";
+import type { JsonValue } from "../core/index.js";
 import {
   normalizeValue,
   stableStringify,

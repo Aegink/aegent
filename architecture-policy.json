@@ -22,7 +22,6 @@
       "managed": true,
       "requires": [
         "core",
-        "kernel",
         "ext-builtin",
         "plugins",
         "attachments",
@@ -50,12 +49,12 @@
       "managed": true,
       "requires": [
         "core",
-        "kernel",
-        "models",
         "mcp",
+        "models",
+        "plugins",
         "policy",
-        "session",
-        "plugins"
+        "runtime",
+        "session"
       ],
       "publicEntrypoints": [],
       "owner": "kernel"
@@ -68,7 +67,6 @@
       "managed": true,
       "requires": [
         "core",
-        "kernel",
         "attachments",
         "context",
         "lsp",
@@ -89,8 +87,7 @@
       ],
       "managed": true,
       "requires": [
-        "core",
-        "kernel"
+        "core"
       ],
       "publicEntrypoints": [],
       "owner": "wangh"
@@ -102,7 +99,7 @@
       ],
       "managed": true,
       "requires": [
-        "kernel"
+        "core"
       ],
       "publicEntrypoints": [
         "src/acp/main.ts"
@@ -116,8 +113,8 @@
       ],
       "managed": false,
       "requires": [
+        "core",
         "diagnostics",
-        "kernel",
         "models",
         "sandbox",
         "session",
@@ -133,7 +130,7 @@
       ],
       "managed": false,
       "requires": [
-        "kernel",
+        "core",
         "models",
         "sandbox",
         "session"
@@ -163,127 +160,19 @@
       "managed": true,
       "requires": [
         "attachments",
-        "kernel",
+        "core",
+        "diagnostics",
+        "ext-builtin",
         "mcp",
         "models",
         "obs",
         "policy",
-        "session",
+        "runtime",
         "sandbox",
         "scheduler",
-        "diagnostics"
+        "session"
       ],
       "publicEntrypoints": [],
-      "owner": "wangh"
-    },
-    {
-      "id": "kernel",
-      "roots": [
-        "src/kernel"
-      ],
-      "managed": false,
-      "requires": [
-        "core",
-        "ext-builtin"
-      ],
-      "publicEntrypoints": [
-        "src/kernel/admission.ts",
-        "src/kernel/agent-child-config.ts",
-        "src/kernel/agent-child.test.ts",
-        "src/kernel/agent-child.ts",
-        "src/kernel/agent-process.ts",
-        "src/kernel/agent-protocol.ts",
-        "src/kernel/assembly.compaction.test.ts",
-        "src/kernel/assembly.ts",
-        "src/kernel/budget.ts",
-        "src/kernel/chain-jump.test.ts",
-        "src/kernel/chain.ts",
-        "src/kernel/deadline.ts",
-        "src/kernel/events.ts",
-        "src/kernel/goal.ts",
-        "src/kernel/guards.ts",
-        "src/kernel/hooks.ts",
-        "src/kernel/invariants.ts",
-        "src/kernel/jobs.ts",
-        "src/kernel/logger.ts",
-        "src/kernel/loop.ts",
-        "src/kernel/model-switch.ts",
-        "src/kernel/plan-mode.ts",
-        "src/kernel/plugin-compat.ts",
-        "src/kernel/plugin-contributions.ts",
-        "src/kernel/plugin-loader.ts",
-        "src/kernel/plugin-manifest-contributes.ts",
-        "src/kernel/plugin-manifest.ts",
-        "src/kernel/plugin-scaffold.ts",
-        "src/kernel/prompt-args.ts",
-        "src/kernel/prompt-expand.test.ts",
-        "src/kernel/prompt-gate.ts",
-        "src/kernel/prompt-polish.ts",
-        "src/kernel/prompts.ts",
-        "src/kernel/queue.ts",
-        "src/kernel/raw-chunk-log.ts",
-        "src/kernel/run-state.ts",
-        "src/kernel/rw-lock.ts",
-        "src/kernel/session-config.ts",
-        "src/kernel/side-query.ts",
-        "src/kernel/skills.ts",
-        "src/kernel/stream-recovery.ts",
-        "src/kernel/subagent.ts",
-        "src/kernel/thinking-set.test.ts",
-        "src/kernel/timeout.ts",
-        "src/kernel/tools/background-shell.ts",
-        "src/kernel/tools/bash-retry-guard.ts",
-        "src/kernel/tools/builtin/apply-patch.snapshot.test.ts",
-        "src/kernel/tools/builtin/apply-patch.test.ts",
-        "src/kernel/tools/builtin/apply-patch.ts",
-        "src/kernel/tools/builtin/bash.ts",
-        "src/kernel/tools/builtin/batch1-tools.test.ts",
-        "src/kernel/tools/builtin/builtin.test.ts",
-        "src/kernel/tools/builtin/current-time.ts",
-        "src/kernel/tools/builtin/edit.ts",
-        "src/kernel/tools/builtin/get-context-remaining.ts",
-        "src/kernel/tools/builtin/glob.ts",
-        "src/kernel/tools/builtin/grep.ts",
-        "src/kernel/tools/builtin/index.ts",
-        "src/kernel/tools/builtin/ls.ts",
-        "src/kernel/tools/builtin/lsp.test.ts",
-        "src/kernel/tools/builtin/lsp.ts",
-        "src/kernel/tools/builtin/notebook-edit.ts",
-        "src/kernel/tools/builtin/patterns.ts",
-        "src/kernel/tools/builtin/plan.ts",
-        "src/kernel/tools/builtin/plugin-create.ts",
-        "src/kernel/tools/builtin/plugin-define.ts",
-        "src/kernel/tools/builtin/pwsh.ts",
-        "src/kernel/tools/builtin/question.ts",
-        "src/kernel/tools/builtin/read.ts",
-        "src/kernel/tools/builtin/save-memory.ts",
-        "src/kernel/tools/builtin/session-query.ts",
-        "src/kernel/tools/builtin/skill.ts",
-        "src/kernel/tools/builtin/task-lifecycle.ts",
-        "src/kernel/tools/builtin/task-output.ts",
-        "src/kernel/tools/builtin/task.test.ts",
-        "src/kernel/tools/builtin/task.ts",
-        "src/kernel/tools/builtin/todo-read.ts",
-        "src/kernel/tools/builtin/todo.test.ts",
-        "src/kernel/tools/builtin/todo.ts",
-        "src/kernel/tools/builtin/tool-load.ts",
-        "src/kernel/tools/builtin/util.ts",
-        "src/kernel/tools/builtin/view-image.ts",
-        "src/kernel/tools/builtin/web-search.ts",
-        "src/kernel/tools/builtin/webfetch.ts",
-        "src/kernel/tools/builtin/write.ts",
-        "src/kernel/tools/context.ts",
-        "src/kernel/tools/contract.ts",
-        "src/kernel/tools/env.ts",
-        "src/kernel/tools/mutation-budget.ts",
-        "src/kernel/tools/pwsh.test.ts",
-        "src/kernel/tools/registry.ts",
-        "src/kernel/tools/shell-output.ts",
-        "src/kernel/tools/spill-gc.ts",
-        "src/kernel/tools/truncate.ts",
-        "src/kernel/tools/write-queue.ts",
-        "src/kernel/watchdog.ts"
-      ],
       "owner": "wangh"
     },
     {
@@ -293,7 +182,7 @@
       ],
       "managed": false,
       "requires": [
-        "kernel"
+        "core"
       ],
       "publicEntrypoints": [],
       "owner": "wangh"
@@ -306,8 +195,7 @@
       "managed": false,
       "requires": [
         "core",
-        "host",
-        "kernel"
+        "host"
       ],
       "publicEntrypoints": [],
       "owner": "wangh"
@@ -319,8 +207,7 @@
       ],
       "managed": false,
       "requires": [
-        "core",
-        "kernel"
+        "core"
       ],
       "publicEntrypoints": [
         "src/models/provider.ts",
@@ -343,7 +230,7 @@
       ],
       "managed": true,
       "requires": [
-        "kernel",
+        "core",
         "models",
         "session"
       ],
@@ -358,7 +245,6 @@
       "managed": false,
       "requires": [
         "core",
-        "kernel",
         "models"
       ],
       "publicEntrypoints": [],
@@ -371,8 +257,7 @@
       ],
       "managed": false,
       "requires": [
-        "core",
-        "kernel"
+        "core"
       ],
       "publicEntrypoints": [],
       "owner": "wangh"
@@ -384,7 +269,12 @@
       ],
       "managed": true,
       "requires": [
-        "kernel"
+        "core",
+        "ext-builtin",
+        "models",
+        "policy",
+        "sandbox",
+        "session"
       ],
       "publicEntrypoints": [],
       "owner": "wangh"
@@ -398,7 +288,6 @@
       "requires": [
         "attachments",
         "core",
-        "kernel",
         "models",
         "policy",
         "sandbox"
@@ -436,7 +325,7 @@
       ],
       "managed": true,
       "requires": [
-        "kernel"
+        "core"
       ],
       "publicEntrypoints": [],
       "owner": "wangh"
@@ -448,7 +337,7 @@
       ],
       "managed": true,
       "requires": [
-        "kernel",
+        "core",
         "models",
         "session"
       ],
@@ -509,14 +398,6 @@
       "reason": "T5-1 搬迁记档（2026-10-10）：子进程入口 753 行（CLI 解析 + 装配 + 协议循环接线——宿主装配面固有形态，host/server.ts 豁免先例同款）；装配改接收注册表的拆分在 T5-4（EP-10 装配数据化）落地，届时重估。"
     },
     {
-      "path": "src/ext-builtin/subagent-engine/subagent.ts",
-      "reason": "T4-3 搬迁记档（2026-10-10）：子代理引擎 615 行（runner 装配 + 委托生命周期 + 后台收尾——行为内聚面）——kernel 时代为 warning，ext-builtin（managed）触线即 error；拆分列 T8 候选（按 runner/委托/后台三段），届时删本豁免。"
-    },
-    {
-      "path": "src/core/skeleton/events.ts",
-      "reason": "T1-2 搬迁记档（2026-10-10）：事件词汇表 935 行——kernel 时代为 warning（managed:false），进 core（managed:true）触线即 error。事件类型是内核单一词汇源（31 类事件 + StreamChunk/JsonValue 等），拆分需按事件族分文件且改动全部消费面 import，超出 T1-2 纯搬迁范围；豁免带上限（后续按事件族拆分列为批 3/T8 候选，届时删本豁免）。"
-    },
-    {
       "path": "src/core/skeleton/protocol-payload.ts",
       "reason": "T1-2 搬迁记档（2026-10-10）：agent-protocol 本体 1095 行（事件词汇源同款问题）；T1-4 分层后为 protocol-payload.ts（业务载荷 schema，1092 行）——decodeRequest/decodeMessage 是逐字段严格校验面，拆分需按请求/响应族分文件且全部消费面跟随，超出本批纯搬迁/分层范围；豁免带上限（按消息族拆分列 T8 候选，届时删本豁免）。"
     },
@@ -535,14 +416,6 @@
     {
       "path": "src/core/primitives/loop/model-switch.test.ts",
       "reason": "T3-2 搬迁记档（2026-10-10）：model-switch 集成测试 874 行（真 stdio spawn 链路）——测试文件豁免先例同上。"
-    },
-    {
-      "path": "src/core/primitives/session/project.ts",
-      "reason": "T3-3 搬迁记档（2026-10-10）：投影器本体 851 行（kernel 时代为 warning，managed core 触线即 error）——E16 投影校验是 G1/G2 护栏面，拆分需按事件族分文件且 loop/watchdog 消费面跟随，超出纯搬迁范围；豁免带上限（拆分列 T8 候选）。"
-    },
-    {
-      "path": "src/ext-builtin/plugin-runtime/plugin-manifest-contributes.ts",
-      "reason": "T4-1 搬迁记档（2026-10-10）：贡献声明校验面 545 行（六类 contributes 的逐类形状校验——校验器内聚面）——kernel 时代为 warning，ext-builtin（managed）触线即 error；拆分按 contributes 类别分文件列 T8 候选，届时删本豁免。"
     },
     {
       "path": "src/ext-builtin/prompt-defaults/plan-mode.test.ts",
@@ -567,6 +440,22 @@
     {
       "path": "src/host/server.ts",
       "reason": "C10 协作装配记档（2026-10-06）：start() 是 host 装配编排面（registry/bridge/automation/collab/静态服务/WS 的组装线）——行为体已全部下沉 runtime/ops 域文件，本文件行数随装配面线性增长属编排固有形态；豁免带上限（再增行为逻辑必须先拆域文件，本文件只准做一行收敛装配调用）。"
+    },
+    {
+      "path": "src/ext-builtin/subagent-engine/subagent.ts",
+      "reason": "T4-3 搬迁记档（2026-10-10）：子代理引擎 802 行（fork 循环/深度检查/后台委托——H1 载体）；W9/T9-2 增量（resume/task_send/steer）。"
+    },
+    {
+      "path": "src/core/skeleton/events.ts",
+      "reason": "事件闭集 981 行（31 事件类型 + C14/C16 闸门——词汇表单一事实源）；W15b/T9-7 加 ignorable 信封面。"
+    },
+    {
+      "path": "src/core/primitives/session/project.ts",
+      "reason": "E16 投影器 867 行（事件流校验/折叠纪律——不变量 1 承载面）。"
+    },
+    {
+      "path": "src/ext-builtin/plugin-runtime/plugin-manifest-contributes.ts",
+      "reason": "清单贡献校验 644 行（六类贡献形状 + W15b services/bus/telemetry 三类）。"
     }
   ]
 }

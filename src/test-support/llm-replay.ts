@@ -14,7 +14,7 @@
  * 产出即等价——网络抖动不属于被记录的事实。
  */
 
-import type { StreamChunk } from "../kernel/events.js";
+import type { StreamChunk } from "../core/index.js";
 import type { ChatRequest, ModelProvider } from "../models/provider.js";
 
 /** 一次模型调用的完整记录。 */

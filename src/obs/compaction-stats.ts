@@ -6,7 +6,7 @@
  * （旧流兼容口径，与词汇表注释一致）。
  */
 
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 
 export interface CompactionStats {
   total: number;

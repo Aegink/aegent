@@ -15,7 +15,7 @@ import {
   type ImSurface,
   type ImSurfaceDeps,
 } from "./im-surface.js";
-import type { JsonRecord } from "../kernel/events.js";
+import type { JsonRecord } from "../core/index.js";
 
 export interface FeishuConfig {
   /** 飞书开放平台应用凭证（环境变量注入——零落盘）。 */

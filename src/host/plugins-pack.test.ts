@@ -9,10 +9,10 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { buildStoreZip, collectPluginFiles, packPlugin } from "./plugins-pack.js";
-import { claudeToAegentManifest, discoverManifestPath } from "../kernel/plugin-compat.js";
-import { validateManifest } from "../kernel/plugin-manifest.js";
+import { claudeToAegentManifest, discoverManifestPath } from "../ext-builtin/plugin-runtime/plugin-compat.js";
+import { validateManifest } from "../ext-builtin/plugin-runtime/plugin-manifest.js";
 import { createPluginDefineTool } from "../../plugins/tools-builtin/plugin-define.js";
-import { ToolRegistry } from "../kernel/tools/registry.js";
+import { ToolRegistry } from "../core/index.js";
 
 const CAPS = ["registerTool", "subscribe", "hooks", "settings.read", "skill.register", "mcp.register", "settings.schema", "command.register"];
 const tmpRoots: string[] = [];

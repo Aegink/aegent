@@ -12,7 +12,7 @@ import {
     type SubagentBackend,
     type SubagentSpawnRequest,
 } from "./subagent-backend.js";
-import { createSubagentRunner } from "../kernel/subagent.js";
+import { createSubagentRunner } from "../ext-builtin/subagent-engine/subagent.js";
 import { ScriptedProvider } from "../core/primitives/loop/loop.test-utils.js";
 import {SessionEventStore, type SessionStore} from "./store.js";
 import type { ModelIdentity } from "../models/identity.js";

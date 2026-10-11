@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import type { AgentMessage, AgentRequest } from "../kernel/agent-protocol.js";
+import type { AgentMessage, AgentRequest } from "../core/index.js";
 import {
   encodeResponse,
   parseIncoming,

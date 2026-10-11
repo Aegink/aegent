@@ -36,10 +36,10 @@ import {
   type BusSubscription,
   type PluginPermission,
 } from "../core/index.js";
-import { validateManifest, PluginManifestError, type PluginManifest } from "../kernel/plugin-manifest.js";
-import { EVENT_TYPES, type SessionEvent, type SessionEventType } from "../kernel/events.js";
-import { Deadline, withDeadline } from "../kernel/deadline.js";
-import type { JsonRecord, JsonValue } from "../kernel/events.js";
+import { validateManifest, PluginManifestError, type PluginManifest } from "../ext-builtin/plugin-runtime/plugin-manifest.js";
+import { EVENT_TYPES, type SessionEvent, type SessionEventType } from "../core/index.js";
+import { Deadline, withDeadline } from "../core/index.js";
+import type { JsonRecord, JsonValue } from "../core/index.js";
 
 /** 事件回调缺省超时预算：插件回调是宿主代跑的不可信代码——挂死必须可回收。 */
 export const PLUGIN_EVENT_TIMEOUT_MS = 5_000;

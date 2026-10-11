@@ -13,7 +13,7 @@ import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { PathGuard, PathGuardError } from "../../src/sandbox/path-guard.js";
 import type { LspClient } from "../../src/lsp/client.js";
-import type { ToolExecutionResult } from "../../src/kernel/loop.js";
+import type { ToolExecutionResult } from "../../src/core/index.js";
 import type { ToolDef } from "../../src/core/index.js";
 import { toolError } from "./util.js";
 

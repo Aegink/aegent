@@ -15,7 +15,7 @@
 
 import type { ModelIdentity } from "../../models/identity.js";
 import type { ModelProvider } from "../../models/provider.js";
-import { runSideQuery } from "../../kernel/side-query.js";
+import { runSideQuery } from "../../core/index.js";
 
 /** 润色固定 system 指令（pi 七段式的压缩版；模板面只管 user 半边）。 */
 export const POLISH_SYSTEM_PROMPT = [
@@ -63,7 +63,7 @@ export interface PromptPolishDeps {
 export interface PromptPolishResult {
   text: string;
   /** 副调用 usage（T-P3-147 F 落账面——request/header aux 透传）。 */
-  usage?: import("../../kernel/events.js").TokenUsage;
+  usage?: import("../../core/index.js").TokenUsage;
   ms: number;
 }
 

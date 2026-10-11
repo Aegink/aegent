@@ -81,7 +81,7 @@ describe("RunState —— A3 运行态独立于 loop", () => {
     expect(runState.get("s1")).toEqual({ state: "idle" });
 
     // aborted：流中途取消
-    const ref: { loop?: import("../../kernel/loop.js").AgentLoop } = {};
+    const ref: { loop?: import("../primitives/loop/loop.js").AgentLoop } = {};
     const provider3 = {
       async *streamChat() {
         yield { type: "text-delta" as const, text: "半" };

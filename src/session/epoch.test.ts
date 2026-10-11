@@ -10,7 +10,7 @@ import {
   encodeEpochScopedId,
   parseEpochScopedId,
 } from "./epoch.js";
-import { JobRegistry, UnknownJobError } from "../kernel/jobs.js";
+import { JobRegistry, UnknownJobError } from "../ext-builtin/subagent-engine/jobs.js";
 
 const thisDir = path.dirname(fileURLToPath(new URL(import.meta.url)));
 

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { decodeMessage, type AgentMessage } from "../kernel/agent-protocol.js";
+import { decodeMessage, type AgentMessage } from "../core/index.js";
 import { runAgentChildStdio, spawnAgentProcess } from "../runtime/agent-process.js";
 import { InMemoryAttachmentStore } from "../attachments/store.js";
 import { drainUntil, recvWithTimeout } from "../test-support/event-asserts.js";
@@ -868,10 +868,10 @@ describe("config/refresh 协议链（B21/T-P1-63）", () => {
 
 import { findInterruptedTurn, reconcileBootState } from "../session/boot-maintenance.js";
 import { InMemoryEventStorage } from "../session/store.js";
-import type { NewSessionEvent } from "../kernel/events.js";
+import type { NewSessionEvent } from "../core/index.js";
 import type { AgentChildOptions } from "../runtime/agent-process.js";
 import type { ChatRequest } from "../models/provider.js";
-import type { SessionEvent } from "../kernel/events.js";
+import type { SessionEvent } from "../core/index.js";
 
 describe("session/resume（M3/T-P1-86）", () => {
   const letSeq = (start: number, events: NewSessionEvent[]): SessionEvent[] =>

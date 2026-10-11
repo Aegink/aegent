@@ -8,7 +8,7 @@
 import {
   MAX_LINE_BYTES,
   type AgentRequest,
-} from "../kernel/agent-protocol.js";
+} from "../core/index.js";
 // U9/T-P3-108：search criteria 的 contentLike 上限与 Q2 同源（单一事实源）
 import { MAX_CONTENT_LIKE_CHARS } from "../session/query.js";
 // settings 信封域（U22/T-P3-125 拆分）：形状与校验收拢在 protocol-settings

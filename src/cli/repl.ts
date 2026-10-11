@@ -14,9 +14,9 @@
 import {
   type AgentMessage,
   type AgentRequest,
-} from "../kernel/agent-protocol.js";
-import type { JsonRecord, SessionEvent } from "../kernel/events.js";
-import { PERMISSION_PRESETS } from "../kernel/session-config.js";
+} from "../core/index.js";
+import type { JsonRecord, SessionEvent } from "../core/index.js";
+import { PERMISSION_PRESETS } from "../core/index.js";
 import { withContinuation } from "./editor.js";
 
 export interface AgentConnection {

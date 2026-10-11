@@ -6,8 +6,8 @@ import { connectWsPlugin } from "./ws-plugin.js";
 import { GuardRegistry, createRepeatToolReminder } from "./guard.js";
 import { loadPlugin } from "./plugin-sdk.js";
 import { createClaudeCodeHookBridge } from "./hook-compat.js";
-import { HookRegistry } from "../kernel/hooks.js";
-import type { SessionEvent } from "../kernel/events.js";
+import { HookRegistry } from "../core/index.js";
+import type { SessionEvent } from "../core/index.js";
 
 /**
  * T-P2-311 快照即规格（批次 15c）：ws 插件注册工具走审批全链一条——

@@ -22,7 +22,7 @@ import { randomUUID } from "node:crypto";
 
 import type Database from "better-sqlite3";
 
-import type { JobRegistry } from "../kernel/jobs.js";
+import type { JobRegistry } from "../ext-builtin/subagent-engine/jobs.js";
 
 /** 星期闭集（codex·ScheduledTaskWeekday 同款）→ cron 数字（0=周日）。 */
 export const CRON_WEEKDAY_ALIASES = { MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6, SU: 0 } as const;

@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { createFeishuSurface, type FeishuConfig } from "./im-feishu.js";
 import type { HostBridge } from "./bridge.js";
-import type { JsonRecord } from "../kernel/events.js";
+import type { JsonRecord } from "../core/index.js";
 
 const CONFIG: FeishuConfig = { appId: "cli_a", appSecret: "s3cret", chatId: "oc_chat1" };
 

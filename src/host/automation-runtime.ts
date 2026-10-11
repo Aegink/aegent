@@ -10,7 +10,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { HostBridge } from "./bridge.js";
 import { channelLogger } from "./logging-ops.js";
 import { createSchedulerRuntime, setSchedulerRuntime, type SchedulerRuntime } from "./scheduler-ops.js";
-import { JobRegistry } from "../kernel/jobs.js";
+import { JobRegistry } from "../ext-builtin/subagent-engine/jobs.js";
 import { WebhookEndpoint, WEBHOOK_PATH_PREFIX } from "../scheduler/webhook.js";
 import type { SqliteEventStorage } from "../session/db.js";
 

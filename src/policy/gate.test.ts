@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { ChainNext } from "../kernel/chain.js";
-import type { ToolCallPayload, ToolExecutionResult } from "../core/primitives/loop/loop.js";
-import type { JsonRecord } from "../kernel/events.js";
+import type { ChainNext } from "../core/index.js";
+import type { ToolCallPayload, ToolExecutionResult } from "../core/index.js";
+import type { JsonRecord } from "../core/index.js";
 import { makeLoop, ScriptedProvider } from "../core/primitives/loop/loop.test-utils.js";
 import { expectPaired } from "../test-support/event-asserts.js";
 import { DenyPermissionBroker, ManualPermissionBroker } from "./broker.js";
@@ -1091,7 +1091,7 @@ function judgeScriptedProvider(responses: string[]): {
   return {
     calls,
     provider: {
-      async *streamChat(req: import("../models/provider.js").ChatRequest): AsyncIterable<import("../kernel/events.js").StreamChunk> {
+      async *streamChat(req: import("../models/provider.js").ChatRequest): AsyncIterable<import("../core/index.js").StreamChunk> {
         calls.push(req);
         const text = responses[i] ?? "";
         i++;

@@ -3,7 +3,7 @@
  * 纯类型零实现；实现体与类在 settings-gateway.ts，域方法实现在各 *-ops.ts）。
  */
 
-import type { JsonRecord } from "../kernel/events.js";
+import type { JsonRecord } from "../core/index.js";
 import type { SettingsShape } from "../session/settings.js";
 import type { HealthCheckResult } from "../models/health.js";
 import type { ProviderTestResult } from "./provider-gateway.js";

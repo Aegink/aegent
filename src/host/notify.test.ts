@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { NotificationHub, NOTIFICATION_KINDS, type NotificationPayload } from "./notify.js";
 import { HostBridge, type AgentChannel } from "./bridge.js";
 import { HostRegistry } from "./registry.js";
-import type { AgentMessage, AgentRequest } from "../kernel/agent-protocol.js";
+import type { AgentMessage, AgentRequest } from "../core/index.js";
 import {InMemoryEventStorage, SessionEventStore, type SessionStore} from "../session/store.js";
 
 describe("NOTIFICATION_KINDS", () => {
