@@ -73,6 +73,10 @@ import {
 import { evaluateToolPolicy } from "../policy/gate.js";
 import { ModelNotRegisteredError } from "../kernel/model-switch.js";
 import { createSubagentRunner } from "../kernel/subagent.js";
+import {
+  createLocalCollabRuntime,
+  permissionCeilingFromMode,
+} from "../ext-builtin/subagent-engine/collab-local.js";
 import { registerBuiltinTools } from "../../plugins/tools-builtin/index.js";
 import { createBrowserTools } from "../scheduler/browser.js";
 import { connectPanelBrowser, panelDataDir } from "../scheduler/browser-panel.js";
@@ -231,6 +235,11 @@ export interface AgentChildOptions {
      * 子代理 + 独立子会话）。maxDepth 缺省 1 = 子代理不可再分。
      */
     subagent?: { maxDepth?: number };
+    /**
+     * W2/T9-1：协作血统库（--db 打开的 SqliteEventStorage——collab spawn
+     * 的 createSession/标题/血统落库位）。缺省 undefined = 仅流内事实。
+     */
+    sessionsLibrary?: import("../session/db.js").SqliteEventStorage;
   };
   /**
    * T-P3-146 A：提示词模板上下文加载器（展开面每次调用新鲜读取——文件与
@@ -538,6 +547,31 @@ const executionEnv = new NodeExecutionEnv({
       })
     : undefined;
   const runSubagent = subagentRuntime?.run;
+  // W2/T9-1 编排方向盘：本地协作运行时（账本 CollaborationService + 进程内
+  // 子代理执行体 + completion 回投注入父队列）。runner 缺席 = 不装配——
+  // registerBuiltinTools 不注册 collab 工具（可裁剪插件纪律）。kick 在
+  // 下方声明（回投回调异步触发——TDZ 安全同 onSettle 模式）。
+  const collabRuntime =
+    subagentRuntime !== undefined
+      ? createLocalCollabRuntime({
+          parentSessionId: sessionId,
+          store,
+          runner: subagentRuntime,
+          getPermissionCeiling: () => permissionCeilingFromMode(configStore.approvalMode),
+          ...(options.assembly?.sessionsLibrary !== undefined
+            ? { lineage: options.assembly.sessionsLibrary }
+            : {}),
+          injectCompletion: (content) => {
+            try {
+              queue.enqueue(content);
+              kick();
+            } catch {
+              options.logger?.warn("协作回投入队失败（队列满）——status/result 仍可查询");
+            }
+          },
+          ...(options.logger !== undefined ? { logger: options.logger } : {}),
+        })
+      : undefined;
   // 工具装配（T-4-05 接线，兑现 T-4-02 偏离⑥）：注册表分发就是 toolCall 链的
   // 链底 terminal——executeTool 槽位由 registry.dispatch 充当，不存在旁路。
   // T-8-01：装配提供 PathGuard 时经它构造（写守卫唯一入口，T-6-01）。
@@ -619,6 +653,10 @@ const executionEnv = new NodeExecutionEnv({
             taskList: { delegations: subagentRuntime.delegations },
             taskStop: { delegations: subagentRuntime.delegations },
           }
+        : {}),
+      // W2/T9-1：collab 编排工具（本地协作运行时在位才注册——可裁剪）
+      ...(collabRuntime !== undefined
+        ? { collab: { sessionId, port: collabRuntime } }
         : {}),
       // T-P3-174 批次 1：后台 shell 面 + scratch spill + 附件/计量条件注册
       backgroundShell: backgroundRegistry,

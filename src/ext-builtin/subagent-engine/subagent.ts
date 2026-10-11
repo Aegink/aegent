@@ -276,6 +276,13 @@ export function createSubagentRunner(deps: SubagentRunnerDeps): SubagentRunner {
       backend?: string;
       subagentType?: string;
       background?: boolean;
+      /**
+       * T9-1/T9-2：预设子会话 id（collab worker 的编排会话语义——血统/
+       * 标题落同一 id；task resume 续跑同 delegation 的原子会话）。缺省
+       * undefined = 内部生成 `${parent}::task-N-ts`（既有行为零变化）。
+       * 调用方必须保证该 id 未被占用（占用 = 流混写——调用方纪律）。
+       */
+      childSessionId?: string;
     },
   ): Promise<SubagentRunOutcome> => {
     const childDepth = deps.depth + 1;
@@ -343,7 +350,7 @@ export function createSubagentRunner(deps: SubagentRunnerDeps): SubagentRunner {
     const background = opts?.background ?? false;
 
     const childSessionId =
-      `${deps.parentSessionId}::task-${++counter}-${Date.now()}`;
+      opts?.childSessionId ?? `${deps.parentSessionId}::task-${++counter}-${Date.now()}`;
 
     // —— 子装配：降级规则（H5）+ Deny broker（H3）+ 全套上下文/压缩层复用。
     // 默认禁用 task 的双保险按深度分工：childDepth >= maxDepth（不可再派）

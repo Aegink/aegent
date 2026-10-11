@@ -39,6 +39,7 @@ import { createPluginCreateTool } from "./plugin-create.js";
 import { createPluginDefineTool } from "./plugin-define.js";
 import { createTaskOutputTool } from "./task-output.js";
 import { createTaskTool, type TaskToolDeps } from "./task.js";
+import { createCollabTool, type CollabToolDeps } from "./collab.js";
 import {
   createTaskWaitTool,
   createTaskListTool,
@@ -156,6 +157,11 @@ export function registerBuiltinTools(
     taskWait?: TaskLifecycleDeps;
     taskList?: TaskLifecycleDeps;
     taskStop?: TaskLifecycleDeps;
+    /**
+     * W2/T9-1 编排方向盘（collab 工具——本地协作运行时端口）：提供时注册；
+     * 缺省不注册（无编排运行时的装配零新工具——"可裁剪插件"纪律）。
+     */
+    collab?: CollabToolDeps;
     /** B18/T-P1-55 bash 超时三档的默认档（秒）；缺省无默认超时（pi 同款）。 */
     bash?: { defaultTimeoutSeconds?: number };
     /** B15/T-P1-58 沙箱装配（backend + 会话默认模式 + 升级审批通道）；
@@ -306,6 +312,9 @@ export function registerBuiltinTools(
     ...(options.taskWait !== undefined ? [createTaskWaitTool(options.taskWait)] : []),
     ...(options.taskList !== undefined ? [createTaskListTool(options.taskList)] : []),
     ...(options.taskStop !== undefined ? [createTaskStopTool(options.taskStop)] : []),
+    // W2/T9-1 编排方向盘（collab——本地协作运行时端口提供时才注册；
+    // needsApproval + 无 allow 规则 = gate 缺省 ask，编排缺省人审）
+    ...(options.collab !== undefined ? [createCollabTool(options.collab)] : []),
     // Q2/T-P2-105 会话查询工具（dbPath 提供时才注册——无库无历史面；
     // 两工具都是只读类：SQL 检索 + 单会话读取，零落流）
     ...(options.sessionQuery !== undefined

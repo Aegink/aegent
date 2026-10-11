@@ -3,24 +3,16 @@
  * 回投源会话（pi-desktop·session-collaboration 行为同构：三型 task/
  * message/completion + 生命周期状态机 + 权限上限快照 + 完成通知）。
  *
- * 持久面定形（卡面最大定形点，词汇表立案 #30）：协作消息是**持久事实**
- * ——落流内新事件 `session/collab`（单类型 + direction 区分视角与环节：
- * dispatch 源流 / receive 目标流 / update 目标流状态机转移 / report 源流
- * completion 回投）。双方流各自落事件 = 两个视角都可独立重建（不变量 1）。
- * 不走 plugin 泛型逃生舱——这是核心产品语义不是扩展。
+ * 持久面定形：协作消息是**持久事实**——落流内新事件 `session/collab`
+ * （单类型 + direction 区分视角与环节：dispatch 源流 / receive 目标流 /
+ * update 目标流状态机转移 / report 源流 completion 回投）。双方流各自落
+ * 事件 = 两个视角都可独立重建（不变量 1）。
  *
  * 权限上限快照（U27 核心安全语义——"提交时定死"）：dispatch 时固化
- * permissionCeiling 进事件载荷；执行体拿到的就是快照值。**双向不变**：
- * 排队/在途期间后续设置变更既不能提权（防提权硬断言——上游 "a later
- * settings change cannot elevate queued work"）也不能降权（快照语义，
- * 卡面"逆方向也不降权"）。
- *
- * 环检测（复用 E9 思路）：活动派发图必须是 DAG——A 派 B 后 B 派 A、
- * 自派都类型化拒绝（创建时 fail-closed，不是读取时补救）。
- *
- * 已知边界（记档）：执行体经注入的 executor（真实执行 = 目标会话的
- * agent 循环/H6 后端链）；当前 host 单会话 spawn 模型下跨会话路由是
- * U11 偏离记档的运行时面——本卡交付服务库面 + 流投影 + UI 事实面板。
+ * permissionCeiling 进事件载荷；**双向不变**（不能提权也不能降权）。
+ * 环检测（E9 同款）：活动派发图必须是 DAG——创建时 fail-closed。
+ * 已知边界（记档）：执行体经注入的 executor；host 单会话 spawn 模型下
+ * 跨会话路由是 U11 偏离记档的运行时面。
  */
 
 import type {
@@ -37,7 +29,8 @@ export type CollaborationErrorCode =
   | "COLLAB_TARGET_MISSING"
   | "COLLAB_CYCLE"
   | "COLLAB_SELF"
-  | "COLLAB_BAD_KIND";
+  | "COLLAB_BAD_KIND"
+  | "COLLAB_LIMIT";
 
 export class CollaborationError extends Error {
   override readonly name = "CollaborationError";
@@ -104,6 +97,19 @@ export interface CollaborationDeps {
   }): void;
 }
 
+/** 在途上限（T9-1——pi-desktop "每父 4 / 全插件 16"；入口 fail-closed）。 */
+export interface CollaborationLimits {
+  /** 单源会话在途上限（缺省 4）。 */
+  maxActivePerSource?: number;
+  /** 全局在途上限（缺省 16）。 */
+  maxActiveTotal?: number;
+}
+
+export const DEFAULT_COLLAB_LIMITS: Required<CollaborationLimits> = {
+  maxActivePerSource: 4,
+  maxActiveTotal: 16,
+};
+
 /** 排队条目（快照 + 时间戳——非流状态，重启由流投影重建）。 */
 interface QueuedEntry {
   collabId: string;
@@ -146,13 +152,16 @@ function assertNoCollabCycle(
 export class CollaborationService {
   private readonly queue: QueuedEntry[] = [];
   private running = new Set<string>();
+  private readonly limits: Required<CollaborationLimits>;
 
-  constructor(private readonly deps: CollaborationDeps) {}
+  constructor(
+    private readonly deps: CollaborationDeps,
+    limits: CollaborationLimits = {},
+  ) {
+    this.limits = { ...DEFAULT_COLLAB_LIMITS, ...limits };
+  }
 
-  /**
-   * 派发：源流落 dispatch、目标流落 receive（queued）。权限快照在此固化。
-   * message 型即时性更高（走同一状态机——最小面不分叉）。
-   */
+  /** 派发：源流落 dispatch、目标流落 receive（queued）。权限快照在此固化。 */
   dispatch(request: {
     sourceSessionId: string;
     targetSessionId: string;
@@ -173,6 +182,20 @@ export class CollaborationService {
       throw new CollaborationError(
         "COLLAB_TARGET_MISSING",
         `目标会话不存在：${request.targetSessionId}（未知边界不创建——E6 同款纪律）`,
+      );
+    }
+    // 在途上限（pi-desktop 4/16；running 条目结算前仍在 queue）。
+    const perSource = this.queue.filter((q) => q.sourceSessionId === request.sourceSessionId).length;
+    if (perSource >= this.limits.maxActivePerSource) {
+      throw new CollaborationError(
+        "COLLAB_LIMIT",
+        `源会话 ${request.sourceSessionId} 在途协作已达上限（${perSource}/${this.limits.maxActivePerSource}）——先 wait/result 收敛再派发`,
+      );
+    }
+    if (this.queue.length >= this.limits.maxActiveTotal) {
+      throw new CollaborationError(
+        "COLLAB_LIMIT",
+        `协作在途总数已达上限（${this.queue.length}/${this.limits.maxActiveTotal}）——先收敛既有协作再派发`,
       );
     }
     assertNoCollabCycle(this.queue, request.sourceSessionId, request.targetSessionId);
@@ -256,11 +279,8 @@ export class CollaborationService {
     return true;
   }
 
-  /**
-   * 执行队头任务（一次一个——目标会话的串行消费面）：落 running → 执行
-   * （**快照定死**：executor 收 dispatch 时固化的权限档）→ 落 completed/
-   * failed（目标流 update + 源流 completion 回投）→ 通知。队空 = no-op。
-   */
+  /** 执行队头任务（目标会话串行消费面）：running → 执行（快照定死）→
+   * completed/failed（update + 源流 completion 回投）→ 通知。队空 = no-op。 */
   async runNext(targetSessionId: string): Promise<string | null> {
     const entry = this.queue.find((q) => q.targetSessionId === targetSessionId);
     if (entry === undefined || this.running.has(targetSessionId)) return null;

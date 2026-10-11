@@ -658,6 +658,9 @@ async function main(): Promise<void> {
             // Q2/T-P2-105：持久库在位时注册会话查询工具（session_query/
             // session_get——无 --db 的 echo 路径无历史面）
             ...(cli.db ? { sessionQuery: { dbPath: cli.db } } : {}),
+            // W2/T9-1：协作血统库（同一 storage 实例——collab spawn 的
+            // createSession/标题/血统标记落库位；无 --db = 仅流内事实）
+            ...(cli.db ? { sessionsLibrary: storage } : {}),
             // U5/T-P3-104：多注册表（J6 会话期换模——model/switch 在表内
             // 切换，新 turn 生效；initialIdentity = defaultProvider 条目）
             ...(registry !== undefined

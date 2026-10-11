@@ -77,6 +77,12 @@ export interface SubagentRunner {
       backend?: string;
       subagentType?: string;
       background?: boolean;
+      /**
+       * T9-1/T9-2：预设子会话 id（collab worker 编排会话语义——血统/标题落
+       * 同一 id；task resume 续跑同 delegation 的原子会话）。缺省 = runner
+       * 内部生成（既有行为）。调用方保证 id 未被占用。
+       */
+      childSessionId?: string;
     },
   ): Promise<SubagentRunOutcome>;
   delegations: DelegationsApi;
