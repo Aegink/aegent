@@ -452,6 +452,8 @@ const executionEnv = new NodeExecutionEnv({
         store,
         ...options.assembly,
         toolMetadata: (name: string) => toolRegistryRef?.metadataOf(name),
+        // W13a/T9-3：审批期预检面（registry 的函数型声明——只可收窄）
+        prepareApprovalFor: (name: string) => toolRegistryRef?.prepareApprovalOf(name),
         onApprovalAnnouncement: forwardApprovalAnnouncement,
         // C33：无人值守活查询接 SessionConfigStore（config/refresh 通道
         // 切换即生效；store getter 缺省 undefined → === true 为 false）

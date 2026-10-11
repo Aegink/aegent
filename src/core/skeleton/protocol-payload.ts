@@ -105,8 +105,9 @@ export type AgentRequest =
       requestId: string;
       action: "allow" | "deny";
       reason?: string;
-      /** C24：批准作用域——session 由子进程答复路径落会话批准缓存。 */
-      scope?: "once" | "session";
+      /** C24：批准作用域——session 落会话批准缓存；W13a/T9-3 always 再
+       * 写回项目层规则（原子 + schema 校验 + 限层）。 */
+      scope?: "once" | "session" | "always";
       /** C24：审批反馈，落 L2 审计记录。 */
       feedback?: string;
       /** C52/T-P1-79：修改后的执行参数（仅 allow 携带；子进程 gate 侧重跑
@@ -546,8 +547,8 @@ if (req.type === "revert") {
     if (req.reason !== undefined && typeof req.reason !== "string") {
       throw new ProtocolError("PROTOCOL_MALFORMED", "approve 的 reason 必须是字符串");
     }
-    if (req.scope !== undefined && req.scope !== "once" && req.scope !== "session") {
-      throw new ProtocolError("PROTOCOL_MALFORMED", "approve 的 scope 只能是 once 或 session");
+    if (req.scope !== undefined && req.scope !== "once" && req.scope !== "session" && req.scope !== "always") {
+      throw new ProtocolError("PROTOCOL_MALFORMED", "approve 的 scope 只能是 once、session 或 always");
     }
     if (req.feedback !== undefined && typeof req.feedback !== "string") {
       throw new ProtocolError("PROTOCOL_MALFORMED", "approve 的 feedback 必须是字符串");

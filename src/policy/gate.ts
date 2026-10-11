@@ -93,6 +93,13 @@ export interface ToolPolicyEvalOptions {
    * （零行为变化）。
    */
   readonly toolMetadata?: (name: string) => import("../core/index.js").ToolMetadata | undefined;
+  /**
+   * W13a/T9-3：审批期预检面（registry.prepareApprovalOf——**只可收窄**）。
+   * allow 判定后调用：返回 deny 理由 = 收窄为拒绝；缺省 undefined = 零收窄。
+   */
+  readonly prepareApprovalFor?: (
+    name: string,
+  ) => ((args: import("../core/index.js").JsonRecord) => { deny?: string } | undefined) | undefined;
   /** 会话权威标识（C57：装配处取当前值）。 */
   readonly sessionId: string;
   /** 调用来源，缺省 model。 */
@@ -266,11 +273,32 @@ export function createToolGateLayer(
     // 解析失败返回 null → 交 registry 报 TOOL_ARGUMENTS_INVALID
     const evaluation = await evaluateToolPolicy(e.name, e.arguments, options);
     if (evaluation === null) return next(e);
-    const { args, verdict, warnings } = evaluation;
+    const { args, warnings } = evaluation;
+    let verdict = evaluation.verdict;
     for (const warning of warnings) options.onWarning?.(warning);
 
     if (verdict.action === "allow") {
-      return next({ ...e, arguments: JSON.stringify(args) });
+      // W13a/T9-3 工具级收窄（只可收窄——allow→ask/deny，绝不放宽）：
+      // needsApproval=true 声明强制人审（落 ask 路径）；prepareApproval
+      // 预检拒绝 = 收窄为 deny（deny/ask 判定不受影响——工具不能自放行）。
+      const meta = options.toolMetadata?.(e.name);
+      if (meta?.needsApproval !== true) {
+        const prepare = options.prepareApprovalFor?.(e.name);
+        if (prepare !== undefined) {
+          const prepared = prepare(args);
+          if (prepared?.deny !== undefined) {
+            return deniedResult(
+              { action: "deny", reason: `工具预检收窄：${prepared.deny}`, rule: "tool.prepareApproval" },
+              TOOL_POLICY_DENIED,
+            );
+          }
+        }
+        return next({ ...e, arguments: JSON.stringify(args) });
+      }
+      verdict = {
+        action: "ask",
+        reason: "工具声明强制人审（needsApproval）",
+      };
     }
     if (verdict.action === "deny") {
       return deniedResult(verdict, TOOL_POLICY_DENIED);
@@ -386,6 +414,10 @@ export function createToolGateLayer(
         args,
         // C54：gate 是工具审批发起面（task 派发经 gate 亦归此类——记档）
         category: "tool",
+        // W13a/T9-3：风险档透传（决策面/审计的粗档标尺）
+        ...(options.toolMetadata?.(e.name)?.riskLevel !== undefined
+          ? { riskLevel: options.toolMetadata!(e.name)!.riskLevel }
+          : {}),
       });
       if (answer.action === "allow") {
         // C52（T-P1-79）：批准可携带修改后的参数（zcode turn-machine

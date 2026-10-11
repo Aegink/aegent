@@ -124,6 +124,13 @@ export interface ToolDef {
   needsApproval?: boolean;
   /** 风险档。 */
   riskLevel?: "low" | "medium" | "high";
+  /**
+   * W13a/T9-3：审批期预检（zcode prepareApproval 同位——**只可收窄**）。
+   * 策略面放行（allow）前调用：返回 deny 理由 = 收窄为拒绝（allow→deny）；
+   * undefined/空 = 不收窄。绝不放宽——ask/deny 判定不受本面影响（工具
+   * 不能给自己放行）。函数型声明：不进 wire 契约（toContracts 不投影）。
+   */
+  prepareApproval?: (args: JsonRecord) => { deny?: string } | undefined;
   /** 单次输出字节上限（声明级收紧面）。 */
   maxOutputBytes?: number;
   /** true = 并发安全（能力声明，与 parallel 调度声明互补）。 */

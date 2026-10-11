@@ -97,6 +97,9 @@ import {
   PendingApprovals,
 } from "../policy/pending.js";
 import { ManualPermissionBroker, type PermissionBrokerPort } from "../policy/broker.js";
+import { racePermissionResponders, type ApprovalResponderPort } from "../policy/approval-responder.js";
+import { createProjectRuleWriteback } from "../policy/rule-writeback.js";
+import { projectRulesPath } from "./child-config.js";
 import { assemblePolicyChain } from "../policy/chain.js";
 import { createRuleSetModule } from "../policy/rules.js";
 import {
@@ -240,6 +243,18 @@ export interface ChildAssemblyOptions {
    * 全部按名兜底（零行为变化）。
    */
   toolMetadata?: (name: string) => import("../core/index.js").ToolMetadata | undefined;
+  /**
+   * W13a/T9-3：审批竞速第二出口（hook/自动化策略通道）。缺省空 = 单出口
+   * 透传（零行为变化）。
+   */
+  approvalResponders?: readonly ApprovalResponderPort[];
+  /**
+   * W13a/T9-3：审批期预检面（工具的 prepareApproval 函数——只可收窄）。
+   * 缺省 undefined = 零收窄。
+   */
+  prepareApprovalFor?: (
+    name: string,
+  ) => ((args: JsonRecord) => { deny?: string } | undefined) | undefined;
   sessionId: string;
   store: SessionStore;
   /** 工作区根：PathGuard 边界 + 系统提示的 AGENTS.md 收集起点。 */
@@ -583,7 +598,7 @@ export interface ChildAssembly {
     requestId: string,
     action: "allow" | "deny",
     reason?: string,
-    scope?: "once" | "session",
+    scope?: "once" | "session" | "always",
     feedback?: string,
     modifiedInput?: JsonRecord,
     source?: string,
@@ -666,7 +681,18 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
     audit(announcement);
     options.onApprovalAnnouncement?.(announcement);
   });
-  const broker = options.broker ?? new ManualPermissionBroker(pending, options.approvalTimeoutMs);
+  // W13a/T9-3：审批竞速收口（第二出口——hook/自动化策略通道先到者胜；
+  // brokers 先启动、先兑现后 abort 败者）。responders 缺省空 = 原样透传
+  // primary（零行为变化）。
+  const broker = racePermissionResponders(
+    options.broker ?? new ManualPermissionBroker(pending, options.approvalTimeoutMs),
+    options.approvalResponders ?? [],
+  );
+  // W13a/T9-3：scope=always 的批准写回项目层规则（结构性限层——服务只持
+  // <workspace>/.aegent/rules.txt 一个出口）。
+  const projectRuleWriteback = createProjectRuleWriteback({
+    projectRulesPath: projectRulesPath(options.workspaceRoot),
+  });
 
   // —— 权限链（C58 层序常量展开）：用户规则集 > 核心（会话批准历史 +
   // shell 语义分析）。C22：session-runtime 作用域的批准规则由
@@ -1139,6 +1165,10 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
   };
   const toolGateLayer = createToolGateLayer({
     ...toolGateEvalOptions,
+    // W13a/T9-3：审批期预检面（allow 分支收窄——registry 函数型声明）
+    ...(options.prepareApprovalFor !== undefined
+      ? { prepareApprovalFor: options.prepareApprovalFor }
+      : {}),
     broker,
     onWarning: (warning) => logger?.warn("策略警告", { userContent: warning }),
     // C25：激活四层（缺省 undefined = 零行为变化）
@@ -1340,13 +1370,23 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
         // C6：答复端标识透传（跨端回转审计面）
         ...(source !== undefined ? { source } : {}),
       });
-      if (action === "allow" && scope === "session" && request !== undefined) {
+      if (
+        action === "allow" &&
+        (scope === "session" || scope === "always") &&
+        request !== undefined
+      ) {
         const proposal = proposeAmendment(
           { tool: request.tool, args: request.args, sessionId, source: "model" },
           builtinRuleMatchers,
         );
         if (proposal !== undefined) {
           approvalCache.record(sessionId, proposal.raw, "session");
+          // W13a/T9-3：scope=always 再写回项目层规则（原子 + schema 校验 +
+          // 限层——zcode persistProjectPermissionUpdates 同位）。写回失败
+          // 不回滚批准（缓存已生效），错误上抛由协议层落 error 行。
+          if (scope === "always") {
+            await projectRuleWriteback.appendRule(proposal.raw, "allow");
+          }
         }
       }
     },

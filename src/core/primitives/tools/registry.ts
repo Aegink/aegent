@@ -143,6 +143,11 @@ export class ToolRegistry {
     if (def === undefined) return undefined;
     return Object.fromEntries(META_KEYS.filter((k) => def[k] !== undefined).map((k) => [k, def[k]]));
   }
+  /** W13a/T9-3：按名取审批期预检面（只可收窄——gate allow 分支消费）。
+   * 未注册/未声明 = undefined（零收窄）。函数不进 toContracts wire 面。 */
+  prepareApprovalOf(name: string) {
+    return this.defs.get(name)?.prepareApproval;
+  }
   names(): string[] {
     return [...this.defs.keys()];
   }

@@ -57,6 +57,8 @@ export interface ApprovalRequest {
   readonly args: JsonRecord;
   /** C54 审批来源分类——发起面打标，关类开关据此自动拒绝。 */
   readonly category: ApprovalCategory;
+  /** W13a/T9-3：工具声明的风险档（gate 透传——决策面/审计的粗档标尺）。 */
+  readonly riskLevel?: "low" | "medium" | "high";
 }
 
 /**
@@ -70,7 +72,9 @@ export interface ApprovalRequest {
 export interface ApprovalReply {
   readonly action: "allow" | "deny";
   readonly reason?: string;
-  readonly scope?: "once" | "session";
+  /** W13a/T9-3：scope="always" = 会话缓存之外**写回项目层规则**（原子 +
+   * schema 校验 + 限层——assembly.handleApprove 消费；deny 无物可记）。 */
+  readonly scope?: "once" | "session" | "always";
   readonly feedback?: string;
   /** C52：修改后的执行参数（仅 allow 有意义；gate 侧重跑出口族硬拦）。 */
   readonly modifiedInput?: JsonRecord;
