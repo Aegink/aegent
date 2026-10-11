@@ -62,6 +62,11 @@ export function racePermissionResponders(
         // ——signal 通知 responder 尽快退出；挂死 promise 吞掉不阻塞。
         for (const c of controllers) c.abort();
         for (const p of racePromises) p.catch(() => {});
+        // W16 排查 E：primary 败者 rejection 同样吞（responder 先胜后
+        // ManualPermissionBroker 超时/dispose 的 PermissionTimeout rejection
+        // 无人接 → unhandled rejection → Node≥15 默认崩进程；primary 胜出
+        // 时 rejection 已被 await 消费，此处 catch 为 no-op——幂等）。
+        primaryPromise.catch(() => {});
       }
     },
   };

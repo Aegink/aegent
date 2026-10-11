@@ -92,7 +92,12 @@ export interface DelegationSendReceipt {
 export class DelegationSendError extends Error {
   override readonly name = "DelegationSendError";
   constructor(
-    readonly code: "DELEGATION_UNKNOWN" | "DELEGATION_RUNNING" | "DELEGATION_CAP_REACHED" | "DELEGATION_QUEUE_FULL",
+    readonly code:
+      | "DELEGATION_UNKNOWN"
+      | "DELEGATION_RUNNING"
+      | "DELEGATION_CAP_REACHED"
+      | "DELEGATION_QUEUE_FULL"
+      | "DELEGATION_SESSION_BUSY",
     message: string,
   ) {
     super(message);

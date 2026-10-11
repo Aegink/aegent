@@ -75,6 +75,29 @@ describe("racePermissionResponders（W13a/T9-3 审批竞速）", () => {
     expect(answer.reason).toBe("hook 自动放行");
   });
 
+  it("W16 E 回归：responder 先胜后 primary 败者 reject → 无 unhandled rejection（进程不崩）", async () => {
+    const rejections: unknown[] = [];
+    const onUnhandled = (err: unknown): void => {
+      rejections.push(err);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const failingBroker = makeController("broker-failing");
+      const fastHook = makeController("hook-fast");
+      const raced = racePermissionResponders(brokerOf(failingBroker), [responderOf(fastHook)]);
+      const pending = raced.decide(request);
+      fastHook.settle({ action: "allow", reason: "hook 自动放行" });
+      expect(await pending).toMatchObject({ action: "allow" });
+      // 胜者产生后 primary 才 reject（ManualPermissionBroker 超时/dispose 轨）——
+      // 修复前：primaryPromise 无 catch → rejection 无主 → 进程级崩溃面
+      failingBroker.fail(new Error("PermissionTimeout"));
+      await new Promise((r) => setTimeout(r, 10)); // 让 rejection 事件环走完
+      expect(rejections).toHaveLength(0);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
   it("hook 挂死 → broker 先到者胜（先兑现后 abort 败者）", async () => {
     const fastBroker = makeController("broker-fast");
     const hungHook = makeController("hook-hung");

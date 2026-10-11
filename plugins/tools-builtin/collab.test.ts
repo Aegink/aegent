@@ -146,7 +146,7 @@ describe("collab 工具（W2/T9-1 编排方向盘）", () => {
       permissionCeiling: string;
       caller: string;
     };
-    expect(payload.collabId).toMatch(/^collab-\d+$/);
+    expect(payload.collabId).toMatch(/^collab-[a-z0-9]+-\d+$/); // W16 P1-2：时间戳段防撞
     expect(payload.targetSessionId).toContain("::collab-");
     expect(payload.permissionCeiling).toBe("accept-edits");
     expect(payload.caller).toBe("s-parent");

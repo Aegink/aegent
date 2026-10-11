@@ -54,10 +54,34 @@ class GatedProvider {
   }
 }
 
-function makeFixture(options?: { sendToParent?: (message: string) => void }) {
+/** 首轮崩溃 provider（W16 D1 回归——异常终态收队/pendingSteer 续传面）。 */
+class FailFirstProvider {
+  readonly requests: number[] = [];
+  private release!: () => void;
+  readonly gate: Promise<void> = new Promise<void>((resolve) => {
+    this.release = resolve;
+  });
+  letRelease(): void {
+    this.release();
+  }
+  async *streamChat(): AsyncIterable<StreamChunk> {
+    this.requests.push(this.requests.length + 1);
+    if (this.requests.length === 1) {
+      await this.gate;
+      throw new Error("首轮崩溃");
+    }
+    yield { type: "text-delta", text: "续跑输出" };
+    yield { type: "done" };
+  }
+}
+
+function makeFixture(options?: {
+  sendToParent?: (message: string) => void;
+  provider?: GatedProvider | FailFirstProvider;
+}) {
   const root = makeTmpRoot();
   const store = new SessionEventStore();
-  const provider = new GatedProvider();
+  const provider = options?.provider ?? new GatedProvider();
   const runner = createSubagentRunner({
     parentSessionId: "s0",
     store,
@@ -216,5 +240,56 @@ describe("task_send / resume（W9/T9-2 定向投递与续跑）", () => {
     )) as { isError?: boolean; content: string };
     expect(denied.isError).toBe(true);
     expect(denied.content).toContain("DELEGATION_NO_PARENT_CHANNEL");
+  });
+
+  it("W16 D1 回归：异常终态 steer 残留经 resume 续传（消息不丢、不假收执）", async () => {
+    const fx = makeFixture({ provider: new FailFirstProvider() });
+    await fx.dispatch("task", { description: "崩溃任务", prompt: "初始任务", run_in_background: true });
+    for (let i = 0; i < 200 && fx.provider.requests.length === 0; i++) {
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    // 挂起期间 steer 入队（放行后 runTurn 抛错——异常终态不再续跑）
+    const r = await fx.dispatch("task_send", { delegationId: "dlg-1", message: "窗口期消息" });
+    expect(r.isError).toBeUndefined();
+    fx.provider.letRelease();
+    await fx.runner.delegations.wait({ timeoutMs: 15_000 }); // 首轮 error 结算
+    // terminal（failed）→ send 转 resume：pendingSteer 经 presetSteer 注入新轮
+    const r2 = await fx.dispatch("task_send", { delegationId: "dlg-1", message: "resume 触发" });
+    const receipt = JSON.parse(r2.content) as { accepted: boolean; mode: string };
+    expect(receipt.accepted).toBe(true);
+    expect(receipt.mode).toBe("resume");
+    await fx.runner.delegations.wait({ timeoutMs: 15_000 });
+    const childSession = fx.store.sessionIds().find((id) => id.startsWith("s0::task-"));
+    const userMessages = fx.store
+      .load(childSession!)
+      .filter((e) => e.type === "user/message")
+      .map((e) => (e as { message: { content: string } }).message.content);
+    expect(userMessages.some((c) => c.includes("窗口期消息"))).toBe(true);
+    expect(userMessages.some((c) => c.includes("resume 触发"))).toBe(true);
+  });
+
+  it("W16 D2 回归：同 childSessionId 在途唯一性守卫（DELEGATION_SESSION_BUSY）", async () => {
+    const fx = makeFixture();
+    const first = await fx.runner.run("p1", "占位任务", { background: true, childSessionId: "s0::busy" });
+    expect(first.kind).toBe("background");
+    const second = await fx.runner.run("p2", "冲撞任务", { background: true, childSessionId: "s0::busy" });
+    if (second.kind !== "foreground") throw new Error("守卫拒绝应走前台 failed 结算");
+    expect(second.result.error).toContain("DELEGATION_SESSION_BUSY");
+    fx.provider.letRelease();
+    await fx.runner.delegations.wait({ timeoutMs: 10_000 });
+  });
+
+  it("W16 D3 回归：上限只数 running——已结算委托不占并发额度（不永久楔死）", async () => {
+    const fx = makeFixture();
+    for (let i = 1; i <= 10; i++) {
+      await fx.dispatch("task", { description: `t${i}`, prompt: `任务${i}`, run_in_background: true });
+    }
+    fx.provider.letRelease();
+    await fx.runner.delegations.wait({ timeoutMs: 30_000 }); // 10 个全部结算
+    // 旧实现：delegations.size >= 10 永久拒绝（错误指路的 wait/stop 永不释放槽位）
+    const extra = await fx.dispatch("task", { description: "第11个", prompt: "再来一个", run_in_background: true });
+    expect(extra.content).toContain('state="started"');
+    fx.provider.letRelease();
+    await fx.runner.delegations.wait({ timeoutMs: 15_000 });
   });
 });

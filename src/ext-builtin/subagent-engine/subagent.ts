@@ -239,6 +239,13 @@ export function createSubagentRunner(deps: SubagentRunnerDeps): SubagentRunner {
     /** W9/T9-2 定向 steer 面（工作中的子 loop 队列入队——step 边界注入）；
      * 缺省 undefined = 无队列面（不可 steer）。snapshot 剥离（非契约面）。 */
     steer?: (content: string) => boolean;
+    /** W16 排查 D1：steer 收队闸——子 loop runTurn 返回后的同步段置 false
+     * （与 send 无 await 竞态）。false = loop 已停，steer 入队无人消费——
+     * send 改走 resume 路径（消息不丢、不假收执）。 */
+    acceptsSteer: boolean;
+    /** W16 排查 D1：异常终态（非 completed）时 steer 队列残留——loop 不再
+     * 续跑消化，暂存于此；resume 启动时经 presetSteer 注入新轮队列。 */
+    pendingSteer?: string[];
   }
   const delegations = new Map<string, DelegationEntry>();
   const waiters = new Set<() => void>();
@@ -305,7 +312,7 @@ export function createSubagentRunner(deps: SubagentRunnerDeps): SubagentRunner {
           `未知委托 id：${id}（task_list 可查当前清单）`,
         );
       }
-      if (d.status === "running") {
+      if (d.status === "running" && d.acceptsSteer !== false) {
         // working → steer（A2 step 边界注入——子 loop 队列在位才可 steer）
         if (d.steer === undefined) {
           throw new DelegationSendError(
@@ -321,7 +328,10 @@ export function createSubagentRunner(deps: SubagentRunnerDeps): SubagentRunner {
         }
         return { delegationId: id, childSessionId: d.childSessionId, mode: "steer", messageId: `send-${id}` };
       }
-      // terminal → resume（同 childSessionId 新轮——上下文从流投影重建）
+      // terminal → resume（同 childSessionId 新轮——上下文从流投影重建）。
+      // W16 排查 D1：running 但 acceptsSteer=false = finalize 窗口（loop 已
+      // 停、结算链在跑）——steer 入队无人消费且旧实现假回执 accepted（消息
+      // 永久滞留死队列），此处同样转 resume（消息不丢）。
       return startResume(d, message);
     },
     async resume(id, message): Promise<DelegationSendReceipt> {
@@ -348,17 +358,23 @@ export function createSubagentRunner(deps: SubagentRunnerDeps): SubagentRunner {
   };
 
   /** terminal 委托的续跑启动（同 childSessionId 新链环——新 delegationId）。
-   * 复用 run 机制（background:true）；上限/深度拒绝转类型化 send 错误。 */
+   * 复用 run 机制（background:true）；上限/深度拒绝转类型化 send 错误。
+   * W16 排查 D1：旧委托 steer 队列残留（异常终态）经 presetSteer 注入新轮。 */
   const startResume = async (d: DelegationEntry, message: string): Promise<DelegationSendReceipt> => {
+    const carriedSteer = d.pendingSteer ?? [];
     const outcome = await run(message, `${d.description}（续跑）`, {
       background: true,
       ...(d.agentName !== "general" ? { subagentType: d.agentName } : {}),
       childSessionId: d.childSessionId,
+      ...(carriedSteer.length > 0 ? { presetSteer: carriedSteer } : {}),
     });
+    d.pendingSteer = undefined; // 已交割（成败均不重复注入——新轮队列接管）
     if (outcome.kind !== "background") {
-      // 上限满/深度拒绝等前台 failed 结算 → 类型化拒绝（fail-visible）
+      // 上限满/会话占用/深度拒绝等前台 failed 结算 → 类型化拒绝（fail-visible；
+      // 会话占用单列 code——与并发上限的可自修路径不同：等在途收敛即可重试）
+      const busy = outcome.result.error?.startsWith("DELEGATION_SESSION_BUSY");
       throw new DelegationSendError(
-        "DELEGATION_CAP_REACHED",
+        busy ? "DELEGATION_SESSION_BUSY" : "DELEGATION_CAP_REACHED",
         outcome.result.error ?? "续跑未能启动（并发上限或装配拒绝）",
       );
     }
@@ -382,9 +398,13 @@ export function createSubagentRunner(deps: SubagentRunnerDeps): SubagentRunner {
        * T9-1/T9-2：预设子会话 id（collab worker 的编排会话语义——血统/
        * 标题落同一 id；task resume 续跑同 delegation 的原子会话）。缺省
        * undefined = 内部生成 `${parent}::task-N-ts`（既有行为零变化）。
-       * 调用方必须保证该 id 未被占用（占用 = 流混写——调用方纪律）。
+       * W16 排查 D2：调用方纪律改为类型化守卫——同 childSessionId 的
+       * running 委托在途时后台启动类型化拒绝（防双 loop 交叉写流）。
        */
       childSessionId?: string;
+      /** W16 排查 D1：resume 时旧委托 steer 队列残留（异常终态未消化）——
+       * 逐条入新轮队列（队列上限 8，与残留上限一致）。 */
+      presetSteer?: readonly string[];
     },
   ): Promise<SubagentRunOutcome> => {
     const childDepth = deps.depth + 1;
@@ -453,7 +473,11 @@ export function createSubagentRunner(deps: SubagentRunnerDeps): SubagentRunner {
     // W9/T9-2：后台委托的子 loop 注入队列（steer 面——task_send working
     // 目标经此在 step 边界注入；A2 drainQueue 消费）。前台运行无队列
     // （单轮语义零变化）。上限 8（防无界 steer 打爆子上下文）。
+    // W16 排查 D1：resume 携带的旧队列残留（异常终态未消化）逐条注入。
     const subQueue = background ? new PromptQueue("one-at-a-time", 8) : undefined;
+    if (subQueue !== undefined) {
+      for (const carried of opts?.presetSteer ?? []) subQueue.enqueue(carried);
+    }
 
     const childSessionId =
       opts?.childSessionId ?? `${deps.parentSessionId}::task-${++counter}-${Date.now()}`;
@@ -638,14 +662,36 @@ export function createSubagentRunner(deps: SubagentRunnerDeps): SubagentRunner {
     const delegationId = `dlg-${++delegationSeq}`;
     const agentName = preset?.name ?? "general";
     if (background) {
-      if (delegations.size >= MAX_SUBAGENT_DELEGATIONS) {
+      // W16 排查 D2：同 childSessionId 的在途唯一性守卫（类型化拒绝——旧
+      // "调用方纪律"注释升级为运行时守卫；双 loop 交叉写同一子流 = 结算
+      // 报告错配 + 间隙窗口交错落流）。
+      if (
+        [...delegations.values()].some(
+          (x) => x.status === "running" && x.childSessionId === childSessionId,
+        )
+      ) {
         return {
           kind: "foreground",
           result: {
             sessionId: "",
             stopReason: "failed",
             output: "",
-            error: `后台委托已达并发上限（${MAX_SUBAGENT_DELEGATIONS}）——task_list 查看在途并 task_wait/task_stop 收敛后再派`,
+            error: `DELEGATION_SESSION_BUSY：子会话 ${childSessionId} 已有在途委托（task_wait 等其收敛后重试）`,
+          },
+        };
+      }
+      // W16 排查 D3：上限只数 running（在途）——已结算条目保留注册表供
+      // task_result 查询但不占并发额度（旧实现 size 计入已结算 → 同一会话
+      // 累计 10 个后台委托后永久楔死，错误文案指路的 wait/stop 永不释放槽位）。
+      const activeCount = [...delegations.values()].filter((x) => x.status === "running").length;
+      if (activeCount >= MAX_SUBAGENT_DELEGATIONS) {
+        return {
+          kind: "foreground",
+          result: {
+            sessionId: "",
+            stopReason: "failed",
+            output: "",
+            error: `后台委托在途已达并发上限（${MAX_SUBAGENT_DELEGATIONS}）——task_list 查看在途并 task_wait/task_stop 收敛后再派`,
           },
         };
       }
@@ -660,6 +706,8 @@ export function createSubagentRunner(deps: SubagentRunnerDeps): SubagentRunner {
         status: "running",
         startedAt: Date.now(),
         cancel: () => subLoop.cancel({ kind: "user" }),
+        // W16 排查 D1：steer 收队闸（runTurn 返回后的同步段置 false）
+        acceptsSteer: true,
         // W9/T9-2：steer 面（task_send working 目标的注入通道——队列满 false）
         ...(subQueue !== undefined
           ? {
@@ -712,6 +760,21 @@ export function createSubagentRunner(deps: SubagentRunnerDeps): SubagentRunner {
             message: err instanceof Error ? err.message : String(err),
           },
         };
+      }
+
+      // W16 排查 D1：收队（try/catch 后同步段——成败两路都收，且与 send 的
+      // await 边界互斥、无竞态窗口）。runTurn 已返回/已抛 = loop 已停：此后
+      // 到达的 send 经 acceptsSteer=false 转 resume（消息不丢、不假收执）。
+      // 异常终态不再续跑——队列残留 drain 出暂存 entry.pendingSteer，resume
+      // 启动时经 presetSteer 注入新轮消化。
+      if (background && subQueue !== undefined) {
+        const entry = delegations.get(delegationId);
+        if (entry !== undefined) {
+          entry.acceptsSteer = false;
+          if (reason.kind !== "completed" && subQueue.size > 0) {
+            entry.pendingSteer = subQueue.drainAll().map((q) => q.content);
+          }
+        }
       }
 
       // 结算前子流 flush（E10 纪律：结算指向的子会话事实已落库）。
