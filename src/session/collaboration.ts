@@ -61,10 +61,13 @@ export interface CollaborationRecord {
 }
 
 let collabCounter = 0;
-/** 协作消息 id（进程内单调——跨流关联键；前缀 collab-）。 */
+/** 协作消息 id（进程内单调 + 毫秒时间戳防撞——跨流关联键；前缀 collab-）。
+ * 时间戳段防跨重启/跨进程计数归零后与库中历史流 collabId 撞键（撞键 =
+ * 流投影把两条不同协作生命周期聚合成一条——wait 立即取到旧结果，W16
+ * 排查 P1-2；worker 会话 id 同款防撞先例 collab-local）。 */
 export function nextCollabId(): string {
   collabCounter += 1;
-  return `collab-${collabCounter}`;
+  return `collab-${Date.now().toString(36)}-${collabCounter}`;
 }
 
 /** 执行体的输入（快照定死的证据面——只有快照权限，没有活设置通道）。 */
@@ -152,6 +155,9 @@ function assertNoCollabCycle(
 export class CollaborationService {
   private readonly queue: QueuedEntry[] = [];
   private running = new Set<string>();
+  /** 执行期间被取消的 collabId（cancel 打标 → runNext 结算感知——取消事实
+   * 不被后落 completed 覆盖；W16 排查 P1-1）。 */
+  private readonly cancelledDuringRun = new Set<string>();
   private readonly limits: Required<CollaborationLimits>;
 
   constructor(
@@ -248,11 +254,14 @@ export class CollaborationService {
     return this.queue.filter((q) => q.targetSessionId === targetSessionId).length;
   }
 
-  /** 取消排队任务（状态机转移 cancelled——目标流 update + 源流 report）。 */
+  /** 取消排队任务（状态机转移 cancelled——目标流 update + 源流 report）。
+   * running 中条目同样可取消（结算前仍在 queue——executor 完成时由 runNext
+   * 的 cancelledDuringRun 闸感知，取消事实不被后落 completed 洗掉）。 */
   cancel(collabId: string, ts: number = Date.now()): boolean {
     const idx = this.queue.findIndex((q) => q.collabId === collabId);
     if (idx === -1) return false;
     const entry = this.queue.splice(idx, 1)[0]!;
+    this.cancelledDuringRun.add(collabId);
     this.deps.append(entry.targetSessionId, {
       type: "session/collab",
       seq: 0,
@@ -309,8 +318,16 @@ export class CollaborationService {
     } catch (e) {
       outcome = { status: "failed", error: e instanceof Error ? e.message : String(e) };
     }
-    this.queue.splice(this.queue.findIndex((q) => q.collabId === entry.collabId), 1);
+    // 结算移除（W16 排查 P1-1）：条目可能已在执行期间被 cancel 从 queue 删
+    // 出——findIndex=-1 时不得 splice(-1,1)（会静默错删队尾无关任务，其事件
+    // 已落流却永不执行永不结算）。
+    const settleIdx = this.queue.findIndex((q) => q.collabId === entry.collabId);
+    if (settleIdx !== -1) this.queue.splice(settleIdx, 1);
     this.running.delete(targetSessionId);
+    // 执行期间被取消：cancel 已落 cancelled update+report 且已 notify——
+    // 结算面不再落 completed/failed（后落事件会覆盖取消事实）也不再 notify
+    // （各路径至多一条——幂等闸同纪律），执行结果按取消语义丢弃。
+    if (this.cancelledDuringRun.delete(entry.collabId)) return entry.collabId;
     const settleTs = Date.now();
     this.deps.append(targetSessionId, {
       type: "session/collab",

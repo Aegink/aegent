@@ -171,13 +171,16 @@ export class SqliteEventStorage implements EventStorage {
       throw new SessionArchivedError(sessionId);
     }
     const rows = this.selectAll.all(sessionId) as Array<{ payload: string }>;
-    // §4/T9-7 信封校验：闭集外事件 ignorable → 跳过；否则 fail-closed 拒读
+    // §4/T9-7 信封校验：reject（闭集外且未标 ignorable）fail-closed 拒读。
+    // skip（ignorable）行**原样返回**——restore 的槽位纪律（strict 预检/
+    // maxSeq/skipTo 桥接）需要完整 seq 空间：此处过滤会低估 maxSeq（尾跳痕
+    // 续写撞 (session_id,seq) 主键断写链）、把中断痕误判"seq 不连续"降级
+    // discard（W16 排查 P0-1）。可见流过滤由 envelopeVisibleEvents 在
+    // 查询/导出/转移/回放读面承担。
     const out: SessionEvent[] = [];
     for (const row of rows) {
       const event = JSON.parse(row.payload) as SessionEvent;
-      const verdict = validateEventEnvelope(event);
-      if (verdict === "skip") continue;
-      if (verdict === "reject") throw new EventEnvelopeError(event.type);
+      if (validateEventEnvelope(event) === "reject") throw new EventEnvelopeError(event.type);
       out.push(event);
     }
     return out;

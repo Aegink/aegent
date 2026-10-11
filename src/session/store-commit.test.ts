@@ -8,8 +8,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { SessionEvent } from "../core/index.js";
-import { EventEnvelopeError } from "../core/index.js";
+import { envelopeVisibleEvents, EventEnvelopeError, type EventStorage, type SessionEvent } from "../core/index.js";
 import { SqliteEventStorage, CURRENT_SCHEMA_VERSION } from "./db.js";
 import { InMemoryEventStorage, SessionEventStore } from "./store.js";
 import { collaborationProjection } from "./collab-projection.js";
@@ -140,7 +139,7 @@ describe("commit 原子批（W15b/T9-7——§10）", () => {
 });
 
 describe("ignorable 信封（W15b/T9-7——§4 白名单式）", () => {
-  it("闭集外 + ignorable → readAll 跳过；闭集外无标记 → fail-closed 拒读", () => {
+  it("readAll raw 语义：skip 行原样返回（槽位完整性）；可见流由 envelopeVisibleEvents 过滤；reject 恒拒读", () => {
     const { path } = makeDb();
     const storage = SqliteEventStorage.open({ path });
     storage.appendBatch("s1", [
@@ -148,8 +147,10 @@ describe("ignorable 信封（W15b/T9-7——§4 白名单式）", () => {
       ev(2, "future/event", { ignorable: true, data: "新版事件" } as never),
       ev(3, "user/message", { message: { content: "ok" } }),
     ]);
-    // ignorable → 跳过（跨版本前向兼容）
-    expect(storage.readAll("s1").map((e) => e.seq)).toEqual([1, 3]);
+    // raw：ignorable 行不丢槽位（restore strict 预检/maxSeq 依赖完整 seq 空间——P0-1 修复语义）
+    expect(storage.readAll("s1").map((e) => e.seq)).toEqual([1, 2, 3]);
+    // 可见流读面：skip 过滤（查询/导出/转移/回放）
+    expect(envelopeVisibleEvents(storage.readAll("s1")).map((e) => e.seq)).toEqual([1, 3]);
     storage.close();
 
     const { path: path2 } = makeDb();
@@ -157,6 +158,84 @@ describe("ignorable 信封（W15b/T9-7——§4 白名单式）", () => {
     storage2.appendBatch("s2", [ev(1, "future/event", { data: "未标注" } as never)]);
     expect(() => storage2.readAll("s2")).toThrow(EventEnvelopeError);
     storage2.close();
+  });
+
+  it("P0-1 回归：尾跳痕（最大 seq 为 ignorable）restore 后续写不撞主键、不丢事件", async () => {
+    const { path } = makeDb();
+    const storage = SqliteEventStorage.open({ path });
+    storage.appendBatch("s1", [
+      ev(1, "turn/start"),
+      ev(2, "user/message", { message: { content: "a" } }),
+      ev(3, "turn/end", { reason: { kind: "completed" } }),
+      ev(4, "future/event", { ignorable: true } as never),
+      ev(5, "future/event", { ignorable: true } as never),
+    ]);
+    const store = new SessionEventStore(storage);
+    await store.restore("s1"); // strict 通过（raw seq 空间完整）
+    // 续写：nextSeq 必须从真最大 seq+1 = 6 起（修复前低估为 4 → 撞 PK 断写链）
+    store.append("s1", [{ type: "turn/start", turn: 2 }]);
+    await store.flush("s1");
+    const reread = new SessionEventStore(SqliteEventStorage.open({ path }));
+    const events = await reread.restore("s1");
+    expect(events.map((e) => e.seq)).toEqual([1, 2, 3, 6]); // 可见流：跳痕 + 新事件
+    expect(events.at(-1)!.type).toBe("turn/start");
+  });
+
+  it("P1-3 回归：flush 挂起窗口内 append 不丢（换桶语义——新事件归下一批）", async () => {
+    const pending: Array<() => void> = []; // 每批一个放行闸（flush 串行链——每轮都会到挂起点）
+    const inner = new InMemoryEventStorage();
+    const slow = {
+      appendBatch(sessionId: string, events: readonly SessionEvent[]): Promise<void> {
+        inner.appendBatch(sessionId, events);
+        return new Promise<void>((resolve) => {
+          pending.push(resolve);
+        });
+      },
+      readAll(sessionId: string): SessionEvent[] {
+        return inner.readAll(sessionId);
+      },
+    } satisfies EventStorage;
+    const store = new SessionEventStore(slow);
+    store.append("s1", [{ type: "turn/start", turn: 1 }]);
+    const flushing = store.flush("s1"); // 第一批挂起在闸上
+    await new Promise((r) => setTimeout(r, 0)); // 让 flush 的 run 进入挂起点（微任务时序）
+    // 挂起窗口内同会话新 append（修复前：push 进同引用批 → 越过持久化调用点
+    // 即被清出 buffer 且被标已落库 → 重启即丢）
+    store.append("s1", [
+      { type: "user/message", turn: 1, source: "user", message: { content: "during" } },
+    ]);
+    expect(pending).toHaveLength(1);
+    pending.shift()!(); // 放行第一批
+    await flushing;
+    expect(store.pendingCount("s1")).toBe(1); // 新事件仍待落库（未被误标）
+    const second = store.flush("s1"); // 第二批（挂起窗口内 append 的）
+    await new Promise((r) => setTimeout(r, 0));
+    pending.shift()!();
+    await second;
+    expect(inner.readAll("s1").map((e) => e.type)).toEqual(["turn/start", "user/message"]);
+  });
+
+  it("P1-3 回归：flush 失败回塞保序（持久化抛错 → 事件滞留 buffer 下轮重试）", async () => {
+    let failNext = true;
+    const inner = new InMemoryEventStorage();
+    const flaky = {
+      appendBatch(sessionId: string, events: readonly SessionEvent[]): Promise<void> {
+        if (failNext) return Promise.reject(new Error("存储瞬断"));
+        inner.appendBatch(sessionId, events);
+        return Promise.resolve();
+      },
+      readAll(sessionId: string): SessionEvent[] {
+        return inner.readAll(sessionId);
+      },
+    } satisfies EventStorage;
+    const store = new SessionEventStore(flaky);
+    store.append("s1", [{ type: "turn/start", turn: 1 }]);
+    await expect(store.flush("s1")).rejects.toThrow("存储瞬断");
+    expect(store.pendingCount("s1")).toBe(1); // 回塞——不丢
+    failNext = false;
+    await store.flush("s1"); // 重试成功
+    expect(inner.readAll("s1")).toHaveLength(1);
+    expect(store.pendingCount("s1")).toBe(0);
   });
 
   it("restore：strict 对 ignorable 未知容忍（seq 槽位纪律保持）+ 对 reject 抛错", async () => {

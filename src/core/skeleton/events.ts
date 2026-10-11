@@ -978,3 +978,18 @@ export class EventEnvelopeError extends Error {
     this.name = "EventEnvelopeError";
   }
 }
+
+/** 消费面读过滤（T9-7/W16 排查修复）：skip（ignorable）行不进查询/导出/
+ * 转移/回放等"有效事件流"读面；reject 兜底抛（存储读源头已拦，双闸防漏）。
+ * 与 store.restore 的分区（partitionByEnvelope——保留 seq 槽位做 strict
+ * 预检/maxSeq/skipTo 桥接）互补：restore 之外不关心槽位，只要可见流。 */
+export function envelopeVisibleEvents(raw: readonly SessionEvent[]): SessionEvent[] {
+  const out: SessionEvent[] = [];
+  for (const event of raw) {
+    const verdict = validateEventEnvelope(event);
+    if (verdict === "reject") throw new EventEnvelopeError(event.type);
+    if (verdict === "skip") continue;
+    out.push(event);
+  }
+  return out;
+}

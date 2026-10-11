@@ -6,7 +6,7 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import type { SessionEvent } from "../core/index.js";
+import { envelopeVisibleEvents, type SessionEvent } from "../core/index.js";
 import type { SqliteEventStorage } from "../session/db.js";
 import type { ImportedMessage } from "./import-spec.js";
 import { importedMessagesToEvents } from "./settings-project-ops.js";
@@ -243,7 +243,7 @@ export function sessionExportOp(
   payload: SessionExportPayload,
 ): { text: string; filename: string; messageCount: number } {
   const store = requireDb(db, "会话导出");
-  return sessionExportFromEvents(store.readAll(payload.sessionId), payload, store.getTitle(payload.sessionId)?.title);
+  return sessionExportFromEvents(envelopeVisibleEvents(store.readAll(payload.sessionId)), payload, store.getTitle(payload.sessionId)?.title);
 }
 
 const SESSION_IMPORT_MAX_MESSAGES = 5000;

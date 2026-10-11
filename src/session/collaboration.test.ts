@@ -5,6 +5,7 @@ import type { CollabEvent, SessionEvent } from "../core/index.js";
 import {
   CollaborationService,
   collaborationsFromEvents,
+  nextCollabId,
   type CollabTask,
 } from "./collaboration.js";
 
@@ -110,6 +111,55 @@ describe("派发/排队/执行/回投全链", () => {
     expect(eventsOf("s-target").at(-1)?.status).toBe("cancelled");
     expect(notifications[0]?.status).toBe("cancelled");
     expect(service.cancel(id)).toBe(false); // 幂等：已不在队
+  });
+
+  it("执行中取消（W16 P1-1 回归）：取消事实不被 completed 洗掉 + 队尾他人任务不被误删", async () => {
+    const pending: Array<(v: { result?: string; error?: string; status: "completed" | "failed" }) => void> = [];
+    const { service, eventsOf, notifications } = makeService({
+      executor: () =>
+        new Promise((resolve) => {
+          pending.push(resolve);
+        }),
+    });
+    const idA = service.dispatch({
+      sourceSessionId: "s-source",
+      targetSessionId: "s-target",
+      kind: "task",
+      content: "A",
+      permissionCeiling: "ask",
+    });
+    const idB = service.dispatch({
+      sourceSessionId: "s-source",
+      targetSessionId: "s-target",
+      kind: "task",
+      content: "B",
+      permissionCeiling: "ask",
+    });
+    const running = service.runNext("s-target"); // A 进入 running（executor 挂起）
+    await new Promise((r) => setTimeout(r, 0)); // 等 runNext 执行到 executor 挂起点
+    expect(service.cancel(idA)).toBe(true); // running 条目结算前仍在 queue——竞态窗口取消
+    pending[0]!({ result: "迟到产出", status: "completed" });
+    await running;
+    // 源流最后 report 仍是 cancelled（修复前：后落 completed 覆盖取消事实）
+    const reports = eventsOf("s-source").filter((e) => e.direction === "report");
+    expect(reports.at(-1)?.status).toBe("cancelled");
+    // notify 各路径至多一条（cancel 一条；结算面不再发）
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toMatchObject({ collabId: idA, status: "cancelled" });
+    // 队尾无关任务 B 不被 splice(-1,1) 误删（修复前：A 已被 cancel 删除，
+    // 结算 findIndex=-1 → splice(-1,1) 静默移除 B——B 永不执行永不结算）
+    const runningB = service.runNext("s-target"); // B 进入 executor 挂起
+    await new Promise((r) => setTimeout(r, 0));
+    pending.at(-1)?.({ result: "B 产出", status: "completed" });
+    const ranB = await runningB;
+    expect(ranB).toBe(idB);
+    expect(eventsOf("s-target").at(-1)?.status).toBe("completed");
+  });
+
+  it("collabId 防撞（W16 P1-2 回归）：时间戳段在位——跨重启计数归零不与历史流撞键", () => {
+    const id = nextCollabId();
+    expect(id).toMatch(/^collab-[a-z0-9]+-\d+$/); // collab-<base36 时间戳>-<进程内单调>
+    expect(id).not.toBe(nextCollabId());
   });
 });
 

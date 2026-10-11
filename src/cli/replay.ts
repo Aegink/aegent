@@ -15,6 +15,7 @@
 import os from "node:os";
 import path from "node:path";
 
+import { envelopeVisibleEvents } from "../core/index.js";
 import { SqliteEventStorage } from "../session/db.js";
 import { replaySession } from "../obs/replay.js";
 import { isValidSessionId } from "../session/session-id.js";
@@ -98,7 +99,7 @@ export async function runReplayCommand(
   try {
     const storage = SqliteEventStorage.open({ path: dbPath });
     try {
-      const events = storage.readAll(id);
+      const events = envelopeVisibleEvents(storage.readAll(id));
       if (events.length === 0) {
         io.out(`（库 ${dbPath} 无会话 ${id} 的事件）`);
         return 0;

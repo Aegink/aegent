@@ -175,39 +175,54 @@ export class SessionEventStore implements SessionStore {
       const batch = this.buffer.get(sessionId);
       const extras = this.pendingExtraWrites.get(sessionId);
       if ((!batch || batch.length === 0) && (!extras || extras.length === 0)) return;
-      // W15b/T9-7：commit 的非事件写与 buffer 事件同一事务（storage.commit
-      // 在位时）——"事件+标题+账本+插件文档同批落"；无 extras 走既有
-      // appendBatch 快路径（零行为变化）。
-      if (extras !== undefined && extras.length > 0) {
-        if (typeof this.storage.commit === "function") {
-          const writes: StorageWrite[] = [];
-          if (batch !== undefined && batch.length > 0) {
-            writes.push({ kind: "events", sessionId, events: batch });
+      // 换桶（W16 排查 P1-3）：持久化前先把 buffer/extras 指向新容器，旧容器
+      // 归本次持久化批——await 挂起窗口内新 append/commit 落进新桶，不会被
+      // 误标"已落库"后清空（旧实现 batch/extras 与 buffer 共享数组引用，
+      // 挂起期间 push 进批引用的事件越过持久化调用点即丢）。失败回塞保序。
+      if (batch !== undefined && batch.length > 0) this.buffer.set(sessionId, []);
+      if (extras !== undefined && extras.length > 0) this.pendingExtraWrites.delete(sessionId);
+      try {
+        // W15b/T9-7：commit 的非事件写与 buffer 事件同一事务（storage.commit
+        // 在位时）——"事件+标题+账本+插件文档同批落"；无 extras 走既有
+        // appendBatch 快路径（零行为变化）。
+        if (extras !== undefined && extras.length > 0) {
+          if (typeof this.storage.commit === "function") {
+            const writes: StorageWrite[] = [];
+            if (batch !== undefined && batch.length > 0) {
+              writes.push({ kind: "events", sessionId, events: batch });
+            }
+            writes.push(...extras);
+            await this.storage.commit(writes);
+          } else {
+            if (batch !== undefined && batch.length > 0) await this.storage.appendBatch(sessionId, batch);
+            this.applyInMemoryExtras(extras);
           }
-          writes.push(...extras);
-          await this.storage.commit(writes);
+        } else if (batch !== undefined && batch.length > 0) {
+          await this.storage.appendBatch(sessionId, batch);
         } else {
-          if (batch !== undefined && batch.length > 0) await this.storage.appendBatch(sessionId, batch);
-          this.applyInMemoryExtras(extras);
+          // 仅 extras（无事件批）：commit 在位走同事务；内存后端即置 doc 面
+          if (typeof this.storage.commit === "function") {
+            await this.storage.commit(extras ?? []);
+          } else {
+            this.applyInMemoryExtras(extras ?? []);
+          }
         }
-        this.pendingExtraWrites.delete(sessionId);
-      } else if (batch !== undefined && batch.length > 0) {
-        await this.storage.appendBatch(sessionId, batch);
-      } else {
-        // 仅 extras（无事件批）：commit 在位走同事务；内存后端即置 doc 面
-        if (typeof this.storage.commit === "function") {
-          await this.storage.commit(extras ?? []);
-        } else {
-          this.applyInMemoryExtras(extras ?? []);
+      } catch (e) {
+        // 回塞：持久化失败的事件不丢——按 seq 序塞回新桶头部，write-behind
+        // 下轮 flush 重试（与 append 的 seq 单调一致：旧批 seq 全部小于新桶）。
+        const buf = this.buffer.get(sessionId) ?? [];
+        if (batch !== undefined && batch.length > 0) this.buffer.set(sessionId, [...batch, ...buf]);
+        const pend = this.pendingExtraWrites.get(sessionId) ?? [];
+        if (extras !== undefined && extras.length > 0) {
+          this.pendingExtraWrites.set(sessionId, [...extras, ...pend]);
         }
-        this.pendingExtraWrites.delete(sessionId);
+        throw e;
       }
       if (batch !== undefined && batch.length > 0) {
         const maxSeq = batch[batch.length - 1]!.seq;
         const prev = this.lastFlushedSeq.get(sessionId) ?? 0;
         if (maxSeq <= prev) throw new Error(`flush 语义错误：seq 未前进（${maxSeq} <= ${prev}）`);
         this.lastFlushedSeq.set(sessionId, maxSeq);
-        this.buffer.set(sessionId, []);
       }
     });
     // 失败也要清链，否则后续 flush 永远拿到 rejected tail；错误仍由本次调用方收到。
@@ -275,6 +290,10 @@ export class SessionEventStore implements SessionStore {
           }
           bridged.append([row]);
         }
+        // 尾部跳痕桥接（W16 排查 P0-1 深层）：maxSeq 在被跳区间内时投影
+        // lastSeq 停在最后一个可见行——与 nextSeqBySession（maxSeq+1）失配，
+        // 后续 append 必抛"seq 不连续"。补尾桥对齐两者（W16 回归断言钉住）。
+        if (maxSeq > bridged.projection.lastSeq) bridged.skipTo(maxSeq);
         this.projectors.set(sessionId, bridged);
       } else {
         this.projectors.set(sessionId, Projector.fold(rows));

@@ -15,6 +15,7 @@
 import type { SessionStore } from "../session/store.js";
 import type { SqliteEventStorage } from "../session/db.js";
 import type { PricingEntry } from "../session/settings.js";
+import { envelopeVisibleEvents } from "../core/index.js";
 import { querySessionsDb } from "../session/query.js";
 import { reviewChangesFromEvents } from "../session/review-changes.js";
 import { listWorkspaceFiles, readWorkspaceFile } from "./files-list.js";
@@ -133,7 +134,7 @@ export async function handleHostQuery(
     const mirrored = [...(deps.store?.load(query.sessionId) ?? [])];
     if (deps.sessionsLibrary === undefined) return mirrored;
     const bySeq = new Map<number, import("../core/index.js").SessionEvent>();
-    for (const e of deps.sessionsLibrary.readAll(query.sessionId)) bySeq.set(e.seq, e);
+    for (const e of envelopeVisibleEvents(deps.sessionsLibrary.readAll(query.sessionId))) bySeq.set(e.seq, e);
     for (const e of mirrored) bySeq.set(e.seq, e);
     return [...bySeq.values()].sort((a, b) => a.seq - b.seq);
   })();

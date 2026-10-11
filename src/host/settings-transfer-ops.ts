@@ -8,7 +8,7 @@
 import type { SettingsCall } from "./protocol-settings.js";
 import type { SettingsGateway, TransferDeps } from "./settings-gateway-types.js";
 import { withSettingsRmw } from "./settings-rmw.js";
-import type { SessionEvent } from "../core/index.js";
+import { envelopeVisibleEvents, type SessionEvent } from "../core/index.js";
 import type { SqliteEventStorage } from "../session/db.js";
 import type { SessionStore } from "../session/store.js";
 import {
@@ -53,7 +53,7 @@ function readSessionEvents(
   sessionDb: SqliteEventStorage,
   sessionId: string,
 ): readonly SessionEvent[] {
-  return sessionDb.readAll(sessionId);
+  return envelopeVisibleEvents(sessionDb.readAll(sessionId));
 }
 
 /** WebDAV 依赖装配（配置包构建/应用复用 gateway 既有面——零凭据纪律在
@@ -167,7 +167,7 @@ export function tryTransferSettingsOp(
       const events = session?.store?.load(call.sessionId!) ?? [];
       const library = session?.sessionsLibrary;
       const crossSession = events.length === 0 && call.sessionId !== session?.sessionId;
-      const libraryEvents = crossSession && library !== undefined ? library.readAll(call.sessionId!) : [];
+      const libraryEvents = crossSession && library !== undefined ? envelopeVisibleEvents(library.readAll(call.sessionId!)) : [];
       return sessionExportFromEvents(
         events.length > 0 ? events : libraryEvents,
         {
