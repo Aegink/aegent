@@ -1,0 +1,1 @@
+向后台委托定向投递消息（只返回受理回执，不返回回复）。delegationId 传委托 id：委托仍在运行（working）时消息在其下一 step 边界注入（steer——补充指令/新约束）；委托已终态（terminal）时自动按同子会话续跑新轮（resume——上下文从该会话完整延续）。子代理语境可传 delegationId="parent" 把自足结果提前发回父会话（发送不会结束你的回合）。未知 id 会类型化拒绝（task_list 可查清单）。

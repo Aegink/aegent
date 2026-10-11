@@ -44,7 +44,9 @@ import {
   createTaskWaitTool,
   createTaskListTool,
   createTaskStopTool,
+  createTaskSendTool,
   type TaskLifecycleDeps,
+  type TaskSendDeps,
 } from "./task-lifecycle.js";
 import { createTodoReadTool, type ProjectionTodo } from "./todo-read.js";
 import { createTodoWriteTool } from "./todo.js";
@@ -157,6 +159,9 @@ export function registerBuiltinTools(
     taskWait?: TaskLifecycleDeps;
     taskList?: TaskLifecycleDeps;
     taskStop?: TaskLifecycleDeps;
+    /** W9/T9-2：task_send 定向投递（与 task 同源注入；sendToParent 为
+     * 子代理语境回投面——顶层装配缺省不传）。 */
+    taskSend?: TaskSendDeps;
     /**
      * W2/T9-1 编排方向盘（collab 工具——本地协作运行时端口）：提供时注册；
      * 缺省不注册（无编排运行时的装配零新工具——"可裁剪插件"纪律）。
@@ -312,6 +317,8 @@ export function registerBuiltinTools(
     ...(options.taskWait !== undefined ? [createTaskWaitTool(options.taskWait)] : []),
     ...(options.taskList !== undefined ? [createTaskListTool(options.taskList)] : []),
     ...(options.taskStop !== undefined ? [createTaskStopTool(options.taskStop)] : []),
+    // W9/T9-2：task_send（working→steer / terminal→resume / parent 回投）
+    ...(options.taskSend !== undefined ? [createTaskSendTool(options.taskSend)] : []),
     // W2/T9-1 编排方向盘（collab——本地协作运行时端口提供时才注册；
     // needsApproval + 无 allow 规则 = gate 缺省 ask，编排缺省人审）
     ...(options.collab !== undefined ? [createCollabTool(options.collab)] : []),

@@ -53,6 +53,11 @@ export interface TaskToolDeps {
     | { kind: "foreground"; result: SubagentRunResult }
     | { kind: "background"; delegationId: string; childSessionId: string }
   >;
+  /**
+   * W9/T9-2：委托注册表（resume 参数的执行面）。缺省 undefined = resume
+   * 参数类型化拒绝（无注册表面 = 无可续委托）。
+   */
+  readonly delegations?: import("../../src/core/index.js").DelegationsApi;
 }
 
 export function createTaskTool(deps: TaskToolDeps): ToolDef {
@@ -89,6 +94,11 @@ export function createTaskTool(deps: TaskToolDeps): ToolDef {
           description:
             "后台运行（T-P3-145）：true = 立即返回委托 id，父会话继续其他工作，用 task_wait 收割报告 / task_list 查状态 / task_stop 停止；缺省 false = 同步等待完成（结果直接返回）",
         },
+        resume: {
+          type: "string",
+          description:
+            "续跑既有委托（W9）：传委托 id（dlg-N），prompt 作为续跑指令——同子会话起新轮，上下文从该会话事件流延续；委托仍运行中会被类型化拒绝（先 task_wait）",
+        },
       },
       required: ["description", "prompt"],
     },
@@ -119,6 +129,43 @@ export function createTaskTool(deps: TaskToolDeps): ToolDef {
         return toolError("TaskError", "INVALID_ARGUMENTS", "task 的 subagent_type 须为非空字符串");
       }
       const background = args["run_in_background"] === true;
+      // W9/T9-2：resume 分支——显式续跑既有委托链（未知 id → 可见不抛；
+      // 仍运行中 → 提示 TaskWait）。resume 恒为后台语义（受理即返回）。
+      const resumeId = args["resume"];
+      if (resumeId !== undefined) {
+        if (typeof resumeId !== "string" || resumeId === "") {
+          return toolError("TaskError", "INVALID_ARGUMENTS", "task 的 resume 须为非空委托 id（dlg-N）");
+        }
+        if (deps.delegations === undefined) {
+          return toolError(
+            "TaskError",
+            "TASK_RESUME_UNAVAILABLE",
+            "本装配没有委托注册表（runner 未提供 resume 面）——只能派发新任务",
+          );
+        }
+        try {
+          const receipt = await deps.delegations.resume(resumeId, prompt);
+          return {
+            content:
+              `<task id="${receipt.childSessionId}" delegation="${receipt.delegationId}" state="resumed">
+` +
+              `续跑已受理（新委托 ${receipt.delegationId}，同子会话 ${receipt.childSessionId}——上下文延续）。
+` +
+              `收割：task_wait；状态：task_list；补充消息：task_send。`,
+            meta: {
+              subagent: {
+                sessionId: receipt.childSessionId,
+                delegationId: receipt.delegationId,
+                state: "resumed",
+              },
+            },
+          };
+        } catch (err) {
+          const code = (err as { code?: string }).code ?? "TASK_RESUME_FAILED";
+          const message = err instanceof Error ? err.message : String(err);
+          return toolError("TaskError", code, `[${code}] ${message}`);
+        }
+      }
       let outcome: Awaited<ReturnType<TaskToolDeps["runSubagent"]>>;
       try {
         // T-P1-43 取消联动：ctx.signal（本 turn 取消信号）传给 runner——

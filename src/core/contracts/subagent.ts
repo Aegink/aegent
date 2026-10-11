@@ -62,6 +62,42 @@ export interface DelegationsApi {
   }): Promise<DelegationSnapshot[]>;
   /** 停止指定委托（cancel 子 loop → 结算 stopped）；未知 id 返回 false。 */
   stop(id: string): boolean;
+  /**
+   * W9/T9-2 定向投递（task_send 执行体——dsh send_message 同构，只返回
+   * acceptance 不返回 reply）：working 目标经子 loop 队列在 step 边界
+   * steer（A2 注入）；terminal 目标经 continuation 生命周期续跑新轮
+   * （同 childSessionId——上下文从流投影重建）。未知 id 类型化拒绝。
+   */
+  send(id: string, message: string): Promise<DelegationSendReceipt>;
+  /**
+   * W9/T9-2 显式续跑（task 的 resume 参数执行体）：running 目标类型化
+   * 拒绝（提示 TaskWait 先收敛）；terminal 目标起新轮（同 childSessionId
+   * ——pi-desktop "链 = delegateSessionId" 语义）。未知 id 类型化拒绝
+   * （携带当前可续清单——校验可见不抛）。
+   */
+  resume(id: string, message: string): Promise<DelegationSendReceipt>;
+}
+
+/** task_send / resume 的受理收执（A9 同款——只有受理，没有结果句柄）。 */
+export interface DelegationSendReceipt {
+  /** steer = 原 id；resume = 新委托 id（同 childSessionId 新链环）。 */
+  readonly delegationId: string;
+  readonly childSessionId: string;
+  readonly mode: "steer" | "resume";
+  /** steer = 子 loop 队列收执 messageId；resume = 新委托 id。 */
+  readonly messageId: string;
+}
+
+/** send/resume 的类型化拒绝（fail-visible——模型读到说明可自修）。 */
+export class DelegationSendError extends Error {
+  override readonly name = "DelegationSendError";
+  constructor(
+    readonly code: "DELEGATION_UNKNOWN" | "DELEGATION_RUNNING" | "DELEGATION_CAP_REACHED" | "DELEGATION_QUEUE_FULL",
+    message: string,
+  ) {
+    super(message);
+    this.name = "DelegationSendError";
+  }
 }
 
 /**

@@ -644,7 +644,15 @@ const executionEnv = new NodeExecutionEnv({
         : {}),
       // H1/H4/T-P1-42：task 工具（subagent 选项提供时注册；runner 自带
       // 深度检查——可见但拒绝，opencode 深度语义同款）
-      ...(runSubagent ? { task: { runSubagent } } : {}),
+      ...(runSubagent
+        ? {
+            task: {
+              runSubagent,
+              // W9/T9-2：resume 参数的注册表面（与 task_wait/list/stop 同源）
+              ...(subagentRuntime !== undefined ? { delegations: subagentRuntime.delegations } : {}),
+            },
+          }
+        : {}),
       // T-P3-145 G：task_wait/list/stop（后台委托收割/查看/停止——与 task
       // 同源注入；子代理 runner 缺席 = 不注册零新工具）
       ...(subagentRuntime !== undefined
@@ -652,6 +660,9 @@ const executionEnv = new NodeExecutionEnv({
             taskWait: { delegations: subagentRuntime.delegations },
             taskList: { delegations: subagentRuntime.delegations },
             taskStop: { delegations: subagentRuntime.delegations },
+            // W9/T9-2：task_send（顶层无 sendToParent——"parent" 目标类型化
+            // 拒绝；投递自己的委托 steer/resume）
+            taskSend: { delegations: subagentRuntime.delegations },
           }
         : {}),
       // W2/T9-1：collab 编排工具（本地协作运行时在位才注册——可裁剪）

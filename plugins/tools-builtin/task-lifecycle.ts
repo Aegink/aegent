@@ -159,3 +159,93 @@ export function createTaskStopTool(deps: TaskLifecycleDeps): ToolDef {
     },
   };
 }
+
+/**
+ * W9/T9-2 task_send：向委托定向投递消息（dsh send_message 同构——只返回
+ * acceptance，永不返回 reply）。working 目标经子 loop 队列在 step 边界
+ * steer；terminal 目标自动续跑新轮（同子会话——上下文从流投影重建）。
+ * delegationId = "parent" 且装配提供 sendToParent 时 = 向父会话回投
+ * （continuable 面——子代理提前回交自足结果）。
+ */
+export interface TaskSendDeps {
+  readonly delegations: DelegationsApi;
+  /** 父会话回投出口（子代理语境由 runner 注入；顶层缺省 undefined =
+   * "parent" 目标类型化拒绝）。 */
+  readonly sendToParent?: (message: string) => void;
+}
+
+export function createTaskSendTool(deps: TaskSendDeps): ToolDef {
+  return {
+    name: "task_send",
+    // 投递本身不改目标状态（steer = 注入输入；resume = 起新轮）——系统面
+    sideEffectScope: "system",
+    needsApproval: true,
+    parallel: false,
+    parameters: {
+      type: "object",
+      properties: {
+        delegationId: {
+          type: "string",
+          description:
+            '目标委托 id（dlg-N——task_list 可查）；或 "parent" = 发回父会话（仅子代理语境可用）',
+        },
+        message: { type: "string", description: "投递的消息内容（ steer = 补充指令；resume = 续跑任务指令）" },
+      },
+      required: ["delegationId", "message"],
+    },
+    async execute(args): Promise<ToolExecutionResult> {
+      const delegationId = args["delegationId"];
+      const message = args["message"];
+      if (typeof delegationId !== "string" || delegationId === "") {
+        return toolError("TaskSendError", "INVALID_ARGUMENTS", "task_send 需要 delegationId（非空字符串）");
+      }
+      if (typeof message !== "string" || message === "") {
+        return toolError("TaskSendError", "INVALID_ARGUMENTS", "task_send 需要非空 message");
+      }
+      // "parent" 邮槽（continuable 回投——不进注册表，直接上递）
+      if (delegationId === "parent") {
+        if (deps.sendToParent === undefined) {
+          return toolError(
+            "TaskSendError",
+            "DELEGATION_NO_PARENT_CHANNEL",
+            "[DELEGATION_NO_PARENT_CHANNEL] 本语境没有父会话回投通道（顶层会话的 task_send 只能投给自己的委托）",
+          );
+        }
+        deps.sendToParent(message);
+        return {
+          content: JSON.stringify({
+            accepted: true,
+            delegationId: "parent",
+            mode: "steer",
+            note: "已受理——消息将注入父会话队列（至多在下一轮可见）；本工具只返回受理，不返回回复",
+          }),
+        };
+      }
+      try {
+        const receipt = await deps.delegations.send(delegationId, message);
+        return {
+          content: JSON.stringify({
+            accepted: true,
+            ...receipt,
+            note:
+              receipt.mode === "steer"
+                ? "working 目标——消息将在其下一 step 边界注入"
+                : "terminal 目标——已按同子会话续跑新轮（上下文延续）",
+          }),
+          meta: {
+            delegationSend: {
+              delegationId: receipt.delegationId,
+              childSessionId: receipt.childSessionId,
+              mode: receipt.mode,
+              messageId: receipt.messageId,
+            },
+          },
+        };
+      } catch (e) {
+        const code = (e as { code?: string }).code ?? "DELEGATION_SEND_FAILED";
+        const message = e instanceof Error ? e.message : String(e);
+        return toolError("TaskSendError", code, `[${code}] ${message}`);
+      }
+    },
+  };
+}

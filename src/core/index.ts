@@ -9,6 +9,7 @@ export * from "./skeleton/logger.js";
 export * from "./skeleton/chain.js";
 export * from "./skeleton/timeout.js";
 export * from "./skeleton/deadline.js";
+export * from "./skeleton/queue.js";
 export * from "./contracts/attachments.js";
 export * from "./contracts/models.js";
 export * from "./contracts/policy.js";

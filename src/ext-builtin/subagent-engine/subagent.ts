@@ -4,6 +4,7 @@ import { mkdirSync } from "node:fs";
 // core/contracts/subagent.ts——本文件保留实现面（createSubagentRunner 与
 // SubagentRunnerDeps 装配参数），契约 re-export 保兼容消费面。
 export type {
+  DelegationSendReceipt,
   DelegationSnapshot,
   DelegationStatus,
   DelegationsApi,
@@ -14,6 +15,7 @@ export type {
   SubagentRunner,
 } from "../../core/index.js";
 import type {
+  DelegationSendReceipt,
   DelegationSnapshot,
   DelegationStatus,
   DelegationsApi,
@@ -23,6 +25,8 @@ import type {
   SubagentStopReason,
   SubagentRunner,
 } from "../../core/index.js";
+import { DelegationSendError } from "../../core/index.js";
+import { PromptQueue } from "../../core/index.js";
 import path from "node:path";
 /**
  * 子代理运行面（H1/H4，T-P1-42）——"内核起子循环"的装配层封装。
@@ -166,6 +170,30 @@ export interface SubagentRunnerDeps {
     string,
     (request: { prompt: string; description: string; signal?: AbortSignal }) => Promise<SubagentRunResult>
   >;
+  /**
+   * W9/T9-2 continuable 回投出口（子代理 task_send({delegationId:"parent"})
+   * 的投递面——dsh withContinuableReturnGuidance 同构）：本 runner 产生的
+   * 子代理把自足结果发回父会话的通道。装配 = 父队列注入（onSettle 同款）；
+   * 缺省 undefined = 子代理提示不含回投指引、task_send("parent") 类型化
+   * 拒绝（不可续面 zero 变化）。
+   */
+  readonly sendToParent?: (message: string) => void;
+}
+
+/**
+ * W9/T9-2：continuable 子提示（dsh continuation-messages 同构）——在子任务
+ * 提示后追加"结束前把自足结果发回父会话"的指引。发送不结束回合（A9——
+ * 队列收执即返回）。
+ */
+export function withContinuableReturnGuidance(parentSessionId: string, prompt: string): string {
+  return (
+    `${prompt}\n\n` +
+    `【续跑协作指引】你的父会话 id 是 ${parentSessionId}。结束前，用 ` +
+    `task_send({ delegationId: "parent", message: "<自足的最终结果——包含父会话续推所需的全部上下文>" }) ` +
+    `把结果发回父会话。发送消息不会结束你的回合（收到受理回执即返回）；` +
+    `发送后你可以继续做收尾工作。父会话也会在你结束时自动收到你的完整报告——` +
+    `task_send 适用于你想让父会话**更早**拿到关键结果（或分批回投）的场景。`
+  );
 }
 
 /**
@@ -208,6 +236,9 @@ export function createSubagentRunner(deps: SubagentRunnerDeps): SubagentRunner {
     report?: string;
     error?: string;
     cancel: () => void;
+    /** W9/T9-2 定向 steer 面（工作中的子 loop 队列入队——step 边界注入）；
+     * 缺省 undefined = 无队列面（不可 steer）。snapshot 剥离（非契约面）。 */
+    steer?: (content: string) => boolean;
   }
   const delegations = new Map<string, DelegationEntry>();
   const waiters = new Set<() => void>();
@@ -218,7 +249,7 @@ export function createSubagentRunner(deps: SubagentRunnerDeps): SubagentRunner {
   };
 
   const snapshot = (d: DelegationEntry): DelegationSnapshot => {
-    const { cancel: _c, ...rest } = d;
+    const { cancel: _c, steer: _s, ...rest } = d;
     return rest;
   };
 
@@ -266,6 +297,77 @@ export function createSubagentRunner(deps: SubagentRunnerDeps): SubagentRunner {
       d.cancel();
       return true;
     },
+    async send(id, message): Promise<DelegationSendReceipt> {
+      const d = delegations.get(id);
+      if (d === undefined) {
+        throw new DelegationSendError(
+          "DELEGATION_UNKNOWN",
+          `未知委托 id：${id}（task_list 可查当前清单）`,
+        );
+      }
+      if (d.status === "running") {
+        // working → steer（A2 step 边界注入——子 loop 队列在位才可 steer）
+        if (d.steer === undefined) {
+          throw new DelegationSendError(
+            "DELEGATION_QUEUE_FULL",
+            `委托 ${id} 无 steer 面（内部纪律违规——running 后台委托必有队列）`,
+          );
+        }
+        if (!d.steer(message)) {
+          throw new DelegationSendError(
+            "DELEGATION_QUEUE_FULL",
+            `委托 ${id} 的注入队列已满——稍后再发或用 task_wait 收敛`,
+          );
+        }
+        return { delegationId: id, childSessionId: d.childSessionId, mode: "steer", messageId: `send-${id}` };
+      }
+      // terminal → resume（同 childSessionId 新轮——上下文从流投影重建）
+      return startResume(d, message);
+    },
+    async resume(id, message): Promise<DelegationSendReceipt> {
+      const d = delegations.get(id);
+      if (d === undefined) {
+        const available = [...delegations.values()]
+          .filter((x) => x.status !== "running")
+          .map((x) => x.id)
+          .join(", ");
+        throw new DelegationSendError(
+          "DELEGATION_UNKNOWN",
+          `未知委托 id：${id}（当前可续清单：${available === "" ? "（空）" : available}）`,
+        );
+      }
+      if (d.status === "running") {
+        // 仍运行中 → 显式提示 TaskWait（pi-desktop ADR 0279 校验表）
+        throw new DelegationSendError(
+          "DELEGATION_RUNNING",
+          `委托 ${id} 仍在运行——先 task_wait 等它收敛，再 resume 续跑`,
+        );
+      }
+      return startResume(d, message);
+    },
+  };
+
+  /** terminal 委托的续跑启动（同 childSessionId 新链环——新 delegationId）。
+   * 复用 run 机制（background:true）；上限/深度拒绝转类型化 send 错误。 */
+  const startResume = async (d: DelegationEntry, message: string): Promise<DelegationSendReceipt> => {
+    const outcome = await run(message, `${d.description}（续跑）`, {
+      background: true,
+      ...(d.agentName !== "general" ? { subagentType: d.agentName } : {}),
+      childSessionId: d.childSessionId,
+    });
+    if (outcome.kind !== "background") {
+      // 上限满/深度拒绝等前台 failed 结算 → 类型化拒绝（fail-visible）
+      throw new DelegationSendError(
+        "DELEGATION_CAP_REACHED",
+        outcome.result.error ?? "续跑未能启动（并发上限或装配拒绝）",
+      );
+    }
+    return {
+      delegationId: outcome.delegationId,
+      childSessionId: outcome.childSessionId,
+      mode: "resume",
+      messageId: outcome.delegationId,
+    };
   };
 
   const run = async (
@@ -348,6 +450,10 @@ export function createSubagentRunner(deps: SubagentRunnerDeps): SubagentRunner {
       };
     }
     const background = opts?.background ?? false;
+    // W9/T9-2：后台委托的子 loop 注入队列（steer 面——task_send working
+    // 目标经此在 step 边界注入；A2 drainQueue 消费）。前台运行无队列
+    // （单轮语义零变化）。上限 8（防无界 steer 打爆子上下文）。
+    const subQueue = background ? new PromptQueue("one-at-a-time", 8) : undefined;
 
     const childSessionId =
       opts?.childSessionId ?? `${deps.parentSessionId}::task-${++counter}-${Date.now()}`;
@@ -432,18 +538,60 @@ export function createSubagentRunner(deps: SubagentRunnerDeps): SubagentRunner {
         : {}),
       task: {
         // 孙代递归 runner：delegations 同步注入（孙代的 task_wait/list/stop
-        // 管孙代自己的委托——各 runner 闭包独立注册表）
+        // 管孙代自己的委托——各 runner 闭包独立注册表）。W9/T9-2：子代的
+        // sendToParent 逐级上递——孙代 task_send("parent") 落到本 runner 的
+        // 父链（本 runner 也是子代则沿 sendToParent 上递；顶层经 onSettle
+        // 合成快照注入父队列）。
         ...(() => {
           const childRuntime = createSubagentRunner({
             ...deps,
             parentSessionId: childSessionId,
             depth: childDepth,
+            sendToParent: (message: string) => {
+              if (deps.sendToParent !== undefined) {
+                deps.sendToParent(message);
+                return;
+              }
+              deps.onSettle?.({
+                id: `send-${childSessionId}-${Date.now()}`,
+                childSessionId,
+                agentName: "子代理回投",
+                description: "task_send(\"parent\") 回投",
+                status: "completed",
+                startedAt: Date.now(),
+                settledAt: Date.now(),
+                report: message,
+              });
+            },
           });
           return {
             runSubagent: childRuntime.run,
             taskWait: { delegations: childRuntime.delegations },
             taskList: { delegations: childRuntime.delegations },
             taskStop: { delegations: childRuntime.delegations },
+            // W9/T9-2：子代 task 的 resume 面（续跑自己的委托）
+            delegations: childRuntime.delegations,
+            ...(deps.sendToParent !== undefined || deps.onSettle !== undefined
+              ? {
+                  taskSend: {
+                    delegations: childRuntime.delegations,
+                    sendToParent: (message: string) => {
+                      if (deps.sendToParent !== undefined) deps.sendToParent(message);
+                      else
+                        deps.onSettle?.({
+                          id: `send-${childSessionId}-${Date.now()}`,
+                          childSessionId,
+                          agentName: "子代理回投",
+                          description: "task_send(\"parent\") 回投",
+                          status: "completed",
+                          startedAt: Date.now(),
+                          settledAt: Date.now(),
+                          report: message,
+                        });
+                    },
+                  },
+                }
+              : {}),
           };
         })(),
       },
@@ -467,6 +615,7 @@ export function createSubagentRunner(deps: SubagentRunnerDeps): SubagentRunner {
       layers: subAssembly.layers,
       beforeFirstModelRequest: (turn) => subAssembly.beforeFirstModelRequest(turn),
       onToolStepCompleted: (turn, step) => subAssembly.onToolStepCompleted(turn, step),
+      ...(subQueue !== undefined ? { queue: subQueue } : {}),
       ...(presetModel !== undefined
         ? { modelForTurn: () => ({ provider: presetModel.provider, identity: presetModel.identity }) }
         : deps.modelForTurn
@@ -511,17 +660,48 @@ export function createSubagentRunner(deps: SubagentRunnerDeps): SubagentRunner {
         status: "running",
         startedAt: Date.now(),
         cancel: () => subLoop.cancel({ kind: "user" }),
+        // W9/T9-2：steer 面（task_send working 目标的注入通道——队列满 false）
+        ...(subQueue !== undefined
+          ? {
+              steer: (content: string): boolean => {
+                try {
+                  subQueue.enqueue(content);
+                  return true;
+                } catch {
+                  return false;
+                }
+              },
+            }
+          : {}),
       };
       delegations.set(delegationId, entry);
     }
 
     // 启动子轮（后台不 await——promise 链结算进注册表；前台照旧 await）。
+    // W9/T9-2：continuable 面（sendToParent 在位）的后台委托追加回投指引
+    // （dsh withContinuableReturnGuidance 同构——子代理可主动提前回投）。
     const settlePromise = (async (): Promise<SubagentRunResult> => {
       let reason: TurnEndReason;
       try {
         // 子代理 = 一次普通 prompt 轮（opencode runTask = ops.prompt 同构）；
         // 单轮语义——decideTurn 无工具调用即 end，无队列不续轮。
-        reason = await subLoop.runTurn(prompt);
+        const effectivePrompt =
+          background && deps.sendToParent !== undefined
+            ? withContinuableReturnGuidance(deps.parentSessionId, prompt)
+            : prompt;
+        reason = await subLoop.runTurn(effectivePrompt);
+        // W9/T9-2：steer 残留续跑（dsh continuation 生命周期——send_message
+        // 到 inactive 目标经 continuation 起新轮）。steer 在最后一步之后
+        // 到达会错过 step 边界（turn 收束）——后台委托续跑新轮消化队列，
+        // 消息不丢；completed 链上的异常终态不再续。
+        while (
+          background &&
+          subQueue !== undefined &&
+          reason.kind === "completed" &&
+          subQueue.size > 0
+        ) {
+          reason = await subLoop.runTurn("（处理 steer 注入的消息）");
+        }
       } catch (err) {
         // 工具执行崩溃等基础设施异常（trusted 轨上抛路径）：结算为 failed，
         // 绝不让子代理异常炸掉父 step 的结算通道。
