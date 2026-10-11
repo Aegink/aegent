@@ -2,7 +2,8 @@
  * W16/T7-4 调度工具族（EP-7）：schedule_create/list/update/delete——cron
  * 管理面从 UI-only（scheduler-ops）提到模型面。**默认不注册**（preset
  * 决定——无人值守轮才提供，交互轮模型不碰调度）；over 现有 SqliteCronStore
- * （任务行复用——非新存储）。
+ * （任务行复用——非新存储）。W16 排查 B2：schedule_update 补齐（卡面四工具
+ * 闭集——修复前仅三工具，头注释与实现矛盾）。
  */
 import type { ToolDef } from "../../src/core/index.js";
 import { toolError } from "./util.js";
@@ -12,6 +13,8 @@ export interface ScheduleToolDeps {
   readonly add: (expr: string, prompt: string) => Promise<{ id: string }>;
   readonly list: () => Promise<readonly { id: string; expr: string; prompt: string }[]>;
   readonly remove: (id: string) => Promise<boolean>;
+  /** W16 排查 B2：部分更新（patch 给出的字段生效；expr 变化走 parseCron）。 */
+  readonly update: (id: string, patch: { expr?: string; prompt?: string }) => Promise<boolean>;
 }
 
 /** 相对时间归一化（zcode 同款）：『N 分钟/小时/秒后』→ 延迟毫秒。 */
@@ -62,6 +65,37 @@ export function createScheduleTools(deps: ScheduleToolDeps): ToolDef[] {
       parallel: true,
       parameters: { type: "object", properties: {} },
       execute: async () => ({ content: JSON.stringify(await deps.list()) }),
+    },
+    {
+      name: "schedule_update",
+      sideEffectScope: "workspace",
+      needsApproval: true,
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "任务 id（schedule_list 取得）" },
+          expr: { type: "string", description: "新的 cron 表达式（或缺省保留原值）" },
+          prompt: { type: "string", description: "新的投递提示词（或缺省保留原值）" },
+        },
+        required: ["id"],
+      },
+      execute: async (args) => {
+        if (typeof args.id !== "string" || args.id === "") return toolError("ScheduleError", "INVALID_ARGUMENTS", "id 须为非空字符串");
+        if (args.expr === undefined && args.prompt === undefined) {
+          return toolError("ScheduleError", "INVALID_ARGUMENTS", "expr 与 prompt 至少提供一个（部分更新语义）");
+        }
+        if (args.expr !== undefined && (typeof args.expr !== "string" || args.expr === "")) {
+          return toolError("ScheduleError", "INVALID_ARGUMENTS", "expr 须为非空字符串");
+        }
+        if (args.prompt !== undefined && (typeof args.prompt !== "string" || args.prompt === "")) {
+          return toolError("ScheduleError", "INVALID_ARGUMENTS", "prompt 须为非空字符串");
+        }
+        const ok = await deps.update(args.id, {
+          ...(args.expr !== undefined ? { expr: args.expr } : {}),
+          ...(args.prompt !== undefined ? { prompt: args.prompt } : {}),
+        });
+        return ok ? { content: `已更新 ${args.id}` } : toolError("ScheduleError", "SCHEDULE_NOT_FOUND", `任务 ${args.id} 不存在`);
+      },
     },
     {
       name: "schedule_delete",

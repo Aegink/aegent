@@ -232,6 +232,8 @@ describe("注册面与提示词独立文件（验收⑤）", () => {
     expect(withPlan.names()).toHaveLength(18);
 
     const full = new ToolRegistry();
+    // W16 B3：条件工具族桩（注册期只闭包捕获不执行——执行面桩在各自测试）
+    const stubDelegations = {} as never;
     registerBuiltinTools(full, {
       pluginCreate: { workspaceRoot: "stub" },
       pluginDefine: { toolRegistry: full, handles: [] },
@@ -246,10 +248,19 @@ describe("注册面与提示词独立文件（验收⑤）", () => {
         sessionId: "s-full",
         timeoutMs: 1_000,
       },
-      task: { runSubagent: async () => ({ kind: "foreground", result: { sessionId: "x", stopReason: "completed", output: "" } }) },
+      task: { runSubagent: async () => ({ kind: "foreground", result: { sessionId: "x", stopReason: "completed", output: "" } }), delegations: stubDelegations },
+      taskWait: { delegations: stubDelegations },
+      taskList: { delegations: stubDelegations },
+      taskStop: { delegations: stubDelegations },
+      taskSend: { delegations: stubDelegations },
+      collab: { sessionId: "s-full", port: {} as never },
+      // W16 B1/B2：schedule 工具族（preset 决定——测试面带桩走全集）
+      schedule: { add: async () => ({ id: "x" }), list: async () => [], remove: async () => true, update: async () => true },
       // Q2/T-P2-105：会话查询工具（dbPath 提供才注册——注册面不打开库，
       // 任意非空路径即可）
       sessionQuery: { dbPath: "unused-plan-mode-names.sqlite" },
+      // W15b/T9-7：trace 家族（与 session_query 同库同授权面）
+      sessionTrace: { dbPath: "unused-plan-mode-names.sqlite" },
       // T-P3-174 批次 1：view_image/get_context_remaining 的条件注册桩
       attachments: {
         save: () => ({ attachmentId: "stub", mediaType: "image/png", size: 0 }),
@@ -257,11 +268,13 @@ describe("注册面与提示词独立文件（验收⑤）", () => {
       },
       contextUsage: () => null,
     });
-    expect(full.names()).toEqual([...BUILTIN_TOOL_NAMES]);
+    // 集合等价（排序比较——注册顺序与清单声明顺序解耦，W16 B3 名单收敛）
+    expect([...full.names()].sort()).toEqual([...BUILTIN_TOOL_NAMES].sort());
     // T-P3-172：+web_search/ls/current_time/todo_read（25）；T-P3-174
     // 批次 1：+task_output/view_image/get_context_remaining/save_memory/
-    // notebook_edit（30）
-    expect(BUILTIN_TOOL_NAMES).toHaveLength(30);
+    // notebook_edit（30）；W16 B3 补齐：+task_wait/list/stop/send + collab +
+    // trace×3 + schedule×4（42）
+    expect(BUILTIN_TOOL_NAMES).toHaveLength(42);
 
     const withoutPlan = new ToolRegistry();
     registerBuiltinTools(withoutPlan);

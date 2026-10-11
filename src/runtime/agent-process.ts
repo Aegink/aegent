@@ -81,6 +81,8 @@ import { createBrowserTools } from "../scheduler/browser.js";
 import { connectPanelBrowser, panelDataDir } from "../scheduler/browser-panel.js";
 import { createComputerTools } from "../scheduler/computer.js";
 import { createWin32ComputerRun } from "../scheduler/computer-win32.js";
+import { SqliteCronStore } from "../scheduler/cron.js";
+import { SqliteEventStorage } from "../session/db.js";
 import { NodeExecutionEnv } from "../core/index.js";
 import { ToolRegistry } from "../core/index.js";
 import { DEFAULT_SPILL_DIR } from "../core/index.js";
@@ -593,6 +595,25 @@ const executionEnv = new NodeExecutionEnv({
           ...(options.logger !== undefined ? { logger: options.logger } : {}),
         })
       : undefined;
+  // W16 排查 B1（T7-4 preset 接线收口）：schedule 工具族 deps——cron_tasks
+  // 同库面（SqliteCronStore 建在子进程已打开的 sessions.db 上；host/child
+  // 双进程写序由 busy_timeout=5000 + WAL 防护）。preset 决定 = 初始
+  // unattended 档才提供（config/refresh 热刷新不改已注册工具面——重启生
+  // 效；交互轮模型不碰调度）。db 句柄缺席（纯内存装配/测试）不注册。
+  const scheduleToolDeps = ((): import("../../plugins/tools-builtin/schedule.js").ScheduleToolDeps | undefined => {
+    if (configStore.unattended !== true) return undefined;
+    const sqlite =
+      options.assembly?.sessionsLibrary ??
+      (options.storage instanceof SqliteEventStorage ? options.storage : undefined);
+    if (sqlite === undefined) return undefined;
+    const cronStore = new SqliteCronStore(sqlite.db);
+    return {
+      add: async (expr, prompt) => ({ id: cronStore.add({ expr, prompt, createdAt: Date.now() }).id }),
+      list: async () => cronStore.list().map((t) => ({ id: t.id, expr: t.expr, prompt: t.prompt })),
+      remove: async (id) => cronStore.remove(id),
+      update: async (id, patch) => cronStore.update(id, patch),
+    };
+  })();
   // 工具装配（T-4-05 接线，兑现 T-4-02 偏离⑥）：注册表分发就是 toolCall 链的
   // 链底 terminal——executeTool 槽位由 registry.dispatch 充当，不存在旁路。
   // T-8-01：装配提供 PathGuard 时经它构造（写守卫唯一入口，T-6-01）。
@@ -705,6 +726,12 @@ const executionEnv = new NodeExecutionEnv({
       ...(collabRuntime !== undefined
         ? { collab: { sessionId, port: collabRuntime } }
         : {}),
+      // W16 排查 B1（T7-4 preset 接线收口）：schedule 工具族 deps——
+      // cron_tasks 同库面（SqliteCronStore 建在子进程已打开的 sessions.db
+      // 上；host/child 双进程写序由 busy_timeout + WAL 防护）。preset 决定
+      // = 初始 unattended 档才提供（config/refresh 热刷新不改已注册工具面
+      // ——重启生效；交互轮模型不碰调度）。db 缺席（纯内存装配）不注册。
+      ...(scheduleToolDeps !== undefined ? { schedule: scheduleToolDeps } : {}),
       // T-P3-174 批次 1：后台 shell 面 + scratch spill + 附件/计量条件注册
       backgroundShell: backgroundRegistry,
       ...(shellScratchDir !== undefined ? { shellScratchDir } : {}),

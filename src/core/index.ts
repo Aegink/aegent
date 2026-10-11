@@ -63,14 +63,15 @@ export * from "./primitives/session/messages.js";
 export * from "./primitives/session/coalescer.js";
 export * from "./primitives/session/prefix-anchor.js";
 export * from "./primitives/session/result-trim.js";
-export * from "./primitives/session/reference.js";
+// W16 排查 C3：reference.js 在 L27 已导出（重复导出卫生——去重）
 export * from "./primitives/tools/truncate.js";
 export * from "./primitives/tools/spill-gc.js";
 export * from "./primitives/tools/mutation-budget.js";
 export * from "./primitives/tools/scheduler.js";
 export { ToolRegistry } from "./primitives/tools/registry.js";
 export { WriteQueue } from "./primitives/tools/write-queue.js";
-export { BackgroundShellRegistry } from "./primitives/tools/background-shell.js";
+// W16 排查 C3：background-shell.js 在 L74 星号导出已含 BackgroundShellRegistry
+// （命名导出重复——去重保星号）
 export * from "./primitives/tools/background-shell.js";
 export { NodeExecutionEnv } from "./primitives/tools/env.js";
 export * from "./primitives/tools/shell-output.js";

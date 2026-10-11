@@ -1081,7 +1081,10 @@ export class AgentLoop {
             content: `[view_image] 图片已注入：${typeof candidate["name"] === "string" ? candidate["name"] : "image"}`,
           },
           source: "injected",
-          attachments: [ref as import("../../../attachments/types.js").AttachmentRef],
+          // W16 排查 C2：AttachmentRef 本体就在 core/contracts/attachments
+          // （attachments/types.ts 是回转 re-export 垫片）——core 内部类型
+          // 引用不再绕行域垫片（T8-2 针孔：检查器不扫 import() 内联类型）
+          attachments: [ref as import("../../index.js").AttachmentRef],
         },
       ]);
     } catch (e) {

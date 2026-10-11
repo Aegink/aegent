@@ -33,6 +33,10 @@ const identityB: ModelIdentity = { provider: "anthropic", modelId: "model-b" };
 describe("跨组件因果链（O30）", () => {
   it("①工具注册 → BUILTIN 清单可见：registerBuiltinTools 后每个 BUILTIN 名在注册表可取", () => {
     const registry = new ToolRegistry();
+    // W16 B3：BUILTIN_TOOL_NAMES 收敛为"可注册超集"（条件工具族 task_wait/
+    // list/stop/send、collab、trace×3、schedule×4 也进名单）——因果断言面
+    // 补齐条件工具桩，注册面 = 全清单等价。
+    const stubDelegations = {} as never;
     registerBuiltinTools(registry, {
       // 桩 deps 与 builtinToolParamNames 同款（闭包捕获、永不执行——见 15b 记档）
       todoEmit: () => {},
@@ -43,8 +47,16 @@ describe("跨组件因果链（O30）", () => {
       question: { pending: new PendingApprovals(), sessionId: "causal", timeoutMs: 1 },
       task: {
         runSubagent: async () => ({ kind: "foreground", result: { sessionId: "stub", stopReason: "cancelled", output: "" } }),
+        delegations: stubDelegations,
       },
+      taskWait: { delegations: stubDelegations },
+      taskList: { delegations: stubDelegations },
+      taskStop: { delegations: stubDelegations },
+      taskSend: { delegations: stubDelegations },
+      collab: { sessionId: "causal", port: {} as never },
+      schedule: { add: async () => ({ id: "x" }), list: async () => [], remove: async () => true, update: async () => true },
       sessionQuery: { dbPath: "stub" },
+      sessionTrace: { dbPath: "stub" },
       pluginCreate: { workspaceRoot: "stub" },
       pluginDefine: { toolRegistry: registry, handles: [] },
       // T-P3-174 批次 1：view_image/get_context_remaining 的条件注册桩

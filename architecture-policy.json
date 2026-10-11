@@ -270,11 +270,7 @@
       "managed": true,
       "requires": [
         "core",
-        "ext-builtin",
-        "models",
-        "policy",
-        "sandbox",
-        "session"
+        "ext-builtin"
       ],
       "publicEntrypoints": [],
       "owner": "wangh"

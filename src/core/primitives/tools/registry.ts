@@ -53,7 +53,7 @@ export class ToolRegistry {
     | ((name: string, args: JsonRecord) => Promise<ToolGuardOutcome>)
     | undefined;
   private readonly readGate:
-    | import("../../../policy/read-gate.js").ReadGateService
+    | import("../../contracts/policy.js").ReadGatePort
     | undefined;
 
   /**
@@ -78,7 +78,7 @@ export class ToolRegistry {
     spillMaxFiles?: number;
     guard?: (name: string, args: JsonRecord) => Promise<ToolGuardOutcome>;
     /** C12/C13 读记账服务（可选装配，T-P1-71）；缺省不启用。 */
-    readGate?: import("../../../policy/read-gate.js").ReadGateService;
+    readGate?: import("../../contracts/policy.js").ReadGatePort;
   }) {
     // T6-7：descriptions 随 39 工具迁 plugins/tools-builtin/descriptions
     //（编译产物 dist/plugins/tools-builtin/descriptions——copy-assets 同步）。

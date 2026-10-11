@@ -49,6 +49,7 @@ import {
   type TaskLifecycleDeps,
   type TaskSendDeps,
 } from "./task-lifecycle.js";
+import { createScheduleTools, type ScheduleToolDeps } from "./schedule.js";
 import { createTodoReadTool, type ProjectionTodo } from "./todo-read.js";
 import { createTodoWriteTool } from "./todo.js";
 import { createToolLoadTool } from "./tool-load.js";
@@ -99,6 +100,20 @@ export const BUILTIN_TOOL_NAMES = [
   "get_context_remaining",
   "save_memory",
   "notebook_edit",
+  // W16 排查 B3 补齐（T6-6 单一事实源——条件注册的可注册名也进闭集）：
+  // task 生命周期三件 + task_send + collab + trace 家族 + schedule 家族
+  "task_wait",
+  "task_list",
+  "task_stop",
+  "task_send",
+  "collab",
+  "session_trace",
+  "session_event_trace",
+  "session_event_read",
+  "schedule_create",
+  "schedule_list",
+  "schedule_update",
+  "schedule_delete",
 ] as const;
 
 export function registerBuiltinTools(
@@ -171,6 +186,10 @@ export function registerBuiltinTools(
     /** W15b/T9-7：trace 家族（session_trace/event_trace/event_read——
      * dbPath 提供时才注册，与 session_query 同面）。 */
     sessionTrace?: SessionTraceDeps;
+    /** W16/T7-4 调度工具族（schedule_create/list/update/delete——EP-7
+     * preset 决定：无人值守轮才提供，装配面按 unattended 初始档传入；
+     * 缺省不注册 = 交互轮模型不碰调度）。 */
+    schedule?: ScheduleToolDeps;
     /** B18/T-P1-55 bash 超时三档的默认档（秒）；缺省无默认超时（pi 同款）。 */
     bash?: { defaultTimeoutSeconds?: number };
     /** B15/T-P1-58 沙箱装配（backend + 会话默认模式 + 升级审批通道）；
@@ -333,6 +352,8 @@ export function registerBuiltinTools(
       : []),
     // W15b/T9-7：trace 家族（只读类——授权边界与 session_query 同源）
     ...(options.sessionTrace !== undefined ? createSessionTraceTools(options.sessionTrace) : []),
+    // W16/T7-4 调度工具族（preset 决定——无人值守轮装配才传入）
+    ...(options.schedule !== undefined ? createScheduleTools(options.schedule) : []),
     // T-P3-148 I：插件创建工具（工作区装配在位才注册——写面收敛
     // `<workspace>/plugins/<slug>`；生成不自动装载，走插件中心审批链）
     ...(options.pluginCreate !== undefined ? [createPluginCreateTool(options.pluginCreate)] : []),

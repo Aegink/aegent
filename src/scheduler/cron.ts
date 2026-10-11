@@ -185,6 +185,22 @@ export class SqliteCronStore implements CronStoreReader {
         return this.deleteById.run(id).changes > 0;
     }
 
+    /** W16 排查 B2（T7-4 schedule_update 补齐）：部分更新（patch 给出的字
+     * 段生效）；expr 变化走与 add 同一 parseCron 校验（坏表达式进不了库）。
+     * id 不存在 = false（与 remove 同语义）。 */
+    update(id: string, patch: { expr?: string; prompt?: string }): boolean {
+        const current = this.list().find((t) => t.id === id);
+        if (current === undefined) return false;
+        const expr = patch.expr ?? current.expr;
+        const prompt = patch.prompt ?? current.prompt;
+        if (expr !== current.expr) parseCron(expr);
+        return (
+            this.db
+                .prepare("UPDATE cron_tasks SET expr = ?, prompt = ? WHERE id = ?")
+                .run(expr, prompt, id).changes > 0
+        );
+    }
+
     list(): CronTaskRecord[] {
         return (this.selectAll.all() as Array<{
             id: string;
