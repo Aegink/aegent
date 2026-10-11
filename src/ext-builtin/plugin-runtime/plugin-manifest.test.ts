@@ -14,12 +14,12 @@ import {
   validateManifest,
 } from "./plugin-manifest.js";
 
-const AVAILABLE = ["observe_events", "read_workspace"] as const;
+const AVAILABLE = ["hooks", "subscribe", "settings.read"] as const;
 
 const goodManifest = {
   name: "acme",
   trust: "untrusted",
-  capabilities: ["observe_events"],
+  capabilities: ["hooks"],
   hooks: [{ point: "toolCall", name: "watch" }],
 };
 
@@ -38,14 +38,14 @@ describe("validateManifest（I9 安装期全量校验）", () => {
 
   it("声明未实现能力 → 拒绝且错误列明缺哪项（不是警告不是忽略）", () => {
     const result = validateManifest(
-      { ...goodManifest, capabilities: ["observe_events", "execute_commands"] },
+      { ...goodManifest, capabilities: ["hooks", "net"] },
       AVAILABLE,
     );
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain("execute_commands"); // 列明缺哪项
-      expect(result.errors[0]).toContain("observe_events"); // 宿主已实现清单
+      expect(result.errors[0]).toContain("net"); // 列明缺哪项（闭集内但宿主未装配）
+      expect(result.errors[0]).toContain("hooks"); // 宿主已实现清单
     }
   });
 
@@ -132,7 +132,7 @@ describe("installPlugin（安装 = 校验通过后注册 hooks 贡献）", () =>
       {
         name: "acme-core",
         trust: "trusted",
-        capabilities: ["observe_events"],
+        capabilities: ["hooks"],
         hooks: [{ point: "toolCall", name: "wrap" }],
       },
       { wrap: async (_$, e, next) => `core(${await next(e)})` },
@@ -173,7 +173,7 @@ describe("installPlugin（安装 = 校验通过后注册 hooks 贡献）", () =>
         {
           name: "acme",
           trust: "trusted",
-          capabilities: ["observe_events"],
+          capabilities: ["hooks"],
           hooks: [
             { point: "toolCall", name: "provided" },
             { point: "turnEnd", name: "missing" },

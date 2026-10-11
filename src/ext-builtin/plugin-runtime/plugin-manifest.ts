@@ -19,6 +19,13 @@
  * intersectAllProfiles 的 opaque 拒绝同款纪律），绝不降级为警告。
  */
 
+import {
+  CONTRIBUTION_PERMISSION_BINDINGS,
+  expandGrantedPermissions,
+  PLUGIN_CAPABILITY_SHARDS,
+  PLUGIN_INJECTABLE_SERVICES,
+  PLUGIN_PERMISSIONS,
+} from "../../core/index.js";
 import { CHAIN_POINTS, type ChainLayer, type ChainPoint } from "../../kernel/chain.js";
 import type { HookRegistry, HookTrust } from "../../kernel/hooks.js";
 import {
@@ -37,6 +44,7 @@ export const PLUGIN_MANIFEST_FIELDS = [
   "version",
   "description",
   "contributes",
+  "inject",
 ] as const;
 
 export interface PluginManifest {
@@ -70,6 +78,12 @@ export interface PluginManifest {
    * 处理（name 收紧 slug 形状——贡献命名空间 `<插件名>/<名>` 的前提）。
    */
   readonly contributes?: PluginContributes;
+  /**
+   * W15a/T9-5：inject 数据化依赖声明（dsh 形状——服务名闭集
+   * PLUGIN_INJECTABLE_SERVICES；激活面经 caps.services.get 按名取用，
+   * 未声明的服务取用被网关拒绝）。
+   */
+  readonly inject?: readonly string[];
 }
 
 export class PluginManifestError extends Error {
@@ -124,13 +138,24 @@ export function validateManifest(
     );
   }
 
-  // capabilities（未实现的能力声明即拒绝——I9 核心）
+  // capabilities（未实现的能力声明即拒绝——I9 核心；W15a/T9-5：闭集 =
+  // 能力分片名 ∪ 权限名——分片展开为一组权限，网关按片前置断言）
   const capabilities = record.capabilities;
   if (!Array.isArray(capabilities) || capabilities.some((c) => typeof c !== "string")) {
     errors.push("capabilities 必须是字符串数组");
   } else {
     const caps = capabilities as string[];
     const available = new Set(availableCapabilities);
+    const closedSet: ReadonlySet<string> = new Set([
+      ...Object.keys(PLUGIN_CAPABILITY_SHARDS),
+      ...PLUGIN_PERMISSIONS,
+    ]);
+    const outside = caps.filter((c) => !closedSet.has(c));
+    if (outside.length > 0) {
+      errors.push(
+        `闭集外能力声明：${outside.join(", ")}（合法：分片 ${Object.keys(PLUGIN_CAPABILITY_SHARDS).join(", ")} 或权限 ${PLUGIN_PERMISSIONS.join(", ")}）`,
+      );
+    }
     const unknown = caps.filter((c) => !available.has(c));
     if (unknown.length > 0) {
       errors.push(
@@ -241,6 +266,45 @@ export function validateManifest(
     else contributes = result.contributes;
   }
 
+  // inject（W15a/T9-5——dsh 装配即数据：服务名闭集 + 声明需 service.invoke）
+  let inject: readonly string[] | undefined;
+  const rawInject = record.inject;
+  if (rawInject !== undefined) {
+    if (!Array.isArray(rawInject) || rawInject.some((n) => typeof n !== "string")) {
+      errors.push("inject 必须是字符串数组（服务名闭集）");
+    } else {
+      const names = rawInject as string[];
+      const outside = names.filter((n) => !(PLUGIN_INJECTABLE_SERVICES as readonly string[]).includes(n));
+      if (outside.length > 0) {
+        errors.push(
+          `inject 服务名闭集外：${outside.join(", ")}（合法：${PLUGIN_INJECTABLE_SERVICES.join(", ")}）`,
+        );
+      }
+      if (names.length > 0) {
+        const granted = expandGrantedPermissions(
+          Array.isArray(capabilities) ? (capabilities as string[]) : [],
+        );
+        if (!granted.has("service.invoke")) {
+          errors.push('inject 声明需要 "service.invoke" 权限（capabilities 显式声明）');
+        }
+      }
+      inject = [...names];
+    }
+  }
+
+  // 贡献↔权限绑定校验（W15a/T9-5——pi-desktop validateManifest 内绑定同构：
+  // 每类贡献的必需权限必须在声明集内——"声明即授予"的边界）
+  if (contributes !== undefined && Array.isArray(capabilities)) {
+    const granted = expandGrantedPermissions(capabilities as readonly string[]);
+    for (const [category, required] of Object.entries(CONTRIBUTION_PERMISSION_BINDINGS)) {
+      if ((contributes as Record<string, unknown>)[category] !== undefined && !granted.has(required)) {
+        errors.push(
+          `贡献 "${category}" 需要权限 "${required}"（capabilities 未声明——贡献↔权限绑定校验）`,
+        );
+      }
+    }
+  }
+
   if (errors.length > 0) return { ok: false, errors };
   return {
     ok: true,
@@ -253,6 +317,7 @@ export function validateManifest(
       ...(version !== undefined ? { version } : {}),
       ...(description !== undefined ? { description } : {}),
       ...(contributes !== undefined ? { contributes } : {}),
+      ...(inject !== undefined ? { inject } : {}),
     },
   };
 }

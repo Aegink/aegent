@@ -29,6 +29,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
 
+import { expandGrantedPermissions } from "../../core/index.js";
 import { loadPlugin, PluginSdkError, type AegentPlugin, type PluginHandle } from "../../mcp/plugin-sdk.js";
 import { connectWsPlugin, type WsPluginHandle } from "../../mcp/ws-plugin.js";
 import { validateManifest, type PluginManifest } from "./plugin-manifest.js";
@@ -43,8 +44,49 @@ import type { ToolRegistry } from "../../kernel/tools/registry.js";
 import type { PluginEntry } from "../../session/settings.js";
 import type { Logger } from "../../kernel/logger.js";
 
-/** 装载期可声明能力（与 host/plugins-gateway 的安装期闭集一致）。 */
+/** 装载期可声明能力基线（与 host/plugins-gateway 的安装期闭集一致）。 */
 export const PLUGIN_RUNTIME_CAPABILITIES = ["registerTool", "subscribe", "hooks"] as const;
+
+/**
+ * W15a/T9-5：宿主装配后的可用分片清单（基线恒在；net/session.read 分片
+ * 随宿主依赖注入出现——声明未装配的片即拒装的"宿主已实现"判据源）。
+ */
+export function assembledCapabilityShards(options: {
+  netFetch?: unknown;
+  sessionRead?: unknown;
+  injectableServices?: unknown;
+}): string[] {
+  return [
+    ...PLUGIN_RUNTIME_CAPABILITIES,
+    "settings.read",
+    // 贡献绑定权限（宿主恒实现——contributes 装配机制在位）
+    "command.register",
+    "skill.register",
+    "view.register",
+    "mcp.register",
+    "settings.schema",
+    // inject 服务面（随宿主注入注册表装配——T9-6 的 service.register/bus 随其实现）
+    ...(options.injectableServices !== undefined ? ["service.invoke"] : []),
+    ...(options.netFetch !== undefined ? ["net"] : []),
+    ...(options.sessionRead !== undefined ? ["session.read"] : []),
+  ];
+}
+
+/**
+ * W15a/T9-5：能力上限快照（热重载"变宽即拒"——首次装载授予的权限集即
+ * 本进程内该插件的上限；重载声明超集 = 类型化拒绝，fail-closed）。
+ * 进程级 Map（卸载不放宽——pi-desktop 快照语义）。
+ */
+const capabilityCeilings = new Map<string, ReadonlySet<string>>();
+
+export function capabilityCeilingOf(pluginName: string): ReadonlySet<string> | undefined {
+  return capabilityCeilings.get(pluginName);
+}
+
+/** 测试专用清空（生产进程内上限随进程生命周期）。 */
+export function resetCapabilityCeilings(): void {
+  capabilityCeilings.clear();
+}
 
 /** 单条装载报告（never-fail——失败进报告不进启动路径）。 */
 export interface PluginLoadReport {
@@ -99,6 +141,17 @@ export function registerPluginTools(
 async function loadInprocess(
   entry: PluginEntry,
   registry: ToolRegistry,
+  options: {
+    netFetch?: (
+      url: string,
+      init?: { readonly timeoutMs?: number; readonly headers?: Readonly<Record<string, string>> },
+    ) => Promise<{ readonly status: number; readonly body: string; readonly contentType?: string }>;
+    sessionRead?: (
+      query: import("../../mcp/plugin-sdk.js").PluginSessionReadQuery,
+    ) => Promise<import("../../mcp/plugin-sdk.js").PluginSessionReadResult>;
+    injectableServices?: Readonly<Record<string, unknown>>;
+    logger?: Logger;
+  },
 ): Promise<{
   handle: PluginHandle;
   toolCount: number;
@@ -127,7 +180,8 @@ async function loadInprocess(
     rawManifest = compat.raw;
     compatWarnings = [...compat.warnings];
   }
-  const manifestResult = validateManifest(rawManifest, PLUGIN_RUNTIME_CAPABILITIES);
+  const availableShards = assembledCapabilityShards(options);
+  const manifestResult = validateManifest(rawManifest, availableShards);
   if (!manifestResult.ok) {
     throw new PluginSdkError(`清单校验失败：${manifestResult.errors.join("；")}`);
   }
@@ -136,6 +190,20 @@ async function loadInprocess(
     throw new PluginSdkError(
       `清单名不一致：settings 记「${entry.name}」，plugin.json 是「${manifestResult.manifest.name}」`,
     );
+  }
+  // W15a/T9-5：上限快照（变宽即拒）——首次装载的权限授予集是本进程上限
+  const granted = expandGrantedPermissions(manifest.capabilities);
+  const ceiling = capabilityCeilings.get(manifest.name);
+  if (ceiling !== undefined) {
+    const widened = [...granted].filter((p) => !ceiling.has(p));
+    if (widened.length > 0) {
+      throw new PluginSdkError(
+        `热重载能力变宽被拒绝：新增权限 ${widened.join(", ")}（上限快照纪律——` +
+          `首载授予集即本进程上限，变宽须重启进程）`,
+      );
+    }
+  } else {
+    capabilityCeilings.set(manifest.name, granted);
   }
   const entryPath = path.join(dir, "index.js");
   // S（T-P3-148——grok-build trust.rs 降级语义的登记面）：untrusted 插件的
@@ -157,18 +225,24 @@ async function loadInprocess(
     const entryExport = mod.default ?? (mod as AegentPlugin);
     const plugin: AegentPlugin = { ...(entryExport as object), manifest: rawManifest } as AegentPlugin;
     handle = await loadPlugin(plugin, {
-      availableCapabilities: PLUGIN_RUNTIME_CAPABILITIES,
+      availableCapabilities: availableShards,
       // G：订阅声明白名单（未声明 = 旧语义）
       ...(manifest.contributes?.subscriptions !== undefined
         ? { declaredSubscriptions: manifest.contributes.subscriptions }
         : {}),
       ...(Object.keys(settingsValues).length > 0 ? { settingsValues } : {}),
+      // W15a/T9-5：分片宿主实现（未装配的片在 availableShards 缺席——声明即拒装）
+      ...(options.netFetch !== undefined ? { netFetch: options.netFetch } : {}),
+      ...(options.sessionRead !== undefined ? { sessionRead: options.sessionRead } : {}),
+      ...(options.injectableServices !== undefined
+        ? { injectableServices: options.injectableServices }
+        : {}),
     });
   } else {
     // 纯资源插件（无 capabilities/hooks——V claude 资源包同形态）：零入口
     // 合法（gateway needsEntry 同语义），no-op 激活
     handle = await loadPlugin({ manifest: rawManifest, onActivate() {} }, {
-      availableCapabilities: PLUGIN_RUNTIME_CAPABILITIES,
+      availableCapabilities: availableShards,
     });
   }
   const toolCount = shouldRegisterTools ? registerPluginTools(registry, manifest.name, handle.tools) : 0;
@@ -200,7 +274,20 @@ function needsEntryModule(manifest: PluginManifest): boolean {
 export async function loadConfiguredPlugins(
   registry: ToolRegistry,
   entries: readonly PluginEntry[] | undefined,
-  options?: { logger?: Logger },
+  options?: {
+    logger?: Logger;
+    /** W15a/T9-5：net 分片宿主实现（NetworkGuard.fetch 投影——缺席 = 片不可声明）。 */
+    netFetch?: (
+      url: string,
+      init?: { readonly timeoutMs?: number; readonly headers?: Readonly<Record<string, string>> },
+    ) => Promise<{ readonly status: number; readonly body: string; readonly contentType?: string }>;
+    /** W15a/T9-5：session.read 分片宿主实现（本会话事件流只读闭包）。 */
+    sessionRead?: (
+      query: import("../../mcp/plugin-sdk.js").PluginSessionReadQuery,
+    ) => Promise<import("../../mcp/plugin-sdk.js").PluginSessionReadResult>;
+    /** W15a/T9-5：inject 服务的宿主注册表（服务名 → 实例）。 */
+    injectableServices?: Readonly<Record<string, unknown>>;
+  },
 ): Promise<{
   reports: PluginLoadReport[];
   contributions: AggregatedContributions;
@@ -233,7 +320,14 @@ export async function loadConfiguredPlugins(
         for (const t of handle.tools) registeredToolNames.push(`${entry.name}__${t.def.name}`);
         reports.push({ name: entry.name, transport, ok: true, toolCount });
       } else {
-        const loaded = await loadInprocess(entry, registry);
+        const loaded = await loadInprocess(entry, registry, {
+          ...(options?.netFetch !== undefined ? { netFetch: options.netFetch } : {}),
+          ...(options?.sessionRead !== undefined ? { sessionRead: options.sessionRead } : {}),
+          ...(options?.injectableServices !== undefined
+            ? { injectableServices: options.injectableServices }
+            : {}),
+          ...(options?.logger !== undefined ? { logger: options.logger } : {}),
+        });
         handles.push(loaded.handle);
         for (const cmd of loaded.commands) {
           if (seenCommands.has(cmd.name)) {

@@ -88,6 +88,7 @@ import { DEFAULT_SPILL_DIR } from "../kernel/tools/truncate.js";
 import { sweepSessionSpill } from "../kernel/tools/spill-gc.js";
 import { connectAndRegister } from "../mcp/registry-bridge.js";
 import { loadConfiguredPlugins } from "../kernel/plugin-loader.js";
+import { querySessions } from "../session/query.js";
 import { loadSettings, THINKING_LEVELS } from "../session/settings.js";
 import { parseCommandArgs, parseSlashInvocation, substituteArgs } from "../kernel/prompt-args.js";
 import {
@@ -769,9 +770,59 @@ const executionEnv = new NodeExecutionEnv({
   // →三消费口 / E MCP server→连接注册）——装配消费点全部晚于本行。
   // T-P3-148 热加载：pluginLoad 可变 + 插件 MCP 连接单独数组——
   // plugins/reload 协议请求触发 diff 重装载（见 reloadPluginsNow）。
-  let pluginLoad = await loadConfiguredPlugins(toolRegistry, options.plugins, {
+  // W15a/T9-5：分片宿主实现（net = NetworkGuard 守卫投影；session.read =
+  // 本会话事件流只读——跨会话面走 session_query 工具的 EP-3 宿主授权）。
+  const pluginNetFetch = assembly?.networkGuard
+    ? async (
+        url: string,
+        init?: { readonly timeoutMs?: number; readonly headers?: Readonly<Record<string, string>> },
+      ): Promise<{ readonly status: number; readonly body: string; readonly contentType?: string }> => {
+        const guard = assembly.networkGuard!;
+        const response = await guard.fetch(url, {
+          ...(init?.headers !== undefined ? { headers: { ...init.headers } } : {}),
+          ...(init?.timeoutMs !== undefined
+            ? { signal: AbortSignal.timeout(init.timeoutMs) }
+            : {}),
+        });
+        return {
+          status: response.status,
+          body: await response.text(),
+          ...(response.headers.get("content-type") !== undefined
+            ? { contentType: response.headers.get("content-type") ?? undefined }
+            : {}),
+        };
+      }
+    : undefined;
+  const pluginSessionRead = options.assembly?.sessionQuery
+    ? async (query: import("../mcp/plugin-sdk.js").PluginSessionReadQuery) => {
+        try {
+          const result = querySessions(options.assembly!.sessionQuery!.dbPath, {
+            sessionIds: [sessionId],
+            ...(query.types !== undefined ? { types: query.types as never } : {}),
+            ...(query.fromTs !== undefined ? { fromTs: query.fromTs } : {}),
+            ...(query.toTs !== undefined ? { toTs: query.toTs } : {}),
+            ...(query.limit !== undefined ? { limit: query.limit } : {}),
+          });
+          return {
+            ok: true as const,
+            rows: result.rows.map((row) => ({
+              seq: row.seq,
+              type: row.type,
+              ts: row.ts,
+              event: row.event,
+            })),
+          };
+        } catch (e) {
+          return { ok: false as const, reason: e instanceof Error ? e.message : String(e) };
+        }
+      }
+    : undefined;
+  const pluginLoadOptions = {
     ...(options.logger ? { logger: options.logger } : {}),
-  });
+    ...(pluginNetFetch !== undefined ? { netFetch: pluginNetFetch } : {}),
+    ...(pluginSessionRead !== undefined ? { sessionRead: pluginSessionRead } : {}),
+  };
+  let pluginLoad = await loadConfiguredPlugins(toolRegistry, options.plugins, pluginLoadOptions);
   const pluginMcpConnections: import("../mcp/registry-bridge.js").McpConnection[] = [];
   const connectPluginMcpServers = async (): Promise<void> => {
     for (const cfg of pluginContribBox.mcpServers) {
@@ -821,9 +872,7 @@ const executionEnv = new NodeExecutionEnv({
     // 最新清单重装载（settings 插件独立生命周期——动态插件句柄不动）
     const { settings: fresh } = await loadSettings(options.settingsPath);
     const entries = (fresh.plugins ?? []).filter((p) => p.enabled !== false);
-    pluginLoad = await loadConfiguredPlugins(toolRegistry, entries, {
-      ...(options.logger ? { logger: options.logger } : {}),
-    });
+    pluginLoad = await loadConfiguredPlugins(toolRegistry, entries, pluginLoadOptions);
     applyPluginLoad();
     await connectPluginMcpServers();
     options.logger?.info(

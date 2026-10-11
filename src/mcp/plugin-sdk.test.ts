@@ -10,12 +10,12 @@ import {
 import { PluginManifestError } from "../kernel/plugin-manifest.js";
 import { EVENT_TYPES, type SessionEvent } from "../kernel/events.js";
 
-const CAPS = ["tools", "events"] as const;
+const CAPS = ["registerTool", "subscribe", "hooks", "settings.read"] as const;
 
 /** 最小可用插件：激活时订阅并登记，事件回调记录收到的快照。 */
 function goodPlugin(overrides: Partial<AegentPlugin> = {}, received: SessionEvent[] = []): AegentPlugin {
     return {
-        manifest: { name: "hello", trust: "untrusted", capabilities: ["events", "tools"] },
+        manifest: { name: "hello", trust: "untrusted", capabilities: ["registerTool", "subscribe"] },
         onActivate: (caps) => {
             caps.registerTool({ name: "hello_tool", execute: () => ({ content: "hi" }) });
             caps.subscribe(["tool/call", "user/message"]);
@@ -48,7 +48,7 @@ describe("loadPlugin —— 加载面校验（P1 地基复用）", () => {
 
     it("坏 manifest 类型化拒绝（PluginManifestError——P1 纪律：缺字段/未实现能力/闭集外字段）", async () => {
         await expect(
-            loadPlugin(goodPlugin({ manifest: { trust: "untrusted", capabilities: ["events"] } }), {
+            loadPlugin(goodPlugin({ manifest: { trust: "untrusted", capabilities: [] } }), {
                 availableCapabilities: CAPS,
             }),
         ).rejects.toBeInstanceOf(PluginManifestError);
@@ -56,7 +56,7 @@ describe("loadPlugin —— 加载面校验（P1 地基复用）", () => {
             loadPlugin(goodPlugin({ manifest: { name: "x", trust: "untrusted", capabilities: ["time-travel"] } }), {
                 availableCapabilities: CAPS,
             }),
-        ).rejects.toThrow(/未实现的能力/);
+        ).rejects.toThrow(/未实现的能力|闭集外能力声明/);
         await expect(
             loadPlugin(goodPlugin({ manifest: { name: "x", trust: "untrusted", capabilities: [], hacker: true } }), {
                 availableCapabilities: CAPS,
@@ -77,7 +77,7 @@ describe("loadPlugin —— 加载面校验（P1 地基复用）", () => {
         ).rejects.toBeInstanceOf(PluginSdkError);
     });
 
-    it("能力 token 属性闭集：registerTool/subscribe/pluginSettings（无内核句柄面——pluginSettings 是只读数据投影）", async () => {
+    it("能力 token 属性闭集：registerTool/subscribe/pluginSettings + W15a 分片面（net/session/services——无内核句柄面）", async () => {
         let seen: string[] = [];
         await loadPlugin(
             goodPlugin({
@@ -87,7 +87,14 @@ describe("loadPlugin —— 加载面校验（P1 地基复用）", () => {
             }),
             { availableCapabilities: CAPS },
         );
-        expect(seen).toEqual(["pluginSettings", "registerTool", "subscribe"]);
+        expect(seen).toEqual([
+            "net",
+            "pluginSettings",
+            "registerTool",
+            "services",
+            "session",
+            "subscribe",
+        ]);
     });
 
     it("源码证伪：SDK 模块不 import 工具注册表/会话存储/沙箱（内核句柄不外泄）", () => {

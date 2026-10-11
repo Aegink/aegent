@@ -14,7 +14,7 @@ import { validateManifest } from "../kernel/plugin-manifest.js";
 import { createPluginDefineTool } from "../../plugins/tools-builtin/plugin-define.js";
 import { ToolRegistry } from "../kernel/tools/registry.js";
 
-const CAPS = ["registerTool", "subscribe", "hooks"];
+const CAPS = ["registerTool", "subscribe", "hooks", "settings.read", "skill.register", "mcp.register", "settings.schema", "command.register"];
 const tmpRoots: string[] = [];
 afterEach(() => {
   for (const dir of tmpRoots.splice(0)) rmSync(dir, { recursive: true, force: true });

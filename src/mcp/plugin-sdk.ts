@@ -28,6 +28,11 @@
  *     消费——不受信来源默认 deny 是策略面的事，本模块只如实登记）。
  */
 
+import {
+  expandGrantedPermissions,
+  PLUGIN_INJECTABLE_SERVICES,
+  type PluginPermission,
+} from "../core/index.js";
 import { validateManifest, PluginManifestError, type PluginManifest } from "../kernel/plugin-manifest.js";
 import { EVENT_TYPES, type SessionEvent, type SessionEventType } from "../kernel/events.js";
 import { Deadline, withDeadline } from "../kernel/deadline.js";
@@ -77,14 +82,59 @@ export interface PluginToolEntry {
  * （contributes.settings schema + settings.plugins[].options 用户值——
  * 只读投影，写面随需要扩展）。
  */
+/** W15a/T9-5：session.read 分片的查询形状（本会话事件流只读——跨会话面
+ * 走 session_query 工具的 EP-3 宿主授权；插件无 cwd 身份不参与跨读）。 */
+export interface PluginSessionReadQuery {
+    readonly types?: readonly string[];
+    readonly fromTs?: number;
+    readonly toTs?: number;
+    readonly limit?: number;
+}
+
+/** session.read 分片的行投影（事件只读快照——内核对象不出借原引用）。 */
+export interface PluginSessionRow {
+    readonly seq: number;
+    readonly type: string;
+    readonly ts: number;
+    readonly event: SessionEvent;
+}
+
+/** session.read 分片的宿主应答（授权拒绝 = ok:false + reason——fail-visible）。 */
+export type PluginSessionReadResult =
+    | { readonly ok: true; readonly rows: readonly PluginSessionRow[] }
+    | { readonly ok: false; readonly reason: string };
+
+/**
+ * 受限能力 token（W15a/T9-5 分片能力面）：P0 三方法之外，net/session.read
+ * 分片经**网关前置断言**（manifest.capabilities 未声明即抛——权限闭集
+ * PLUGIN_PERMISSIONS）；services 经 inject 数据化按名取用（服务名闭集）。
+ * 内核句柄依旧不外泄。
+ */
 export interface PluginCapabilities {
     /** 登记工具（重名即类型化拒绝——同名覆盖会让不可信代码静默换掉可信工具）。 */
     readonly registerTool: (def: PluginToolDef) => void;
     /** 订阅事件类型（⊆ EVENT_TYPES 闭集，未知类型类型化拒绝）；返回退订函数。
      * T-P3-148 G：manifest 声明 contributes.subscriptions 时收紧为其子集。 */
     readonly subscribe: (types: readonly SessionEventType[]) => () => void;
-    /** 本插件的设置值（合并 default 后的只读快照——类型不符已回退缺省）。 */
+    /** 本插件的设置值（合并 default 后的只读快照——类型不符已回退缺省）。
+     * W15a：网关前置断言——capabilities 需声明 "settings.read"。 */
     readonly pluginSettings: Readonly<Record<string, unknown>>;
+    /** net 分片：NetworkGuard 守卫的受限 fetch（需 "net.fetch" + 宿主装配）。 */
+    readonly net: {
+        readonly fetch: (
+            url: string,
+            init?: { readonly timeoutMs?: number; readonly headers?: Readonly<Record<string, string>> },
+        ) => Promise<{ readonly status: number; readonly body: string; readonly contentType?: string }>;
+    };
+    /** session.read 分片：本会话事件流只读（需 "session.read" + 宿主装配；
+     * 跨会话面走 session_query 工具的 EP-3 宿主授权——插件不参与跨读）。 */
+    readonly session: {
+        readonly read: (query: PluginSessionReadQuery) => Promise<PluginSessionReadResult>;
+    };
+    /** inject 数据化服务（dsh 形状）：按名取宿主装配的服务实例。 */
+    readonly services: {
+        readonly get: (name: string) => unknown;
+    };
 }
 
 /** 插件收到的只读事件快照（内核 SessionEvent 的深拷贝投影）。 */
@@ -137,6 +187,16 @@ export async function loadPlugin(
         readonly settingsValues?: Readonly<Record<string, unknown>>;
         /** T-P3-148 G：订阅声明白名单（manifest.contributes.subscriptions——声明即收紧）。 */
         readonly declaredSubscriptions?: readonly string[];
+        /** W15a/T9-5：net 分片宿主实现（NetworkGuard.fetch——缺省未装配 =
+         * 声明即拒装：availableCapabilities 不含 "net"）。 */
+        readonly netFetch?: (
+            url: string,
+            init?: { readonly timeoutMs?: number; readonly headers?: Readonly<Record<string, string>> },
+        ) => Promise<{ readonly status: number; readonly body: string; readonly contentType?: string }>;
+        /** W15a/T9-5：session.read 分片宿主实现（本会话事件流只读闭包）。 */
+        readonly sessionRead?: (query: PluginSessionReadQuery) => Promise<PluginSessionReadResult>;
+        /** W15a/T9-5：inject 服务的宿主注册表（服务名 → 实例）。 */
+        readonly injectableServices?: Readonly<Record<string, unknown>>;
     },
 ): Promise<PluginHandle> {
     if (plugin === null || typeof plugin !== "object") {
@@ -158,6 +218,16 @@ export async function loadPlugin(
     const tools: PluginToolEntry[] = [];
     const subscribed = new Set<SessionEventType>();
     let active = true;
+    // W15a/T9-5：网关前置断言（每片一组权限名——调用前查声明集）
+    const granted = expandGrantedPermissions(manifest.capabilities);
+    const assertPermission = (permission: PluginPermission, what: string): void => {
+        if (!granted.has(permission)) {
+            throw new PluginSdkError(
+                `权限未声明：${permission}（${what}——manifest.capabilities 显式声明后方可使用）`,
+            );
+        }
+    };
+    const settingsValues = options.settingsValues ?? {};
     const caps: PluginCapabilities = {
         registerTool: (def) => {
             if (!active) throw new PluginSdkError(`插件「${manifest.name}」已收摊，不能再登记工具`);
@@ -192,7 +262,49 @@ export async function loadPlugin(
                 for (const t of types) subscribed.delete(t);
             };
         },
-        pluginSettings: options.settingsValues ?? {},
+        get pluginSettings() {
+            // W15a：settings.read 分片网关前置断言（声明未声明即拒）
+            assertPermission("settings.read", "读取本插件设置值");
+            return settingsValues;
+        },
+        net: {
+            fetch: async (url, init) => {
+                assertPermission("net.fetch", "网络访问");
+                if (options.netFetch === undefined) {
+                    throw new PluginSdkError("宿主未装配 net 分片（NetworkGuard 缺席）");
+                }
+                return options.netFetch(url, init);
+            },
+        },
+        session: {
+            read: async (query) => {
+                assertPermission("session.read", "跨会话读");
+                if (options.sessionRead === undefined) {
+                    throw new PluginSdkError("宿主未装配 session.read 分片（会话查询面缺席）");
+                }
+                return options.sessionRead(query);
+            },
+        },
+        services: {
+            get: (name) => {
+                // inject 数据化：声明面（manifest.inject）+ 服务名闭集双闸
+                if (!(manifest.inject ?? []).includes(name)) {
+                    throw new PluginSdkError(
+                        `服务 "${name}" 未在 manifest.inject 声明（声明后方可注入）`,
+                    );
+                }
+                if (!(PLUGIN_INJECTABLE_SERVICES as readonly string[]).includes(name)) {
+                    throw new PluginSdkError(
+                        `服务名闭集外：${name}（合法：${PLUGIN_INJECTABLE_SERVICES.join(", ")}）`,
+                    );
+                }
+                const service = options.injectableServices?.[name];
+                if (service === undefined) {
+                    throw new PluginSdkError(`服务 "${name}" 宿主未装配（注入注册表缺席）`);
+                }
+                return service;
+            },
+        },
     };
 
     await plugin.onActivate(caps);

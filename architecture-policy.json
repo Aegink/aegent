@@ -304,8 +304,9 @@
       ],
       "managed": false,
       "requires": [
-        "kernel",
-        "host"
+        "core",
+        "host",
+        "kernel"
       ],
       "publicEntrypoints": [],
       "owner": "wangh"

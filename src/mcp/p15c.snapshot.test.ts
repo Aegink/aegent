@@ -137,7 +137,7 @@ describe("T-P2-311 快照：ws 插件注册工具走审批全链（15c 接缝）
         const seen: string[] = [];
         const sdk = await loadPlugin(
             {
-                manifest: { name: "audit-ext", trust: "untrusted", capabilities: ["events"] },
+                manifest: { name: "audit-ext", trust: "untrusted", capabilities: ["subscribe"] },
                 onActivate: (caps) => {
                     caps.subscribe(["tool/call"]);
                 },
@@ -145,7 +145,7 @@ describe("T-P2-311 快照：ws 插件注册工具走审批全链（15c 接缝）
                     seen.push(e.type);
                 },
             },
-            { availableCapabilities: ["events"] },
+            { availableCapabilities: ["registerTool", "subscribe", "hooks", "settings.read"] },
         );
         // 生态桥（CC 方言 → toolCall 链层，untrusted 轨注册）
         const bridge = createClaudeCodeHookBridge(

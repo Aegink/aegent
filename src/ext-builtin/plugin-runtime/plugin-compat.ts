@@ -24,6 +24,8 @@
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 
+import { CONTRIBUTION_PERMISSION_BINDINGS } from "../../core/index.js";
+
 /** 清单位置回退链（zcode findManifest 同序；返回 {path, kind}）。 */
 export function discoverManifestPath(dir: string): { path: string; kind: "aegent" | "claude" | "codex" } | undefined {
   const candidates: { relative: string; kind: "aegent" | "claude" | "codex" }[] = [
@@ -167,9 +169,17 @@ export function claudeToAegentManifest(raw: unknown, pluginDir: string, kind: "a
   }
 
   // claude/zcode 清单没有我方 trust/capabilities 面——注入安全缺省
-  // （untrusted + 无能力声明：贡献面经 contributes 表达，不默认给运行时能力）
+  // （untrusted + 无运行时能力：registerTool/subscribe 等不默认给）。
+  // W15a/T9-5：贡献绑定权限随映射出的 contributes 注入（skills→skill.register
+  // 等——否则转换产物过不了贡献↔权限绑定校验；属转换产物的自洽面）
   if (out["trust"] === undefined) out["trust"] = "untrusted";
-  if (out["capabilities"] === undefined) out["capabilities"] = [];
+  if (out["capabilities"] === undefined) {
+    const bound: string[] = [];
+    for (const [category, permission] of Object.entries(CONTRIBUTION_PERMISSION_BINDINGS)) {
+      if (contributes[category as keyof typeof contributes] !== undefined) bound.push(permission);
+    }
+    out["capabilities"] = bound;
+  }
   for (const key of consumed) delete out[key];
   if (Object.keys(contributes).length > 0) out["contributes"] = contributes;
   return { raw: out, warnings };

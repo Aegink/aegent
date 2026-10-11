@@ -11,7 +11,17 @@ import { afterEach, describe, expect, it } from "vitest";
 import { scaffoldPlugin, upsertDevMarketplace, devMarketplaceName, PLUGIN_TEMPLATE_IDS, type PluginTemplateId } from "./plugin-scaffold.js";
 import { validateManifest } from "./plugin-manifest.js";
 
-const CAPS = ["registerTool", "subscribe", "hooks"];
+const CAPS = [
+  "registerTool",
+  "subscribe",
+  "hooks",
+  "settings.read",
+  "view.register",
+  "skill.register",
+  "command.register",
+  "mcp.register",
+  "settings.schema",
+];
 const tmpRoots: string[] = [];
 afterEach(() => {
   for (const dir of tmpRoots.splice(0)) rmSync(dir, { recursive: true, force: true });

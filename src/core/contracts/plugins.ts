@@ -34,6 +34,91 @@ export interface PluginHostApi {
   readonly pluginSettings: Readonly<Record<string, unknown>>;
 }
 
+// ---------------------------------------------------------------------------
+// W15/T9-5 能力分片 + 权限闭集（pi-desktop PLUGIN_PERMISSIONS 形状——flat
+// 字符串闭集；闭集大小对齐我方宿主面而非全量 44 项——清单即宿主事实面）。
+// ---------------------------------------------------------------------------
+
+/** 权限名闭集（flat 字符串——清单 capabilities 可声明：分片名或权限名）。 */
+export const PLUGIN_PERMISSIONS = [
+  // P0 三方法（既有面）
+  "tool.register",
+  "event.subscribe",
+  "hooks.register",
+  // W15a 分片面
+  "settings.read",
+  "net.fetch",
+  "session.read",
+  // W15b（T9-6 接线的词汇位——闭集一次冻结，实现随 T9-6 落）
+  "service.register",
+  "service.invoke",
+  "bus.publish",
+  "bus.subscribe",
+  // 贡献绑定词汇
+  "command.register",
+  "skill.register",
+  "view.register",
+  "mcp.register",
+  "settings.schema",
+] as const;
+
+export type PluginPermission = (typeof PLUGIN_PERMISSIONS)[number];
+
+/** 能力分片（声明单元 → 权限名组；网关按片前置断言）。 */
+export const PLUGIN_CAPABILITY_SHARDS = {
+  registerTool: ["tool.register"],
+  subscribe: ["event.subscribe"],
+  hooks: ["hooks.register"],
+  "settings.read": ["settings.read"],
+  net: ["net.fetch"],
+  "session.read": ["session.read"],
+  services: ["service.register", "service.invoke"],
+  bus: ["bus.publish", "bus.subscribe"],
+} as const;
+
+export type PluginCapabilityShard = keyof typeof PLUGIN_CAPABILITY_SHARDS;
+
+/** 贡献类别 → 必需权限（贡献↔权限绑定校验的权威表）。 */
+export const CONTRIBUTION_PERMISSION_BINDINGS: Readonly<
+  Record<string, PluginPermission>
+> = {
+  commands: "command.register",
+  skills: "skill.register",
+  views: "view.register",
+  mcpServers: "mcp.register",
+  settings: "settings.schema",
+  subscriptions: "event.subscribe",
+  services: "service.register",
+  bus: "bus.subscribe",
+};
+
+/** 声明的 capability 集 → 授予的权限集合（分片展开 + 直接权限）。 */
+export function expandGrantedPermissions(
+  capabilities: readonly string[],
+): Set<string> {
+  const granted = new Set<string>();
+  for (const entry of capabilities) {
+    const shard = (PLUGIN_CAPABILITY_SHARDS as Record<string, readonly string[]>)[entry];
+    if (shard !== undefined) {
+      for (const perm of shard) granted.add(perm);
+    } else if ((PLUGIN_PERMISSIONS as readonly string[]).includes(entry)) {
+      granted.add(entry);
+    }
+  }
+  return granted;
+}
+
+/** inject 服务名闭集（dsh 形状——EP-10 注册面的可注入清单）。 */
+export const PLUGIN_INJECTABLE_SERVICES = [
+  "session",
+  "memory",
+  "channel",
+  "schedule",
+  "telemetry",
+] as const;
+
+export type PluginInjectableService = (typeof PLUGIN_INJECTABLE_SERVICES)[number];
+
 /**
  * EP-12 常驻服务 contributes 形状（W15/T9-6 接线；contributes.services
  * 声明、宿主管 start/stop/重启 ≤5 次退避）。

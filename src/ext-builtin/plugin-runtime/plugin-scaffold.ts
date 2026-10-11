@@ -129,8 +129,9 @@ export default {
   // 清单以 plugin.json 为权威（宿主装载时注入——入口不重复声明）
   async onActivate(caps) {
     // F：caps.pluginSettings = plugin.json contributes.settings 的合并值
-    // （default + 用户在插件中心配置的值）。改这里后新会话生效。
-    const prefix = typeof caps.pluginSettings.prefix === "string" ? caps.pluginSettings.prefix : "";
+    // （default + 用户在插件中心配置的值；需清单声明 "settings.read"）。
+    const prefix =
+      typeof caps.pluginSettings?.prefix === "string" ? caps.pluginSettings.prefix : "";
     caps.registerTool({
       name: "echo_text",
       description: "回声：原样返回 args.text（插件工具描述随登记内联生效）。",
@@ -200,20 +201,34 @@ function manifestJson(slug: string, template: PluginTemplateId, displayName: str
     capabilities: [] as string[],
   };
   if (template === "view-basic") {
+    // W15a/T9-5：贡献↔权限绑定——views 需要 view.register
     return {
       ...base,
+      capabilities: ["view.register"],
       contributes: { views: [{ id: "main", title: displayName, entry: "views/index.html" }] },
     };
   }
   if (template === "agent-tool") {
-    return { ...base, capabilities: ["registerTool"] };
+    // W15a/T9-5：模板读 caps.pluginSettings——清单带 settings.read 声明
+    //（网关前置断言的作者面配合）
+    return { ...base, capabilities: ["registerTool", "settings.read"] };
   }
   if (template === "skill-pack") {
-    return { ...base, contributes: { skills: ["skills"] } };
+    // W15a/T9-5：贡献↔权限绑定——skills 需要 skill.register
+    return { ...base, capabilities: ["skill.register"], contributes: { skills: ["skills"] } };
   }
+  // W15a/T9-5：full 模板的贡献绑定（commands→command.register / skills→
+  // skill.register / settings→settings.schema；subscribe 分片授予 event.subscribe）
   return {
     ...base,
-    capabilities: ["registerTool", "subscribe"],
+    capabilities: [
+      "registerTool",
+      "subscribe",
+      "command.register",
+      "skill.register",
+      "settings.schema",
+      "view.register",
+    ],
     contributes: {
       commands: [
         {
