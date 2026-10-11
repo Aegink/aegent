@@ -99,6 +99,7 @@ import {
 import { ManualPermissionBroker, type PermissionBrokerPort } from "../policy/broker.js";
 import { racePermissionResponders, type ApprovalResponderPort } from "../policy/approval-responder.js";
 import { createProjectRuleWriteback } from "../policy/rule-writeback.js";
+import { createPlanModePolicyModule } from "../policy/plan-mode-policy.js";
 import { projectRulesPath } from "./child-config.js";
 import { assemblePolicyChain } from "../policy/chain.js";
 import { createRuleSetModule } from "../policy/rules.js";
@@ -716,6 +717,9 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
   const ceiling: CeilingProfile | undefined = intersectAllProfiles(
     options.permissionProfiles ?? [],
   );
+  // W13b/T9-4：plan 激活查询 late-binding（policyChain 先于 planModeService
+  // 声明——服务创建后回填，与 A5 重试观察者同款装配序）。
+  const planModeActiveRef: { fn?: () => boolean } = {};
   const policyChain = assemblePolicyChain({
     ...(loadedRules.length > 0
       ? {
@@ -733,6 +737,12 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
         }
       : {}),
     core: [
+      // W13b/T9-4：plan 进出权限规则（进入 allow tool.plan.enter / 非法
+      // 退出 deny mode.plan.exitOnly；激活期间退出弃权落回 ask 批准）。
+      // planMode 服务缺席 = 工具未注册，模块恒弃权（零行为）。
+      ...(options.planMode
+        ? [createPlanModePolicyModule({ planActive: () => planModeActiveRef.fn?.() ?? false })]
+        : []),
       // G2（T-P1-10）：内核元操作白名单——todo_write 只写会话元状态、无
       // 工作区副作用，核心层显式放行（不变量 3 的"显式例外"落链上模块）。
       // plan 模式硬关（T-P1-11）在出口级，压不过它不成立——出口在后。
@@ -1090,6 +1100,7 @@ export function createChildAssembly(options: ChildAssemblyOptions): ChildAssembl
   // —— G1/G7 plan 模式（T-P1-11）：服务在此构造，gate 出口活查询与工具
   // 注册共用同一实例（agent-process 取 assembly.planMode 注册工具面）。
   const planModeService = options.planMode ? createPlanModeService() : undefined;
+  planModeActiveRef.fn = () => planModeService?.isActive ?? false;
   // —— G4 计划落盘（T-P1-13）：文件成功才记 checkpoint 事件（绝不产生
   // 指向不存在文件的引用；写失败上抛交 registry 兜底 isError）。
   const savePlanArtifactFn =

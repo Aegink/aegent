@@ -332,7 +332,7 @@ describe("aegent CLI（T-8-01）", () => {
     expect(lines.some((l) => l.includes("☐ 验收"))).toBe(true);
   });
 
-  it("T-P1-11 G1/G7：plan 模式端到端——进出经审批、硬关压过默认 ask、退出后恢复", async () => {
+  it("T-P1-11 G1/G7：plan 模式端到端——进入直过（W13b ruleId）、硬关压过默认 ask、退出经批准恢复", async () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "aegent-cli-plan-"));
     const planCall = (id: string, name: string) =>
       [
@@ -377,9 +377,8 @@ describe("aegent CLI（T-8-01）", () => {
       },
       async function* ({ waitFor }) {
         yield "先做计划";
-        // 进出都要用户批准（plan_enter 默认 ask）
-        await waitFor((line) => line.includes("⏸ 待审批 [call_1] plan_enter"));
-        yield "/approve call_1 allow";
+        // W13b/T9-4：plan_enter 经权限管线显式 allow（ruleId tool.plan.enter
+        // ——zcode plan-mode-policy 同构）——不再弹审批；plan_exit 保留批准
         await waitFor((line) => line.includes("── turn 1 结束"));
         // plan 激活：bash 被出口硬关——直接 ✗，不弹审批（规则/默认 ask 压不过）
         yield "跑个命令试试";
@@ -395,7 +394,8 @@ describe("aegent CLI（T-8-01）", () => {
         await waitFor((line) => line.includes("── turn 4 结束"));
       },
     );
-    expect(lines.some((l) => l.includes("⏸ 待审批 [call_1] plan_enter"))).toBe(true);
+    // W13b/T9-4：plan_enter 直过（无审批弹窗）；plan_exit 仍经批准
+    expect(lines.some((l) => l.includes("⏸ 待审批 [call_1] plan_enter"))).toBe(false);
     expect(lines.some((l) => l.includes("已进入计划模式"))).toBe(true);
     // 硬关：call_2 直接拒（含"plan 模式硬关"），且全程无 call_2 审批弹窗
     expect(lines.some((l) => l.startsWith("✗") && l.includes("plan 模式硬关"))).toBe(true);
