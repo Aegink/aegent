@@ -83,12 +83,22 @@ flowchart TB
 ## 快速开始
 
 ```bash
-npm install        # 硬依赖仅 better-sqlite3（内存后端可零 native 运行）
+# 直接从 GitHub 使用（无需 npm 发布渠道）
+npm install github:Aegink/{{NAME}}
+# 或克隆后本地开发
+git clone https://github.com/Aegink/{{NAME}} && cd {{NAME}} && npm install
+
+# 本地验证
 npm test           # 223 文件 / 1988 用例
 npm run check      # tsc 严格模式类型检查
 npm run architecture:check   # 架构治理（域白名单 · 深导入禁令 · 行数纪律）
 npm run kernel:edges         # 内核边检查（core 零出边 · 单一入口）
+npm run models:check         # 内置模型目录与数据源同步校验
 ```
+
+> 硬依赖仅 `better-sqlite3`（纯内存后端可零 native 依赖运行）；`ws` /
+> `undici` / `fetch-socks` 为可选能力面（浏览器面板 / 网络代理），缺失不
+> 影响核心运行。
 
 最小装配（零外部服务）：
 
