@@ -186,6 +186,14 @@ const TPL = path.join(ROOT, "tools", "kernel-repo-templates");
 cpSync(path.join(TPL, "LICENSE"), path.join(OUT, "LICENSE"));
 cpSync(path.join(TPL, "NOTICE"), path.join(OUT, "NOTICE"));
 cpSync(path.join(TPL, ".gitignore"), path.join(OUT, ".gitignore"));
+// 免责声明与致谢（{{NAME}} 模板替换）
+for (const doc of ["DISCLAIMER.md", "ACKNOWLEDGMENTS.md"]) {
+  writeFileSync(
+    path.join(OUT, doc),
+    readFileSync(path.join(TPL, doc), "utf8").replaceAll("{{NAME}}", NAME),
+    "utf8",
+  );
+}
 writeFileSync(
   path.join(OUT, "README.md"),
   readFileSync(path.join(TPL, "README.md"), "utf8").replaceAll("{{NAME}}", NAME),
