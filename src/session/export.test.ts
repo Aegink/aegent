@@ -79,7 +79,10 @@ describe("session-index（E8 索引面）", () => {
     const store = seedTwoSessions(dbPath);
     await store.flush("sA");
     await store.flush("sB");
-    // sB 的事件 ts 更晚（seed 同 ts）——追加一条让 sB 的 updatedTs 前进
+    // sB 的事件 ts 更晚（seed 同 ts）——追加一条让 sB 的 updatedTs 前进。
+    // W19 CI 修复：显式推进时间——快速 runner 上两次 append 可能同毫秒，
+    // updatedTs 相等则降序排序不稳定（本地慢机通过、CI 快机失败的真 flaky）。
+    await new Promise((r) => setTimeout(r, 5));
     store.append("sB", [{ type: "turn/start", turn: 2 }]);
     await store.flush("sB");
     const rows = listSessionIndex(storage);

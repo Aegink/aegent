@@ -5,6 +5,7 @@
 > A local-first, multi-surface AI agent kernel. Minimal semantic core,
 > fully externalized assembly, everything pluggable.
 
+[![CI](https://github.com/Aegink/{{NAME}}/actions/workflows/ci.yml/badge.svg)](https://github.com/Aegink/{{NAME}}/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](package.json)
 [![Tests](https://img.shields.io/badge/tests-1988%20passing-brightgreen.svg)](#治理与质量)

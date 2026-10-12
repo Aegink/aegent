@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Windows runner 无 C++ 工具链（better-sqlite3 需源码编译）——跳过
+      # native 构建脚本；Linux runner 有 gcc，全量安装。
+      - name: Install dependencies
+        run: npm ci ${{ runner.os == 'Windows' && '--ignore-scripts' || '' }}
+
+      - name: Type check (strict)
+        run: npm run check
+
+      # 测试与治理三件：Linux 全量（含 better-sqlite3 真库）；Windows 只跑
+      # 治理（native 未编译，测试依赖真 sqlite）。
+      - name: Test suite
+        if: runner.os == 'Linux'
+        run: npm test
+
+      - name: Architecture governance
+        run: npm run architecture:check
+
+      - name: Kernel edge invariants
+        run: npm run kernel:edges
+
+      - name: Model catalog sync
+        run: npm run models:check

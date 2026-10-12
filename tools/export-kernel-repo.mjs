@@ -127,65 +127,48 @@ cpSync(path.join(ROOT, "ui", "model-catalog.json"), path.join(OUT, "data", "mode
 
 // ---- 7) 构建配置 ----
 cpSync(path.join(ROOT, "tsconfig.json"), path.join(OUT, "tsconfig.json"));
+// win32 专属测试（盘符路径 / SendKeys / Job Object / 受限令牌 / pwsh / 账户
+// provision 面）：非 win32 平台排除，Windows 全量运行。导出器生成——增删
+// 请改主仓 tools/export-kernel-repo.mjs 的 WIN32_ONLY_TESTS 后重导出。
+const WIN32_ONLY_TESTS = [
+  "src/sandbox/win32-backend.test.ts",
+  "src/sandbox/workspace-sid.test.ts",
+  "src/sandbox/offline-network.test.ts",
+  "src/scheduler/computer-win32.test.ts",
+  "src/context/system-prompt.test.ts", // 验收①嵌套收集用 F:/ 盘符路径字面量
+  "plugins/tools-builtin/pwsh.test.ts", // ①真命令需 pwsh 可执行
+];
+const win32Exclude = WIN32_ONLY_TESTS.map((t) => `"${t}"`).join(", ");
 writeFileSync(
   path.join(OUT, "vitest.config.ts"),
   `import { defineConfig } from "vitest/config";
+
+// win32 专属测试（盘符路径 / SendKeys / Job Object / 受限令牌 / pwsh / 账户
+// provision 面）：非 win32 平台排除（含默认 exclude 两项——vitest 的 exclude
+// 是替换语义），Windows 全量运行。导出器生成，勿手改（主仓重导出同步）。
+const WIN32_ONLY_TESTS = [${win32Exclude}];
 
 export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts", "plugins/**/*.test.ts"],
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      ...(process.platform === "win32" ? [] : WIN32_ONLY_TESTS),
+    ],
   },
 });
 `,
   "utf8",
 );
 
-// ---- 8) package.json（裁剪依赖 + name/license）----
-const mainPkg = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8"));
-const pkg = {
-  name: NAME,
-  version: "0.1.0",
-  description: "本地优先的多端 AI Agent 内核——最小语义面 + 装配全外置（从 aegent 抽取）",
-  type: "module",
-  license: "Apache-2.0",
-  engines: { node: ">=22" },
-  scripts: {
-    test: "vitest run",
-    check: "tsc --noEmit",
-    build: "tsc && node scripts/copy-assets.mjs",
-    "architecture:check": "node tools/architecture-check.mjs",
-    "vocabulary:check": "node tools/vocabulary-check.mjs",
-    "kernel:edges": "node tools/kernel-edges.cjs",
-    "models:generate": "node tools/generate-model-catalog.mjs",
-    "models:check": "node tools/generate-model-catalog.mjs --check",
-  },
-  dependencies: {
-    ...(mainPkg.dependencies?.["better-sqlite3"] !== undefined || true ? {} : {}),
-  },
-  devDependencies: {
-    "@types/better-sqlite3": mainPkg.devDependencies["@types/better-sqlite3"],
-    "@types/node": mainPkg.devDependencies["@types/node"],
-    "@types/ws": mainPkg.devDependencies["@types/ws"],
-    "better-sqlite3": mainPkg.devDependencies["better-sqlite3"],
-    typescript: mainPkg.devDependencies.typescript,
-    vitest: mainPkg.devDependencies.vitest,
-  },
-};
-// 运行时依赖：better-sqlite3（硬）+ ws（浏览器面板）+ undici/fetch-socks（代理面，动态）
-pkg.dependencies = {
-  "better-sqlite3": mainPkg.devDependencies["better-sqlite3"],
-  ...(mainPkg.dependencies?.["fetch-socks"] !== undefined ? { "fetch-socks": mainPkg.dependencies["fetch-socks"] } : {}),
-  ...(mainPkg.dependencies?.["undici"] !== undefined ? { undici: mainPkg.dependencies.undici } : {}),
-  ...(mainPkg.dependencies?.["ws"] !== undefined ? { ws: mainPkg.dependencies.ws } : {}),
-};
-writeFileSync(path.join(OUT, "package.json"), JSON.stringify(pkg, null, 2) + "\n", "utf8");
-
 // ---- 9) 许可与文档（模板替换）----
 const TPL = path.join(ROOT, "tools", "kernel-repo-templates");
 cpSync(path.join(TPL, "LICENSE"), path.join(OUT, "LICENSE"));
 cpSync(path.join(TPL, "NOTICE"), path.join(OUT, "NOTICE"));
 cpSync(path.join(TPL, ".gitignore"), path.join(OUT, ".gitignore"));
+cpSync(path.join(TPL, ".gitattributes"), path.join(OUT, ".gitattributes"));
 // 免责声明与致谢（{{NAME}} 模板替换）
 for (const doc of ["DISCLAIMER.md", "ACKNOWLEDGMENTS.md"]) {
   writeFileSync(
@@ -209,6 +192,10 @@ writeFileSync(
   ),
   "utf8",
 );
+// CI（GitHub Actions：typecheck + tests + 治理三件）
+mkdirSync(path.join(OUT, ".github", "workflows"), { recursive: true });
+cpSync(path.join(TPL, "ci.yml"), path.join(OUT, ".github", "workflows", "ci.yml"));
+
 // scripts（构建资产拷贝：descriptions）
 mkdirSync(path.join(OUT, "scripts"), { recursive: true });
 cpSync(path.join(ROOT, "scripts", "copy-assets.mjs"), path.join(OUT, "scripts", "copy-assets.mjs"));

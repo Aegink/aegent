@@ -1,0 +1,13 @@
+# 统一 LF（跨平台一致性：Windows checkout 默认 autocrlf 会把文件转 CRLF，
+# 使生成产物（catalog.generated.ts）与数据源校验出现字节差异——W19 CI 实证）
+* text=auto eol=lf
+
+# 二进制（不做行尾转换）
+*.png binary
+*.jpg binary
+*.ico binary
+*.exe binary
+*.dll binary
+*.node binary
+*.db binary
+*.sig binary
