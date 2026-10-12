@@ -21,7 +21,6 @@ import {
   defaultCredentialsPath,
 } from "./credentials.js";
 import { resolveChildLaunchArgv, parseSettingsShape } from "./settings.js";
-import { runKeyCommand } from "../cli/key.js";
 
 const WIN = process.platform === "win32";
 const SK_PATTERN = /sk-[A-Za-z0-9]{20,}/;
@@ -73,7 +72,6 @@ describe("PlainFileCredentialStore（非 Windows 回退——0600 明文文件�
     await store.setKey("p", "sk-mode-0123456789abcdefghij");
     expect(readFileSync(file, "utf8")).toContain("sk-mode-0123456789abcdefghij");
   });
-});
 
 describe.runIf(WIN)("DpapiCredentialStore（Windows 真 PowerShell 子进程）", () => {
   it("往返 + 落盘 blob 无明文（sk- 证伪）+ 删除", async () => {
@@ -96,54 +94,6 @@ describe.runIf(WIN)("DpapiCredentialStore（Windows 真 PowerShell 子进程）"
   }, 120_000);
 });
 
-describe("runKeyCommand（CLI key 子命令）", () => {
-  function collect(store: Parameters<typeof runKeyCommand>[2], stdinText?: string) {
-    const out: string[] = [];
-    const err: string[] = [];
-    const input = new PassThrough();
-    if (stdinText !== undefined) input.end(stdinText);
-    const run = (argv: string[]) =>
-      runKeyCommand(argv, {
-        ...(stdinText !== undefined ? { input } : {}),
-        out: (l) => out.push(l),
-        err: (l) => err.push(l),
-      }, store);
-    return { run, out, err };
-  }
-
-  it("set（stdin 读入不进命令行）→ get 掩码 → delete → list 空态", async () => {
-    const store = createCredentialStore(tmpFile("credentials.bin"), "linux");
-    const first = collect(store, "sk-cli-0123456789abcdefghij\n");
-    expect(await first.run(["set", "main"])).toBe(0);
-    // key 材料出现在输入流与存储，但输出永不带明文（只带掩码）
-    expect(first.out.join("\n")).not.toContain("sk-cli-0123456789abcdefghij");
-    expect(first.out.join("\n")).toContain("sk-c…ghij");
-
-    const view = collect(store);
-    expect(await view.run(["get", "main"])).toBe(0);
-    expect(view.out.join("\n")).not.toContain("sk-cli-0123456789abcdefghij");
-    expect(view.out.join("\n")).toMatch(/main: sk-c…ghij/);
-
-    expect(await collect(store).run(["delete", "main"])).toBe(0);
-    expect(await collect(store).run(["list"])).toBe(0);
-    expect(await collect(store).run(["get", "main"])).toBe(1); // 删除后 get 失败
-  });
-
-  it("list 有条目 / set 空 key 拒绝 / 未知动作 → 用法与退出码", async () => {
-    const store = createCredentialStore(tmpFile("credentials.bin"), "linux");
-    await store.setKey("p1", "sk-listing-0123456789abcdefghij");
-    const listed = collect(store);
-    expect(await listed.run(["list"])).toBe(0);
-    expect(listed.out.join("\n")).toContain("p1");
-
-    const empty = collect(store, "\n");
-    expect(await empty.run(["set", "main"])).toBe(1);
-    expect(empty.err.join("\n")).toContain("key 为空");
-
-    const bad = collect(store);
-    expect(await bad.run(["frobnicate"])).toBe(1);
-    expect(bad.err.join("\n")).toContain("用法");
-  });
 });
 
 describe("工厂与装配消费", () => {

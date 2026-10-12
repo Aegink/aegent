@@ -6,7 +6,7 @@
  * ——宿主是唯一持有 ws 连接的一方，插件进程只经消息信封表达意图；断线
  * 降级（插件缺席不崩内核——能力注销 + 失败报告，不冒泡）。不抄其
  * Electron 面。握手复用 host/protocol 的 hello 面（{type:"hello",version}
- * → 版本不符 hello_error，PROTOCOL_VERSION 锁定——协议版本化的风险面）；
+ * → 版本不符 hello_error，WS_PROTOCOL_VERSION 锁定——协议版本化的风险面）；
  * K4 ACP 同款行协议纪律（JSON 信封、每消息一帧）。
  *
  * 不可信边界：进程外即隔离（无共享内存——沙箱面不做二次加固，记档）。
@@ -21,7 +21,9 @@
  */
 
 import { WebSocket } from "ws";
-import { PROTOCOL_VERSION } from "../host/protocol.js";
+// W19：WS 信封协议版本下沉 core（断 mcp→host 环边——插件与 UI 走同一
+// WS 握手版本，版本常量不再引 host 域）。
+import { WS_PROTOCOL_VERSION } from "../core/index.js";
 import { Deadline, withDeadline, TimeoutError } from "../core/index.js";
 import { EVENT_TYPES, type SessionEvent, type JsonValue, type JsonRecord } from "../core/index.js";
 import type { PluginToolDef, PluginToolEntry, PluginDeliveryReport } from "./plugin-sdk.js";
@@ -49,7 +51,7 @@ export type WsPluginServerEnvelope =
 
 /** 宿主 → 插件进程的信封闭集。 */
 export type WsPluginClientEnvelope =
-    | { type: "hello"; version: typeof PROTOCOL_VERSION }
+    | { type: "hello"; version: typeof WS_PROTOCOL_VERSION }
     | { type: "tool_registered"; name: string }
     | { type: "tool_rejected"; name: string; error: string }
     | { type: "subscribed"; types: readonly string[] }
@@ -89,7 +91,7 @@ export interface WsPluginHostOptions {
 }
 
 /**
- * 连接一个 ws 插件进程：open → hello（PROTOCOL_VERSION）→ 等 hello_ack
+ * 连接一个 ws 插件进程：open → hello（WS_PROTOCOL_VERSION）→ 等 hello_ack
  * （deadline 预算）→ 句柄。版本不符（hello_error）与超时都是类型化拒绝。
  */
 export function connectWsPlugin(url: string, options: WsPluginHostOptions = {}): Promise<WsPluginHandle> {
@@ -110,7 +112,7 @@ export function connectWsPlugin(url: string, options: WsPluginHostOptions = {}):
         };
         ws.on("error", (err: Error) => fail(new WsPluginError("CONNECT_FAILED", err.message)));
         ws.on("open", () => {
-            ws.send(JSON.stringify({ type: "hello", version: PROTOCOL_VERSION } satisfies WsPluginClientEnvelope));
+            ws.send(JSON.stringify({ type: "hello", version: WS_PROTOCOL_VERSION } satisfies WsPluginClientEnvelope));
             const handshake = new Promise<{ name: string }>((res, rej) => {
                 const onMessage = (raw: Buffer) => {
                     let env: unknown;

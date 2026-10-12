@@ -1,0 +1,33 @@
+# NOTICE
+
+This product includes software developed at Aegink.
+
+## 内核来源
+
+本仓库是 [aegent](https://github.com/Aegink/aegent) 平台的**内核层**独立发布
+（aegent 主仓以 AGPL-3.0-or-later 覆盖整仓；本内核仓由版权所有者（Aegink）
+授权以 Apache-2.0 单独发布——版权所有，许可切换合法有效）。
+
+## 第三方组件登记
+
+本仓库随附代码引用的第三方素材（完整登记与许可说明见 THIRD_PARTY.md，
+npm 依赖许可快照见 oss/SOURCES.lock 离线清单——本仓只保留登记文档，
+不含参考仓源码）：
+
+- 运行时依赖：`better-sqlite3`（MIT）、`ws`（MIT）、`undici`（MIT）、
+  `fetch-socks`（MIT）
+- 参考实现学习（行为借鉴、零代码复制）：见 THIRD_PARTY.md 逐条登记。
+
+Copyright 2026 Aegink
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.

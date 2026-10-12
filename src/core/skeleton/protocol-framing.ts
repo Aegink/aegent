@@ -17,6 +17,14 @@ export const MAX_LINE_BYTES = 4 * 1024 * 1024;
 /** 协议版本：wire 形状发生不兼容变更时 +1（父子同包发布，当前恒 1）。 */
 export const PROTOCOL_VERSION = 1;
 
+/**
+ * W19：host↔端 WS 信封协议版本（hello/request/response/event 四信封——
+ * host/protocol.ts 的完整定义在 host 域，本常量下沉 core 供 mcp/ws-plugin
+ * 复用同一握手版本而不引 host 域：ws 插件走与 UI 相同的 WS 信封协议）。
+ * 与 stdio 面 PROTOCOL_VERSION 同值不同面（两个协议各自版本化）。
+ */
+export const WS_PROTOCOL_VERSION = 1;
+
 /** 子侧握手失败自退 exit 码（78 = EX_PROTOCOL 惯例空位；宿主可据此归因）。 */
 export const EXIT_PROTOCOL_MISMATCH = 78;
 

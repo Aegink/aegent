@@ -1,0 +1,17 @@
+# 可再生产物 —— 不入库
+dist/
+node_modules/
+coverage/
+
+# 一次性实验区
+scratch/
+*.log
+*.tmp
+Thumbs.db
+.DS_Store
+
+# 凭据与私有（绝不入库）
+private/
+*.key
+credentials.json
+.env

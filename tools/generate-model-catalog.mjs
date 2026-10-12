@@ -14,12 +14,16 @@
  * THINKING_LEVELS 闭集（与 session/settings.ts 字面量同值）、adapter 闭集、
  * (adapter,id) 无重复。
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const UI_JSON = path.join(ROOT, "ui", "model-catalog.json");
+// 大数据源（models.dev 裁剪快照）：产品仓在 ui/（设置页同源消费）；内核仓
+// 导出后无 ui/ 目录——自适应 data/（W19 导出脚本迁移位）。
+const UI_JSON = existsSync(path.join(ROOT, "ui", "model-catalog.json"))
+  ? path.join(ROOT, "ui", "model-catalog.json")
+  : path.join(ROOT, "data", "model-catalog.json");
 const DATA_TS = path.join(ROOT, "src", "models", "catalog-data.ts");
 const OUT_TS = path.join(ROOT, "src", "models", "catalog.generated.ts");
 

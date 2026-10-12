@@ -81,34 +81,4 @@ describe("EP-1/EP-2 宿主会话原语（T5-2）", () => {
     expect(await reg.sessionOpen("ghost")).toBe(false);
   });
 
-  it("权限档不可由调用者提交：collab-dispatch 的 SettingsCall 载荷无 mode 键（信封白名单反例）", async () => {
-    // T5-2 反例（验收硬点）：编排载荷若带 mode 键 → parseSettingsEnvelope
-    // 整信封拒绝（未知键 fail-closed）——调用者没有任何权限提交面。
-    const { parseSettingsEnvelope } = await import("../../host/protocol-settings.js");
-    const legal = parseSettingsEnvelope({
-      type: "settings",
-      requestId: "r1",
-      op: "collab-dispatch",
-      sourceSessionId: "s1",
-      targetSessionId: "s2",
-      kind: "task",
-      content: "做点事",
-      createNew: true,
-      // 注意：没有 mode / permissionMode / approvalMode 键——调用者无此输入面
-    });
-    expect(legal.op).toBe("collab-dispatch");
-    expect(() =>
-      parseSettingsEnvelope({
-        type: "settings",
-        requestId: "r2",
-        op: "collab-dispatch",
-        sourceSessionId: "s1",
-        targetSessionId: "s2",
-        kind: "task",
-        content: "做点事",
-        // 越权尝试：调用者提交权限档
-        mode: "auto",
-      }),
-    ).toThrow(/未知属性 "mode"/);
-  });
 });

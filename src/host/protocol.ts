@@ -30,6 +30,7 @@ import {
   type AgentMessage,
 } from "../core/index.js";
 import type { SessionEvent } from "../core/index.js";
+import { WS_PROTOCOL_VERSION } from "../core/index.js";
 import {
   bounded,
   parseClientEnvelope,
@@ -39,7 +40,10 @@ import {
 } from "./protocol-parse.js";
 import type { SettingsCall } from "./protocol-settings.js";
 
-export const PROTOCOL_VERSION = 1;
+/** W19：WS 信封协议版本（常量下沉 core/skeleton/protocol-framing.ts——
+ * mcp/ws-plugin 复用同一握手版本不再引 host 域；本处 re-export 保既有
+ * 消费面）。 */
+export const PROTOCOL_VERSION = WS_PROTOCOL_VERSION;
 
 
 // ---------------------------------------------------------------------------
