@@ -163,6 +163,43 @@ export default defineConfig({
   "utf8",
 );
 
+// ---- 8) package.json（裁剪依赖 + name/license + scripts）----
+const mainPkg = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8"));
+const pkg = {
+  name: NAME,
+  version: "0.1.0",
+  description: "本地优先的多端 AI Agent 内核——最小语义面 + 装配全外置（从 aegent 抽取）",
+  type: "module",
+  license: "Apache-2.0",
+  engines: { node: ">=22" },
+  scripts: {
+    test: "vitest run",
+    check: "tsc --noEmit",
+    build: "tsc && node scripts/copy-assets.mjs",
+    example: "tsc && node examples/minimal-loop.mjs",
+    "architecture:check": "node tools/architecture-check.mjs",
+    "vocabulary:check": "node tools/vocabulary-check.mjs",
+    "kernel:edges": "node tools/kernel-edges.cjs",
+    "models:generate": "node tools/generate-model-catalog.mjs",
+    "models:check": "node tools/generate-model-catalog.mjs --check",
+  },
+  dependencies: {
+    "better-sqlite3": mainPkg.devDependencies["better-sqlite3"],
+    ...(mainPkg.dependencies?.["fetch-socks"] !== undefined ? { "fetch-socks": mainPkg.dependencies["fetch-socks"] } : {}),
+    ...(mainPkg.dependencies?.["undici"] !== undefined ? { undici: mainPkg.dependencies.undici } : {}),
+    ...(mainPkg.dependencies?.["ws"] !== undefined ? { ws: mainPkg.dependencies.ws } : {}),
+  },
+  devDependencies: {
+    "@types/better-sqlite3": mainPkg.devDependencies["@types/better-sqlite3"],
+    "@types/node": mainPkg.devDependencies["@types/node"],
+    "@types/ws": mainPkg.devDependencies["@types/ws"],
+    "better-sqlite3": mainPkg.devDependencies["better-sqlite3"],
+    typescript: mainPkg.devDependencies.typescript,
+    vitest: mainPkg.devDependencies.vitest,
+  },
+};
+writeFileSync(path.join(OUT, "package.json"), JSON.stringify(pkg, null, 2) + "\n", "utf8");
+
 // ---- 9) 许可与文档（模板替换）----
 const TPL = path.join(ROOT, "tools", "kernel-repo-templates");
 cpSync(path.join(TPL, "LICENSE"), path.join(OUT, "LICENSE"));
@@ -192,6 +229,10 @@ writeFileSync(
   ),
   "utf8",
 );
+// 可运行示例（examples/——对外仓标配：让"跑起来看看"成为可能）
+mkdirSync(path.join(OUT, "examples"), { recursive: true });
+cpSync(path.join(TPL, "examples", "minimal-loop.mjs"), path.join(OUT, "examples", "minimal-loop.mjs"));
+
 // CI（GitHub Actions：typecheck + tests + 治理三件）
 mkdirSync(path.join(OUT, ".github", "workflows"), { recursive: true });
 cpSync(path.join(TPL, "ci.yml"), path.join(OUT, ".github", "workflows", "ci.yml"));
